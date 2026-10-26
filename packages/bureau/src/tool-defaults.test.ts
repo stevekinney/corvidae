@@ -13,7 +13,7 @@ import {
 } from '@lostgradient/operative';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterAll, afterEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { BureauError, createBureau } from './create-bureau';
@@ -22,12 +22,18 @@ import {
   fireOnce,
   pollUntil as pollUntilDefined,
 } from './schedule-fire-fixtures.test-support';
+import { createAgentSkills } from './agent-skills';
+import { removeSkillRoots, skillCatalogOnDisk } from './skill-policy-fixtures.test-support';
 import { waitForRunState } from './test';
+import { AGENT_STEP, workflowFileText } from './testing/workflow-file-fixtures.test-support';
+import { startWorkflowBureau } from './testing/workflow-bureau.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauOptions } from './types';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const harness = createScheduleFireHarness();
+
+afterAll(removeSkillRoots);
 
 afterEach(async () => {
   for (const bureau of bureaus.splice(0)) await bureau.dispose();
@@ -181,6 +187,62 @@ describe('a durable Bureau offers the tools by default', () => {
 
     expect(childOffered.flat()).not.toContain('requestHumanInput');
     expect(childOffered.flat()).not.toContain('scheduleWakeup');
+  });
+
+  it('narrows the tools to an active skill’s allowed-tools, the two it adds included', async () => {
+    const offered: Offered = [];
+    const catalog = await skillCatalogOnDisk();
+    const generate: GenerateFunction = async (context) => {
+      offered.push(context.toolbox.tools().map((tool) => tool.name));
+      return context.step === 0
+        ? {
+            content: '',
+            toolCalls: [{ id: 'lock-1', name: 'activate_skill', arguments: { name: 'lock' } }],
+          }
+        : { content: 'done', toolCalls: [] };
+    };
+    const bureau = await start({
+      asker: createAgent({
+        generate,
+        toolbox: createToolbox([]),
+        skills: createAgentSkills({ catalog: await catalog.discover() }),
+      }),
+    });
+    await bureau.run('asker', 'go').result();
+
+    expect(offered[0]).toContain('requestHumanInput');
+    // `lock` allows only `deactivate_skill`: the Bureau's own tools are narrowed with the rest.
+    expect(offered[1]).not.toContain('requestHumanInput');
+    expect(offered[1]).toContain('deactivate_skill');
+  });
+
+  it('offers neither tool to a workflow-file agent step', async () => {
+    const offered: Offered = [];
+    const harness = await startWorkflowBureau({
+      overrides: { agents: { writer: recordingAgent(offered) } },
+    });
+    try {
+      await harness.put(
+        'digest.json',
+        workflowFileText('digest', {
+          trigger: { kind: 'schedule', spec: '1h' },
+          steps: [{ ...AGENT_STEP }],
+        }),
+      );
+      await harness.bureau.workflows?.refresh();
+      await (await harness.bureau.durableEngine()?.start('digest', null, { id: 'step' }))?.result();
+
+      expect(offered.length).toBeGreaterThan(0);
+      expect(offered.flat()).not.toContain('requestHumanInput');
+      expect(offered.flat()).not.toContain('scheduleWakeup');
+
+      // The control: the same agent, run directly on the same Bureau, is offered the tool.
+      offered.length = 0;
+      await harness.bureau.run('writer', 'go').result();
+      expect(offered.flat()).toContain('requestHumanInput');
+    } finally {
+      await harness.dispose();
+    }
   });
 
   it('offers neither tool to a goal attempt', async () => {

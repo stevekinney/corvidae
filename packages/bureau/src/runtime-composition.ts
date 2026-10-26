@@ -103,6 +103,7 @@ import {
   type ToolPolicy,
 } from './skills';
 import { humanInputEnabled, humanInputSchemasOf } from './human-input-option';
+import { recordToolPolicy, withAddedTools } from './toolbox-additions';
 import {
   type AnyWorkflowDefinition,
   type ConditionalTextValueStore,
@@ -126,7 +127,6 @@ import {
 } from '@lostgradient/weft';
 import {
   type AnyToolbox,
-  combineToolboxes,
   createTool,
   createToolbox,
   type ToolboxExecuteOptions,
@@ -339,7 +339,7 @@ export function wireDurableOptInTools(
           await Promise.resolve(rawHumanInputTool.execute(input)),
       }),
     ]);
-    toolbox = combineToolboxes(toolbox, humanInputToolbox);
+    toolbox = withAddedTools(toolbox, humanInputToolbox);
   }
 
   if (options.wakeup) {
@@ -361,7 +361,7 @@ export function wireDurableOptInTools(
           await Promise.resolve(rawWakeupTool.execute(input)),
       }),
     ]);
-    toolbox = combineToolboxes(toolbox, wakeupToolbox);
+    toolbox = withAddedTools(toolbox, wakeupToolbox);
   }
 
   return toolbox;
@@ -3284,9 +3284,9 @@ async function buildRuntimeComposition(
     // structurally distinct (custom throwing execute) and must be freshly
     // instantiated per-call via createUnavailableToolbox() instead.
     //
-    // The skills path below calls combineToolboxes(toolbox, skillToolbox) which
-    // always creates a fresh toolbox — so cloning here also means the combined
-    // result is based on a per-run clone, which is correct.
+    // The skills path below adds the skill tools with withAddedTools, which
+    // keeps this clone's own wrappers — so the result is still based on a
+    // per-run clone, which is correct.
     //
     // COR-1577 — a named agent's resolved toolbox is its own: `createAgent` builds a fresh one
     // per resolution unless the agent was handed a shared toolbox, which `extend()` clones for
@@ -3507,7 +3507,7 @@ async function buildRuntimeComposition(
             },
           );
 
-          toolbox = combineToolboxes(
+          toolbox = withAddedTools(
             toolbox,
             createToolbox([
               skillToolset.activateSkill,
@@ -3599,7 +3599,8 @@ async function buildRuntimeComposition(
     );
     return Promise.resolve({
       generate,
-      toolbox: runToolbox,
+      // The policy rides with the toolbox, so a tool added to it later is narrowed too.
+      toolbox: skillToolPolicy ? recordToolPolicy(runToolbox, skillToolPolicy) : runToolbox,
       hooks,
       streamEventTarget,
       getActiveSkillRecords,

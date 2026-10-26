@@ -1305,7 +1305,17 @@ describe('Bureau hook tier composition (COR-1265)', () => {
     function catalogOptionsWithAgentTier() {
       const agentHooks = new HookRegistry<OperativeHookMap>({ source: 'agent' });
       agentHooks.on('prepareStep', () => Promise.resolve(), { id: 'agent:own', replay: 'safe' });
-      const toolbox = createToolbox([], { context: {} });
+      const toolbox = createToolbox(
+        [
+          createTool({
+            name: 'agent-own-tool',
+            description: 'the agent’s own tool',
+            input: z.object({}),
+            execute: async () => 'own',
+          }),
+        ],
+        { context: {} },
+      );
       const options: RunOptions = {
         generate: async () => ({ content: 'from the agent', toolCalls: [] }),
         toolbox,
@@ -1363,7 +1373,15 @@ describe('Bureau hook tier composition (COR-1265)', () => {
         // recovered catalog run still reattaches against the AGENT's provider
         // and toolbox, never the Bureau's — which this composition does not
         // even have.
-        expect(services.options.toolbox).toBe(toolbox);
+        // COR-1700: a durable Bureau adds `requestHumanInput` to the agent's toolbox, so the
+        // toolbox is the agent's own tools plus that one, never the Bureau's.
+        expect(services.options.toolbox.tools().map((tool) => tool.name)).toEqual([
+          'agent-own-tool',
+          'requestHumanInput',
+        ]);
+        expect(services.options.toolbox.getTool('agent-own-tool')).toBe(
+          toolbox.getTool('agent-own-tool'),
+        );
         expect(services.options.generate).toBe(options.generate);
       } finally {
         runtime.durable?.engine[Symbol.dispose]?.();
