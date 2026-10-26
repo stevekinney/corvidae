@@ -24,7 +24,7 @@ import { waitUntil } from '@lostgradient/testing/wait-until';
 
 const generate: GenerateFunction = async () => ({ content: 'acknowledged', toolCalls: [] });
 
-async function waitForReal(condition: () => boolean): Promise<boolean> {
+async function waitForReal(condition: () => boolean): Promise<true> {
   await waitUntil(condition, { message: 'waitForReal' });
   return true;
 }

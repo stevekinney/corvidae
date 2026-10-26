@@ -33,6 +33,7 @@ import {
   seedPoisoned,
 } from './testing/goal-recovery-fixtures.test-support';
 import type { Bureau } from './types';
+import { quietFor } from '@lostgradient/testing/wait-until';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 let database: TestDatabase = createUnsetTestDatabase();
@@ -382,8 +383,9 @@ describe('who may subscribe to a goal history', () => {
     const stranger = watch(bureau, 'bob');
 
     // The owner's replay finished, so anything the stranger was going to be given has been.
-    expect(await pollUntil(() => owner.seen.includes('goal.succeeded'))).toBe(true);
-    expect(await pollUntil(() => stranger.seen.length > 0)).toBe(false);
+    await pollUntil(() => owner.seen.includes('goal.succeeded'));
+    await quietFor(50);
+    expect(stranger.seen).toEqual([]);
   });
 
   it('delivers nothing to a stranger who subscribed to the id before the goal existed, and everything to its owner', async () => {
@@ -395,8 +397,9 @@ describe('who may subscribe to a goal history', () => {
     await bureau.goals.create(goalRequest({ principal: 'alice' }));
     await ended(bureau);
 
-    expect(await pollUntil(() => owner.seen.includes('goal.succeeded'))).toBe(true);
+    await pollUntil(() => owner.seen.includes('goal.succeeded'));
     expect(owner.seen[0]).toBe('goal.started');
-    expect(await pollUntil(() => stranger.seen.length > 0)).toBe(false);
+    await quietFor(50);
+    expect(stranger.seen).toEqual([]);
   });
 });

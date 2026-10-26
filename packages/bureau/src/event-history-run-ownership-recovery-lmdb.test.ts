@@ -34,7 +34,7 @@ function createNextTool() {
  * condition-checked poll with a real (tiny) per-iteration delay, never a
  * blind sleep-then-assume.
  */
-async function pollUntilWithRealDelay(check: () => boolean | Promise<boolean>): Promise<boolean> {
+async function pollUntilWithRealDelay(check: () => boolean | Promise<boolean>): Promise<true> {
   await waitUntil(check, { message: 'pollUntilWithRealDelay' });
   return true;
 }

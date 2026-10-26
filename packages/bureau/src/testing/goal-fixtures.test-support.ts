@@ -69,7 +69,14 @@ export function createTestDatabase(label: string): TestDatabase {
   };
 }
 
-export async function pollUntil(check: () => boolean | Promise<boolean>): Promise<boolean> {
+/**
+ * Waits until `check` holds, however long that takes; the hang guard throws if it never does. It
+ * resolves only with `true`, and its type says so: it cannot answer "did not happen", so
+ * `expect(await pollUntil(...)).toBe(false)` does not compile. A test that needs an absence waits on
+ * the event that proves the system settled and asserts the absence directly, or pauses with
+ * `quietFor`.
+ */
+export async function pollUntil(check: () => boolean | Promise<boolean>): Promise<true> {
   await waitUntil(check, { message: 'pollUntil' });
   return true;
 }

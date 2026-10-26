@@ -19,7 +19,7 @@ import { createBureau } from './create-bureau';
 import type { AgentDefinitions } from './agent-catalog';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 
-async function waitForReal(condition: () => Promise<boolean>): Promise<boolean> {
+async function waitForReal(condition: () => Promise<boolean>): Promise<true> {
   await waitUntil(condition, { message: 'waitForReal' });
   return true;
 }

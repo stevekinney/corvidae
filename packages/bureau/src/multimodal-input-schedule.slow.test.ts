@@ -18,7 +18,7 @@ import { alice, base64Of, pngBytes } from './testing/asset-fixtures.test-support
 import type { AgentDefinitions } from './agent-catalog';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 
-async function waitForReal(condition: () => boolean): Promise<boolean> {
+async function waitForReal(condition: () => boolean): Promise<true> {
   await waitUntil(condition, { message: 'waitForReal' });
   return true;
 }

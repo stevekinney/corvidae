@@ -69,7 +69,7 @@ const BACKENDS: readonly (readonly [string, FixtureFactory])[] = [
 ];
 
 /** A bounded poll with a small real delay between checks; never a blind sleep. */
-async function pollUntil(check: () => boolean | Promise<boolean>): Promise<boolean> {
+async function pollUntil(check: () => boolean | Promise<boolean>): Promise<true> {
   await waitUntil(check, { message: 'pollUntil' });
   return true;
 }

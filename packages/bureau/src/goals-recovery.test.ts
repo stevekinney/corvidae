@@ -52,6 +52,7 @@ import {
   seedRunning,
 } from './testing/goal-recovery-fixtures.test-support';
 import type { Bureau } from './types';
+import { quietFor } from '@lostgradient/testing/wait-until';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 let database: TestDatabase = createUnsetTestDatabase();
@@ -148,7 +149,7 @@ describe('a goal across a process restart', () => {
 
     // The dead process's late writes are stale updates: the goal does not move.
     await dead.dispose();
-    await pollUntil(() => false);
+    await quietFor(50);
     expect(await bureau.goals.get('g1')).toEqual(goal);
   });
 
@@ -226,7 +227,7 @@ describe('a goal across a process restart', () => {
     expect(steps).toBe(0);
 
     stuck.release();
-    await pollUntil(() => false);
+    await quietFor(50);
     expect(await bureau.goals.get('g1')).toEqual(goal);
   });
 
@@ -690,7 +691,7 @@ describe('a controller left running in a superseded process', () => {
     // The superseded controller's verdict arrives late and passes. Its commit is refused.
     supersededVerdict.release();
     await verdictDelivered.promise;
-    await pollUntil(() => false);
+    await quietFor(50);
 
     expect(await bureau.goals.get('g1')).toEqual(canceled);
     expect(canceled).toMatchObject({ status: 'canceled', terminalReason: 'goal-canceled' });

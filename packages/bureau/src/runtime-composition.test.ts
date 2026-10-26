@@ -178,7 +178,7 @@ function createGenerateForProvider(provider: ProviderConfiguration): GenerateFun
   };
 }
 
-async function pollUntil(check: () => boolean | Promise<boolean>): Promise<boolean> {
+async function pollUntil(check: () => boolean | Promise<boolean>): Promise<true> {
   await waitUntil(check, { message: 'pollUntil' });
   return true;
 }

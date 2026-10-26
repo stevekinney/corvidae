@@ -25,7 +25,7 @@ const MODES: OutputMode[] = ['pipe', 'pty'];
 const PTY_DIMENSIONS = { columns: 80, rows: 24 };
 
 /** Wait for `condition`, failing after about five seconds; a condition is a state, never a guess at timing. */
-async function eventually(condition: () => boolean): Promise<boolean> {
+async function eventually(condition: () => boolean): Promise<true> {
   await waitUntil(condition, { message: 'eventually' });
   return true;
 }

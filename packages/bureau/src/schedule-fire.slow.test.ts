@@ -36,7 +36,7 @@ import type { AgentDefinitions } from './agent-catalog';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 
 /** Real-wall-clock poll — `engine.schedule` ticks fire on actual elapsed time. */
-async function waitForReal(condition: () => boolean | Promise<boolean>): Promise<boolean> {
+async function waitForReal(condition: () => boolean | Promise<boolean>): Promise<true> {
   await waitUntil(condition, { message: 'waitForReal' });
   return true;
 }

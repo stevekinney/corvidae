@@ -40,7 +40,7 @@ function finishesAfter(gate: Promise<void>): GenerateFunction {
 }
 
 /** A bounded poll with a small real delay between checks; never a blind sleep. */
-async function pollUntil(check: () => boolean): Promise<boolean> {
+async function pollUntil(check: () => boolean): Promise<true> {
   await waitUntil(check, { message: 'pollUntil' });
   return true;
 }

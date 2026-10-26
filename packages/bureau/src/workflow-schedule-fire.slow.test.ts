@@ -19,7 +19,7 @@ afterEach(async () => {
   for (const harness of harnesses.splice(0)) await harness.dispose();
 });
 
-async function waitForReal(condition: () => boolean | Promise<boolean>): Promise<boolean> {
+async function waitForReal(condition: () => boolean | Promise<boolean>): Promise<true> {
   await waitUntil(condition, { message: 'waitForReal' });
   return true;
 }

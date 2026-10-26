@@ -106,7 +106,7 @@ async function withBureau(
  * A zero-delay poll starves LMDB's own completion callbacks (see
  * `run-creation-fault-points.test.ts`).
  */
-async function pollUntil(check: () => boolean): Promise<boolean> {
+async function pollUntil(check: () => boolean): Promise<true> {
   await waitUntil(check, { message: 'pollUntil' });
   return true;
 }

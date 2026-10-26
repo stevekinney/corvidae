@@ -49,7 +49,7 @@ function createEmptyToolbox(): Toolbox {
   return createToolbox([]) as unknown as Toolbox;
 }
 
-async function pollUntil(check: () => boolean | Promise<boolean>): Promise<boolean> {
+async function pollUntil(check: () => boolean | Promise<boolean>): Promise<true> {
   await waitUntil(check, { message: 'pollUntil' });
   return true;
 }

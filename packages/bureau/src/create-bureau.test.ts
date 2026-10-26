@@ -136,7 +136,7 @@ import {
 } from './testing/run-retirement.test-support';
 import { storageOverTextStore } from './testing/text-store-storage.test-support';
 import { expireReviews } from './testing/expired-reviews.test-support';
-import { waitUntil, awakeTurns } from '@lostgradient/testing/wait-until';
+import { waitUntil, awakeTurns, quietFor } from '@lostgradient/testing/wait-until';
 
 function createTextStoreProxy(
   backingStore: ConditionalTextValueStore,
@@ -296,7 +296,7 @@ async function waitForRunSettled(bureau: Bureau, runId: string): Promise<void> {
  * cap would itself flake on a loaded host. A `check` that resolves earlier returns
  * immediately, so the generous cap costs nothing on the happy path.
  */
-async function pollUntil(check: () => boolean | Promise<boolean>): Promise<boolean> {
+async function pollUntil(check: () => boolean | Promise<boolean>): Promise<true> {
   await waitUntil(check, { message: 'pollUntil' });
   return true;
 }
@@ -13335,8 +13335,8 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
       // (durableBackgroundTasks: 'manual'), nothing can advance the durable
       // timer without an explicit tick — polling WITHOUT ticking must never
       // observe completion, and the continuation step must never run.
-      const firedWithoutTick = await pollUntil(() => bureau.getRun(run.id)?.status === 'completed');
-      expect(firedWithoutTick).toBe(false);
+      await quietFor(50);
+      expect(bureau.getRun(run.id)?.status).not.toBe('completed');
       expect(bureau.getRun(run.id)?.status).not.toBe('completed');
       expect(generate.callCount).toBe(1);
 
@@ -13395,8 +13395,8 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
 
       // Genuine park proof, same as config 3: no tick is issued in this
       // process, so completion must never be observed here.
-      const firedInBureauA = await pollUntil(() => bureauA.getRun(run.id)?.status === 'completed');
-      expect(firedInBureauA).toBe(false);
+      await quietFor(50);
+      expect(bureauA.getRun(run.id)?.status).not.toBe('completed');
       // AB-207: deliberately NOT disposed here — `dispose()`/`shutdown()`'s
       // `'abort'` policy aborts every active run it still tracks, including
       // one durably parked on a `scheduleWakeup` wait, which calls

@@ -43,7 +43,7 @@ function userTexts(conversation: Conversation): string[] {
     .map((message) => (typeof message.content === 'string' ? message.content : ''));
 }
 
-async function pollUntil(check: () => boolean | Promise<boolean>): Promise<boolean> {
+async function pollUntil(check: () => boolean | Promise<boolean>): Promise<true> {
   await waitUntil(check, { message: 'pollUntil' });
   return true;
 }
