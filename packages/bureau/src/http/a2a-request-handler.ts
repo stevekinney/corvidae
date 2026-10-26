@@ -861,18 +861,21 @@ export function createBureauA2ARequestHandler(
   }
 
   /**
-   * Whether the task's end is in its durable history, which is what `observed` reports. A task
-   * whose terminal event failed to append is marked resync-pending in its record until the repair
-   * commits, so the mark says the end is not there. Without a durable history the registry is the
-   * only evidence there is, and a history that holds none of the task's events has lost them all
-   * to retention, which removes the oldest first, so the end went with them.
+   * Whether the task's end is in its durable history, which is what `observed` reports: its
+   * terminal event is there. Without a durable history the registry is the only evidence there
+   * is. A history with no settlement event means the end is not there yet when the task's record
+   * is marked resync-pending (an append failed and its repair has not landed) or when the history
+   * holds other events of the task; one that holds none of its events has lost them all to
+   * retention, which removes the oldest first, so the end went with them. A mark alone is not
+   * evidence: an earlier, non-terminal failure leaves it set after the terminal event landed.
    */
   async function endInHistory(taskId: string): Promise<boolean> {
-    const stored = await bureau.tasks.record(taskId);
-    if (stored?.resyncPending === true) return false;
     const retained = await readRetained(bureau, taskId, undefined);
-    if (retained === undefined || retained.events.length === 0) return true;
-    return retained.events.some((event) => bearsSettlement(event));
+    if (retained === undefined) return true;
+    if (retained.events.some((event) => bearsSettlement(event))) return true;
+    if (retained.events.length > 0) return false;
+    const stored = await bureau.tasks.record(taskId);
+    return stored?.resyncPending !== true;
   }
 
   /**

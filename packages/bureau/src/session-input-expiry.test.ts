@@ -149,6 +149,54 @@ describe('a queued input’s expiresAt', () => {
     }
   });
 
+  it('is admitted whatever its distance: a year or more out is clamped to the mailbox’s cap, not refused', async () => {
+    const stepZeroStarted = deferred();
+    const releaseStepZero = deferred();
+    const { bureau, runtime } = await open(async () => {
+      stepZeroStarted.resolve();
+      await releaseStepZero.promise;
+      return { content: 'done', toolCalls: [] };
+    });
+    try {
+      const run = await bureau.createRun({
+        agentName: 'default',
+        message: 'Start',
+        principal: 'alice',
+      });
+      await stepZeroStarted.promise;
+      const year = 365 * 86_400_000;
+
+      const outcomes = await Promise.all(
+        [
+          '2028-12-01T00:00:00.000Z',
+          new Date(runtime.clock.now() + year).toISOString(),
+          new Date(runtime.clock.now() + year + 1).toISOString(),
+          '9999-12-31T23:59:59.999Z',
+        ].map((expiresAt, index) =>
+          bureau.submitSessionInput(run.sessionId, {
+            ...queued,
+            id: `input-far-${index}`,
+            payload: `far ${index}`,
+            expiresAt,
+          }),
+        ),
+      );
+
+      expect(outcomes.map((outcome) => outcome.outcome)).toEqual([
+        'admitted',
+        'admitted',
+        'admitted',
+        'admitted',
+      ]);
+      for (const outcome of outcomes) {
+        if (outcome.outcome === 'admitted') expect(outcome.receipt.state).toBe('queued');
+      }
+    } finally {
+      releaseStepZero.resolve();
+      await bureau.dispose();
+    }
+  });
+
   it('is refused when it is not an ISO 8601 instant', async () => {
     const stepZeroStarted = deferred();
     const releaseStepZero = deferred();

@@ -137,3 +137,35 @@ describe('two continuations that name the same revision', () => {
     });
   });
 });
+
+describe('a continuation with a deadline a year or more out', () => {
+  const activated = { headers: { 'A2A-Extensions': COMMAND_RECEIPTS_EXTENSION_URI } };
+
+  it('is admitted: the spec accepts any RFC 3339 deadline, and the mailbox’s cap is not the client’s concern', async () => {
+    const run = gated();
+    await withA2A({ asker: run.generate }, async (opened) => {
+      const started = await sendForTask(
+        opened,
+        'asker',
+        { message: message('start'), configuration: { returnImmediately: true } },
+        activated,
+      );
+
+      const continued = await send(
+        opened,
+        'asker',
+        {
+          message: message('much later', {
+            taskId: started.id,
+            metadata: { [COMMAND_RECEIPTS_EXTENSION_URI]: { deadline: '2099-01-01T00:00:00Z' } },
+          }),
+          configuration: { returnImmediately: true },
+        },
+        activated,
+      );
+
+      expect(continued.body.error).toBeUndefined();
+      run.release();
+    });
+  });
+});

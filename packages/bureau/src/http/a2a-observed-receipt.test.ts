@@ -9,7 +9,8 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { faultyStorage } from './a2a-faulty-storage.test-support.ts';
 import { COMMAND_RECEIPTS_EXTENSION_URI } from './a2a-command-receipts.ts';
 import { type Json, message, send } from './a2a-mount.test-support.ts';
-import { openBureau } from './management/management-fixtures.test-support.ts';
+import { createBureauHandler } from './create-bureau-handler.ts';
+import { authentication, openBureau } from './management/management-fixtures.test-support.ts';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -67,5 +68,33 @@ describe('a new task’s receipt over a durable history', () => {
       'applied',
       'observed',
     ]);
+  });
+
+  it('is observed when the terminal event is there, whatever an earlier append left marked', async () => {
+    const opened = await open();
+    // An earlier, non-terminal append failed and its repair has not landed: the mark stays set.
+    const marked = Object.create(opened.bureau, {
+      tasks: {
+        value: new Proxy(opened.bureau.tasks, {
+          get(target, property) {
+            if (property !== 'record') return Reflect.get(target, property, target);
+            return async (id: string) => {
+              const record = await target.record(id);
+              return record === undefined ? undefined : { ...record, resyncPending: true };
+            };
+          },
+        }),
+      },
+    });
+    const handler = createBureauHandler(marked, {
+      authentication,
+      publish: ['asker'],
+      publicUrl: 'http://localhost',
+    });
+    const original = message('go');
+
+    const sent = await send({ ...opened, handler }, 'asker', { message: original }, ACTIVE);
+
+    expect(receiptOf(sent)).toBe('observed');
   });
 });
