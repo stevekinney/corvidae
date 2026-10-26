@@ -1,6 +1,6 @@
 import type { ContentBlock } from '@modelcontextprotocol/server';
 
-import type { MediaContent, ToolResultPart } from '../../protocol';
+import type { JSONValue, MediaContent, ToolResultPart } from '../../protocol';
 
 /**
  * Maps MCP content blocks to Armorer's portable tool-result parts and back,
@@ -19,6 +19,21 @@ import type { MediaContent, ToolResultPart } from '../../protocol';
 
 /** The `metadata` key a part converted from an embedded resource keeps its URI under. */
 export const MCP_RESOURCE_URI_METADATA_KEY = 'mcpResourceUri';
+
+/**
+ * The `metadata` key a part converted from a `resource_link` keeps the rest of the link's fields
+ * under: `title`, `description`, `size`, `annotations`, `icons`, and `_meta`.
+ */
+export const MCP_RESOURCE_LINK_METADATA_KEY = 'mcpResourceLink';
+
+const RESOURCE_LINK_FIELDS = [
+  'title',
+  'description',
+  'size',
+  'annotations',
+  'icons',
+  '_meta',
+] as const;
 
 type MediaType = MediaContent['type'];
 
@@ -79,11 +94,18 @@ export function mcpBlocksToParts(
             `MCP result links to resource "${block.uri}", but no serverId was configured to reference it by.`,
           );
         }
+        const link: Record<string, JSONValue> = {};
+        for (const field of RESOURCE_LINK_FIELDS) {
+          if (block[field] !== undefined) link[field] = block[field] as JSONValue;
+        }
         return withMimeType(
           {
             type: mediaTypeFor(block.mimeType),
             name: block.name,
             source: { kind: 'mcp-resource', serverId, uri: block.uri },
+            ...(Object.keys(link).length === 0
+              ? {}
+              : { metadata: { [MCP_RESOURCE_LINK_METADATA_KEY]: link } }),
           },
           block.mimeType,
         );
@@ -97,19 +119,38 @@ function embeddedUri(part: MediaContent, index: number): string {
   return typeof uri === 'string' ? uri : `urn:armorer:tool-result-part:${index}`;
 }
 
+/** The resource-link fields {@link mcpBlocksToParts} kept under `metadata`, and only those. */
+function resourceLinkFields(part: MediaContent): Record<string, unknown> {
+  const kept: unknown = part.metadata?.[MCP_RESOURCE_LINK_METADATA_KEY];
+  if (typeof kept !== 'object' || kept === null || Array.isArray(kept)) return {};
+  const record = kept as Record<string, unknown>;
+  return Object.fromEntries(
+    RESOURCE_LINK_FIELDS.flatMap((field) => (field in record ? [[field, record[field]]] : [])),
+  );
+}
+
 function partToBlock(part: ToolResultPart, index: number): ContentBlock {
   if (part.type === 'text') return { type: 'text', text: part.text };
   const { source } = part;
   if (source.kind === 'mcp-resource' || source.kind === 'remote-url') {
     const uri = source.kind === 'mcp-resource' ? source.uri : source.url;
-    return withMimeType({ type: 'resource_link', uri, name: part.name ?? uri }, part.mimeType);
+    return withMimeType(
+      { type: 'resource_link', uri, name: part.name ?? uri, ...resourceLinkFields(part) },
+      part.mimeType,
+    );
   }
   if (source.kind !== 'inline') {
     throw new Error(
       `Tool-result part ${index} has a "${source.kind}" source, which MCP cannot carry; resolve it to inline bytes first.`,
     );
   }
-  if ((part.type === 'image' || part.type === 'audio') && source.encoding === 'base64') {
+  // A part that came from an embedded resource goes back out as one, even an image or audio part.
+  const fromEmbeddedResource = typeof part.metadata?.[MCP_RESOURCE_URI_METADATA_KEY] === 'string';
+  if (
+    !fromEmbeddedResource &&
+    (part.type === 'image' || part.type === 'audio') &&
+    source.encoding === 'base64'
+  ) {
     if (part.mimeType === undefined) {
       throw new Error(`Tool-result part ${index} (${part.type}) needs a mimeType for MCP.`);
     }

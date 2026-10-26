@@ -1,5 +1,6 @@
 export {
   TOOL_CONTENT_KIND,
+  ToolResultError,
   assertToolResultParts,
   isToolContent,
   isToolResultParts,

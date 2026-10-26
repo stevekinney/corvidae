@@ -1,5 +1,6 @@
 import type { SerializedToolDefinition } from '../../core/serialization';
 import type { AnyToolDefinition } from '../../core/tool-definition';
+import type { ToolResultPart } from '../../protocol';
 import type { ImportedToolConfiguration } from '../../toolbox-type-inference';
 import { isAsyncIterable } from '../../type-guards';
 import type { ToolCallInput, ToolResultLike } from '../../types';
@@ -189,7 +190,7 @@ export function formatOpenAIToolResults(
     const content =
       parts === undefined
         ? stringifyToolContent(result.content)
-        : textOfToolResultParts('OpenAI', parts);
+        : textOfToolResultPartsWithOutcome(result, parts);
 
     return {
       role: 'tool',
@@ -218,7 +219,7 @@ export async function formatOpenAIToolResultsAsync(
         content:
           parts === undefined
             ? stringifyToolContent(contentSource)
-            : textOfToolResultParts('OpenAI', parts),
+            : textOfToolResultPartsWithOutcome(result, parts),
       };
     }),
   );
@@ -265,6 +266,26 @@ function stripSchemaId(schema: JSONSchema): JSONSchema {
     delete (copy as Record<string, unknown>)['$schema'];
   }
   return copy;
+}
+
+/**
+ * A result's parts as the text of a tool message. A tool message has no field for the outcome, so
+ * a non-success result leads with its canonical payload (`content` is `null`; the parts follow), as
+ * Conversationalist's OpenAI adapter exports it.
+ */
+function textOfToolResultPartsWithOutcome(
+  result: ToolResultLike,
+  parts: readonly ToolResultPart[],
+): string {
+  const text = textOfToolResultParts('OpenAI', parts);
+  if (result.outcome === 'success') return text;
+  const payload = {
+    outcome: result.outcome,
+    content: null,
+    ...(result.error ? { error: result.error } : {}),
+    ...(result.action ? { action: result.action } : {}),
+  };
+  return `${JSON.stringify(payload)}\n\n${text}`;
 }
 
 function stringifyToolContent(content: unknown): string {
