@@ -54,16 +54,30 @@ function selectInterface(card: AgentCard, allowedOrigins: ReadonlySet<string>): 
   return allowed;
 }
 
+/** Whether a media type a card lists covers `text/plain`: that type or a wildcard for it, parameters ignored. */
+function coversText(mode: string): boolean {
+  const type = (mode.split(';')[0] ?? '').trim().toLowerCase();
+  return type === 'text/plain' || type === 'text/*' || type === '*/*';
+}
+
 function assertAcceptsText(card: AgentCard): void {
   if (card.defaultInputModes.length > 0 && !card.defaultInputModes.includes('text/plain')) {
     throw new A2APeerError('content-type-not-supported', 'The peer accepts no text/plain input.');
+  }
+  // The client sends `acceptedOutputModes: ['text/plain']` on every request, so a peer that lists
+  // only other modes could answer in none the client accepts.
+  if ((card.defaultOutputModes ?? []).length > 0 && !card.defaultOutputModes.some(coversText)) {
+    throw new A2APeerError(
+      'content-type-not-supported',
+      'The peer answers in no text/plain output, which is all this client accepts.',
+    );
   }
 }
 
 /**
  * Checks a freshly read card. Refuses, in order: a required extension the client does not
  * support, a card with no usable A2A 1.0 JSON-RPC interface on an allowed origin, and a card
- * that accepts no `text/plain` input. The caller still checks egress for the selected URL.
+ * that accepts no `text/plain` input or lists output modes of which none is text. The caller still checks egress for the selected URL.
  */
 export function validatePeerCard(
   card: AgentCard,

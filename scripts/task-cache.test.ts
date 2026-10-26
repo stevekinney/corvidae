@@ -567,6 +567,23 @@ test("the validate gate runs each package's suite once, through its coverage run
   }
 });
 
+test("the check gate enforces the affected workspaces' coverage floors through test:gate (COR-1693)", async () => {
+  // `check` once ran the plain `test` and so merged a coverage regression that only `validate`
+  // would have caught. Its affected run names `test:gate`, which runs each suite once, through the
+  // coverage run where the workspace has a floor; naming `test` or `test:coverage` beside it would
+  // run a suite twice.
+  const { scripts } = await Bun.file(join(root, 'package.json')).json();
+  const affected = (scripts.check as string)
+    .match(/turbo run [^&']+/g)
+    ?.filter((invocation) => invocation.includes('--affected'))
+    .map((invocation) => invocation.split(/\s+/).slice(2));
+  expect(affected?.some((names) => names.includes('test:gate'))).toBe(true);
+  for (const names of affected ?? []) {
+    expect(names).not.toContain('test');
+    expect(names).not.toContain('test:coverage');
+  }
+});
+
 test("Interborough's gate runs the host suite its coverage run leaves out", async () => {
   // Its coverage run measures the UI suite only, so the gate adds `test:host`, which must stay the
   // first half of `test`, or the gate and the plain suite would test different files.

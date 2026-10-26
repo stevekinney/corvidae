@@ -1,6 +1,12 @@
 import { isSpecType, type CallToolResult, type ContentBlock } from '@modelcontextprotocol/server';
 
-import { assertToolResultParts, isToolContent, toolContent, type JSONObject } from '../../protocol';
+import {
+  assertToolResultParts,
+  isToolContent,
+  toolContent,
+  ToolResultError,
+  type JSONObject,
+} from '../../protocol';
 import type { ToolResultLike } from '../../types';
 import { mcpBlocksToParts, partsToMcpBlocks } from './parts';
 
@@ -110,7 +116,9 @@ export function toCallToolResult(result: ToolResultLike): CallToolResult {
  * Converts an MCP `CallToolResult` into the value an Armorer tool returns
  * (client direction).
  *
- * - An error result throws with its text.
+ * - An error result throws with its text. When it also holds a non-text
+ *   block, the throw is a {@link ToolResultError} carrying every block as an
+ *   ordered part, so the failure keeps its images and resources.
  * - A result with any non-text block returns `toolContent`: every block as an
  *   ordered tool-result part, with `structuredContent` (when the server sent
  *   it) as the value beside them. A `resource_link` becomes an
@@ -124,11 +132,13 @@ export function parseMcpCallResult(
   result: CallToolResult,
   options: { serverId?: string | undefined } = {},
 ): unknown {
-  if (result.isError) {
-    throw new Error(extractMcpErrorMessage(result));
-  }
   const content: ContentBlock[] = Array.isArray(result.content) ? result.content : [];
   const hasNonTextBlock = content.some((block) => !isTextContentBlock(block));
+  if (result.isError) {
+    throw hasNonTextBlock
+      ? errorWithParts(result, content, options.serverId)
+      : new Error(extractMcpErrorMessage(result));
+  }
   if (hasNonTextBlock) {
     const parts = mcpBlocksToParts(content, options.serverId);
     return result.structuredContent === undefined
@@ -152,6 +162,29 @@ export function parseMcpCallResult(
 export function toTextContent(text: string): CallToolResult['content'] {
   if (!text.length) return [];
   return [{ type: 'text' as const, text }];
+}
+
+/**
+ * An error result's blocks as a {@link ToolResultError}. A block that cannot become a part (a
+ * `resource_link` without a `serverId`) leaves the plain text error: the failure is still reported.
+ */
+function errorWithParts(
+  result: CallToolResult,
+  content: ContentBlock[],
+  serverId: string | undefined,
+): Error {
+  const message = extractMcpErrorMessage(result);
+  try {
+    const parts = mcpBlocksToParts(content, serverId);
+    return new ToolResultError(
+      message,
+      result.structuredContent === undefined
+        ? toolContent(parts)
+        : toolContent(parts, { value: result.structuredContent as JSONObject }),
+    );
+  } catch {
+    return new Error(message);
+  }
 }
 
 function extractMcpErrorMessage(result: CallToolResult): string {

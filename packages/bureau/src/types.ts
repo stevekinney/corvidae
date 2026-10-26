@@ -82,6 +82,7 @@ import type {
   BureauAgentCatalog,
 } from './agent-catalog';
 import type { BureauAssetOptions } from './assets/asset-service';
+import type { McpResourceReader } from './assets/content-source-resolver';
 import type { AssetService } from './assets/types';
 import type { AuditRetentionOption, AuditTrail, CheckpointRetentionOption } from './audit-trail';
 import type { BureauEventFeed } from './bureau-event-feed.ts';
@@ -629,11 +630,9 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * memory hooks for. See {@link BureauMemoryAuthorityOptions}.
    */
   memoryAuthority?: BureauMemoryAuthorityOptions;
-  cache?: CacheConfiguration;
   identity?: IdentityConfiguration;
   /** Host-owned authority check used before durable recovery resumes user code. */
   requestAuthorityValidator?: (context: ToolRequestContext) => boolean | Promise<boolean>;
-  streaming?: StreamingConfiguration;
   scheduler?: SchedulerConfiguration;
   /**
    * AB-13 — declarative flow control gating run ADMISSION, composed over
@@ -792,6 +791,17 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * `'assets'` owner. Omit to compose none — the default.
    */
   assets?: BureauAssetOptions;
+  /**
+   * Reads the MCP resource an `mcp-resource` part of a tool result links to (COR-1634), so the
+   * step after a tool returned an MCP `resource_link` can send the linked bytes to a provider.
+   * Bureau holds no MCP connections, so the host that connected the server supplies the read. Only a
+   * tool result introduces such a link (a run, session or schedule input carrying one is refused),
+   * but the reader must still authorize the run's principal, the server and the URI on every
+   * call, and it is called again at every step that sends the row. Without it, a run whose
+   * row holds such a link fails its next generation with a `MediaAdmissionError`. See
+   * {@link McpResourceReader}.
+   */
+  mcpResources?: McpResourceReader;
   /**
    * Host sink for internal operational diagnostics — recovery failures,
    * live-frame listener exceptions, dispose errors, and persistence
@@ -1232,6 +1242,13 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * would orphan whatever that storage holds.
    */
   readonly hasExplicitId: boolean;
+  /**
+   * The runtime this bureau runs on: {@link BureauOptions.runtime}, or the process's own services
+   * when none was given. An adapter that compares a deadline or schedules a timer for the
+   * bureau (the A2A mount of `createBureauHandler`) reads it here, so a custom runtime governs
+   * the adapter too and not only the bureau.
+   */
+  readonly runtimeServices: RuntimeServices;
   /**
    * How long a settled task stays addressable: {@link BureauOptions.taskRetention}, or its
    * 30-day default when none was given.
@@ -2075,7 +2092,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
     guard?: ScheduleRevisionGuard,
   ): Promise<true | undefined>;
 
-  getConfiguration(): ConfigurationResponse;
   getTools(): ToolSummary[];
   /**
    * Subscribe to every live frame. The FIRST subscriber is also replayed, in
@@ -2604,14 +2620,6 @@ export interface SubmitSchedulerTaskResponse {
   taskId: string;
   priority: SchedulerPriority;
   status: 'queued';
-}
-
-export interface ConfigurationResponse {
-  provider: RedactedProviderConfiguration | undefined;
-  providers: RedactedProviderRouteConfiguration[];
-  maximumSteps: number;
-  systemPrompt: string | undefined;
-  tools: ToolSummary[];
 }
 
 export interface ToolSummary {

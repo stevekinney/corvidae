@@ -59,7 +59,11 @@ export type { AgentSkillsOptions } from './agent-skills';
 export { createAgentSkills } from './agent-skills';
 export type { AssetServiceOptions, BureauAssetOptions } from './assets/asset-service';
 export { createAssetService, managedAssetSource } from './assets/asset-service';
-export { createAssetContentSourceResolver } from './assets/content-source-resolver';
+export {
+  createAssetContentSourceResolver,
+  createMcpResourceContentSourceResolver,
+} from './assets/content-source-resolver';
+export type { McpResourceContents, McpResourceReader } from './assets/content-source-resolver';
 export { createAssetGeneratedMediaAdmitter } from './assets/generated-media-admitter';
 export {
   AssetAccessDeniedError,
@@ -460,7 +464,6 @@ export type {
   BureauShutdownReport,
   CacheConfiguration,
   CleanupAcknowledgement,
-  ConfigurationResponse,
   CreateRunRequest,
   DurableGuardrailsConfiguration,
   DurableScheduleDefinition,

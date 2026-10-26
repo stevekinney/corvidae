@@ -9,7 +9,11 @@ import {
 import type { ApplicationCommandClaim, Mailbox } from '@lostgradient/weft';
 import { createUnsupportedSchemaVersionError, CURRENT_SCHEMA_VERSION } from 'conversationalist';
 
-import { decodeSessionInputKind, type PersistedSessionInput } from './session-input-durability';
+import {
+  decodeSessionInputKind,
+  type PersistedSessionInput,
+  SESSION_INPUT_EXPIRED_MESSAGE,
+} from './session-input-durability';
 
 /** What {@link createSessionInputDeliveryGate} reads and writes for one run. */
 export interface SessionInputDeliveryOptions {
@@ -45,6 +49,7 @@ export interface SessionInputDeliveryOptions {
 export function decodeSessionInputCommand(
   claim: ApplicationCommandClaim,
   incarnation: string,
+  nowMs?: number,
 ): DecodedSessionInput {
   if (claim.payload.form !== 'inline') {
     throw new TypeError('A session input must carry an inline payload.');
@@ -70,6 +75,14 @@ export function decodeSessionInputCommand(
       throw new TypeError(`A session input's ${field} must be a string when present.`);
     }
   }
+  // The persisted instant is the authority on expiry: the mailbox's deadline can trail it.
+  if (
+    nowMs !== undefined &&
+    typeof persisted.expiresAt === 'string' &&
+    Date.parse(persisted.expiresAt) <= nowMs
+  ) {
+    throw new Error(SESSION_INPUT_EXPIRED_MESSAGE);
+  }
   return {
     payload: parseSessionInputPayload(persisted.payload),
     deliveryMode: decodeSessionInputKind(claim.receipt.kind),
@@ -87,9 +100,12 @@ export function decodeSessionInputCommand(
  * session's delivery store, keyed by the mailbox command, which also holds the
  * promotion the checkpoint write commits with the transcript.
  *
- * Delivery does not honour a record's `expiresAt` or `supersedes`: neither has a
- * terminal state recorded anywhere yet, so an expired or superseded input is
- * delivered like any other.
+ * Delivery honours a record's `expiresAt` twice (COR-1661): the mailbox's absolute deadline, set when
+ * the input is admitted, refuses a claim past it and dead-letters the command as
+ * `deadline-exceeded`; and decoding refuses a claim whose persisted `expiresAt` has passed, because
+ * that deadline is set from the clock at admission and can trail the instant by however long the
+ * admission took. It does not honour `supersedes`: that has no terminal state recorded anywhere
+ * yet, so a superseded input is delivered like any other.
  */
 export function createSessionInputDeliveryGate(
   options: SessionInputDeliveryOptions,
@@ -97,7 +113,7 @@ export function createSessionInputDeliveryGate(
   const { sessionId, runId, incarnation, mailbox, deliveryStore, isOwnerLive } = options;
   return createMailboxSessionInputGate({
     mailbox,
-    decode: (claim) => decodeSessionInputCommand(claim, incarnation),
+    decode: (claim) => decodeSessionInputCommand(claim, incarnation, options.now()),
     deliveries: {
       claim: (commandIds) => deliveryStore.claim(sessionId, runId, commandIds, isOwnerLive),
     },

@@ -106,8 +106,10 @@ export function renderBrief(issue: IssueSummary, options: BriefOptions): string 
       : (filesSection !== undefined ? pathsIn(filesSection) : []).concat(
           filesSection === undefined ? pathsIn(description) : [],
         );
+  // Without an execution-brief heading, the whole description is the brief: its scope,
+  // verification, and delivery sections would otherwise be dropped.
   const source =
-    execution === undefined && criteria === undefined
+    execution === undefined
       ? description.length > descriptionLimit
         ? `${description.slice(0, descriptionLimit)}\n\n[description cut at ${descriptionLimit} characters; read the rest in Linear]`
         : description
@@ -122,7 +124,7 @@ export function renderBrief(issue: IssueSummary, options: BriefOptions): string 
     execution ?? (source || '(the issue has no description)'),
     '',
   ];
-  if (execution !== undefined || criteria !== undefined) {
+  if (execution !== undefined) {
     lines.push(
       '## Acceptance criteria',
       '',

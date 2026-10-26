@@ -154,7 +154,7 @@ function dataUrlMimeType(source: ContentSource): string | undefined {
 
 type Resolution =
   | { readonly outcome: 'resolved'; readonly source: ResolvedMediaSource }
-  | { readonly outcome: 'unavailable' };
+  | { readonly outcome: 'unavailable'; readonly reason?: string | undefined };
 
 /** A memoized resolution, valid while the part at its position is unchanged. */
 interface MemoizedResolution {
@@ -192,6 +192,7 @@ async function untilAborted<T>(promise: Promise<T>, signal: AbortSignal | undefi
 function unsupported(
   located: LocatedMedia,
   reason: Extract<UnadmittedMediaCost, { outcome: 'unsupported' }>['reason'],
+  detail?: string,
 ): UnadmittedMediaCost {
   return {
     messageId: located.messageId,
@@ -199,6 +200,7 @@ function unsupported(
     modality: located.part.type,
     outcome: 'unsupported',
     reason,
+    ...(detail === undefined ? {} : { detail }),
   };
 }
 
@@ -328,7 +330,7 @@ export function createStepMediaAdmission(input: {
     const resolution: Resolution =
       result?.outcome === 'resolved'
         ? { outcome: 'resolved', source: result }
-        : { outcome: 'unavailable' };
+        : { outcome: 'unavailable', reason: result?.reason };
     memo.set(key, { identity, resolution });
     return resolution;
   }
@@ -353,7 +355,7 @@ export function createStepMediaAdmission(input: {
       // is unavailable at admission whatever the estimator would say.
       const resolution = await resolve(entry);
       if (resolution.outcome === 'unavailable') {
-        refusals.set(key, unsupported(entry, 'source-form-not-accepted'));
+        refusals.set(key, unsupported(entry, 'source-form-not-accepted', resolution.reason));
         continue;
       }
       resolved.set(key, resolution.source);

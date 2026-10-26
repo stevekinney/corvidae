@@ -20,7 +20,7 @@
  * @module create-bureau-handler
  */
 
-import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
 import {
   type AuthConfig,
   AUTHORIZATION_SCOPES,
@@ -179,6 +179,7 @@ export type BureauHandlerSource = Pick<
   Bureau,
   | 'id'
   | 'hasExplicitId'
+  | 'runtimeServices'
   | 'taskRetention'
   | 'kv'
   | 'eventFeed'
@@ -867,8 +868,12 @@ function createA2AMount(
     kv,
     A2A_SEND_LEDGER_KEY_PREFIX,
     'a2a-send-conflict',
+    bureau.runtimeServices,
   );
   return createBureauA2AMount({
+    // The bureau's own clock and timers, so a custom runtime governs command deadlines and the
+    // handler's waits as it governs the bureau.
+    runtime: bureau.runtimeServices,
     publicUrl: options.publicUrl as string,
     ...(options.discoveryUrl === undefined ? {} : { discoveryUrl: options.discoveryUrl }),
     ...(options.signing === undefined ? {} : { signing: options.signing }),
@@ -941,7 +946,7 @@ function createPushSupport(
     delivery,
     tenant: bureau.id,
     reader: createTaskReader({ bureau, records, publicUrl: options.publicUrl as string }),
-    timers: createDefaultRuntimeServices().timers,
+    timers: bureau.runtimeServices.timers,
     sweepMs: delivery.sweepIntervalMs,
   });
   // A restart resumes every checkpoint from where it stopped. Recovery retries with backoff and
@@ -963,6 +968,7 @@ function createRespondLedger(bureau: BureauHandlerSource): TasksRespondLedger {
     bureau.kv ?? textValueStore(new MemoryStorage()),
     TASKS_RESPOND_LEDGER_KEY_PREFIX,
     'respond-conflict',
+    bureau.runtimeServices,
   );
 }
 
@@ -971,8 +977,8 @@ function createPrunedLedger<Claim, Result>(
   kv: ConditionalTextValueStore,
   keyPrefix: string,
   conflictIdPrefix: string,
+  runtime: RuntimeServices,
 ): CommandLedger<Claim, Result> {
-  const runtime = createDefaultRuntimeServices();
   const ledger = createCommandLedger<Claim, Result>({
     kv,
     keyPrefix,
