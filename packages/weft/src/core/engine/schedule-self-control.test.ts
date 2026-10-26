@@ -17,6 +17,7 @@ import {
   requireNextFireAt,
   START,
 } from './schedule.test-support.ts';
+import { waitUntil, quietFor } from '../../../scripts/lib/wait-until.ts';
 
 type Control = 'pause' | 'cancel' | 'update';
 
@@ -40,11 +41,13 @@ for (const overlap of ['skip', 'queue', 'cancel-running', 'allow'] as const) {
         const engine = createEngine(clock);
         const id = `self-${what}`;
         let called = 0;
+        let controlled = 0;
         try {
           registerWorkflow(engine, 'self-control', async function* (ctx: WorkflowContext) {
             yield* ctx.run(async function selfControl() {
               called += 1;
               await control(engine, id, what);
+              controlled += 1;
               return null;
             });
             return 'done';
@@ -58,7 +61,9 @@ for (const overlap of ['skip', 'queue', 'cancel-running', 'allow'] as const) {
           clock.now = first + 2 * MINUTE;
 
           await engine.scheduler.tick(clock.now);
-          await new Promise((resolve) => setTimeout(resolve, 20));
+          await waitUntil(() => controlled >= 1, { message: 'the run to change the schedule' });
+          // load-proof: a further run could only start later, so a longer wait cannot fail the count below
+          await quietFor(20);
 
           // What the run did stays: the tick does not write the schedule back as it loaded it.
           const after = await engine.getSchedule(id);

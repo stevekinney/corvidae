@@ -15,6 +15,7 @@ import { workflow, type WorkflowContext } from '../types.ts';
 import { currentExecutionAttempt, type RunIdentity } from './execution-attempts.ts';
 import { ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING, Engine } from './index.ts';
 import { getInternals } from './internals.ts';
+import { quietFor } from '../../../scripts/lib/wait-until.ts';
 
 const TYPE = 'identity-capture';
 const parked = workflow({ name: TYPE, concurrency: { max: 1 } }).execute(async function* (
@@ -166,7 +167,7 @@ describe('COR-1384: run identity captured on the execution attempt', () => {
     await engine.recoverAll();
     // The adoption read is still in flight when the run reaches its end.
     await engine.signal(id, 'go');
-    await Bun.sleep(50);
+    await quietFor(50);
     // The terminal commit does not proceed on an unsettled identity, so nothing is written yet.
     const midway = await engine.get(id);
     expect(midway?.status).toBe('running');

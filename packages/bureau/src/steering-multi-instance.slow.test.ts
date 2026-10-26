@@ -19,7 +19,7 @@ import { z } from 'zod';
 import { createBureau } from './create-bureau';
 import { readSteeringLogHead } from './steering-log';
 import type { AgentDefinitions } from './agent-catalog';
-import { awakeTurns } from '@lostgradient/testing/wait-until';
+import { awakeTurns, quietFor } from '@lostgradient/testing/wait-until';
 
 async function openBureau(path: string) {
   return createBureau<AgentDefinitions>({
@@ -173,7 +173,7 @@ describe('durable steering across two Bureau processes', () => {
       // The read entry is applied to the gate in the same fold.
       await Bun.sleep(0);
       releaseTool?.();
-      await Bun.sleep(300);
+      await quietFor(300);
       expect(bureauA.getRun(run.id)?.status).toBe('running');
       expect(generateCalls).toBe(1);
 
@@ -256,7 +256,7 @@ describe('durable steering across two Bureau processes', () => {
       expect(paused.outcome).toBe('accepted');
       // The tool returns; the run stops at step 1's boundary, paused.
       releaseTool?.();
-      await Bun.sleep(200);
+      await quietFor(200);
       expect(bureauA.getRun(run.id)?.status).toBe('running');
       expect(generateCalls).toBe(1);
 

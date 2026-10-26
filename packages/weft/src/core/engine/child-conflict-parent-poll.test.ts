@@ -40,6 +40,7 @@ import { createWorkflowResultWaiter } from './handle-result.ts';
 import { Engine } from './index.ts';
 import { getInternals } from './internals.ts';
 import { encodeEpoch, encodeWorkflowClaimHolder } from './workflow-claim-codec.ts';
+import { quietFor } from '../../../scripts/lib/wait-until.ts';
 
 interceptConflictWarnings();
 
@@ -184,7 +185,7 @@ describe('a parent awaiting a child its engine lost', () => {
         () => 'settled' as const,
         () => 'settled' as const,
       );
-      await new Promise<void>((resolve) => setTimeout(resolve, 80));
+      await quietFor(80);
 
       expect(await Promise.race([settled, yieldToEventLoop().then(() => 'pending' as const)])).toBe(
         'pending',
@@ -546,7 +547,7 @@ describe('a parent that no longer awaits the lost child', () => {
       ]);
       const view = getGeneratorOwnedWorkflowResultPromise(internals, 'done-child-id', parent.id);
       waiter.reject(await lostWith(internals.storage, 'done-child-id'));
-      await new Promise<void>((resolve) => setTimeout(resolve, 80));
+      await quietFor(80);
 
       await expectPromisePending(view);
       expect(internals.pendingResultPollTimers.size).toBe(0);

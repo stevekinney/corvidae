@@ -436,7 +436,7 @@ describe('a canceled review an earlier build recorded without the deduplication 
       const closed = (await durableStatus(bureau, fireId)) === 'cancelled';
       return closed ? true : undefined;
     }, 'the fire to be canceled');
-    await sleep(500);
+    await quietFor(500);
 
     const records = await auditRecordsOf(
       bureau,

@@ -51,6 +51,7 @@ import { EngineDeposedError } from './lease-errors.ts';
 import { loadWorkflowState } from './storage-io.ts';
 import { decodeWorkflowClaimHolder, encodeWorkflowClaimHolder } from './workflow-claim-codec.ts';
 import { WorkflowClaimRegistry } from './workflow-claim-registry.ts';
+import { quietFor } from '../../../scripts/lib/wait-until.ts';
 
 /** Per-workflow-id activity execution counts. Ids are unique per test, so one shared map is safe. */
 const activityRunCounts = new Map<string, number>();
@@ -2156,7 +2157,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
         await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
         gate.release.resolve();
         await oldDone;
-        await Bun.sleep(50);
+        await quietFor(50);
         await expectReplacementIntact(storage, engine, id, replacement, 'P1');
       } finally {
         gate.release.resolve();
@@ -2183,7 +2184,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
       await engineB[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
       gate.release.resolve();
       await oldDone;
-      await Bun.sleep(50);
+      await quietFor(50);
       await expectReplacementIntact(storage, engineB, id, replacement, 'P1');
     } finally {
       gate.release.resolve();
@@ -2220,7 +2221,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
 
       gate.release.resolve();
       await oldDone;
-      await Bun.sleep(50);
+      await quietFor(50);
 
       expect(await scratchKeys()).toEqual(before);
       await expectReplacementIntact(storage, engineB, id, replacement, 'P1');
@@ -2259,7 +2260,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
 
       gate.release.resolve();
       await oldDone;
-      await Bun.sleep(50);
+      await quietFor(50);
 
       expect(await storage.get(reviewKey('new'))).not.toBeNull();
       await expectReplacementIntact(storage, engineB, id, replacement, 'P1');
@@ -2282,7 +2283,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
       await engine.addTags(id, 'edited');
       gate.release.resolve();
       await oldDone;
-      await Bun.sleep(50);
+      await quietFor(50);
 
       expect(await slotHolders(storage, 'P1')).toEqual([]);
       expect(await storage.get(KEYS.workflowConcurrencyHolder(id))).toBeNull();
@@ -2343,7 +2344,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
       await gate.reached.promise;
       gate.release.resolve();
       await oldDone;
-      await Bun.sleep(50);
+      await quietFor(50);
 
       await expectReplacementIntact(storage, engineB, id, replacement, 'P1');
     } finally {
@@ -2398,7 +2399,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
       holdingGenerationReads = false;
       generationHold.release.resolve();
       await oldDone;
-      await Bun.sleep(50);
+      await quietFor(50);
 
       expect(await slotHolders(storage, 'P1')).toEqual([]);
       await expectReplacementIntact(storage, engineB, id, replacement, 'P2');
@@ -2433,7 +2434,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
 
       gate.release.resolve();
       await oldDone;
-      await Bun.sleep(50);
+      await quietFor(50);
 
       // The old engine's id-keyed cancel must not delete the replacement's execution deadline.
       expect(await storage.get(`timer-idx:deadline:${id}`)).not.toBeNull();
@@ -2495,7 +2496,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
 
       gate.release.resolve();
       await ticking;
-      await Bun.sleep(50);
+      await quietFor(50);
 
       expect(await scratchKeys()).toEqual(before);
       await expectReplacementIntact(storage, engineB, id, replacement, 'P1');
@@ -2541,7 +2542,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
 
       gate.release.resolve();
       await cancelled;
-      await Bun.sleep(50);
+      await quietFor(50);
 
       // The cancel meant the old run; the replacement is untouched and still running.
       const state = await engineA.get(id);
@@ -2822,7 +2823,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
       await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
       gate.release.resolve();
       await oldDone;
-      await Bun.sleep(50);
+      await quietFor(50);
       await expectReplacementIntact(storage, engine, id, replacement, 'P1');
     } finally {
       gate.release.resolve();
@@ -2847,7 +2848,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
       await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
       gate.release.resolve();
       await oldDone;
-      await Bun.sleep(50);
+      await quietFor(50);
       expect(await slotHolders(storage, 'P1')).toEqual([]);
       await expectReplacementIntact(storage, engine, id, replacement, 'P2');
     } finally {

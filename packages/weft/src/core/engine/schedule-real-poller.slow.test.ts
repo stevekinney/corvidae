@@ -9,6 +9,7 @@ import { MemoryStorage } from '../../storage/memory.ts';
 import { Engine } from '../engine.ts';
 import type { WorkflowContext } from '../types.ts';
 import { MINUTE, registerWorkflow, requireNextFireAt, START } from './schedule.test-support.ts';
+import { quietFor } from '../../../scripts/lib/wait-until.ts';
 
 const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
@@ -41,9 +42,9 @@ describe('the engine’s own poller over a backfilled schedule whose runs outlas
         engine.scheduler.start();
         // Three runs of 120 ms in turn, with room for the polls in between.
         while (activityStarts < 3) await sleep(20);
-        await sleep(500);
+        await quietFor(500);
         engine.scheduler.stop();
-        await sleep(200);
+        await quietFor(200);
 
         const final = await handle.describe();
         const runs = await engine.list({ type: 'slow' });

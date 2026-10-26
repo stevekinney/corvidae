@@ -26,7 +26,7 @@ import {
 import { createWorkflowDocumentHost, type AgentStepRequest } from './workflow-host';
 import { createWorkflowSnapshotStore } from './workflow-snapshot-store';
 import { workflowFileText } from './testing/workflow-file-fixtures.test-support';
-import { awakeTurns } from '@lostgradient/testing/wait-until';
+import { awakeTurns, waitUntil } from '@lostgradient/testing/wait-until';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -358,7 +358,9 @@ describe('retention (step two)', () => {
 
     // Once the instance ends and the cutoff passes it, the old revision goes too.
     await engine.signal('run-a', 'go', null);
-    await Bun.sleep(50);
+    await waitUntil(async () => (await engine.get('run-a'))?.status === 'completed', {
+      message: 'the instance to end',
+    });
     expect(await runtime.pruneSnapshots(Date.parse('2099-01-01T00:00:00.000Z'))).toBe(1);
     expect(await snapshots.snapshotsOf('digest')).toHaveLength(1);
   });

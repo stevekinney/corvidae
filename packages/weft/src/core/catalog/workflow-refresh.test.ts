@@ -10,6 +10,7 @@ import type { RegisteredWorkflowDefinition } from '../types/workflow-registry.ts
 import { WorkflowCatalog } from './workflow-catalog.ts';
 import type { WorkflowRefreshArtifact } from './workflow-refresh-types.ts';
 import { WorkflowRefreshCoordinator } from './workflow-refresh.ts';
+import { waitUntil } from '../../../scripts/lib/wait-until.ts';
 
 const definition: RegisteredWorkflowDefinition = { type: 'checkout', version: '1.0.0', tags: [] };
 
@@ -492,7 +493,9 @@ describe('WorkflowRefreshCoordinator', () => {
     });
 
     coordinator.startPolling();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitUntil(() => coordinator.diagnostics('checkout')[0]?.state === 'failed', {
+      message: 'the refresh failure to be recorded',
+    });
     expect(coordinator.diagnostics('checkout')[0]?.state).toBe('failed');
     await coordinator[Symbol.asyncDispose]();
   });

@@ -12,7 +12,7 @@ import {
   startWorkflowBureau,
   type WorkflowBureauHarness,
 } from './testing/workflow-bureau.test-support';
-import { waitUntil } from '@lostgradient/testing/wait-until';
+import { waitUntil, quietFor } from '@lostgradient/testing/wait-until';
 const harnesses: WorkflowBureauHarness[] = [];
 
 afterEach(async () => {
@@ -114,7 +114,7 @@ describe('a workflow’s schedule firing', () => {
     const before = await instanceCount(harness, 'digest');
 
     // Three more seconds: with `overlap: 'allow'` a live schedule would have fired about three times.
-    await new Promise((resolve) => setTimeout(resolve, 3_000));
+    await quietFor(3_000);
     expect(await instanceCount(harness, 'digest')).toBe(before);
 
     gated.release();
@@ -142,7 +142,7 @@ describe('a workflow’s schedule firing', () => {
     expect(await scheduleStatus(harness, 'bureau-workflow-schedule:digest:1')).toBe('cancelled');
     const before = await instanceCount(harness, 'digest');
 
-    await new Promise((resolve) => setTimeout(resolve, 3_000));
+    await quietFor(3_000);
     expect(await instanceCount(harness, 'digest')).toBe(before);
 
     gated.release();

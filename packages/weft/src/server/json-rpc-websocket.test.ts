@@ -33,6 +33,7 @@ import {
   encodeCursor,
   type WorkflowEventFeed,
 } from './workflow-event-feed.ts';
+import { quietFor } from '../../scripts/lib/wait-until.ts';
 
 const fakeEngine = {} as unknown;
 
@@ -1310,7 +1311,7 @@ describe('createJsonRpcWebSocketSession — subscribe / unsubscribe', () => {
     // erroneous duplicate). Looping `await Promise.resolve()` a handful
     // of times lets every queued microtask run.
     for (let i = 0; i < 20; i += 1) await Promise.resolve();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await quietFor(10);
 
     const terminatedFrames = emitter.sent
       .map((s) => JSON.parse(s) as Record<string, unknown>)

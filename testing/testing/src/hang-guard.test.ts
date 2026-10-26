@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { afterAwakeTime, runWithHangGuard, spawnWithHangGuard } from './hang-guard.ts';
 import { outcomeOf, rethrow } from './helpers/module-scope-outcome.ts';
+import { quietFor } from '@lostgradient/testing/wait-until';
 
 /**
  * Resolves with the real milliseconds until `afterAwakeTime` fired. Given `within`, resolves
@@ -64,11 +65,13 @@ describe('afterAwakeTime', () => {
   });
 
   it('resumes ticking when fake timers end before the budget is spent', async () => {
-    let fake = true;
-    setTimeout(() => (fake = false), 30);
+    // Fake timers are reported on the first look only: the first tick finds them and stops, and the
+    // backstop finds real timers and resumes. Counting looks, not milliseconds, keeps the order of
+    // the two independent of how late a loaded host runs either timer.
+    let looks = 0;
     const fired = await firedWithin(100, undefined, {
       tickMilliseconds: 10,
-      fakeTimersActive: () => fake,
+      fakeTimersActive: () => ++looks === 1,
     });
     expect(fired).toBeGreaterThanOrEqual(100);
   });
@@ -98,7 +101,7 @@ describe('afterAwakeTime', () => {
     // hang-guard-self-test: the guard under test is the thing being proven to fire, so its budget is the subject
     const cancel = afterAwakeTime(20, () => (fired = true), { tickMilliseconds: 5 });
     cancel();
-    await Bun.sleep(60);
+    await quietFor(60);
     expect(fired).toBe(false);
   });
 });
