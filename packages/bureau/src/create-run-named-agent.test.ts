@@ -155,7 +155,7 @@ describe('createRun with a named agent', () => {
     expect(wide).toEqual([]);
   });
 
-  it('offers the Bureau’s opt-in tools beside the agent’s own on a durable Bureau', async () => {
+  it('offers the Bureau’s tools beside the agent’s own on a durable Bureau', async () => {
     const seen: Observation[] = [];
     const bureau = await start({
       agents: {
@@ -170,40 +170,41 @@ describe('createRun with a named agent', () => {
       },
       storage: { type: 'memory' },
       durableExecution: true,
-      humanInput: true,
     });
 
     const run = await bureau.createRun({ message: 'hello', agentName: 'alpha' });
     await finish(bureau, run.id);
 
-    expect(seen.map((entry) => entry.tools)).toEqual([['alpha-tool', 'requestHumanInput']]);
+    expect(seen.map((entry) => entry.tools)).toEqual([
+      ['alpha-tool', 'requestHumanInput', 'scheduleWakeup'],
+    ]);
   });
 
-  it('leaves requestHumanInput out without the option or without a durable engine', async () => {
-    const withoutOption: Observation[] = [];
+  it('leaves requestHumanInput out under humanInput: false or without a durable engine', async () => {
+    const optedOut: Observation[] = [];
     const nonDurable: Observation[] = [];
-    const durableWithoutOption = await start({
+    const optedOutBureau = await start({
       agents: {
-        alpha: createAgent({ generate: scripted('ok', withoutOption) }),
+        alpha: createAgent({ generate: scripted('ok', optedOut) }),
         default: createAgent({ generate: scripted('wide'), toolbox: createToolbox([]) }),
       },
       storage: { type: 'memory' },
       durableExecution: true,
+      humanInput: false,
     });
-    const optionWithoutEngine = await start({
+    const nonDurableBureau = await start({
       agents: {
         alpha: createAgent({ generate: scripted('ok', nonDurable) }),
         default: createAgent({ generate: scripted('wide'), toolbox: createToolbox([]) }),
       },
-      humanInput: true,
     });
 
-    const one = await durableWithoutOption.createRun({ message: 'hi', agentName: 'alpha' });
-    const two = await optionWithoutEngine.createRun({ message: 'hi', agentName: 'alpha' });
-    await finish(durableWithoutOption, one.id);
-    await finish(optionWithoutEngine, two.id);
+    const one = await optedOutBureau.createRun({ message: 'hi', agentName: 'alpha' });
+    const two = await nonDurableBureau.createRun({ message: 'hi', agentName: 'alpha' });
+    await finish(optedOutBureau, one.id);
+    await finish(nonDurableBureau, two.id);
 
-    expect(withoutOption.flatMap((entry) => entry.tools)).not.toContain('requestHumanInput');
+    expect(optedOut.flatMap((entry) => entry.tools)).not.toContain('requestHumanInput');
     expect(nonDurable.flatMap((entry) => entry.tools)).not.toContain('requestHumanInput');
   });
 });

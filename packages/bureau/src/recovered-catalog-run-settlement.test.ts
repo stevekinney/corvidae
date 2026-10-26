@@ -243,7 +243,6 @@ describe('a recovered child run', () => {
         storage: { type: 'sqlite', path },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        humanInput: true,
         onDiagnostic: () => undefined,
       });
     const first = await open();

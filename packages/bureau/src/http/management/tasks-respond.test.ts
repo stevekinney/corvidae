@@ -93,7 +93,7 @@ async function parkedApproval(opened: OpenedBureau, principal = OWNER.alice) {
 
 describe('bureau.tasks.respond answering a human wait', () => {
   it('answers with text, delivered to the run as the signal payload, and the run finishes', async () => {
-    await withBureau({ generate: parksThenAnswers(), humanInput: true }, async (opened) => {
+    await withBureau({ generate: parksThenAnswers() }, async (opened) => {
       const run = await parkedRun(opened);
       const { resolved, handler } = recording(opened);
 
@@ -122,7 +122,7 @@ describe('bureau.tasks.respond answering a human wait', () => {
   });
 
   it('joins the parts of an answer with a newline', async () => {
-    await withBureau({ generate: parksThenAnswers(), humanInput: true }, async (opened) => {
+    await withBureau({ generate: parksThenAnswers() }, async (opened) => {
       const run = await parkedRun(opened);
       const { resolved, handler } = recording(opened);
 
@@ -138,32 +138,29 @@ describe('bureau.tasks.respond answering a human wait', () => {
   });
 
   it('addresses a wait by signalName, and answers a signal the task is not waiting on as a conflict', async () => {
-    await withBureau(
-      { generate: parksThenAnswers('ask-name'), humanInput: true },
-      async (opened) => {
-        const run = await parkedRun(opened);
+    await withBureau({ generate: parksThenAnswers('ask-name') }, async (opened) => {
+      const run = await parkedRun(opened);
 
-        const wrong = await rpc(
-          opened.handler,
-          'bureau.tasks.respond',
-          { taskId: run.id, messageId: 'm1', answer: 'x', signalName: 'other-signal' },
-          'alice-key',
-        );
-        const right = await rpc(
-          opened.handler,
-          'bureau.tasks.respond',
-          { taskId: run.id, messageId: 'm2', answer: 'x', signalName: 'ask-name' },
-          'alice-key',
-        );
+      const wrong = await rpc(
+        opened.handler,
+        'bureau.tasks.respond',
+        { taskId: run.id, messageId: 'm1', answer: 'x', signalName: 'other-signal' },
+        'alice-key',
+      );
+      const right = await rpc(
+        opened.handler,
+        'bureau.tasks.respond',
+        { taskId: run.id, messageId: 'm2', answer: 'x', signalName: 'ask-name' },
+        'alice-key',
+      );
 
-        expect(wrong.error?.data?.httpStatus).toBe(409);
-        expect(right.result).toMatchObject({ receipt: 'applied', kind: 'human-wait' });
-      },
-    );
+      expect(wrong.error?.data?.httpStatus).toBe(409);
+      expect(right.result).toMatchObject({ receipt: 'applied', kind: 'human-wait' });
+    });
   });
 
   it('denies and rejects a human wait with the decision, and rejection requires a reason', async () => {
-    await withBureau({ generate: parksThenAnswers(), humanInput: true }, async (opened) => {
+    await withBureau({ generate: parksThenAnswers() }, async (opened) => {
       const run = await parkedRun(opened);
 
       const noReason = await rpc(
@@ -189,7 +186,7 @@ describe('bureau.tasks.respond answering a human wait', () => {
   });
 
   it('applies one of two different commands that answer one wait at once, and delivers only its text', async () => {
-    await withBureau({ generate: parksThenAnswers(), humanInput: true }, async (opened) => {
+    await withBureau({ generate: parksThenAnswers() }, async (opened) => {
       const run = await parkedRun(opened);
       const { delivered, handler } = recording(opened);
 
@@ -219,7 +216,7 @@ describe('bureau.tasks.respond answering a human wait', () => {
   });
 
   it('returns the original receipt for an exact retry without resolving anything twice', async () => {
-    await withBureau({ generate: parksThenAnswers(), humanInput: true }, async (opened) => {
+    await withBureau({ generate: parksThenAnswers() }, async (opened) => {
       const run = await parkedRun(opened);
       const { resolved, handler } = recording(opened);
       const params = { taskId: run.id, messageId: 'm1', answer: 'once' };
@@ -235,7 +232,7 @@ describe('bureau.tasks.respond answering a human wait', () => {
   });
 
   it('answers a retry that spells the same command in another way with the same receipt', async () => {
-    await withBureau({ generate: parksThenAnswers(), humanInput: true }, async (opened) => {
+    await withBureau({ generate: parksThenAnswers() }, async (opened) => {
       const run = await parkedRun(opened);
       const first = await rpc(
         opened.handler,
@@ -255,7 +252,7 @@ describe('bureau.tasks.respond answering a human wait', () => {
   });
 
   it('refuses the same messageId with a different command as a conflict', async () => {
-    await withBureau({ generate: parksThenAnswers(), humanInput: true }, async (opened) => {
+    await withBureau({ generate: parksThenAnswers() }, async (opened) => {
       const run = await parkedRun(opened);
       await rpc(
         opened.handler,
@@ -299,7 +296,7 @@ describe('bureau.tasks.respond answering a human wait', () => {
   });
 
   it('lets a caller holding bureau.tasks:write answer another owner’s human wait', async () => {
-    await withBureau({ generate: parksThenAnswers(), humanInput: true }, async (opened) => {
+    await withBureau({ generate: parksThenAnswers() }, async (opened) => {
       const run = await parkedRun(opened);
       const { resolved, handler } = recording(opened);
 
@@ -316,7 +313,7 @@ describe('bureau.tasks.respond answering a human wait', () => {
   });
 
   it('answers a caller without the scope, and one holding only bureau.tasks:read, as a missing task', async () => {
-    await withBureau({ generate: parksThenAnswers(), humanInput: true }, async (opened) => {
+    await withBureau({ generate: parksThenAnswers() }, async (opened) => {
       const run = await parkedRun(opened);
       const { resolved, handler } = recording(opened);
       const params = { taskId: run.id, messageId: 'm1', answer: 'let me in' };
@@ -340,7 +337,7 @@ describe('bureau.tasks.respond answering a human wait', () => {
   });
 
   it('rejects a request that sends both an answer and a decision, or neither, or names both a signal and a call', async () => {
-    await withBureau({ generate: parksThenAnswers(), humanInput: true }, async (opened) => {
+    await withBureau({ generate: parksThenAnswers() }, async (opened) => {
       const run = await parkedRun(opened);
       const send = (extra: Record<string, unknown>) =>
         rpc(

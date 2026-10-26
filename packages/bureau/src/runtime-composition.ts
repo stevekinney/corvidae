@@ -103,6 +103,7 @@ import {
   type ToolPolicy,
 } from './skills';
 import { humanInputEnabled, humanInputSchemasOf } from './human-input-option';
+import { withAddedTools, withToolboxLayer } from './toolbox-additions';
 import {
   type AnyWorkflowDefinition,
   type ConditionalTextValueStore,
@@ -126,7 +127,6 @@ import {
 } from '@lostgradient/weft';
 import {
   type AnyToolbox,
-  combineToolboxes,
   createTool,
   createToolbox,
   type ToolboxExecuteOptions,
@@ -339,7 +339,7 @@ export function wireDurableOptInTools(
           await Promise.resolve(rawHumanInputTool.execute(input)),
       }),
     ]);
-    toolbox = combineToolboxes(toolbox, humanInputToolbox);
+    toolbox = withAddedTools(toolbox, humanInputToolbox);
   }
 
   if (options.wakeup) {
@@ -361,7 +361,7 @@ export function wireDurableOptInTools(
           await Promise.resolve(rawWakeupTool.execute(input)),
       }),
     ]);
-    toolbox = combineToolboxes(toolbox, wakeupToolbox);
+    toolbox = withAddedTools(toolbox, wakeupToolbox);
   }
 
   return toolbox;
@@ -508,41 +508,44 @@ function withDefaultToolboxRequestContext(
 ): AnyToolbox {
   if (!requestContext) return toolbox;
 
-  const executeWithDefaultRequestContext = (async (
-    input: ToolCallInput | ToolCallInput[],
-    executeOptions?: ToolboxExecuteOptions,
-  ) => {
-    const options =
-      executeOptions?.requestContext === undefined
-        ? { ...executeOptions, requestContext }
-        : executeOptions;
-    const executionRequestContext = options.requestContext;
-    const authorizationRevision = executionRequestContext?.authority.authorizationRevision;
-    const requiresTransportValidation =
-      authorizationRevision !== undefined &&
-      authorizationRevision !== 'bureau:1' &&
-      authorizationRevision !== 'bureau:scheduler:1';
-    if (requiresTransportValidation && executionRequestContext) {
-      const validator = requestAuthorityValidator();
-      if (
-        !validator ||
-        !(await raceRequestAuthorityValidation(
-          validator(executionRequestContext),
-          options,
-          runtimeServices,
-        ))
-      ) {
-        throw new Error('Request authority is no longer current.');
+  // A layer, so that adding a tool to the toolbox puts this binding back around the result.
+  return withToolboxLayer(toolbox, (inner) => {
+    const executeWithDefaultRequestContext = (async (
+      input: ToolCallInput | ToolCallInput[],
+      executeOptions?: ToolboxExecuteOptions,
+    ) => {
+      const options =
+        executeOptions?.requestContext === undefined
+          ? { ...executeOptions, requestContext }
+          : executeOptions;
+      const executionRequestContext = options.requestContext;
+      const authorizationRevision = executionRequestContext?.authority.authorizationRevision;
+      const requiresTransportValidation =
+        authorizationRevision !== undefined &&
+        authorizationRevision !== 'bureau:1' &&
+        authorizationRevision !== 'bureau:scheduler:1';
+      if (requiresTransportValidation && executionRequestContext) {
+        const validator = requestAuthorityValidator();
+        if (
+          !validator ||
+          !(await raceRequestAuthorityValidation(
+            validator(executionRequestContext),
+            options,
+            runtimeServices,
+          ))
+        ) {
+          throw new Error('Request authority is no longer current.');
+        }
       }
-    }
-    return Array.isArray(input) ? toolbox.execute(input, options) : toolbox.execute(input, options);
-  }) as AnyToolbox['execute'];
+      return Array.isArray(input) ? inner.execute(input, options) : inner.execute(input, options);
+    }) as AnyToolbox['execute'];
 
-  return new Proxy(toolbox, {
-    get(target, property, receiver) {
-      if (property === 'execute') return executeWithDefaultRequestContext;
-      return Reflect.get(target, property, receiver) as unknown;
-    },
+    return new Proxy(inner, {
+      get(target, property, receiver) {
+        if (property === 'execute') return executeWithDefaultRequestContext;
+        return Reflect.get(target, property, receiver) as unknown;
+      },
+    });
   });
 }
 
@@ -3284,9 +3287,9 @@ async function buildRuntimeComposition(
     // structurally distinct (custom throwing execute) and must be freshly
     // instantiated per-call via createUnavailableToolbox() instead.
     //
-    // The skills path below calls combineToolboxes(toolbox, skillToolbox) which
-    // always creates a fresh toolbox — so cloning here also means the combined
-    // result is based on a per-run clone, which is correct.
+    // The skills path below adds the skill tools with withAddedTools, which
+    // keeps this clone's own wrappers — so the result is still based on a
+    // per-run clone, which is correct.
     //
     // COR-1577 — a named agent's resolved toolbox is its own: `createAgent` builds a fresh one
     // per resolution unless the agent was handed a shared toolbox, which `extend()` clones for
@@ -3507,7 +3510,7 @@ async function buildRuntimeComposition(
             },
           );
 
-          toolbox = combineToolboxes(
+          toolbox = withAddedTools(
             toolbox,
             createToolbox([
               skillToolset.activateSkill,
@@ -3592,7 +3595,11 @@ async function buildRuntimeComposition(
       // context. Order matters only for readability here: both are proxies and
       // neither observes the other, but filtering nearest the toolbox keeps the
       // request-context wrapper the outermost thing a caller sees.
-      skillToolPolicy ? withActiveSkillToolPolicy(toolbox, skillToolPolicy) : toolbox,
+      skillToolPolicy
+        ? withToolboxLayer(toolbox, (rebuilt) =>
+            withActiveSkillToolPolicy(rebuilt, skillToolPolicy),
+          )
+        : toolbox,
       requestContext,
       () => requestAuthorityValidator,
       runtimeServices,
@@ -3804,7 +3811,7 @@ async function buildRuntimeComposition(
     let runToolbox: BureauToolbox = runRuntime.toolbox;
     const servicesRef: { current?: DurableRunDeps } = {};
     const wantsHumanInput = humanInputEnabled(options.humanInput) && runId !== undefined;
-    const wantsWakeup = options.wakeup === true && runId !== undefined;
+    const wantsWakeup = options.wakeup !== false && runId !== undefined;
     if (wantsHumanInput || wantsWakeup) {
       runToolbox = wireDurableOptInTools(runRuntime.toolbox, servicesRef, {
         humanInput: wantsHumanInput,

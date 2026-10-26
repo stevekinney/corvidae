@@ -64,7 +64,6 @@ async function example(console: Recorder, databasePath: string): Promise<void> {
     agents: { releaser },
     storage: { type: 'sqlite', path: databasePath },
     durableExecution: true,
-    humanInput: true,
     assets: { storage: createMemoryAssetStorage() }, // the handler serves the asset operations
   });
 

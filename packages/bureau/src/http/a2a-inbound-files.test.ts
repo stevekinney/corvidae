@@ -534,24 +534,20 @@ describe('a message to a working task', () => {
         ],
       };
     }, vision);
-    await withAgents(
-      { asker: asks },
-      async (opened) => {
-        const parked = await send(opened, 'asker', messageWith([{ text: 'start' }]));
-        const task = parked.result.task ?? parked.result;
-        expect(task.status.state).toBe('TASK_STATE_INPUT_REQUIRED');
-        const answer = await send(
-          opened,
-          'asker',
-          messageWith([{ raw: base64Of(png()), mediaType: 'image/png' }], { taskId: task.id }),
-        );
-        expect(answer.error?.code).toBe(-32005);
-        const read = await call(opened, 'asker', 'GetTask', { id: task.id });
-        expect(read.result.status.state).toBe('TASK_STATE_INPUT_REQUIRED');
-        expect(calls).toBe(1);
-      },
-      { humanInput: true },
-    );
+    await withAgents({ asker: asks }, async (opened) => {
+      const parked = await send(opened, 'asker', messageWith([{ text: 'start' }]));
+      const task = parked.result.task ?? parked.result;
+      expect(task.status.state).toBe('TASK_STATE_INPUT_REQUIRED');
+      const answer = await send(
+        opened,
+        'asker',
+        messageWith([{ raw: base64Of(png()), mediaType: 'image/png' }], { taskId: task.id }),
+      );
+      expect(answer.error?.code).toBe(-32005);
+      const read = await call(opened, 'asker', 'GetTask', { id: task.id });
+      expect(read.result.status.state).toBe('TASK_STATE_INPUT_REQUIRED');
+      expect(calls).toBe(1);
+    });
   });
 });
 

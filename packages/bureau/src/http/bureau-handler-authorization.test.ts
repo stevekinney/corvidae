@@ -286,7 +286,6 @@ async function openBureau(id = 'authorization-bureau') {
     validators: [createCheckValidator()],
     storage: { type: 'memory' },
     durableExecution: true,
-    humanInput: true,
   });
 }
 
@@ -1043,7 +1042,6 @@ async function withAgUiOwners<T>(body: (context: AgUiOwners) => Promise<T>): Pro
   };
   const harness = await openAgUiHarness({
     script: [park, park],
-    humanInput: true,
     stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     authentication: agUiAuthentication,
   });
@@ -1395,7 +1393,6 @@ describe('what bureau.tasks:write grants on the AG-UI routes', () => {
   it('still lets a writer answer a human wait and cancel another owner’s run', async () => {
     const harness = await openAgUiHarness({
       script: [askHuman, done, { kind: 'block', barrier: 'hold' }, done],
-      humanInput: true,
       stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
       authentication: agUiAuthentication,
     });

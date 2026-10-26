@@ -130,7 +130,6 @@ describe('bureau.tasks.events below the retention floor', () => {
       runtime,
       storage: fixture.configuration,
       durableExecution: true,
-      humanInput: true,
       durableOwnership: { ownership: 'none' },
       durableBackgroundTasks: 'manual',
     });

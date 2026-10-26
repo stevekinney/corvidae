@@ -267,7 +267,6 @@ const askHuman = {
   },
 };
 const humanWait = {
-  humanInput: true,
   stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
 };
 

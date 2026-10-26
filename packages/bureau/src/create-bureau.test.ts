@@ -9112,7 +9112,6 @@ describe('createBureau review queue (AB-20)', () => {
       },
       storage: { type: 'memory' },
       durableExecution: true,
-      humanInput: true,
     });
 
     try {
@@ -9169,7 +9168,6 @@ describe('createBureau review queue (AB-20)', () => {
       },
       storage: { type: 'memory' },
       durableExecution: true,
-      humanInput: true,
       runtime,
     });
 
@@ -11174,7 +11172,6 @@ describe('createBureau review lifecycle (AB-46)', () => {
       },
       storage: { type: 'memory' },
       durableExecution: true,
-      humanInput: true,
     });
 
     try {
@@ -11903,7 +11900,6 @@ describe('createBureau review lifecycle (AB-46)', () => {
       },
       storage: { type: 'memory' },
       durableExecution: true,
-      humanInput: true,
     });
 
     try {
@@ -12824,7 +12820,6 @@ describe('createBureau human input wiring — real durable park (F3)', () => {
       },
       storage: { type: 'memory' },
       durableExecution: true,
-      humanInput: true,
       flowControl: { concurrency: { limit: 1 } },
       // `toolCalled` stops run1's loop right after the HITL tool call (so the
       // post-loop park check sees `pendingHumanWait` set); `noToolCalls` stops
@@ -12916,7 +12911,6 @@ describe('createBureau human input wiring — real durable park (F3)', () => {
       },
       storage: { type: 'memory' },
       durableExecution: true,
-      humanInput: true,
       // `toolCalled('requestHumanInput')` stops the FIRST step right on the
       // park request; `noToolCalls()` stops the CONTINUATION step (AB-44 —
       // the resumed run's next generation step, which never itself calls
@@ -12987,7 +12981,6 @@ describe('createBureau human input wiring — real durable park (F3)', () => {
       },
       storage: { type: 'memory' },
       durableExecution: true,
-      humanInput: true,
     });
     try {
       const signalSpy = spyOn(bureau, 'signalSession').mockImplementation(async () => {});
@@ -13061,7 +13054,6 @@ describe('createBureau requestHumanInput availability across durability configur
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      humanInput: true,
     });
 
     try {
@@ -13102,7 +13094,6 @@ describe('createBureau requestHumanInput availability across durability configur
       },
       storage: { type: 'memory' },
       durableExecution: true,
-      humanInput: true,
     });
 
     try {
@@ -13155,7 +13146,6 @@ describe('createBureau requestHumanInput availability across durability configur
         },
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
-        humanInput: true,
       });
 
       try {
@@ -13277,7 +13267,6 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      wakeup: true,
     });
 
     try {
@@ -13319,7 +13308,6 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
       },
       storage: { type: 'memory' },
       durableExecution: true,
-      wakeup: true,
       durableBackgroundTasks: 'manual',
     });
 
@@ -13389,7 +13377,6 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        wakeup: true,
         durableBackgroundTasks: 'manual',
       });
 
@@ -13442,7 +13429,6 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
-        wakeup: true,
         durableBackgroundTasks: 'manual',
       });
 

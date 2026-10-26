@@ -261,7 +261,7 @@ describe('delivery', () => {
           }
         : { content: 'done', toolCalls: [] };
     };
-    const fixture = await fixtureOf(generate, { humanInput: true });
+    const fixture = await fixtureOf(generate);
     fixture.startDelivery();
     const taskId = await startTask(fixture);
     await eventually(async () => {
@@ -290,7 +290,7 @@ describe('delivery', () => {
         },
       ],
     });
-    const fixture = await fixtureOf(generate, { humanInput: true });
+    const fixture = await fixtureOf(generate);
     const taskId = await startTask(fixture);
     await eventually(async () => {
       const task = await call(fixture, 'GetTask', { id: taskId });
@@ -342,7 +342,7 @@ describe('delivery', () => {
           }
         : { content: 'done', toolCalls: [] };
     };
-    const fixture = await fixtureOf(generate, { humanInput: true });
+    const fixture = await fixtureOf(generate);
     fixture.startDelivery();
     const taskId = await startTask(fixture);
     await eventually(async () => {

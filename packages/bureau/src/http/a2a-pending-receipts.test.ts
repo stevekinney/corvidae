@@ -73,7 +73,6 @@ async function withCrashedAnswer(
   const opened = await openBureau({
     agents: { asker: createAgent({ name: 'asker', generate: parksThenAnswers() }) },
     publish: ['asker'],
-    humanInput: true,
   });
   try {
     const base = createDefaultRuntimeServices();
