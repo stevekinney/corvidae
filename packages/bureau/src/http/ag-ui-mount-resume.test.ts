@@ -574,6 +574,8 @@ describe('a resume made on a round the approval has moved past (COR-1714)', () =
         );
         const staleCalls = resolve.mock.calls.length;
         resolve.mockRestore();
+        // Refused before the ledger: neither left an entry of its own.
+        const ledgerAfterStale = await ledgerStates(bureau);
         const current = await readAgUiStream(
           await handler(resumeRequest([onRound(resolved(id), 1)], {}, 'client-run-5')),
         );
@@ -588,6 +590,7 @@ describe('a resume made on a round the approval has moved past (COR-1714)', () =
         }
         expect(staleCalls).toBe(0);
         expect(ledgerBefore).toEqual(['completed:superseded']);
+        expect(ledgerAfterStale).toEqual(ledgerBefore);
         // The round the person read is the one decided: round 1 is answered and gated again.
         expect(current.at(-1)!.event).toMatchObject({
           type: EventType.RUN_FINISHED,
