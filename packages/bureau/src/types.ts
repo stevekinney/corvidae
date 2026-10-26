@@ -13,7 +13,6 @@ import type {
   AgentRun,
   AgentRunEventRegistry,
   AgentSession,
-  BackendDescriptor,
   CacheOptions,
   ChildSignalContract,
   CleanupAcknowledgement as RunCleanupAcknowledgement,
@@ -25,11 +24,10 @@ import type {
   EnhancedStreamingOptions,
   FlowControlPolicy,
   FreshAttemptSourceResolver,
-  GenerateFunction,
   HumanInputSchema,
   LivenessSnapshot,
+  PeerCallJournal,
   RunFrame,
-  SelectionPlan,
   SessionInputAdmissionOutcome,
   SessionInputAdmissionRequest,
   SessionInputPayload,
@@ -87,8 +85,8 @@ import type {
 } from './durable-event-history';
 import type { BureauEventMap } from './events';
 import type { BureauGoals } from './goal-types';
-import type { ModelCatalogService } from './model-catalog-refresh';
-import type { BureauModelPolicyOptions, PlanSelectionRequest } from './model-policy';
+import type { BureauModelPolicyOptions } from './model-policy';
+import type { Models, ModelsOptions } from './models/create-models';
 import type { OnlineEvalSampler, OnlineEvalSamplerOptions } from './online-evals';
 import type { ForkSessionRequest, ForkSessionResult } from './session-fork';
 import type {
@@ -315,7 +313,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    *
    * A host names a directory and Bureau reads, watches, and writes it; Bureau does not depend on
    * where that directory lives. A directory that does not exist is an empty one. Requires
-   * {@link BureauOptions.resolveAgentGenerate}: a model name that nothing can turn into a
+   * {@link ModelsOptions.generate}: a model name that nothing can turn into a
    * `generate` would be silently ignored, so `createBureau` refuses the combination with
    * `BureauError` (`BAD_REQUEST`).
    */
@@ -328,13 +326,6 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * with one of those names is refused with `BureauError` (`BAD_REQUEST`).
    */
   agentTools?: Readonly<Record<string, Tool>>;
-  /**
-   * COR-1524 — how a model in the model catalog becomes the `generate` an agent file runs with.
-   * The host supplies it because the host holds the credentials; Bureau passes the catalog row
-   * (provider and model) a file's `model: <provider>/<model>` resolved to. It may throw to say the
-   * model cannot be set up, which leaves that file `invalid` with `unknown-model`.
-   */
-  resolveAgentGenerate?: (descriptor: BackendDescriptor) => GenerateFunction;
   /**
    * COR-1527 — a directory of JSON workflow files. Every `*.json` file in it is an agent-authored
    * workflow (COR-1525's document plus `agent` and `paused`) whose identifier is the filename
@@ -372,7 +363,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   resolveFreshAttemptSource?: FreshAttemptSourceResolver;
   /**
    * AB-64/AB-250 — deployment/Bureau model-policy invariants and the
-   * per-principal user configuration `Bureau.planSelection`/a run's
+   * per-principal user configuration `Bureau.models.plan`/a run's
    * `SelectionGate` compose against, held in memory for the bureau's
    * lifetime. Named policy profiles are keys of `users` and of each
    * configuration's own `fallbackOrder`; there is no storage schema and no
@@ -732,15 +723,13 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
     readonly principalBacklogLimit?: number;
   };
   /**
-   * AB-246 — the model-catalog refresh service exposed as
-   * {@link Bureau.modelCatalog}. Omit to let `createBureau` construct a
-   * default `ModelCatalogService` over `@lostgradient/operative`'s
-   * static `createModelCatalog()` seed; pass one explicitly to share a
-   * catalog across bureaus or to supply a non-default `descriptorSource`
-   * (see `model-catalog-refresh.ts`'s `CatalogDescriptorSource` — the seam a
-   * future live provider probe attaches to).
+   * The model rows the deployment offers and how a row becomes a `generate`, exposed as
+   * {@link Bureau.models}. `catalog` defaults to `@lostgradient/operative`'s static seed.
+   * `generate` is required with {@link BureauOptions.agentDirectory}: a model name that nothing
+   * can turn into a `generate` would be silently ignored, so `createBureau` refuses the
+   * combination with `BureauError` (`BAD_REQUEST`).
    */
-  modelCatalog?: ModelCatalogService;
+  models?: ModelsOptions;
   /**
    * AB-92/AB-252/AB-260 — the injectable runtime-service seam: wall time,
    * monotonic time, timers, identifiers, randomness, and deferred-work
@@ -954,8 +943,8 @@ export interface ResolveReviewResult {
  * Armorer's cleanup-outcome vocabulary
  * (`packages/armorer/src/execution-lifecycle.ts`'s `ExecutionCleanupOutcome`
  * `status`), reused verbatim per AB-34's vocabulary constraint — the same
- * reuse `CatalogRefreshCleanupAcknowledgement` makes in
- * `model-catalog-refresh.ts`.
+ * reuse the other started-work
+ * handles make.
  *
  * - `'completed'` — the owner's drain settled normally.
  * - `'failed'` — the owner's drain settled by rejecting; the failure is
@@ -1190,25 +1179,13 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   readonly store: Store;
   readonly memory: GovernedMemory | undefined;
   /**
-   * AB-246 — the model-catalog refresh service (AB-64's catalog, AB-34's
-   * started-work control contract). Present regardless of `D`, matching the
-   * rule that Bureau's administrative surface does not depend on the
-   * registered agent set. `dispose()` awaits any in-flight refresh here
-   * before reporting.
+   * The model namespace: the catalog the deployment offers (`catalog()`, `replace(rows)`), the
+   * `generate` for a row, and `plan(request)`, which builds the `SelectionPlan` a request would be
+   * given against the current catalog and {@link BureauOptions.modelPolicy} without starting a
+   * run. Present regardless of `D`, matching the rule that Bureau's administrative surface does
+   * not depend on the registered agent set.
    */
-  readonly modelCatalog: ModelCatalogService;
-
-  /**
-   * AB-64/AB-250 — builds a full `SelectionPlan` for `request` against this
-   * bureau's CURRENT model catalog and `BureauOptions.modelPolicy`
-   * configuration. Synchronous and side-effect-free: it starts no run,
-   * refreshes no catalog, and dispatches no event — a caller can ask what
-   * an Agent would use without any of the consequences of actually running
-   * it. `request.principal` selects the per-principal `UserModelConfiguration`
-   * from `modelPolicy.users`, the same value `BureauRunOptions.principal`
-   * carries for an actual run; absent composes with no user layer.
-   */
-  planSelection(request: PlanSelectionRequest): SelectionPlan;
+  readonly models: Models;
 
   /**
    * The typed agent catalog (AB-15, AB-22) — the immutable, read-only view
@@ -1270,6 +1247,21 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * `child-topology.ts`.
    */
   readonly children: BureauChildren<AgentNames<D>>;
+
+  /**
+   * COR-1670 — the journal that makes a peer call survive a restart: hand it to
+   * `createPeerCallTool({ durable })`. A durable run's tool call records the A2A task it started
+   * here, keyed by the run and the call's operation key, and the replay of that call after a
+   * restart follows the recorded task instead of sending again. Each record carries a digest of
+   * its request, so a replay that makes a different request at the same position is refused.
+   * Records are deleted when the run's task is removed (`run.removed` of a non-catalog run, or
+   * retention expiring its task). A run that has no task record, such as a child, a goal attempt
+   * or a workflow step, keeps its records, and so does a run deleted while its call was in flight:
+   * a record written after the deletion is never read. Agents are built before the Bureau, so the
+   * tool reaches the journal through a reference set once the Bureau exists (see the README). A
+   * write for a run this Bureau never knew is refused.
+   */
+  readonly peerCalls: PeerCallJournal;
 
   /**
    * COR-851 — durable goals: create a goal, read and list it, see what it has

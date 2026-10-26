@@ -5,6 +5,7 @@ import type {
   A2APeerProvenance,
   A2APeerStopState,
   A2APeerTask,
+  A2APeerUpdate,
 } from '@lostgradient/weft/a2a';
 import type { ToolContext } from 'armorer';
 import { createTool } from 'armorer';
@@ -108,6 +109,81 @@ export interface PeerCallResult {
   readonly artifacts: readonly A2APeerArtifact[];
 }
 
+/** Identifies one peer call: the run that made it and the tool call's durable operation key. */
+export interface PeerCallJournalKey {
+  /** The run whose tool call this is. */
+  readonly parentRunId: string;
+  /** The tool call's `durableOperationKey`, stable across a replay of the same call. */
+  readonly operationKey: string;
+}
+
+/** The peer task a journaled call started. */
+export interface PeerCallJournalEntry {
+  /** The task's identifier on the peer. */
+  readonly taskId: string;
+  /** The task's context identifier on the peer. */
+  readonly contextId: string;
+  /**
+   * A digest of the request the call sent (its message, `taskId` and `contextId`). An operation
+   * key names a position in a run, not a request, and a replayed step can emit different calls at
+   * the same positions, so the replay compares this before it follows the recorded task.
+   */
+  readonly requestDigest: string;
+}
+
+/**
+ * Where a peer call records the task it started, so a replay of the same tool call after a
+ * restart follows that task instead of sending again. Bureau implements it as `bureau.peerCalls`.
+ *
+ * `write` resolves only once the entry is durable, and rejects when it is not. It must be safe to
+ * repeat for one key with the same entry. Both methods may be called from a replay in a new
+ * process, so they cannot rely on in-memory state.
+ */
+export interface PeerCallJournal {
+  /** The entry recorded for `key`, or `undefined` when the call never recorded one. */
+  read(key: PeerCallJournalKey): Promise<PeerCallJournalEntry | undefined>;
+  /** Records the peer task `key`'s call started. */
+  write(key: PeerCallJournalKey, entry: PeerCallJournalEntry): Promise<void>;
+}
+
+/**
+ * The peer call started a task but could not record it in the journal, so it was canceled and the
+ * call failed rather than run on without the restart safety `durable` promises. `cause` is the
+ * journal's error.
+ */
+export class PeerCallJournalError extends Error {
+  /** The peer task the call had started, now canceled. */
+  readonly taskId: string;
+
+  /** Builds the error for the task `taskId` whose entry could not be written. */
+  constructor(taskId: string, cause: unknown) {
+    super(`The peer call could not be recorded for restart (task "${taskId}"); it was canceled.`, {
+      cause,
+    });
+    this.name = 'PeerCallJournalError';
+    this.taskId = taskId;
+  }
+}
+
+/**
+ * A replayed peer call found the task recorded for its operation key, but the request it is
+ * making now is not the one that task was started for. The tool neither attaches nor sends: the
+ * recorded task belongs to another call, and following it would hand this call that call's answer.
+ */
+export class PeerCallMismatchError extends Error {
+  /** The peer task recorded for the operation key, which this call did not start. */
+  readonly recordedTaskId: string;
+
+  /** Builds the error for the task `recordedTaskId` recorded under another request. */
+  constructor(recordedTaskId: string) {
+    super(
+      `The peer call's operation key already records task "${recordedTaskId}" for a different request, so it was neither followed nor sent again.`,
+    );
+    this.name = 'PeerCallMismatchError';
+    this.recordedTaskId = recordedTaskId;
+  }
+}
+
 /** Options for {@link createPeerCallTool}. */
 export interface CreatePeerCallToolOptions {
   /** The tool's name. */
@@ -121,6 +197,22 @@ export interface CreatePeerCallToolOptions {
    * `name`.
    */
   agentName?: string | undefined;
+  /**
+   * Makes the call survive a restart of the caller. The tool call's `durableOperationKey` and its
+   * run id (which a run only supplies when it is durable) key an entry that names the peer task,
+   * written as soon as the peer has accepted the message. When the same tool call runs again after
+   * a restart, the tool follows that task with `attach` instead of sending, so the peer receives
+   * the message once. A call with no operation key or run id (an ephemeral run) is not journaled.
+   *
+   * The send carries a `messageId` derived from the operation key, so a replay that finds no entry
+   * (a crash between the send and the write) repeats the send as the peer's own idempotent retry.
+   * The entry also holds a digest of the request, and a replay whose request differs from the
+   * recorded one (a replayed step can emit other calls at the same positions) fails with
+   * {@link PeerCallMismatchError} instead of following another call's task.
+   * A peer that no longer knows a journaled task fails the call with `task-not-found`; the tool
+   * does not send again, because the first message may have had effects.
+   */
+  durable?: PeerCallJournal | undefined;
   /** When supplied, the tool emits the four child-workflow events and registers the child. */
   parentContext?:
     | {
@@ -157,12 +249,13 @@ function isTerminalFailure(state: A2APeerStopState): state is 'failed' | 'reject
  * and `auth-required` throws {@link PeerAuthRequiredError}. Transport failures throw the
  * client's `A2APeerError`.
  *
- * The call is synchronous: nothing is persisted, so a restart of the caller does not resume it
- * and no restart safety is claimed. The remote task keeps running; its `taskId` lets a later
- * call continue it.
+ * Without `durable` the call is synchronous and persists nothing, so a restart of the caller does
+ * not resume it; the remote task keeps running and its `taskId` lets a later call continue it.
+ * With `durable`, a replayed tool call re-attaches to the task it started (see
+ * {@link CreatePeerCallToolOptions.durable}).
  */
 export function createPeerCallTool(options: CreatePeerCallToolOptions) {
-  const { name, description, peer, parentContext } = options;
+  const { name, description, peer, parentContext, durable } = options;
   const agentName = options.agentName ?? name;
   // Children stopped at a question, by remote task id, until a later call continues the task.
   const interrupted = new Map<string, (reason: string) => void>();
@@ -184,6 +277,28 @@ export function createPeerCallTool(options: CreatePeerCallToolOptions) {
 
       // Reading the card first means a peer this client must refuse never becomes a child.
       const card = await peer.card();
+      // A call that cannot be keyed is not journaled: it has nothing a replay could find.
+      const operationKey = context.durableOperationKey;
+      const journalKey: PeerCallJournalKey | undefined =
+        durable !== undefined && operationKey !== undefined && parentRunId !== ''
+          ? { parentRunId, operationKey }
+          : undefined;
+      // A failed read stops the call before anything is sent: sending again could duplicate it.
+      const requestDigest =
+        journalKey === undefined
+          ? ''
+          : await sha256Hex(
+              JSON.stringify([params.message, params.taskId ?? '', params.contextId ?? '']),
+            );
+      const recorded =
+        durable !== undefined && journalKey !== undefined
+          ? await durable.read(journalKey)
+          : undefined;
+      // The operation key is a position, not a request: a different call at this position must
+      // not take over the recorded task.
+      if (recorded !== undefined && recorded.requestDigest !== requestDigest) {
+        throw new PeerCallMismatchError(recorded.taskId);
+      }
       const childRunId = `peer-${crypto.randomUUID()}`;
       const controller = new AbortController();
       const signal =
@@ -255,17 +370,27 @@ export function createPeerCallTool(options: CreatePeerCallToolOptions) {
 
       let outcome;
       try {
-        remoteTask = await peer.send({
-          text: params.message,
-          taskId: params.taskId,
-          contextId: params.contextId,
-          signal,
-          onUpdate: (update) =>
-            registry?.updateRemote(
-              childRunId,
-              remote(update.state, update.taskId, update.contextId),
-            ),
-        });
+        const onUpdate = (update: A2APeerUpdate): void =>
+          registry?.updateRemote(childRunId, remote(update.state, update.taskId, update.contextId));
+        remoteTask =
+          recorded !== undefined
+            ? await peer.attach({
+                taskId: recorded.taskId,
+                contextId: recorded.contextId,
+                signal,
+                onUpdate,
+              })
+            : await peer.send({
+                text: params.message,
+                taskId: params.taskId,
+                contextId: params.contextId,
+                ...(journalKey === undefined ? {} : { messageId: await peerMessageId(journalKey) }),
+                signal,
+                onUpdate,
+              });
+        if (recorded === undefined && durable !== undefined && journalKey !== undefined) {
+          await journalTask(durable, journalKey, remoteTask, requestDigest);
+        }
         // The peer accepted the continuation, so it supersedes the child that stopped at the
         // question it answers; until then that child keeps its way to cancel the task.
         if (params.taskId !== undefined)
@@ -346,6 +471,39 @@ export function createPeerCallTool(options: CreatePeerCallToolOptions) {
       throw new Error(`Unexpected peer task state "${String(unexpected)}".`);
     },
   });
+}
+
+/**
+ * The identifier a journaled call's message carries: derived from the operation key alone, so a
+ * replay sends the same one. Hashed, because the key names internal run and step identifiers.
+ */
+async function peerMessageId(key: PeerCallJournalKey): Promise<string> {
+  return `peer-call:${await sha256Hex(`${key.parentRunId}\0${key.operationKey}`)}`;
+}
+
+async function sha256Hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Records the task a send started. A peer that answered with a bare message has no task to
+ * follow, so there is nothing to record. When the entry cannot be written the task is canceled
+ * and the call fails, instead of continuing as if a restart would find it.
+ */
+async function journalTask(
+  journal: PeerCallJournal,
+  key: PeerCallJournalKey,
+  task: A2APeerTask,
+  requestDigest: string,
+): Promise<void> {
+  if (task.taskId === '') return;
+  try {
+    await journal.write(key, { taskId: task.taskId, contextId: task.contextId, requestDigest });
+  } catch (error) {
+    await task.cancel('the peer call could not be recorded for restart').catch(() => undefined);
+    throw new PeerCallJournalError(task.taskId, error);
+  }
 }
 
 /**

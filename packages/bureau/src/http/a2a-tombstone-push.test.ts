@@ -77,7 +77,7 @@ async function serve(): Promise<Served> {
     overrides: {
       id: 'tombstone-push-bureau',
       humanInput: true,
-      resolveAgentGenerate: () => parksOnRequest,
+      models: { generate: () => parksOnRequest },
       storage: fixture.configuration,
     },
   });

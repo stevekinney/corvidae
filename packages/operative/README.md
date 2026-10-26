@@ -2325,7 +2325,7 @@ plan.candidates[0]?.descriptorSnapshot; // inlined by value—safe to replay aft
 
 Every eligible candidate's `descriptorSnapshot` is a deep, independent structural copy of the deciding `BackendDescriptor`—never a live reference—so a `SelectionPlan` replays its own eligibility reasoning unchanged after the source catalog has moved on, been mutated, or been discarded. `rankingInputs` names three signals per eligible candidate (`cost`, `latency`, `preferenceMatch`) rather than summarizing into one score. All seven `SelectionOutcomeKind` values are reachable; `failure` is present if and only if `outcome !== 'selected'`, enforced structurally by the exported type. `recordEffectiveGeneration(plan, effective)` folds a completed generation's actual backend into a `'selected'` plan without ever rewriting `selected`: a divergence produces a new terminal `'provider-effective-divergence'` plan alongside the original selection; a non-divergence returns `plan` unchanged, by reference.
 
-Bureau wiring (`BureauOptions.modelPolicy`, `Bureau.planSelection`) and `runStep` boundary revalidation ship next (AB-250, below); cross-mode replay fixtures are AB-251's.
+Bureau wiring (`BureauOptions.modelPolicy`, `Bureau.models.plan`) and `runStep` boundary revalidation ship next (AB-250, below); cross-mode replay fixtures are AB-251's.
 
 ### Selection Gate and Boundary Revalidation (AB-64, AB-250)
 
@@ -2357,7 +2357,7 @@ A revalidated plan that no longer reaches `outcome: 'selected'` fails the step w
 
 `AgentRunContext.delegatedAuthority` also threads through `RunOptions.delegatedAuthority` into every tool call's per-execution `ToolContext.executionContext.delegatedAuthority` (AB-300), matching the AB-233 `childRegistry`/`parentRunId` pattern exactly. `createSubagentTool` reads it there at execute time, attenuates it with its own `delegatedAuthority` construction option (a tool's own narrowing for the specific child it dispatches, if any) via `attenuateDelegatedAuthority`, and forwards the result into `dispatchChildRun`. A parent run carrying no grant and a tool with no narrowing of its own dispatch with `delegatedAuthority` left `undefined`, exactly as before this wiring existed.
 
-Bureau's `planSelection`/`createSelectionGateFor` surface (`packages/bureau/src/model-policy.ts`) is documented in `packages/bureau/README.md`.
+Bureau's `models.plan`/`createSelectionGateFor` surface (`packages/bureau/src/model-policy.ts`) is documented in `packages/bureau/README.md`.
 
 ### Structured Output
 
