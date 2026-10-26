@@ -557,7 +557,7 @@ Every current `Bureau` member (`packages/bureau/src/types.ts:1102-1836`) maps to
 | `eventHistory`, `subscribeEventHistory` | `bureau.tasks.events`; the durable-history extension |
 | `eventFeed`, `runEventFeeds`, `subscribeLiveFrames`, `events`, `on`, `once`, `subscribe`, `toObservable`, `addEventListener`, `removeEventListener` | Internal; the live sources behind the AG-UI streams and, without durable history, the A2A status and artifact projection |
 | `agents` | Agent Cards; `bureau.agents.list` |
-| `id`, `getConfiguration`, `getTools`, `waitForRecovery` | `bureau.deployment.get` (identity and recovery status only) |
+| `id`, `getTools`, `waitForRecovery` | `bureau.deployment.get` (identity and recovery status only) |
 | `modelCatalog`, `planSelection` | Internal |
 | `onlineEvalSampler` | Internal; breaches reach deliveries |
 | `setRequestAuthorityValidator`, `getRequestAuthorityValidator` | Internal; the authorization predicate is configured on the handler |
