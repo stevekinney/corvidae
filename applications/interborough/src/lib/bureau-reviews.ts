@@ -123,9 +123,31 @@ export function isApprovalOutcomeNotWritten(error: unknown): boolean {
   return typeof reason === 'string' && reason.startsWith(`${APPROVAL_OUTCOME_NOT_WRITTEN}:`);
 }
 
-/** Approves, denies, or rejects a review (`bureau.reviews.resolve`). A rejection needs its reason. */
+/**
+ * The token a `Conflict`'s reason begins with when the review had moved to another round than the
+ * one sent: a re-gated approval keeps its id, so the decision was made on a request that is no longer
+ * the one pending, and nothing was decided (`bureau.reviews.resolve`'s description).
+ */
+export const REVIEW_ROUND_CHANGED = 'REVIEW_ROUND_CHANGED';
+
+/** Whether a fault says the review changed while it was read, so the decision was not made. */
+export function isReviewRoundChanged(error: unknown): boolean {
+  if (!(error instanceof HttpClientError)) return false;
+  const reason: unknown = error.data?.['reason'];
+  return typeof reason === 'string' && reason.startsWith(`${REVIEW_ROUND_CHANGED}:`);
+}
+
+/**
+ * Approves, denies, or rejects a review (`bureau.reviews.resolve`). A rejection needs its reason.
+ * `round` is the round of the tool approval the person was shown, which fences the decision on it.
+ */
 export async function resolveBureauReview(
-  input: { readonly id: string; readonly decision: ReviewDecision; readonly reason?: string },
+  input: {
+    readonly id: string;
+    readonly decision: ReviewDecision;
+    readonly reason?: string;
+    readonly round?: number;
+  },
   options?: Options,
 ): Promise<ReviewResolution> {
   return resolveAnswerSchema.parse(await callBureau('bureau.reviews.resolve', input, options));

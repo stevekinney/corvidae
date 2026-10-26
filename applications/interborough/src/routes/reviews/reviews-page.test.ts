@@ -142,6 +142,7 @@ describe('deciding a Bureau tool approval', () => {
     expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toEqual({
       id: APPROVAL.id,
       decision: 'approve',
+      round: APPROVAL.round,
     });
     await waitFor(() => expect(rows(container).length).toBe(0));
   });
@@ -158,6 +159,7 @@ describe('deciding a Bureau tool approval', () => {
       id: APPROVAL.id,
       decision: 'reject',
       reason: 'Wrong order.',
+      round: APPROVAL.round,
     });
   });
 
@@ -399,6 +401,41 @@ describe('a decision the Bureau gated again', () => {
     }));
     await fireEvent.click(await findByRole('button', { name: 'Approve' }));
     await findByText(REVIEWS_COPY.superseded);
+  });
+});
+
+describe('a decision on a review that changed while it was read (COR-1714)', () => {
+  test('sends the round the row showed, and a question none', async () => {
+    const approval = toolApprovalFixture({ round: 2, requestedAt: Date.now() - 120_000 });
+    const { container, findAllByRole } = open({ reviews: [approval] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    await fireEvent.click((await findAllByRole('button', { name: 'Approve' }))[0]!);
+    await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1));
+    expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toEqual({
+      id: approval.id,
+      decision: 'approve',
+      round: 2,
+    });
+  });
+
+  test('says it changed and was not decided, and reads the review again', async () => {
+    const { container, findByRole, findByText, queryByText } = open({ reviews: [APPROVAL] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    stub?.on('bureau.reviews.resolve', () => {
+      throw new StubFault('Conflict', 409, 'The review moved on.', {
+        reason: 'REVIEW_ROUND_CHANGED: now at round 1',
+      });
+    });
+    const reads = stub?.callsTo('bureau.reviews.list').length ?? 0;
+
+    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+
+    await findByText(new RegExp(REVIEWS_COPY.roundChanged.title));
+    expect(rows(container)[0]?.textContent).toContain(REVIEWS_COPY.roundChanged.message);
+    expect(queryByText(new RegExp(REVIEWS_COPY.decisionFailed))).toBeNull();
+    expect(container.textContent).not.toContain('REVIEW_ROUND_CHANGED');
+    await waitFor(() => expect(stub?.callsTo('bureau.reviews.list').length).toBeGreaterThan(reads));
+    expect(rows(container).length).toBe(1);
   });
 });
 

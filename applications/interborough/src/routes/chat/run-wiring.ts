@@ -227,6 +227,25 @@ function interruptsOf(event: unknown): Interrupt[] | undefined {
 /** The key every event's `metadata` carries the Bureau's own fields under (`ag-ui-vocabulary.ts`). */
 const BUREAU_METADATA_KEY = '@lostgradient/bureau';
 
+/**
+ * The round of an approval, as its interrupt shows it and a resume entry sends it back, under the
+ * same key (`ag-ui-interrupts.ts`). A question has none.
+ */
+function roundOf(value: { readonly metadata?: unknown }): number | undefined {
+  if (!isRecord(value.metadata)) return undefined;
+  const fields = value.metadata[BUREAU_METADATA_KEY];
+  return isRecord(fields) && typeof fields['round'] === 'number' ? fields['round'] : undefined;
+}
+
+/**
+ * An entry that names the round of the approval the person decided, so the mount refuses it as
+ * `REVIEW_ROUND_CHANGED` once the approval has been gated again (COR-1714).
+ */
+function onRoundOf(interrupt: Interrupt, entry: ResumeEntry): ResumeEntry {
+  const round = roundOf(interrupt);
+  return round === undefined ? entry : { ...entry, metadata: { [BUREAU_METADATA_KEY]: { round } } };
+}
+
 /** The Bureau's own identifier for the run an event belongs to, which the cancel route takes. */
 function nativeRunIdOf(event: unknown): string | undefined {
   if (!isRecord(event) || !isRecord(event['metadata'])) return undefined;
@@ -396,6 +415,10 @@ async function* parkApprovals(
 }
 
 function resumeEntryFor(interrupt: Interrupt, resolution: ApprovalResolution): ResumeEntry {
+  return onRoundOf(interrupt, answerTo(interrupt, resolution));
+}
+
+function answerTo(interrupt: Interrupt, resolution: ApprovalResolution): ResumeEntry {
   if (resolution.decision === 'approve' || resolution.decision === 'approve_with_edits') {
     return {
       interruptId: interrupt.id,
@@ -607,13 +630,17 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
 
   /**
    * Makes `next` what the run waits on. An answer held for an interrupt that is not among them is
-   * dropped: the mount has settled it, so a resume that carried it would be refused.
+   * dropped: the mount has settled it, so a resume that carried it would be refused. So is a
+   * decision on an approval that is at another round now: it was gated again under the same id, and
+   * the person decides the request they have not seen yet (COR-1714).
    */
   function setInterrupts(next: readonly Interrupt[]): void {
     interrupts = next;
-    const pending = new Set(next.map((interrupt) => interrupt.id));
+    const pending = new Map(next.map((interrupt) => [interrupt.id, roundOf(interrupt)]));
     // Deleting from a map while it is walked is safe: the walk skips what it has already left.
-    for (const id of decisions.keys()) if (!pending.has(id)) decisions.delete(id);
+    for (const [id, entry] of decisions) {
+      if (!pending.has(id) || pending.get(id) !== roundOf(entry)) decisions.delete(id);
+    }
     for (const [id, answer] of answers) {
       if (pending.has(id)) continue;
       answers.delete(id);
