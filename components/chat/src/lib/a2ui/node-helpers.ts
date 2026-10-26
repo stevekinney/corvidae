@@ -210,6 +210,7 @@ export function elementId(
 
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
 const TIME_ONLY = /^(\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?$/;
+const ZONED_TIME_ONLY = /^(\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)(Z|[+-]\d{2}(?::?\d{2})?)$/i;
 const LOCAL_DATE_TIME = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?$/;
 
 function localParts(date: Date): { date: string; time: string } {
@@ -220,13 +221,16 @@ function localParts(date: Date): { date: string; time: string } {
   };
 }
 
-/** A date's calendar date and time in `timeZone`, or in the runtime's zone without one. */
+/**
+ * A date's calendar date and time in `timeZone`, or in the runtime's zone without one. A zone the
+ * runtime does not know is read as UTC, the zone every runtime agrees on, so a server render and
+ * its hydration show the same value.
+ */
 function zonedParts(date: Date, timeZone: string | undefined): { date: string; time: string } {
   if (timeZone === undefined) return localParts(date);
-  let parts: Intl.DateTimeFormatPart[];
-  try {
-    parts = new Intl.DateTimeFormat('en-US', {
-      timeZone,
+  const format = (zone: string) =>
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: zone,
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -234,9 +238,11 @@ function zonedParts(date: Date, timeZone: string | undefined): { date: string; t
       minute: '2-digit',
       hourCycle: 'h23',
     }).formatToParts(date);
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = format(timeZone);
   } catch {
-    // A zone the runtime does not know falls back to the runtime's own.
-    return localParts(date);
+    parts = format('UTC');
   }
   const part = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((entry) => entry.type === type)?.value ?? '00';
@@ -275,6 +281,7 @@ export function dateTimeForControl(
   const dateOnly = DATE_ONLY.exec(value);
   const timeOnly = TIME_ONLY.exec(value);
   const local = LOCAL_DATE_TIME.exec(value);
+  const zonedTime = ZONED_TIME_ONLY.exec(value);
   if (dateOnly !== null) {
     date = value;
   } else if (timeOnly !== null) {
@@ -282,6 +289,15 @@ export function dateTimeForControl(
   } else if (local !== null) {
     date = local[1];
     time = local[2];
+  } else if (zonedTime !== null) {
+    // A time of day in a stated zone, shown in `timeZone` on that zone's current date, which fixes
+    // the zones' current offsets. It has no calendar date of its own.
+    const digits = (zonedTime[2] ?? '').toUpperCase().replace(':', '');
+    const offset = digits === 'Z' ? 'Z' : `${digits.slice(0, 3)}:${digits.slice(3, 5) || '00'}`;
+    const today = zonedParts(new Date(), timeZone).date;
+    const parsed = new Date(`${today}T${zonedTime[1]}${offset}`);
+    if (Number.isNaN(parsed.getTime())) return undefined;
+    time = zonedParts(parsed, timeZone).time;
   } else {
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) return undefined;
@@ -305,7 +321,8 @@ export function sliderStep(min: number, max: number): number {
 
 /**
  * Whether a time value falls outside `min` or `max`, each an ISO 8601 time or
- * date-time whose time part bounds it. A bound that has no time is ignored.
+ * date-time whose time part bounds it. A bound that has no time is ignored. A `min` later than
+ * `max` is a range that wraps past midnight.
  */
 export function timeOutOfRange(
   value: unknown,
@@ -317,6 +334,11 @@ export function timeOutOfRange(
   if (time === undefined) return false;
   const lower = dateTimeForControl(min, 'time', timeZone);
   const upper = dateTimeForControl(max, 'time', timeZone);
+  if (lower !== undefined && upper !== undefined && lower > upper) {
+    // The bounds wrap past midnight (a zoned pair shown in a zone whose offset crosses it, or an
+    // overnight range): a time is in range at or after `lower` or at or before `upper`.
+    return time < lower && time > upper;
+  }
   return (lower !== undefined && time < lower) || (upper !== undefined && time > upper);
 }
 

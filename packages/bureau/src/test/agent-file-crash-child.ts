@@ -32,16 +32,18 @@ const bureau = await createBureau<AgentDefinitions>({
   agents: {},
   agentDirectory,
   agentTools: { 'lookup-order': lookupTool },
-  resolveAgentGenerate:
-    () =>
-    async ({ step }) => {
-      if (step === 0) {
-        return { content: 'step 0', toolCalls: [{ name: 'lookup-order', arguments: {} }] };
-      }
-      // Step 0's checkpoint has committed once step 1 is requested.
-      parked += 1;
-      return new Promise<never>(() => {});
-    },
+  models: {
+    generate:
+      () =>
+      async ({ step }) => {
+        if (step === 0) {
+          return { content: 'step 0', toolCalls: [{ name: 'lookup-order', arguments: {} }] };
+        }
+        // Step 0's checkpoint has committed once step 1 is requested.
+        parked += 1;
+        return new Promise<never>(() => {});
+      },
+  },
   storage: { type: 'sqlite', path: storagePath },
   durableExecution: true,
   durableOwnership: {

@@ -67,7 +67,7 @@ import {
   createAgentFileWriter,
 } from './agent-file-writer';
 import type { AgentSnapshot } from './agent-snapshot-store';
-import type { ModelCatalogService } from './model-catalog-refresh';
+import type { Models } from './models/create-models';
 import { ownerOrLocal } from './owner-of-record';
 import { createWatchedDirectory } from './watched-directory';
 
@@ -152,7 +152,7 @@ export interface AgentFileCatalogOptions {
   readonly reservedIdentifiers: ReadonlySet<string>;
   /** The deployment's tool catalog, by the name an agent file uses. */
   readonly tools: Readonly<Record<string, Tool>>;
-  readonly modelCatalog: Pick<ModelCatalogService, 'catalog'>;
+  readonly models: Pick<Models, 'catalog'>;
   /** Turns a catalog model into the function a run calls. The host holds the credentials. */
   readonly resolveGenerate: (descriptor: BackendDescriptor) => GenerateFunction;
   readonly runtime: RuntimeServices;
@@ -331,10 +331,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
   function checkResources(
     definition: AgentFileDefinition,
   ): { readonly descriptor: BackendDescriptor } | { readonly problem: AgentFileProblem } {
-    const resolved = resolveModelDescriptor(
-      definition.model,
-      options.modelCatalog.catalog().descriptors,
-    );
+    const resolved = resolveModelDescriptor(definition.model, options.models.catalog().descriptors);
     if (isProblem(resolved)) return { problem: resolved };
     const missing = missingTools(definition.tools);
     if (missing.length > 0) {
@@ -390,15 +387,12 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         defaultGenerate: options.resolveGenerate(descriptor),
         defaultDescriptor: descriptor,
         allowed: () =>
-          allowedDescriptorsOfFileAgent(
-            definition.models,
-            options.modelCatalog.catalog().descriptors,
-          ),
+          allowedDescriptorsOfFileAgent(definition.models, options.models.catalog().descriptors),
         resolveGenerate: options.resolveGenerate,
       }),
       allowedCandidates: allowedDescriptorsOfFileAgent(
         definition.models,
-        options.modelCatalog.catalog().descriptors,
+        options.models.catalog().descriptors,
       ).map((row) => ({ provider: row.provider, model: row.model })),
       ...(definition.description === null ? {} : { description: definition.description }),
       ...(definition.skills.length === 0 ? {} : { skillDescriptors: definition.skills }),
@@ -579,7 +573,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     operations,
     ...(options.watch === undefined ? {} : { watch: options.watch }),
     ...(options.openWatcher === undefined ? {} : { openWatcher: options.openWatcher }),
-    revision: () => options.modelCatalog.catalog().revision,
+    revision: () => options.models.catalog().revision,
     evaluate,
     tooLarge,
     unreadable,
@@ -629,7 +623,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         const known = directoryWatcher.entries().get(id);
         if (known === undefined) return undefined;
         const path = `${directory}/${id}${AGENT_FILE_EXTENSION}`;
-        const revision = options.modelCatalog.catalog().revision;
+        const revision = options.models.catalog().revision;
         let entry: FileEntry;
         let text: string | undefined;
         try {

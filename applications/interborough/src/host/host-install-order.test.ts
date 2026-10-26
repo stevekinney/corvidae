@@ -1,7 +1,7 @@
 /**
- * The catalog is installed before the Bureau exists, so no boot step plans against a provider the
- * configuration does not name. The test wraps `createBureau` to read the catalog service at the
- * moment the Bureau receives it.
+ * The catalog rows are handed to the Bureau as `models.catalog`, so no boot step plans against a
+ * provider the configuration does not name. The test wraps `createBureau` to read the rows at the
+ * moment the Bureau receives them, and the Bureau's own catalog once it exists.
  */
 import { openBungalow } from '@lostgradient/bungalow';
 import { afterAll, afterEach, expect, mock, test } from 'bun:test';
@@ -21,16 +21,16 @@ afterAll(() => {
 
 void mock.module('@lostgradient/bureau', () => ({
   ...actual,
-  createBureau: (options: Parameters<typeof actual.createBureau>[0]) => {
-    const catalog = options.modelCatalog?.catalog();
+  createBureau: async (options: Parameters<typeof actual.createBureau>[0]) => {
+    const rows = options.models?.catalog ?? [];
+    const bureau = await realCreateBureau(options);
+    const catalog = bureau.models.catalog();
     seenWhenCreated.push({
-      revision: catalog?.revision ?? -1,
-      pairs: (catalog?.descriptors ?? []).map(
-        (descriptor) => `${descriptor.provider}/${descriptor.model}`,
-      ),
-      sources: (catalog?.descriptors ?? []).map((descriptor) => descriptor.source),
+      revision: catalog.revision,
+      pairs: rows.map((descriptor) => `${descriptor.provider}/${descriptor.model}`),
+      sources: catalog.descriptors.map((descriptor) => descriptor.source),
     });
-    return realCreateBureau(options);
+    return bureau;
   },
 }));
 
@@ -46,7 +46,7 @@ afterEach(async () => {
   }
 });
 
-test('the configured rows are in the catalog service when createBureau receives it', async () => {
+test('the configured rows are the Bureau’s catalog from its first revision', async () => {
   const home = await mkdtemp(join(tmpdir(), 'interborough-order-'));
   directories.push(home);
   await writeFile(
@@ -62,8 +62,8 @@ test('the configured rows are in the catalog service when createBureau receives 
   closers.push(() => host.close());
 
   expect(seenWhenCreated).toHaveLength(1);
-  // Only the configured row, already installed through `replaceCatalog`, not the static seed.
+  // Only the configured row, handed over as `models.catalog`, not the static seed.
   expect(seenWhenCreated[0]?.pairs).toEqual(['gemini/gemini-2.5-pro']);
   expect(seenWhenCreated[0]?.sources).toEqual(['operator-override']);
-  expect(seenWhenCreated[0]?.revision).toBeGreaterThan(1);
+  expect(seenWhenCreated[0]?.revision).toBe(1);
 });

@@ -22,12 +22,19 @@ import {
   type A2APeerCard,
   type A2APeerClient,
   type A2APeerErrorCode,
+  type A2APeerTask,
 } from './peer-client-types.ts';
 import { classifyPeerError } from './peer-errors.ts';
 import { checkEgress, createPeerFetch, type PeerAuthenticate } from './peer-fetch.ts';
 import { DEFAULT_PEER_ARTIFACT_LIMIT, ingestCard } from './peer-ingest.ts';
 import { retryRequest, type PeerRetryPolicy } from './peer-retry.ts';
-import { startPeerTask } from './peer-task.ts';
+import {
+  assertAttachRequest,
+  assertSendRequest,
+  attachPeerTask,
+  startPeerTask,
+} from './peer-task-start.ts';
+import type { PeerTaskContext } from './peer-task.ts';
 import { requireTimerDelayMs } from './timer-delay.ts';
 
 export type { A2APeerChallenge } from './peer-fetch.ts';
@@ -140,9 +147,10 @@ interface Loaded {
  * origin, sends the `A2A-Version` header through the SDK, and refuses a peer whose card requires
  * an extension this client does not support.
  *
- * Delivery is synchronous: a call lives as long as the caller holds the returned task, and
- * nothing is persisted, so a restart of the caller does not resume it. The remote task keeps
- * running; its `taskId` and `contextId` let a later call continue it.
+ * The client itself persists nothing: a call lives as long as the caller holds the returned task,
+ * and a restart of the caller does not resume it. The remote task keeps running. A caller that
+ * kept the task's `taskId` follows it again with `attach`, and one that repeats a send with the
+ * same `messageId` gets the task the first send created from a peer that keeps message history.
  */
 export function createA2APeerClient(options: A2APeerClientOptions): A2APeerClient {
   const limits = resolveLimits(options);
@@ -229,6 +237,45 @@ export function createA2APeerClient(options: A2APeerClientOptions): A2APeerClien
     return loading;
   }
 
+  /** Loads the card, runs `start` against the peer, and drops a card the peer has outgrown. */
+  async function withPeerTask(
+    signal: AbortSignal | undefined,
+    start: (context: PeerTaskContext) => Promise<A2APeerTask>,
+  ): Promise<A2APeerTask> {
+    const current = await resolveCard(false);
+    const { client, card } = current;
+    const invalidate = (error: A2APeerError): void => {
+      if (STALE_CARD_CODES.has(error.code) && loaded === current) loaded = undefined;
+    };
+    try {
+      return await start({
+        ...limits,
+        client,
+        streaming: card.streaming,
+        peer: { agentName: card.name, agentVersion: card.version, cardUrl: card.cardUrl },
+        requestOptions:
+          card.activeExtensions.length === 0
+            ? {}
+            : {
+                serviceParameters: ServiceParameters.create(
+                  withA2AExtensions(...card.activeExtensions),
+                ),
+              },
+        acceptedOutputModes: ACCEPTED_OUTPUT_MODES,
+        sleep: retryPolicy.sleep,
+        classify: retryPolicy.classify,
+        onFailure: invalidate,
+      });
+    } catch (error) {
+      // The caller's own abort is theirs to read, not a peer failure.
+      if (signal?.aborted === true) throw error;
+      const classified = classifyPeerError(error);
+      // A refusal can mean the peer changed since the card was cached; read the card again.
+      invalidate(classified);
+      throw classified;
+    }
+  }
+
   return {
     async card(request) {
       const { card } = await resolveCard(request?.refresh === true);
@@ -241,41 +288,13 @@ export function createA2APeerClient(options: A2APeerClientOptions): A2APeerClien
     async send(input) {
       // The caller owns `input` and may change it while the card loads or authenticates.
       const request = { ...input };
-      const current = await resolveCard(false);
-      const { client, card } = current;
-      const invalidate = (error: A2APeerError): void => {
-        if (STALE_CARD_CODES.has(error.code) && loaded === current) loaded = undefined;
-      };
-      try {
-        return await startPeerTask(
-          {
-            ...limits,
-            client,
-            streaming: card.streaming,
-            peer: { agentName: card.name, agentVersion: card.version, cardUrl: card.cardUrl },
-            requestOptions:
-              card.activeExtensions.length === 0
-                ? {}
-                : {
-                    serviceParameters: ServiceParameters.create(
-                      withA2AExtensions(...card.activeExtensions),
-                    ),
-                  },
-            acceptedOutputModes: ACCEPTED_OUTPUT_MODES,
-            sleep: retryPolicy.sleep,
-            classify: retryPolicy.classify,
-            onFailure: invalidate,
-          },
-          request,
-        );
-      } catch (error) {
-        // The caller's own abort is theirs to read, not a peer failure.
-        if (request.signal?.aborted === true) throw error;
-        const classified = classifyPeerError(error);
-        // A refusal can mean the peer changed since the card was cached; read the card again.
-        invalidate(classified);
-        throw classified;
-      }
+      assertSendRequest(request);
+      return withPeerTask(request.signal, (context) => startPeerTask(context, request));
+    },
+    async attach(input) {
+      const request = { ...input };
+      assertAttachRequest(request);
+      return withPeerTask(request.signal, (context) => attachPeerTask(context, request));
     },
   };
 }

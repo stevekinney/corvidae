@@ -148,23 +148,25 @@ describe('publication gates new runs only', () => {
     const served = await serve({
       overrides: {
         humanInput: true,
-        resolveAgentGenerate: () =>
-          createScriptedGenerate([
-            {
-              kind: 'respond',
-              response: {
-                content: 'Asking.',
-                toolCalls: [
-                  {
-                    id: 'call-1',
-                    name: 'requestHumanInput',
-                    arguments: { signalName: 'human-response', prompt: 'Go ahead?' },
-                  },
-                ],
+        models: {
+          generate: () =>
+            createScriptedGenerate([
+              {
+                kind: 'respond',
+                response: {
+                  content: 'Asking.',
+                  toolCalls: [
+                    {
+                      id: 'call-1',
+                      name: 'requestHumanInput',
+                      arguments: { signalName: 'human-response', prompt: 'Go ahead?' },
+                    },
+                  ],
+                },
               },
-            },
-            { kind: 'respond', response: { content: 'Done.', toolCalls: [] } },
-          ]),
+              { kind: 'respond', response: { content: 'Done.', toolCalls: [] } },
+            ]),
+        },
       },
     });
     await served.put('researcher.md', agentFileText({ model: KNOWN_MODEL }, 'Ask first.\n'));
