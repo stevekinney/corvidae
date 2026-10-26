@@ -244,10 +244,12 @@ export function laneProblems(
   }
   const coverage = scripts['test:coverage'] ?? '';
   const runsBunTest =
-    coverage.includes('bun test') || WRAPPER_NAMES.some((name) => coverage.includes(name));
+    coverage.includes('bun test') ||
+    coverage.includes('bun-test.ts') ||
+    WRAPPER_NAMES.some((name) => coverage.includes(name));
   if (runsBunTest && !ignoresSlowFiles(coverage)) {
     problems.push(
-      `${workspace}: test:coverage runs ${SLOW_LANE_SUFFIX} files under Bun's default timeout; ignore them there too with --path-ignore-patterns`,
+      `${workspace}: test:coverage runs ${SLOW_LANE_SUFFIX} files in its parallel phase; ignore them there too with --path-ignore-patterns`,
     );
   }
   return problems;

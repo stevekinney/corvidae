@@ -223,7 +223,7 @@ describe('internal workspace architecture', () => {
     expect(scripts['test:self']).toBe(
       "bun scripts/bun-test-junit.ts --report-name=self --parallel=4 --path-ignore-patterns='**/*.slow.test.ts' ./scripts/*.test.ts ./scripts/terminal/*.test.ts ./scripts/chef/*.test.ts",
     );
-    expect(scripts['test:self:slow']).toBe('bun test ./scripts/chef/*.slow.test.ts');
+    expect(scripts['test:self:slow']).toBe('bun scripts/bun-test.ts ./scripts/chef/*.slow.test.ts');
     expect(scripts['test:slow']).toBe(
       "bun scripts/run-exclusively.ts 'turbo run test:slow test:self:slow --concurrency=1'",
     );
