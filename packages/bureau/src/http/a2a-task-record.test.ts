@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
+  A2A_CONTEXT_INDEX_KEY_PREFIX,
   A2A_TASK_RECORD_KEY_PREFIX,
   type A2ATaskRecord,
   A2ATaskRecordVersionError,
@@ -13,6 +14,7 @@ const RECORD: A2ATaskRecord = {
   recordVersion: 1,
   taskId: 'task-1',
   contextId: 'context-1',
+  incarnation: 'incarnation-1',
   history: [{ messageId: 'm-1', role: 'ROLE_USER', parts: [{ text: 'hi' }] }],
   replyRecorded: false,
 };
@@ -70,5 +72,41 @@ describe('the A2A task record', () => {
     expect(await records.update('task-1', () => undefined)).toEqual(RECORD);
     await records.remove('task-1');
     expect(await records.read('task-1')).toBeUndefined();
+  });
+});
+
+describe('clearing a deleted context’s A2A history', () => {
+  it('clears only the incarnation that was deleted, never one created under the same id', async () => {
+    const records = createA2ATaskRecords(textValueStore(new MemoryStorage()));
+    await records.create({ ...RECORD, taskId: 'old-task', incarnation: 'incarnation-1' });
+    await records.create({ ...RECORD, taskId: 'new-task', incarnation: 'incarnation-2' });
+
+    expect(await records.clearContext('context-1', 'incarnation-1')).toBe(1);
+
+    const old = await records.read('old-task');
+    const fresh = await records.read('new-task');
+    expect(old?.history).toEqual([]);
+    expect(fresh?.history).toEqual(RECORD.history);
+    // The index entry of the incarnation that was not deleted is kept, so its own deletion
+    // still finds the task.
+    expect(await records.clearContext('context-1', 'incarnation-2')).toBe(1);
+    const cleared = await records.read('new-task');
+    expect(cleared?.history).toEqual([]);
+  });
+});
+
+describe('sweeping the records of tasks that are gone', () => {
+  it('deletes each record whose task no longer exists, and its context index entry', async () => {
+    const kv = textValueStore(new MemoryStorage());
+    const records = createA2ATaskRecords(kv);
+    await records.create({ ...RECORD, taskId: 'kept' });
+    await records.create({ ...RECORD, taskId: 'gone' });
+
+    expect(await records.sweep(async (taskId) => taskId === 'kept')).toBe(1);
+
+    expect(await records.read('gone')).toBeUndefined();
+    expect(await records.read('kept')).toEqual({ ...RECORD, taskId: 'kept' });
+    expect(await kv.list(A2A_CONTEXT_INDEX_KEY_PREFIX)).toHaveLength(1);
+    expect(await records.clearContext('context-1', 'incarnation-1')).toBe(1);
   });
 });

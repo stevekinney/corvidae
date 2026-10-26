@@ -85,7 +85,10 @@ type Service = {
   start: (message: Message) => Promise<any>;
   crashNextComplete: () => void;
   restart: () => void;
+  /** A restart after the durable events were pruned: the run holds no history to read a reply from. */
+  restartPruned: () => void;
   claims: () => number;
+  records: ReturnType<typeof createA2ATaskRecords>;
   bureau: Awaited<ReturnType<typeof openBureau>>['bureau'];
 };
 
@@ -135,13 +138,18 @@ async function withService(
       pushNotifications: false,
     });
     /** A handler over the durable state only: the Bureau it reads holds no run of its own. */
-    const build = (restarted: boolean) =>
+    const build = (restarted: boolean, pruned = false) =>
       createBureauA2ARequestHandler({
         publicUrl: 'http://localhost',
         agentName: 'asker',
         card: () => ({ ...card, supportedInterfaces: [], signatures: [] }),
         bureau: restarted
-          ? Object.create(opened.bureau, { getRun: { value: () => undefined } })
+          ? Object.create(opened.bureau, {
+              getRun: { value: () => undefined },
+              ...(pruned
+                ? { eventHistory: { value: async () => ({ events: [], hasMore: false }) } }
+                : {}),
+            })
           : opened.bureau,
         records,
         ledger,
@@ -175,7 +183,11 @@ async function withService(
       restart: () => {
         handler = build(true);
       },
+      restartPruned: () => {
+        handler = build(true, true);
+      },
       claims: () => claims,
+      records,
       bureau: opened.bureau,
     });
   } finally {
@@ -209,6 +221,37 @@ describe('a command retried after a crash before its receipt, on a process that 
     );
   });
 
+  it('create with references: finds its task though a referenced task was removed since', async () => {
+    await withService(
+      async () => ({ content: 'done', toolCalls: [] }),
+      async (service) => {
+        const referenced = await service.start(userMessage('m-referenced', 'first'));
+        const message = Message.fromJSON({
+          messageId: 'm-create-reference',
+          taskId: '',
+          role: 'ROLE_USER',
+          parts: [{ text: 'second' }],
+          referenceTaskIds: [referenced.id],
+        });
+        service.crashNextComplete();
+        await rejectionOf(service.send(message));
+        await service.bureau.deleteRun(referenced.id);
+        service.restart();
+        // The run exists, so the retry is owed it: recovering the creation precedes any recheck of
+        // what the message referenced.
+        const retried = await service.send(message);
+
+        const listed = await service.bureau.tasks.enumerate({
+          agentName: 'asker',
+          limit: 50,
+          offset: 0,
+        });
+        expect(listed.tasks.map((task) => task.id)).toEqual([retried.id]);
+        expect(retried.id).not.toBe(referenced.id);
+      },
+    );
+  });
+
   it('create past its deadline: finds its one expired task', async () => {
     await withService(
       async () => ({ content: 'done', toolCalls: [] }),
@@ -230,6 +273,31 @@ describe('a command retried after a crash before its receipt, on a process that 
           offset: 0,
         });
         expect(listed.tasks.map((task) => task.id)).toEqual([retried.id]);
+      },
+    );
+  });
+
+  it('create past its deadline with references: finds its expired task though a referenced task was removed', async () => {
+    await withService(
+      async () => ({ content: 'done', toolCalls: [] }),
+      async (service) => {
+        const referenced = await service.start(userMessage('m-referenced', 'first'));
+        const message = Message.fromJSON({
+          messageId: 'm-late-reference',
+          taskId: '',
+          role: 'ROLE_USER',
+          parts: [{ text: 'too late' }],
+          referenceTaskIds: [referenced.id],
+          metadata: { [COMMAND_RECEIPTS_EXTENSION_URI]: PAST },
+        });
+        service.crashNextComplete();
+        await rejectionOf(service.send(message));
+        await service.bureau.deleteRun(referenced.id);
+        service.restart();
+        const retried = await service.send(message);
+
+        expect(retried.status.state).toBe(TaskState.TASK_STATE_FAILED);
+        expect(receiptOf(retried).receipt.state).toBe('expired');
       },
     );
   });
@@ -288,6 +356,33 @@ describe('a command retried after a crash before its receipt, on a process that 
       }, 'the input’s receipt never reported it applied');
       expect(state).toBe('applied');
     });
+  });
+});
+
+describe('a completed task’s reply, after a restart that pruned its history', () => {
+  it('is read back from the A2A record, not from events that are gone', async () => {
+    await withService(
+      async () => ({ content: 'the retained reply', toolCalls: [] }),
+      async (service) => {
+        const first = await service.start(userMessage('m-retained', 'ask'));
+        expect(JSON.stringify(first.history)).toContain('the retained reply');
+        await waitForCondition(async () => {
+          const view = await service.bureau.tasks.get(first.id);
+          return view?.status === 'completed';
+        }, 'the task never completed');
+        // The record holds the reply once the task settled, on the instance that ran it.
+        await waitForCondition(async () => {
+          const held = await service.records.read(first.id);
+          return held?.replyRecorded === true;
+        }, 'the reply was never recorded');
+        service.restartPruned();
+
+        const read = await service.send(userMessage('m-retained', 'ask'));
+
+        expect(read.id).toBe(first.id);
+        expect(JSON.stringify(read.history)).toContain('the retained reply');
+      },
+    );
   });
 });
 

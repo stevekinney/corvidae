@@ -832,8 +832,26 @@ function createA2AMount(
   const kv = bureau.kv ?? textValueStore(new MemoryStorage());
   const records = createA2ATaskRecords(kv);
   const push = createPushSupport(bureau, options, kv, records);
+  // A record whose removal failed holds message text for a task that is gone, so the removal is
+  // retried with the next one, and a sweep at start-up deletes the records of tasks the store no
+  // longer holds (a failure that no later removal retried, or a crash before the removal ran).
+  const unremoved = new Set<string>();
+  async function removeRecords(taskId: string): Promise<void> {
+    unremoved.add(taskId);
+    for (const id of Array.from(unremoved)) {
+      try {
+        await records.remove(id);
+        unremoved.delete(id);
+      } catch {
+        // Kept in `unremoved` for the next attempt.
+      }
+    }
+  }
+  void records
+    .sweep(async (taskId) => (await bureau.tasks.get(taskId)) !== undefined)
+    .catch(() => undefined);
   bureau.addEventListener('run.removed', (event) => {
-    void records.remove(event.runId).catch(() => undefined);
+    void removeRecords(event.runId);
     // Each configuration is deleted through the sender, which stops its deliveries, and only
     // then its checkpoint.
     void push?.projector.cleanup(event.runId).catch(() => undefined);
@@ -841,7 +859,9 @@ function createA2AMount(
   // Message text does not outlive its context: deleting one empties its tasks' A2A history, as
   // it empties their own. Another instance clears a record when it next reads it.
   bureau.addEventListener('session.deleted', (event) => {
-    void records.clearContext(event.sessionId).catch(() => undefined);
+    // Only the incarnation that was deleted: a context created again under the same id keeps its
+    // tasks' history.
+    void records.clearContext(event.sessionId, event.incarnation).catch(() => undefined);
   });
   const ledger: A2ASendLedger = createPrunedLedger<A2ASendClaim, A2ASendResult>(
     kv,

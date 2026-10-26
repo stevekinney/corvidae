@@ -6,130 +6,27 @@ import { waitForCondition } from '../test';
 import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   approvalToolbox,
-  type OpenedBureau,
   openBureau,
   parkingUntilAborted,
 } from './management/management-fixtures.test-support.ts';
+import {
+  answering,
+  BUREAU_ID,
+  call,
+  type Json,
+  message,
+  parksThenAnswers,
+  PUBLIC_URL,
+  send,
+  sendForTask,
+  taskOf,
+  withA2A,
+} from './a2a-mount.test-support.ts';
 import { A2UI_EXTENSION_URI } from '../a2ui/catalogs.ts';
 import { COMMAND_RECEIPTS_EXTENSION_URI } from './a2a-command-receipts.ts';
 import { inclusiveBoundary, LISTED_HISTORY_BYTES } from './a2a-request-handler.ts';
 import { CLEANUP_EXTENSION_URI } from './a2a-task-projection.ts';
-
-const PUBLIC_URL = 'http://localhost';
-const BUREAU_ID = 'management-bureau';
-
-// A JSON-RPC body read back from the wire: each test asserts the shape it needs.
-type Json = any;
-
-function answering(content: string): GenerateFunction {
-  return async () => ({ content, toolCalls: [] });
-}
-
-/** A model that parks the run on a human wait, then answers with what it was told. */
-function parksThenAnswers(signalName = 'human-response'): GenerateFunction {
-  let calls = 0;
-  return async () => {
-    calls += 1;
-    return calls === 1
-      ? {
-          content: '',
-          toolCalls: [
-            {
-              id: 'wait-1',
-              name: 'requestHumanInput',
-              arguments: { signalName, prompt: 'Which?' },
-            },
-          ],
-        }
-      : { content: 'resolved', toolCalls: [] };
-  };
-}
-
-async function withA2A<T>(
-  agents: Record<string, GenerateFunction>,
-  body: (opened: OpenedBureau) => Promise<T>,
-  options: {
-    humanInput?: boolean;
-    publish?: readonly string[];
-    handlerOptions?: NonNullable<Parameters<typeof openBureau>[0]>['handlerOptions'];
-  } = {},
-): Promise<T> {
-  const opened = await openBureau({
-    agents: Object.fromEntries(
-      Object.entries(agents).map(([name, generate]) => [
-        name,
-        createAgent({ name, description: `The ${name} agent`, generate }),
-      ]),
-    ),
-    publish: options.publish ?? Object.keys(agents),
-    ...(options.humanInput === true ? { humanInput: true } : {}),
-    handlerOptions: { publicUrl: PUBLIC_URL, ...options.handlerOptions },
-  });
-  try {
-    return await body(opened);
-  } finally {
-    await opened.dispose();
-  }
-}
-
-type CallOptions = {
-  readonly key?: string | undefined;
-  readonly headers?: Record<string, string>;
-  readonly version?: string | null;
-};
-
-async function call(
-  opened: OpenedBureau,
-  agent: string,
-  method: string,
-  params: Json,
-  options: CallOptions = {},
-): Promise<{ status: number; headers: Headers; body: Json }> {
-  const headers: Record<string, string> = {
-    'content-type': 'application/json',
-    ...options.headers,
-  };
-  if (options.version !== null) headers['A2A-Version'] = options.version ?? '1.0';
-  if (options.key !== undefined || !('key' in options))
-    headers['X-API-Key'] = options.key ?? 'alice-key';
-  const response = await opened.handler(
-    new Request(`http://localhost/a2a/${agent}`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-    }),
-  );
-  const text = await response.text();
-  return {
-    status: response.status,
-    headers: response.headers,
-    body: text === '' ? {} : JSON.parse(text),
-  };
-}
-
-let counter = 0;
-function message(text: string, extra: Json = {}): Json {
-  counter += 1;
-  return { messageId: `m-${counter}`, role: 'ROLE_USER', parts: [{ text }], ...extra };
-}
-
-async function send(opened: OpenedBureau, agent: string, params: Json, options: CallOptions = {}) {
-  return call(opened, agent, 'SendMessage', params, options);
-}
-
-async function sendForTask(
-  opened: OpenedBureau,
-  agent: string,
-  params: Json,
-  options: CallOptions = {},
-): Promise<Json> {
-  const sent = await send(opened, agent, params, options);
-  return taskOf(sent.body);
-}
-
-function taskOf(body: Json): Json {
-  return body.result?.task ?? body.result;
-}
+import { TaskListingTokenError } from '../task-list-snapshots.ts';
 
 describe('the A2A Agent Card', () => {
   it('serves each published agent’s card without credentials, projected from its definition', async () => {
@@ -880,6 +777,69 @@ describe('ListTasks input', () => {
       expect(bad.body.error.code).toBe(-32602);
       expect(unset.body.result.pageSize).toBe(50);
       expect(unset.body.result.tasks).toHaveLength(1);
+    });
+  });
+
+  it('accepts only an ISO 8601 date-time for statusTimestampAfter, as -32602 otherwise', async () => {
+    await withA2A({ asker: answering('done') }, async (opened) => {
+      await send(opened, 'asker', { message: message('one') });
+
+      // `Date.parse` reads each of these, so only a strict ISO 8601 check refuses them.
+      for (const timestamp of ['12/31/2026', '0', '2026-01-01', 'Jan 1 2026', '2026-01-01 00:00']) {
+        const refused = await call(opened, 'asker', 'ListTasks', {
+          statusTimestampAfter: timestamp,
+        });
+        expect([timestamp, refused.body.error?.code]).toEqual([timestamp, -32602]);
+      }
+      for (const timestamp of ['2026-01-01T00:00:00Z', '2026-01-01T02:00:00+02:00']) {
+        const accepted = await call(opened, 'asker', 'ListTasks', {
+          statusTimestampAfter: timestamp,
+        });
+        expect([timestamp, accepted.body.error]).toEqual([timestamp, undefined]);
+        expect(accepted.body.result.tasks).toHaveLength(1);
+      }
+    });
+  });
+});
+
+describe('ListTasks page tokens', () => {
+  it('are not exchanged with the native bureau.tasks.list, in either direction', async () => {
+    await withA2A({ asker: answering('done') }, async (opened) => {
+      await send(opened, 'asker', { message: message('one') });
+      await send(opened, 'asker', { message: message('two') });
+      const alice = 'api-key:alice';
+      const native = await opened.bureau.tasks.list({
+        principal: alice,
+        owner: alice,
+        agentName: 'asker',
+        limit: 1,
+      });
+      const a2a = await call(opened, 'asker', 'ListTasks', { pageSize: 1 });
+      expect(native.nextPageToken).not.toBeNull();
+      expect(a2a.body.result.nextPageToken).not.toBe('');
+
+      const nativeTokenToA2A = await call(opened, 'asker', 'ListTasks', {
+        pageSize: 1,
+        pageToken: native.nextPageToken,
+      });
+      const a2aTokenToNative = await opened.bureau.tasks
+        .list({
+          principal: alice,
+          owner: alice,
+          agentName: 'asker',
+          limit: 1,
+          pageToken: a2a.body.result.nextPageToken,
+        })
+        .catch((error: unknown) => error);
+
+      expect(nativeTokenToA2A.body.error.code).toBe(-32602);
+      expect(a2aTokenToNative).toBeInstanceOf(TaskListingTokenError);
+      // Its own token still pages A2A's listing.
+      const next = await call(opened, 'asker', 'ListTasks', {
+        pageSize: 1,
+        pageToken: a2a.body.result.nextPageToken,
+      });
+      expect(next.body.result.tasks).toHaveLength(1);
     });
   });
 });
