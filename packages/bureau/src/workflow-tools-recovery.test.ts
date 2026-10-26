@@ -15,6 +15,8 @@ import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-s
 import type { Bureau } from './types';
 import { WORKFLOW_TOOL_NAMES } from './workflow-tools';
 import type { AgentDefinitions } from './agent-catalog';
+import { agentFileDirectory } from './sources/agent-file-directory';
+import { workflowFileDirectory } from './sources/workflow-file-directory';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -41,8 +43,8 @@ it('writes the file as the agent after a restart, for a session run that was in 
   async function open(generate: GenerateFunction): Promise<Bureau> {
     return createBureau<AgentDefinitions>({
       agents: {},
-      agentDirectory: agents,
-      workflowDirectory: workflows,
+      agentSource: agentFileDirectory(agents),
+      workflowSource: workflowFileDirectory(workflows),
       models: { generate: () => generate },
       storage,
       durableExecution: true,

@@ -28,7 +28,7 @@ export interface ModelsOptions {
    * How a catalog row becomes the `generate` an agent file runs with. The host supplies it
    * because the host holds the credentials; Bureau passes the row (provider and model) a file's
    * `model: <provider>/<model>` resolved to. It may throw to say the row cannot be set up, which
-   * leaves that file `invalid` with `unknown-model`. Required with `agentDirectory`.
+   * leaves that file `invalid` with `unknown-model`. Required with `agentSource`.
    */
   readonly generate?: (row: BackendDescriptor) => GenerateFunction;
 }

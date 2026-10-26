@@ -2,7 +2,7 @@
 
 Bureau loads agent definitions from Markdown files in a directory the host names (COR-1524). You create and edit agents by hand, or through `bureau.agents.create`, `update`, `publish`, `withdraw`, and `delete` (served over HTTP as `bureau.agents.definitions.*`, see [Operations](#operations)); either way the agent is a file. This follows how Claude Code, Codex, and OpenClaw keep agents: one file per agent, the body is the instructions, and the frontmatter describes everything else.
 
-Bureau does not know where the directory lives. The host passes a path (`BureauOptions.agentDirectory`), and the Interborough host passes `agents/` under its home.
+Bureau does not know where the directory lives. The host passes an agent source (`BureauOptions.agentSource`), usually `agentFileDirectory(path, { tools })` from `@lostgradient/bureau/sources`, and the Interborough host passes `agents/` under its home. See [Sources](#sources).
 
 ## A file
 
@@ -35,7 +35,7 @@ The frontmatter keys are:
 - `description`: what the agent does, optional.
 - `model`: required, written `<provider>/<model-or-alias>`, split on the first `/`. It must name a non-retired row in the deployment's model catalog (`bureau.models.catalog()`). A bare model name is not accepted, because it would be ambiguous across providers.
 - `models`: optional, the models a session of this agent may be switched to through `bureau.contexts.steer`, each written `<provider>/<model-or-alias>` like `model`. A file agent is selectable: `model` is its default, `models` narrows the choice, and without it the deployment's model catalog is allowed. `bureau.agents.models` reports the list filtered to the rows the catalog holds, so an entry the catalog lacks is left out rather than making the file invalid. The list is checked when the file is parsed, never against the catalog: every entry is `<provider>/<name>`, non-empty and unique, the list is not empty, and it includes the default `model`, compared as the literal string the file wrote (an alias of the default does not count). A violation is `invalid-frontmatter`, with `problem.issues[].path` set to `models.<index>` for an entry and to `models` for the list. Changing the list changes the file, so the `definitionRevision` rises. An `update` that omits `models` removes it, as it does `tools`, whether through `BureauAgentCatalog.update` or `bureau.agents.definitions.update`; a client that read the list sends it back to keep it. A run's snapshot keeps the list its run started with.
-- `tools`: a list of unique names from the deployment's tool catalog (`BureauOptions.agentTools`). Defaults to none.
+- `tools`: a list of unique names from the deployment's tool catalog (the `tools` option of the agent source). Defaults to none.
 - `skills`: descriptive Agent Card skills (`id`, `name`, `description`, `tags`, and optionally `examples`, `inputModes`, `outputModes`), never executable skills. Ids are unique within the agent.
 - `examples`: optional, a list of at most three non-blank strings, each at most 200 characters (Operative's `AGENT_EXAMPLE_LIMITS`, the bounds `createAgent` enforces), that show what a person might ask the agent, which a chat client offers as buttons on a new chat. `bureau.agents.list` carries them as `examples`. They never reach a run. Bureau reads them and does not write them: `bureau.agents.definitions.update` and `BureauAgentCatalog.update` keep the key in the file as it is, the way they keep any key they do not know, and a write that changes nothing else writes nothing. A value that is not such a list is `invalid-frontmatter`.
 - `published`: a strict boolean, default `false`. It records whether the agent may be offered over the network. A persisted agent is published by this key and nothing else: the `publish` allowlist of `createBureauHandler` governs code-defined agents only. See [Publication](#publication).
@@ -61,6 +61,7 @@ A file that cannot be used is still listed by `bureau.agents.list()`, with `stat
 
 ```ts
 import { createBureau } from '@lostgradient/bureau';
+import { agentFileDirectory } from '@lostgradient/bureau/sources';
 import type { GenerateFunction } from '@lostgradient/operative';
 import type { Tool } from 'armorer';
 
@@ -69,13 +70,36 @@ declare function generateFor(provider: string, model: string): GenerateFunction;
 
 const bureau = await createBureau({
   agents: {},
-  agentDirectory: '/home/me/.interborough/agents',
-  agentTools: { 'lookup-order': lookupOrderTool },
+  agentSource: agentFileDirectory('/home/me/.interborough/agents', {
+    tools: { 'lookup-order': lookupOrderTool },
+  }),
   models: { generate: (descriptor) => generateFor(descriptor.provider, descriptor.model) },
 });
 ```
 
-`models.generate` turns the catalog row a file's `model` resolved to into the `generate` it runs with. The host supplies it because the host holds the credentials. `agentDirectory` without it is refused with `BureauError` (`BAD_REQUEST`), so a model name is never silently ignored. If it throws, that file is `invalid` with `unknown-model`.
+`models.generate` turns the catalog row a file's `model` resolved to into the `generate` it runs with. The host supplies it because the host holds the credentials. `agentSource` without it is refused with `BureauError` (`BAD_REQUEST`), so a model name is never silently ignored. If it throws, that file is `invalid` with `unknown-model`.
+
+## Sources
+
+The directory is one implementation of a `DefinitionSource` (COR-1702). Bureau keeps parsing, frontmatter validation, model and tool validation, snapshots, revisions, publication, and the write-through operations; a source only holds bytes:
+
+```ts
+import type { DefinitionEntry, DefinitionSourceChange } from '@lostgradient/bureau';
+import { SourceConflictError } from '@lostgradient/bureau';
+
+declare const entry: DefinitionEntry;
+declare const change: DefinitionSourceChange;
+declare const conflict: SourceConflictError;
+
+// `entry.hash` is the SHA-256 hex of `entry.bytes`, computed by the source.
+export const identifier: string = entry.id;
+export const added: string[] = change.added;
+export const actual: string | null = conflict.actualHash;
+```
+
+`load()` returns every definition the source holds. `watch(listener)` reports changes made outside Bureau. `write(id, bytes, { expectedHash })` creates (`expectedHash: null`) or replaces a definition, and `delete(id, { expectedHash })` removes one; each compares the definition's current hash with `expectedHash` as late as the source can and rejects with a `SourceConflictError` carrying `id`, `expectedHash`, and `actualHash` (`null` for a definition that does not exist) when they differ, writing nothing. Bureau calls `load()` after its own `write` and `delete`, so write-through never waits on `watch`, and a `watch` report of the same change is a no-op because a rescan is idempotent. `bureau.agents.refresh()` calls `load()`. A source may attach a `problem` to an entry instead of bytes (a file over the size cap, a file that could not be read); the definition is then listed as `invalid`.
+
+`agentFileDirectory(path, { tools, watch?, watchFactory? })` is the directory source: `fs.watch` is the trigger, a once-a-second rescan backs it up, files over 256 KiB are not read, only `*.md` files count, and a write goes to a temporary dotfile renamed into place. `watch: false` means no `fs.watch` and no poll, and a change is picked up by the next `load()`. `watchFactory` replaces how a directory is watched, for a test. It lives in `@lostgradient/bureau/sources`, apart from the main entry, because it needs Node's file system. There is no `path(id)`: a host that shows where a file lives computes the path itself.
 
 A file agent runs exactly as a code-defined one does. `bureau.run('researcher', input)` accepts any string name (a second overload of `run`), and `bureau.createRun({ agentName: 'researcher', ... })` runs it as a session run; both resolve the same options, tools, and instructions. Both are refused with `NOT_FOUND` for a name that is not a ready agent.
 
