@@ -3,6 +3,7 @@ import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
+import { yieldEventLoopTurn } from '@lostgradient/testing/wait-until';
 
 setupHappyDom();
 
@@ -779,7 +780,7 @@ describe('MegaMenu', () => {
     const second = getTriggerByLabel(container, 'Resources');
     if (!menu) throw new Error('Missing menu element.');
     menu.style.direction = 'ltr';
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await yieldEventLoopTurn();
     first.focus();
     await fireEvent.keyDown(first, { key: 'ArrowRight' });
     expect(document.activeElement).toBe(second);

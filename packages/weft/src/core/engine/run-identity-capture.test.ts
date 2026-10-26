@@ -7,6 +7,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { quietFor } from '../../../scripts/lib/wait-until.ts';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
@@ -15,7 +16,6 @@ import { workflow, type WorkflowContext } from '../types.ts';
 import { currentExecutionAttempt, type RunIdentity } from './execution-attempts.ts';
 import { ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING, Engine } from './index.ts';
 import { getInternals } from './internals.ts';
-import { quietFor } from '../../../scripts/lib/wait-until.ts';
 
 const TYPE = 'identity-capture';
 const parked = workflow({ name: TYPE, concurrency: { max: 1 } }).execute(async function* (

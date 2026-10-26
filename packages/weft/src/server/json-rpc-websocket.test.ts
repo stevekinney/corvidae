@@ -16,6 +16,7 @@ import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { HANG_GUARD_MILLISECONDS } from '../../scripts/lib/hang-guard.ts';
+import { quietFor } from '../../scripts/lib/wait-until.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import { createFleetEventFeed } from './fleet-event-feed.ts';
 import { createInMemoryEventBackend } from './in-memory-event-feed-backend.test-support.ts';
@@ -33,7 +34,6 @@ import {
   encodeCursor,
   type WorkflowEventFeed,
 } from './workflow-event-feed.ts';
-import { quietFor } from '../../scripts/lib/wait-until.ts';
 
 const fakeEngine = {} as unknown;
 

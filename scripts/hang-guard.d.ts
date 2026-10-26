@@ -35,21 +35,29 @@ import type { SpawnOptions, Subprocess } from 'bun';
  */
 export declare const HANG_GUARD_MILLISECONDS = 120000;
 export interface AwakeTimeOptions {
-    /** Whether fake timers are installed, so real time cannot be measured. Defaults to never. */
-    fakeTimersActive?: () => boolean;
-    /** The clock ticks read. Injected by tests; defaults to `performance.now`. */
-    now?: () => number;
-    /** The longest wait between ticks, and so the most one tick can credit. Defaults to a second. */
-    tickMilliseconds?: number;
+  /** Whether fake timers are installed, so real time cannot be measured. Defaults to never. */
+  fakeTimersActive?: () => boolean;
+  /** The clock ticks read. Injected by tests; defaults to `performance.now`. */
+  now?: () => number;
+  /** The longest wait between ticks, and so the most one tick can credit. Defaults to a second. */
+  tickMilliseconds?: number;
 }
 /**
  * Call `onElapsed` once `milliseconds` of awake time have passed, measured by the ticks described
  * above. Returns a function that cancels the deadline; cancelling after it fired does nothing.
  */
-export declare function afterAwakeTime(milliseconds: number, onElapsed: () => void, options?: AwakeTimeOptions): () => void;
-export type HangGuardedSpawnOptions<In extends SpawnOptions.Writable, Out extends SpawnOptions.Readable, Err extends SpawnOptions.Readable> = Omit<SpawnOptions.SpawnOptions<In, Out, Err>, 'timeout'> & {
-    /** Awake time after which the child is killed with `killSignal`. */
-    hangGuardMilliseconds?: number;
+export declare function afterAwakeTime(
+  milliseconds: number,
+  onElapsed: () => void,
+  options?: AwakeTimeOptions,
+): () => void;
+export type HangGuardedSpawnOptions<
+  In extends SpawnOptions.Writable,
+  Out extends SpawnOptions.Readable,
+  Err extends SpawnOptions.Readable,
+> = Omit<SpawnOptions.SpawnOptions<In, Out, Err>, 'timeout'> & {
+  /** Awake time after which the child is killed with `killSignal`. */
+  hangGuardMilliseconds?: number;
 };
 /**
  * `Bun.spawn` with an awake-time hang guard in place of its `timeout` option. A child still
@@ -57,15 +65,19 @@ export type HangGuardedSpawnOptions<In extends SpawnOptions.Writable, Out extend
  * `exitCode` and `signalCode` read as they would after `timeout`. Test files start every process
  * through this or `runWithHangGuard`; `scripts/check-test-process-spawns.ts` enforces it.
  */
-export declare function spawnWithHangGuard<const In extends SpawnOptions.Writable = 'ignore', const Out extends SpawnOptions.Readable = 'pipe', const Err extends SpawnOptions.Readable = 'inherit'>(command: string[], options?: HangGuardedSpawnOptions<In, Out, Err>): Subprocess<In, Out, Err>;
+export declare function spawnWithHangGuard<
+  const In extends SpawnOptions.Writable = 'ignore',
+  const Out extends SpawnOptions.Readable = 'pipe',
+  const Err extends SpawnOptions.Readable = 'inherit',
+>(command: string[], options?: HangGuardedSpawnOptions<In, Out, Err>): Subprocess<In, Out, Err>;
 /** What `runWithHangGuard` resolves to: the fields of Bun's `SyncSubprocess` that tests read. */
 export interface CompletedProcess {
-    exitCode: number | null;
-    signalCode: NodeJS.Signals | null;
-    success: boolean;
-    stdout: Buffer;
-    stderr: Buffer;
-    pid: number;
+  exitCode: number | null;
+  signalCode: NodeJS.Signals | null;
+  success: boolean;
+  stdout: Buffer;
+  stderr: Buffer;
+  pid: number;
 }
 /**
  * The asynchronous replacement for `Bun.spawnSync`: run `command` under the awake-time hang
@@ -73,4 +85,7 @@ export interface CompletedProcess {
  * the thread, so no awake-time guard can tick while it runs; that is why test files may not use
  * one.
  */
-export declare function runWithHangGuard<const In extends SpawnOptions.Writable = 'ignore'>(command: string[], options?: Omit<HangGuardedSpawnOptions<In, 'pipe', 'pipe'>, 'stdout' | 'stderr'>): Promise<CompletedProcess>;
+export declare function runWithHangGuard<const In extends SpawnOptions.Writable = 'ignore'>(
+  command: string[],
+  options?: Omit<HangGuardedSpawnOptions<In, 'pipe', 'pipe'>, 'stdout' | 'stderr'>,
+): Promise<CompletedProcess>;

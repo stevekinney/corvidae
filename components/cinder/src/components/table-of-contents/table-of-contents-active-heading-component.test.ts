@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import {
   cleanup,
   createEntry,
@@ -145,7 +146,7 @@ describe('TableOfContents', () => {
 
     try {
       window.dispatchEvent(new Event('scroll'));
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await quietFor(20);
     } finally {
       document.getElementById = originalGetElementById;
     }

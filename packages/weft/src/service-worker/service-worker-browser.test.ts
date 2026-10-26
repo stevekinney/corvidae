@@ -22,8 +22,8 @@ import { fileURLToPath } from 'node:url';
 
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 
-import { browserSmokeEnabled } from '../testing/browser-smoke-gate.test-support.ts';
 import { awakeTurns } from '../../scripts/lib/wait-until.ts';
+import { browserSmokeEnabled } from '../testing/browser-smoke-gate.test-support.ts';
 
 const repositoryRoot = new URL('../..', import.meta.url);
 const engineModulePath = fileURLToPath(new URL('src/core/engine.ts', repositoryRoot));

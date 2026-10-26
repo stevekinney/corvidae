@@ -2,10 +2,10 @@ import { describe, expect, test } from 'bun:test';
 
 import type { AgentCard } from '@a2a-js/sdk';
 
+import { yieldToPortableEventLoop } from '../testing/event-loop.ts';
 import { A2APeerError, ExtensionSupportRequiredError } from './peer-client-types.ts';
 import { createScriptedPeer, type ScriptedPeerOptions } from './peer-client.test-support.ts';
 import { createA2APeerClient } from './peer-client.ts';
-import { yieldToPortableEventLoop } from '../testing/event-loop.ts';
 
 /** Yields to timers, so a loop of in-memory requests cannot starve a task timeout. */
 const immediate = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));

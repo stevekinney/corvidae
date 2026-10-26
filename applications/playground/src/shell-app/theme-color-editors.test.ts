@@ -5,7 +5,7 @@ import { flushSync, mount, tick, unmount } from 'svelte';
 import { setupHappyDom } from '@lostgradient/testing';
 
 import { buildThemeSources, evaluateThemeProperties } from '@lostgradient/cinder/tokens/runtime';
-import { waitUntil } from '@lostgradient/testing/wait-until';
+import { waitUntil, yieldEventLoopTurn } from '@lostgradient/testing/wait-until';
 import { cinderThemeBase } from './theme-builder-base.ts';
 import {
   catalogueRowByPath,
@@ -349,7 +349,7 @@ describe('dependent roles', () => {
         onFollow: (path: string) => followed.push(path),
       },
     });
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await yieldEventLoopTurn();
     flushSync();
     await press('Dependent roles');
     await until(() => target.querySelector('[data-testid="color-dependents"] button') !== null);

@@ -5,11 +5,11 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { quietFor } from '../../../scripts/lib/wait-until.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { Engine } from '../engine.ts';
 import type { WorkflowContext } from '../types.ts';
 import { MINUTE, registerWorkflow, requireNextFireAt, START } from './schedule.test-support.ts';
-import { quietFor } from '../../../scripts/lib/wait-until.ts';
 
 const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 

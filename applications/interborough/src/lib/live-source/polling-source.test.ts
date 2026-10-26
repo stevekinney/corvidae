@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { Window } from 'happy-dom';
 
+import { quietFor, yieldEventLoopTurn } from '@lostgradient/testing/wait-until';
 import { PollingSource } from './polling-source.svelte.ts';
 
 /**
@@ -148,11 +149,11 @@ describe('PollingSource', () => {
 
     setDocumentHidden(true);
     // A tick already in flight when `hidden` flips is allowed to land — only
-    // the NEXT scheduling decision checks visibility — so settle briefly
-    // before taking the "paused" baseline, then prove no further growth.
-    await new Promise((resolve) => setTimeout(resolve, 15));
+    // the NEXT scheduling decision checks visibility — and it lands within a turn, so settle one
+    // turn before taking the "paused" baseline, then prove no further growth.
+    await yieldEventLoopTurn();
     const countWhileHidden = calls;
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    await quietFor(30);
     expect(calls).toBe(countWhileHidden);
 
     setDocumentHidden(false);
@@ -177,7 +178,7 @@ describe('PollingSource', () => {
     source.close();
     expect(source.status).toBe('closed');
     const countAtClose = calls;
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    await quietFor(30);
     expect(calls).toBe(countAtClose);
   });
 

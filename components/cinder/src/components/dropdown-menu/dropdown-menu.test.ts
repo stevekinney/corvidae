@@ -67,6 +67,7 @@ describe('DropdownMenu', () => {
     await fireEvent.keyDown(requiredInstance(document.activeElement, HTMLElement), { key: 'i' });
     expect(document.activeElement?.textContent).toContain('Invite people');
 
+    // load-proof: the typeahead buffer's reset timer was armed by the key above with a shorter delay, and timers run in deadline order
     await Bun.sleep(550);
     await fireEvent.keyDown(requiredInstance(document.activeElement, HTMLElement), { key: 'a' });
     expect(document.activeElement?.textContent).toContain('Archive');

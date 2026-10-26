@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { awakeTurns } from '@lostgradient/testing/wait-until';
+import { awakeTurns, quietFor } from '@lostgradient/testing/wait-until';
 import { startHost, type Host } from './host.ts';
 import {
   ECHO_NOTHING_TO_REPEAT,
@@ -273,7 +273,7 @@ describe('the seeded schedule and goal', () => {
       await Bun.sleep(25);
     }
     expect(await statusOf()).toBe('evaluating');
-    await Bun.sleep(400);
+    await quietFor(400);
     expect(await statusOf()).toBe('evaluating');
 
     const cancelled = await host.bureau.goals.cancel('goal-that-never-passes');

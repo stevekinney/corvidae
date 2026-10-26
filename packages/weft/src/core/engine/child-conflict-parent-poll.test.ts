@@ -8,6 +8,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { quietFor } from '../../../scripts/lib/wait-until.ts';
 import { KEYS, type Storage } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import {
@@ -40,7 +41,6 @@ import { createWorkflowResultWaiter } from './handle-result.ts';
 import { Engine } from './index.ts';
 import { getInternals } from './internals.ts';
 import { encodeEpoch, encodeWorkflowClaimHolder } from './workflow-claim-codec.ts';
-import { quietFor } from '../../../scripts/lib/wait-until.ts';
 
 interceptConflictWarnings();
 

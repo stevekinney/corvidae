@@ -1,6 +1,7 @@
 import { waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { RECONNECT_BASE_DELAY_MS } from './backoff.ts';
 import { installFetchImplementation } from './fetch.test-support.ts';
 import { FleetEventSource, type FleetEventFrame } from './fleet-event-source.svelte.ts';
@@ -182,7 +183,7 @@ describe('additional coverage', () => {
     source.subscribe(() => {});
     expect(scripted.calls).toHaveLength(1);
 
-    await new Promise((resolve) => setTimeout(resolve, RECONNECT_BASE_DELAY_MS - 200));
+    await quietFor(RECONNECT_BASE_DELAY_MS - 200);
     expect(scripted.calls).toHaveLength(1); // still waiting out the real backoff
     source.close();
   });

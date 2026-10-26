@@ -16,8 +16,8 @@ import { join } from 'node:path';
 
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 
-import { startBrowserBuild, stopBrowserBuilds } from './browser-build.ts';
 import { waitUntil } from '@lostgradient/testing/wait-until';
+import { startBrowserBuild, stopBrowserBuilds } from './browser-build.ts';
 
 const scratch = mkdtempSync(join(tmpdir(), 'interborough-dev-watch-'));
 

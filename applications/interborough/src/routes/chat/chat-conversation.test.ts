@@ -7,6 +7,7 @@ import { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, jest, spyOn, test } from 'bun:test';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import { settle, until } from '../../lib/fake-timers.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
@@ -1140,7 +1141,7 @@ describe('attachments', () => {
     await findByText('Plan the week');
     // The agents are known by now, which is what would turn the picker on.
     await waitFor(() => expect(container.querySelector('textarea')).not.toBeNull());
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await quietFor(100);
 
     expect(picker(container)).toBeNull();
   });

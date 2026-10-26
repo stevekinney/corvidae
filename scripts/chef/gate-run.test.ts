@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { quietFor } from '../wait-until.ts';
 import {
   fakeSignals,
   fakeTree,
@@ -18,7 +19,6 @@ import {
   runGate,
 } from './gate-run.ts';
 import type { Runner } from './process-runner.ts';
-import { quietFor } from '../wait-until.ts';
 
 describe('readGateLog', () => {
   test('a log with no exit code reports none, never a pass', () => {

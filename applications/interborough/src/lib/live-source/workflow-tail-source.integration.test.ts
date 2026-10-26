@@ -32,6 +32,7 @@ import { HttpClient } from '@lostgradient/weft';
 import { waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
+import { quietFor, yieldEventLoopTurn } from '@lostgradient/testing/wait-until';
 import {
   startLiveSourceTestServer,
   type LiveSourceTestServer,
@@ -157,14 +158,16 @@ describe('WorkflowTailSource (integration, real server)', () => {
       await waitFor(() => {
         expect(received.length).toBeGreaterThan(0);
       });
-      await new Promise((resolve) => setTimeout(resolve, 20));
 
       source.close();
       expect(source.status).toBe('closed');
+      // A delivery already queued when close() ran lands within a turn; what arrives after that
+      // would be close() failing to stop the stream.
+      await yieldEventLoopTurn();
       const countAtClose = received.length;
 
       await server.engine.signal(workflowId, 'advance');
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await quietFor(100);
       expect(received.length).toBe(countAtClose);
     } finally {
       await server.stop();

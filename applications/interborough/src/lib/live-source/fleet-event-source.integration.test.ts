@@ -22,6 +22,7 @@
 import { waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import {
   FleetEventSource,
   type FleetEventFrame,
@@ -43,7 +44,10 @@ describe('FleetEventSource (integration, real server)', () => {
     try {
       const workflowId = 'fes-integration-catchup-live';
       await server.engine.start('signal-stepped', { steps: 2 }, { id: workflowId });
-      await new Promise((resolve) => setTimeout(resolve, 30)); // let workflow:started commit before subscribing
+      // The start is committed once the engine reports the run.
+      await waitUntil(async () => (await server.engine.get(workflowId)) !== null, {
+        message: 'workflow:started to commit',
+      });
 
       const source = new FleetEventSource(authorizedFleetConfig(server));
       const received: FleetEventFrame[] = [];
@@ -173,7 +177,7 @@ describe('FleetEventSource (integration, real server)', () => {
       const countAtClose = received.length;
 
       await server.engine.start('signal-stepped', { steps: 1 }, { id: workflowId });
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await quietFor(100);
       expect(received.length).toBe(countAtClose);
     } finally {
       await server.stop();

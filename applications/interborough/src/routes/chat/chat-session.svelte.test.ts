@@ -4,7 +4,7 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { waitUntil } from '@lostgradient/testing/wait-until';
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import type { Fetcher } from '../../lib/bureau-client.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { ChatSessionState } from './chat-session.svelte.ts';
@@ -793,7 +793,7 @@ describe('a stop before the run’s first event', () => {
     await until(() => mounted.signals.length === 1);
 
     const stopped = session.controller.stop();
-    await Bun.sleep(10);
+    await quietFor(10);
 
     // The request was not aborted, and the page still holds the turn: nothing can be sent yet.
     expect(mounted.signals[0]?.aborted).toBe(false);

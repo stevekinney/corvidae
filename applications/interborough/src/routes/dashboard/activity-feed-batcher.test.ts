@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { waitFor } from '@testing-library/svelte';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { ActivityFeedBatcher, type ActivityFeedRow } from './activity-feed-batcher.svelte.ts';
 
 function row(overrides: Partial<ActivityFeedRow> = {}): ActivityFeedRow {
@@ -111,7 +112,7 @@ describe('ActivityFeedBatcher', () => {
     batcher.ingest(row({ id: 'a' }));
     batcher.dispose();
 
-    await new Promise((resolve) => setTimeout(resolve, FAST_WINDOW_MS * 3));
+    await quietFor(FAST_WINDOW_MS * 3);
     expect(batcher.items).toEqual([]);
   });
 });

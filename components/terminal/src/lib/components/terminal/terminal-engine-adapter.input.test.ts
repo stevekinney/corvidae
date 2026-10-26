@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import {
   dispatchComposition,
   emitBinaryReport,
@@ -86,7 +87,7 @@ describe('onInput', () => {
     textarea.value = 'あ';
     dispatchComposition(textarea, 'compositionend', 'あ');
     await waitFor(() => reports.length > 0, 'the composition commit');
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await quietFor(20);
     expect(reports).toEqual([{ kind: 'text', data: 'あ' }]);
   });
 });

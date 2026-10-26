@@ -8,6 +8,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { quietFor, waitUntil } from '../../../scripts/lib/wait-until.ts';
 import type { Engine } from '../engine.ts';
 import type { WorkflowContext } from '../types.ts';
 import {
@@ -17,7 +18,6 @@ import {
   requireNextFireAt,
   START,
 } from './schedule.test-support.ts';
-import { waitUntil, quietFor } from '../../../scripts/lib/wait-until.ts';
 
 type Control = 'pause' | 'cancel' | 'update';
 

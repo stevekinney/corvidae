@@ -36,6 +36,7 @@ import { afterAll, describe, expect, it } from 'bun:test';
 import { spawnWithHangGuard } from '../../../scripts/lib/hang-guard.ts';
 import { outcomeOf, rethrow } from '../../testing/module-scope-scenario.test-support.ts';
 
+import { awakeTurns } from '../../../scripts/lib/wait-until.ts';
 import {
   availableAdapterSpecs,
   availableBunNodeAdapterSpecs,
@@ -45,7 +46,6 @@ import {
   type BunOrNodeAdapterSpec,
   type OpenedAdapter,
 } from './adapter-spec.test-support.ts';
-import { awakeTurns } from '../../../scripts/lib/wait-until.ts';
 
 /**
  * A `Promise.race` branch that resolves to `value` after `milliseconds` of

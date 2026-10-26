@@ -34,9 +34,9 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'bun:test';
 
 import { spawnWithHangGuard } from '../../scripts/lib/hang-guard.ts';
+import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
 import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
-import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 
 const REVISION_MODULE_NAME = 'revision.ts';
 

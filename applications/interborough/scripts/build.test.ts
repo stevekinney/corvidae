@@ -20,6 +20,7 @@ import { dirname, join, resolve } from 'node:path';
 
 import { rejectionOf } from '@lostgradient/testing';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import {
   assertCleanBuild,
   assertSafeOutputDirectory,
@@ -41,7 +42,6 @@ import {
   runBuildMain,
   wasmPlugin,
 } from './build.ts';
-import { waitUntil } from '@lostgradient/testing/wait-until';
 
 const scratch = mkdtempSync(join(tmpdir(), 'interborough-build-'));
 

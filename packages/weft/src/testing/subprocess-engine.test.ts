@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { HANG_GUARD_MILLISECONDS } from '../../scripts/lib/hang-guard.ts';
+import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 import { HttpClient } from '../client/http-client.ts';
 import type { WorkflowState } from '../core/types.ts';
 import { sleepForTesting } from './fake-timers.test-support.ts';
@@ -14,7 +15,6 @@ import {
   spawnServerSubprocess,
   type SubprocessServerHandle,
 } from './subprocess-engine.ts';
-import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 
 const repositoryRoot = new URL('../..', import.meta.url);
 const indexModuleUrl = new URL('src/index.ts', repositoryRoot).href;

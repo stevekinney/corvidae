@@ -21,4 +21,4 @@
 /** Bun's per-test timeout for every blocking lane. */
 export declare const TEST_TIMEOUT_MILLISECONDS: number;
 /** The `bun test` flag that carries {@link TEST_TIMEOUT_MILLISECONDS}. */
-export declare const TEST_TIMEOUT_ARGUMENT = "--timeout=240000";
+export declare const TEST_TIMEOUT_ARGUMENT = '--timeout=240000';

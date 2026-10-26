@@ -3,8 +3,8 @@ import { $, Glob } from 'bun';
 // Bun parses `bunfig.toml` natively when imported, so `coveragePathIgnorePatterns`
 // stays a single source of truth (no hand-rolled TOML parse that could drift). The
 // path resolves relative to THIS file, so it holds regardless of the invocation cwd.
-import { HANG_GUARD_MILLISECONDS } from './lib/hang-guard.ts';
 import bunfig from '../bunfig.toml';
+import { HANG_GUARD_MILLISECONDS } from './lib/hang-guard.ts';
 // The package manifest supplies the `test` script's own exclusions, for the same reason
 // `bunfig.toml` supplies the instrumentation ignores: one list, read where it is written.
 import packageJson from '../package.json' with { type: 'json' };

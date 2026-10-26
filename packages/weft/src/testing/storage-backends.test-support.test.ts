@@ -26,9 +26,7 @@ describe('waitForWorkflowStatus', () => {
       }),
     };
 
-    expect(
-      await waitForWorkflowStatus(engine as never, 'workflow-1', 'completed'),
-    ).toBeUndefined();
+    expect(await waitForWorkflowStatus(engine as never, 'workflow-1', 'completed')).toBeUndefined();
   });
 
   it('throws when the workflow never reaches the requested status before timeout', async () => {
@@ -37,9 +35,7 @@ describe('waitForWorkflowStatus', () => {
     };
 
     expect(
-      await throwingRejectionOf(
-        waitForWorkflowStatus(engine as never, 'workflow-1', 'completed'),
-      ),
+      await throwingRejectionOf(waitForWorkflowStatus(engine as never, 'workflow-1', 'completed')),
     ).toThrow('Expected workflow "workflow-1" to reach status "completed"');
   });
 });

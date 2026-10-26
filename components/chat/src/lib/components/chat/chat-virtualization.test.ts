@@ -2,6 +2,7 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
+import { quietFor } from '@lostgradient/testing/wait-until';
 import type { ChatAdapterErrorEvent } from './adapter/chat-adapter.ts';
 import type { ConversationHistory, Message, MessageRole } from './conversation-model.ts';
 
@@ -337,7 +338,7 @@ describe('Chat virtualization', () => {
     // Rerendering the same pinned transcript re-runs the measurement-driven
     // auto-stick dependency, but the viewport is already at its maximum.
     await rerender(virtualizedProps(conversation));
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await quietFor(50);
 
     expect(writes).toBe(0);
   });
@@ -389,7 +390,7 @@ describe('Chat virtualization', () => {
 
     await waitFor(() => expect(container.textContent).toContain('Message 19'));
     await waitFor(() => expect(timeline.scrollTop).toBeGreaterThanOrEqual(300));
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await quietFor(50);
 
     // Parked at the top with NO scroll event dispatched, so the rAF-deferred
     // `atBottom` flag is still stale-true.
@@ -397,7 +398,7 @@ describe('Chat virtualization', () => {
 
     conversation = prependMessages(conversation, 10, 'older-top');
     await rerender(virtualizedProps(conversation));
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await quietFor(50);
 
     expect(timeline.scrollTop).toBe(0);
   });
@@ -412,13 +413,13 @@ describe('Chat virtualization', () => {
 
     await waitFor(() => expect(container.textContent).toContain('Message 19'));
     await waitFor(() => expect(timeline.scrollTop).toBeGreaterThanOrEqual(300));
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await quietFor(50);
 
     timeline.scrollTop = 0;
 
     conversation = prependMessages(conversation, 10, 'older-latch');
     await rerender(virtualizedProps(conversation));
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await quietFor(20);
     expect(timeline.scrollTop).toBe(0);
 
     // A rerun carrying NO transcript growth — the exact shape a virtual-row
@@ -427,7 +428,7 @@ describe('Chat virtualization', () => {
     // prepend classification on this run, so without the latch the effect
     // falls straight through and snaps the stale-true viewport to the bottom.
     await rerender(virtualizedProps({ ...conversation }));
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await quietFor(50);
 
     expect(timeline.scrollTop).toBe(0);
   });
@@ -484,7 +485,7 @@ describe('Chat virtualization', () => {
     // Give any (buggy) scheduled correction a chance to run, then confirm the
     // viewport is still at the top rather than snapped back toward the
     // bottom.
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await quietFor(50);
     expect(timeline.scrollTop).toBe(0);
   });
 
@@ -547,7 +548,7 @@ describe('Chat virtualization', () => {
 
     // Give the (buggy) deferred bottom correction a chance to run: it would
     // set scrollTop to the NEW bottom, cancelling the in-flight navigation.
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await quietFor(50);
     expect(timeline.scrollTop).toBe(pinnedBottomScrollTop);
   });
 });

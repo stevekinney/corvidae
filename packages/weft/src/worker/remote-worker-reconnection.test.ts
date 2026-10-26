@@ -17,6 +17,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { HANG_GUARD_MILLISECONDS } from '../../scripts/lib/hang-guard.ts';
+import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 import { Engine } from '../core/engine.ts';
 import {
   decodeRemoteTaskRecord,
@@ -48,7 +49,6 @@ import type { WorkerManifest, WorkerWorkflowContract } from './manifest/index.ts
 import { WORKER_MANIFEST_VERSION } from './manifest/index.ts';
 import type { ServerToWorkerMessage, TaskMessage } from './protocol.ts';
 import { REMOTE_WORKER_PROTOCOL_VERSION } from './protocol.ts';
-import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 
 /**
  * Build a minimal manifest advertising exactly the given activity names. Each
@@ -265,10 +265,7 @@ async function readResolvedRecord(engine: Engine, operationId: string): Promise<
  * disconnect. Post-cutover (WFT-22) there is no separate "inflight record"
  * to clear — the single ledger record's `state` field is the whole story.
  */
-async function waitForInflightCleared(
-  engine: Engine,
-  operationId: string,
-): Promise<void> {
+async function waitForInflightCleared(engine: Engine, operationId: string): Promise<void> {
   let record: ReturnType<typeof decodeRemoteTaskRecord> = null;
   for await (const _turn of awakeTurns()) {
     record = decodeRemoteTaskRecord(await engine.storage.get(taskLedgerKey(operationId)));

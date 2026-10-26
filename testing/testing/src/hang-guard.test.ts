@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { afterAwakeTime, runWithHangGuard, spawnWithHangGuard } from './hang-guard.ts';
 import { outcomeOf, rethrow } from './helpers/module-scope-outcome.ts';
-import { quietFor } from '@lostgradient/testing/wait-until';
 
 /**
  * Resolves with the real milliseconds until `afterAwakeTime` fired. Given `within`, resolves

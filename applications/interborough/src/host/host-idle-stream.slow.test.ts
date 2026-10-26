@@ -10,6 +10,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { startHost, type Host } from './host.ts';
 
 /** Longer than Bun's default idle timeout, shorter than the feed's first ping. */
@@ -53,7 +54,7 @@ test('the engine event feed stays open through a quiet stretch', async () => {
     }
   })();
 
-  await Bun.sleep(QUIET_FOR_MILLISECONDS);
+  await quietFor(QUIET_FOR_MILLISECONDS);
   expect(endedByTheHost).toBe(false);
   controller.abort();
   await drain;

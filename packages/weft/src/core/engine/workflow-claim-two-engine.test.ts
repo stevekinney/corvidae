@@ -24,6 +24,7 @@
 import { ExtData, decode as msgpackDecode, encode as msgpackEncode } from '@msgpack/msgpack';
 import { describe, expect, it } from 'bun:test';
 
+import { quietFor } from '../../../scripts/lib/wait-until.ts';
 import { GENERATION_KEYS } from '../../storage/generation-keys.ts';
 import {
   KEYS,
@@ -51,7 +52,6 @@ import { EngineDeposedError } from './lease-errors.ts';
 import { loadWorkflowState } from './storage-io.ts';
 import { decodeWorkflowClaimHolder, encodeWorkflowClaimHolder } from './workflow-claim-codec.ts';
 import { WorkflowClaimRegistry } from './workflow-claim-registry.ts';
-import { quietFor } from '../../../scripts/lib/wait-until.ts';
 
 /** Per-workflow-id activity execution counts. Ids are unique per test, so one shared map is safe. */
 const activityRunCounts = new Map<string, number>();

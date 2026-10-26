@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { waitUntil } from '../../../scripts/lib/wait-until.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { rejectionOf, throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { buildWorkflowContract } from '../contract/build.ts';
@@ -10,7 +11,6 @@ import type { RegisteredWorkflowDefinition } from '../types/workflow-registry.ts
 import { WorkflowCatalog } from './workflow-catalog.ts';
 import type { WorkflowRefreshArtifact } from './workflow-refresh-types.ts';
 import { WorkflowRefreshCoordinator } from './workflow-refresh.ts';
-import { waitUntil } from '../../../scripts/lib/wait-until.ts';
 
 const definition: RegisteredWorkflowDefinition = { type: 'checkout', version: '1.0.0', tags: [] };
 

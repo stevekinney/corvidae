@@ -5,6 +5,7 @@ import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 import { assertDefined } from '../assert-defined';
 
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { OutputSchemaConversionError } from '../../src/errors';
 import type { OperativeHookMap } from '../../src/hooks';
 import { createScheduler } from '../../src/scheduler/create-scheduler';
@@ -13,7 +14,6 @@ import type { SchedulerPriority, SchedulerTask } from '../../src/scheduler/types
 import { createMockGenerate } from '../../src/test/index';
 import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 import type { GenerateFunction, GenerateResponse } from '../../src/types';
-import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 
 function textResponse(content: string): GenerateResponse {
   return { content, toolCalls: [] };

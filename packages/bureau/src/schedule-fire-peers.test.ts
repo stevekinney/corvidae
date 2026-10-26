@@ -81,13 +81,10 @@ describe('a peer answers a fire’s human wait', () => {
       });
 
       expect(resolved).toMatchObject({ id: review.id, kind: 'human-wait', decision: 'approve' });
-      await pollUntil(
-        async () => {
-          await sleep(10);
-          return (await durableStatus(holder, fireId)) === 'completed' ? true : undefined;
-        },
-        'the fire to complete',
-      );
+      await pollUntil(async () => {
+        await sleep(10);
+        return (await durableStatus(holder, fireId)) === 'completed' ? true : undefined;
+      }, 'the fire to complete');
       expect(seen.join('')).toContain('staging');
     });
   }

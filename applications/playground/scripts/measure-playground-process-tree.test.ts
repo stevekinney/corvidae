@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import {
   descendantsOf,
   parseProcessTable,
   startTreeSampler,
   treeResidentBytes,
 } from './measure-playground-process-tree.ts';
-import { quietFor } from '@lostgradient/testing/wait-until';
 
 const table = `
     1     0   2048
