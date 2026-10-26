@@ -88,6 +88,12 @@ export type MediaCostOutcome =
         | 'no-route-admits-media'
         | 'no-backend-admits-media'
         | 'mime-type-mismatch';
+      /**
+       * The reason a content-source resolver gave when it could not project the part (for
+       * example `mcp-resource-not-found` or `asset-not-found`), on a `source-form-not-accepted`
+       * refusal that came from a resolver rather than from the backend.
+       */
+      readonly detail?: string | undefined;
     })
   | (MediaPartPosition & {
       readonly outcome: 'unbounded';

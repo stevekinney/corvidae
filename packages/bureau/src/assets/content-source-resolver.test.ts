@@ -276,6 +276,16 @@ describe('an mcp-resource part (COR-1634)', () => {
     expect(result).toEqual({ outcome: 'unavailable', reason: 'mcp-resource-not-found' });
   });
 
+  it('answers unavailable for contents that are not valid base64, rather than costing them', async () => {
+    const { assets } = await open();
+    for (const data of ['not base64!', 'abc', 'QUJD=']) {
+      const result = await createAssetContentSourceResolver(assets, 'alice', {
+        mcpResources: async () => ({ data, encoding: 'base64' }),
+      })(link, position);
+      expect(result).toEqual({ outcome: 'unavailable', reason: 'mcp-resource-invalid-contents' });
+    }
+  });
+
   it('answers unavailable, as before, when no reader is configured', async () => {
     const { assets } = await open();
     expect(await createAssetContentSourceResolver(assets, 'alice')(link, position)).toEqual({

@@ -2,6 +2,20 @@ import { isMediaContent, multiModalContentSchema } from 'conversationalist';
 
 import type { SessionInputPayload, UserAdmissibleContent } from './types';
 
+/**
+ * Why a media part's source cannot come from a caller, or `undefined` when it can. An
+ * `mcp-resource` source names a resource on a server a tool result linked it from; Bureau reads it
+ * through the host's MCP reader as the run's principal, so a caller must not choose the server and
+ * URI. Only a tool result introduces one (COR-1634).
+ */
+export function callerSourceProblem(part: {
+  readonly source?: { readonly kind: string };
+}): string | undefined {
+  return part.source?.kind === 'mcp-resource'
+    ? 'an mcp-resource source can come only from a tool result, not from caller input'
+    : undefined;
+}
+
 function parsePart(part: unknown, index: number): UserAdmissibleContent {
   // The content schema is the single definition of a valid part, so a stored
   // part is read back by the same rules that admitted it.
@@ -13,7 +27,13 @@ function parsePart(part: unknown, index: number): UserAdmissibleContent {
     );
   }
   const content = parsed.data;
-  if (isMediaContent(content)) return content;
+  if (isMediaContent(content)) {
+    const problem = callerSourceProblem(content);
+    if (problem !== undefined) {
+      throw new TypeError(`Session input payload part ${index} is not admissible: ${problem}.`);
+    }
+    return content;
+  }
   if (content.type === 'text' && content.citations === undefined) {
     return { type: 'text', text: content.text };
   }

@@ -8,6 +8,7 @@ import {
   createModelCatalog,
   type GenerateContext,
   type GenerateResponse,
+  MediaAdmissionError,
   stopWhen,
   type Toolbox,
   waitForRunState,
@@ -260,6 +261,25 @@ describe('a tool-returned MCP resource link (COR-1634)', () => {
       source: { kind: 'inline', data: base64Of(linkedPng) },
     });
     expect(JSON.stringify(result.conversation.current)).not.toContain(base64Of(linkedPng));
+  });
+
+  it('names the resolver’s reason on the refusal when the server no longer has the resource', async () => {
+    const fixture = createMemoryAssetStorageFixture({});
+    cleanups.push(() => fixture.dispose());
+    const bureau = await createBureau({
+      agents: { charter: linkAgent([]) },
+      assets: { storage: fixture.storage },
+      mcpResources: async () => undefined,
+    });
+    cleanups.push(async () => {
+      await bureau.dispose();
+    });
+    const result = await bureau.run('charter', 'Show the chart', { principal: alice.id }).result();
+    expect(result.finishReason).toBe('error');
+    expect(result.error).toBeInstanceOf(MediaAdmissionError);
+    expect((result.error as MediaAdmissionError).outcomes).toMatchObject([
+      { reason: 'source-form-not-accepted', detail: 'mcp-resource-not-found' },
+    ]);
   });
 
   it('fails the next generation, as before, when the host configured no reader', async () => {

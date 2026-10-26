@@ -22,9 +22,14 @@ export interface McpResourceContents {
  * Reads one resource from the MCP server a tool result linked it from (COR-1634). Bureau holds no
  * MCP connections of its own, so the host that connected the server supplies the read; the
  * resolver calls it for each `mcp-resource` part of a row, at the step that sends the row to a
- * provider, as the run's principal. The host owns whether that principal may read that server's
- * resource. `undefined` means the server no longer has it. A throw is not swallowed: it fails the
- * step, as any unexpected error from a resolver does.
+ * provider, as the run's principal, and again at every step that sends the row (there is no cache).
+ *
+ * Only a tool result introduces an `mcp-resource` part: a run input, a session input and a
+ * schedule input are refused when they carry one. The reader still receives nothing that proves a
+ * link came from the server it names, so it must authorize the principal, the server and the URI
+ * on every call, and refuse a server the principal may not use or a URI that server does not
+ * serve. `undefined` means the server no longer has the resource. A throw is not swallowed: it
+ * fails the step, as any unexpected error from a resolver does.
  */
 export type McpResourceReader = (
   resource: { readonly serverId: string; readonly uri: string },
@@ -135,6 +140,10 @@ async function resolveMcpResource(
     signal,
   );
   if (contents === undefined) return { outcome: 'unavailable', reason: 'mcp-resource-not-found' };
+  // The reader is the host's code; a malformed base64 payload is refused here rather than costed.
+  if (contents.encoding === 'base64' && !BASE64.test(contents.data)) {
+    return { outcome: 'unavailable', reason: 'mcp-resource-invalid-contents' };
+  }
   return {
     outcome: 'resolved',
     source: { kind: 'inline', data: contents.data, encoding: contents.encoding },
@@ -142,10 +151,17 @@ async function resolveMcpResource(
     byteLength:
       contents.encoding === 'utf8'
         ? new TextEncoder().encode(contents.data).byteLength
-        : Math.floor((contents.data.length * 3) / 4) -
-          (contents.data.endsWith('==') ? 2 : contents.data.endsWith('=') ? 1 : 0),
+        : base64ByteLength(contents.data),
     safety: 'unknown',
   };
+}
+
+/** Canonical padded base64, the form `byteLength` below is exact for. */
+const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+
+function base64ByteLength(data: string): number {
+  const padding = data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0;
+  return (data.length / 4) * 3 - padding;
 }
 
 async function readSafety(
