@@ -14,6 +14,7 @@ import type { AppendableMessageInput } from '../utilities/message';
 import { buildMessageFromInput, repositionMessage } from '../utilities/message';
 import { getOrderedMessages, toIdRecord } from '../utilities/message-store';
 import { toReadonly } from '../utilities/type-helpers';
+import { runMessagePlugins } from './plugin-media-guard';
 import {
   assertToolReference,
   buildToolUseIndex,
@@ -86,11 +87,10 @@ function applyPlugins(
   input: AppendableMessageInput,
   plugins: ConversationEnvironment['plugins'],
 ): AppendableMessageInput {
-  if (!('id' in input)) return plugins.reduce((acc, plugin) => plugin(acc), input);
+  if (!('id' in input)) return runMessagePlugins(input, plugins);
   if (!(PLUGINS_APPLY in input)) return input;
   const { id } = input;
-  const processed = plugins.reduce((acc, plugin) => plugin(acc), input as MessageInput);
-  return { ...processed, id };
+  return { ...runMessagePlugins(input as MessageInput, plugins), id };
 }
 
 /**

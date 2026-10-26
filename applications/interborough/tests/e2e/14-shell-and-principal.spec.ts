@@ -8,7 +8,7 @@
 import type { Page } from '@playwright/test';
 
 import { ROUTE_LOAD_FAILURE_COPY, VIEW_COPY } from '../../src/app/copy.ts';
-import { newThreadId, runToEnd } from './chat-support.ts';
+import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
 
@@ -54,6 +54,12 @@ test.describe('the notification bell, about the person and not the engine', () =
   const echoThread = newThreadId('bell-echo');
   const approvalThread = newThreadId('bell-approval');
   const questionThread = newThreadId('bell-question');
+
+  // The second host is the one the fresh-host specs read (`24-chat-sessions.spec.ts`,
+  // `37-visual-system.spec.ts`), and a reused server would show the next run these chats too.
+  test.afterAll(async () => {
+    await deleteChats([echoThread, approvalThread, questionThread], E2E_BUREAU_URL);
+  });
 
   /** The panel's rows, which are the bell's items. */
   const rows = (page: Page) => page.locator('.weft-notification-panel__item');
