@@ -62,7 +62,7 @@ function catalogOf(
  * A controllable source: `catalog`/`policyRevision`/`availabilitySnapshotRevision`
  * are mutable test-local state the returned closures read fresh on every
  * call, exactly as a real Bureau-backed source would read its own live
- * `ModelCatalogService.catalog()` and policy configuration.
+ * `Bureau.models.catalog()` and policy configuration.
  */
 function makeGate(initialCatalog: ModelCatalog): {
   gate: SelectionGate;

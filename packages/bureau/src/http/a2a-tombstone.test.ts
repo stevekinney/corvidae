@@ -57,7 +57,7 @@ async function serveWriter(): Promise<Served> {
     overrides: {
       id: 'tombstone-bureau',
       humanInput: true,
-      resolveAgentGenerate: () => parksOnRequest,
+      models: { generate: () => parksOnRequest },
       runtime: { ...runtime, clock: { ...runtime.clock, now: () => runtime.clock.now() + offset } },
     },
   });

@@ -67,7 +67,7 @@ import { createBureau } from '@lostgradient/bureau';
 import type { BackendDescriptor, GenerateFunction, StandaloneAgent } from '@lostgradient/operative';
 
 declare const writer: StandaloneAgent;
-declare function resolveAgentGenerate(descriptor: BackendDescriptor): GenerateFunction;
+declare function generateFor(descriptor: BackendDescriptor): GenerateFunction;
 
 const bureau = await createBureau({
   agents: { writer },
@@ -75,7 +75,7 @@ const bureau = await createBureau({
   workflowDirectory: '/home/me/.interborough/workflows',
   storage: { type: 'sqlite', path: '/home/me/.interborough/bureau.sqlite' },
   durableExecution: true,
-  resolveAgentGenerate,
+  models: { generate: generateFor },
 });
 ```
 
