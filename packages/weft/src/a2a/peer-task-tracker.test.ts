@@ -95,6 +95,27 @@ function tracker(awaitFollowUp: boolean, limit = 1000, updates: A2APeerUpdate[] 
 }
 
 describe('PeerTaskTracker', () => {
+  test('a terminal first response ends the wait after a continuation, a question does not', () => {
+    // A repeated send (same messageId) is answered with the task the first send finished.
+    for (const state of [
+      TaskState.TASK_STATE_COMPLETED,
+      TaskState.TASK_STATE_FAILED,
+      TaskState.TASK_STATE_CANCELED,
+      TaskState.TASK_STATE_REJECTED,
+    ]) {
+      const t = tracker(true);
+      t.apply(taskEvent(state, 'finished'));
+      t.markHeadSeen();
+      expect(t.stopped()).toBe(true);
+    }
+    for (const state of [TaskState.TASK_STATE_INPUT_REQUIRED, TaskState.TASK_STATE_AUTH_REQUIRED]) {
+      const t = tracker(true);
+      t.apply(taskEvent(state, 'still asking'));
+      t.markHeadSeen();
+      expect(t.stopped()).toBe(false);
+    }
+  });
+
   test('only a status event ends the wait after a continuation', () => {
     const t = tracker(true);
     t.apply(taskEvent(TaskState.TASK_STATE_INPUT_REQUIRED, 'q1'));

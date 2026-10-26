@@ -102,6 +102,12 @@ export interface StepRecord {
   results: readonly ToolExecutionResult[];
   usage?: { prompt: number; completion: number; total: number } | undefined;
   metadata?: Record<string, JSONValue> | undefined;
+  /**
+   * The effective-context epoch the generate attempt that produced the step sealed (COR-581,
+   * `StepResult.contextEpochId`); absent when the run seals none. Optional, so it adds no record
+   * version: a record written without it reads as a step that named no epoch.
+   */
+  contextEpochId?: string | undefined;
   final: boolean;
 }
 

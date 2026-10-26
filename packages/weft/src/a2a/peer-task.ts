@@ -5,13 +5,12 @@
  * @module a2a/peer-task
  */
 
-import { Role, type Message, type SendMessageRequest, type Task } from '@a2a-js/sdk';
+import { type Message, type SendMessageRequest, type Task } from '@a2a-js/sdk';
 import type { Client, RequestOptions } from '@a2a-js/sdk/client';
 
 import type {
   A2APeerOutcome,
   A2APeerProvenance,
-  A2APeerSendRequest,
   A2APeerTask,
   A2APeerTaskState,
 } from './peer-client-types.ts';
@@ -43,31 +42,12 @@ export interface PeerTaskContext extends PeerRetryPolicy {
 
 type EventStream = AsyncGenerator<PeerStreamEvent, void, undefined>;
 
-function userMessage(text: string, taskId: string, contextId: string): Message {
-  return {
-    messageId: crypto.randomUUID(),
-    contextId,
-    taskId,
-    role: Role.ROLE_USER,
-    parts: [
-      {
-        content: { $case: 'text', value: text },
-        metadata: undefined,
-        filename: '',
-        mediaType: 'text/plain',
-      },
-    ],
-    metadata: undefined,
-    extensions: [],
-    referenceTaskIds: [],
-  };
-}
-
 function isTask(value: Message | Task): value is Task {
   return 'status' in value;
 }
 
-class PeerTaskRun implements A2APeerTask {
+/** One task on a peer, from its first request to the outcome the caller waits for. */
+export class PeerTaskRun implements A2APeerTask {
   private readonly follow = new AbortController();
   private stream: EventStream | undefined;
   private reconnects = 0;
@@ -130,6 +110,17 @@ class PeerTaskRun implements A2APeerTask {
   }
 
   /**
+   * Reads the task the peer already holds instead of sending: the task's current state is the
+   * first response, so one that has already stopped counts as stopped.
+   */
+  async attach(taskId: string): Promise<void> {
+    const task = await this.withRetry(() => this.boundedGetTask(taskId), this.follow.signal);
+    this.tracker.applyTask(task);
+    this.tracker.markHeadSeen();
+    this.opened = true;
+  }
+
+  /**
    * The first stream event, bounded by the task timeout: the request timeout ends once headers
    * arrive, so a peer that never emits an event would otherwise hold `send()` open forever.
    */
@@ -159,7 +150,16 @@ class PeerTaskRun implements A2APeerTask {
    * The opening non-streaming request, bounded by the task timeout: the request timeout ends once
    * headers arrive, so a peer that stalls mid-body would otherwise hold `send()` open forever.
    */
-  private async boundedSend(request: SendMessageRequest): Promise<Message | Task> {
+  private boundedSend(request: SendMessageRequest): Promise<Message | Task> {
+    return this.bounded((options) => this.context.client.sendMessage(request, options));
+  }
+
+  /** The opening `GetTask` of an attach, bounded the same way as {@link boundedSend}. */
+  private boundedGetTask(taskId: string): Promise<Task> {
+    return this.bounded((options) => this.getTask(options, taskId));
+  }
+
+  private async bounded<T>(call: (options: RequestOptions) => Promise<T>): Promise<T> {
     const bound = new AbortController();
     let expired = false;
     const timer = setTimeout(() => {
@@ -168,7 +168,7 @@ class PeerTaskRun implements A2APeerTask {
     }, this.context.taskTimeoutMs);
     try {
       // Either signal ends the request, one that has already aborted included.
-      return await this.context.client.sendMessage(request, {
+      return await call({
         ...this.context.requestOptions,
         signal: AbortSignal.any([this.follow.signal, bound.signal]),
       });
@@ -303,9 +303,9 @@ class PeerTaskRun implements A2APeerTask {
     this.tracker.applyTask(task);
   }
 
-  private getTask(options: RequestOptions): Promise<Task> {
+  private getTask(options: RequestOptions, taskId: string = this.taskId): Promise<Task> {
     return this.context.client.getTask(
-      { tenant: '', id: this.taskId, historyLength: undefined },
+      { tenant: '', id: taskId, historyLength: undefined },
       options,
     );
   }
@@ -373,64 +373,4 @@ class PeerTaskRun implements A2APeerTask {
       // Keep the local cancellation.
     }
   }
-}
-
-/**
- * Sends `request` to the peer and resolves with the task once the peer has named it. The
- * message identifier is fixed before the first attempt, so retrying a send that may have reached
- * the peer is the retry the A2A spec describes, not a second message.
- */
-export async function startPeerTask(
-  context: PeerTaskContext,
-  input: A2APeerSendRequest,
-): Promise<A2APeerTask> {
-  // The caller owns `input` and may change it while the first request is in flight.
-  const request = { ...input };
-  if (typeof request.text !== 'string') {
-    throw new TypeError('A2APeerSendRequest.text must be a string.');
-  }
-  const tracker = new PeerTaskTracker(
-    context.peer,
-    request,
-    context.artifactLimit,
-    request.taskId !== undefined,
-  );
-  const run = new PeerTaskRun(context, tracker);
-  const signal = request.signal;
-  if (signal === undefined) {
-    await run.open(openingRequest(context, request));
-    return run;
-  }
-  // Nothing is sent for a signal that has already aborted.
-  signal.throwIfAborted();
-  const onAbort = (): void => {
-    if (run.hasOpened())
-      void run.cancel(typeof signal.reason === 'string' ? signal.reason : undefined);
-    else run.abortOpen();
-  };
-  signal.addEventListener('abort', onAbort, { once: true });
-  run.onSettled(() => signal.removeEventListener('abort', onAbort));
-  try {
-    await run.open(openingRequest(context, request));
-  } catch (error) {
-    signal.removeEventListener('abort', onAbort);
-    signal.throwIfAborted();
-    throw error;
-  }
-  if (signal.aborted) onAbort();
-  return run;
-}
-
-function openingRequest(context: PeerTaskContext, request: A2APeerSendRequest): SendMessageRequest {
-  return {
-    tenant: '',
-    message: userMessage(request.text, request.taskId ?? '', request.contextId ?? ''),
-    configuration: {
-      acceptedOutputModes: [...context.acceptedOutputModes],
-      taskPushNotificationConfig: undefined,
-      historyLength: 0,
-      returnImmediately: !context.streaming,
-    },
-    metadata: undefined,
-  };
 }
