@@ -544,3 +544,28 @@ const scenario25 = await outcomeOf(async () => {
 });
 test('an explicit default generic can intentionally prevent narrower argument inference', () =>
   rethrow(scenario25));
+
+const scenario26 = await outcomeOf(async () => {
+  // COR-1700: armorer's combineToolboxes rebuilds a toolbox from its configurations and drops the
+  // idempotency cache, the skill gate, and the request-context binding; Bureau adds tools with
+  // withAddedTools instead.
+  for (const source of [
+    "import { combineToolboxes } from 'armorer';\nexport const combined = combineToolboxes;\n",
+    "import { combineToolboxes as combine } from 'armorer';\nexport const combined = combine;\n",
+  ]) {
+    const banned = await lintImport(source, 'packages/bureau/src/consumer.ts');
+    expect(banned.exitCode, banned.output).toBe(1);
+    expect(banned.output).toContain('no-restricted-imports');
+  }
+  const accepted = await lintImport(
+    "import { createToolbox } from 'armorer';\nexport const toolbox = createToolbox;\n",
+    'packages/bureau/src/consumer.ts',
+  );
+  expect(accepted.exitCode, accepted.output).toBe(0);
+  const elsewhere = await lintImport(
+    "import { combineToolboxes } from 'armorer';\nexport const combined = combineToolboxes;\n",
+    'packages/other/src/consumer.ts',
+  );
+  expect(elsewhere.exitCode, elsewhere.output).toBe(0);
+});
+test('Bureau source cannot import combineToolboxes from armorer', () => rethrow(scenario26));

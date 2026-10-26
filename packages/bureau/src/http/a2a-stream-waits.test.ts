@@ -85,7 +85,6 @@ describe('an INPUT_REQUIRED update on a stream', () => {
     const opened = await openBureau({
       agents: { asker: createAgent({ name: 'asker', generate }) },
       publish: ['asker'],
-      humanInput: true,
       durableHistory: true,
       handlerOptions: { publicUrl: 'http://localhost' },
     });

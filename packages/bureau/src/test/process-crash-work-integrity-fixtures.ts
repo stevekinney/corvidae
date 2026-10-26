@@ -207,7 +207,6 @@ export interface HarnessBureauOptions {
   readonly toolbox: AnyToolbox;
   readonly memory?: GovernedMemory;
   /** Wires `requestHumanInput` into the run (the COR-1409 park scenario). */
-  readonly humanInput?: boolean;
 }
 
 /** The durable, `workflow-lease` Bureau every child and the recoverer share. */
@@ -226,7 +225,6 @@ export function createHarnessBureau(options: HarnessBureauOptions): Promise<Bure
     durableExecution: true,
     requestAuthorityValidator: () => true,
     ...(options.memory === undefined ? {} : { memory: options.memory }),
-    ...(options.humanInput === true ? { humanInput: true as const } : {}),
     durableOwnership: {
       ownership: 'workflow-lease',
       workflowClaimTtlMs: CLAIM_TTL_MS,

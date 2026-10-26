@@ -329,7 +329,6 @@ async function humanWaitParked(twoCalls = false): Promise<void> {
     storagePath: storagePath as string,
     generate: async () => ({ content: '', toolCalls: twoCalls ? [park, secondPark] : [park] }),
     toolbox: createToolbox([]),
-    humanInput: true,
   });
   const run = await bureau.createRun({
     agentName: 'default',

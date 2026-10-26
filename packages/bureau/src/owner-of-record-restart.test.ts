@@ -59,7 +59,6 @@ async function openBureau(path: string) {
     storage: { type: 'sqlite', path },
     durableExecution: true,
     durableOwnership: { ownership: 'none' },
-    humanInput: true,
   });
 }
 

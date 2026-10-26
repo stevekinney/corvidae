@@ -98,10 +98,13 @@ export async function open(
     },
     publish: ['asker'],
     // The schema is configured the way a host configures it: on the Bureau option, per signal.
-    humanInput:
-      schema === undefined
-        ? true
-        : { inputSchemas: Object.fromEntries(formSignals.map((signal) => [signal, schema])) },
+    ...(schema === undefined
+      ? {}
+      : {
+          humanInput: {
+            inputSchemas: Object.fromEntries(formSignals.map((signal) => [signal, schema])),
+          },
+        }),
   });
   const bureau = opened.bureau;
   const runtime = createDefaultRuntimeServices();
