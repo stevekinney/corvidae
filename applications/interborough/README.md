@@ -66,7 +66,7 @@ printf '%s' "$YOUR_KEY" > ~/.interborough/secrets/anthropic-api-key
 chmod 600 ~/.interborough/secrets/anthropic-api-key
 ```
 
-The host installs the catalog rows through `replaceCatalog` before it creates the Bureau, and the Bureau's refresh source returns the same rows, so `bureau.modelCatalog.refresh()` cannot bring an unconfigured provider back. `host.generateFor({ provider, model })` is the generate for an agent assigned a catalog model: it resolves through Bureau's `resolveProviderGenerate` with the provider's key, and refuses a model the catalog does not hold. A change to the configuration or a secret takes effect when the host restarts.
+The host passes the catalog rows as `models.catalog` when it creates the Bureau, so no boot step plans against a provider that is not configured, and `bureau.models.replace(rows)` is the only way the rows change. `host.generateFor({ provider, model })` is the generate for an agent assigned a catalog model: it resolves through Bureau's `resolveProviderGenerate` with the provider's key, and refuses a model the catalog does not hold. A change to the configuration or a secret takes effect when the host restarts.
 
 ## Agent files
 

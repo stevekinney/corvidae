@@ -5,7 +5,7 @@
  * transfer, deletion, and garbage collection — and the admission that
  * composes several of them — runs as one {@link AssetWorkHandle} with the
  * universal started-work capabilities (`documentation/operative-type-safe-api.md`
- * § "Required capabilities", the same five `CatalogRefreshHandle` exposes):
+ * § "Required capabilities", the same five every Bureau started-work handle exposes):
  * a cached immutable `snapshot()`, non-consuming `subscribeSnapshot()`,
  * idempotent targeted `abort()`, a never-rejecting `result()`, and a
  * never-rejecting, memoized `closed()` cleanup acknowledgement using

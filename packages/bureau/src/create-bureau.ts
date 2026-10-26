@@ -24,7 +24,6 @@ import {
   createAgentRunEventRegistry,
   createAgentScheduler,
   createFlowController,
-  createModelCatalog,
   createRecoveredRunEventSurface,
   createRunFinishedFrame,
   createRunStartedFrame,
@@ -236,8 +235,7 @@ import type { BureauGoals } from './goal-types';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
 import { composeBureauGoals } from './goals-composition';
 import { leaseEvidenceFromLostHealth } from './liveness-projection';
-import { createModelCatalogService, type ModelCatalogService } from './model-catalog-refresh';
-import { createModelPolicyPlanner } from './model-policy';
+import { createModels, validateModelsOptions, type Models } from './models/create-models';
 import { createOnlineEvalSampler, type OnlineEvalSampler } from './online-evals';
 import {
   buildTerminalReportFromAbortedEvent,
@@ -1936,16 +1934,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       'BAD_REQUEST',
     );
   }
+  validateModelsOptions(options.models, toBadRequest);
   // COR-1524: a model written in an agent file has to become a `generate` somehow, and only the
   // host holds the credentials to do it. Refused here rather than leaving every file unusable.
-  const resolveAgentGenerate = options.resolveAgentGenerate;
   if (options.agentDirectory !== undefined) {
     if (typeof options.agentDirectory !== 'string' || options.agentDirectory.trim() === '') {
       toBadRequest('"options.agentDirectory" must be a non-empty path');
     }
-    if (resolveAgentGenerate === undefined) {
+    if (options.models?.generate === undefined) {
       toBadRequest(
-        '"options.resolveAgentGenerate" is required with "options.agentDirectory": it turns a model in the model catalog into the generate an agent file runs with',
+        '"options.models.generate" is required with "options.agentDirectory": it turns a model in the model catalog into the generate an agent file runs with',
       );
     }
   }
@@ -2247,7 +2245,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // failure when the engine can commit it, so settling first fails a reclaimed run for good;
   // settling after the engine and the store are closed (or fenced off) leaves the run in its
   // persisted state for a correctly configured boot to resume.
-  let modelCatalog: ModelCatalogService;
+  let models: Models;
   let agentToolCatalog: Readonly<Record<string, Tool>>;
   let fileAgents: FileAgentRuntime | undefined;
   let agentCatalog: ReturnType<typeof createAgentCatalog<D>>;
@@ -2308,27 +2306,39 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         ),
       );
     });
-    // AB-246 — the model-catalog refresh service. Independent of `runtime`.
-    // When the caller doesn't supply one, the default `descriptorSource`
-    // re-derives `@lostgradient/operative`'s static seed — this is
-    // the seam a future live provider probe attaches to (out of scope here).
-    //
-    // Constructed BEFORE `agentCatalog` below: `selectorAvailable: true`
-    // (AB-250/mod-03c) needs no catalog dependency itself, but ordering the
-    // catalog first keeps every model-policy-related construction together.
-    modelCatalog =
-      options.modelCatalog ??
-      createModelCatalogService({
-        seed: createModelCatalog(),
-        descriptorSource: () => Promise.resolve(createModelCatalog().descriptors),
-        now: runtimeServices.clock.nowISO,
-        newRefreshId: () => runtimeServices.identifiers.next('catalog-refresh'),
-      });
+    // The model namespace. Independent of `runtime`. Constructed BEFORE `agentCatalog` below so
+    // the file catalog validates against it; `onReplace` reaches the file agents, which are built
+    // after it, so it reads `fileAgents` when it is called.
+    models = createModels({
+      options: options.models,
+      now: runtimeServices.clock.nowISO,
+      badRequest: toBadRequest,
+      notConfigured: () =>
+        new BureauError(
+          '"options.models.generate" is required to turn a model in the model catalog into a generate',
+          'NOT_CONFIGURED',
+          'generate',
+        ),
+      onReplace: () => {
+        // A replace after shutdown began has no one left to validate for.
+        if (runAdmissionClosed) return;
+        fileAgents?.files.refresh().catch((cause: unknown) =>
+          diagnose({
+            level: 'error',
+            scope: 'agent-files',
+            message: '[bureau] could not validate agent files against the replaced model catalog',
+            cause,
+          }),
+        );
+      },
+      agents: agentsSnapshot,
+      modelPolicy: options.modelPolicy,
+    });
     // AB-15/AB-22: the typed agent catalog — a plain literal map, fixed for
     // the bureau's lifetime, dispatched by name through `bureau.run`.
     // Independent of `runtime` (bureau-level generate/toolbox/provider
     // composition, still used by `createRun`).
-    // `selectorAvailable: true` (AB-250/mod-03c) — `planSelection` below is
+    // `selectorAvailable: true` (AB-250/mod-03c) — `models.plan` below is
     // now wired, so a `selectable` agent's catalog-read profile reports
     // `selector: 'available'` (AB-247/mod-02e's one named mechanism for this
     // transition).
@@ -2352,15 +2362,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             }),
           };
     fileAgents =
-      options.agentDirectory === undefined || resolveAgentGenerate === undefined
+      options.agentDirectory === undefined || options.models?.generate === undefined
         ? undefined
         : createFileAgentRuntime({
             files: createAgentFileCatalog({
               directory: options.agentDirectory,
               reservedIdentifiers: new Set(Object.keys(agentsSnapshot)),
               tools: agentToolCatalog,
-              modelCatalog,
-              resolveGenerate: resolveAgentGenerate,
+              models,
+              resolveGenerate: (row) => models.generate(row),
               runtime: runtimeServices,
               // COR-1584: the revision records share the Bureau's store, so a revision survives a
               // restart and two Bureaus on one store agree on it.
@@ -2504,14 +2514,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     } catch (error) {
       return { status: 'resolver-failed', error };
     }
-  });
-  // AB-64/AB-250 — Bureau's selection-planning surface: `bureau.planSelection`
-  // and the `SelectionGate` factory `RunOptions.selection` is built from.
-  // Side-effect-free — see `model-policy.ts`'s module doc comment.
-  const modelPolicyPlanner = createModelPolicyPlanner({
-    agents: agentsSnapshot,
-    modelCatalog,
-    ...(options.modelPolicy === undefined ? {} : { modelPolicy: options.modelPolicy }),
   });
   // AB-13 — declarative flow control (concurrency/rate-limit/singleton). One
   // controller instance shared across BOTH `createRun` (API-triggered) and
@@ -13505,10 +13507,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   ): boolean {
     const agent = agentCatalog.find(agentName);
     if (agent === undefined) return true;
-    const descriptors = modelCatalog.catalog().descriptors;
+    const descriptors = models.catalog().descriptors;
     const allowed = describeAgentModels(agent, descriptors);
     if (!allowsModelOverride(allowed.models, override)) return false;
-    if (readFileAgentBinding(agent) === undefined || resolveAgentGenerate === undefined) {
+    if (readFileAgentBinding(agent) === undefined || options.models?.generate === undefined) {
       return true;
     }
     const row = descriptors.find(
@@ -13522,7 +13524,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     );
     if (row === undefined) return false;
     try {
-      resolveAgentGenerate(row);
+      models.generate(row);
       return true;
     } catch {
       return false;
@@ -13921,7 +13923,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // AB-200 — validate a configuration override against the live model
     // catalog, coordinate by coordinate.
     //
-    // NOT through `planSelection`, and the reason is a real constraint
+    // NOT through `models.plan`, and the reason is a real constraint
     // rather than a preference. `composePolicy`'s exact-override path
     // (`providers/policy.ts`'s `matchesOverride`) requires provider AND
     // model together — "a partially specified override cannot resolve to
@@ -13929,7 +13931,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // naming a `route`, because `route` is not a field `BackendDescriptor`
     // carries. A steering command addresses exactly one coordinate, so it
     // can never satisfy that path: routing every one of them through
-    // `planSelection` would reject every legitimate single-coordinate
+    // `models.plan` would reject every legitimate single-coordinate
     // command as `no-candidate`. That is the catalog gap AB-65 names.
     //
     // What a steering override actually needs to answer is narrower: "is
@@ -13968,7 +13970,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // later reader would have to re-resolve against possibly-changed
       // configuration.
       //
-      // Not through `planSelection`, for the reason the override path below
+      // Not through `models.plan`, for the reason the override path below
       // documents: `composePolicy`'s exact-override test needs provider and
       // model together and rejects routes outright, so a single-coordinate
       // request can never satisfy it.
@@ -14019,7 +14021,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             : { target: steeringTarget, override }
         ) satisfies ImplementedSteeringCommand['requestedValue'];
       }
-      const { descriptors } = modelCatalog.catalog();
+      const { descriptors } = models.catalog();
       // COR-1559: a `model` override may name the provider that serves the model. It is held to
       // the catalog, and below to the agent, as the pair when it does, and as the name alone
       // (every record written before the field existed) when it does not.
@@ -16628,24 +16630,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     const policy: 'abort' | 'drain' = shutdownOptions?.policy ?? 'abort';
     const timeoutMilliseconds = shutdownOptions?.timeoutMilliseconds;
 
-    // AB-246/AB-64 (2026-09-02 amendment): a model-catalog refresh is
-    // INDEPENDENTLY owned by Bureau's catalog, not parent-owned by a run — so
-    // it isn't touched by the run/toolbox teardown below, and `shutdown()`
-    // awaits it here rather than aborting it out from under a caller who may
-    // still be awaiting the same handle. Captured synchronously, BEFORE the
-    // teardown below runs, but awaited only at the very end (not blocking
-    // admission closure, active-run cancellation, or backend teardown — a
-    // slow or never-settling refresh must not stall the rest of `shutdown()`,
-    // per review finding on PR #432). Awaits `closed()`, not `result()`: the
-    // started-work contract lets a handle's cleanup acknowledgement settle
-    // AFTER its result (result() only means the refresh's business outcome
-    // is known; closed() means teardown actually finished), and a caller-
-    // supplied `ModelCatalogService` is explicitly allowed to do that — so
-    // only awaiting `closed()` observes the real cleanup fence (review
-    // finding, PR #432). Only this one captured handle is awaited: a refresh
-    // newly started by an observer notified during that handle's settlement
-    // is a different handle, and this `shutdown()` call does NOT wait for it.
-    const modelCatalogRefreshClosedPromise = modelCatalog.inFlightRefresh()?.closed();
     // COR-1527: stop reacting to the workflow files at once, so nothing registers with an engine
     // that is about to be disposed; the chain below waits for the apply in progress first.
     const workflowClosed = workflowRuntime?.close();
@@ -17184,9 +17168,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           }
         }
       }
-      // Awaited last: everything above (admission, runs, toolbox shutdown,
-      // owner drains, backend teardown) already ran without waiting on this.
-      await modelCatalogRefreshClosedPromise;
       // COR-1524: stop watching the agent directory and wait for a scan in flight.
       await fileAgents?.files.close();
       return buildReport();
@@ -18249,8 +18230,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     },
     agents: agentCatalog,
     workflows: workflowRuntime?.workflows,
-    modelCatalog,
-    planSelection: (request) => modelPolicyPlanner.planSelection(request),
+    models,
     // `runAgent`'s runtime signature is deliberately widened (`string`,
     // `AgentRun<unknown, boolean>`) — it looks the agent up by a plain
     // runtime string via `agentCatalog.find`, the same widening
