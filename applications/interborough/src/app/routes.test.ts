@@ -100,6 +100,15 @@ describe('the route table', () => {
     });
   });
 
+  test('serves the engine run list under /engine, in the engine view, apart from the Bureau runs', () => {
+    expect(matchRoute('/engine/runs')).toEqual({ pattern: '/engine/runs', params: {} });
+    expect(routes.find((route) => route.pattern === '/engine/runs')?.view).toBe('engine');
+    expect(componentPathOf('/engine/runs')).toBe(
+      sourcePath('../routes/workflows/list/workflow-list.svelte'),
+    );
+    expect(componentPathOf('/runs')).not.toBe(componentPathOf('/engine/runs'));
+  });
+
   test('has no two routes with one pattern', () => {
     const patterns = routes.map((route) => route.pattern);
     expect(new Set(patterns).size).toBe(patterns.length);

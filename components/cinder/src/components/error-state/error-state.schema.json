@@ -24,6 +24,11 @@
       "description": "Heading level for the title element.",
       "default": 2
     },
+    "variant": {
+      "enum": ["default", "flat"],
+      "description": "Visual treatment. `'default'` centres a boxed danger alert in padded space.\n`'flat'` renders the same content as a start-aligned block with no box and\nno padding of its own, for a page whose container already pads it. Either\nway the error is announced as an alert.",
+      "default": "default"
+    },
     "class": {
       "type": "string",
       "description": "Additional class merged onto the `.cinder-error-state` root element."

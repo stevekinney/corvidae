@@ -28,6 +28,7 @@
     id,
     value = $bindable<string | undefined>(undefined),
     label,
+    labelVisible = true,
     placeholder = 'YYYY-MM-DD',
     granularity = 'day',
     min,
@@ -279,6 +280,7 @@
   {...rest}
   {id}
   {label}
+  {labelVisible}
   {description}
   {error}
   {disabled}

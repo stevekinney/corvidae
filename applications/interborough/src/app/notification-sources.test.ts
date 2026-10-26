@@ -17,6 +17,7 @@ function task(overrides: Partial<TaskView> = {}): TaskView {
     agentName: 'assistant',
     owner: 'anonymous:local',
     actor: 'service:scheduler',
+    kind: 'chat',
     status: 'failed',
     finishReason: null,
     statusMessage: 'Boom',

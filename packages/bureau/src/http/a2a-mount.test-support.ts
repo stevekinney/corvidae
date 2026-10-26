@@ -1,0 +1,125 @@
+/** Shared fixtures for the Bureau A2A mount tests: a Bureau serving agents, and JSON-RPC calls. */
+import { createAgent, type GenerateFunction } from '@lostgradient/operative';
+
+import { type OpenedBureau, openBureau } from './management/management-fixtures.test-support.ts';
+
+export const PUBLIC_URL = 'http://localhost';
+export const BUREAU_ID = 'management-bureau';
+
+// A JSON-RPC body read back from the wire: each test asserts the shape it needs.
+export type Json = any;
+
+export function answering(content: string): GenerateFunction {
+  return async () => ({ content, toolCalls: [] });
+}
+
+/** A model that parks the run on a human wait, then answers with what it was told. */
+export function parksThenAnswers(signalName = 'human-response'): GenerateFunction {
+  let calls = 0;
+  return async () => {
+    calls += 1;
+    return calls === 1
+      ? {
+          content: '',
+          toolCalls: [
+            {
+              id: 'wait-1',
+              name: 'requestHumanInput',
+              arguments: { signalName, prompt: 'Which?' },
+            },
+          ],
+        }
+      : { content: 'resolved', toolCalls: [] };
+  };
+}
+
+export async function withA2A<T>(
+  agents: Record<string, GenerateFunction>,
+  body: (opened: OpenedBureau) => Promise<T>,
+  options: {
+    humanInput?: boolean;
+    publish?: readonly string[];
+    handlerOptions?: NonNullable<Parameters<typeof openBureau>[0]>['handlerOptions'];
+  } = {},
+): Promise<T> {
+  const opened = await openBureau({
+    agents: Object.fromEntries(
+      Object.entries(agents).map(([name, generate]) => [
+        name,
+        createAgent({ name, description: `The ${name} agent`, generate }),
+      ]),
+    ),
+    publish: options.publish ?? Object.keys(agents),
+    ...(options.humanInput === true ? { humanInput: true } : {}),
+    handlerOptions: { publicUrl: PUBLIC_URL, ...options.handlerOptions },
+  });
+  try {
+    return await body(opened);
+  } finally {
+    await opened.dispose();
+  }
+}
+
+export type CallOptions = {
+  readonly key?: string | undefined;
+  readonly headers?: Record<string, string>;
+  readonly version?: string | null;
+};
+
+export async function call(
+  opened: OpenedBureau,
+  agent: string,
+  method: string,
+  params: Json,
+  options: CallOptions = {},
+): Promise<{ status: number; headers: Headers; body: Json }> {
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    ...options.headers,
+  };
+  if (options.version !== null) headers['A2A-Version'] = options.version ?? '1.0';
+  if (options.key !== undefined || !('key' in options))
+    headers['X-API-Key'] = options.key ?? 'alice-key';
+  const response = await opened.handler(
+    new Request(`http://localhost/a2a/${agent}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+    }),
+  );
+  const text = await response.text();
+  return {
+    status: response.status,
+    headers: response.headers,
+    body: text === '' ? {} : JSON.parse(text),
+  };
+}
+
+let counter = 0;
+export function message(text: string, extra: Json = {}): Json {
+  counter += 1;
+  return { messageId: `m-${counter}`, role: 'ROLE_USER', parts: [{ text }], ...extra };
+}
+
+export async function send(
+  opened: OpenedBureau,
+  agent: string,
+  params: Json,
+  options: CallOptions = {},
+) {
+  return call(opened, agent, 'SendMessage', params, options);
+}
+
+export async function sendForTask(
+  opened: OpenedBureau,
+  agent: string,
+  params: Json,
+  options: CallOptions = {},
+): Promise<Json> {
+  const sent = await send(opened, agent, params, options);
+  return taskOf(sent.body);
+}
+
+export function taskOf(body: Json): Json {
+  return body.result?.task ?? body.result;
+}

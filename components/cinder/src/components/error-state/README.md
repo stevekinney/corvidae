@@ -1,6 +1,6 @@
 # ErrorState
 
-Placeholder layout for a region whose data failed to load, with a title, description, optional detail, and an optional retry button. It renders through `Alert` with the `danger` variant, so the failure is announced and never looks like an empty result.
+Placeholder layout for a region whose data failed to load, with a title, description, optional detail, and an optional retry button. By default it renders through `Alert` with the `danger` variant, so the failure is announced and never looks like an empty result; the `flat` variant keeps the `alert` role without the box.
 
 ## Usage
 
@@ -17,6 +17,21 @@ Placeholder layout for a region whose data failed to load, with a title, descrip
 />
 ```
 
+Flat — no boxed alert and no padding of its own, for a page whose container already pads it. The content is start-aligned and the error is still announced as an alert:
+
+```svelte
+<script lang="ts">
+  import { ErrorState } from '@lostgradient/cinder';
+</script>
+
+<ErrorState
+  variant="flat"
+  title="Could not load runs"
+  description="The server did not respond in time."
+  onRetry={() => console.log('retry')}
+/>
+```
+
 ## Props
 
 <!-- generated:props:start -->
@@ -29,6 +44,7 @@ Placeholder layout for a region whose data failed to load, with a title, descrip
 | `headingLevel` | `1` \| `2` \| `3` \| `4` \| `5` \| `6` | no | `2` | Heading level for the title element. |
 | `retryLabel` | `string` | no | `"Try again"` | Label of the retry button. |
 | `title` | `string` | yes | — | Primary heading text rendered as a heading element at the configured `headingLevel`. |
+| `variant` | `"default"` \| `"flat"` | no | `"default"` | Visual treatment. `'default'` centres a boxed danger alert in padded space. `'flat'` renders the same content as a start-aligned block with no box and no padding of its own, for a page whose container already pads it. Either way the error is announced as an alert. |
 | `onRetry` | `(opaque)` | no | — | Called when the retry button is activated. The retry button renders only when this is given. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->

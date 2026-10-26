@@ -12,7 +12,7 @@
    * @avoidWhen Reporting a transient error — use alert, banner, or toast-region.
    * @related skeleton, spinner
    */
-  export type { EmptyStateProps } from './empty-state.types.ts';
+  export type { EmptyStateAlign, EmptyStateProps } from './empty-state.types.ts';
 </script>
 
 <script lang="ts">
@@ -24,6 +24,7 @@
     description,
     class: className,
     headingLevel = 3,
+    align = 'center',
     icon,
     action,
     ...rest
@@ -47,6 +48,7 @@
   {...rest}
   class={classNames('cinder-empty-state', className)}
   role="group"
+  data-cinder-align={align === 'start' ? 'start' : undefined}
   aria-labelledby={titleId}
 >
   {#if icon}

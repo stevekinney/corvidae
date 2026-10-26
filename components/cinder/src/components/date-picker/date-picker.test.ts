@@ -354,3 +354,24 @@ describe('DatePicker', () => {
     }
   });
 });
+
+describe('DatePicker labelVisible', () => {
+  test('shows the label by default', () => {
+    const { container } = render(DatePicker, { id: 'dp-label', label: 'Since' });
+    const label = container.querySelector('label[for="dp-label"]');
+    expect(label?.textContent?.trim()).toBe('Since');
+    expect(label?.classList.contains('cinder-sr-only')).toBe(false);
+  });
+
+  test('labelVisible={false} keeps the label for assistive technology while hiding it visually', () => {
+    const { container } = render(DatePicker, {
+      id: 'dp-hidden-label',
+      label: 'Since',
+      labelVisible: false,
+    });
+    const label = container.querySelector('label[for="dp-hidden-label"]');
+    expect(label).not.toBeNull();
+    expect(label?.textContent?.trim()).toBe('Since');
+    expect(label?.classList.contains('cinder-sr-only')).toBe(true);
+  });
+});

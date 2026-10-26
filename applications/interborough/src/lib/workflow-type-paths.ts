@@ -24,3 +24,10 @@ export function workflowNewPath(): string {
 export function workflowEditPath(type: string): string {
   return `${workflowTypePath(type)}/edit`;
 }
+
+/**
+ * The engine's own run list, across every workflow type. It lives under `/engine` because it reads
+ * the engine's list and takes the engine's status words in its `status` query parameter; `/runs` is
+ * the Bureau's task list and has no engine rows.
+ */
+export const ENGINE_RUNS_PATH = '/engine/runs';

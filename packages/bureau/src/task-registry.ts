@@ -106,6 +106,23 @@ export type TaskCleanupState =
 /** The kinds of task that are not ordinary runs. */
 export type TaskKind = 'schedule-fire';
 
+/**
+ * What a task reads as in the management plane (COR-1689), by how its record was written: a record
+ * of the `schedule-fire` kind is `schedule-fire`; otherwise a non-empty incarnation, the session
+ * incarnation the run ran in, is `chat`; and anything else is `catalog`. A `bureau.run()` dispatch
+ * records no incarnation, so it is `catalog` and its `contextId` is its own handle unless the
+ * caller named a session. A Bureau without a session store records none for a `createRun` task
+ * either, so that task reads `catalog` too: `catalog` means no session incarnation was recorded,
+ * not that the run is a dispatch. The kind a record stores ({@link TaskKind}) is only the fire.
+ */
+export type TaskViewKind = 'chat' | 'schedule-fire' | 'catalog';
+
+/** The kind a task record reads as. See {@link TaskViewKind}. */
+export function taskViewKindOf(record: Pick<TaskRecord, 'kind' | 'incarnation'>): TaskViewKind {
+  if (record.kind === 'schedule-fire') return 'schedule-fire';
+  return record.incarnation === '' ? 'catalog' : 'chat';
+}
+
 /** One message in a task's own history: what the requester said, not the session transcript. */
 export interface TaskMessage {
   readonly messageId: string;
@@ -219,6 +236,8 @@ export interface TaskView {
   readonly owner: string;
   /** The service principal that started the task for its owner, or `null` when its owner did. */
   readonly actor: string | null;
+  /** What `contextId` names. See {@link TaskViewKind}. */
+  readonly kind: TaskViewKind;
   readonly status: TaskState;
   readonly finishReason: string | null;
   readonly statusMessage: string | null;
@@ -316,6 +335,11 @@ export interface TaskListQuery<T = TaskView> {
    * Omitted, an entry is its {@link TaskView}.
    */
   readonly project?: ((view: TaskView) => T | Promise<T>) | undefined;
+  /**
+   * Which wire projection the entries are in; a token is valid only for the projection it was
+   * issued for. Defaults to `'task-view'`, the native listing; an A2A `ListTasks` names `'a2a'`.
+   */
+  readonly projection?: string | undefined;
 }
 
 /** What `enumerate` filters and pages by. */
@@ -333,7 +357,7 @@ export interface TaskQuery {
 export interface TaskRegistry {
   /**
    * Lists tasks, most recently changed first (`TaskView.updatedAt` descending, then id
-   * descending), as a snapshot-consistent listing (COR-1304). The first page that has a next page
+   * ascending), as a snapshot-consistent listing (COR-1304). The first page that has a next page
    * records the ordered listing; its `nextPageToken` names that record, and every later page is
    * read from it, so a task that changes or is created mid-enumeration neither moves nor repeats.
    * A task removed since is skipped, so a page may hold fewer than `limit` entries. A refused
@@ -871,6 +895,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       agentName: record.agentName,
       owner: record.owner,
       actor: record.actor ?? null,
+      kind: taskViewKindOf(record),
       status,
       finishReason,
       statusMessage,
@@ -1090,6 +1115,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     const scope: TaskListingScope = {
       principal: query.principal,
       reach: query.owner === undefined ? 'every-owner' : 'own',
+      projection: query.projection ?? 'task-view',
       filters: filtersOf(query),
     };
     return query.pageToken === undefined

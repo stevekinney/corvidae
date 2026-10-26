@@ -115,7 +115,7 @@ async function refusal(promise: Promise<unknown>): Promise<TaskListingTokenFailu
 }
 
 describe('TaskRegistry.list', () => {
-  it('orders by status timestamp, newest first, with the task id breaking ties', async () => {
+  it('orders by status timestamp, newest first, with the task id ascending breaking ties', async () => {
     const harness = build();
     await admitMany(harness, 3);
     // Two tasks admitted in the same millisecond tie on the timestamp.
@@ -146,8 +146,12 @@ describe('TaskRegistry.list', () => {
 
     const page = await harness.registry.list({ principal: ALICE, owner: ALICE, limit: 50 });
 
-    expect(idsOf(page.tasks)).toEqual(['task-00000', 'tie-b', 'tie-a', 'task-00002', 'task-00001']);
+    expect(idsOf(page.tasks)).toEqual(['task-00000', 'tie-a', 'tie-b', 'task-00002', 'task-00001']);
     expect(page.nextPageToken).toBeNull();
+    // Paging one entry at a time continues strictly after the key of the last entry, tie included.
+    expect(
+      idsOf(await listAll(harness.registry, { principal: ALICE, owner: ALICE, limit: 1 })),
+    ).toEqual(['task-00000', 'tie-a', 'tie-b', 'task-00002', 'task-00001']);
   });
 
   it('writes no snapshot for a listing that fits one page', async () => {
@@ -387,6 +391,34 @@ describe('a TaskRegistry.list page token', () => {
     );
   });
 
+  it('is refused for another projection, whichever way it crosses', async () => {
+    const harness = build();
+    const native = await started(harness);
+    const firstA2APage = await harness.registry.list({
+      principal: ALICE,
+      owner: ALICE,
+      limit: 1,
+      projection: 'a2a',
+    });
+    const a2a = firstA2APage.nextPageToken ?? '';
+    const listAs = (pageToken: string, projection?: string) =>
+      harness.registry.list({
+        principal: ALICE,
+        owner: ALICE,
+        limit: 1,
+        pageToken,
+        ...(projection === undefined ? {} : { projection }),
+      });
+
+    expect(await refusal(listAs(native, 'a2a'))).toBe('projection');
+    expect(await refusal(listAs(a2a))).toBe('projection');
+    // Each token still works for the projection it was issued for.
+    const nativePage = await listAs(native);
+    const a2aPage = await listAs(a2a, 'a2a');
+    expect(nativePage.tasks).toHaveLength(1);
+    expect(a2aPage.tasks).toHaveLength(1);
+  });
+
   it('is refused for other filters', async () => {
     const harness = build();
     const pageToken = await started(harness);
@@ -526,6 +558,11 @@ describe('TaskRegistry.expireListings', () => {
     const left = await snapshotKeys(kv);
     expect(left).toHaveLength(1);
     expect(left[0]).toContain(encodeURIComponent(BOB));
+  });
+
+  it('pins the key version to the task view’s shape, so a snapshot saved without `kind` is never read', () => {
+    // Bump this with the view: a stored view is parsed as the current shape by the next page.
+    expect(TASK_LISTING_KEY_PREFIX).toBe('bureau-task-listing:v2:');
   });
 
   it('stores under a prefix disjoint from the task records and the context index', () => {

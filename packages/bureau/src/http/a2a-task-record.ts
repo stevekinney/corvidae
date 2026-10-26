@@ -35,6 +35,12 @@ export interface A2ATaskRecord {
   readonly taskId: string;
   /** The context the task was created in: the session identifier, unchanged. */
   readonly contextId: string;
+  /**
+   * The incarnation of that context the task belongs to (`''` for a context with no session). A
+   * context deleted and created again under the same id is a new one, so clearing a deleted
+   * context's history never reaches the tasks of its successor.
+   */
+  readonly incarnation: string;
   /** The task's own A2A history, oldest first. */
   readonly history: readonly A2AWireMessage[];
   /** Whether the agent's final reply has been folded into `history`. */
@@ -73,13 +79,19 @@ export interface A2ATaskRecords {
     change: (current: A2ATaskRecord) => A2ATaskRecord | undefined,
   ): Promise<A2ATaskRecord | undefined>;
   /**
-   * Empties the history of every task recorded in `contextId`, for a context that was deleted:
-   * message text does not outlive its context. The task's reply is not folded in afterwards.
-   * Resolves how many records it cleared.
+   * Empties the history of every task recorded in `contextId` at `incarnation`, for that
+   * incarnation of the context having been deleted: message text does not outlive its context. A
+   * task of another incarnation created under the same id keeps its history. The task's reply is
+   * not folded in afterwards. Resolves how many records it cleared.
    */
-  clearContext(contextId: string): Promise<number>;
+  clearContext(contextId: string, incarnation: string): Promise<number>;
   /** Deletes a task's record. */
   remove(taskId: string): Promise<void>;
+  /**
+   * Deletes every record whose task `exists` no longer reports, for a removal that failed or never
+   * ran (a crash after the task left the store). Resolves how many records it deleted.
+   */
+  sweep(exists: (taskId: string) => Promise<boolean>): Promise<number>;
 }
 
 /** A record with its history emptied, as a deleted context leaves it. */
@@ -134,23 +146,49 @@ export function createA2ATaskRecords(kv: ConditionalTextValueStore): A2ATaskReco
     throw new Error(`The A2A record of task "${taskId}" could not be updated.`);
   }
 
+  async function remove(taskId: string): Promise<void> {
+    const raw = await kv.get(keyOf(taskId));
+    const record = raw === null ? undefined : (JSON.parse(raw) as Partial<A2ATaskRecord>);
+    if (typeof record?.contextId === 'string') {
+      await kv.delete(indexKeyOf(record.contextId, taskId));
+    }
+    await kv.delete(keyOf(taskId));
+  }
+
   return {
     read,
     update,
 
-    async clearContext(contextId) {
+    async clearContext(contextId, incarnation) {
       let cleared = 0;
       for (const indexKey of await kv.list(contextPrefix(contextId))) {
         const taskId = await kv.get(indexKey);
-        if (taskId !== null) {
-          const record = await update(taskId, (current) =>
-            current.history.length === 0 ? undefined : clearedRecord(current),
+        if (taskId === null) continue;
+        const record = await read(taskId);
+        // Another incarnation's task keeps its history, and its index entry for its own deletion.
+        if (record !== undefined && record.incarnation !== incarnation) continue;
+        if (record !== undefined && record.history.length > 0) {
+          await update(taskId, (current) =>
+            current.incarnation !== incarnation || current.history.length === 0
+              ? undefined
+              : clearedRecord(current),
           );
-          if (record !== undefined) cleared += 1;
+          cleared += 1;
         }
         await kv.delete(indexKey);
       }
       return cleared;
+    },
+
+    async sweep(exists) {
+      let removed = 0;
+      for (const key of await kv.list(A2A_TASK_RECORD_KEY_PREFIX)) {
+        const taskId = decodeURIComponent(key.slice(A2A_TASK_RECORD_KEY_PREFIX.length));
+        if (await exists(taskId)) continue;
+        await remove(taskId);
+        removed += 1;
+      }
+      return removed;
     },
 
     async create(record) {
@@ -170,13 +208,6 @@ export function createA2ATaskRecords(kv: ConditionalTextValueStore): A2ATaskReco
       throw new Error(`The A2A record of task "${record.taskId}" could not be written.`);
     },
 
-    async remove(taskId) {
-      const raw = await kv.get(keyOf(taskId));
-      const record = raw === null ? undefined : (JSON.parse(raw) as Partial<A2ATaskRecord>);
-      if (typeof record?.contextId === 'string') {
-        await kv.delete(indexKeyOf(record.contextId, taskId));
-      }
-      await kv.delete(keyOf(taskId));
-    },
+    remove,
   };
 }

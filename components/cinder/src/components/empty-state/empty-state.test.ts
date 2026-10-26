@@ -2,6 +2,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
+import { declarationsFor } from '../../test/css.ts';
 
 // setupHappyDom() MUST run before any `@testing-library/svelte` import. testing-library
 // reads `globalThis.document` / `window` at module-init (top-level, not inside test bodies),
@@ -176,4 +177,29 @@ test('uses the container gap as the sole vertical spacing mechanism', async () =
   expect(css).toContain('gap: var(--cinder-space-2);');
   expect(css).not.toContain('margin-bottom: var(--cinder-space-2);');
   expect(css).not.toContain('margin-top: var(--cinder-space-4);');
+});
+
+describe('EmptyState align', () => {
+  test('centres by default and marks no alignment attribute', () => {
+    const { container } = render(EmptyState, { props: { title: 'Empty' } });
+    expect(container.querySelector('.cinder-empty-state')?.hasAttribute('data-cinder-align')).toBe(
+      false,
+    );
+  });
+
+  test("align='start' marks the root and its rule aligns content to the inline start", () => {
+    const { container } = render(EmptyState, { props: { title: 'Empty', align: 'start' } });
+    expect(container.querySelector('.cinder-empty-state')?.getAttribute('data-cinder-align')).toBe(
+      'start',
+    );
+    const declarations = declarationsFor(
+      emptyStateCss,
+      ".cinder-empty-state[data-cinder-align='start']",
+    );
+    expect(declarations.get('align-items')).toBe('flex-start');
+    expect(declarations.get('text-align')).toBe('start');
+    const base = declarationsFor(emptyStateCss, '.cinder-empty-state');
+    expect(base.get('align-items')).toBe('center');
+    expect(base.get('text-align')).toBe('center');
+  });
 });
