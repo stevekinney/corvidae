@@ -1,5 +1,11 @@
 import { appendMessages, createConversationHistory } from '../../conversation/index';
-import type { ContentSource, MediaContent, MultiModalContent } from '../../multi-modal';
+import { createInvalidInputError } from '../../errors';
+import type {
+  ContentSource,
+  MediaContent,
+  MultiModalContent,
+  ToolResultPart,
+} from '../../multi-modal';
 import type {
   ConversationHistory as Conversation,
   JSONValue,
@@ -15,6 +21,7 @@ import {
 import type {
   GeminiConversation,
   GeminiFileDataPart,
+  GeminiFunctionResponsePart,
   GeminiInlineDataPart,
   GeminiPart,
   GeminiTextPart,
@@ -36,7 +43,13 @@ function parseFunctionArguments(args: Record<string, unknown>): JSONValue {
   return toJSONValue(args);
 }
 
-function parseFunctionResponse(callId: string, response: Record<string, unknown>): ToolResult {
+function parseFunctionResponse(
+  callId: string,
+  response: Record<string, unknown>,
+  media?: GeminiFunctionResponsePart['functionResponse']['parts'],
+): ToolResult {
+  const withParts = toPartsToolResult(callId, response, media);
+  if (withParts) return withParts;
   const value = toJSONValue(response);
 
   const canonical = toCanonicalToolResult(callId, value);
@@ -49,6 +62,71 @@ function parseFunctionResponse(callId: string, response: Record<string, unknown>
     outcome: 'success',
     content: value,
   };
+}
+
+function isMediaReference(entry: unknown): entry is { $ref: string } {
+  return (
+    typeof entry === 'object' &&
+    entry !== null &&
+    Object.keys(entry).length === 1 &&
+    '$ref' in entry &&
+    typeof entry.$ref === 'string'
+  );
+}
+
+/**
+ * The inverse of how a result with parts is exported (COR-1634): `response.output` lists every part
+ * in order, a text part as its string and a media part as `{ $ref: displayName }`, and the media
+ * itself rides in `functionResponse.parts`. A response with no media list is a plain result and is
+ * left to the other readers, since `{ output: [...] }` is also an ordinary value, as is a response
+ * with other keys or media nothing references. A `$ref` the
+ * media list does not carry is refused: reading it as text would drop the media silently.
+ */
+function toPartsToolResult(
+  callId: string,
+  response: Record<string, unknown>,
+  media: GeminiFunctionResponsePart['functionResponse']['parts'],
+): ToolResult | undefined {
+  const output = response['output'];
+  if (media === undefined || !Array.isArray(output) || output.length === 0) return undefined;
+  if (!output.every((entry) => typeof entry === 'string' || isMediaReference(entry))) {
+    return undefined;
+  }
+  // Anything else in the response, or media nothing references, is not this export's shape:
+  // reading it as parts would drop it silently, so it stays a plain value.
+  const EXPORT_KEYS = new Set(['output', 'outcome', 'error', 'action']);
+  if (!Object.keys(response).every((key) => EXPORT_KEYS.has(key))) return undefined;
+  const referenced = new Set(output.filter(isMediaReference).map((entry) => entry.$ref));
+  if (!media.every(({ inlineData }) => referenced.has(inlineData.displayName))) return undefined;
+  const byName = new Map(media.map(({ inlineData }) => [inlineData.displayName, inlineData]));
+  const parts = output.map((entry: string | { $ref: string }): ToolResultPart => {
+    if (typeof entry === 'string') return { type: 'text', text: entry };
+    const inline = byName.get(entry.$ref);
+    if (inline === undefined) {
+      throw createInvalidInputError(
+        `Gemini function response references media "${entry.$ref}", which its parts do not carry.`,
+        { callId, reference: entry.$ref },
+      );
+    }
+    return createMediaPart(
+      modalityFromMimeType(inline.mimeType) ?? 'file',
+      inlineBase64Source(inline.data),
+      { mimeType: inline.mimeType },
+    );
+  });
+  // A non-success result keeps its outcome, error and action beside the output.
+  const outcome = response['outcome'];
+  if (outcome === undefined || outcome === 'success') {
+    return { callId, outcome: 'success', content: null, parts };
+  }
+  const leading = toJSONValue({
+    outcome,
+    content: null,
+    ...(response['error'] === undefined ? {} : { error: response['error'] }),
+    ...(response['action'] === undefined ? {} : { action: response['action'] }),
+  });
+  if (!isCanonicalToolResultPayload(leading)) return undefined;
+  return { ...fromCanonicalToolResultPayload(callId, leading), parts };
 }
 
 function toCanonicalToolResult(callId: string, value: JSONValue): ToolResult | undefined {
@@ -214,7 +292,11 @@ function toMessageInputs(payload: GeminiConversation): MessageInput[] {
         inputs.push({
           role: 'tool-result',
           content: '',
-          toolResult: parseFunctionResponse(callId, part.functionResponse.response),
+          toolResult: parseFunctionResponse(
+            callId,
+            part.functionResponse.response,
+            part.functionResponse.parts,
+          ),
         });
         continue;
       }
