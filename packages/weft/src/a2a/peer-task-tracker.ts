@@ -104,9 +104,15 @@ export class PeerTaskTracker {
     return this.current;
   }
 
-  /** Whether the task is cancelled here, or has stopped in a state that counts. */
+  /**
+   * Whether the task is cancelled here, or has stopped in a state that counts. A terminal state
+   * always counts: a task that finished cannot take the continuation, so a terminal first
+   * response is not the state from before the new message. It is the task after a peer answered
+   * a repeated send (the same `messageId`) with the task the first send finished.
+   */
   stopped(): boolean {
-    return this.cancellation !== undefined || (this.fresh && isStopState(this.current));
+    if (this.cancellation !== undefined) return true;
+    return isStopState(this.current) && (this.fresh || isTerminalState(this.current));
   }
 
   /** Whether the task is in a state it never leaves. */

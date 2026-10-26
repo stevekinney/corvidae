@@ -78,6 +78,7 @@ import {
   snapshotPayload,
   type SteeringRequestedValue,
   type StepRecord,
+  type PeerCallJournal,
   type Store,
   StoreActionEvent,
   type StreamEventMap,
@@ -4885,7 +4886,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         if (!removedCatalogRun && fileAgents !== undefined) {
           detachBestEffortPromise(fileAgents.releaseRun(removedRunId));
         }
-        if (!removedCatalogRun) emitter.dispatch(new RunRemovedEvent(removedRunId));
+        if (!removedCatalogRun) {
+          emitter.dispatch(new RunRemovedEvent(removedRunId));
+          // COR-1670: a catalog run that merely settled keeps its records; retention removes them.
+          releasePeerCalls(removedRunId);
+        }
         // Prune this run's entries from `resolvedReviewIds` — the review ids
         // it tracks (`approval:${runId}:...`, `human-wait:${runId}:...`) can
         // never be produced by `listPendingReviews()` again once the run
@@ -11368,6 +11373,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       cutoff,
       bound,
       async (record) => {
+        // COR-1670: whatever kind of task this was, its run's peer call records end with it.
+        releasePeerCalls(record.taskId);
         if (record.kind === 'schedule-fire') {
           await releaseScheduledFire(record.taskId, 'removed', { sessionId: record.contextId });
           return;
@@ -18182,6 +18189,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     },
   );
 
+  /** COR-1670 — drops the peer call records of a run that was deleted; a failure only leaks them. */
+  function releasePeerCalls(runId: string): void {
+    detachBestEffortPromise(
+      childTopologyStore.deletePeerCalls(runId).catch((error: unknown) => {
+        diagnose({
+          level: 'error',
+          scope: 'child-topology',
+          message: `[bureau] Could not remove the peer call records of run "${runId}": ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      }),
+    );
+  }
+
   /**
    * What Bureau knows about a run that wants to own a child: another child
    * (nested delegation), a `createRun` run, or a durable `bureau.run` run.
@@ -18255,6 +18276,54 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     delegation: options.children?.delegation,
   });
 
+  // COR-1670 — the journal behind `createPeerCallTool({ durable })`.
+  const peerCalls: PeerCallJournal = {
+    async read(key) {
+      const record = await childTopologyStore.getPeerCall(key.parentRunId, key.operationKey);
+      return record === undefined
+        ? undefined
+        : {
+            taskId: record.taskId,
+            contextId: record.contextId,
+            requestDigest: record.requestDigest,
+          };
+    },
+    async write(key, entry) {
+      if (
+        [key.parentRunId, key.operationKey, entry.taskId, entry.requestDigest].some(
+          (value) => typeof value !== 'string' || value === '',
+        ) ||
+        typeof entry.contextId !== 'string'
+      ) {
+        throw new BureauError(
+          'A peer call record needs a run id, an operation key, a task id, a request digest, and a context id.',
+          'BAD_REQUEST',
+        );
+      }
+      // A parent this Bureau has never heard of is a caller's mistake, not a run to journal for.
+      // A run deleted while its call was in flight is not caught here: its workflow record can
+      // outlive it, so a record written after the deletion ran stays, unread, with its run id.
+      if (!(await isKnownRun(key.parentRunId))) {
+        throw new BureauError(
+          `Run "${key.parentRunId}" is not a run this Bureau knows, so its peer call was not recorded.`,
+          'NOT_FOUND',
+        );
+      }
+      const recording = await childTopologyStore.recordPeerCall({
+        ...key,
+        ...entry,
+        recordedAt: runtimeServices.clock.now(),
+      });
+      if (recording.status === 'exists' && recording.existing?.taskId !== entry.taskId) {
+        // Another task already holds this operation: this call must not claim it.
+        throw new BureauError(
+          `The peer call "${key.operationKey}" of run "${key.parentRunId}" already records a different task.`,
+          'CONFLICT',
+        );
+      }
+    },
+  };
+
   // COR-851 — durable goals: the control plane over the goal store, its
   // controller workflow's ports, and the attempt forwarder.
   const goalsComposition = composeBureauGoals({
@@ -18318,6 +18387,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // The topology is keyed by plain runtime strings; `D` only narrows which
     // agent names a caller may pass, exactly as `run` above.
     children: childTopology.children as BureauChildren<AgentNames<D>>,
+    peerCalls,
     goals: goalsComposition.goals as BureauGoals<AgentNames<D>>,
     get auditTrail(): AuditTrail | undefined {
       return auditTrailInstance;
