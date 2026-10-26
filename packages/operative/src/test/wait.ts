@@ -1,10 +1,23 @@
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 
 /**
- * Polls `condition` up to `maximumAttempts` times, yielding one macrotask
- * between tries. Each yield also drains Weft's deferred inline-launch queue
- * (its `setTimeout(0)` starts) so durable runs can advance — bounded, not a
- * fixed wall-clock sleep that flakes on loaded hosts.
+ * How long a wait keeps polling, at least, before it gives up. It sits under Bun's 5 s test
+ * timeout, so it raises no budget: a wait that would pass is no slower, and one that fails reports
+ * its own message instead of a bare timeout.
+ */
+export const MINIMUM_WAIT_MILLISECONDS = 3_000;
+
+/**
+ * Polls `condition`, yielding one macrotask between tries. Each yield also
+ * drains Weft's deferred inline-launch queue (its `setTimeout(0)` starts) so
+ * durable runs can advance.
+ *
+ * A yield is not a unit of time: a message-channel turn can finish in
+ * microseconds, so a run that needs a timer, a thread-pool result, or disk I/O
+ * (all slower under host load) can outlast any fixed count of them. The wait
+ * therefore gives up only once `maximumAttempts` tries have passed and
+ * {@link MINIMUM_WAIT_MILLISECONDS} has elapsed, so the count never decides
+ * the outcome on a loaded host.
  *
  * Throws with `failureMessage` when the condition is not met within the limit.
  */
@@ -14,9 +27,16 @@ export async function waitForCondition(
   maximumAttempts = 50,
   yieldTurn: () => Promise<void> = yieldToPortableEventLoop,
 ): Promise<void> {
-  for (let attempt = 0; attempt < maximumAttempts; attempt++) {
+  const startedAt = performance.now();
+  for (let attempt = 0; ; attempt++) {
     if (await condition()) {
       return;
+    }
+    if (
+      attempt + 1 >= maximumAttempts &&
+      performance.now() - startedAt >= MINIMUM_WAIT_MILLISECONDS
+    ) {
+      break;
     }
     await yieldTurn();
   }
