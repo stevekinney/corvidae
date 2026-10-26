@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, setSystemTime, test } from 'bun:test';
 
 import type { A2uiEvaluationContext } from './functions.ts';
 import {
@@ -11,6 +11,7 @@ import {
   matchesPattern,
   plainText,
   runAction,
+  timeOutOfRange,
   toJsonValue,
 } from './node-helpers.ts';
 import type { A2uiRenderContext } from './render-context.ts';
@@ -37,11 +38,64 @@ describe('node helpers', () => {
     expect(dateTimeForControl('2025-12-15T17:30', 'minute', 'Asia/Tokyo')).toBe('2025-12-15T17:30');
   });
 
-  test('dateTimeForControl falls back to the runtime zone for a zone it does not know', () => {
-    // The runner's zone is UTC.
-    expect(dateTimeForControl('2025-12-15T17:00:00Z', 'minute', 'Not/AZone')).toBe(
-      '2025-12-15T17:00',
-    );
+  test('dateTimeForControl falls back to UTC, not the runtime zone, for a zone it does not know', () => {
+    const original = process.env.TZ;
+    process.env.TZ = 'Asia/Tokyo';
+    try {
+      // A runtime-zone fallback would show 02:00 on the 16th here.
+      expect(dateTimeForControl('2025-12-15T17:00:00Z', 'minute', 'Not/AZone')).toBe(
+        '2025-12-15T17:00',
+      );
+      expect(dateTimeForControl('2025-12-15T17:00:00Z', 'time', 'Not/AZone')).toBe('17:00');
+    } finally {
+      if (original === undefined) delete process.env.TZ;
+      else process.env.TZ = original;
+    }
+  });
+
+  test('dateTimeForControl shows a zoned time-only value in the time zone it is given', () => {
+    expect(dateTimeForControl('09:00:00Z', 'time', 'Asia/Kolkata')).toBe('14:30');
+    expect(dateTimeForControl('09:00:00+02:00', 'time', 'UTC')).toBe('07:00');
+    expect(dateTimeForControl('09:00Z', 'time', 'UTC')).toBe('09:00');
+    expect(dateTimeForControl('09:00:00.5-0530', 'time', 'UTC')).toBe('14:30');
+    expect(dateTimeForControl('09:00:00Z', 'day', 'UTC')).toBeUndefined();
+  });
+
+  test('a zoned time-only value uses the offset of the display zone’s own day', () => {
+    // 2025-03-09T02:00Z is still 21:00 on the 8th in New York, a day before the clocks change.
+    setSystemTime(new Date('2025-03-09T02:00:00Z'));
+    try {
+      expect(dateTimeForControl('12:00:00Z', 'time', 'America/New_York')).toBe('07:00');
+    } finally {
+      setSystemTime();
+    }
+  });
+
+  test('timeOutOfRange honors zoned time-only bounds', () => {
+    expect(timeOutOfRange('08:00', '09:00:00Z', '17:00:00Z', 'UTC')).toBe(true);
+    expect(timeOutOfRange('09:00', '09:00:00Z', '17:00:00Z', 'UTC')).toBe(false);
+    expect(timeOutOfRange('17:30', '09:00:00Z', '17:00:00Z', 'UTC')).toBe(true);
+    // 09:00Z is 14:30 in Kolkata.
+    expect(timeOutOfRange('10:00', '09:00:00Z', '17:00:00Z', 'Asia/Kolkata')).toBe(true);
+    expect(timeOutOfRange('15:00', '09:00:00Z', '17:00:00Z', 'Asia/Kolkata')).toBe(false);
+    expect(timeOutOfRange('08:00', '09:00', '17:00', 'UTC')).toBe(true);
+  });
+
+  test('timeOutOfRange treats a range that wraps past midnight as spanning it', () => {
+    // 09:00Z to 17:00Z is 18:00 to 02:00 in Tokyo.
+    expect(timeOutOfRange('19:00', '09:00:00Z', '17:00:00Z', 'Asia/Tokyo')).toBe(false);
+    expect(timeOutOfRange('01:00', '09:00:00Z', '17:00:00Z', 'Asia/Tokyo')).toBe(false);
+    expect(timeOutOfRange('18:00', '09:00:00Z', '17:00:00Z', 'Asia/Tokyo')).toBe(false);
+    expect(timeOutOfRange('02:00', '09:00:00Z', '17:00:00Z', 'Asia/Tokyo')).toBe(false);
+    expect(timeOutOfRange('12:00', '09:00:00Z', '17:00:00Z', 'Asia/Tokyo')).toBe(true);
+    expect(timeOutOfRange('17:59', '09:00:00Z', '17:00:00Z', 'Asia/Tokyo')).toBe(true);
+    expect(timeOutOfRange('02:01', '09:00:00Z', '17:00:00Z', 'Asia/Tokyo')).toBe(true);
+    // A local overnight range wraps the same way.
+    expect(timeOutOfRange('23:30', '22:00', '06:00')).toBe(false);
+    expect(timeOutOfRange('12:00', '22:00', '06:00')).toBe(true);
+    // One bound alone never wraps.
+    expect(timeOutOfRange('23:00', '22:00', '')).toBe(false);
+    expect(timeOutOfRange('21:00', '22:00', '')).toBe(true);
   });
 
   test('displayTimeZone shows UTC until the surface mounts, unless the host names a zone', () => {

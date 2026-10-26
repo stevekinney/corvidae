@@ -64,6 +64,9 @@ function fakePeer(
   const done = new Promise<A2APeerOutcome>((resolve) => (finish = resolve));
   const client: A2APeerClient = {
     card: async () => CARD,
+    attach: async () => {
+      throw new Error('this peer expects no attach');
+    },
     send: async (request) => {
       requests.push(request);
       request.onUpdate?.({
@@ -349,6 +352,7 @@ describe('createPeerCallTool', () => {
     };
     const client: A2APeerClient = {
       card: peer.client.card,
+      attach: peer.client.attach,
       send: async (request) => {
         const task = await peer.client.send(request);
         return { ...task, provenance: reached };
@@ -415,6 +419,7 @@ describe('createPeerCallTool', () => {
       peer: {
         card: async () => Promise.reject(refusal),
         send: async () => Promise.reject(refusal),
+        attach: async () => Promise.reject(refusal),
       },
       parentContext: {
         emitter: new CompletableEventTarget<CombinedOperativeEventMap>(),

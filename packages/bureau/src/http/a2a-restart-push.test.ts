@@ -106,7 +106,7 @@ async function createWorld(
     overrides: {
       id: 'restart-push-bureau',
       humanInput: true,
-      resolveAgentGenerate: () => parksOnRequest,
+      models: { generate: () => parksOnRequest },
       storage: fixture.configuration,
     },
   });
@@ -217,7 +217,7 @@ async function createWorld(
         overrides: {
           id: 'restart-push-bureau',
           humanInput: true,
-          resolveAgentGenerate: () => parksOnRequest,
+          models: { generate: () => parksOnRequest },
           storage: fixture.configuration,
         },
       });

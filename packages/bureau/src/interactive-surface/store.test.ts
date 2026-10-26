@@ -1,5 +1,5 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createDurableEventHistory } from '../durable-event-history';
@@ -1005,6 +1005,121 @@ describe('closing, cancellation, and cleanup', () => {
     expect(await surfaces.create(createCommand({ commandId: 'reborn' }))).toMatchObject({
       outcome: 'accepted',
     });
+  });
+
+  it('retires a removal marker once no command can still be in flight for that generation (COR-1638)', async () => {
+    const runtime = createManualRuntimeServices();
+    const storage = new MemoryStorage();
+    const surfaces = createInteractiveSurfaces({
+      storage,
+      history: createDurableEventHistory(storage, runtime),
+      task: async (taskId) => ({ owner: OWNER, contextId: 'session-1', generation: taskId }),
+      now: () => runtime.clock.now(),
+    });
+    const text = textValueStore(storage, { disposeUnderlyingStorage: false });
+    const markers = (): Promise<string[]> => text.list('bureau-removed-surfaces:v1:');
+
+    // A task that never had a surface is marked too, and the marker is kept while it can matter.
+    await surfaces.removeTask('task-a');
+    await surfaces.removeTask('task-b');
+    expect(await markers()).toHaveLength(2);
+
+    // A day later the next removal retires the markers that are past the window and keeps its own.
+    await runtime.advance(25 * 60 * 60 * 1000);
+    await surfaces.removeTask('task-c');
+    const kept = await markers();
+    expect(kept).toHaveLength(1);
+    expect(kept[0]).toContain('task-c');
+  });
+
+  it('retires a removal marker written before markers carried a time, whatever its value (COR-1638)', async () => {
+    const runtime = createManualRuntimeServices();
+    const storage = new MemoryStorage();
+    const text = textValueStore(storage, { disposeUnderlyingStorage: false });
+    const surfaces = createInteractiveSurfaces({
+      storage,
+      history: createDurableEventHistory(storage, runtime),
+      task: async (taskId) => ({ owner: OWNER, contextId: 'session-1', generation: taskId }),
+      now: () => runtime.clock.now(),
+    });
+    await text.set('bureau-removed-surfaces:v1:old-one:g', '1');
+    await text.set('bureau-removed-surfaces:v1:old-two:g', 'not a time');
+
+    await surfaces.removeTask('task-now');
+
+    const kept = await text.list('bureau-removed-surfaces:v1:');
+    expect(kept).toHaveLength(1);
+    expect(kept[0]).toContain('task-now');
+  });
+
+  it('sweeps removal markers once an hour, and keeps a marker a concurrent removal rewrote (COR-1638)', async () => {
+    const runtime = createManualRuntimeServices();
+    const storage = new MemoryStorage();
+    const text = textValueStore(storage, { disposeUnderlyingStorage: false });
+    const surfaces = createInteractiveSurfaces({
+      storage,
+      history: createDurableEventHistory(storage, runtime),
+      task: async (taskId) => ({ owner: OWNER, contextId: 'session-1', generation: taskId }),
+      now: () => runtime.clock.now(),
+    });
+    const key = 'bureau-removed-surfaces:v1:stale:stale';
+    // Removed 25 hours before the sweep that follows, so it is past its window.
+    await text.set(key, String(runtime.clock.now() - 25 * 60 * 60 * 1000));
+
+    // The first removal sweeps; a second within the hour does not read the set again.
+    await surfaces.removeTask('first');
+    expect(await text.get(key)).toBeNull();
+    await text.set(key, String(runtime.clock.now() - 25 * 60 * 60 * 1000));
+    await surfaces.removeTask('second');
+    expect(await text.get(key)).not.toBeNull();
+
+    // An hour on, the next removal sweeps again.
+    await runtime.advance(60 * 60 * 1000 + 1);
+    await surfaces.removeTask('third');
+    expect(await text.get(key)).toBeNull();
+  });
+
+  it('rejects a cyclic in-process value as invalid, not with a RangeError (COR-1638)', async () => {
+    const { surfaces } = harness();
+    const cyclic: Record<string, unknown> = {};
+    cyclic['self'] = cyclic;
+
+    const created = await surfaces.create(createCommand({ data: cyclic as never }));
+
+    expect(created).toMatchObject({ outcome: 'rejected', reason: 'invalid' });
+  });
+
+  it('measures a proposal against the payload cap before compiling its schemas (COR-1638)', async () => {
+    const runtime = createManualRuntimeServices();
+    const storage = new MemoryStorage();
+    const surfaces = createInteractiveSurfaces({
+      storage,
+      history: createDurableEventHistory(storage, runtime),
+      task: async () => ({ owner: OWNER, contextId: 'session-1' }),
+      now: () => runtime.clock.now(),
+      maxPayloadBytes: 512,
+    });
+    // Over the cap and not a valid schema: compiling it first would report the schema.
+    const oversizedAndInvalid = {
+      type: 'object',
+      description: 'x'.repeat(600),
+      properties: { a: { type: 'not-a-type' } },
+    } as never;
+
+    const created = await surfaces.create(
+      createCommand({ representation: { kind: 'input-form', schema: oversizedAndInvalid } }),
+    );
+    expect(created).toMatchObject({ outcome: 'rejected', reason: 'payload-too-large' });
+
+    const small = await surfaces.create(createCommand({ commandId: 'small' }));
+    expect(small).toMatchObject({ outcome: 'accepted' });
+    const updated = await surfaces.update(
+      updateCommand({
+        commandId: 'big-update',
+        representation: { kind: 'input-form', schema: oversizedAndInvalid },
+      }),
+    );
+    expect(updated).toMatchObject({ outcome: 'rejected', reason: 'payload-too-large' });
   });
 
   it('releases a cleanup wait when the task is removed', async () => {

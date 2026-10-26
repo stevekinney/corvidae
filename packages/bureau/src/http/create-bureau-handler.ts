@@ -216,7 +216,7 @@ export type BureauHandlerSource = Pick<
   | 'getDurableRun'
   | 'waitForDurableRun'
   | 'cancelDurableRun'
-  | 'modelCatalog'
+  | 'models'
   | 'auditTrail'
   | 'workflows'
   | 'createSchedule'
@@ -1029,13 +1029,13 @@ export function buildBureauHandlerHost(
         const agent = bureau.agents.find(agentName);
         return agent === undefined
           ? undefined
-          : describeAgentModels(agent, bureau.modelCatalog.catalog().descriptors);
+          : describeAgentModels(agent, bureau.models.catalog().descriptors);
       },
     },
     agentDefinitions: {
       agents: bureau.agents,
       publishesCodeAgent: (id) => publish.includes(id),
-      models: () => bureau.modelCatalog.catalog().descriptors,
+      models: () => bureau.models.catalog().descriptors,
       audit: async (entry) => {
         await bureau.auditTrail?.record(entry);
       },

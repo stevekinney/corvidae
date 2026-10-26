@@ -101,7 +101,7 @@ export async function startWorkflowToolsBureau(
     },
     agentDirectory,
     workflowDirectory,
-    resolveAgentGenerate: (_descriptor: BackendDescriptor) => generate,
+    models: { generate: (_descriptor: BackendDescriptor) => generate },
     storage: { type: 'memory' },
     durableExecution: true,
     ...options.overrides,

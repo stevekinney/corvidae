@@ -83,12 +83,16 @@ export async function startFileBureau(options: FileBureauOptions = {}): Promise<
     },
     agentDirectory: directory,
     agentTools: { 'lookup-order': lookupTool },
-    resolveAgentGenerate: (descriptor) => generateFor(descriptor, scripts, observed),
     storage: { type: 'memory' },
     durableExecution: true,
     // A handler over this Bureau serves the asset operations, so the Bureau has the service.
     assets: { storage: createMemoryAssetStorage() },
     ...options.overrides,
+    // Merged, so an override of the catalog or of the generate keeps the other.
+    models: {
+      generate: (descriptor) => generateFor(descriptor, scripts, observed),
+      ...options.overrides?.models,
+    },
   });
   return {
     directory,

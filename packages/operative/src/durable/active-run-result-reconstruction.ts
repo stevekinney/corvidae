@@ -60,6 +60,7 @@ export async function readRunStateFromCheckpoint(
       content: record.content,
       parts: record.parts,
       messageId: record.messageId,
+      ...(record.contextEpochId === undefined ? {} : { contextEpochId: record.contextEpochId }),
       toolCalls: record.toolCalls,
       results: record.results,
       ...(record.usage ? { usage: record.usage } : {}),

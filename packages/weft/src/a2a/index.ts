@@ -32,6 +32,7 @@ export {
   A2APeerError,
   ExtensionSupportRequiredError,
   type A2APeerArtifact,
+  type A2APeerAttachRequest,
   type A2APeerCard,
   type A2APeerClient,
   type A2APeerErrorCode,
