@@ -64,7 +64,6 @@ This section says what `createBureauHandler` serves on `main` at `70daa0063`, on
 
 Each limit below is a fact of the code at `d2972c064`. Nothing here is a guarantee the implementation does not provide, and a section that implies one is describing a decision.
 
-- **`updateSession` and `querySession`**: `Bureau.updateSession` and `Bureau.querySession` throw `BureauError('UNSUPPORTED_CAPABILITY')` once a durable engine is configured and the session has an active run, because the built-in `agentRun` workflow registers no `ctx.onUpdate` or `ctx.onQuery` handler. Without a durable engine they throw `NOT_CONFIGURED`. `bureau.sessionVerbCapabilities` reports both as unsupported, and no management operation exposes either.
 - **`bureau.tasks.events` without persistent storage**: a Bureau with no durable event history answers the subscription with the `UnsupportedCapability` fault, whose `data.capability` is `event-history`, before it opens a stream. The task is still read with `bureau.tasks.get`, and a catalog run, which records no durable `run.*` events, streams its snapshot alone even with storage.
 - **`bureau.contexts.input` without a durable mailbox**: a Bureau that cannot take input, meaning one with no durable engine or a session identifier longer than 256 bytes, answers with the `Unavailable` fault and `data.reason` `unsupported-capability`. A Bureau with no session store answers `UnsupportedCapability` with `data.capability` `session-store`. An input that a run ends without delivering is cancelled, and the client sends it again.
 - **`expectedRevision` holds across processes, except where a queued run starts, and a timer tick can write its own view over another process's change**: `bureau.schedules.pause`, `resume`, `cancel`, and `update` hand `expectedRevision` to Weft, which compares it inside its serialized write and conditions the write on the exact bytes it read, so two processes sharing a store that name the same revision get exactly one winner and one `StaleRevision`. This holds once every engine on the store carries the change: an older engine writes without the condition and can still overwrite a conditioned commit. Boot recovery of a missing timer, the clearing of a schedule's current run, and a timer tick's first write are conditioned the same way, and a tick whose write is lost reads the schedule again and writes again only if it is still active at the revision and next fire the tick left. What that retry writes is the tick's own view of the schedule, including the slot and the queue it computed from what it first read. So a change another process made to the slot or the queue in that window (a run ending there, or a queued run starting there) is overwritten by it, which is also what an unconditioned tick did before. A tick that loses to a pause, an update, a cancel, or another tick writes nothing, but the occurrence it had started has already run, and a schedule it did not record as running is not seen as running when it is resumed. One write has no condition at all: when a schedule queues occurrences (`overlap: 'queue'`) and a run ends, or a tick finds the slot free, the next queued run starts in the same storage batch that records it on the schedule (`startScheduledRun`'s `scheduleStateAfterStart`), and that batch carries no condition on the schedule's bytes. A pause, resume, cancel, or update made on another process between that read and that batch can be overwritten by it, and so can another process's timer tick: the schedule is then left at the fire time that tick had just run and the timer that tick armed names a later one, so the schedule can stop firing until a boot re-arms it. The goal and workflow guards (`expectedRevision` on `bureau.goals.cancel`, `expectedHash` on the workflow and agent writes) are a different mechanism and are not part of this limit.
@@ -129,7 +128,6 @@ Every resource below declares the started-work floor: stable identity, owner, op
 | Context (session) | Caller-supplied or minted session identifier, which is the A2A `contextId` unchanged. Bureau tracks the session's `incarnation` separately: each task records the incarnation it ran in, a context deleted and recreated under the same identifier is a new incarnation, and `ListTasks` filtering by `contextId` and continuation checks match only the current incarnation, so old retained tasks never appear to share it | Creating principal | `incarnation` plus `revision` | `active`, `deleted` | None | Delete; live run cleanup only | `session` owner | A2A `contextId`; management delete |
 | Child run | Caller-supplied or minted `childRunId` | Parent run's principal; parent task | Record `revision` | `running`, `completed`, `failed`, `aborted` | Child outcome | `children.cancel`; `cascade` or `detach` | `child.*` audit entries | Internal; visible as task status detail on the parent |
 | Goal and attempt | `goalRunId`; attempt `${goalRunId}:a${n}` | Creating principal | `revision` and `transitionSeq` | Goal: `pending`, `running`, `evaluating`, `retrying`, `succeeded`, `exhausted`, `failed`, `canceled` | Goal outcome | `goals.cancel`; `close` returns cleanup | `goal` owner | Management goals |
-| Scheduler task | `scheduler-task-…` | Service principal | None | `in-progress`, `terminal`, `expired`, `not-found` | Callback result | `cancel` | None | Internal (process-local) |
 | Schedule and fire | Engine-assigned schedule identifier; each fire's workflow identifier is its run identifier | Creating principal; each fire is a task owned by the schedule's owner, with the scheduler's service principal recorded as the actor, so the owner can list, read, observe, and cancel it | `revision`, kept in Weft's schedule metadata: `1` at creation, then one more for each update, pause (a caller's or the automatic pause after a timer failure), resume, and cancel that changes the schedule; fires, skips, missed fires, timer recovery, and calls that change nothing leave it | `active`, `paused`, `cancelled` | None (fires produce tasks) | `cancelSchedule` moves it to `cancelled` and keeps the record; `closed()` covers the handle only | `schedule` owner | Management schedules; fires appear as tasks |
 | Review | `approval:<runId>:<callId>` or `human-wait:<runId>:<signalName>:<ordinal>` | The run's principal; resolved by a reviewer | Status transition | `pending`, `approved`, `denied`, `rejected`, `expired`, `revoked`, `canceled`, `superseded` | Decision | Expiry sweep | `review.*` | Management reviews; `INPUT_REQUIRED` on the task when the requester resolves it |
 | Compaction attempt | `attemptId` | The conversation's run | `baseRevision` | `idle`, `pending`, `running`, `committed`, `no-op`, `discarded`, `cancelled`, `failed` | Committed revision | `cancel` awaits the candidate | None | Internal |
@@ -537,31 +535,28 @@ Every current `Bureau` member (`packages/bureau/src/types.ts:1102-1836`) maps to
 | --- | --- |
 | `run` | `SendMessage` or `SendStreamingMessage` creating a task |
 | `createRun` | Internal (deprecated; accepts per-request overrides AB-15 removes) |
-| `getRun`, `getRunReport`, `getDurableRun`, `listRuns`, `listDurableRuns` | `GetTask`, `ListTasks`; `bureau.tasks.get`, `bureau.tasks.list` |
+| `getRun`, `getDurableRun`, `listRuns`, `listDurableRuns` | `GetTask`, `ListTasks`; `bureau.tasks.get`, `bureau.tasks.list` |
 | `abortRun`, `cancelDurableRun` | `CancelTask`; `bureau.tasks.cancel` |
-| `deleteRun`, `listAbortingRuns`, `subscribeRunSnapshot` | Internal; cleanup status reaches clients through the cleanup extension |
+| `listAbortingRuns`, `subscribeRunSnapshot` | Internal; cleanup status reaches clients through the cleanup extension |
 | `listSessions`, `getSession`, `deleteSession` | `contextId`; `bureau.contexts.delete` |
 | `signalSession`, `submitSessionInput`, `submitSteeringCommand` | `SendMessage` or `SendStreamingMessage` continuing a task |
 | `submitSteeringCommand`, `getSessionSteering` | `bureau.contexts.steer`; `bureau.contexts.get` (`model`, `configVersion`) |
 | `forkSession` | `bureau.contexts.fork` |
-| `updateSession`, `querySession` | Absent (always `UNSUPPORTED_CAPABILITY`) |
 | `children.*` | Internal; parent task status detail |
 | `goals.*` | `bureau.goals.*` |
-| `submitSchedulerTask`, `locateSchedulerTask`, `awaitSchedulerTask` | Internal |
 | `createSchedule`, `getSchedule`, `listSchedules`, `pauseSchedule`, `resumeSchedule`, `cancelSchedule` | `bureau.schedules.*` |
 | `listPendingReviews`, `getReview`, `resolveReview` | `bureau.reviews.*`; `INPUT_REQUIRED` on the task |
-| `sweepExpiredReviews` | Internal maintenance |
 | `issueGrant`, `revokeGrant`, `listGrants` | Internal |
 | `webhookNotifier` | `bureau.deliveries.*`; push notification configs |
 | `auditTrail` | `bureau.audit.query` |
 | `eventHistory`, `subscribeEventHistory` | `bureau.tasks.events`; the durable-history extension |
 | `eventFeed`, `runEventFeeds`, `subscribeLiveFrames`, `events`, `on`, `once`, `subscribe`, `toObservable`, `addEventListener`, `removeEventListener` | Internal; the live sources behind the AG-UI streams and, without durable history, the A2A status and artifact projection |
 | `agents` | Agent Cards; `bureau.agents.list` |
-| `id`, `getConfiguration`, `getTools`, `waitForRecovery` | `bureau.deployment.get` (identity and recovery status only) |
+| `id`, `waitForRecovery` | `bureau.deployment.get` (identity and recovery status only) |
 | `modelCatalog`, `planSelection` | Internal |
 | `onlineEvalSampler` | Internal; breaches reach deliveries |
-| `setRequestAuthorityValidator`, `getRequestAuthorityValidator` | Internal; the authorization predicate is configured on the handler |
-| `ready`, `store`, `memory`, `scheduler`, `sessionStore`, `kv`, `signal`, `completed`, `complete`, `dispose`, `shutdown`, `runDurableMaintenance` | Internal host lifecycle |
+| `setRequestAuthorityValidator` | Internal; the authorization predicate is configured on the handler |
+| `ready`, `store`, `memory`, `sessionStore`, `kv`, `signal`, `completed`, `complete`, `dispose`, `shutdown`, `runDurableMaintenance` | Internal host lifecycle |
 
 COR-1300's operations (`bureau.run`, `getRun`, `abortRun`, `listPendingReviews`, `resolveReview`, and the event feeds) map onto the A2A surface and the management plane as above.
 

@@ -51,9 +51,6 @@ import {
   ScheduleAttemptedEvent,
   type ScheduledAgentRunInput,
   SCHEDULER_ORIGIN_TAG,
-  SchedulerTaskCompletedEvent,
-  SchedulerTaskFailedEvent,
-  SchedulerTaskLookupError,
   ScheduleSkippedEvent,
   startDurableRunResult,
   StepCompletedEvent,
@@ -61,9 +58,6 @@ import {
   type SteeringRequestedValue,
   stopWhen,
   type StreamEventMap,
-  TaskCancelledEvent,
-  TaskDispatchedEvent,
-  TaskPreemptedEvent,
   type Toolbox,
 } from '@lostgradient/operative';
 import { discoverSkills, type SkillCatalogRevision } from './skills';
@@ -81,16 +75,14 @@ import {
 } from '@lostgradient/weft';
 import {
   ApprovalBindingError,
-  createMockTool,
   createProcessLocalApprovalStateStore,
-  createTestToolbox,
   createTool,
   createToolbox,
   type InputDetector,
   type PendingToolApproval,
   type ToolExecutionResult,
 } from 'armorer';
-import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test';
+import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { Conversation, createConversationHistory, getMessages } from 'conversationalist';
 import { z } from 'zod';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
@@ -105,7 +97,6 @@ import {
   classifyRecoveredRun,
   classifyRecoveredRunDetailed,
   createBureau,
-  createDefaultSessionPersistenceSleep,
   ApprovalOutcomeNotWrittenError,
   createPendingApprovalPersistHook,
   dedupeRecoveryPerRunFailures,
@@ -120,7 +111,6 @@ import {
   omitKeysWithPrefix,
   resolveCancelDurableRun,
   ScheduleLocatorUnavailableError,
-  wireFlowControlSchedulerEvents,
   wireStreamEventTargetFrames,
 } from './create-bureau';
 import type {
@@ -141,6 +131,15 @@ import {
 import { waitForCondition, waitForRunState } from './test';
 import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 import { type Bureau, type BureauDiagnostic, type ServerFrame } from './types';
+import { advancingTurn, withAdvancingClock } from './testing/advancing-turn.test-support';
+import {
+  IMMEDIATE_TASK_RETENTION,
+  retireSettledTasks,
+  retireSettledTasksOnRealClock,
+  SHORT_TASK_RETENTION,
+} from './testing/run-retirement.test-support';
+import { storageOverTextStore } from './testing/text-store-storage.test-support';
+import { expireReviews } from './testing/expired-reviews.test-support';
 
 function createTextStoreProxy(
   backingStore: ConditionalTextValueStore,
@@ -380,64 +379,6 @@ describe('create-bureau helper coverage', () => {
     await Promise.resolve();
   });
 
-  it('uses the default session persistence sleep timer with the requested delay', async () => {
-    const originalSetTimeout = globalThis.setTimeout;
-    const timerCalls: Array<number | undefined> = [];
-    globalThis.setTimeout = ((handler: TimerHandler, timeout?: number) => {
-      timerCalls.push(timeout);
-      expect(typeof handler).toBe('function');
-      (handler as (...args: unknown[]) => void)();
-      return 1 as unknown as ReturnType<typeof setTimeout>;
-    }) as unknown as typeof setTimeout;
-
-    try {
-      await createDefaultSessionPersistenceSleep()(42);
-    } finally {
-      globalThis.setTimeout = originalSetTimeout;
-    }
-
-    expect(timerCalls).toEqual([42]);
-  });
-
-  it('wires scheduler lifecycle events to the flow controller and removes the listeners on dispose', () => {
-    const scheduler = new EventTarget();
-    const calls: string[] = [];
-    const cleanup = wireFlowControlSchedulerEvents(scheduler, {
-      settle: (taskId) => calls.push(`settle:${taskId}`),
-      markParked: (taskId) => calls.push(`park:${taskId}`),
-      markResumed: (taskId) => calls.push(`resume:${taskId}`),
-    });
-
-    scheduler.dispatchEvent(new SchedulerTaskCompletedEvent('completed-task', {} as never));
-    scheduler.dispatchEvent(new SchedulerTaskFailedEvent('failed-task', new Error('boom')));
-    scheduler.dispatchEvent(new TaskCancelledEvent('cancelled-task', 'queued'));
-    scheduler.dispatchEvent(new TaskPreemptedEvent('requeued-task', 'higher priority task', true));
-    scheduler.dispatchEvent(
-      new TaskPreemptedEvent('dropped-task', 'cancelled during preemption', false),
-    );
-    scheduler.dispatchEvent(new TaskDispatchedEvent('dispatched-task', 'background'));
-
-    expect(calls).toEqual([
-      'settle:completed-task',
-      'settle:failed-task',
-      'settle:cancelled-task',
-      'park:requeued-task',
-      'settle:dropped-task',
-      'resume:dispatched-task',
-    ]);
-
-    cleanup.forEach((dispose) => dispose());
-    scheduler.dispatchEvent(new TaskDispatchedEvent('ignored-after-cleanup', 'background'));
-    expect(calls).toEqual([
-      'settle:completed-task',
-      'settle:failed-task',
-      'settle:cancelled-task',
-      'park:requeued-task',
-      'settle:dropped-task',
-      'resume:dispatched-task',
-    ]);
-  });
-
   it('finds recovered scheduled sessions by explicit id and stateless session naming', async () => {
     const kv = textValueStore(new MemoryStorage());
     const sessionStore = createSessionStore(kv);
@@ -668,11 +609,14 @@ describe('createBureau', () => {
           agents: {
             default: createAgent({ generate: createMockGenerate() }),
           },
-          durableExecution: true,
-          persistence: textValueStore(new MemoryStorage()),
+          // A storage backend that cannot open: composition fails before the factory resolves.
+          storage: {
+            type: 'sqlite',
+            path: join(tmpdir(), 'cor-1695-no-such-directory', 'bureau.sqlite'),
+          },
         }),
       ),
-    ).toThrow(/durableExecution: true is incompatible/);
+    ).toThrow();
   });
 
   it('uses a provided store when one is supplied', async () => {
@@ -1061,7 +1005,8 @@ describe('createBureau', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     const run = await bureau.createRun({ message: 'Named dispatch', agentName: 'researcher' });
@@ -1076,7 +1021,8 @@ describe('createBureau', () => {
       agents: {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     const run = await bureau.createRun({ agentName: 'default', message: 'Named dispatch' });
@@ -1091,7 +1037,8 @@ describe('createBureau', () => {
       agents: {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     const firstRun = await bureau.createRun({ agentName: 'default', message: 'First message' });
@@ -1116,7 +1063,8 @@ describe('createBureau', () => {
       agents: {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
     const sessionId = 'concurrent-bureau-session';
 
@@ -1180,7 +1128,8 @@ describe('createBureau', () => {
           toolbox: createEmptyToolbox(),
         }),
       },
-      persistence,
+      storage: storageOverTextStore(persistence),
+      durableExecution: false,
     });
 
     const [redactingRun, appendingRun] = await Promise.all([
@@ -1215,7 +1164,8 @@ describe('createBureau', () => {
       agents: {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
     const sessionId = 'session-aligned';
 
@@ -1240,7 +1190,8 @@ describe('createBureau', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     const run = await bureau.createRun({ agentName: 'default', message: 'Fast completion' });
@@ -1259,7 +1210,8 @@ describe('createBureau', () => {
       agents: {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     const run = await bureau.createRun({
@@ -1280,7 +1232,8 @@ describe('createBureau', () => {
       agents: {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     const run = await bureau.createRun({ agentName: 'default', message: 'Uncapped run' });
@@ -1300,7 +1253,8 @@ describe('createBureau', () => {
       agents: {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     const run = await bureau.createRun({
@@ -1321,7 +1275,8 @@ describe('createBureau', () => {
       agents: {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     const run = await bureau.createRun({ agentName: 'default', message: 'Uncapped run' });
@@ -1343,7 +1298,8 @@ describe('createBureau', () => {
       agents: {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
-      persistence,
+      storage: storageOverTextStore(persistence),
+      durableExecution: false,
     });
 
     // Run 1: explicitly capped
@@ -1376,7 +1332,8 @@ describe('createBureau', () => {
       agents: {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
-      persistence,
+      storage: storageOverTextStore(persistence),
+      durableExecution: false,
     });
 
     // Run 1: explicitly capped at 3 steps
@@ -1432,7 +1389,8 @@ describe('createBureau', () => {
       agents: {
         default: createAgent({ generate: failOnSecondRun, toolbox: createEmptyToolbox() }),
       },
-      persistence,
+      storage: storageOverTextStore(persistence),
+      durableExecution: false,
     });
 
     // Run 1: creates the session.
@@ -1467,6 +1425,7 @@ describe('createBureau', () => {
   });
 
   it('retries terminal session persistence after a transient save failure', async () => {
+    const runtime = createManualRuntimeServices();
     const backingStore = textValueStore(new MemoryStorage());
     let sessionSaveCount = 0;
 
@@ -1494,16 +1453,22 @@ describe('createBureau', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      persistence: flakyStore,
-      sessionPersistenceSleep: async () => {},
+      storage: storageOverTextStore(flakyStore),
+      durableExecution: false,
+      runtime,
     });
 
     const run = await bureau.createRun({ agentName: 'default', message: 'Retry completion' });
-    await waitForRunCompletion(bureau, run.id);
-    await waitForCondition(async () => {
-      const session = await bureau.getSession(run.sessionId);
-      return session?.metadata['lastRunStatus'] === 'completed';
-    }, 'completed session metadata was not persisted after retry');
+    await withAdvancingClock(runtime, waitForRunCompletion(bureau, run.id));
+    await waitForCondition(
+      async () => {
+        const session = await bureau.getSession(run.sessionId);
+        return session?.metadata['lastRunStatus'] === 'completed';
+      },
+      'completed session metadata was not persisted after retry',
+      50,
+      advancingTurn(runtime),
+    );
 
     const session = await bureau.getSession(run.sessionId);
     expect(sessionSaveCount).toBe(3);
@@ -2548,7 +2513,6 @@ describe('createBureau', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      scheduler: { enabled: true },
       storage: delayed.storage,
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
@@ -2793,33 +2757,27 @@ describe('createBureau', () => {
   it('keeps replayed frames in emission order when the first listener causes a new frame during replay (COR-1421)', async () => {
     const { bureau, runId, cleanup } = await bootRecoveredBureauWithDelayedTail(0);
     try {
-      // The listener synchronously submits a scheduler task mid-replay, which
-      // emits a `scheduler.state` frame at once. It must queue behind the
-      // rest of the replay, never re-enter the listener while it is still
-      // being replayed to.
+      // The listener synchronously records an action on the run mid-replay, which emits an
+      // `event` frame at once. It must queue behind the rest of the replay, never re-enter the
+      // listener while it is still being replayed to.
       let causing = false;
       let reentrantFrames = 0;
-      let schedulerFrames = 0;
+      let causedFrames = 0;
       let replayedFrames = 0;
       bureau.subscribeLiveFrames((frame) => {
         if (causing) reentrantFrames += 1;
-        if (frame.type === 'scheduler.state') schedulerFrames += 1;
+        if (frame.type === 'event' && frame.event === 'test.cause-a-frame') causedFrames += 1;
         if (!('runId' in frame) || frame.runId !== runId) return;
         replayedFrames += 1;
         if (!causing && replayedFrames === 1) {
           causing = true;
-          void bureau.submitSchedulerTask({
-            agentName: 'default',
-            message: 'cause a frame',
-            priority: 'background',
-          });
+          bureau.store.recordAction(runId, 'test.cause-a-frame', {});
           causing = false;
         }
       });
       await flushMicrotasks();
       expect(replayedFrames).toBeGreaterThan(1);
-      // The task resolves its agent before it is queued, so its frame lands a few turns later.
-      await waitForCondition(() => schedulerFrames > 0, 'the scheduler frame to be emitted');
+      await waitForCondition(() => causedFrames > 0, 'the caused frame to be emitted');
       expect(reentrantFrames).toBe(0);
     } finally {
       await cleanup();
@@ -4005,66 +3963,6 @@ describe('createBureau', () => {
     }
   });
 
-  it('logs terminal session persistence failures when retry sleep rejects', async () => {
-    const backingStore = textValueStore(new MemoryStorage());
-    let sessionSaveCount = 0;
-    let retrySleepCount = 0;
-
-    const flakyStore = createTextStoreProxy(backingStore, {
-      async conditionalBatch(conditions, operations) {
-        if (
-          conditions.some((condition) => condition.key.startsWith('agent-session:')) ||
-          operations.some((operation) => operation.key.startsWith('agent-session:'))
-        ) {
-          sessionSaveCount += 1;
-          if (sessionSaveCount === 2) {
-            throw new Error('temporary persistence failure');
-          }
-        }
-
-        return backingStore.conditionalBatch(conditions, operations);
-      },
-    });
-
-    const errorSpy = mock(() => {});
-    const originalError = console.error;
-    console.error = errorSpy;
-
-    try {
-      const bureau = await createBureau<AgentDefinitions>({
-        agents: {
-          default: createAgent({
-            generate: createMockGenerate(),
-            toolbox: createEmptyToolbox(),
-            stopWhen: stopWhen.noToolCalls(),
-          }),
-        },
-        persistence: flakyStore,
-        sessionPersistenceSleep: async () => {
-          retrySleepCount += 1;
-          throw new Error('retry sleep aborted');
-        },
-      });
-
-      const run = await bureau.createRun({ agentName: 'default', message: 'Retry sleep failure' });
-      await waitForRunCompletion(bureau, run.id);
-      await waitForCondition(
-        () => errorSpy.mock.calls.length === 1,
-        'session persistence error was not logged after retry sleep failed',
-      );
-
-      expect(sessionSaveCount).toBe(2);
-      expect(retrySleepCount).toBe(1);
-
-      const callArgs = errorSpy.mock.calls[0] as unknown[];
-      const errorMessage = String(callArgs[0]);
-      expect(errorMessage).toContain('Failed to persist completed session state');
-      expect(errorMessage).toContain('retry sleep aborted');
-    } finally {
-      console.error = originalError;
-    }
-  });
-
   it('does not register a run when initial session persistence fails', async () => {
     const backingStore = textValueStore(new MemoryStorage());
     const failingStore = createTextStoreProxy(backingStore, {
@@ -4084,7 +3982,8 @@ describe('createBureau', () => {
       agents: {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
-      persistence: failingStore,
+      storage: storageOverTextStore(failingStore),
+      durableExecution: false,
     });
 
     const error = await bureau.createRun({ agentName: 'default', message: 'Ghost run?' }).then(
@@ -4106,7 +4005,8 @@ describe('createBureau', () => {
       agents: {
         default: createAgent({ generate, toolbox: createEmptyToolbox() }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     const run = await bureau.createRun({ agentName: 'default', message: 'Explode' });
@@ -4153,7 +4053,8 @@ describe('createBureau', () => {
           },
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     const run = await bureau.createRun({ agentName: 'default', message: 'trip me' });
@@ -4191,7 +4092,8 @@ describe('createBureau', () => {
       agents: {
         default: createAgent({ generate, toolbox: createEmptyToolbox() }),
       },
-      persistence: trackingStore,
+      storage: storageOverTextStore(trackingStore),
+      durableExecution: false,
     });
 
     const run = await bureau.createRun({ agentName: 'default', message: 'Explode once' });
@@ -4804,7 +4706,8 @@ describe('createBureau', () => {
       agents: {
         default: createAgent({ generate, toolbox: createEmptyToolbox() }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
@@ -4896,27 +4799,8 @@ describe('createBureau', () => {
     }
   });
 
-  it('throws CONFLICT when deleting a running run', async () => {
-    const generate: GenerateFunction = () => new Promise(() => {});
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ generate, toolbox: createEmptyToolbox() }),
-      },
-    });
-
-    const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
-    expect(bureau.getRun(run.id)?.status).toBe('running');
-
-    let deletionError: unknown;
-    try {
-      await bureau.deleteRun(run.id);
-    } catch (error) {
-      deletionError = error;
-    }
-    expect(deletionError).toBeInstanceOf(BureauError);
-  });
-
   it('revokes pending approval bindings before deleting a terminal run', async () => {
+    const runtime = createManualRuntimeServices();
     const backingStore = textValueStore(new MemoryStorage());
     let deletionPersistenceAttempts = 0;
     let failNextDeletionPersistence = false;
@@ -4980,8 +4864,10 @@ describe('createBureau', () => {
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      persistence,
-      sessionPersistenceSleep: async () => {},
+      storage: storageOverTextStore(persistence),
+      durableExecution: false,
+      runtime,
+      ...SHORT_TASK_RETENTION,
     });
     const run = await bureau.createRun({
       agentName: 'default',
@@ -4991,7 +4877,7 @@ describe('createBureau', () => {
     expect(bureau.listPendingReviews()).toHaveLength(1);
 
     failNextDeletionPersistence = true;
-    await bureau.deleteRun(run.id);
+    await withAdvancingClock(runtime, retireSettledTasks(bureau, runtime));
     expect(revocations).toBe(1);
     // AB-389/AB-390 — this counter counts every `conditionalBatch` call
     // against the shared persistence store once the first (injected)
@@ -5073,7 +4959,8 @@ describe('createBureau', () => {
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
     const run = await bureau.createRun({
       agentName: 'default',
@@ -5107,7 +4994,8 @@ describe('createBureau', () => {
       agents: {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
@@ -5119,8 +5007,6 @@ describe('createBureau', () => {
 
     const session = await bureau.getSession(run.sessionId);
     expect(session?.id).toBe(run.sessionId);
-
-    await bureau.deleteRun(run.id);
 
     await bureau.deleteSession(run.sessionId);
     const deleted = await bureau.getSession(run.sessionId);
@@ -5144,7 +5030,8 @@ describe('createBureau', () => {
           toolbox: createToolbox([createNextTool()]),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
       // No maximumSteps and no stopWhen — the run stops solely on the bureau's
       // default step cap, exercising the exact seam that diverged.
     });
@@ -5173,123 +5060,6 @@ describe('createBureau', () => {
     } finally {
       await bureau.dispose();
     }
-  });
-
-  it('does not configure a scheduler unless it is explicitly enabled', async () => {
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
-      },
-    });
-
-    expect(bureau.scheduler).toBeUndefined();
-    bureau.dispose();
-  });
-
-  it('submits scheduler tasks with the configured runtime toolbox', async () => {
-    const echoTool = createMockTool({
-      name: 'echo',
-      impl: () => 'echoed',
-    });
-
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({
-          generate: createSequentialGenerate([
-            {
-              content: '',
-              toolCalls: [{ name: 'echo', arguments: {} }],
-            },
-            {
-              content: 'done',
-              toolCalls: [],
-            },
-          ]),
-          toolbox: createTestToolbox([echoTool]),
-        }),
-      },
-      scheduler: { enabled: true, idleDelay: 1 },
-    });
-
-    const response = await bureau.submitSchedulerTask({
-      agentName: 'default',
-      message: 'Run a scheduled tool task',
-      priority: 'background',
-    });
-
-    await waitForCondition(
-      () => bureau.scheduler?.getState().completedCount === 1,
-      'scheduled task did not complete',
-    );
-
-    expect(response.status).toBe('queued');
-    expect(echoTool.calls).toHaveLength(1);
-    expect(bureau.scheduler?.getState().completedCount).toBe(1);
-
-    bureau.dispose();
-  });
-
-  it('throws BAD_REQUEST when submitSchedulerTask receives invalid scheduler-specific fields', async () => {
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
-      },
-      scheduler: { enabled: true, idleDelay: 1 },
-    });
-
-    const invalidRequest = {
-      agentName: 'default',
-      message: 'Run a scheduled task',
-      priority: 'urgent',
-    } as unknown as Parameters<typeof bureau.submitSchedulerTask>[0];
-
-    const error = await Promise.resolve()
-      .then(() => bureau.submitSchedulerTask(invalidRequest))
-      .then(
-        () => undefined,
-        (rejection) => rejection,
-      );
-
-    expect(error).toMatchObject({
-      code: 'BAD_REQUEST',
-    });
-    expect((error as Error).message).toBe(
-      '"priority" must be one of: immediate, scheduled, background, ambient',
-    );
-
-    bureau.dispose();
-  });
-
-  it('returns tool summaries', async () => {
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
-      },
-    });
-
-    expect(bureau.getTools()).toEqual([]);
-  });
-
-  it('returns run reports for unknown, active, and completed runs', async () => {
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
-      },
-    });
-
-    expect(bureau.getRunReport('missing-report-run')).toBeUndefined();
-
-    const active = createParkedActiveRun();
-    bureau.store.register(active.activeRun, 'active-report-run');
-    expect(bureau.getRunReport('active-report-run')).toMatchObject({
-      runId: 'active-report-run',
-    });
-
-    const completed = await bureau.createRun({ agentName: 'default', message: 'Completed report' });
-    await waitForRunCompletion(bureau, completed.id);
-    expect(bureau.getRunReport(completed.id)?.runId).toBe(completed.id);
-
-    bureau.dispose();
   });
 
   it('does not abort run setup when a subscribeLiveFrames listener throws (regression PRRT_kwDORvupsc6PxP_w)', async () => {
@@ -5420,73 +5190,6 @@ describe('createBureau', () => {
         bureau.dispose();
       }
     });
-  });
-
-  it('emits one scheduler preempted frame with current state', async () => {
-    const { generate: slowGenerate, resolve } = createBlockingGenerate();
-    const schedulerFrames: Extract<
-      ServerFrame,
-      { type: 'scheduler.state' | 'scheduler.task.preempted' }
-    >[] = [];
-
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
-      },
-      scheduler: { enabled: true, idleDelay: 1 },
-    });
-
-    const unsubscribe = bureau.subscribeLiveFrames((frame) => {
-      if (frame.type === 'scheduler.state' || frame.type === 'scheduler.task.preempted') {
-        schedulerFrames.push(frame);
-      }
-    });
-
-    const backgroundResult = bureau.scheduler!.submit({
-      id: 'background-task',
-      priority: 'background',
-      requeue: false,
-      createRun: () => ({
-        generate: slowGenerate,
-        toolbox: createEmptyToolbox(),
-        conversation: new Conversation(),
-        maximumSteps: 5,
-      }),
-    });
-
-    await waitForCondition(
-      () => bureau.scheduler?.getState().activeTask?.id === 'background-task',
-      'background task was not dispatched',
-    );
-    schedulerFrames.length = 0;
-
-    const immediateResult = bureau.scheduler!.submitImmediate(() => ({
-      generate: createMockGenerate('immediate-done'),
-      toolbox: createEmptyToolbox(),
-      conversation: new Conversation(),
-      maximumSteps: 1,
-    }));
-
-    resolve({ content: 'background-step', toolCalls: [] });
-
-    await immediateResult;
-    await backgroundResult;
-    await waitForCondition(
-      () => schedulerFrames.some((frame) => frame.type === 'scheduler.task.preempted'),
-      'scheduler preempted frame was not emitted',
-    );
-
-    const preemptedFrames = schedulerFrames.filter(
-      (frame): frame is Extract<ServerFrame, { type: 'scheduler.task.preempted' }> =>
-        frame.type === 'scheduler.task.preempted',
-    );
-
-    expect(preemptedFrames).toHaveLength(1);
-    expect(preemptedFrames[0]?.taskId).toBe('background-task');
-    expect(preemptedFrames[0]?.state.preemptedCount).toBeGreaterThanOrEqual(1);
-
-    unsubscribe();
-    bureau.dispose();
   });
 
   it('emits action events from live runs', async () => {
@@ -6253,7 +5956,8 @@ describe('createBureau effectful hook idempotency (#27)', () => {
         }),
       },
       memory,
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     try {
@@ -6861,40 +6565,6 @@ describe('createBureau session signal/update/query without durable engine', () =
     expect((error as BureauError).code).toBe('NOT_CONFIGURED');
     expect((error as BureauError).subject).toBe('durable');
   });
-
-  it('updateSession throws NOT_CONFIGURED when no durable engine is composed', async () => {
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
-      },
-    });
-
-    const error = await bureau
-      .updateSession('any-session', 'any-update')
-      .then(() => null)
-      .catch((e: unknown) => e);
-
-    expect(error).toBeInstanceOf(BureauError);
-    expect((error as BureauError).code).toBe('NOT_CONFIGURED');
-    expect((error as BureauError).subject).toBe('durable');
-  });
-
-  it('querySession throws NOT_CONFIGURED when no durable engine is composed', async () => {
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
-      },
-    });
-
-    const error = await bureau
-      .querySession('any-session', 'any-query')
-      .then(() => null)
-      .catch((e: unknown) => e);
-
-    expect(error).toBeInstanceOf(BureauError);
-    expect((error as BureauError).code).toBe('NOT_CONFIGURED');
-    expect((error as BureauError).subject).toBe('durable');
-  });
 });
 
 describe('createBureau session update/query capability unavailability (AB-192)', () => {
@@ -6903,79 +6573,6 @@ describe('createBureau session update/query capability unavailability (AB-192)',
   // ctx.onUpdate/ctx.onQuery handler, so both unconditionally throw
   // BureauError('UNSUPPORTED_CAPABILITY') once a durable engine IS configured
   // and the session has an active run — never reaching engine.update/query.
-
-  it('updateSession throws UNSUPPORTED_CAPABILITY when a durable engine is configured', async () => {
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({
-          generate: () => new Promise<never>(() => {}),
-          toolbox: createEmptyToolbox(),
-        }),
-      },
-      storage: { type: 'memory' },
-      durableExecution: true,
-    });
-    try {
-      const run = await bureau.createRun({ agentName: 'default', message: 'Wait for a signal' });
-      await pollUntil(async () => {
-        const session = await bureau.getSession(run.sessionId);
-        return session?.metadata['lastRunStatus'] === 'running';
-      });
-
-      const error = await bureau.updateSession(run.sessionId, 'any-update').then(
-        () => undefined,
-        (rejection) => rejection,
-      );
-
-      expect(error).toBeInstanceOf(BureauError);
-      expect((error as BureauError).code).toBe('UNSUPPORTED_CAPABILITY');
-    } finally {
-      await bureau.dispose();
-    }
-  });
-
-  it('querySession throws UNSUPPORTED_CAPABILITY when a durable engine is configured', async () => {
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({
-          generate: () => new Promise<never>(() => {}),
-          toolbox: createEmptyToolbox(),
-        }),
-      },
-      storage: { type: 'memory' },
-      durableExecution: true,
-    });
-    try {
-      const run = await bureau.createRun({ agentName: 'default', message: 'Wait for a signal' });
-      await pollUntil(async () => {
-        const session = await bureau.getSession(run.sessionId);
-        return session?.metadata['lastRunStatus'] === 'running';
-      });
-
-      const error = await bureau.querySession(run.sessionId, 'any-query').then(
-        () => undefined,
-        (rejection) => rejection,
-      );
-
-      expect(error).toBeInstanceOf(BureauError);
-      expect((error as BureauError).code).toBe('UNSUPPORTED_CAPABILITY');
-    } finally {
-      await bureau.dispose();
-    }
-  });
-
-  it('exposes sessionVerbCapabilities reporting update and query as unsupported', async () => {
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
-      },
-    });
-    try {
-      expect(bureau.sessionVerbCapabilities).toEqual({ signal: true, update: false, query: false });
-    } finally {
-      await bureau.dispose();
-    }
-  });
 });
 
 describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => {
@@ -8717,50 +8314,6 @@ describe('createBureau session signal/update/query with terminal sessions', () =
     bureau.dispose();
   });
 
-  it('updateSession throws NOT_FOUND when lastRunStatus is completed (not running)', async () => {
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
-      },
-      storage: { type: 'memory' },
-      durableExecution: true,
-    });
-
-    const run = await bureau.createRun({ agentName: 'default', message: 'Complete me' });
-    await waitForRunCompletion(bureau, run.id);
-
-    const error = await bureau.updateSession(run.sessionId, 'any-update').then(
-      () => undefined,
-      (rejection) => rejection,
-    );
-    expect(error).toBeInstanceOf(BureauError);
-    expect((error as BureauError).code).toBe('NOT_FOUND');
-
-    bureau.dispose();
-  });
-
-  it('querySession throws NOT_FOUND when lastRunStatus is completed (not running)', async () => {
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
-      },
-      storage: { type: 'memory' },
-      durableExecution: true,
-    });
-
-    const run = await bureau.createRun({ agentName: 'default', message: 'Complete me' });
-    await waitForRunCompletion(bureau, run.id);
-
-    const error = await bureau.querySession(run.sessionId, 'any-query').then(
-      () => undefined,
-      (rejection) => rejection,
-    );
-    expect(error).toBeInstanceOf(BureauError);
-    expect((error as BureauError).code).toBe('NOT_FOUND');
-
-    bureau.dispose();
-  });
-
   it('signalSession throws NOT_FOUND when lastRunStatus is aborted (not running)', async () => {
     const generate: GenerateFunction = () => new Promise(() => {});
     const bureau = await createBureau<AgentDefinitions>({
@@ -8917,12 +8470,6 @@ describe('createBureau session signal authority revalidation', () => {
 
     expect(error).toBeInstanceOf(BureauError);
     expect((error as BureauError).code).toBe('CONFLICT');
-    const updateError = await bureau.updateSession(run.sessionId, 'human-update').then(
-      () => undefined,
-      (rejection) => rejection,
-    );
-    expect(updateError).toBeInstanceOf(BureauError);
-    expect((updateError as BureauError).code).toBe('CONFLICT');
     bureau.abortRun(run.id);
     bureau.dispose();
   });
@@ -9429,7 +8976,8 @@ describe('createBureau review queue (AB-20)', () => {
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      persistence,
+      storage: storageOverTextStore(persistence),
+      durableExecution: false,
     });
 
     const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
@@ -9757,25 +9305,6 @@ describe('createBureau review queue (AB-20)', () => {
     expect(charges).toEqual([]);
     expect(bureau.listPendingReviews()).toHaveLength(1);
     bureau.dispose();
-  });
-
-  it('exposes the construction-time request authority validator for transport composition', async () => {
-    const constructionValidator = () => true;
-    const replacementValidator = () => false;
-    const bureau = await createBureau({
-      agents: {},
-      requestAuthorityValidator: constructionValidator,
-    });
-
-    try {
-      expect(bureau.getRequestAuthorityValidator()).toBe(constructionValidator);
-
-      bureau.setRequestAuthorityValidator(replacementValidator);
-
-      expect(bureau.getRequestAuthorityValidator()).toBe(replacementValidator);
-    } finally {
-      await bureau.dispose();
-    }
   });
 
   it('dispatches recovery.attempted, then recovery.rejected, then recovery.lease-released for a cancelled, lease-released recovered handle (AB-90/ab90-09)', async () => {
@@ -10792,7 +10321,8 @@ describe('createBureau review queue (AB-20)', () => {
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      persistence,
+      storage: storageOverTextStore(persistence),
+      durableExecution: false,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
 
@@ -10835,7 +10365,8 @@ describe('createBureau review queue (AB-20)', () => {
           toolbox: createNeedsApprovalToolbox('cleanup-secret', charges),
         }),
       },
-      persistence,
+      storage: storageOverTextStore(persistence),
+      durableExecution: false,
     });
     try {
       expect(restartedBureau.listPendingReviews()).toHaveLength(0);
@@ -10887,7 +10418,8 @@ describe('createBureau review queue (AB-20)', () => {
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      persistence,
+      storage: storageOverTextStore(persistence),
+      durableExecution: false,
       onDiagnostic: () => undefined,
     });
     try {
@@ -10949,8 +10481,8 @@ describe('createBureau review queue (AB-20)', () => {
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      persistence,
-      sessionPersistenceRetryDelayMilliseconds: 0,
+      storage: storageOverTextStore(persistence),
+      durableExecution: false,
       onDiagnostic: () => undefined,
     });
     try {
@@ -11001,6 +10533,7 @@ describe('createBureau review queue (AB-20)', () => {
   });
 
   it('retries an initial approval binding persistence failure before exposing the live review', async () => {
+    const runtime = createManualRuntimeServices();
     const backingStore = textValueStore(new MemoryStorage());
     let failedApprovalPersistence = false;
     const persistence = createTextStoreProxy(backingStore, {
@@ -11029,16 +10562,17 @@ describe('createBureau review queue (AB-20)', () => {
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      persistence,
+      storage: storageOverTextStore(persistence),
+      durableExecution: false,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
-      sessionPersistenceSleep: async () => {},
+      runtime,
     });
 
     const run = await bureau.createRun({
       agentName: 'default',
       message: 'Keep the live approval after persistence fails',
     });
-    await waitForRunCompletion(bureau, run.id);
+    await withAdvancingClock(runtime, waitForRunCompletion(bureau, run.id));
 
     expect(failedApprovalPersistence).toBe(true);
     expect(bureau.listPendingReviews()).toHaveLength(1);
@@ -11195,8 +10729,8 @@ describe('createBureau review queue (AB-20)', () => {
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      persistence,
-      sessionPersistenceSleep: async () => {},
+      storage: storageOverTextStore(persistence),
+      durableExecution: false,
     });
 
     const run = await bureau.createRun({
@@ -11283,8 +10817,8 @@ describe('createBureau review queue (AB-20)', () => {
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      persistence,
-      sessionPersistenceSleep: async () => {},
+      storage: storageOverTextStore(persistence),
+      durableExecution: false,
     });
 
     const run = await bureau.createRun({
@@ -11395,6 +10929,7 @@ describe('createBureau review queue (AB-20)', () => {
   });
 
   it('resolveReview deny records the decision without resuming, attributed to the principal', async () => {
+    const runtime = createManualRuntimeServices();
     const charges: number[] = [];
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
@@ -11409,7 +10944,10 @@ describe('createBureau review queue (AB-20)', () => {
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
+      runtime,
+      ...SHORT_TASK_RETENTION,
     });
 
     const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
@@ -11449,7 +10987,7 @@ describe('createBureau review queue (AB-20)', () => {
     // suppression. Until the run itself is deleted, the resolved approval
     // must not reappear in the review queue.
     expect(bureau.listPendingReviews()).toHaveLength(0);
-    await bureau.deleteRun(run.id);
+    await withAdvancingClock(runtime, retireSettledTasks(bureau, runtime));
     await pollUntil(async () => {
       const session = await bureau.getSession(run.sessionId);
       const resolved = session?.metadata['resolvedReviewIds'];
@@ -11478,20 +11016,23 @@ describe('createBureau review queue (AB-20)', () => {
     bureau.dispose();
   });
 
-  it("deleteRun prunes that run's entries out of the resolved-review tracking set", async () => {
+  it("task retention prunes that run's entries out of the resolved-review tracking set", async () => {
     // `resolvedReviewIds` grows monotonically otherwise (an unbounded
-    // per-run leak on a long-lived gateway) — `deleteRun` must prune the
+    // per-run leak on a long-lived gateway) — removing the run must prune the
     // run's ids so a LATER run reusing the same run id is never permanently
     // suppressed from the review queue by a stale resolved-mark it never
     // itself produced. Reusing a run id doesn't happen in production (ids
     // are unique), but it is the only externally observable way to prove
     // the internal set was actually pruned rather than merely believed to
     // be pruned.
+    const runtime = createManualRuntimeServices();
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       durableExecution: true,
+      runtime,
+      ...SHORT_TASK_RETENTION,
     });
     // AB-46: `resolveReview` deny on a `human-wait` review now delivers
     // `{ __abDenied: true, ... }` via the real `bureau.signalSession` (the
@@ -11518,11 +11059,11 @@ describe('createBureau review queue (AB-20)', () => {
     expect(signalSpy).toHaveBeenCalledWith('', 'human-response', { __abDenied: true });
     expect(bureau.listPendingReviews()).toHaveLength(0);
 
-    // Terminate and delete the run — deleteRun refuses a still-`running` run.
+    // Terminate the run and let its task age out — retention keeps a still-`running` run.
     first.emitter.dispatchEvent(
       new RunAbortedEvent(0, new Conversation(), new AbortAgentRunError('test-cleanup')),
     );
-    await bureau.deleteRun(runId);
+    await retireSettledTasks(bureau, runtime);
 
     // A new run REUSES the same run id and produces the exact same review id
     // (`human-wait:${runId}:human-response:0`, the first park ordinal). Before the fix, this id was
@@ -11541,11 +11082,12 @@ describe('createBureau review queue (AB-20)', () => {
     bureau.dispose();
   });
 
-  it('deleteRun prunes that run\'s entries out of the sibling resolvedReviewDecisions map too (Codex P2 review finding, PR #601, "Prune decision identities with resolved review IDs")', async () => {
+  it('task retention prunes that run\'s entries out of the sibling resolvedReviewDecisions map too (Codex P2 review finding, PR #601, "Prune decision identities with resolved review IDs")', async () => {
     // `resolvedReviewDecisions` (AB-391) is a sibling map to
     // `resolvedReviewIds`, keyed by the exact same review ids — pruning one
     // without the other leaves stale decision/principal/reason data behind
     // forever for a deleted run on a long-lived session.
+    const runtime = createManualRuntimeServices();
     const charges: number[] = [];
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
@@ -11562,7 +11104,10 @@ describe('createBureau review queue (AB-20)', () => {
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
+      runtime,
+      ...SHORT_TASK_RETENTION,
     });
 
     try {
@@ -11583,7 +11128,7 @@ describe('createBureau review queue (AB-20)', () => {
       expect(sessionBeforeDelete?.metadata['resolvedReviewIds']).toContain(review.id);
       expect(sessionBeforeDelete?.metadata['resolvedReviewDecisions']).toHaveProperty(review.id);
 
-      await bureau.deleteRun(run.id);
+      await withAdvancingClock(runtime, retireSettledTasks(bureau, runtime));
       await pollUntil(async () => {
         const session = await bureau.getSession(run.sessionId);
         const decisions = session?.metadata['resolvedReviewDecisions'];
@@ -11765,7 +11310,8 @@ describe('createBureau review lifecycle (AB-46)', () => {
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     try {
@@ -11850,7 +11396,8 @@ describe('createBureau review lifecycle (AB-46)', () => {
             stopWhen: stopWhen.toolOutcome('action_required'),
           }),
         },
-        persistence: textValueStore(new MemoryStorage()),
+        storage: { type: 'memory' },
+        durableExecution: false,
       });
 
       try {
@@ -11890,7 +11437,8 @@ describe('createBureau review lifecycle (AB-46)', () => {
             stopWhen: stopWhen.toolOutcome('action_required'),
           }),
         },
-        persistence: textValueStore(new MemoryStorage()),
+        storage: { type: 'memory' },
+        durableExecution: false,
       });
 
       try {
@@ -11961,7 +11509,8 @@ describe('createBureau review lifecycle (AB-46)', () => {
         agents: {
           default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
         },
-        persistence: textValueStore(new MemoryStorage()),
+        storage: { type: 'memory' },
+        durableExecution: false,
       });
 
       try {
@@ -11999,7 +11548,8 @@ describe('createBureau review lifecycle (AB-46)', () => {
         agents: {
           default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
         },
-        persistence: textValueStore(new MemoryStorage()),
+        storage: { type: 'memory' },
+        durableExecution: false,
       });
 
       try {
@@ -12021,7 +11571,8 @@ describe('createBureau review lifecycle (AB-46)', () => {
         agents: {
           default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
         },
-        persistence: textValueStore(new MemoryStorage()),
+        storage: { type: 'memory' },
+        durableExecution: false,
       });
 
       try {
@@ -12104,7 +11655,8 @@ describe('createBureau review lifecycle (AB-46)', () => {
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
       runtime,
     });
 
@@ -12119,10 +11671,10 @@ describe('createBureau review lifecycle (AB-46)', () => {
 
       expect(bureau.listPendingReviews()).toHaveLength(0);
 
-      const sweptCount = await bureau.sweepExpiredReviews();
+      const sweptCount = await expireReviews(bureau);
       expect(sweptCount).toBe(1);
 
-      const secondSweepCount = await bureau.sweepExpiredReviews();
+      const secondSweepCount = await expireReviews(bureau);
       expect(secondSweepCount).toBe(0);
 
       const resolved = await bureau.getReview(review!.id);
@@ -12434,7 +11986,8 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     try {
@@ -12656,7 +12209,8 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
       runtime,
     });
 
@@ -12676,7 +12230,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
       expect(review).toBeDefined();
 
       await runtime.advance(1500);
-      const sweptCount = await bureau.sweepExpiredReviews();
+      const sweptCount = await expireReviews(bureau);
       expect(sweptCount).toBe(1);
 
       expect(expired).toHaveLength(1);
@@ -12700,7 +12254,8 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
     }
   });
 
-  it('deleteRun dispatches review.revoked attributed to system:run-deletion — never review.canceled', async () => {
+  it('task retention dispatches review.revoked attributed to system:run-deletion — never review.canceled', async () => {
+    const runtime = createManualRuntimeServices();
     const charges: number[] = [];
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
@@ -12715,7 +12270,10 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
+      runtime,
+      ...SHORT_TASK_RETENTION,
     });
     try {
       const revoked: unknown[] = [];
@@ -12730,7 +12288,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
       const [review] = bureau.listPendingReviews();
       expect(review).toBeDefined();
 
-      await bureau.deleteRun(run.id);
+      await retireSettledTasks(bureau, runtime);
 
       expect(revoked).toHaveLength(1);
       expect(revoked[0]).toMatchObject({
@@ -12775,7 +12333,8 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
     try {
       const revoked: unknown[] = [];
@@ -12960,7 +12519,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
     }
   });
 
-  it('does not double-fire a review.* event when sweepExpiredReviews and deleteRun both observe a lingering post-regate override for the same review id (regression)', async () => {
+  it('does not double-fire a review.* event when the expiry pass and task retention both observe a lingering post-regate override for the same review id (regression)', async () => {
     const runtime = createManualRuntimeServices();
     const charges: number[] = [];
     let evaluationCount = 0;
@@ -13008,8 +12567,10 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
       runtime,
+      ...SHORT_TASK_RETENTION,
     });
 
     try {
@@ -13041,15 +12602,16 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
       // Let the REPLACEMENT binding expire and sweep it — nothing clears
       // the lingering override on expiry.
       await runtime.advance(1500);
-      const sweptCount = await bureau.sweepExpiredReviews();
+      const sweptCount = await expireReviews(bureau);
       expect(sweptCount).toBe(1);
       expect(expired).toEqual([review!.id]);
 
-      // Delete the run. Without the AB-224 fix, `revokePendingApprovalsForRun`'s
+      // Retire the run. Without the AB-224 fix, `revokePendingApprovalsForRun`'s
       // override loop would find the SAME lingering override, unconditionally
       // re-transition it, and fire a SECOND, duplicate `review.*` event for an
       // id that is already resolved — this issue's own named rollback trigger.
-      await bureau.deleteRun(run.id);
+      await retireSettledTasks(bureau, runtime);
+      expect(bureau.getRun(run.id)).toBeUndefined();
       expect(revoked).toEqual([]);
       expect(canceled).toEqual([]);
 
@@ -13068,19 +12630,6 @@ async function rejectionOf<T>(promise: Promise<T>): Promise<unknown> {
     () => undefined,
     (error: unknown) => error,
   );
-}
-
-/**
- * `submitSchedulerTask` is a plain (non-`async`) function — an admission
- * rejection throws SYNCHRONOUSLY rather than returning a rejected promise
- * (matching its existing `BAD_REQUEST`/`NOT_CONFIGURED` validation throws).
- * Defer the call through `Promise.resolve().then(...)` so `rejectionOf`'s
- * `.then()` chain has a promise to attach to.
- */
-async function rejectionOfSchedulerSubmit(
-  call: () => ReturnType<Bureau['submitSchedulerTask']>,
-): Promise<unknown> {
-  return rejectionOf(Promise.resolve().then(call));
 }
 
 describe('createBureau flow control (AB-13)', () => {
@@ -13230,127 +12779,6 @@ describe('createBureau flow control (AB-13)', () => {
     await waitForRunState(bureau, independent.id);
     await waitForRunState(bureau, afterSettle.id);
 
-    bureau.dispose();
-  });
-
-  it('covers scheduler-originated admission, and frees + reclaims the concurrency slot across a real preempt/resume cycle', async () => {
-    // Task A's generate blocks until aborted, so A never settles on its own: it
-    // is only ever preempted (aborted) or cancelled at the end of the test.
-    const { generate } = createBlockingGenerate();
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ generate, toolbox: createEmptyToolbox() }),
-      },
-      scheduler: { enabled: true, idleDelay: 1 },
-      flowControl: { concurrency: { limit: 1 } },
-    });
-
-    // A (background priority) is admitted and dispatched — the only task, so
-    // the scheduler starts it immediately, occupying the concurrency slot.
-    const taskA = await bureau.submitSchedulerTask({
-      agentName: 'default',
-      message: 'task A',
-      priority: 'background',
-    });
-    await waitForCondition(
-      () => bureau.scheduler?.getState().activeTask?.id === taskA.taskId,
-      'task A was not dispatched',
-    );
-
-    // A SECOND submission is rejected outright — the cap is full.
-    const rejectedWhileActive = await rejectionOfSchedulerSubmit(() =>
-      bureau.submitSchedulerTask({
-        agentName: 'default',
-        message: 'rejected while A runs',
-        priority: 'background',
-      }),
-    );
-    expect(rejectedWhileActive).toBeInstanceOf(BureauError);
-    expect((rejectedWhileActive as BureauError).code).toBe('RATE_LIMITED');
-
-    // Submit an IMMEDIATE task directly on the scheduler (bypassing bureau's
-    // own admission gate — this is purely the mechanism to force a REAL
-    // preemption of task A, not a flow-controlled trigger itself).
-    //
-    // The immediate task's generate BLOCKS until this test releases it. That is
-    // load-bearing: while the immediate task occupies the scheduler, requeued
-    // task A cannot be redispatched, so A stays parked — and its concurrency
-    // slot stays free — for the whole task C sequence below. With a
-    // self-completing generate here the scheduler was free to redispatch A (and
-    // reclaim A's slot via TaskDispatchedEvent) before task C was submitted,
-    // making C's admission a race that lost under CI contention (#246).
-    const immediate = createBlockingGenerate();
-    const immediateResult = bureau.scheduler!.submitImmediate(() => ({
-      generate: immediate.generate,
-      toolbox: createEmptyToolbox(),
-      conversation: new Conversation(),
-      maximumSteps: 1,
-    }));
-    await waitForCondition(
-      () => (bureau.scheduler?.getState().preemptedCount ?? 0) >= 1,
-      'task A was not preempted',
-    );
-
-    // AB-13 — task A's preemption (requeued) freed its concurrency slot: a
-    // NEW scheduler-originated submission is now admitted.
-    const taskC = await bureau.submitSchedulerTask({
-      agentName: 'default',
-      message: 'task C',
-      priority: 'background',
-    });
-    expect(taskC.taskId).not.toBe(taskA.taskId);
-
-    // The cap is full again with C holding the reclaimed slot.
-    const rejectedWithCHoldingSlot = await rejectionOfSchedulerSubmit(() =>
-      bureau.submitSchedulerTask({
-        agentName: 'default',
-        message: 'rejected while C holds the slot',
-        priority: 'background',
-      }),
-    );
-    expect(rejectedWithCHoldingSlot).toBeInstanceOf(BureauError);
-
-    // Free C's slot (it may still be queued behind the immediate task, so
-    // cancel rather than abort — TaskCancelledEvent settles it either way).
-    bureau.scheduler!.cancel(taskC.taskId);
-
-    // Arm the redispatch listener BEFORE releasing the immediate task, so the
-    // dispatch cannot slip through between the release and the subscription.
-    // Awaiting the real TaskDispatchedEvent is deterministic; polling
-    // `activeTask` instead raced the scheduler's redispatch timer and gave up
-    // while task A was still on its way in (#246).
-    const taskARedispatched = new Promise<void>((resolve) => {
-      const onDispatched = (event: Event) => {
-        if (!(event instanceof TaskDispatchedEvent) || event.taskId !== taskA.taskId) return;
-
-        bureau.scheduler!.removeEventListener(TaskDispatchedEvent.type, onDispatched);
-        resolve();
-      };
-
-      bureau.scheduler!.addEventListener(TaskDispatchedEvent.type, onDispatched);
-    });
-
-    // Release the immediate task so the scheduler redispatches task A (requeued
-    // on preemption). Task A's own generate stays blocked, so A holds the
-    // reclaimed slot for the assertion below rather than settling.
-    immediate.resolve({ content: 'immediate-done', toolCalls: [] });
-    await immediateResult;
-    await taskARedispatched;
-
-    // AB-13 — task A's resume (TaskDispatchedEvent) reclaimed its slot: with
-    // C already cancelled/settled, a fresh submission is rejected again only
-    // because A's resumed slot fills the cap.
-    const rejectedAfterResume = await rejectionOfSchedulerSubmit(() =>
-      bureau.submitSchedulerTask({
-        agentName: 'default',
-        message: 'rejected after A resumed',
-        priority: 'background',
-      }),
-    );
-    expect(rejectedAfterResume).toBeInstanceOf(BureauError);
-    expect((rejectedAfterResume as BureauError).code).toBe('RATE_LIMITED');
-
-    bureau.scheduler!.cancel(taskA.taskId);
     bureau.dispose();
   });
 });
@@ -14729,15 +14157,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
       releaseEngineDispose = resolve;
     });
 
-    let capturedSignal: AbortSignal | undefined;
-    let releaseSleep!: () => void;
-    const sleep = (_milliseconds: number, signal: AbortSignal) => {
-      capturedSignal = signal;
-      return new Promise<void>((resolve) => {
-        releaseSleep = resolve;
-        signal.addEventListener('abort', () => resolve(), { once: true });
-      });
-    };
+    const runtime = createManualRuntimeServices();
 
     // See the ordering test above for why the durable engine's shared
     // prototype is spied on instead of `resolveStorage()`'s own internal
@@ -14772,12 +14192,22 @@ describe('Bureau.shutdown() (AB-207)', () => {
       },
       storage: { type: 'memory' },
       durableExecution: true,
-      shutdownTimeoutSleep: sleep,
+      runtime,
     });
 
     try {
+      const timeoutDueAt = runtime.monotonic.now() + 50;
+      const timersBeforeShutdown = new Set(runtime.pendingTimers().map((timer) => timer.handle));
       const shutdownPromise = bureau.shutdown({ timeoutMilliseconds: 50 });
-      await waitForCondition(() => capturedSignal !== undefined, 'injected sleep was never called');
+      await waitForCondition(
+        () =>
+          runtime
+            .pendingTimers()
+            .some(
+              (timer) => timer.dueAt === timeoutDueAt && !timersBeforeShutdown.has(timer.handle),
+            ),
+        'the shutdown wait never armed its timeout on the runtime timers',
+      );
       await waitForCondition(
         () => engineDisposeCalls > 0,
         'the durable engine dispose was never invoked',
@@ -14793,10 +14223,10 @@ describe('Bureau.shutdown() (AB-207)', () => {
         await Promise.resolve();
       }
 
-      // Elapse the injected timer WITHOUT releasing the gated engine
-      // dispose — this is the deterministic stand-in for the real 50ms
+      // Elapse the timer WITHOUT releasing the gated engine dispose — advancing
+      // the manual runtime is the deterministic stand-in for the real 50ms
       // passing.
-      releaseSleep();
+      await runtime.advance(50);
       const report = await shutdownPromise;
 
       expect(report.owners.find((owner) => owner.kind === 'durable-engine')?.outcome).toBe(
@@ -14817,26 +14247,38 @@ describe('Bureau.shutdown() (AB-207)', () => {
     }
   });
 
-  it('aborts the injected shutdownTimeoutSleep signal once the real teardown wins the race, so the timer does not outlive a fast shutdown()', async () => {
-    let capturedSignal: AbortSignal | undefined;
-    const sleep = (_milliseconds: number, signal: AbortSignal) => {
-      capturedSignal = signal;
-      return new Promise<void>(() => {
-        // Never resolves on its own — only `signal` aborting settles this
-        // call's role in the race, proving the real chain wins and the
-        // timer is told to stop.
-      });
-    };
-
+  it('clears the shutdown timeout timer once the real teardown wins the race, so the timer does not outlive a fast shutdown()', async () => {
+    const runtime = createManualRuntimeServices();
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
-      shutdownTimeoutSleep: sleep,
+      runtime,
     });
+    const timersBeforeShutdown = new Set(runtime.pendingTimers().map((timer) => timer.handle));
 
     await bureau.shutdown({ timeoutMilliseconds: 10_000 });
-    expect(capturedSignal?.aborted).toBe(true);
+
+    // The wait armed a timer on the runtime and the abort signal cleared it: nothing it armed is
+    // still pending, so advancing past its deadline fires nothing.
+    expect(
+      runtime.pendingTimers().filter((timer) => !timersBeforeShutdown.has(timer.handle)),
+    ).toEqual([]);
+  });
+
+  it('resolves shutdown({ timeoutMilliseconds }) with the real teardown report when the timeout is never advanced to', async () => {
+    const runtime = createManualRuntimeServices();
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
+      },
+      runtime,
+    });
+
+    const report = await bureau.shutdown({ timeoutMilliseconds: 60_000 });
+
+    expect(report.admissionClosed).toBe(true);
+    expect(report.unresolved).toBe(0);
   });
 
   it('shutdown() (and dispose()) called a second time returns the SAME promise, regardless of the policy the second call requests', async () => {
@@ -14850,40 +14292,6 @@ describe('Bureau.shutdown() (AB-207)', () => {
     const second = bureau.shutdown({ policy: 'drain' });
     expect(second).toBe(first);
     await first;
-  });
-
-  it('never rejects even when the injected shutdownTimeoutSleep rejects, resolving with a best-effort report instead (review finding, PR #442)', async () => {
-    const sleep = (_milliseconds: number, _signal: AbortSignal) =>
-      Promise.reject(new Error('injected shutdownTimeoutSleep failure'));
-
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
-      },
-      shutdownTimeoutSleep: sleep,
-    });
-
-    // `Promise.race([chain, shutdownTimeoutSleep(...).then(buildReport)])`
-    // would otherwise propagate this rejection straight through `shutdown()`
-    // — the fallback `.catch` fence must resolve with a best-effort report
-    // instead of rejecting.
-    const report = await bureau.shutdown({ timeoutMilliseconds: 10_000 });
-    expect(report.admissionClosed).toBe(true);
-  });
-
-  it('uses the real default shutdownTimeoutSleep (a real setTimeout, cleared on abort) when no shutdownTimeoutSleep option is supplied', async () => {
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
-      },
-    });
-
-    // No `shutdownTimeoutSleep` option — this exercises
-    // `createDefaultShutdownTimeoutSleep()`'s real timer, generously bounded
-    // so the real (fast) teardown always wins the race and the abort
-    // listener fires, clearing the timer before it would otherwise elapse.
-    const report = await bureau.shutdown({ timeoutMilliseconds: 60_000 });
-    expect(report.admissionClosed).toBe(true);
   });
 
   it('prefers [Symbol.asyncDispose] over [Symbol.dispose] on the composed durable engine', async () => {
@@ -15552,6 +14960,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
         },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
+        ...SHORT_TASK_RETENTION,
       });
 
       const run = await bureau.createRun({
@@ -15561,8 +14970,9 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
       });
       await waitForRunCompletion(bureau, run.id);
       await runtime.deferred.drain();
-      await bureau.deleteRun(run.id);
+      await retireSettledTasks(bureau, runtime);
       await runtime.deferred.drain();
+      expect(bureau.getRun(run.id)).toBeUndefined();
 
       // Even the ORIGINAL owning principal is denied once the run's
       // in-memory attribution is gone — this is the fail-closed trade-off
@@ -15652,6 +15062,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
         },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
+        ...SHORT_TASK_RETENTION,
       });
 
       const run = await bureau.createRun({
@@ -15660,7 +15071,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
       });
       await waitForRunCompletion(bureau, run.id);
       await runtime.deferred.drain();
-      await bureau.deleteRun(run.id);
+      await retireSettledTasks(bureau, runtime);
       await runtime.deferred.drain();
 
       const outcome = await bureau.eventHistory({ kind: 'run', id: run.id });
@@ -15764,6 +15175,7 @@ describe('bureau.eventHistory deleted-aggregate detection is independent of the 
         },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
+        ...SHORT_TASK_RETENTION,
       });
 
       const run = await bureau.createRun({
@@ -15780,7 +15192,7 @@ describe('bureau.eventHistory deleted-aggregate detection is independent of the 
       bureau.store.recordAction(run.id, 'run.completed', { finishReason: 'stop' });
       await runtime.deferred.drain();
 
-      await bureau.deleteRun(run.id);
+      await retireSettledTasks(bureau, runtime);
       await runtime.deferred.drain();
 
       // Read the full history once (no window) to confirm the marker's
@@ -16882,7 +16294,8 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
       // COR-1332: same cause as the sibling fixes in this describe block —
       // without this, a mock `generate` with no tool calls still runs to
       // the default 25-step budget instead of stopping after its one real
@@ -17241,7 +16654,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
     }
   }
 
-  it("drops a session's lastRunOwningPrincipals entry once its run's entire durable history — including a later deleteRun()'s own run.removed — is below the retention floor, leaves a still-retained run's entry alone, and the pruned run's history now reads back as a gap", async () => {
+  it("drops a session's lastRunOwningPrincipals entry once its run's entire durable history — including a later run removal's own run.removed — is below the retention floor, leaves a still-retained run's entry alone, and the pruned run's history now reads back as a gap", async () => {
     const databasePath = createTemporaryPath('bureau-run-ownership-prune', '.sqlite');
     const runtime = createManualRuntimeServices();
 
@@ -17256,6 +16669,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
+        ...SHORT_TASK_RETENTION,
         // COR-1332: same cause as the AB-359 tests fixed for this issue —
         // a mock `generate` with no tool calls otherwise runs to the
         // default 25-step budget (`DEFAULT_MAXIMUM_STEPS`) instead of
@@ -17282,15 +16696,15 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         // Delete run A — the run store no longer holds it once this
         // resolves, closing the window a still-in-store completed run
         // would otherwise leave open (Codex review, PR #568, "Preserve
-        // ownership for a later run removal event"): `deleteRun()` can
-        // always be called on ANY run still present in the store, and it
+        // ownership for a later run removal event"): task retention can
+        // always remove ANY settled run still present in the store, and it
         // records a brand-new, retained `run.removed` durable event under
         // that SAME owner. `runtime.deferred.drain()` settles the
         // fire-and-forget `history.record()` write `run.removed` starts
-        // synchronously off `deleteRun()`'s own dispatch, so run A's own
+        // synchronously off the removal's own dispatch, so run A's own
         // durable history is fully landed — this event included — before
         // anything below advances the floor past it.
-        await bureau.deleteRun(runA.id);
+        await retireSettledTasks(bureau, runtime);
         await runtime.deferred.drain();
 
         // Run B is created and completed AFTER run A's deletion has fully
@@ -17320,7 +16734,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         // independently constructed bureaus sharing one path. Omitting
         // `principal` reads the deleted-aggregate outcome as the internal/
         // trusted caller this maintenance-adjacent assertion is — the
-        // in-memory `runAttribution` entry `deleteRun()` clears would fail
+        // in-memory `runAttribution` entry the removal clears would fail
         // an authenticated `alice` lookup closed instead (AB-313).
         const runADeletedOutcome = await bureau.eventHistory({ kind: 'run', id: runA.id });
         if (
@@ -17522,6 +16936,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
+        ...SHORT_TASK_RETENTION,
         // COR-1332: same cause as the sibling fixes in this describe block —
         // without this, a mock `generate` with no tool calls still runs to
         // the default 25-step budget instead of stopping after its one
@@ -17542,8 +16957,8 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         // Codex review PR #568), which would leave this test unable to
         // distinguish that from the `lastRequestAuthorities` exclusion it
         // actually means to cover. `runtime.deferred.drain()` settles the
-        // `run.removed` write `deleteRun()` starts synchronously.
-        await bureau.deleteRun(completedRun.id);
+        // `run.removed` write the removal starts synchronously.
+        await retireSettledTasks(bureau, runtime);
         await runtime.deferred.drain();
 
         const completedOutcome = await bureau.eventHistory({ kind: 'run', id: completedRun.id });
@@ -17595,7 +17010,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         const session = await bureau.getSession(completedRun.sessionId);
         // `completedRun`'s own entry is gone (its own terminal transition
         // already removed it from `lastRequestAuthorities`, it is deleted
-        // — so no future `deleteRun()` can protect it via the run store —
+        // — so no future removal can protect it via the run store —
         // and its full history, `run.removed` included, fell below the
         // floor) — but the fabricated one survives: still named in
         // `lastRequestAuthorities`, so it is excluded from pruning
@@ -17848,6 +17263,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
+        ...IMMEDIATE_TASK_RETENTION,
       });
 
       try {
@@ -17867,7 +17283,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         // from pruning (Codex review, "Preserve ownership for a later run
         // removal event") — delete it first so the ONLY remaining question
         // is whether the write that follows stamps a fresh `updatedAt`.
-        await bureau.deleteRun(run.id);
+        await retireSettledTasksOnRealClock(bureau);
         const deletedOutcome = await bureau.eventHistory(
           { kind: 'run', id: run.id },
           { since: lastEvent.cursor },
@@ -17907,7 +17323,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
     }
   });
 
-  it('excludes a run still present in the in-memory run store from pruning — deleteRun() remains callable on it at any point, and would record a brand-new run.removed durable event with no owner left to protect it (Codex review, PR #568, "Preserve ownership for a later run removal event")', async () => {
+  it('excludes a run still present in the in-memory run store from pruning — task retention can still remove it at any point, and would record a brand-new run.removed durable event with no owner left to protect it (Codex review, PR #568, "Preserve ownership for a later run removal event")', async () => {
     const databasePath = createTemporaryPath(
       'bureau-run-ownership-prune-still-in-store',
       '.sqlite',
@@ -17925,6 +17341,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
+        ...SHORT_TASK_RETENTION,
       });
 
       try {
@@ -17947,18 +17364,18 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           // transition WITHOUT deleting it. Every other exclusion signal
           // is already gone (no live authority, no write in flight) — the
           // run store is the only thing standing between this run and
-          // being pruned while `deleteRun()` remains callable on it.
+          // being pruned while task retention can still remove it.
           await adminFeed.retain({ beforeSequence: lastEventBeforeDeletion.sequence + 1 });
           await bureau.runDurableMaintenance();
 
           const stillInStore = await bureau.getSession(run.sessionId);
           expect(stillInStore?.metadata['lastRunOwningPrincipals']).toEqual({ [run.id]: 'alice' });
 
-          // Delete the run — the run store no longer holds it, and the
-          // deletion's own `run.removed` durable event lands (settled via
+          // Retire the run — the run store no longer holds it, and the
+          // removal's own `run.removed` durable event lands (settled via
           // `runtime.deferred.drain()`, the fire-and-forget write
-          // `deleteRun()`'s dispatch starts synchronously).
-          await bureau.deleteRun(run.id);
+          // the removal's dispatch starts synchronously).
+          await retireSettledTasks(bureau, runtime);
           await runtime.deferred.drain();
 
           // A cursorless read always reports a gap once ANY retention has
@@ -17981,8 +17398,8 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
 
           // Second cycle: advance the floor past `run.removed` too — now
           // the run's ENTIRE durable history, deletion included, is
-          // unreadable, and it can never be deleted again (`deleteRun()`
-          // throws NOT_FOUND once a run is gone from the store), so no
+          // unreadable, and it can never be removed again (retention only
+          // considers runs the store holds), so no
           // further durable write for it is possible. The entry is
           // finally prunable.
           await adminFeed.retain({ beforeSequence: lastEventAfterDeletion.sequence + 1 });
@@ -18017,6 +17434,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
+        ...SHORT_TASK_RETENTION,
         // `durableBackgroundTasks` deliberately omitted — the default
         // 'automatic' profile is exactly what this test proves prunes on
         // its own.
@@ -18039,7 +17457,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         if ('outcome' in page) throw new Error('expected a page for the run');
         const lastEventBeforeDeletion = page.events.at(-1);
         if (!lastEventBeforeDeletion) throw new Error('expected at least one durable event');
-        await bureau.deleteRun(run.id);
+        await retireSettledTasks(bureau, runtime);
         const deletedOutcome = await bureau.eventHistory(
           { kind: 'run', id: run.id },
           { since: lastEventBeforeDeletion.cursor },
@@ -18186,6 +17604,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
+        ...SHORT_TASK_RETENTION,
       });
 
       try {
@@ -18204,7 +17623,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         if ('outcome' in page) throw new Error('expected a page for the run');
         const lastEventBeforeDeletion = page.events.at(-1);
         if (!lastEventBeforeDeletion) throw new Error('expected at least one durable event');
-        await bureau.deleteRun(run.id);
+        await retireSettledTasks(bureau, runtime);
         const deletedOutcome = await bureau.eventHistory(
           { kind: 'run', id: run.id },
           { since: lastEventBeforeDeletion.cursor },
@@ -18292,6 +17711,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       },
       storage: { type: 'sqlite', path: databasePath },
       runtime,
+      ...SHORT_TASK_RETENTION,
     });
 
     try {
@@ -18307,7 +17727,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       if ('outcome' in page) throw new Error('expected a page for the run');
       const lastEventBeforeDeletion = page.events.at(-1);
       if (!lastEventBeforeDeletion) throw new Error('expected at least one durable event');
-      await bureau.deleteRun(run.id);
+      await retireSettledTasks(bureau, runtime);
       const deletedOutcome = await bureau.eventHistory(
         { kind: 'run', id: run.id },
         { since: lastEventBeforeDeletion.cursor },
@@ -18404,6 +17824,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         },
         storage: { type: 'sqlite', path: databasePath },
         runtime,
+        ...SHORT_TASK_RETENTION,
         durableBackgroundTasks: 'manual',
       });
 
@@ -18424,7 +17845,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         if ('outcome' in page) throw new Error('expected a page for the run');
         const lastEventBeforeDeletion = page.events.at(-1);
         if (!lastEventBeforeDeletion) throw new Error('expected at least one durable event');
-        await bureau.deleteRun(run.id);
+        await retireSettledTasks(bureau, runtime);
         const deletedOutcome = await bureau.eventHistory(
           { kind: 'run', id: run.id },
           { since: lastEventBeforeDeletion.cursor },
@@ -18609,6 +18030,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           },
           storage: { type: 'sqlite', path: databasePath },
           runtime,
+          ...SHORT_TASK_RETENTION,
           durableOwnership,
           durableBackgroundTasks: 'manual',
           onDiagnostic: (diagnostic) => {
@@ -18626,7 +18048,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           if ('outcome' in page) throw new Error('expected a page for the run');
           const lastEventBeforeDeletion = page.events.at(-1);
           if (!lastEventBeforeDeletion) throw new Error('expected a durable event');
-          await bureau.deleteRun(run.id);
+          await retireSettledTasks(bureau, runtime);
           await runtime.deferred.drain();
           const deleted = await bureau.eventHistory(
             { kind: 'run', id: run.id },
@@ -18731,7 +18153,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       });
     }
 
-    it('restores a pruned run-ownership entry when deleteRun records run.removed on another instance', async () => {
+    it('restores a pruned run-ownership entry when task retention records run.removed on another instance', async () => {
       const databasePath = databasePathFor('delete-run');
       const runtimeA = createManualRuntimeServices();
       const sharedOptions = {
@@ -18744,6 +18166,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         },
         storage: { type: 'sqlite' as const, path: databasePath },
         durableBackgroundTasks: 'manual' as const,
+        ...SHORT_TASK_RETENTION,
       };
       try {
         const bureauA = await createBureau<AgentDefinitions>({
@@ -18775,7 +18198,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           const updateSpy = spyOn(sessionStore, 'update');
           let restoreOptions: unknown[];
           try {
-            await bureauA.deleteRun(run.id);
+            await retireSettledTasks(bureauA, runtimeA);
             restoreOptions = updateSpy.mock.calls.map(([, , options]) => options);
           } finally {
             updateSpy.mockRestore();
@@ -18937,6 +18360,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           },
           storage: { type: 'sqlite', path: databasePath },
           runtime,
+          ...SHORT_TASK_RETENTION,
           durableBackgroundTasks: 'manual',
           onDiagnostic: (diagnostic) => {
             diagnostics.push(diagnostic.message);
@@ -18953,7 +18377,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
             await waitForRunCompletion(bureau, run.id);
             runs.push(run);
           }
-          for (const run of runs) await bureau.deleteRun(run.id);
+          await retireSettledTasks(bureau, runtime);
           await runtime.deferred.drain();
           await retainThrough(databasePath, await appendFloorMarker(databasePath));
           await body({ bureau, runs, databasePath, diagnostics });
@@ -19086,7 +18510,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
             (ownersOf(removed) as Record<string, unknown> | undefined)?.[run.id],
           ).toBeUndefined();
 
-          expect(await bureau.sweepExpiredReviews()).toBe(1);
+          expect(await expireReviews(bureau)).toBe(1);
 
           const restored = await bureau.getSession(run.sessionId);
           expect(ownersOf(restored)).toEqual({ [run.id]: 'alice' });
@@ -19112,12 +18536,13 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           },
           storage: { type: 'sqlite', path: databasePath },
           runtime,
+          ...SHORT_TASK_RETENTION,
           durableBackgroundTasks: 'manual',
         });
         try {
           const run = await bureau.createRun({ agentName: 'default', message: 'A' });
           await waitForRunCompletion(bureau, run.id);
-          await bureau.deleteRun(run.id);
+          await retireSettledTasks(bureau, runtime);
           await runtime.deferred.drain();
           const session = await bureau.getSession(run.sessionId);
           expect((ownersOf(session) as Record<string, unknown> | undefined)?.[run.id]).toBe(
@@ -19161,6 +18586,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           },
           storage: { type: 'sqlite', path: databasePath },
           runtime,
+          ...SHORT_TASK_RETENTION,
           durableBackgroundTasks: 'manual',
         });
         try {
@@ -19174,7 +18600,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           const recreatedIncarnation = await recreateSession(bureau, run.sessionId);
           expect(recreatedIncarnation).not.toBe(original?.incarnation);
 
-          await bureau.deleteRun(run.id);
+          await retireSettledTasks(bureau, runtime);
           await runtime.deferred.drain();
 
           const recreated = await bureau.getSession(run.sessionId);
@@ -19249,6 +18675,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           },
           storage: { type: 'sqlite', path: databasePath },
           runtime,
+          ...SHORT_TASK_RETENTION,
           durableBackgroundTasks: 'manual',
           onDiagnostic: (diagnostic) => {
             diagnostics.push(diagnostic.message);
@@ -19275,7 +18702,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
             },
           );
           try {
-            await bureau.deleteRun(run.id);
+            await retireSettledTasks(bureau, runtime);
           } finally {
             updateSpy.mockRestore();
           }
@@ -19343,6 +18770,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       async function countDeleteRunUpdates(
         options: Partial<Parameters<typeof createBureau>[0]>,
       ): Promise<number> {
+        const runtime = createManualRuntimeServices();
         const bureau = await createBureau<AgentDefinitions>({
           agents: {
             default: createAgent({
@@ -19351,6 +18779,8 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
               stopWhen: stopWhen.noToolCalls(),
             }),
           },
+          runtime,
+          ...SHORT_TASK_RETENTION,
           ...options,
         });
         try {
@@ -19364,7 +18794,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           if (!sessionStore) throw new Error('expected a configured session store');
           const updateSpy = spyOn(sessionStore, 'update');
           try {
-            await bureau.deleteRun(run.id);
+            await retireSettledTasks(bureau, runtime);
             return updateSpy.mock.calls.length;
           } finally {
             updateSpy.mockRestore();
@@ -19374,25 +18804,24 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         }
       }
 
-      it('deleteRun on a bureau with no durable engine', async () => {
+      it('task retention on a bureau with no durable engine', async () => {
         expect(
-          await countDeleteRunUpdates({ persistence: textValueStore(new MemoryStorage()) }),
+          await countDeleteRunUpdates({ storage: { type: 'memory' }, durableExecution: false }),
         ).toBe(3);
       });
 
-      it('deleteRun on a durable engine over memory storage', async () => {
+      it('task retention on a durable engine over memory storage', async () => {
         expect(
           await countDeleteRunUpdates({ storage: { type: 'memory' }, durableExecution: true }),
         ).toBe(3);
       });
 
-      it('deleteRun on a sqlite-backed bureau whose entry is present', async () => {
+      it('task retention on a sqlite-backed bureau whose entry is present', async () => {
         const databasePath = databasePathFor('count');
         try {
           expect(
             await countDeleteRunUpdates({
               storage: { type: 'sqlite', path: databasePath },
-              runtime: createManualRuntimeServices(),
               durableBackgroundTasks: 'manual',
             }),
           ).toBe(3);
@@ -19415,7 +18844,8 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
               stopWhen: stopWhen.toolOutcome('action_required'),
             }),
           },
-          persistence: textValueStore(new MemoryStorage()),
+          storage: { type: 'memory' },
+          durableExecution: false,
         });
         try {
           const run = await bureau.createRun({
@@ -19775,7 +19205,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         // FIRST time the real predicate is asked about run A (the
         // listing-phase check, which must see "not protected" — proving
         // the snapshot really did not already cover this run), this
-        // deletes run A — appending a brand-new, retained `run.removed`
+        // lands a brand-new, retained `run.removed`
         // durable event for that SAME owner AFTER the pass's own initial
         // snapshot was taken — then lets the pass continue. If the
         // delete-time re-check this issue adds did not exist, the pass
@@ -19796,8 +19226,19 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
             if (runId === runA.id && phase === 'listing' && !injected) {
               injected = true;
               sawUnprotectedAtListing = !protectedNow;
-              await bureau.deleteRun(runA.id);
-              await runtime.deferred.drain();
+              // The removal task retention would record, landed by hand: the pass holds the
+              // maintenance slot, so the retention pass itself cannot run inside it.
+              const injectedStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
+              const injectedFeed = createFleetEventFeed(injectedStorage);
+              await injectedFeed.append({
+                kind: 'run.removed',
+                workflowId: `run:${runA.id}`,
+                emittedAtMs: 0,
+                // The wrapper the durable event history stores, so the record reads back whole.
+                payload: { schemaVersion: 1, payload: {} },
+              });
+              await injectedFeed.dispose();
+              injectedStorage[Symbol.dispose]();
             }
             return protectedNow;
           };
@@ -20046,7 +19487,8 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
       // gives `runtime.kv` a value (so `auditTrailInstance` is built) but
       // NEVER gives `runtime.durable` a durable engine
       // (`runtime-composition.ts`'s `hasKvOnlyPersistence`).
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
       runtime,
       durableBackgroundTasks: 'manual',
       auditRetention: { olderThan: 500_000 },
@@ -20094,7 +19536,8 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
       runtime,
       auditRetention: { olderThan: 500_000 },
       // `durableBackgroundTasks` deliberately omitted — before this fix,
@@ -20155,7 +19598,8 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
       runtime,
       // `auditRetention` deliberately omitted (defaults to 'forever') and
       // `durableBackgroundTasks` deliberately omitted (default
@@ -20184,7 +19628,8 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
       runtime,
       auditRetention: { olderThan: 500_000 },
     });
@@ -20384,7 +19829,8 @@ describe('deleteSession aborts every run it owns (AB-207)', () => {
           stopWhen: [],
         }),
       },
-      persistence: { store: { type: 'memory' } },
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     const firstRun = await bureau.createRun({ agentName: 'default', message: 'First session run' });
@@ -20480,14 +19926,15 @@ describe('AB-260: BureauOptions.runtime composition', () => {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       runtime: runtimeA,
-      scheduler: { enabled: true },
+      // Only Bureau A has storage, so only A records audit writes on its deferred ledger.
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
     const bureauB = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       runtime: runtimeB,
-      scheduler: { enabled: true },
     });
 
     try {
@@ -20526,7 +19973,7 @@ describe('AB-260: BureauOptions.runtime composition', () => {
       expect(firedOnB).toBe(1);
 
       // Draining one runtime's deferred ledger reports only its own labels —
-      // disposing Bureau A settles its own `scheduler-stop`/`audit-write`
+      // disposing Bureau A settles its own `audit-write`
       // tracking on `runtimeA`, never on `runtimeB`.
       await bureauA.dispose();
       const drainA = await runtimeA.deferred.drain();
@@ -20539,7 +19986,7 @@ describe('AB-260: BureauOptions.runtime composition', () => {
     }
   });
 
-  it('registers scheduler-stop, audit-write, webhook-delivery, and background-evaluation with the composed deferred ledger', async () => {
+  it('registers audit-write, webhook-delivery, and background-evaluation with the composed deferred ledger', async () => {
     const runtime = createManualRuntimeServices();
     let deliveredCount = 0;
     const bureau = await createBureau<AgentDefinitions>({
@@ -20547,8 +19994,8 @@ describe('AB-260: BureauOptions.runtime composition', () => {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
       },
       runtime,
-      persistence: { type: 'memory' },
-      scheduler: { enabled: true },
+      storage: { type: 'memory' },
+      durableExecution: false,
       webhooks: {
         targets: [{ url: 'https://example.test/webhook' }],
         fetch: (async () => {
@@ -20587,7 +20034,6 @@ describe('AB-260: BureauOptions.runtime composition', () => {
 
       const report = await runtime.deferred.drain();
       const labels = new Set(report.settled.map((entry) => entry.label));
-      expect(labels.has('scheduler-stop')).toBe(true);
       expect(labels.has('audit-write')).toBe(true);
       expect(labels.has('webhook-delivery')).toBe(true);
       expect(labels.has('background-evaluation')).toBe(true);
@@ -20639,7 +20085,8 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       // same no-argument `next` tool repeatedly, tripping the loop detector's
       // warning threshold (2) and then its block threshold (4), before
       // finishing with a plain text response.
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     try {
@@ -20732,7 +20179,8 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     try {
@@ -20831,7 +20279,8 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
           toolbox: createEmptyToolbox(),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     try {
@@ -20886,7 +20335,8 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
           toolbox: createEmptyToolbox(),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     try {
@@ -20952,7 +20402,8 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     try {
@@ -21064,7 +20515,8 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
       runtime,
     });
 
@@ -21184,7 +20636,8 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
       runtime,
     });
 
@@ -21286,7 +20739,8 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
           toolbox: createEmptyToolbox(),
         }),
       },
-      persistence: flakyKv,
+      storage: storageOverTextStore(flakyKv),
+      durableExecution: false,
       runtime,
     });
 
@@ -21346,7 +20800,8 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
           toolbox: createEmptyToolbox(),
         }),
       },
-      persistence: failingKv,
+      storage: storageOverTextStore(failingKv),
+      durableExecution: false,
       runtime,
       onDiagnostic: (diagnostic) => received.push(diagnostic),
     });
@@ -21423,7 +20878,8 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     try {
@@ -21703,7 +21159,8 @@ describe('AB-389 — session commit outbox', () => {
           toolbox: createEmptyToolbox(),
         }),
       },
-      persistence,
+      storage: storageOverTextStore(persistence),
+      durableExecution: false,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
 
@@ -21898,7 +21355,8 @@ describe('AB-389 — session commit outbox', () => {
           toolbox: createEmptyToolbox(),
         }),
       },
-      persistence,
+      storage: storageOverTextStore(persistence),
+      durableExecution: false,
       runtime,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
@@ -22189,7 +21647,8 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     try {
@@ -22241,7 +21700,8 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
           toolbox: createEmptyToolbox(),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     try {
@@ -22298,7 +21758,8 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
           toolbox: createEmptyToolbox(),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     try {
@@ -22352,7 +21813,8 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
           toolbox: createEmptyToolbox(),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     try {
@@ -22440,7 +21902,8 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     try {
@@ -22504,7 +21967,8 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      persistence,
+      storage: storageOverTextStore(persistence),
+      durableExecution: false,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
 
@@ -22590,7 +22054,8 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      persistence,
+      storage: storageOverTextStore(persistence),
+      durableExecution: false,
     });
 
     try {
@@ -22647,7 +22112,8 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     try {
@@ -22766,7 +22232,8 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     try {
@@ -23086,7 +22553,8 @@ describe('AB-390 — outbox claim lease', () => {
           toolbox: createEmptyToolbox(),
         }),
       },
-      persistence,
+      storage: storageOverTextStore(persistence),
+      durableExecution: false,
       runtime,
     });
 
@@ -23208,7 +22676,8 @@ describe('AB-390 — outbox claim lease', () => {
           toolbox: createEmptyToolbox(),
         }),
       },
-      persistence,
+      storage: storageOverTextStore(persistence),
+      durableExecution: false,
       runtime,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
@@ -23275,7 +22744,8 @@ describe('AB-390 — outbox claim lease', () => {
           toolbox: createEmptyToolbox(),
         }),
       },
-      persistence,
+      storage: storageOverTextStore(persistence),
+      durableExecution: false,
       runtime,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
@@ -24063,15 +23533,12 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
       },
     );
 
-    // The bound sleeps on `shutdownTimeoutSleep`, so injecting that option is
-    // what makes this deterministic — no real timer, no clock advance.
-    let elapseBound: (() => void) | undefined;
+    // The bound sleeps on the bureau's runtime timers, so a manual runtime makes this
+    // deterministic: the bound elapses when the test advances the clock, and not before.
+    const runtime = createManualRuntimeServices();
     const bureau = await createRetentionBureau({
       checkpointRetention: { keepLast: 1, timeoutMilliseconds: 50 },
-      shutdownTimeoutSleep: () =>
-        new Promise<void>((resolve) => {
-          elapseBound = resolve;
-        }),
+      runtime,
     });
 
     try {
@@ -24086,7 +23553,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
       expect(await cleanupRecordsFor(bureau, run.id)).toHaveLength(0);
       expect(observedSignal?.aborted).toBe(false);
 
-      elapseBound?.();
+      await runtime.advance(50);
 
       const record = await awaitCleanupRecord(bureau, run.id);
       expect(record.detail).toEqual({
@@ -24129,71 +23596,6 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
       expect(records).toHaveLength(1);
       expect(pruneSpy.mock.calls.filter((call) => call[0] === run.id)).toHaveLength(1);
     } finally {
-      pruneSpy.mockRestore();
-      bureau.dispose();
-    }
-  });
-
-  it('never rejects when an injected shutdownTimeoutSleep rejects, and still stops the prune', async () => {
-    // `shutdownTimeoutSleep` is a public, caller-injectable seam, so it can
-    // reject even though the default never does. `cancelDurableRun` AWAITS
-    // the cleanup step while promising it never rejects, and the terminal
-    // listeners fire it as `void ...` where a rejection would become an
-    // unhandled rejection — the same hazard `shutdown()` already fences with
-    // `settleNeverRejecting` for this exact seam.
-    const prototype = await resolveEnginePrototype();
-    let observedSignal: AbortSignal | undefined;
-    let releasePrune: (() => void) | undefined;
-    const pruneSpy = spyOn(prototype, 'pruneCheckpoints').mockImplementation(
-      async (_workflowId, options) => {
-        observedSignal = options.signal;
-        await new Promise<void>((resolve) => {
-          releasePrune = resolve;
-        });
-        options.signal?.throwIfAborted();
-        return { removed: 0, retained: 0 };
-      },
-    );
-
-    let failBound: ((error: Error) => void) | undefined;
-    const diagnostics: BureauDiagnostic[] = [];
-    const bureau = await createRetentionBureau({
-      checkpointRetention: { keepLast: 1, timeoutMilliseconds: 50 },
-      onDiagnostic: (diagnostic: BureauDiagnostic) => diagnostics.push(diagnostic),
-      shutdownTimeoutSleep: () =>
-        new Promise<void>((_resolve, reject) => {
-          failBound = reject;
-        }),
-    });
-
-    try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'the bound itself fails',
-      });
-      await waitForRunState(bureau.store, run.id);
-      await waitForCondition(
-        () => observedSignal !== undefined,
-        'the cleanup step never reached the engine prune',
-      );
-
-      failBound?.(new Error('injected shutdownTimeoutSleep failure'));
-
-      // The step still settled, and settled into a recorded acknowledgement
-      // rather than an escaping rejection.
-      const record = await awaitCleanupRecord(bureau, run.id);
-      const detail = record.detail as { acknowledgement: { status: string; reason?: string } };
-      expect(detail.acknowledgement.status).toBe('unresolved');
-      expect(detail.acknowledgement.reason).toBe('timed-out');
-      // A bound that could not be applied still stops the prune: leaving it
-      // running behind an answer nobody owns is what the bound prevents.
-      expect(observedSignal?.aborted).toBe(true);
-
-      // And `cancelDurableRun`, which awaits the step, keeps its own
-      // documented "never rejects" contract.
-      expect(await bureau.cancelDurableRun(run.id)).toBeDefined();
-    } finally {
-      releasePrune?.();
       pruneSpy.mockRestore();
       bureau.dispose();
     }
@@ -24794,201 +24196,7 @@ describe('bureau:pending-approval-persist idempotency under crash replay (COR-12
   });
 });
 
-describe('COR-636: scheduler task locator', () => {
-  it('resolves a settled task from its receipt taskId alone', async () => {
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({
-          generate: createSequentialGenerate([{ content: 'located', toolCalls: [] }]),
-          toolbox: createEmptyToolbox(),
-        }),
-      },
-      scheduler: { enabled: true, idleDelay: 1 },
-    });
-
-    try {
-      const { taskId } = await bureau.submitSchedulerTask({
-        agentName: 'default',
-        message: 'Locate me',
-        priority: 'background',
-      });
-
-      const result = await bureau.awaitSchedulerTask(taskId);
-      expect(result?.content).toBe('located');
-      expect(bureau.locateSchedulerTask(taskId)).toEqual({
-        status: 'terminal',
-        outcome: { status: 'fulfilled', value: result },
-      });
-    } finally {
-      await bureau.dispose();
-    }
-  });
-
-  it('reports expired and then not-found on a manual runtime with a finite retention window', async () => {
-    const runtime = createManualRuntimeServices();
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({
-          generate: createSequentialGenerate([{ content: 'expiring', toolCalls: [] }]),
-          toolbox: createEmptyToolbox(),
-        }),
-      },
-      scheduler: { enabled: true, retentionWindowMs: 50 },
-      runtime,
-    });
-
-    try {
-      const { taskId } = await bureau.submitSchedulerTask({
-        agentName: 'default',
-        message: 'Expire me',
-        priority: 'background',
-      });
-      await bureau.awaitSchedulerTask(taskId);
-      expect(bureau.locateSchedulerTask(taskId).status).toBe('terminal');
-
-      await runtime.advance(50);
-      expect(bureau.locateSchedulerTask(taskId)).toEqual({ status: 'expired' });
-      const expired = await bureau.awaitSchedulerTask(taskId).catch((error: unknown) => error);
-      expect(expired).toBeInstanceOf(SchedulerTaskLookupError);
-      expect(expired).toMatchObject({ reason: 'expired' });
-
-      await runtime.advance(50);
-      expect(bureau.locateSchedulerTask(taskId)).toEqual({ status: 'not-found' });
-    } finally {
-      await bureau.dispose();
-    }
-  });
-
-  it('expires an unconfigured scheduler task outcome after the default retention window', async () => {
-    const runtime = createManualRuntimeServices();
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({
-          generate: createSequentialGenerate([{ content: 'default window', toolCalls: [] }]),
-          toolbox: createEmptyToolbox(),
-        }),
-      },
-      scheduler: { enabled: true },
-      runtime,
-    });
-
-    try {
-      const submittedAt = runtime.monotonic.now();
-      const { taskId } = await bureau.submitSchedulerTask({
-        agentName: 'default',
-        message: 'Expire me eventually',
-        priority: 'background',
-      });
-      await bureau.awaitSchedulerTask(taskId);
-      expect(runtime.monotonic.now()).toBe(submittedAt);
-      expect(bureau.locateSchedulerTask(taskId).status).toBe('terminal');
-
-      await runtime.advance(3_599_999);
-      expect(bureau.locateSchedulerTask(taskId).status).toBe('terminal');
-
-      await runtime.advance(1);
-      expect(bureau.locateSchedulerTask(taskId)).toEqual({ status: 'expired' });
-      const expired = await bureau.awaitSchedulerTask(taskId).catch((error: unknown) => error);
-      expect(expired).toBeInstanceOf(SchedulerTaskLookupError);
-      expect(expired).toMatchObject({ taskId, reason: 'expired' });
-
-      await runtime.advance(3_600_000);
-      expect(bureau.locateSchedulerTask(taskId)).toEqual({ status: 'not-found' });
-      const forgotten = await bureau.awaitSchedulerTask(taskId).catch((error: unknown) => error);
-      expect(forgotten).toBeInstanceOf(SchedulerTaskLookupError);
-      expect(forgotten).toMatchObject({ taskId, reason: 'not-found' });
-    } finally {
-      await bureau.dispose();
-    }
-  });
-
-  it('lets an explicit retentionWindowMs override the default retention window', async () => {
-    const runtime = createManualRuntimeServices();
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({
-          generate: createSequentialGenerate([{ content: 'explicit window', toolCalls: [] }]),
-          toolbox: createEmptyToolbox(),
-        }),
-      },
-      scheduler: { enabled: true, retentionWindowMs: 1_000 },
-      runtime,
-    });
-
-    try {
-      const { taskId } = await bureau.submitSchedulerTask({
-        agentName: 'default',
-        message: 'Expire me sooner',
-        priority: 'background',
-      });
-      await bureau.awaitSchedulerTask(taskId);
-
-      await runtime.advance(999);
-      expect(bureau.locateSchedulerTask(taskId).status).toBe('terminal');
-      await runtime.advance(1);
-      expect(bureau.locateSchedulerTask(taskId)).toEqual({ status: 'expired' });
-    } finally {
-      await bureau.dispose();
-    }
-  });
-
-  it('reports not-found for an unknown id and rejects awaitSchedulerTask with a lookup error', async () => {
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
-      },
-      scheduler: { enabled: true },
-    });
-
-    try {
-      expect(bureau.locateSchedulerTask('unknown-task')).toEqual({ status: 'not-found' });
-      const rejection = await bureau
-        .awaitSchedulerTask('unknown-task')
-        .catch((error: unknown) => error);
-      expect(rejection).toBeInstanceOf(SchedulerTaskLookupError);
-      expect(rejection).toMatchObject({ taskId: 'unknown-task', reason: 'not-found' });
-    } finally {
-      await bureau.dispose();
-    }
-  });
-
-  it('throws NOT_CONFIGURED synchronously when the scheduler is not enabled', async () => {
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
-      },
-    });
-
-    try {
-      for (const call of [
-        () => bureau.locateSchedulerTask('any'),
-        () => bureau.awaitSchedulerTask('any'),
-      ]) {
-        try {
-          call();
-          throw new Error('expected a synchronous BureauError');
-        } catch (error) {
-          expect(error).toBeInstanceOf(BureauError);
-          expect((error as BureauError).code).toBe('NOT_CONFIGURED');
-        }
-      }
-    } finally {
-      await bureau.dispose();
-    }
-  });
-
-  it('rejects an invalid retentionWindowMs from createBureau, naming the option', async () => {
-    const rejection = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
-      },
-      scheduler: { enabled: true, retentionWindowMs: 0 },
-    }).catch((error: unknown) => error);
-
-    expect(rejection).toBeInstanceOf(Error);
-    expect((rejection as Error).message).toContain('retentionWindowMs');
-  });
-});
+describe('COR-636: scheduler task locator', () => {});
 
 // COR-690: shutdown must close run admission before it snapshots the runs and
 // toolboxes it drains, and an aborted run's toolbox must stay discoverable
@@ -25013,28 +24221,8 @@ describe('Bureau shutdown quiescence (COR-690)', () => {
     await shutdownPromise;
   });
 
-  it('rejects a scheduler task submitted after shutdown() has started', async () => {
-    const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
-      },
-      scheduler: { enabled: true, idleDelay: 1 },
-    });
-    const shutdownPromise = bureau.shutdown();
-
-    const rejection = await Promise.resolve()
-      .then(() => bureau.submitSchedulerTask({ agentName: 'default', message: 'too late' }))
-      .then(
-        () => undefined,
-        (error: unknown) => error,
-      );
-
-    expect(rejection).toBeInstanceOf(Error);
-    expect((rejection as { code?: string }).code).toBe('CONFLICT');
-    await shutdownPromise;
-  });
-
   it('keeps an aborted run toolbox discoverable until its ignored-cancellation callback settles', async () => {
+    const runtime = createManualRuntimeServices();
     let releaseTool!: () => void;
     const toolGate = new Promise<string>((resolve) => {
       releaseTool = () => resolve('done');
@@ -25066,15 +24254,18 @@ describe('Bureau shutdown quiescence (COR-690)', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
+      runtime,
+      ...SHORT_TASK_RETENTION,
     });
 
     const run = await bureau.createRun({ agentName: 'default', message: 'abort me mid-tool' });
     await toolStarted;
     bureau.abortRun(run.id);
     expect(await pollUntil(() => bureau.getRun(run.id)?.status === 'aborted')).toBe(true);
-    // Remove the run's id-keyed entry the way a session deletion does, so only
+    // Remove the run's id-keyed entry the way task retention does, so only
     // the tracked-toolbox set can still lead shutdown to the live callback.
-    await bureau.deleteRun(run.id);
+    await retireSettledTasks(bureau, runtime);
+    expect(bureau.getRun(run.id)).toBeUndefined();
 
     let shutdownSettled = false;
     const shutdownPromise = bureau.shutdown().then((report) => {

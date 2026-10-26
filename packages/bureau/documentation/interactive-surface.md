@@ -170,7 +170,7 @@ Each committed change is one event in the task's durable history, owned by `{ ki
 
 ## Retention
 
-A surface follows its task: it stays readable, frozen or closed, until `BureauOptions.taskRetention` ends and Bureau deletes the task, and it is deleted with the task, as `deleteRun` deletes it too. Its events stay in the history until `eventRetention` prunes them.
+A surface follows its task: it stays readable, frozen or closed, until `BureauOptions.taskRetention` ends and Bureau deletes the task, and it is deleted with the task. Its events stay in the history until `eventRetention` prunes them.
 
 ## Payload limits
 

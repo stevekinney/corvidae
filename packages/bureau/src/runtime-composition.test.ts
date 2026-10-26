@@ -61,7 +61,6 @@ import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/
 
 import {
   activeSkillsFromStepMetadata,
-  applyCache,
   CATALOG_RUN_RECOVERY_KEY_PREFIX,
   createMemoryPersistHook,
   createRoutingStrategy,
@@ -78,6 +77,7 @@ import {
 } from './runtime-composition';
 
 import type { GenerateProviderName, ProviderConfiguration } from './types';
+import { storageOverTextStore } from './testing/text-store-storage.test-support';
 
 // Drain Weft's deferred inline-launch queue between tests — a pending setTimeout(0)
 // inline-launch left by one durable run can starve a later one under full
@@ -637,29 +637,6 @@ describe('createRuntimeComposition', () => {
     expect(runRuntime.streamEventTarget).toBeUndefined();
   });
 
-  it('maps configured toolbox tools into public tool summaries', async () => {
-    const { createTool } = await import('armorer');
-    const { z } = await import('zod');
-    const runtime = await createRuntimeComposition({
-      generate: async () => ({ content: 'ok', toolCalls: [] }),
-      toolbox: createToolbox([
-        createTool({
-          name: 'lookup_record',
-          description: 'Look up a record by id.',
-          input: z.object({ id: z.string() }),
-          async execute({ id }) {
-            return id;
-          },
-        }),
-      ]),
-    });
-
-    expect(runtime.getToolSummaries()).toContainEqual({
-      name: 'lookup_record',
-      description: 'Look up a record by id.',
-    });
-  });
-
   it('wires identity resolution into prepare-step hooks when configured', async () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'ok', toolCalls: [] }),
@@ -768,7 +745,6 @@ describe('createRuntimeComposition', () => {
             provider: { provider: 'anthropic', model: 'expensive-model' },
           },
         ],
-        streaming: { enabled: false },
         toolbox: createToolbox([], { context: {} }),
       },
       {
@@ -883,16 +859,18 @@ describe('createRuntimeComposition', () => {
   it('composes the default non-streaming Gemini provider factory', async () => {
     const runtime = await createRuntimeComposition({
       provider: { provider: 'gemini', model: 'gemini-test', apiKey: 'test' },
-      streaming: { enabled: false },
       toolbox: createToolbox([], { context: {} }),
       guardrails: false,
     });
 
-    const runRuntime = await runtime.createRunRuntime({
-      agentName: 'bureau',
-      message: 'Hello',
-      sessionId: 'default-gemini-provider',
-    });
+    const runRuntime = await runtime.createRunRuntime(
+      {
+        agentName: 'bureau',
+        message: 'Hello',
+        sessionId: 'default-gemini-provider',
+      },
+      { liveStreaming: false },
+    );
 
     expect(runRuntime.streamEventTarget).toBeUndefined();
   });
@@ -1017,16 +995,6 @@ describe('createRuntimeComposition', () => {
     expect(decision).toMatchObject({ route: 'complex' });
   });
 
-  it('applies cache only when configuration and a store are available', () => {
-    const generate: GenerateFunction = async () => ({ content: 'fresh', toolCalls: [] });
-    const kv = textValueStore(new MemoryStorage());
-
-    expect(applyCache(generate, undefined, undefined)).toBe(generate);
-    expect(applyCache(generate, { enabled: false }, kv)).toBe(generate);
-    expect(applyCache(generate, { enabled: true }, undefined)).toBe(generate);
-    expect(applyCache(generate, { enabled: true, store: kv }, undefined)).not.toBe(generate);
-  });
-
   it('falls through streaming resolution before rejecting an unknown provider directly', () => {
     const streamEventTarget = new TypedEventTarget<StreamEventMap>();
 
@@ -1034,7 +1002,6 @@ describe('createRuntimeComposition', () => {
       resolveProviderGenerate(
         { provider: 'voyage', model: 'voyage-test' } as unknown as ProviderConfiguration,
         streamEventTarget,
-        {},
       ),
     ).toThrow('Unknown provider');
   });
@@ -1638,7 +1605,8 @@ describe('effectful hook idempotency under crash replay (COR-1267)', () => {
       generate: async () => ({ content: 'ok', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
       skills: { catalog },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
     await runtime.sessionStore!.save(
       createAgentSession({
@@ -3242,42 +3210,6 @@ describe('createRuntimeComposition durable execution', () => {
     } finally {
       storage[Symbol.dispose]();
     }
-  });
-
-  it('throws when durableExecution: true is combined with a custom persistence value', async () => {
-    // `persistence` shadows `storage`, so no raw backend is resolved and a
-    // durable engine cannot share its backend with the session store. Honoring
-    // `durableExecution: true` silently would ship an engine that looks durable
-    // but can never recover (the boot reconstructor scans the SESSION store).
-    // The contradiction must fail loud at composition, not silently no-op.
-    const error = await createRuntimeComposition({
-      generate: async () => ({ content: 'x', toolCalls: [] }),
-      toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'sqlite', path: join(tmpdir(), 'never-created.sqlite') },
-      durableExecution: true,
-      persistence: textValueStore(new MemoryStorage()),
-    }).then(
-      () => undefined,
-      (rejection: unknown) => rejection,
-    );
-
-    expect(error).toBeInstanceOf(Error);
-    expect((error as Error).message).toMatch(/durableExecution: true is incompatible/);
-  });
-
-  it('stays OFF (no engine) for sqlite + a custom persistence when durableExecution is unset', async () => {
-    // The silent-downgrade guard: with NO explicit flag, a custom `persistence`
-    // shadows `storage`, so `wantsDurable` resolves to FALSE — the honest
-    // default-off, not a wanted-but-unbuildable engine. (A persistence override
-    // means the caller is driving their own KV layer; durable-on would need the
-    // engine and sessions on one backend, which this config does not provide.)
-    const runtime = await createRuntimeComposition({
-      generate: async () => ({ content: 'x', toolCalls: [] }),
-      toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'sqlite', path: join(tmpdir(), 'unset-persistence.sqlite') },
-      persistence: textValueStore(new MemoryStorage()),
-    });
-    expect(runtime.durable).toBeUndefined();
   });
 
   it('builds a durable engine through the composition path and runs an agent durably', async () => {
@@ -6081,16 +6013,13 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
   });
 });
 
-describe('createRuntimeComposition PersistenceOptions form', () => {
-  // D1 acceptance: the options-object form { store, history?, observability?, onLog? }
-  // builds the durable engine with the same result as the legacy storage/durableExecution form.
-
-  it('builds a durable engine from PersistenceOptions with a memory store', async () => {
+describe('createRuntimeComposition storage and durable engine options', () => {
+  it('builds a durable engine over a memory storage configuration when durableExecution is on', async () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
-      persistence: { store: { type: 'memory' } },
-      // PersistenceOptions with a memory store: durableExecution defaults to OFF
-      // for memory (checkpoints are lost with the process), so explicitly enable.
+      storage: { type: 'memory' },
+      // Memory storage defaults durableExecution to OFF (checkpoints are lost with the
+      // process), so explicitly enable.
       durableExecution: true,
     });
     try {
@@ -6100,11 +6029,11 @@ describe('createRuntimeComposition PersistenceOptions form', () => {
     }
   });
 
-  it('builds a durable engine from a bare StorageConfiguration in persistence', async () => {
-    // Bare StorageConfiguration is shorthand for PersistenceOptions { store: config }.
+  it('threads durableGuardrails.history into the durable engine', async () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
-      persistence: { type: 'memory' },
+      storage: { type: 'memory' },
+      durableGuardrails: { history: { maxEvents: 10_000 } },
       durableExecution: true,
     });
     try {
@@ -6114,31 +6043,11 @@ describe('createRuntimeComposition PersistenceOptions form', () => {
     }
   });
 
-  it('threads history from PersistenceOptions into the durable engine', async () => {
-    // D1: history is exposed in the options-object form alongside store.
+  it('threads observability into the durable engine', async () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
-      persistence: {
-        store: { type: 'memory' },
-        history: { maxEvents: 10_000 },
-      },
-      durableExecution: true,
-    });
-    try {
-      expect(runtime.durable).toBeDefined();
-    } finally {
-      runtime.durable?.engine[Symbol.dispose]?.();
-    }
-  });
-
-  it('threads observability from PersistenceOptions into the durable engine', async () => {
-    // D1: observability is exposed in the options-object form alongside store.
-    const runtime = await createRuntimeComposition({
-      generate: async () => ({ content: 'x', toolCalls: [] }),
-      persistence: {
-        store: { type: 'memory' },
-        observability: true,
-      },
+      storage: { type: 'memory' },
+      observability: true,
       durableExecution: true,
     });
     try {
@@ -6151,15 +6060,12 @@ describe('createRuntimeComposition PersistenceOptions form', () => {
     }
   });
 
-  it('threads onLog from PersistenceOptions into the durable engine', async () => {
-    // D1: onLog is exposed in the options-object form alongside store.
+  it('threads onLog into the durable engine', async () => {
     const logRecords: unknown[] = [];
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
-      persistence: {
-        store: { type: 'memory' },
-        onLog: (record) => logRecords.push(record),
-      },
+      storage: { type: 'memory' },
+      onLog: (record) => logRecords.push(record),
       durableExecution: true,
     });
     try {
@@ -6171,55 +6077,15 @@ describe('createRuntimeComposition PersistenceOptions form', () => {
     }
   });
 
-  it('PersistenceOptions observability takes precedence over top-level observability', async () => {
-    // When both PersistenceOptions.observability and BureauOptions.observability are
-    // set, PersistenceOptions wins (it co-locates the knob with the store).
+  it('creates a KV session store over the resolved storage', async () => {
+    // A conditional text-store KV layer is built over the raw Storage, enabling session persistence.
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
-      persistence: {
-        store: { type: 'memory' },
-        observability: true,
-      },
-      observability: false, // should be overridden by PersistenceOptions.observability
+      storage: { type: 'memory' },
       durableExecution: true,
     });
     try {
-      expect(runtime.durable).toBeDefined();
-      // PersistenceOptions.observability: true wins → observability handle is present.
-      expect(runtime.durable?.observability).toBeDefined();
-    } finally {
-      runtime.durable?.observability?.dispose();
-      runtime.durable?.engine[Symbol.dispose]?.();
-    }
-  });
-
-  it('throws when durableExecution: true is combined with conditional text-store persistence', async () => {
-    // A conditional text store cannot back a Weft engine (needs a raw Storage for
-    // checkpointing). Honoring the contradiction silently would ship an engine
-    // that looks durable but can never recover.
-    const error = await createRuntimeComposition({
-      generate: async () => ({ content: 'x', toolCalls: [] }),
-      durableExecution: true,
-      persistence: textValueStore(new MemoryStorage()),
-    }).then(
-      () => undefined,
-      (rejection: unknown) => rejection,
-    );
-
-    expect(error).toBeInstanceOf(Error);
-    expect((error as Error).message).toMatch(/durableExecution: true is incompatible/);
-  });
-
-  it('creates a KV session store from PersistenceOptions store', async () => {
-    // When persistence is a PersistenceOptions, a conditional text-store KV layer is built
-    // over the raw Storage, enabling session persistence.
-    const runtime = await createRuntimeComposition({
-      generate: async () => ({ content: 'x', toolCalls: [] }),
-      persistence: { store: { type: 'memory' } },
-      durableExecution: true,
-    });
-    try {
-      // The KV view is available for session/cache use.
+      // The KV view is available for session use.
       expect(runtime.kv).toBeDefined();
       // The session store is built over the KV view.
       expect(runtime.sessionStore).toBeDefined();
@@ -6376,7 +6242,8 @@ describe('D4: skills catalog injection', () => {
       // No catalog — the bureau discovers its own store.
       skills: {},
       // Provide the pre-seeded KV store as the persistence backend.
-      persistence: kv,
+      storage: storageOverTextStore(kv),
+      durableExecution: false,
     });
 
     const runRuntime = await runtime.createRunRuntime({
@@ -6664,7 +6531,8 @@ describe('active skills survive durable recovery (PRRT_kwDORvupsc6MZ1Md)', () =>
       generate: async () => ({ content: 'ok', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
       skills: { catalog },
-      persistence: kv,
+      storage: storageOverTextStore(kv),
+      durableExecution: false,
     });
     await runtime.sessionStore!.save(
       createAgentSession({
@@ -6959,8 +6827,8 @@ describe('AB-40: default guardrails preset', () => {
     // `withEnhancedStreaming` has already forwarded `stream:text-delta` events
     // during generation. Streaming a response the default tripwire is meant to
     // gate would leak the flagged content before the guardrail ever ran. No
-    // `generate` and no `streaming: { enabled: false }` — provider streaming
-    // would normally be wired here — and no `guardrails` option, so the
+    // `generate` — provider streaming would normally be wired here — and no
+    // `guardrails` option, so the
     // default preset must be the thing suppressing it.
     let resolveProviderGenerateCalls = 0;
     const runtime = await createRuntimeComposition(

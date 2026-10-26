@@ -4,7 +4,7 @@
  * history feed's live poll, a raw `setTimeout` the runtime does not own, runs on Bun's fake timers and
  * is driven a poll interval at a time.
  */
-import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { createManualRuntimeServices, type ManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent, stopWhen, type GenerateFunction } from '@lostgradient/operative';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { jest } from 'bun:test';
@@ -26,9 +26,24 @@ export const OWNERSHIP = {
 /** The history feed's live poll interval, which the fake clock is advanced by. */
 const FEED_POLL_MILLISECONDS = 100;
 
-/** Lets work that waits on the fake clock make progress: one poll interval, then a few turns. */
+/**
+ * The manual runtimes of the Bureaus `fireBureauOptions` configured. A retry a Bureau makes waits on
+ * its runtime's timers, which a manual runtime fires only when advanced, so each poll advances them.
+ */
+const drivenRuntimes = new Set<ManualRuntimeServices>();
+
+/** Stops advancing the runtimes of Bureaus a finished test opened. Call it after each test. */
+export function forgetDrivenRuntimes(): void {
+  drivenRuntimes.clear();
+}
+
+/**
+ * Lets work that waits on the fake clock make progress: one poll interval on it and on the
+ * Bureaus' runtimes, then a few turns.
+ */
 export async function advanceFeedPoll(): Promise<void> {
   jest.advanceTimersByTime(FEED_POLL_MILLISECONDS);
+  for (const runtime of drivenRuntimes) await runtime.advance(FEED_POLL_MILLISECONDS);
   for (let turn = 0; turn < 5; turn += 1) await yieldToPortableEventLoop();
 }
 
@@ -51,17 +66,14 @@ export async function settledEventsOf(bureau: Bureau, fireId: string) {
 export function fireBureauOptions(
   generate: GenerateFunction,
   seed: string,
-): Pick<
-  BureauOptions,
-  'durableOwnership' | 'durableBackgroundTasks' | 'runtime' | 'sessionPersistenceSleep' | 'agents'
-> {
+): Pick<BureauOptions, 'durableOwnership' | 'durableBackgroundTasks' | 'runtime' | 'agents'> {
+  const runtime = createManualRuntimeServices({ identifierSeed: seed });
+  drivenRuntimes.add(runtime);
   return {
     agents: { default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }) },
     durableOwnership: OWNERSHIP,
     durableBackgroundTasks: 'manual',
-    runtime: createManualRuntimeServices({ identifierSeed: seed }),
-    // A retry waits for nothing: the tests drive no wall clock.
-    sessionPersistenceSleep: async () => {},
+    runtime,
   };
 }
 

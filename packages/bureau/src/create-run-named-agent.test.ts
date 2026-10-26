@@ -24,6 +24,7 @@ import { BureauError, createBureau } from './create-bureau';
 import { waitForRunState } from './test';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauOptions, CreateRunRequest } from './types';
+import { storageOverTextStore } from './testing/text-store-storage.test-support';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 
@@ -80,7 +81,9 @@ async function start(
   options: Partial<BureauOptions<AgentDefinitions>> & { agents: AgentDefinitions },
 ): Promise<Bureau<AgentDefinitions>> {
   const bureau = await createBureau<AgentDefinitions>({
-    ...(options.storage === undefined ? { persistence: textValueStore(new MemoryStorage()) } : {}),
+    ...(options.storage === undefined
+      ? { storage: { type: 'memory' }, durableExecution: false }
+      : {}),
     ...options,
   });
   bureaus.push(bureau);
@@ -231,7 +234,8 @@ describe('an agent that is not in the catalog', () => {
         alpha: createAgent({ generate: scripted('alpha') }),
         default: createAgent({ generate: scripted('wide'), toolbox: createToolbox([]) }),
       },
-      persistence,
+      storage: storageOverTextStore(persistence),
+      durableExecution: false,
     });
     // A session an earlier process bound to an agent this catalog no longer has.
     await createSessionStore(persistence).save(
@@ -407,7 +411,8 @@ describe('an agent named bureau', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
 
     const refusal = await rejectionOf(attempt);

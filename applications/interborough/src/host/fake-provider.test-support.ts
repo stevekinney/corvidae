@@ -55,14 +55,9 @@ export function fakeProvider(reply: string) {
   const resolver: NonNullable<HostOptions['resolveProviderGenerate']> = (
     provider,
     streamEventTarget,
-    streaming,
   ) => {
     handed.push(provider);
-    return resolveProviderGenerate(
-      Object.assign({}, provider, { client }),
-      streamEventTarget,
-      streaming,
-    );
+    return resolveProviderGenerate(Object.assign({}, provider, { client }), streamEventTarget);
   };
   return { handed, resolver };
 }

@@ -407,7 +407,6 @@ export type {
 export {
   BureauFaultSelectorResolutionError,
   selectAuditWriteFaultTarget,
-  selectSchedulerTaskFaultTarget,
   selectWebhookDeliveryFaultTarget,
 } from './test/fault-plan';
 export type {
@@ -458,9 +457,7 @@ export type {
   BureauShutdownOptions,
   BureauShutdownOwnerReport,
   BureauShutdownReport,
-  CacheConfiguration,
   CleanupAcknowledgement,
-  ConfigurationResponse,
   CreateRunRequest,
   DurableGuardrailsConfiguration,
   DurableScheduleDefinition,
@@ -476,10 +473,8 @@ export type {
   PendingHumanWaitReview,
   PendingReview,
   PendingToolApprovalReview,
-  PersistenceOptions,
   ProviderConfiguration,
   ProviderRouteConfiguration,
-  RedactedProviderConfiguration,
   ResolveReviewInput,
   ResolveReviewResult,
   RetentionWindowOption,
@@ -488,18 +483,13 @@ export type {
   RunEventRecord,
   RunStepDetail,
   RunSummary,
-  SchedulerConfiguration,
   ServerFrame,
   SkillCatalogEntry,
   SkillProvider,
   SkillRuntimeConfiguration,
   BureauHumanInputOption,
   StreamFrame,
-  StreamingConfiguration,
-  SubmitSchedulerTaskRequest,
-  SubmitSchedulerTaskResponse,
   ToolPolicy,
-  ToolSummary,
 } from './types';
 export { ANONYMOUS_LOCAL_OWNER } from './owner-of-record';
 export {

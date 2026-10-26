@@ -34,7 +34,6 @@ import type {
   RunEngineObservability,
   RunOptions,
   ScheduledAgentRunInput,
-  Scheduler,
   ScheduleWakeupContext,
   ScheduleWakeupInput,
   SessionStore,
@@ -65,7 +64,6 @@ import {
   createRoutingGenerate,
   createRunEngine,
   createRunWorkflow,
-  createScheduler,
   createScheduleWakeupTool,
   createSessionStore,
   createStepBasedStrategy,
@@ -85,7 +83,6 @@ import {
   ScheduleSkippedEvent,
   withActiveSkillToolPolicy,
   withBackendDescriptors,
-  withCache,
   withEnhancedStreaming,
   WorkflowVersionMismatchEvent,
   SESSION_ORIGIN_METADATA_KEY,
@@ -117,7 +114,6 @@ import {
   type Storage,
   storageConditionalBatch,
   type StorageConfiguration,
-  type TextValueStore,
   textValueStore,
   WorkflowCancelledEvent,
   WorkflowTimedOutEvent,
@@ -172,16 +168,11 @@ import {
 import type {
   BureauMemoryAuthorityOptions,
   BureauOptions,
-  CacheConfiguration,
   CreateRunRequest,
-  PersistenceOptions,
   ProviderConfiguration,
-  RedactedProviderConfiguration,
   ProviderRouteConfiguration,
-  RedactedProviderRouteConfiguration,
   SkillRuntimeConfiguration,
   RoutingConfiguration,
-  ToolSummary,
 } from './types';
 
 export type BureauToolbox = AnyToolbox;
@@ -378,7 +369,7 @@ const defaultBureauAgentName = 'bureau';
 
 /**
  * What a run's runtime is composed from. `agentName` stays optional here: a recovered run with no
- * stored agent and a scheduler task are internal callers that name none, and the memory
+ * stored agent is an internal caller that name none, and the memory
  * collection falls back through the request context to the implicit Bureau agent.
  */
 type RunRuntimeRequest = Omit<CreateRunRequest, 'agentName'> & {
@@ -386,12 +377,6 @@ type RunRuntimeRequest = Omit<CreateRunRequest, 'agentName'> & {
   sessionId: string;
   runId?: string;
 };
-/**
- * How long a settled scheduler task outcome stays resolvable when the caller
- * sets no `scheduler.retentionWindowMs`: one hour, bounding memory in a
- * long-lived Bureau. Bureau offers no unbounded opt-out.
- */
-const DEFAULT_SCHEDULER_RETENTION_WINDOW_MS = 3_600_000;
 const schedulerServicePrincipalId = SCHEDULER_ACTOR;
 const schedulerServiceAuthorizationRevision = 'bureau:scheduler:1';
 const toolExecutionCapability = 'tools:execute';
@@ -608,91 +593,14 @@ function raceRequestAuthorityValidation(
 }
 
 /**
- * Discriminate a {@link PersistenceOptions} object from a bare
- * `StorageConfiguration` or `ConditionalTextValueStore`. A `PersistenceOptions` is
- * identified by the presence of a `store` field that is itself a
- * `StorageConfiguration` object (has a `type` string discriminant).
- */
-function isPersistenceOptions(value: BureauOptions['persistence']): value is PersistenceOptions {
-  if (typeof value !== 'object' || value === null) return false;
-  const candidate = value as Record<string, unknown>;
-  return (
-    'store' in candidate &&
-    typeof candidate['store'] === 'object' &&
-    candidate['store'] !== null &&
-    'type' in (candidate['store'] as Record<string, unknown>)
-  );
-}
-
-/**
- * Discriminate a `StorageConfiguration` object from a `ConditionalTextValueStore`.
- * `StorageConfiguration` always carries a `type` string discriminant; a
- * `ConditionalTextValueStore` has callable `get`/`set` methods instead.
+ * Discriminate a `StorageConfiguration` object from a raw Weft `Storage`.
+ * `StorageConfiguration` always carries a `type` string discriminant.
  */
 function isStorageConfiguration(
-  value: StorageConfiguration | Storage | ConditionalTextValueStore,
+  value: StorageConfiguration | Storage,
 ): value is StorageConfiguration {
-  const candidate = value as Record<string, unknown>;
+  const candidate = value as unknown as Record<string, unknown>;
   return typeof candidate['type'] === 'string';
-}
-
-/**
- * Resolve the persistence options into a normalized `StorageConfiguration` (or
- * `undefined`) and any operational knobs for the durable engine.
- *
- * - `PersistenceOptions` → extracts `store` plus `history`/`observability`/`onLog`.
- * - Bare `StorageConfiguration` → `store` only, no extra knobs.
- * - `ConditionalTextValueStore` → KV-only, no durable storage config.
- * - `undefined` → no persistence.
- */
-function resolvePersistenceOptions(options: RuntimeCompositionOptions): {
-  storageConfig: StorageConfiguration | undefined;
-  kvStore: ConditionalTextValueStore | undefined;
-  persistenceHistory: PersistenceOptions['history'];
-  persistenceObservability: PersistenceOptions['observability'];
-  persistenceOnLog: PersistenceOptions['onLog'];
-} {
-  const { persistence } = options;
-
-  if (persistence === undefined) {
-    return {
-      storageConfig: undefined,
-      kvStore: undefined,
-      persistenceHistory: undefined,
-      persistenceObservability: undefined,
-      persistenceOnLog: undefined,
-    };
-  }
-
-  if (isPersistenceOptions(persistence)) {
-    return {
-      storageConfig: persistence.store,
-      kvStore: undefined,
-      persistenceHistory: persistence.history,
-      persistenceObservability: persistence.observability,
-      persistenceOnLog: persistence.onLog,
-    };
-  }
-
-  if (isStorageConfiguration(persistence)) {
-    // Bare StorageConfiguration: same as { store: persistence }
-    return {
-      storageConfig: persistence,
-      kvStore: undefined,
-      persistenceHistory: undefined,
-      persistenceObservability: undefined,
-      persistenceOnLog: undefined,
-    };
-  }
-
-  // ConditionalTextValueStore: KV-only, no durable storage
-  return {
-    storageConfig: undefined,
-    kvStore: persistence,
-    persistenceHistory: undefined,
-    persistenceObservability: undefined,
-    persistenceOnLog: undefined,
-  };
 }
 
 /** COR-41 — what Bureau delegates to a run when the deployment configures nothing else. */
@@ -1247,11 +1155,6 @@ export function removeLastScheduledFireTranscript(
   return removeConversationIndexRange(history, promptIndex, endIndex);
 }
 
-function redactProvider(provider: ProviderConfiguration): RedactedProviderConfiguration {
-  const { apiKey: _apiKey, ...safeProvider } = provider;
-  return safeProvider;
-}
-
 /** What a withdrawn evidence row reads as once a newer bundle replaced it. */
 const WITHDRAWN_MEMORY_EVIDENCE = '[memory evidence withdrawn: the memory policy changed]';
 
@@ -1374,7 +1277,7 @@ export function createMemoryRecallHook(
  *
  * EFFECTFUL hook (seam #11): a step can run more than once, so this hook can
  * fire AGAIN for the same step. A durable recovery re-runs the crashed in-flight
- * step from its boundary, and a requeued scheduler task either resumes from its
+ * step from its boundary, and a requeued run either resumes from its
  * last completed step (durable engine) or starts again (no engine). The
  * mitigation is IDEMPOTENCY, not suppression-on-replay — suppressing the hook
  * would drop the write for a step whose work (generate + tools) did re-execute,
@@ -1387,9 +1290,7 @@ export function createMemoryRecallHook(
  * atomic no-op regardless of content drift.
  *
  * Every run Bureau composes passes a `runId`: the run id for `createRun` runs,
- * schedule fires, and recovered runs, and the task id for a
- * `submitSchedulerTask` task, which stays the same across preemption and
- * requeue. Without a `runId` the write carries no dedupe key and a repeated step
+ * schedule fires, and recovered runs. Without a `runId` the write carries no dedupe key and a repeated step
  * stores its answer again, so omit it only for a step that cannot run twice.
  *
  * `replay: 'effectful'` ({@link HookReplayPolicy}) is recorded on the write for
@@ -1448,24 +1349,20 @@ export function createMemoryPersistHook(
 export function resolveProviderGenerate(
   provider: ProviderConfiguration,
   streamEventTarget: TypedEventTarget<StreamEventMap> | undefined,
-  streamingConfiguration: BureauOptions['streaming'],
 ): GenerateFunction {
   if (streamEventTarget) {
     switch (provider.provider) {
       case 'anthropic':
         return withEnhancedStreaming(createAnthropicProviderStream(provider), {
           eventTarget: streamEventTarget,
-          onTextDelta: streamingConfiguration?.onTextDelta,
         });
       case 'openai':
         return withEnhancedStreaming(createOpenAIProviderStream(provider), {
           eventTarget: streamEventTarget,
-          onTextDelta: streamingConfiguration?.onTextDelta,
         });
       case 'gemini':
         return withEnhancedStreaming(createGeminiProviderStream(provider), {
           eventTarget: streamEventTarget,
-          onTextDelta: streamingConfiguration?.onTextDelta,
         });
       default:
         break;
@@ -1563,26 +1460,6 @@ export function withUsageTracking(
     return response;
   };
   return withBackendDescriptors(tracked, readBackendDescriptors(generate));
-}
-
-export function applyCache(
-  generate: GenerateFunction,
-  configuration: CacheConfiguration | undefined,
-  store: TextValueStore | undefined,
-): GenerateFunction {
-  if (!configuration) {
-    return generate;
-  }
-
-  const cacheStore = configuration.store ?? store;
-  if (configuration.enabled === false || !cacheStore) {
-    return generate;
-  }
-
-  return withCache(generate, {
-    ...configuration,
-    store: cacheStore,
-  });
 }
 
 /**
@@ -2154,8 +2031,8 @@ export interface RuntimeComposition {
    * `disposeUnderlyingStorage: false` (they share one backend), and Weft's
    * `engine[Symbol.dispose]()` does NOT close the storage either — so the owner
    * (the bureau) must call this on teardown to release the SQLite/LMDB handle.
-   * `undefined` when the caller supplied their own `persistence` (we did not
-   * resolve a backend and do not own its lifecycle).
+   * `undefined` when no `storage` was configured, or the caller supplied a raw
+   * `Storage` adapter (we did not resolve a backend and do not own its lifecycle).
    */
   disposeStorage: (() => void) | undefined;
   /**
@@ -2176,7 +2053,6 @@ export interface RuntimeComposition {
   durableStorage: Storage | undefined;
   memory: GovernedMemory | undefined;
   sessionStore: SessionStore | undefined;
-  scheduler: Scheduler | undefined;
   /**
    * The bureau's canonical toolbox (`options.toolbox`, or an internally
    * created one). `resolveReview` calls `resumeApproval()` on this instance to
@@ -2308,11 +2184,8 @@ export interface RuntimeComposition {
    */
   mediaOptionsFor(principalId: string | undefined, rowHolder: MediaRowHolder): MediaRunOptions;
   ready: boolean;
-  provider: RedactedProviderConfiguration | undefined;
-  providers: RedactedProviderRouteConfiguration[];
   maximumSteps: number;
   systemPrompt: string | undefined;
-  getToolSummaries(): ToolSummary[];
   createRunRuntime(
     request: RunRuntimeRequest,
     options?: {
@@ -2848,30 +2721,17 @@ async function buildRuntimeComposition(
   const scheduleFireEvents = new TypedEventTarget<ScheduleFireEventMap>();
   const skillEvents = new TypedEventTarget<SkillEventMap>();
 
-  // Resolve the `persistence` option into its components. The three forms are:
-  // - PersistenceOptions { store, history?, observability?, onLog? }
-  // - Bare StorageConfiguration (shorthand for { store: config })
-  // - ConditionalTextValueStore (KV-only, no durable engine)
-  // The legacy `storage` field is still accepted alongside the new forms.
-  const {
-    storageConfig: persistenceStorageConfig,
-    kvStore: persistenceKvStore,
-    persistenceHistory,
-    persistenceObservability,
-    persistenceOnLog,
-  } = resolvePersistenceOptions(options);
+  // Resolve `storage` into a raw `Storage` backend. A caller may inject a raw adapter (notably
+  // Cloudflare Durable Object SQLite) because it cannot be represented by Weft's built-in
+  // StorageConfiguration union.
+  const effectiveStorage = options.storage;
 
-  // Prefer the `persistence` form over the top-level storage field. A caller may
-  // inject a raw adapter (notably Cloudflare Durable Object SQLite) because it
-  // cannot be represented by Weft's built-in StorageConfiguration union.
-  const effectiveStorage = persistenceStorageConfig ?? options.storage;
-
-  let kv: ConditionalTextValueStore | undefined = persistenceKvStore;
+  let kv: ConditionalTextValueStore | undefined;
   // Keep the raw Storage so the durable engine can share the exact backend with
   // the text-value KV view (Weft requires one engine per durable store).
   let durableStorage: Storage | undefined;
   let ownsDurableStorage = false;
-  if (!kv && effectiveStorage) {
+  if (effectiveStorage) {
     if (isStorageConfiguration(effectiveStorage)) {
       durableStorage = await resolveStorage(effectiveStorage);
       ownsDurableStorage = true;
@@ -2881,18 +2741,14 @@ async function buildRuntimeComposition(
     kv = textValueStore(durableStorage, { disposeUnderlyingStorage: false });
   }
 
-  // Merge operational knobs from the PersistenceOptions form with the legacy
-  // top-level fields. PersistenceOptions takes precedence when both are set.
-  const effectiveObservability = persistenceObservability ?? options.observability;
-  const effectiveOnLog = persistenceOnLog ?? options.onLog;
+  const effectiveObservability = options.observability;
+  const effectiveOnLog = options.onLog;
 
   // Durable execution is ON BY DEFAULT whenever a PERSISTENT storage backend is
-  // configured AND no custom KV-only `persistence` (ConditionalTextValueStore) shadows it.
-  // The default follows persistence because that is the only place resume is real:
+  // configured. The default follows persistence because that is the only place resume is real:
   // `memory` storage loses its checkpoints with the process, so default-on there
   // would be pure overhead with zero recovery. The explicit `durableExecution`
   // flag overrides the default either way.
-  const hasKvOnlyPersistence = persistenceKvStore !== undefined;
   let effectiveStorageIsPersistent = false;
   if (effectiveStorage) {
     if (isStorageConfiguration(effectiveStorage)) {
@@ -2902,24 +2758,7 @@ async function buildRuntimeComposition(
       effectiveStorageIsPersistent = persistence === 'local' || persistence === 'remote';
     }
   }
-  const wantsDurable =
-    options.durableExecution ?? (effectiveStorageIsPersistent && !hasKvOnlyPersistence);
-
-  // A KV-only `persistence` (ConditionalTextValueStore) value means no raw `Storage` was
-  // resolved and a durable engine cannot be built. Fail loud if `durableExecution:
-  // true` is requested — honor it silently and we ship an engine that looks
-  // durable but can't recover. (Flag UNSET + ConditionalTextValueStore is the documented
-  // KV-only path — sessions only, no durability.)
-  if (options.durableExecution === true && hasKvOnlyPersistence) {
-    throw new Error(
-      'durableExecution: true is incompatible with a ConditionalTextValueStore `persistence` value. ' +
-        'A durable engine must share its backend with the session store, but ' +
-        'a ConditionalTextValueStore cannot back a Weft engine. Provide `persistence` as a ' +
-        'StorageConfiguration or PersistenceOptions to get durable execution, ' +
-        'or drop `durableExecution: true` to use the KV-only persistence layer ' +
-        'with the in-memory run loop.',
-    );
-  }
+  const wantsDurable = options.durableExecution ?? effectiveStorageIsPersistent;
 
   let durable: DurableComposition | undefined;
   if (wantsDurable && durableStorage) {
@@ -2971,8 +2810,6 @@ async function buildRuntimeComposition(
       // durableOwnership (AB-178) is the same Pick pattern — createRunEngine
       // defaults `ownership` to 'workflow-lease' when this is omitted entirely.
       ...options.durableOwnership,
-      // history from PersistenceOptions takes precedence over durableGuardrails.history
-      ...(persistenceHistory !== undefined ? { history: persistenceHistory } : {}),
       runWorkflowVersion: options.workflowVersion,
       // AB-10: record the mismatch so the boot recovery loop below can pass it
       // to `classifyRecoveredRun` (distinct 'reattach-version-mismatch' verdict)
@@ -3182,42 +3019,6 @@ async function buildRuntimeComposition(
       ? createRoutingStrategy(options.routing)
       : undefined;
 
-  const skillToolSummaries: ToolSummary[] =
-    options.skills?.includeTools === false
-      ? []
-      : options.skills
-        ? [
-            {
-              name: 'activate_skill',
-              description:
-                'Activate a skill by name. Returns the skill instructions and available resources.',
-            },
-            {
-              name: 'load_skill_resource',
-              description: 'Load a resource file from an active skill.',
-            },
-            {
-              name: 'deactivate_skill',
-              description: 'Deactivate a skill and remove it from the active set.',
-            },
-            {
-              name: 'list_skills',
-              description: 'List available skills and whether they are active.',
-            },
-          ]
-        : [];
-
-  function getToolSummaries(): ToolSummary[] {
-    const toolInspections = baseToolbox.inspect('summary').tools;
-    return [
-      ...toolInspections.map((toolInspection) => ({
-        name: toolInspection.name,
-        description: toolInspection.description,
-      })),
-      ...skillToolSummaries,
-    ];
-  }
-
   function composeConfiguredGenerate(
     streamEventTarget: TypedEventTarget<StreamEventMap> | undefined,
   ): GenerateFunction | undefined {
@@ -3231,11 +3032,7 @@ async function buildRuntimeComposition(
       if (routingStrategy && baseProviders.length > 1) {
         const routes = baseProviders.map((route) => ({
           name: route.name,
-          generate: dependencies.resolveProviderGenerate(
-            route.provider,
-            streamEventTarget,
-            options.streaming,
-          ),
+          generate: dependencies.resolveProviderGenerate(route.provider, streamEventTarget),
         }));
 
         const routingGenerate = createRoutingGenerate({
@@ -3252,55 +3049,21 @@ async function buildRuntimeComposition(
         generate = createFalloverGenerate({
           providers: baseProviders.map((route) => ({
             name: route.name,
-            generate: dependencies.resolveProviderGenerate(
-              route.provider,
-              streamEventTarget,
-              options.streaming,
-            ),
+            generate: dependencies.resolveProviderGenerate(route.provider, streamEventTarget),
           })),
         });
       } else {
         generate = dependencies.resolveProviderGenerate(
           baseProviders[0]!.provider,
           streamEventTarget,
-          options.streaming,
         );
       }
     }
 
-    return applyCache(generate, options.cache, kv);
+    return generate;
   }
 
   const nonStreamingGenerate = composeConfiguredGenerate(undefined);
-  // COR-323: a Bureau composes no `generate` of its own, so the scheduler's default is one that
-  // refuses. Every task supplies its named agent's `generate` and toolbox through `createRun`.
-  const schedulerGenerate: GenerateFunction =
-    nonStreamingGenerate ?? (() => Promise.reject(new Error('No generate function configured')));
-
-  const scheduler =
-    options.scheduler?.enabled === true
-      ? createScheduler({
-          generate: schedulerGenerate,
-          toolbox: fallbackToolbox,
-          idleDelay: options.scheduler?.idleDelay ?? 1000,
-          retentionWindowMs:
-            options.scheduler?.retentionWindowMs ?? DEFAULT_SCHEDULER_RETENTION_WINDOW_MS,
-          // The composed runtime, so idle/wake and retention timers are
-          // deterministic under a manual runtime.
-          runtime: runtimeServices,
-          // When a durable engine is composed, preemptable scheduler tasks run as
-          // durable workflows and a preemption SUSPENDS the run (preserving its
-          // checkpoint) rather than aborting it — a requeue resumes from the last
-          // completed step. Without an engine the scheduler stays in-memory.
-          ...(durable
-            ? { durable: { engine: durable.engine, checkpointStore: durable.checkpointStore } }
-            : {}),
-        })
-      : undefined;
-
-  if (scheduler) {
-    scheduler.start();
-  }
 
   /**
    * The guardrail configuration in force for this composition, with `false`
@@ -3455,7 +3218,6 @@ async function buildRuntimeComposition(
       // A named agent's own `generate` is not wrapped for live token streaming.
       sessionAgent !== undefined ||
       options.generate !== undefined ||
-      options.streaming?.enabled === false ||
       usingDefaultGuardrailsPreset
         ? undefined
         : new TypedEventTarget<StreamEventMap>();
@@ -5448,7 +5210,6 @@ async function buildRuntimeComposition(
     durableStorage,
     memory,
     sessionStore,
-    scheduler,
     // Exposed so the review queue (`resolveReview`) can call `resumeApproval()`
     // on the SAME toolbox instance (or any `.extend()` clone of it, which
     // preserves `approvalSecret` — see armorer's `extend()`) that executed the
@@ -5480,14 +5241,8 @@ async function buildRuntimeComposition(
       options.generate !== undefined ||
       options.provider !== undefined ||
       (options.providers?.length ?? 0) > 0,
-    provider: options.provider ? redactProvider(options.provider) : undefined,
-    providers: baseProviders.map((provider) => ({
-      ...provider,
-      provider: redactProvider(provider.provider),
-    })),
     maximumSteps,
     systemPrompt,
-    getToolSummaries,
     createRunRuntime,
     // AB-260: folded onto the returned object directly — see the interface's
     // own doc comments for why these are genuine capabilities of this

@@ -13,7 +13,7 @@ import {
   waitForRunState,
   withBackendDescriptors,
 } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { toolContent } from 'armorer/protocol';
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -160,7 +160,8 @@ describe('a tool-returned image through an approved review', () => {
         }),
       },
       assets: { storage: fixture.storage },
-      persistence: textValueStore(new MemoryStorage()),
+      storage: { type: 'memory' },
+      durableExecution: false,
     });
     cleanups.push(async () => {
       await bureau.dispose();

@@ -23,6 +23,7 @@ import { SCHEDULE_FIRE_SETTLED_EVENT_KIND } from './schedule-fire-settled-event'
 import {
   advanceFeedPoll,
   driveUntil,
+  forgetDrivenRuntimes,
   fireBureauOptions,
   followFire,
   parkedGenerate,
@@ -32,6 +33,7 @@ import type { Bureau } from './types';
 const harness = createScheduleFireHarness();
 
 afterEach(async () => {
+  forgetDrivenRuntimes();
   jest.useRealTimers();
   await harness.dispose();
 });

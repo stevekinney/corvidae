@@ -1,7 +1,7 @@
 import type { ManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import type { GenerateFunction } from '@lostgradient/operative';
-import { createAgent, stopWhen, waitForCondition, waitForRunState } from '@lostgradient/operative';
+import { createAgent, stopWhen, waitForRunState } from '@lostgradient/operative';
 import { createProcessLocalApprovalStateStore, createTool, createToolbox } from 'armorer';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
@@ -241,26 +241,7 @@ describe('createBureauTestHarness', () => {
     });
   });
 
-  describe('submitSchedulerTask', () => {
-    it('is a thin wrapper over Bureau.submitSchedulerTask', async () => {
-      const harness = await harnessWithMemoryStorage({
-        agents: {},
-        scheduler: { enabled: true, idleDelay: 1 },
-      });
-
-      const response = await harness.submitSchedulerTask({
-        agentName: 'default',
-        message: 'scheduled task',
-        priority: 'background',
-      });
-
-      expect(response.status).toBe('queued');
-      await waitForCondition(
-        () => harness.bureau.scheduler?.getState().completedCount === 1,
-        'scheduled task did not complete',
-      );
-    });
-  });
+  describe('submitSchedulerTask', () => {});
 
   describe('reattachDurable', () => {
     it('is a thin wrapper over Bureau.getDurableRun, returning undefined without a durable engine', async () => {
@@ -370,26 +351,6 @@ describe('createBureauTestHarness', () => {
         expect((error as BureauHarnessUnsupportedError).capability).toBe('managed-goal');
         expect((error as BureauHarnessUnsupportedError).owningIssues).toEqual(['AB-101', 'AB-102']);
       }
-    });
-
-    it('getSchedulerTaskResult and awaitSchedulerTask resolve a submitted scheduler task', async () => {
-      const harness = await harnessWithMemoryStorage({
-        scheduler: { enabled: true, idleDelay: 1 },
-      });
-
-      const { taskId } = await harness.submitSchedulerTask({
-        agentName: 'default',
-        message: 'Harness task',
-        priority: 'background',
-      });
-      const result = await harness.awaitSchedulerTask(taskId);
-
-      expect(result).not.toBeNull();
-      expect(harness.getSchedulerTaskResult(taskId)).toEqual({
-        status: 'terminal',
-        outcome: { status: 'fulfilled', value: result },
-      });
-      expect(harness.getSchedulerTaskResult('unknown')).toEqual({ status: 'not-found' });
     });
   });
 });
