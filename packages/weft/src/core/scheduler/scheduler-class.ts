@@ -92,7 +92,7 @@ const EXPIRED_TIMER_SCAN_LIMIT_PER_SOURCE = 1_000;
 export class Scheduler implements Disposable {
   readonly #storage: Storage;
   readonly #onTimerFired: (entry: TimerEntry) => void | Promise<void>;
-  readonly #pollIntervalMs: number;
+  #pollIntervalMs: number;
   readonly #getNow: () => number;
   readonly #commitTimerCleanup: (operations: BatchOperation[]) => Promise<void>;
   #intervalHandle: ReturnType<typeof setInterval> | null = null;
@@ -118,7 +118,29 @@ export class Scheduler implements Disposable {
   start(): void {
     if (this.#intervalHandle !== null) return;
     this.#stopped = false;
+    this.#armPollInterval();
+  }
 
+  /**
+   * Change the poll interval. A running poller is cleared and re-armed, so the next poll lands
+   * one new interval from now; a poller that was never started, or was stopped, only remembers
+   * the interval for its next {@link Scheduler.start}. Setting the interval it already has
+   * leaves a running poller exactly as it is, so its phase is not reset.
+   *
+   * @throws {RangeError} When `pollIntervalMs` is not a positive safe integer.
+   */
+  setPollInterval(pollIntervalMs: number): void {
+    if (!Number.isSafeInteger(pollIntervalMs) || pollIntervalMs < 1) {
+      throw new RangeError('pollIntervalMs must be a positive safe integer');
+    }
+    if (pollIntervalMs === this.#pollIntervalMs) return;
+    this.#pollIntervalMs = pollIntervalMs;
+    if (this.#intervalHandle === null) return;
+    clearInterval(this.#intervalHandle);
+    this.#armPollInterval();
+  }
+
+  #armPollInterval(): void {
     this.#intervalHandle = setInterval(() => {
       void this.tick();
     }, this.#pollIntervalMs);

@@ -57,3 +57,13 @@ declare const registryAgnosticEngine: RegistryAgnosticEngine;
 void registryAgnosticEngine.register;
 // @ts-expect-error `registerWorkflows` is intentionally not part of RegistryAgnosticEngine.
 void registryAgnosticEngine.registerWorkflows;
+
+// `reconfigure` is part of the registry-agnostic surface: a substitute without it must not satisfy
+// `RegistryAgnosticEngine`, so a host that reconfigures the engine it holds cannot silently lose it.
+declare const engineSubstituteMissingReconfigure: Omit<
+  Engine,
+  'register' | 'registerWorkflows' | 'reconfigure'
+>;
+// @ts-expect-error a substitute missing `reconfigure` must not satisfy RegistryAgnosticEngine.
+const rejectedForMissingReconfigure: RegistryAgnosticEngine = engineSubstituteMissingReconfigure;
+void rejectedForMissingReconfigure;
