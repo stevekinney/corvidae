@@ -75,7 +75,11 @@ export interface A2APeerClientOptions {
   readonly retryMaxDelayMs?: number | undefined;
   /** Delay before the first `GetTask` poll of a non-streaming peer. Default 500. */
   readonly pollIntervalMs?: number | undefined;
-  /** The most artifact content, in characters, kept per artifact. Default 1048576. */
+  /**
+   * The most text, in characters, kept from one piece of peer content. It bounds each artifact's
+   * content and also each reply message's text (a status message or a bare message answer), which
+   * is cut to the same length. Default 1048576.
+   */
   readonly artifactLimit?: number | undefined;
   /** Clock for the card cache. Defaults to `Date.now`. */
   readonly now?: (() => number) | undefined;
