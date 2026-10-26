@@ -144,7 +144,12 @@ test.describe('the pending-review MCP App', () => {
     await send.click();
     await expect(app.getByRole('status')).toHaveText('Rejected with feedback.');
     const [call] = await calls(page, 'bureau.reviews.resolve');
-    expect(call?.arguments).toEqual({ id: 'a', decision: 'reject', reason: 'Use a dry run first' });
+    expect(call?.arguments).toEqual({
+      id: 'a',
+      decision: 'reject',
+      round: 0,
+      reason: 'Use a dry run first',
+    });
   });
 
   test('keeps a half-typed reason and its focus across a refresh', async ({ page }) => {
@@ -206,6 +211,24 @@ test.describe('the pending-review MCP App', () => {
     await expect(app.getByRole('heading', { level: 2 })).toBeVisible();
     const resolves = await calls(page, 'bureau.reviews.resolve');
     expect(resolves).toHaveLength(1);
+  });
+
+  test('sends the round it displayed, and reports a review that moved on as undecided', async ({
+    page,
+  }) => {
+    const { app } = await open(page, [review('a', { round: 2 })]);
+    await expect(app.getByRole('heading', { level: 2 })).toBeVisible();
+    // Another resolver re-gates the approval between the app's read and its decision.
+    await page.evaluate(() => {
+      window.referenceHost.handlers['bureau.reviews.resolve'] = () => {
+        throw new Error('Conflict: REVIEW_ROUND_CHANGED: now at round 3');
+      };
+    });
+    await app.getByRole('button', { name: 'Approve' }).click();
+    await expect(app.getByRole('status')).toContainText('changed while you read it');
+    await expect(app.getByRole('status')).not.toContainText('Approved');
+    const [call] = await calls(page, 'bureau.reviews.resolve');
+    expect(call?.arguments).toEqual({ id: 'a', decision: 'approve', round: 2 });
   });
 
   test('reports a decision that took effect when only the outcome write failed', async ({

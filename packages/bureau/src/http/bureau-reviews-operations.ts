@@ -30,7 +30,11 @@
 import { defineOperation, type OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import { ApprovalOutcomeNotWrittenError, BureauError } from '../create-bureau.ts';
+import {
+  ApprovalOutcomeNotWrittenError,
+  BureauError,
+  ReviewRoundChangedError,
+} from '../create-bureau.ts';
 import type { Bureau, PendingReview, PendingToolApprovalReview, ReviewStatus } from '../types.ts';
 import type { BureauScope } from './bureau-scopes.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from './owner-predicate.ts';
@@ -277,6 +281,9 @@ const transports = {
 /** The token a client branches on to tell a decision whose outcome was not written from a lost race. */
 export const APPROVAL_OUTCOME_NOT_WRITTEN = 'APPROVAL_OUTCOME_NOT_WRITTEN';
 
+/** The token a client branches on to tell a review that moved to another round from a lost race. */
+export const REVIEW_ROUND_CHANGED = 'REVIEW_ROUND_CHANGED';
+
 /** A payload key that is not declared is `InvalidParams`, so a client cannot name a `principal`. */
 const unknownKeyPolicy = { http: 'reject', jsonRpc: 'reject' } as const;
 
@@ -308,6 +315,15 @@ export function reviewFault(error: unknown, identifier: string): unknown {
           code: 'Conflict',
           message: error.message,
           data: { reason: `${APPROVAL_OUTCOME_NOT_WRITTEN}: ${error.message}` },
+        };
+      }
+      // The review was replaced under the same id by another resolver's supersession, so the
+      // round the caller read is gone and nothing took effect: it reads the review again.
+      if (error instanceof ReviewRoundChangedError) {
+        return {
+          code: 'Conflict',
+          message: error.message,
+          data: { reason: `${REVIEW_ROUND_CHANGED}: ${error.message}` },
         };
       }
       return { code: 'Conflict', message: error.message, data: { reason: error.message } };
@@ -406,6 +422,13 @@ const reviewsResolveInput = z
     decision: z.enum(['approve', 'deny', 'reject']),
     /** Required, and non-blank, for `reject`. */
     reason: z.string().optional(),
+    /**
+     * The `round` of the review the caller read. A re-gated tool approval keeps its id and
+     * advances its round; when this is given and the review is no longer at it, nothing is decided
+     * and the answer is a `Conflict`. A human wait is always at round 0. Omitted, the call is not
+     * fenced.
+     */
+    round: z.number().int().min(0).optional(),
   })
   .refine((input) => input.decision !== 'reject' || (input.reason ?? '').trim() !== '', {
     message: 'reject requires a reason',
@@ -449,7 +472,7 @@ export const reviewsResolveOperation = defineOperation<
   mcpExposable: true,
   summary: 'Approve, deny, or reject a pending review',
   description:
-    'Resolves a pending review of one of the caller’s own runs as the authenticated caller; the reviewer is never a payload field. A caller holding `bureau.reviews:resolve` resolves any owner’s. `reject` requires a `reason`. The `receipt` is `applied` (including a landed reject, which `decision` reports) or `superseded`. Resolving a review that is already resolved, or one the caller may not resolve, answers 404 until command receipts exist. Resolving a tool approval also writes its outcome into the session’s conversation: the executed result on approve, an error result carrying the reason on deny and reject, each replacing the pending `action_required` result in place, so a run started next on the session answers an up-to-date conversation. A `superseded` receipt writes nothing. A `Conflict` whose `reason` begins `APPROVAL_OUTCOME_NOT_WRITTEN: ` means the decision took effect (the tool ran or was refused) and only that write failed; any other `Conflict` is a resolver that lost.',
+    'Resolves a pending review of one of the caller’s own runs as the authenticated caller; the reviewer is never a payload field. A caller holding `bureau.reviews:resolve` resolves any owner’s. `reject` requires a `reason`. The `receipt` is `applied` (including a landed reject, which `decision` reports) or `superseded`. Resolving a review that is already resolved, or one the caller may not resolve, answers 404 until command receipts exist. Resolving a tool approval also writes its outcome into the session’s conversation: the executed result on approve, an error result carrying the reason on deny and reject, each replacing the pending `action_required` result in place, so a run started next on the session answers an up-to-date conversation. A `superseded` receipt writes nothing. `round` is the round of the review the caller read (`bureau.reviews.get` and `list` return it): a re-gated approval keeps its id and advances its round, so a decision made on round N is refused with a `Conflict` once the review is at another round, before anything is decided, written, or audited. A `Conflict` whose `reason` begins `REVIEW_ROUND_CHANGED: ` is that refusal (nothing took effect; read the review again); one that begins `APPROVAL_OUTCOME_NOT_WRITTEN: ` means the decision took effect (the tool ran or was refused) and only that write failed; any other `Conflict` is a resolver that lost. Omit `round` and the call is not fenced.',
   destructive: true,
   tags: ['Reviews'],
   inputSchema: reviewsResolveInput,
@@ -489,6 +512,7 @@ export const reviewsResolveOperation = defineOperation<
         decision: input.decision,
         principal: actor,
         ...(input.reason === undefined ? {} : { reason: input.reason }),
+        ...(input.round === undefined ? {} : { round: input.round }),
       });
       return {
         id: result.id,
