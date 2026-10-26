@@ -1,4 +1,5 @@
 import { describe, expect, jest, test } from 'bun:test';
+import { throwingRejectionOf } from './helpers/promise-outcome.ts';
 import { awakeTurns, waitUntil, yieldEventLoopTurn } from './wait-until.ts';
 
 describe('waitUntil', () => {
@@ -50,7 +51,7 @@ describe('waitUntil', () => {
       message: 'a signal that never comes',
       hangGuardMilliseconds: 20,
     });
-    await expect(waiting).rejects.toThrow(
+    expect(await throwingRejectionOf(waiting)).toThrow(
       'waitUntil gave up after 20ms of awake time waiting for a signal that never comes',
     );
   });

@@ -295,8 +295,8 @@ function chainRoot(expression: ts.Expression): ts.Expression {
  * `test.each(rows)('a', fn)` do, while `test.each(rows)` alone only prepares the table.
  */
 function isRegistration(call: ts.CallExpression): boolean {
-  const root = chainRoot(call.expression);
-  if (!ts.isIdentifier(root) || !REGISTRATION_ROOTS.has(root.text)) return false;
+  const start = chainRoot(call.expression);
+  if (!ts.isIdentifier(start) || !REGISTRATION_ROOTS.has(start.text)) return false;
   const name = calleeName(call);
   return name === null || !TABLE_CALLEES.has(name);
 }
@@ -423,7 +423,7 @@ function callsUseFakeTimers(node: ts.Node): boolean {
     if (ts.isCallExpression(child)) {
       const name = calleeName(child);
       if (name !== null && MANUAL_CLOCK_CALLEES.has(name)) found = true;
-    } else if (ts.isNewExpression(child) && /ManualClock$/.test(child.expression.getText())) {
+    } else if (ts.isNewExpression(child) && child.expression.getText().endsWith('ManualClock')) {
       found = true;
     }
   });
@@ -454,8 +454,8 @@ function isUnderFakeTimers(node: ts.Node): boolean {
     if (!ts.isFunctionLike(current) || !ts.isCallExpression(current.parent)) continue;
     const call = current.parent;
     if (!isRegistration(call)) continue;
-    const root = chainRoot(call.expression);
-    const isSuite = ts.isIdentifier(root) && root.text === 'describe';
+    const start = chainRoot(call.expression);
+    const isSuite = ts.isIdentifier(start) && start.text === 'describe';
     if (!isSuite && callsUseFakeTimers(current)) return true;
     if (isSuite && ts.isBlock((current as ts.FunctionLikeDeclaration).body ?? current)) {
       const body = (current as ts.FunctionLikeDeclaration).body as ts.Block;
@@ -845,11 +845,9 @@ function findDefaultedBudgets(
 ): DeadlineViolation[] {
   const violations: DeadlineViolation[] = [];
   walk(sourceFile, (node) => {
-    const isBinding = ts.isBindingElement(node) && ts.isIdentifier(node.name);
-    const isParameter = ts.isParameter(node) && ts.isIdentifier(node.name);
-    if (!isBinding && !isParameter) return;
-    const name = (node.name as ts.Identifier).text;
-    const initializer = (node as ts.BindingElement | ts.ParameterDeclaration).initializer;
+    if (!(ts.isBindingElement(node) || ts.isParameter(node)) || !ts.isIdentifier(node.name)) return;
+    const name = node.name.text;
+    const initializer = node.initializer;
     if (initializer === undefined || !DEFAULTED_BUDGETS.has(name)) return;
     // `{ timeoutMs: limit = 50 }` renames the property; the property name is the budget.
     const resolved = resolveNumber(initializer, constants);
