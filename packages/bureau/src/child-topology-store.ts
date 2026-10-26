@@ -168,6 +168,11 @@ export interface BureauPeerCallRecord {
   readonly taskId: string;
   /** The task's context identifier on the peer. */
   readonly contextId: string;
+  /**
+   * A digest of the request the call sent. The operation key is a position in a run, not a
+   * request, so a replay compares this before it follows the task.
+   */
+  readonly requestDigest: string;
   /** Epoch milliseconds, from Bureau's runtime clock. */
   readonly recordedAt: number;
 }
@@ -303,6 +308,8 @@ function isPeerCallRecord(value: unknown): value is BureauPeerCallRecord {
     typeof value['taskId'] === 'string' &&
     value['taskId'] !== '' &&
     typeof value['contextId'] === 'string' &&
+    typeof value['requestDigest'] === 'string' &&
+    value['requestDigest'] !== '' &&
     typeof value['recordedAt'] === 'number'
   );
 }

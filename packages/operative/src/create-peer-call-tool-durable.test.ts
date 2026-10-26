@@ -18,6 +18,7 @@ import { createChildRunRegistry } from './child-run';
 import {
   createPeerCallTool,
   PeerCallJournalError,
+  PeerCallMismatchError,
   type PeerCallJournal,
   type PeerCallJournalEntry,
   type PeerCallJournalKey,
@@ -155,7 +156,13 @@ describe('a durable peer call', () => {
     const messageId = peer.sends[0]?.messageId ?? '';
     expect(messageId).toMatch(/^peer-call:[0-9a-f]{64}$/);
     expect(messageId).not.toContain('run-1');
-    expect([...journal.entries.values()]).toEqual([{ taskId: 'task-1', contextId: 'context-1' }]);
+    expect([...journal.entries.values()]).toEqual([
+      {
+        taskId: 'task-1',
+        contextId: 'context-1',
+        requestDigest: expect.stringMatching(/^[0-9a-f]{64}$/),
+      },
+    ]);
   });
 
   it('derives a different message id for a different operation key', async () => {
@@ -235,6 +242,54 @@ describe('a durable peer call', () => {
     expect(peer.sends).toEqual([]);
     expect(peer.attaches).toEqual([]);
     expect(registry.children()).toEqual([]);
+  });
+
+  it('refuses to follow a task recorded for a different request at the same position', async () => {
+    // Two parallel calls to one peer tool, then a crash. The replayed step emits them in swapped
+    // order, so each position now holds the other call's request.
+    const journal = memoryJournal();
+    const first = fakePeer({ taskId: 'task-for-a' });
+    await toolOver(first.client, journal).call(
+      { message: 'question A' },
+      { durableOperationKey: `${KEY}-0` },
+    );
+    await toolOver(fakePeer({ taskId: 'task-for-b' }).client, journal).call(
+      { message: 'question B' },
+      { durableOperationKey: `${KEY}-1` },
+    );
+    const restarted = fakePeer();
+
+    const swapped = toolOver(restarted.client, journal);
+    const atZero = await rejection(
+      swapped.call({ message: 'question B' }, { durableOperationKey: `${KEY}-0` }),
+    );
+    const atOne = await rejection(
+      swapped.call({ message: 'question A' }, { durableOperationKey: `${KEY}-1` }),
+    );
+
+    expect(atZero).toBeInstanceOf(PeerCallMismatchError);
+    expect((atZero as PeerCallMismatchError).recordedTaskId).toBe('task-for-a');
+    expect((atOne as PeerCallMismatchError).recordedTaskId).toBe('task-for-b');
+    expect(restarted.attaches).toEqual([]);
+    expect(restarted.sends).toEqual([]);
+    expect(swapped.registry.children()).toEqual([]);
+    expect(journal.entries.size).toBe(2);
+  });
+
+  it.each([
+    ['a different task id', { message: 'q', taskId: 'other-task' }],
+    ['a different context id', { message: 'q', contextId: 'other-context' }],
+  ])('treats %s as a different request', async (_label, replayed) => {
+    const journal = memoryJournal();
+    await toolOver(fakePeer().client, journal).call({ message: 'q' }, { durableOperationKey: KEY });
+    const restarted = fakePeer();
+
+    const error = await rejection(
+      toolOver(restarted.client, journal).call(replayed, { durableOperationKey: KEY }),
+    );
+
+    expect(error).toBeInstanceOf(PeerCallMismatchError);
+    expect(restarted.attaches).toEqual([]);
   });
 
   it('fails when the peer forgot the recorded task, and does not send again', async () => {

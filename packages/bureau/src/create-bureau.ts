@@ -11371,6 +11371,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       cutoff,
       bound,
       async (record) => {
+        // COR-1670: whatever kind of task this was, its run's peer call records end with it.
+        releasePeerCalls(record.taskId);
         if (record.kind === 'schedule-fire') {
           await releaseScheduledFire(record.taskId, 'removed', { sessionId: record.contextId });
           return;
@@ -11379,7 +11381,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // a run) leaves the store without a `run.removed` of its own, so announce its removal here:
         // the state kept for it elsewhere (an A2A task record, a push configuration) ends with it.
         emitter.dispatch(new RunRemovedEvent(record.taskId));
-        releasePeerCalls(record.taskId);
       },
       // COR-1631: a task's surfaces stay readable until its retention ends, and end with it. They
       // go first: a failure keeps the task's record, so the next pass finds the task and retries.
@@ -18300,17 +18301,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const record = await childTopologyStore.getPeerCall(key.parentRunId, key.operationKey);
       return record === undefined
         ? undefined
-        : { taskId: record.taskId, contextId: record.contextId };
+        : {
+            taskId: record.taskId,
+            contextId: record.contextId,
+            requestDigest: record.requestDigest,
+          };
     },
     async write(key, entry) {
       if (
-        [key.parentRunId, key.operationKey, entry.taskId].some(
+        [key.parentRunId, key.operationKey, entry.taskId, entry.requestDigest].some(
           (value) => typeof value !== 'string' || value === '',
         ) ||
         typeof entry.contextId !== 'string'
       ) {
         throw new BureauError(
-          'A peer call record needs a run id, an operation key, a task id, and a context id.',
+          'A peer call record needs a run id, an operation key, a task id, a request digest, and a context id.',
           'BAD_REQUEST',
         );
       }

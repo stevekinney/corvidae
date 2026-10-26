@@ -123,6 +123,12 @@ export interface PeerCallJournalEntry {
   readonly taskId: string;
   /** The task's context identifier on the peer. */
   readonly contextId: string;
+  /**
+   * A digest of the request the call sent (its message, `taskId` and `contextId`). An operation
+   * key names a position in a run, not a request, and a replayed step can emit different calls at
+   * the same positions, so the replay compares this before it follows the recorded task.
+   */
+  readonly requestDigest: string;
 }
 
 /**
@@ -159,6 +165,25 @@ export class PeerCallJournalError extends Error {
   }
 }
 
+/**
+ * A replayed peer call found the task recorded for its operation key, but the request it is
+ * making now is not the one that task was started for. The tool neither attaches nor sends: the
+ * recorded task belongs to another call, and following it would hand this call that call's answer.
+ */
+export class PeerCallMismatchError extends Error {
+  /** The peer task recorded for the operation key, which this call did not start. */
+  readonly recordedTaskId: string;
+
+  /** Builds the error for the task `recordedTaskId` recorded under another request. */
+  constructor(recordedTaskId: string) {
+    super(
+      `The peer call's operation key already records task "${recordedTaskId}" for a different request, so it was neither followed nor sent again.`,
+    );
+    this.name = 'PeerCallMismatchError';
+    this.recordedTaskId = recordedTaskId;
+  }
+}
+
 /** Options for {@link createPeerCallTool}. */
 export interface CreatePeerCallToolOptions {
   /** The tool's name. */
@@ -181,6 +206,9 @@ export interface CreatePeerCallToolOptions {
    *
    * The send carries a `messageId` derived from the operation key, so a replay that finds no entry
    * (a crash between the send and the write) repeats the send as the peer's own idempotent retry.
+   * The entry also holds a digest of the request, and a replay whose request differs from the
+   * recorded one (a replayed step can emit other calls at the same positions) fails with
+   * {@link PeerCallMismatchError} instead of following another call's task.
    * A peer that no longer knows a journaled task fails the call with `task-not-found`; the tool
    * does not send again, because the first message may have had effects.
    */
@@ -256,10 +284,21 @@ export function createPeerCallTool(options: CreatePeerCallToolOptions) {
           ? { parentRunId, operationKey }
           : undefined;
       // A failed read stops the call before anything is sent: sending again could duplicate it.
+      const requestDigest =
+        journalKey === undefined
+          ? ''
+          : await sha256Hex(
+              JSON.stringify([params.message, params.taskId ?? '', params.contextId ?? '']),
+            );
       const recorded =
         durable !== undefined && journalKey !== undefined
           ? await durable.read(journalKey)
           : undefined;
+      // The operation key is a position, not a request: a different call at this position must
+      // not take over the recorded task.
+      if (recorded !== undefined && recorded.requestDigest !== requestDigest) {
+        throw new PeerCallMismatchError(recorded.taskId);
+      }
       const childRunId = `peer-${crypto.randomUUID()}`;
       const controller = new AbortController();
       const signal =
@@ -350,7 +389,7 @@ export function createPeerCallTool(options: CreatePeerCallToolOptions) {
                 onUpdate,
               });
         if (recorded === undefined && durable !== undefined && journalKey !== undefined) {
-          await journalTask(durable, journalKey, remoteTask);
+          await journalTask(durable, journalKey, remoteTask, requestDigest);
         }
         // The peer accepted the continuation, so it supersedes the child that stopped at the
         // question it answers; until then that child keeps its way to cancel the task.
@@ -439,12 +478,12 @@ export function createPeerCallTool(options: CreatePeerCallToolOptions) {
  * replay sends the same one. Hashed, because the key names internal run and step identifiers.
  */
 async function peerMessageId(key: PeerCallJournalKey): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(`${key.parentRunId}\0${key.operationKey}`),
-  );
-  const hex = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0'));
-  return `peer-call:${hex.join('')}`;
+  return `peer-call:${await sha256Hex(`${key.parentRunId}\0${key.operationKey}`)}`;
+}
+
+async function sha256Hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 /**
@@ -456,10 +495,11 @@ async function journalTask(
   journal: PeerCallJournal,
   key: PeerCallJournalKey,
   task: A2APeerTask,
+  requestDigest: string,
 ): Promise<void> {
   if (task.taskId === '') return;
   try {
-    await journal.write(key, { taskId: task.taskId, contextId: task.contextId });
+    await journal.write(key, { taskId: task.taskId, contextId: task.contextId, requestDigest });
   } catch (error) {
     await task.cancel('the peer call could not be recorded for restart').catch(() => undefined);
     throw new PeerCallJournalError(task.taskId, error);

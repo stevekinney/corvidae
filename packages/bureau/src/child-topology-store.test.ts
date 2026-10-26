@@ -445,6 +445,7 @@ function peerCall(overrides: Partial<BureauPeerCallRecord> = {}): BureauPeerCall
     operationKey: 'schedule-safe:run-1:step-0:tool-0:ask',
     taskId: 'task-1',
     contextId: 'context-1',
+    requestDigest: 'digest-1',
     recordedAt: 7,
     ...overrides,
   };
@@ -498,7 +499,7 @@ describe('createChildTopologyStore — peer call records', () => {
     await store.recordPeerCall(record);
     const keys = await kv.list(PEER_CALL_KEY_PREFIX);
     const key = keys[0] ?? '';
-    await kv.set(key, JSON.stringify({ ...record, taskId: '' }));
+    await kv.set(key, JSON.stringify({ ...record, requestDigest: '' }));
 
     expect(await store.getPeerCall('run-1', record.operationKey)).toBeUndefined();
     expect(await store.recordPeerCall(record)).toEqual({ status: 'exists' });

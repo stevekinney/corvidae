@@ -268,7 +268,7 @@ describe('the Bureau peer call journal', () => {
     return { bureau, run };
   }
 
-  const entry = { taskId: 'task-1', contextId: 'context-1' };
+  const entry = { taskId: 'task-1', contextId: 'context-1', requestDigest: 'digest-1' };
 
   it('records a call for a run it knows and reads it back, once', async () => {
     const { bureau, run } = await bureauWithRun();
