@@ -3,7 +3,6 @@ import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
-import { yieldEventLoopTurn } from '@lostgradient/testing/wait-until';
 
 setupHappyDom();
 
@@ -780,10 +779,12 @@ describe('MegaMenu', () => {
     const second = getTriggerByLabel(container, 'Resources');
     if (!menu) throw new Error('Missing menu element.');
     menu.style.direction = 'ltr';
-    await yieldEventLoopTurn();
-    first.focus();
-    await fireEvent.keyDown(first, { key: 'ArrowRight' });
-    expect(document.activeElement).toBe(second);
+    // The mutation is observed asynchronously: retry the key until the new direction has applied.
+    await waitFor(async () => {
+      first.focus();
+      await fireEvent.keyDown(first, { key: 'ArrowRight' });
+      expect(document.activeElement).toBe(second);
+    });
   });
 
   test('repositions an open indicator after the resolved direction changes', async () => {
