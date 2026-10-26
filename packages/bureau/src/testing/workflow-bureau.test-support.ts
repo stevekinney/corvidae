@@ -82,7 +82,7 @@ export async function startWorkflowBureau(
     },
     workflowSource: workflowFileDirectory(directory),
     storage: { type: 'memory' },
-    durableExecution: true,
+    durable: true,
     ...options.overrides,
   });
   const put = async (name: string, text: string): Promise<void> => {

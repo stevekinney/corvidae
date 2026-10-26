@@ -115,8 +115,7 @@ async function withService(
     humanInput: true,
     bureauOptions: {
       runtime: bureauRuntime,
-      taskRetention: { olderThan: 2 * TASK_AGE_MILLISECONDS },
-      runCreationTerminalRetentionMs: 1000,
+      retention: { tasks: { olderThan: 2 * TASK_AGE_MILLISECONDS }, receipts: { olderThan: 1000 } },
     },
   });
   try {

@@ -285,7 +285,7 @@ async function openBureau(id = 'authorization-bureau') {
     },
     validators: [createCheckValidator()],
     storage: { type: 'memory' },
-    durableExecution: true,
+    durable: true,
     humanInput: true,
   });
 }

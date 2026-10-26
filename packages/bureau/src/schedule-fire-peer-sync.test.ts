@@ -65,7 +65,7 @@ const peerOptions = {
   generate: chargesOnce,
   stopWhen: stopAtApproval,
   durableOwnership: OWNERSHIP,
-  durableBackgroundTasks: 'automatic' as const,
+  maintenance: 'automatic' as const,
 };
 
 /** Waits, in real time, for a condition another process's write has to reach this one. */
@@ -827,7 +827,7 @@ describe('the human wait of a fire', () => {
     humanInput: true,
     stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     durableOwnership: OWNERSHIP,
-    durableBackgroundTasks: 'automatic' as const,
+    maintenance: 'automatic' as const,
   };
 
   it('is followed while it is parked, and no longer once a peer has answered it', async () => {

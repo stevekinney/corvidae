@@ -43,7 +43,7 @@ async function boot(): Promise<Bureau> {
     },
     validators: [createCheckValidator()],
     storage: { type: 'memory' },
-    durableExecution: true,
+    durable: true,
     onDiagnostic: createDiagnostics().onDiagnostic,
   });
   const typed = bureau;

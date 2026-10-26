@@ -81,9 +81,7 @@ async function start(
   options: Partial<BureauOptions<AgentDefinitions>> & { agents: AgentDefinitions },
 ): Promise<Bureau<AgentDefinitions>> {
   const bureau = await createBureau<AgentDefinitions>({
-    ...(options.storage === undefined
-      ? { storage: { type: 'memory' }, durableExecution: false }
-      : {}),
+    ...(options.storage === undefined ? { storage: { type: 'memory' }, durable: false } : {}),
     ...options,
   });
   bureaus.push(bureau);
@@ -169,7 +167,7 @@ describe('createRun with a named agent', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       humanInput: true,
     });
 
@@ -188,7 +186,7 @@ describe('createRun with a named agent', () => {
         default: createAgent({ generate: scripted('wide'), toolbox: createToolbox([]) }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     const optionWithoutEngine = await start({
       agents: {
@@ -235,7 +233,7 @@ describe('an agent that is not in the catalog', () => {
         default: createAgent({ generate: scripted('wide'), toolbox: createToolbox([]) }),
       },
       storage: storageOverTextStore(persistence),
-      durableExecution: false,
+      durable: false,
     });
     // A session an earlier process bound to an agent this catalog no longer has.
     await createSessionStore(persistence).save(
@@ -412,7 +410,7 @@ describe('an agent named bureau', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
 
     const refusal = await rejectionOf(attempt);

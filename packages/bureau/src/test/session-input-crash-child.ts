@@ -97,7 +97,7 @@ if (mode === 'running') {
       }),
     },
     storage: { type: backend, path: storagePath },
-    durableExecution: true,
+    durable: true,
     durableOwnership,
   });
 
@@ -142,7 +142,7 @@ const bureau = await createBureau<AgentDefinitions>({
     }),
   },
   storage: seam.storage,
-  durableExecution: true,
+  durable: true,
   durableOwnership,
   // Ends the run on its first reply, as `completed`.
 });

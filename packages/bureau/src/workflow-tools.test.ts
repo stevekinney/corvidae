@@ -92,7 +92,7 @@ describe('which agents are offered the tools', () => {
         workflowSource: workflowFileDirectory('/nonexistent-workflows'),
         models: { generate: () => async () => ({ content: '', toolCalls: [] }) },
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
       }).then(
         (bureau) => (bureau.dispose(), undefined),
         (failure: unknown) => failure,
@@ -109,7 +109,7 @@ describe('which agents are offered the tools', () => {
       agentSource: agentFileDirectory('/nonexistent', { tools: { 'workflows-list': lookupTool } }),
       models: { generate: () => async () => ({ content: '', toolCalls: [] }) },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     await bureau.dispose();
   });

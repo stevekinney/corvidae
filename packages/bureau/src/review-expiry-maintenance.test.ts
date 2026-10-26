@@ -82,7 +82,7 @@ describe('expired review state under the automatic maintenance profile', () => {
         }),
       },
       storage: { type: 'sqlite', path },
-      durableExecution: true,
+      durable: true,
       // The default profile: the Bureau runs its own maintenance timer.
       runtime,
     });
@@ -327,8 +327,8 @@ describe('expired review state of a Bureau with no maintenance timer of its own'
         }),
       },
       storage: { type: 'sqlite', path },
-      durableExecution: true,
-      durableBackgroundTasks: 'manual',
+      durable: true,
+      maintenance: 'manual',
       runtime,
     });
     bureaus.push(bureau);

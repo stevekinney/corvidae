@@ -162,7 +162,7 @@ describe('a reattached run whose first park happens after boot-time reconstructi
           }),
         },
         storage: intercept.storage,
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
         humanInput: true,
       });
@@ -204,7 +204,7 @@ describe('a reattached run whose first park happens after boot-time reconstructi
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
         humanInput: true,
       });
@@ -286,7 +286,7 @@ describe('a reattached run whose first park happens after boot-time reconstructi
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
         humanInput: true,
       });
@@ -317,7 +317,7 @@ describe('a reattached run whose first park happens after boot-time reconstructi
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
         humanInput: true,
       });
@@ -352,7 +352,7 @@ describe('bounded duplicate park events (COR-121)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       humanInput: true,
     });
     try {
@@ -386,7 +386,7 @@ describe('bounded duplicate park events (COR-121)', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
         humanInput: true,
       });
@@ -409,7 +409,7 @@ describe('bounded duplicate park events (COR-121)', () => {
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
         humanInput: true,
       });
@@ -464,7 +464,7 @@ describe('flow-control slot accounting under dual dispatch (COR-121 guard)', () 
           }),
         },
         storage: intercept.storage,
-        durableExecution: true,
+        durable: true,
         humanInput: true,
         flowControl: { concurrency: { limit: 1 } },
       });

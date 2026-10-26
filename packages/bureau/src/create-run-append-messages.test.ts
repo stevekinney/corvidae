@@ -56,7 +56,7 @@ describe('createRun appendMessages', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
     try {
       const run = await bureau.createRun({
@@ -85,7 +85,7 @@ describe('createRun appendMessages', () => {
         default: createAgent({ generate: async () => ({ content: 'Done.', toolCalls: [] }) }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
     try {
       const rows = builtRows(ORIGIN, userRow('u-1', 'hi'), {
@@ -133,7 +133,7 @@ describe('createRun appendMessages', () => {
         default: createAgent({ generate: async () => ({ content: 'Done.', toolCalls: [] }) }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
     try {
       const first = await bureau.createRun({
@@ -174,7 +174,7 @@ describe('createRun appendMessages and the task it admits', () => {
         },
         runtime,
         storage: fixture.configuration,
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
     try {
@@ -213,7 +213,7 @@ describe('createRun appendMessages under a run-creation request id', () => {
       },
       runtime,
       storage: fixture.configuration,
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     });
     try {
@@ -296,7 +296,7 @@ describe('Bureau.hasDurableEngine', () => {
       },
       runtime,
       storage: fixture.configuration,
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     });
     try {

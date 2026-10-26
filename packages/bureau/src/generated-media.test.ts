@@ -80,7 +80,7 @@ async function openBureau(
       ...(options.policy === undefined ? {} : { policy: options.policy }),
       ...(options.ports === undefined ? {} : { ports: options.ports }),
     },
-    ...(options.durable ? { storage: { type: 'memory' as const }, durableExecution: true } : {}),
+    ...(options.durable ? { storage: { type: 'memory' as const }, durable: true } : {}),
   });
   cleanups.push(async () => {
     await bureau.dispose();
@@ -204,7 +204,7 @@ describe('a durable run restarted over SQLite (COR-713)', () => {
         agents: { painter: paintingAgent() },
         assets: { storage: createMemoryAssetStorageFixture({}).storage },
         storage: { type: 'sqlite', path: storagePath },
-        durableExecution: true,
+        durable: true,
       });
       cleanups.push(async () => {
         await bureau.dispose();

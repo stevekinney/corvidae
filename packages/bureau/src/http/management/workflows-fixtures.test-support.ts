@@ -64,7 +64,7 @@ export async function serveWorkflows(
     },
     workflowSource: workflowFileDirectory(directory),
     storage: { type: 'memory' },
-    durableExecution: true,
+    durable: true,
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
   });
   cleanups.push(async () => {

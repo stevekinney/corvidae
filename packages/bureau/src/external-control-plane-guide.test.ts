@@ -63,7 +63,7 @@ async function example(console: Recorder, databasePath: string): Promise<void> {
     id: 'acme', // required once the handler serves persistent storage
     agents: { releaser },
     storage: { type: 'sqlite', path: databasePath },
-    durableExecution: true,
+    durable: true,
     humanInput: true,
     assets: { storage: createMemoryAssetStorage() }, // the handler serves the asset operations
   });
@@ -256,7 +256,7 @@ async function servedBureau(generate: GenerateFunction, durable = false) {
       default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
     },
     storage: { type: 'memory' },
-    ...(durable ? { durableExecution: true } : {}),
+    ...(durable ? { durable: true } : {}),
     assets: { storage: createMemoryAssetStorage() },
   });
   const handler = createBureauHandler(bureau, { unauthenticatedAccess: 'allow' });

@@ -105,7 +105,7 @@ describe('a resolved fire approval leaves nothing of its own in the session', ()
 
   it('retires the fence with the fire’s task, and not before', async () => {
     const bureau = await open({
-      taskRetention: { olderThan: 1 },
+      retention: { tasks: { olderThan: 1 } },
       agents: {
         default: createAgent({
           generate: chargesOnce,
@@ -557,7 +557,7 @@ describe('a fire’s approval is fenced across Bureau processes by the durable d
     const firstCharges: number[] = [];
     const first = await open({
       storage,
-      taskRetention: { olderThan: 1 },
+      retention: { tasks: { olderThan: 1 } },
       agents: {
         default: createAgent({
           generate: chargesOnce,

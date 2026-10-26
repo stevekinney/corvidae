@@ -47,7 +47,7 @@ function openBureau(storagePath: string) {
       }),
     },
     storage: { type: 'sqlite', path: storagePath },
-    durableExecution: true,
+    durable: true,
     humanInput: true,
     durableOwnership: { ownership: 'none' },
     // Shutting down while the recovered parked run is still in flight reports it as cut short.

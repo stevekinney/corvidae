@@ -152,9 +152,9 @@ async function start(
       }),
     },
     storage: { type: 'memory' },
-    durableExecution: false,
+    durable: false,
     ...(options.withoutMemory ? {} : { memory: built.served }),
-    ...(options.manual === false ? {} : { durableBackgroundTasks: 'manual' as const }),
+    ...(options.manual === false ? {} : { maintenance: 'manual' as const }),
     runtime: built.runtime,
     onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
   });

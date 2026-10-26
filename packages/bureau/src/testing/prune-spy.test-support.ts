@@ -15,7 +15,7 @@ export async function spyOnPrune() {
     generate: () => Promise.resolve({ content: 'x', toolCalls: [] }),
     toolbox: createToolbox([]),
     storage: { type: 'memory' },
-    durableExecution: true,
+    durable: true,
     stopWhen: stopWhen.noToolCalls(),
   });
   const prototype = Object.getPrototypeOf(probe.durable!.engine) as {

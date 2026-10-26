@@ -60,7 +60,7 @@ const peerOptions = {
   generate: chargesOnce,
   stopWhen: stopAtApproval,
   durableOwnership: OWNERSHIP,
-  durableBackgroundTasks: 'automatic' as const,
+  maintenance: 'automatic' as const,
 };
 
 const waitOptions = {

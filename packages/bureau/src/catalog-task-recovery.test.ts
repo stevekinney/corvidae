@@ -46,7 +46,7 @@ async function open(fixture: ReturnType<typeof newFixture>) {
       }),
     },
     storage: fixture.configuration,
-    durableExecution: true,
+    durable: true,
     humanInput: true,
     durableOwnership: { ownership: 'none' },
   });

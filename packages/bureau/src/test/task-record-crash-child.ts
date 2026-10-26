@@ -75,7 +75,7 @@ const bureau = await createBureau<AgentDefinitions>({
     }),
   },
   storage,
-  durableExecution: true,
+  durable: true,
   humanInput: true,
   durableOwnership: { ownership: 'none' },
 });

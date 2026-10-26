@@ -143,7 +143,7 @@ describe('a pending approval restored after a restart', () => {
       agentSource: agentFileDirectory(directory),
       models: { generate: () => async () => ({ content: 'ok', toolCalls: [] }) },
       storage,
-      durableExecution: true,
+      durable: true,
       onDiagnostic: () => undefined,
     });
     cleanups.push(() => bureau.dispose());
@@ -197,9 +197,9 @@ describe('a session run the durable engine resumes after a restart', () => {
     const storagePath = join(directory, 'bureau.sqlite');
     const hold = new Promise<never>(() => undefined);
     const overrides = {
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' as const },
-      durableBackgroundTasks: 'manual' as const,
+      maintenance: 'manual' as const,
       storage: { type: 'sqlite' as const, path: storagePath },
     };
 

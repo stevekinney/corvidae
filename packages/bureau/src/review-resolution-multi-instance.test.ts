@@ -645,7 +645,7 @@ describe('a Bureau with no key-value store (COR-1579)', () => {
         }),
       },
       storage,
-      durableExecution: true,
+      durable: true,
       humanInput: true,
     });
     composition.mockRestore();

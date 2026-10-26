@@ -30,11 +30,10 @@ describe('the A2A record’s lifetime', () => {
       },
       runtime,
       storage: fixture.configuration,
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
-      durableBackgroundTasks: 'manual',
-      taskRetention: { olderThan: DAY_MS },
-      runCreationTerminalRetentionMs: DAY_MS,
+      maintenance: 'manual',
+      retention: { tasks: { olderThan: DAY_MS }, receipts: { olderThan: DAY_MS } },
       assets: { storage: createMemoryAssetStorage() },
     });
     try {

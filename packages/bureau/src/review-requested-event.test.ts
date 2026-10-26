@@ -52,7 +52,7 @@ describe('review.requested', () => {
         }),
       },
       storage: fixture.configuration,
-      durableExecution: true,
+      durable: true,
       humanInput: true,
     });
     try {
@@ -128,7 +128,7 @@ describe('review.requested', () => {
         default: createAgent({ generate, toolbox, stopWhen: stopWhen.noToolCalls() }),
       },
       storage: fixture.configuration,
-      durableExecution: true,
+      durable: true,
     });
     try {
       const run = await bureau.createRun({

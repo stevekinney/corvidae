@@ -42,7 +42,7 @@ async function openBureau() {
       }),
     },
     storage: { type: 'memory' },
-    durableExecution: true,
+    durable: true,
   });
 }
 
@@ -184,7 +184,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
           }),
         },
         storage: { type: 'sqlite', path },
-        durableExecution: true,
+        durable: true,
       });
     const first = await open();
     let second: Awaited<ReturnType<typeof open>> | undefined;
@@ -233,7 +233,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     try {
       const failed: string[] = [];

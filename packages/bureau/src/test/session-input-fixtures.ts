@@ -497,7 +497,7 @@ export async function openProcess(
         stopWhen: stopWhen.noToolCalls(),
       }),
     },
-    durableExecution: true,
+    durable: true,
     ...options,
     storage: seam.storage,
   });

@@ -114,7 +114,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
             },
         },
         storage: { type: 'sqlite', path: storagePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: {
           ownership: 'workflow-lease',
           workflowClaimTtlMs: CLAIM_TTL_MS,
@@ -207,9 +207,9 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
         agentSource: agentFileDirectory(agents, { tools: { 'lookup-order': lookupTool } }),
         models: { generate: () => async () => ({ content: 'unused', toolCalls: [] }) },
         storage: { type: 'sqlite', path: storagePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
-        durableBackgroundTasks: 'manual',
+        maintenance: 'manual',
         runtime: yearOn,
       });
       const before = await Promise.all([

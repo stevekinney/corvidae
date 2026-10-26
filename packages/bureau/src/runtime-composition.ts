@@ -2009,7 +2009,7 @@ export interface RuntimeComposition {
   /**
    * The durable run engine + checkpoint store, present whenever durable
    * execution resolves on (by default: a persistent `storage` backend is
-   * configured and `durableExecution` is not explicitly `false`). When present,
+   * configured and `durable` is not explicitly `false`). When present,
    * `createBureau` routes every `createRun()` through it transparently — the run
    * surface is unchanged, but the run is checkpointed and resumes after a crash.
    */
@@ -2779,7 +2779,7 @@ async function buildRuntimeComposition(
   // Durable execution is ON BY DEFAULT whenever a PERSISTENT storage backend is
   // configured. The default follows persistence because that is the only place resume is real:
   // `memory` storage loses its checkpoints with the process, so default-on there
-  // would be pure overhead with zero recovery. The explicit `durableExecution`
+  // would be pure overhead with zero recovery. The explicit `durable`
   // flag overrides the default either way.
   let effectiveStorageIsPersistent = false;
   if (effectiveStorage) {
@@ -2790,7 +2790,7 @@ async function buildRuntimeComposition(
       effectiveStorageIsPersistent = persistence === 'local' || persistence === 'remote';
     }
   }
-  const wantsDurable = options.durableExecution ?? effectiveStorageIsPersistent;
+  const wantsDurable = options.durable ?? effectiveStorageIsPersistent;
 
   let durable: DurableComposition | undefined;
   if (wantsDurable && durableStorage) {
@@ -2820,12 +2820,11 @@ async function buildRuntimeComposition(
       runWorkflow,
       checkpointStore,
       recover: false,
-      backgroundTasks: options.durableBackgroundTasks ?? 'automatic',
+      backgroundTasks: options.maintenance ?? 'automatic',
       // COR-1527: with workflow files the scheduler waits until their documents are registered,
       // so a schedule that is due the moment the engine exists cannot fire a type Weft does not
       // have yet. `createBureau` starts it, before the engine recovers, once they are.
-      startScheduler:
-        options.durableBackgroundTasks !== 'manual' && options.workflowSource === undefined,
+      startScheduler: options.maintenance !== 'manual' && options.workflowSource === undefined,
       resolveWorkflowServices: resolveRunServices,
       ...(dependencies.onRecoveredWorkflow === undefined
         ? {}

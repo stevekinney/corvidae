@@ -410,7 +410,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
         agents: {
           default: createAgent({ generate, toolbox }),
         },
-        durableExecution: true,
+        durable: true,
       });
 
       const summary = await harness.startSession({
@@ -470,7 +470,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
         },
         runtime: runtime1,
         storage: storage1,
-        durableExecution: true,
+        durable: true,
       });
 
       const summary = await harness.startSession({
@@ -497,7 +497,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
         },
         runtime: runtime2,
         storage: storage2,
-        durableExecution: true,
+        durable: true,
       });
       try {
         const state = await secondHarness.reattachDurable(summary.id);
@@ -534,7 +534,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
   });
 
   it('COR-84: a detached registration is never reported as detached when the durable engine does not know the run (getDurableRun resolves null)', async () => {
-    const harness = await harnessWithMemoryStorage({ durableExecution: true });
+    const harness = await harnessWithMemoryStorage({ durable: true });
     expect(await harness.bureau.getDurableRun('unknown-run')).toBeNull();
     harness.registerDurableRun('unknown-run', { detached: true });
 
@@ -572,7 +572,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
         },
         runtime,
         storage,
-        durableExecution: true,
+        durable: true,
       });
 
       // Abort called synchronously, right after `startRun` — matching

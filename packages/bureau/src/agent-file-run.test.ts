@@ -106,7 +106,7 @@ describe('bureau.run of a file agent', () => {
 
   it('schedules a file agent, refuses a name no agent has, and still fails at fire time once the file is gone (COR-1667)', async () => {
     const { bureau, put, directory, observed } = await start({
-      overrides: { durableExecution: true },
+      overrides: { durable: true },
     });
     await put('researcher.md', RESEARCHER);
     await bureau.agents.refresh();

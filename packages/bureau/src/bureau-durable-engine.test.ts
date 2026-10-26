@@ -16,7 +16,7 @@ afterEach(async () => {
   for (const bureau of bureaus.splice(0)) await bureau.shutdown();
 });
 
-async function bureauWith(options: { readonly durableExecution: boolean }): Promise<Bureau> {
+async function bureauWith(options: { readonly durable: boolean }): Promise<Bureau> {
   const bureau = await createBureau<AgentDefinitions>({
     agents: {
       default: createAgent({
@@ -26,7 +26,7 @@ async function bureauWith(options: { readonly durableExecution: boolean }): Prom
       }),
     },
     storage: { type: 'memory' },
-    durableExecution: options.durableExecution,
+    durable: options.durable,
   });
   bureaus.push(bureau);
   return bureau;
@@ -34,7 +34,7 @@ async function bureauWith(options: { readonly durableExecution: boolean }): Prom
 
 describe('Bureau.durableEngine', () => {
   it('is the engine that holds the bureau’s runs', async () => {
-    const bureau = await bureauWith({ durableExecution: true });
+    const bureau = await bureauWith({ durable: true });
     const run = await bureau.createRun({ agentName: 'default', message: 'go' });
     await bureau.waitForDurableRun(run.id);
 
@@ -45,13 +45,13 @@ describe('Bureau.durableEngine', () => {
   });
 
   it('is the same engine on every call', async () => {
-    const bureau = await bureauWith({ durableExecution: true });
+    const bureau = await bureauWith({ durable: true });
 
     expect(bureau.durableEngine()).toBe(bureau.durableEngine());
   });
 
   it('is undefined when the bureau composed no durable engine', async () => {
-    const bureau = await bureauWith({ durableExecution: false });
+    const bureau = await bureauWith({ durable: false });
 
     expect(bureau.durableEngine()).toBeUndefined();
   });

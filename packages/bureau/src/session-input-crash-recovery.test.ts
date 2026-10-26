@@ -110,7 +110,7 @@ function recoveredScenario(backend: Backend): ReturnType<typeof settleScenario> 
           }),
         },
         storage: { type: backend, path: storagePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: CLAIM_OPTIONS,
       });
       try {
@@ -187,7 +187,7 @@ function cancelledScenario(backend: Backend): ReturnType<typeof settleScenario> 
           }),
         },
         storage: { type: backend, path: storagePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: CLAIM_OPTIONS,
       });
       try {

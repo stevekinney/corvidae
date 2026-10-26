@@ -141,8 +141,7 @@ describe('the boot pass after event retention removed a fire’s settled event',
     const { fireId, hold } = await settleWithoutEvent(path);
 
     const restart = await openAt(path, 'restart', ORIGIN + 40 * DAY, {
-      eventRetention: 'forever',
-      taskRetention: 'forever',
+      retention: { events: 'forever', tasks: 'forever' },
     });
 
     expect(await settledEventsOf(restart.bureau, fireId)).toHaveLength(1);
