@@ -44,7 +44,7 @@ describe('seedEngineConsole slow update', () => {
     // The handler finishes on its own; the history entry and the stored result settle together.
     const updateId = pending.items[0]!.updateId;
     let settled = await engine.getUpdateResult(updateId);
-    for await (const _turn of awakeTurns()) {
+    for await (const _ of awakeTurns()) {
       if (!(settled === null)) break;
       await Bun.sleep(100);
       settled = await engine.getUpdateResult(updateId);

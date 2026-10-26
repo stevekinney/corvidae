@@ -20,7 +20,7 @@ afterEach(async () => {
 
 /** The first scheduled run to reach a terminal state, with how it ended. */
 async function firstFinishedFire(host: Host) {
-  for await (const _turn of awakeTurns()) {
+  for await (const _ of awakeTurns()) {
     const runs = await host.bureau.listDurableRuns();
     for (const item of runs?.items ?? []) {
       const state = await host.bureau.getDurableRun(item.id);

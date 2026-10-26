@@ -130,7 +130,7 @@ async function waitForCommittedAttributes(
   engine: EngineConsoleEngine,
   workflowId: string,
 ): Promise<void> {
-  for await (const _turn of awakeTurns()) {
+  for await (const _ of awakeTurns()) {
     if ((await engine.getAttributes(workflowId)) !== null) return;
     await Bun.sleep(ATTRIBUTE_PERSISTENCE_POLL_DELAY_MS);
   }

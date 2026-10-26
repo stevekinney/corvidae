@@ -22,7 +22,7 @@ async function waitForPendingReview(
   client: HttpClient,
   workflowId: string,
 ): Promise<{ reviewId: string }> {
-  for await (const _turn of awakeTurns()) {
+  for await (const _ of awakeTurns()) {
     const [pending] = await client.listReviews({ status: 'pending', workflowId });
     if (pending !== undefined) return pending;
     await Bun.sleep(REVIEW_PERSISTENCE_POLL_DELAY_MS);

@@ -293,7 +293,7 @@ describe('a loop that waits by counting turns', () => {
     ],
     [
       'a cap named by an identifier',
-      'async function f(maximumAttempts = HANG_GUARD_MILLISECONDS) {\n  for (let attempt = 0; attempt < maximumAttempts; attempt++) {\n    if (done()) return;\n    await sleep(1);\n  }\n}',
+      'async function f(maximumAttempts: number) {\n  for (let attempt = 0; attempt < maximumAttempts; attempt++) {\n    if (done()) return;\n    await sleep(1);\n  }\n}',
     ],
     [
       'a cap checked inside the body',

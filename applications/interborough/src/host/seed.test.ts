@@ -245,7 +245,7 @@ describe('the seeded schedule and goal', () => {
   test('the goal passes its validator', async () => {
     const host = await start();
     let status = await goalStatus(host);
-    for await (const _turn of awakeTurns()) {
+    for await (const _ of awakeTurns()) {
       if (!(status !== 'succeeded')) break;
       await Bun.sleep(25);
       status = await goalStatus(host);
@@ -268,7 +268,7 @@ describe('the seeded schedule and goal', () => {
       const goal = await host.bureau.goals.get('goal-that-never-passes');
       return goal?.status;
     };
-    for await (const _turn of awakeTurns()) {
+    for await (const _ of awakeTurns()) {
       if (!((await statusOf()) !== 'evaluating')) break;
       await Bun.sleep(25);
     }
@@ -279,7 +279,7 @@ describe('the seeded schedule and goal', () => {
     const cancelled = await host.bureau.goals.cancel('goal-that-never-passes');
 
     expect(['canceled', 'cancellation-pending']).toContain(cancelled.outcome);
-    for await (const _turn of awakeTurns()) {
+    for await (const _ of awakeTurns()) {
       if (!((await statusOf()) !== 'canceled')) break;
       await Bun.sleep(25);
     }
@@ -302,7 +302,7 @@ describe('the seeded schedule and goal', () => {
 });
 
 async function waitForReview(host: Host, runId: string) {
-  for await (const _turn of awakeTurns()) {
+  for await (const _ of awakeTurns()) {
     const review = host.bureau.listPendingReviews().find((candidate) => candidate.runId === runId);
     if (review !== undefined) return review;
     await Bun.sleep(5);

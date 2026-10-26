@@ -97,7 +97,7 @@ const OUTREACH_RUNS: readonly OutreachRun[] = [
  * happen to provide.
  */
 async function waitForCommittedAttributes(engine: TaggedEngine, workflowId: string): Promise<void> {
-  for await (const _turn of awakeTurns()) {
+  for await (const _ of awakeTurns()) {
     const attributes = await engine.getAttributes(workflowId);
     if (attributes !== null) {
       return;

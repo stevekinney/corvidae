@@ -25,17 +25,48 @@
  *     `outbox.drain`, `server.shutdownWorker`) is not read: tests of those drive an injected clock
  *     or a stalled dependency, which no load can speed up.
  *
+ *   - `wait-budget-default`: a parameter or destructured option named like a budget whose default
+ *     is below the hang guard (`{ timeoutMs = 2_000 }`), or any default for an attempts or turns
+ *     cap (`attempts = 50`): a helper's default is the deadline of every test that omits it.
+ *   - `iteration-cap-wait`: a `for` or `while` loop that yields to the event loop on a timer, a
+ *     macrotask or a sleep, leaves early once something holds, and stops at a numeric cap (in its
+ *     condition or an `if` in its body). How many turns a settle takes depends on the host; use
+ *     `waitUntil`, or `for await (const turn of awakeTurns())`, whose only end is the hang guard. A
+ *     loop that yields only microtasks (`await Promise.resolve()`, Svelte's `tick`) is not read:
+ *     microtasks drain before anything else runs, so their count belongs to the code.
+ *   - `wall-clock-poll`: a loop that ends on `Date.now()` or `performance.now()` against a
+ *     deadline, which also keeps counting while the host sleeps (COR-1541).
+ *   - `sleep-synchronization`: `await sleep(n)`, `await Bun.sleep(n)` or an awaited promise around
+ *     `setTimeout`, with `n` above zero, as a statement of a test or hook body. A fixed pause
+ *     before an assertion fails exactly when the host is slow. Wait for the thing (`waitUntil`, an
+ *     awaited promise, an event), drive a manual clock, or, for something that must NOT happen,
+ *     call `quietFor(n)`, which says so: load can only delay an event, never advance it. A sleep in
+ *     a helper or double, or inside a loop (a poll), is not a statement of the body and is not read.
+ *   - `timer-rejection`: a `setTimeout` whose callback rejects or throws, or an
+ *     `AbortSignal.timeout`, with a delay below the hang guard: the timer half of a race.
+ *   - `timer-race`: `Promise.race` with a `sleep(n)` or `setTimeout` promise (`n` above zero and
+ *     below the hang guard) as one racer.
+ *
  * A budget is read through numeric literals, `+ - * /`, parentheses, the hang-guard constants, and
  * a `const` declared in the file. A budget the guard cannot resolve is not a `wait-budget`
  * finding, but it is a `bun-test-timeout` or `testing-library-timeout` one, because those two
  * rules have no legitimate short value to protect.
  *
- * The one exemption is for a test of the hang guard itself, which must name a short guard to prove
- * it fires: a `// hang-guard-self-test: <reason>` comment of at least twenty characters directly
- * above the statement, covering only `spawnWithHangGuard`, `runWithHangGuard` and `afterAwakeTime`
- * inside that statement. It never covers a Bun test timeout or a Testing Library wait, and it does
- * not carry to the next statement. No load can make a child that never exits exit, so a short guard
- * on one cannot flake.
+ * A duration is virtual time, and so is not read, inside a test or hook (or a suite whose
+ * `beforeEach`/`beforeAll` does) that installs a manual clock: `useFakeTimers`,
+ * `createManualRuntimeServices`, `createManualClock` or `new ManualClock`. That never excuses a
+ * Bun test timeout, a Testing Library wait, or a hang-guarded child.
+ *
+ * Two narrow exemptions, each a comment of at least twenty characters directly above the statement
+ * (or the expression inside it) and covering only that statement:
+ *
+ *   - `// hang-guard-self-test: <reason>` for a test of the hang guard, or of a wait helper, that
+ *     must name a short guard to prove it fires: `spawnWithHangGuard`, `runWithHangGuard`,
+ *     `afterAwakeTime`, `waitForCondition`, `waitUntil` and the like. No load can make a child that
+ *     never exits exit, or a condition that is never true hold.
+ *   - `// load-proof: <reason>` for a wait that load cannot flip: it waits for something that must
+ *     not happen, runs on an injected clock, is rejected before it starts, or races a stand-in
+ *     that never answers. It covers the wait rules above (not a Bun or Testing Library timeout).
  *
  * Two further checks keep the deadline in place. `findPackageScriptViolations` rejects a
  * `package.json` script that starts `bun test` directly: the wrapper `scripts/bun-test.ts` (or
@@ -44,16 +75,28 @@
  * covers the first file only). `findTestRunnerSpawnViolations` rejects a script that spawns
  * `bun test` without `TEST_TIMEOUT_ARGUMENT`.
  *
+ * Scanned: every `*.test.ts` and `*.test-support.ts`, and every `.ts` module under a directory named
+ * `test`, `tests`, `testing`, `__tests__` or `fixtures`, in every workspace and the root `scripts/`.
+ * Not scanned: Playwright specs (`*.playwright.ts`, `*.spec.ts`, files importing Playwright,
+ * `e2e/`), which run through `test:browser` outside `check` and `validate`.
+ *
  * Blind spots, documented rather than claimed as covered. The guard cannot see:
  *
- *   - a short deadline in a product option under test (`createThing({ timeoutMs: 50 })`), because
- *     a product timeout that is expected to expire is deterministic and one that is expected to be
- *     met is not, and syntax cannot tell them apart; only the waiting callees above are read;
- *   - a budget inside a helper in another file, or an unresolvable identifier, for `wait-budget`;
- *   - a deadline that is not a `timeout` property: a loop with a fixed iteration cap, a
- *     `Promise.race` against a timer, a sleep used as synchronization (the rules below this list
- *     in the file cover the lexically visible forms), and the order in which independent events
- *     happen to arrive;
+ *   - a short deadline in a product option under test (`createThing({ timeoutMs: 50 })`,
+ *     `mailbox.awaitCleanup`, `server.shutdownWorker`): a product timeout expected to expire is
+ *     deterministic and one expected to be met is not, and syntax cannot tell them apart. Such
+ *     tests were read by hand: they drive an injected clock, a stalled dependency or a pre-aborted
+ *     signal;
+ *   - a budget that is a positional argument (`waitForStatus(engine, id, status, 20)`), inside a
+ *     helper in another file, or an unresolvable identifier, for `wait-budget`;
+ *   - an unconditional pause of a fixed number of turns (`for (i < 3) await yieldTurn()`), which has
+ *     no condition to flake on but is not a wait either;
+ *   - sleeps inside helper functions and test doubles, and a negative window written as
+ *     `quietFor`: its length is never checked against what it must outlast;
+ *   - the order in which independent events happen to arrive, races between two timers armed at
+ *     different times, and I/O ordering: nothing syntactic distinguishes a deterministic order from
+ *     a lucky one;
+ *   - the number of microtask turns a promise chain needs, which is deterministic by construction;
  *   - Playwright's own timeouts, which the browser lanes configure in their configuration files.
  *
  * `*.bench.ts` files and `.test.ts` files under a `scripts/benchmarks/` directory are outside the

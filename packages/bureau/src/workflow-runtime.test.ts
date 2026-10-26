@@ -358,9 +358,13 @@ describe('retention (step two)', () => {
 
     // Once the instance ends and the cutoff passes it, the old revision goes too.
     await engine.signal('run-a', 'go', null);
-    await waitUntil(async () => (await engine.get('run-a'))?.status === 'completed', {
-      message: 'the instance to end',
-    });
+    await waitUntil(
+      async () => {
+        const state = await engine.get('run-a');
+        return state?.status === 'completed';
+      },
+      { message: 'the instance to end' },
+    );
     expect(await runtime.pruneSnapshots(Date.parse('2099-01-01T00:00:00.000Z'))).toBe(1);
     expect(await snapshots.snapshotsOf('digest')).toHaveLength(1);
   });

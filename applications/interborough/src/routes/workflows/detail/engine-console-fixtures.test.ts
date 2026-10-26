@@ -95,7 +95,7 @@ describe('seedEngineConsole', () => {
       const run = await runOfType(engine, type, id);
       await engine.signal(run.id, signal);
       let state = await engine.get(run.id);
-      for await (const _turn of awakeTurns()) {
+      for await (const _ of awakeTurns()) {
         if (!(state?.status !== 'completed')) break;
         await Bun.sleep(5);
         state = await engine.get(run.id);

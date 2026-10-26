@@ -96,9 +96,7 @@ export async function followFire(bureau: Bureau, fireId: string, stopAfter?: num
     await handlerOf(bureau)(
       subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
     ),
-    {
-      ...(stopAfter === undefined ? {} : { stop: (read) => read.length >= stopAfter }),
-    },
+    stopAfter === undefined ? {} : { stop: (read) => read.length >= stopAfter },
   ).finally(() => {
     ended = true;
   });

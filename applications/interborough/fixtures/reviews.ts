@@ -84,7 +84,7 @@ async function waitForPendingReview(
   engine: ReviewsEngine,
   workflowId: string,
 ): Promise<{ reviewId: string }> {
-  for await (const _turn of awakeTurns()) {
+  for await (const _ of awakeTurns()) {
     const [pendingReview] = await engine.listReviews({ workflowId });
     if (pendingReview !== undefined) {
       return pendingReview;

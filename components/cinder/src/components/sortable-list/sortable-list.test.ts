@@ -8,7 +8,7 @@ import { SortableController, reorder } from '../../utilities/sortable-controller
 
 setupHappyDom();
 
-const { cleanup, render, fireEvent } = await import('@testing-library/svelte');
+const { cleanup, render, fireEvent, waitFor } = await import('@testing-library/svelte');
 const { default: SortableList } = await import('./sortable-list.svelte');
 
 afterEach(() => {

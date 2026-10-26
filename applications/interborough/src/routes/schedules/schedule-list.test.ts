@@ -189,7 +189,7 @@ describe('ScheduleList', () => {
       input: { warehouseId: 'wh-main' },
     });
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
-    for await (const _turn of awakeTurns()) {
+    for await (const _ of awakeTurns()) {
       const runs = await client.list({ scheduleId: 'fired-probe', limit: 5 });
       if (runs.items.some((run) => run.status === 'completed')) break;
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -258,7 +258,7 @@ describe('ScheduleList', () => {
       input: { orderId: 'order-1' },
     });
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
-    for await (const _turn of awakeTurns()) {
+    for await (const _ of awakeTurns()) {
       const runs = await client.list({ scheduleId: 'failing-probe', limit: 5 });
       if (runs.items.some((run) => run.status === 'failed')) break;
       await new Promise((resolve) => setTimeout(resolve, 50));
