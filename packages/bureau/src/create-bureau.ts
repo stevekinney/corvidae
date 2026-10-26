@@ -11622,7 +11622,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       now: runtimeServices.clock.now(),
       isLive: (runId) => {
         const status = store.getRun(runId)?.status;
-        return status === 'running' || status === 'aborting' || findCatalogRun(runId) !== undefined;
+        // COR-1662: a scheduler task waiting in the queue has no run yet, but is not a start that
+        // failed: its reference holds the definition it will run under.
+        return (
+          status === 'running' ||
+          status === 'aborting' ||
+          findCatalogRun(runId) !== undefined ||
+          runtime.scheduler?.locateTask(runId).status === 'in-progress'
+        );
       },
       durableState: async (reference) => {
         // Without a durable engine nothing outlives the process, so a reference from before this

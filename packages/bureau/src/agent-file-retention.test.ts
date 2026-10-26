@@ -27,11 +27,15 @@ afterEach(async () => {
 
 const FILE = agentFileText({ model: KNOWN_MODEL }, 'Instructions.\n');
 
-async function start(overrides: Partial<BureauOptions<AgentDefinitions>> = {}) {
+async function start(
+  overrides: Partial<BureauOptions<AgentDefinitions>> = {},
+  script?: () => Promise<string>,
+) {
   const runtime = createManualRuntimeServices({ origin: ORIGIN });
   const fixture = createSqliteStorageFixture({ runtime });
   cleanups.push(() => fixture.dispose());
   const harness = await startFileBureau({
+    ...(script === undefined ? {} : { scripts: { [KNOWN_MODEL]: script } }),
     overrides: {
       runtime,
       storage: fixture.configuration,
@@ -78,6 +82,56 @@ describe('snapshot retention', () => {
     at(40 * DAY_MS + 1);
     await bureau.runDurableMaintenance();
     expect(await revisionCount(harness)).toBe(0);
+  });
+
+  it('releases the snapshot of a settled scheduler task once it is past task retention (COR-1662)', async () => {
+    const harness = await start({ scheduler: { enabled: true, idleDelay: 1 } });
+    const { bureau, runtime, at } = harness;
+    const task = await bureau.submitSchedulerTask({ agentName: 'researcher', message: 'one' });
+    await bureau.awaitSchedulerTask(task.taskId);
+    await runtime.deferred.drain();
+
+    at(30 * DAY_MS + 1);
+    await bureau.runDurableMaintenance();
+    expect(await revisionCount(harness)).toBe(0);
+  });
+
+  it('keeps the snapshot of a scheduler task that waits in the queue past the unstarted-run grace (COR-1662)', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const harness = await start({ scheduler: { enabled: true, idleDelay: 1 } }, async () => {
+      await gate;
+      return 'first';
+    });
+    const { bureau, runtime, at } = harness;
+    await harness.put('analyst.md', agentFileText({ model: KNOWN_MODEL }, 'Analyst.\n'));
+    await bureau.agents.refresh();
+    const first = await bureau.submitSchedulerTask({ agentName: 'researcher', message: 'one' });
+    const queued = await bureau.submitSchedulerTask({ agentName: 'analyst', message: 'two' });
+
+    // The queued task has no run behind it for longer than the grace, and is still waiting.
+    at(11 * 60 * 1000);
+    await bureau.runDurableMaintenance();
+    expect((await bureau.agents.revisions('analyst')).length).toBe(1);
+
+    // Both tasks run to the end once the first is released; the manual clock drives the scheduler.
+    release();
+    await bureau.awaitSchedulerTask(first.taskId);
+    for (let turn = 0; turn < 50; turn++) {
+      await runtime.advance(5);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      if (
+        bureau.locateSchedulerTask(first.taskId).status === 'terminal' &&
+        bureau.locateSchedulerTask(queued.taskId).status === 'terminal'
+      ) {
+        break;
+      }
+    }
+    expect(bureau.locateSchedulerTask(queued.taskId).status).toBe('terminal');
+    await runtime.deferred.drain();
+    expect((await bureau.agents.revisions('analyst')).length).toBe(1);
   });
 
   it('keeps a snapshot for ever under taskRetention "forever"', async () => {
