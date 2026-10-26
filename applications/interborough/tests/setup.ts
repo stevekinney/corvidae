@@ -25,7 +25,7 @@
 import type { TestingLibraryMatchers } from '@testing-library/jest-dom/matchers';
 import * as jestDomMatchers from '@testing-library/jest-dom/matchers';
 import { plugin } from 'bun';
-import { afterEach, expect } from 'bun:test';
+import { afterAll, afterEach, beforeEach, expect } from 'bun:test';
 import { Window } from 'happy-dom';
 
 import { sveltePlugin } from '@lostgradient/testing';
@@ -159,4 +159,39 @@ afterEach(() => {
   if (!(window instanceof Window)) return;
   window.happyDOM.setURL('http://localhost/');
   window.dispatchEvent(new window.PopStateEvent('popstate'));
+});
+
+// `globalThis.fetch` is process-wide, and the coverage run shares one process across every test
+// file, so a test that scripts it and does not put it back changes what every later test reaches:
+// the suites that talk to a real server through Bun's own `fetch` then hit the leftover script
+// instead (COR-1690, found by COR-1658's worker). Record `fetch` before each test and fail the
+// test that leaves it different, then put the recorded value back so one leak fails one test
+// rather than every test after it. Bun runs a preload's `afterEach` after a file's own, so a
+// test's own restore has had its chance by the time this one compares.
+//
+// Bun runs a preload's `beforeAll` and `afterAll` once per run, not once per file, so a leak from a
+// file's own `beforeAll`, `afterAll` or module scope is not attributable to a file here, and the
+// per-test baseline adopts it. The run-level check below catches such a leak that is still in
+// place when the run ends.
+const originalFetch = globalThis.fetch;
+let fetchBeforeTest: typeof globalThis.fetch | undefined;
+
+beforeEach(() => {
+  fetchBeforeTest = globalThis.fetch;
+});
+
+afterEach(() => {
+  if (fetchBeforeTest === undefined || globalThis.fetch === fetchBeforeTest) return;
+  globalThis.fetch = fetchBeforeTest;
+  throw new Error(
+    "This test left globalThis.fetch replaced. Restore the original in afterEach (or use a scoped helper) so later tests do not run against this test's stub. The original has been put back.",
+  );
+});
+
+afterAll(() => {
+  if (globalThis.fetch === originalFetch) return;
+  globalThis.fetch = originalFetch;
+  throw new Error(
+    "A test file earlier in this run left globalThis.fetch changed. Restore it in that file's afterAll (or use a scoped helper). The original has been put back.",
+  );
 });
