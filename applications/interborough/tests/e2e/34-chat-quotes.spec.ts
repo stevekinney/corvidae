@@ -69,6 +69,10 @@ for (const viewport of VIEWPORTS) {
     await expect(replies).toHaveCount(2);
     await expect(replies.first()).toContainText(FIRST_QUESTION);
     await expect(replies.last()).toContainText(SECOND_QUESTION);
+    // Chat shows each reply as raw text first and swaps in the rendered Markdown a moment later,
+    // and the swap replaces the text nodes, which collapses a selection made before it.
+    await expect(replies.locator('[data-state="pending"]')).toHaveCount(0);
+    await expect(replies.locator('[data-state="rendered"]')).toHaveCount(2);
 
     // Part of the first reply is selected, and the popover offers to quote it.
     const chips = page.getByRole('list', { name: 'Quoted excerpts' }).getByRole('listitem');
