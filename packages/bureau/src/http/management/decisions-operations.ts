@@ -95,7 +95,7 @@ function requestOf(input: z.infer<typeof decideInput>): DecisionRequest {
           kind: 'structured',
           ...base,
           schema: standardSchemaFromJsonSchema(input.schema),
-        } as DecisionRequest;
+        };
       } catch (error) {
         if (error instanceof DecisionSchemaRefusedError) {
           throw invalidParams('schema', error.message);
@@ -138,9 +138,7 @@ export const decisionsDecideOperation = defineOperation<
         ...(decision.rationale === undefined ? {} : { rationale: decision.rationale }),
         provider: decision.provider,
         model: decision.model,
-        ...(decision.usage === undefined
-          ? {}
-          : { usage: { ...decision.usage } as Record<string, unknown> }),
+        ...(decision.usage === undefined ? {} : { usage: { ...decision.usage } }),
       };
     } catch (error) {
       if (error instanceof DecisionSchemaError) {

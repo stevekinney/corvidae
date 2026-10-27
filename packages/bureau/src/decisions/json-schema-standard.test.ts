@@ -31,7 +31,7 @@ describe('standardSchemaFromJsonSchema', () => {
     const mutable = structuredClone(SCHEMA);
     const standard = standardSchemaFromJsonSchema(mutable)['~standard'];
     mutable.required = [];
-    standard.jsonSchema.input().type = 'string';
+    standard.jsonSchema.input()['type'] = 'string';
 
     expect(standard.validate({})).toHaveProperty('issues');
     expect(standard.jsonSchema.input()).toEqual(SCHEMA);

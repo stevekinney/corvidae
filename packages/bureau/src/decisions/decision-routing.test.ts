@@ -76,7 +76,7 @@ describe('createDecisionRouting', () => {
     const { source, asked } = scripted('unused');
     const routing = createDecisionRouting(source);
 
-    const error = await routing('Anything', []).then(
+    const error = await Promise.resolve(routing('Anything', [])).then(
       () => undefined,
       (caught: unknown) => caught,
     );

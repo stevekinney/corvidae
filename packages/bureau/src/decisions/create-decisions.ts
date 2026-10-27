@@ -11,7 +11,7 @@ import { isStandardSchema, isZodSchema } from 'armorer';
 import { z } from 'zod';
 
 import { canonicalJson } from '../command-ledger.ts';
-import type { Models } from '../models/create-models.ts';
+import type { Models, ModelsOptions } from '../models/create-models.ts';
 import type {
   BureauDecideOptions,
   BureauDecisions,
@@ -33,8 +33,8 @@ export type DecisionsDependencies = {
   readonly options: DecisionsOptions | undefined;
   /** The catalog the fallback row is chosen from and the `generate` it runs with. */
   readonly models: Pick<Models, 'catalog' | 'generate'>;
-  /** Whether the host supplied `models.generate`, which the fallback needs. */
-  readonly canGenerate: boolean;
+  /** The `models` option, whose `generate` the fallback needs. */
+  readonly modelsOptions: ModelsOptions | undefined;
   /** Builds the `NOT_CONFIGURED` error a decision that no model can answer is refused with. */
   readonly notConfigured: (message: string, cause?: unknown) => Error;
   /** Refuses malformed input, as `BAD_REQUEST`. */
@@ -60,6 +60,17 @@ export type DecisionsComposition = {
   readonly configured: boolean;
 };
 
+function isDecisionModel(value: unknown): value is DecisionModel {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'decide' in value &&
+    typeof value.decide === 'function' &&
+    'kinds' in value &&
+    value.kinds instanceof Set
+  );
+}
+
 /** Refuses a malformed `decisions` option, as `BAD_REQUEST`, before `createBureau` opens anything. */
 export function validateDecisionsOptions(
   options: unknown,
@@ -74,16 +85,8 @@ export function validateDecisionsOptions(
     fallbackModel?: unknown;
     maximumPerTask?: unknown;
   };
-  if (model !== undefined) {
-    const candidate = model as Partial<DecisionModel> | null;
-    if (
-      typeof candidate !== 'object' ||
-      candidate === null ||
-      typeof candidate.decide !== 'function' ||
-      !(candidate.kinds instanceof Set)
-    ) {
-      badRequest('"options.decisions.model" must be a decision model with `kinds` and `decide`');
-    }
+  if (model !== undefined && !isDecisionModel(model)) {
+    badRequest('"options.decisions.model" must be a decision model with `kinds` and `decide`');
   }
   if (fallbackModel !== undefined) {
     if (typeof fallbackModel !== 'string' || !/^[^/\s]+\/\S+$/.test(fallbackModel)) {
@@ -216,6 +219,6 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
   return {
     decisions,
     maximumPerTask,
-    configured: hostModel !== undefined || dependencies.canGenerate,
+    configured: hostModel !== undefined || dependencies.modelsOptions?.generate !== undefined,
   };
 }

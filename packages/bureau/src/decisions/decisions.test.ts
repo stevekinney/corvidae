@@ -158,19 +158,14 @@ describe('routing a decision by kind', () => {
       replies: ['{"answer":true}', '{"key":"a"}', '{"level":2}', '{"name":"x"}'],
     });
 
-    expect((await bureau.decisions.decide({ kind: 'boolean', question: 'Is it?' })).value).toBe(
-      true,
-    );
-    expect((await bureau.decisions.decide(CHOICE)).value).toBe('a');
-    expect(
-      (
-        await bureau.decisions.decide({
-          kind: 'scale',
-          question: 'How?',
-          levels: ['no', 'a bit', 'yes'],
-        })
-      ).value,
-    ).toBe(2);
+    const boolean = await bureau.decisions.decide({ kind: 'boolean', question: 'Is it?' });
+    const choice = await bureau.decisions.decide(CHOICE);
+    const scale = await bureau.decisions.decide({
+      kind: 'scale',
+      question: 'How?',
+      levels: ['no', 'a bit', 'yes'],
+    });
+    expect([boolean.value, choice.value, scale.value]).toEqual([true, 'a', 2]);
     const structured = await bureau.decisions.decide({
       kind: 'structured',
       question: 'Name it',
@@ -279,9 +274,8 @@ describe('a decision nothing can answer', () => {
       decisions: { model: hostModel(['boolean']) },
     });
 
-    expect((await bureau.decisions.decide({ kind: 'boolean', question: 'Is it?' })).value).toBe(
-      false,
-    );
+    const served = await bureau.decisions.decide({ kind: 'boolean', question: 'Is it?' });
+    expect(served.value).toBe(false);
     await notConfigured(bureau.decisions.decide(CHOICE));
   });
 });
@@ -314,9 +308,7 @@ describe('a request or an answer that is not valid', () => {
       { fallbackModel: 'no-slash' },
       { model: {} },
     ] as never[]) {
-      const error = await rejection(
-        createBureau({ storage: { type: 'memory' }, decisions }) as Promise<unknown>,
-      );
+      const error = await rejection(createBureau({ storage: { type: 'memory' }, decisions }));
       expect((error as BureauError).code).toBe('BAD_REQUEST');
     }
     const error = await rejection(

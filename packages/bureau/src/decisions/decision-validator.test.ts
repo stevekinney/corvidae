@@ -5,6 +5,7 @@
 import { createMockGenerate } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import type { AgentDefinitions } from '../agent-catalog.ts';
 import { createBureau } from '../create-bureau.ts';
 import {
   answering,
@@ -45,7 +46,7 @@ function judge() {
 
 async function openGoalBureau(replies: readonly string[], validator = judge().validator) {
   const generate = createMockGenerate(replies.map((content) => ({ content, toolCalls: [] })));
-  const bureau = await createBureau({
+  const bureau = await createBureau<AgentDefinitions>({
     storage: { type: 'memory' },
     durable: true,
     agents: { worker: workerAgent(answering('an answer')) },
@@ -57,9 +58,10 @@ async function openGoalBureau(replies: readonly string[], validator = judge().va
 }
 
 async function ended(bureau: Bureau) {
-  await pollUntil(async () =>
-    (TERMINAL_STATUSES as readonly string[]).includes((await bureau.goals.get('g1'))?.status ?? ''),
-  );
+  await pollUntil(async () => {
+    const goal = await bureau.goals.get('g1');
+    return (TERMINAL_STATUSES as readonly string[]).includes(goal?.status ?? '');
+  });
   return (await bureau.goals.get('g1'))!;
 }
 

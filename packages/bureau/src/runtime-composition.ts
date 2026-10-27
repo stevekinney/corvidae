@@ -272,7 +272,7 @@ export interface WireDurableOptInToolsOptions {
    * COR-1709 — wires the `decide` tool in when present. It needs no durable services, but the
    * callers offer it to exactly the runs that are offered `requestHumanInput`.
    */
-  readonly decide?: DecideToolWiring;
+  readonly decide?: DecideToolWiring | undefined;
   /**
    * COR-1674 — per-signal answer schemas handed to `requestHumanInput`. Ignored when `humanInput`
    * is falsy. Every wiring site, fresh and recovered, passes the same map.

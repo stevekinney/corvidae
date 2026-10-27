@@ -87,7 +87,7 @@ export function standardSchemaFromJsonSchema(schema: unknown): JsonSchemaStandar
       `The schema is not a valid JSON Schema 2020-12: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  const describe = (): Record<string, unknown> => structuredClone(copy) as Record<string, unknown>;
+  const describe = (): Record<string, unknown> => structuredClone(copy);
   return {
     '~standard': {
       version: 1,
