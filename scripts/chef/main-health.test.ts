@@ -69,7 +69,7 @@ describe('the health file', () => {
     expect(existsSync(`${healthFile}.${process.pid}.tmp`)).toBe(false);
   });
 
-  test('keeps waivers apart from fixes, and drops a waiver without its reason or control', () => {
+  test('keeps waivers apart from fixes, and drops a waiver without its reason', () => {
     const waiver = {
       pr: 10,
       time: 't',
@@ -84,11 +84,15 @@ describe('the health file', () => {
       fixes: [{ pr: 9, time: 't', blockedHead: sha('b') }],
       waivers: [waiver],
     });
+    // A waiver from `--waive-main-health` names no control head; a record with no reason is dropped.
+    const unconditional = { pr: 11, time: 't', blockedHead: sha('b'), reason: 'main was red' };
     writeFileSync(
       healthFile,
-      JSON.stringify({ waivers: [waiver, { pr: 11, time: 't', blockedHead: sha('b') }] }),
+      JSON.stringify({
+        waivers: [waiver, unconditional, { pr: 12, time: 't', blockedHead: sha('b') }],
+      }),
     );
-    expect(readHealth(healthFile).waivers).toEqual([waiver]);
+    expect(readHealth(healthFile).waivers).toEqual([waiver, unconditional]);
   });
 
   test('resolveHealthFile asks Git for the main checkout, and is undefined when it cannot', () => {
@@ -125,6 +129,33 @@ describe('mainHealth', () => {
     recordBatchRun(healthFile, entry(sha('3'), 0));
     recordBatchRun(healthFile, entry(sha('9'), 1));
     expect(mainHealth(historyRunner(history), sandbox, 'main', healthFile).red).toBe(false);
+  });
+
+  test('reports the fixes and waivers recorded against the failing head, apart from each other', () => {
+    const history = [sha('3'), sha('2'), sha('1')];
+    recordBatchRun(healthFile, entry(sha('2'), 1));
+    recordFix(healthFile, { pr: 21, time: 't', blockedHead: sha('2') });
+    recordWaiver(healthFile, {
+      pr: 22,
+      time: 't',
+      blockedHead: sha('2'),
+      reason: 'a fixture this change does not touch',
+    });
+    recordWaiver(healthFile, { pr: 23, time: 't', blockedHead: sha('1'), reason: 'older head' });
+    const health = mainHealth(historyRunner(history), sandbox, 'main', healthFile);
+    expect(health.fixes.map((fix) => fix.pr)).toEqual([21]);
+    expect(health.waivers.map((waiver) => waiver.pr)).toEqual([22]);
+    const text = renderMainHealth(health, 'main');
+    expect(text).toContain('fixes: PR #21');
+    expect(text).toContain('waivers: PR #22 (a fixture this change does not touch)');
+    expect(text).not.toContain('#23');
+    // A healthy main with nothing recorded against it prints no extra lines.
+    expect(
+      renderMainHealth(
+        mainHealth(historyRunner(history), sandbox, 'main', join(sandbox, 'x')),
+        'main',
+      ),
+    ).not.toContain('waivers');
   });
 
   test('is not red when main history cannot be listed, and says why', () => {
