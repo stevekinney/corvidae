@@ -57,22 +57,34 @@ async function bridgeIfResolvedApplied(
 ): Promise<void> {
   if (!committed.ok || committed.disposition !== 'applied') return;
   if (committed.terminal?.disposition !== 'resolved') return;
-  if (committed.terminal.status === 'completed' && committed.completing?.workflowId !== undefined) {
-    options.engine.dispatchEvent(
-      new ActivityCompletedEvent(
-        committed.completing.operationId,
-        committed.completing.workflowId,
-        committed.completing.activityName,
-        Math.max(0, Date.now() - committed.completing.startedAt),
-      ),
-    );
-  }
+  dispatchActivityCompletedEvent(options, committed);
   await bridgeRemoteActivityResult(
     options.engine,
     input.operationId,
     committed.terminal.status === 'completed'
       ? { status: 'completed', value: input.value }
       : { status: 'failed', error: committed.terminal.error ?? 'Remote activity failed' },
+    committed.completing?.workflowExecutionToken,
+  );
+}
+
+function dispatchActivityCompletedEvent(
+  options: ServeOptions,
+  committed: Extract<Awaited<ReturnType<typeof commitTaskLedgerCompletion>>, { ok: true }>,
+): void {
+  if (
+    committed.terminal?.status !== 'completed' ||
+    committed.completing?.workflowId === undefined
+  ) {
+    return;
+  }
+  options.engine.dispatchEvent(
+    new ActivityCompletedEvent(
+      committed.completing.operationId,
+      committed.completing.workflowId,
+      committed.completing.activityName,
+      Math.max(0, Date.now() - committed.completing.startedAt),
+    ),
   );
 }
 

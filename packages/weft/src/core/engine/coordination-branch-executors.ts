@@ -232,7 +232,7 @@ export function executeWaitSignalSubOperation(
       settled = true;
       cleanup();
       if (registered) {
-        releaseSignalWaiter(internals, workflowId, waiterKey, deliver);
+        releaseSignalWaiter(internals, workflowId, waiterKey, deliverAndReport);
       }
       reject(error);
     };
@@ -282,7 +282,7 @@ export function executeWaitSignalSubOperation(
         workflowId,
         run,
         signalName,
-        () => !settled && internals.signalWaiters.get(waiterKey) === deliver,
+        () => !settled && internals.signalWaiters.get(waiterKey) === deliverAndReport,
       );
       if (settled) return;
 

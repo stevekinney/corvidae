@@ -11,6 +11,7 @@ import {
 import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
 
 import { BunSQLiteStorage } from '../storage/bun-sql.ts';
+import { CompressedStorage } from '../storage/compressed-storage.ts';
 import type {
   BatchOperation,
   ScanOptions,
@@ -7806,6 +7807,30 @@ describe('Engine decode and scoped-state guards', () => {
     await flushMicrotasks();
     expect(reports).toEqual([8_192]);
     storage[Symbol.dispose]();
+    restoreRealTimers();
+  });
+
+  it('forwards native size through compressed SQLite and leaves unsupported wrappers quiet', async () => {
+    useFakeTimers(0);
+    const sqlite = new BunSQLiteStorage(':memory:');
+    const compressed = new CompressedStorage(sqlite);
+    const engine = new Engine({ storage: compressed, storageSizeReportIntervalMs: 100 });
+    const reports: number[] = [];
+    engine.addEventListener(StorageSizeReportedEvent.type, (event) => {
+      if (event instanceof StorageSizeReportedEvent) reports.push(event.sizeBytes);
+    });
+    await advanceTimersByTime(100);
+    await flushMicrotasks();
+    expect(reports).toEqual([8_192]);
+    engine[Symbol.dispose]();
+
+    const unsupported = new CompressedStorage(new MemoryStorage());
+    const quiet = new Engine({ storage: unsupported, storageSizeReportIntervalMs: 100 });
+    let quietReports = 0;
+    quiet.addEventListener(StorageSizeReportedEvent.type, () => quietReports++);
+    await advanceTimersByTime(100);
+    expect(quietReports).toBe(0);
+    quiet[Symbol.dispose]();
     restoreRealTimers();
   });
 });

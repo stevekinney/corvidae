@@ -155,7 +155,7 @@ export async function processWaitSignalOperation(
         workflowId,
         run,
         operation.signalName,
-        () => internals.signalWaiters.get(waiterKey) === resolve,
+        () => internals.signalWaiters.get(waiterKey) === resolveAndReport,
       );
 
       // Delivery removes the waiter before resolving its promise. A missing
