@@ -156,10 +156,10 @@ const scenario7 = await outcomeOf(async () => {
 });
 
 const scenario8 = await outcomeOf(async () => {
-  // Only the wait this worker leaves unsatisfied is short: it can never be met, so no load ends it early.
+  // The failure is event-driven: the replacement disconnects while the run waits for it to go idle,
+  // and the run reports that disconnect at once. No wait here is meant to expire, so none is short.
   const result = await executeConformance({
     timeoutMs: HANG_GUARD_MILLISECONDS,
-    settleTimeoutMs: 1_000,
     json: true,
     workerCommand: [
       'env',
@@ -179,7 +179,8 @@ const scenario8 = await outcomeOf(async () => {
 });
 
 const scenario9 = await outcomeOf(async () => {
-  // Only the wait this worker leaves unsatisfied is short: it can never be met, so no load ends it early.
+  // This worker resolves attempt 1 in place, so the wait for a reassignment past attempt 1 can never
+  // be met and ends only by expiring. That wait alone is short; no load can satisfy it early.
   const result = await executeConformance({
     timeoutMs: HANG_GUARD_MILLISECONDS,
     settleTimeoutMs: 1_000,

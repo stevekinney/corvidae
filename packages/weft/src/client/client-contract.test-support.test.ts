@@ -48,7 +48,10 @@ describe('client contract test support', () => {
     };
 
     expect(
-      await throwingRejectionOf(waitForHandleEventForTesting(handle, 'workflow:completed', 1)),
+      await throwingRejectionOf(
+        // hang-guard-self-test: the event never arrives, so no load can deliver it before the wait gives up
+        waitForHandleEventForTesting(handle, 'workflow:completed', 1),
+      ),
     ).toThrow('workflow event "workflow:completed" did not arrive within 1ms');
   });
 
@@ -60,7 +63,7 @@ describe('client contract test support', () => {
       },
     };
 
-    const eventPromise = waitForHandleEventForTesting(handle, 'workflow:completed', 50);
+    const eventPromise = waitForHandleEventForTesting(handle, 'workflow:completed');
     listener?.(new Event('workflow:completed'));
 
     expect(await eventPromise).toBeInstanceOf(Event);

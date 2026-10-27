@@ -1,6 +1,6 @@
 import { describe, expect, it, mock } from 'bun:test';
 
-import { sleepForTesting } from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
 import { rejectionOf, throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { ActivityRegistry } from '../activity-registry.ts';
 import { WorkflowSourceLoadCancelledEvent } from '../events/workflow-source-events.ts';
@@ -522,10 +522,8 @@ describe('defer:false synchronous launch', () => {
     await engine.start('defer-true', null, { id: 'lazy' });
 
     expect(bodyEntered).toBe(false);
-    // Yield one scheduler turn so the queued inline launch flushes, proving the
-    // run is otherwise healthy. (With real timers, sleepForTesting yields a
-    // single minimal turn regardless of the argument; 1 makes that intent clear.)
-    await sleepForTesting(1);
+    // The queued inline launch flushes, proving the run is otherwise healthy.
+    await waitForCondition(() => bodyEntered, { label: 'the deferred body to enter' });
     expect(bodyEntered).toBe(true);
     engine[Symbol.dispose]();
   });

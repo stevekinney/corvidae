@@ -84,25 +84,17 @@ console.log('READY gen=' + GENERATION + ' url=' + server.url);
 }
 
 /** Poll `handle`'s accumulated stdout for `pattern`, mirroring `waitForTestDispatchUrl`'s bounded real-clock poll -- an OBSERVED marker, not a fixed sleep standing in for the thing under test. */
-async function waitForMarker(
-  stdout: () => string,
-  pattern: RegExp,
-  timeoutMs: number,
-): Promise<RegExpMatchArray> {
+async function waitForMarker(stdout: () => string, pattern: RegExp): Promise<RegExpMatchArray> {
   for await (const _turn of awakeTurns()) {
     const match = stdout().match(pattern);
     if (match !== null) return match;
     await sleepForTesting(20);
   }
-  throw new Error(`Marker ${pattern} did not appear in subprocess stdout within ${timeoutMs}ms`);
+  throw new Error(`Marker ${pattern} did not appear in subprocess stdout`);
 }
 
 /** Poll the real HTTP API for the run's terminal status -- an observed server response, not a timer. */
-async function waitForWorkflowCompleted(
-  baseUrl: string,
-  workflowId: string,
-  timeoutMs: number,
-): Promise<unknown> {
+async function waitForWorkflowCompleted(baseUrl: string, workflowId: string): Promise<unknown> {
   for await (const _turn of awakeTurns()) {
     const response = await fetch(`${baseUrl}/v1/workflows/${workflowId}`).catch(() => null);
     if (response?.ok) {
@@ -114,7 +106,7 @@ async function waitForWorkflowCompleted(
     }
     await sleepForTesting(20);
   }
-  throw new Error(`Workflow ${workflowId} did not complete within ${timeoutMs}ms`);
+  throw new Error(`Workflow ${workflowId} did not complete`);
 }
 
 /**
@@ -163,8 +155,8 @@ async function recoverAcrossWatchRestart(): Promise<void> {
       if (!stoppingSubprocess) stdoutReaderError = error;
     });
 
-    await waitForMarker(() => stdoutText, /CHECKPOINTED gen=1/, 10_000);
-    const firstReady = await waitForMarker(() => stdoutText, /READY gen=1 url=(\S+)/, 10_000);
+    await waitForMarker(() => stdoutText, /CHECKPOINTED gen=1/);
+    const firstReady = await waitForMarker(() => stdoutText, /READY gen=1 url=(\S+)/);
     const firstUrl = firstReady[1];
     if (firstUrl === undefined) throw new Error('unreachable');
 
@@ -178,7 +170,7 @@ async function recoverAcrossWatchRestart(): Promise<void> {
     // imports -- never a manual kill-and-respawn.
     await Bun.write(join(directory, REVISION_MODULE_NAME), 'export const GENERATION = 2;\n');
 
-    const secondReady = await waitForMarker(() => stdoutText, /READY gen=2 url=(\S+)/, 10_000);
+    const secondReady = await waitForMarker(() => stdoutText, /READY gen=2 url=(\S+)/);
     const secondUrl = secondReady[1];
     if (secondUrl === undefined) throw new Error('unreachable');
 
@@ -195,7 +187,7 @@ async function recoverAcrossWatchRestart(): Promise<void> {
     );
     expect(signalResponse.ok).toBe(true);
 
-    const result = await waitForWorkflowCompleted(secondUrl, 'watch-restart-run', 10_000);
+    const result = await waitForWorkflowCompleted(secondUrl, 'watch-restart-run');
     // Durable replay re-invokes the SAME `watch-restart-run` execution's
     // generator function from the top (fast-forwarded past its recorded
     // history) inside the freshly reloaded module -- so `generation` in the

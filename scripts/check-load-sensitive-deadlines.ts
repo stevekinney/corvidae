@@ -21,7 +21,10 @@
  *     property greater than zero and below the hang guard, passed to a call that waits for
  *     something that should eventually happen (`waitFor*`, `readFrames`, `nextServerMessage`, a
  *     hang-guarded spawn, and the others in `WAITING_CALLEES`), and `afterAwakeTime` with a
- *     duration below the hang guard. A product's own timeout option (`mailbox.awaitCleanup`,
+ *     duration below the hang guard. The same budget passed BY POSITION is read for every wait helper
+ *     the scanned files declare: a function named like a wait (`waitForMessage`, `waitForLine`...)
+ *     with a parameter named `timeout`, `timeoutMs`, `budget...` or `deadline...` has that argument
+ *     checked at every call, in any file, from a table merged across the scan. A product's own timeout option (`mailbox.awaitCleanup`,
  *     `outbox.drain`, `server.shutdownWorker`) is not read: tests of those drive an injected clock
  *     or a stalled dependency, which no load can speed up.
  *
@@ -44,7 +47,9 @@
  *     promise, an event, a registry or storage state), or, for something that must NOT happen, call
  *     `quietFor(n)`, which says so: load can only delay an event, never advance it. A sleep in a
  *     helper or double, inside a loop (a poll), in a teardown hook, or one after which nothing is
- *     asserted, is not read. `sleepForTesting` is not read: in real mode it yields one scheduler turn.
+ *     asserted, is not read. `sleepForTesting(n)` yields ONE scheduler turn under real timers whatever
+ *     `n` is, so it is read only before an assertion that something happened (`toBe(true)`,
+ *     `toHaveBeenCalled()`, `toContain`...), where it bets that real work finishes inside that turn.
  *   - `timer-rejection`: a `setTimeout` whose callback rejects or throws (through any parameter name),
  *     or an `AbortSignal.timeout`, with a delay below the hang guard: the timer half of a race.
  *   - `timer-race`: a timer promise raced against work, in `Promise.race`/`Promise.any`: `sleep(n)`,
@@ -107,8 +112,8 @@
  *     deterministic and one expected to be met is not, and syntax cannot tell them apart. Such
  *     tests were read by hand: they drive an injected clock, a stalled dependency or a pre-aborted
  *     signal;
- *   - a budget that is a positional argument (`waitForStatus(engine, id, status, 20)`), inside a
- *     helper in another file, or an unresolvable identifier, for `wait-budget`;
+ *   - a positional budget of a helper the scan does not declare (a package's own export, or a
+ *     parameter named something other than a budget), or an unresolvable identifier, for `wait-budget`;
  *   - an unconditional pause of a fixed number of turns (`for (i < 3) await yieldTurn()`), which has
  *     no condition to flake on but is not a wait either;
  *   - sleeps inside helper functions and test doubles, and a negative window written as
@@ -208,6 +213,8 @@ const HANG_GUARD_CALLEES = new Set([
   'waitForRunState',
   'waitUntil',
   'awakeTurns',
+  'waitForMessage',
+  'waitForHandleEventForTesting',
 ]);
 // Hang guards on real work: a child process or an awake-time deadline, whatever the clock says.
 const REAL_TIME_CALLEES = new Set(['spawnWithHangGuard', 'runWithHangGuard', 'afterAwakeTime']);
@@ -526,7 +533,50 @@ function isUnderFakeTimers(node: ts.Node): boolean {
   return false;
 }
 
-export function findDeadlineViolations(sourceFile: ts.SourceFile): DeadlineViolation[] {
+/** For each wait helper a file declares, the positions of its budget parameters. */
+export type PositionalBudgets = ReadonlyMap<string, readonly number[]>;
+
+// Parameters whose value is how long a wait may take.
+const BUDGET_PARAMETER =
+  /^(timeout|timeoutMs|timeoutMilliseconds|timeoutMillis|budget\w*|deadline\w*|maxWait\w*|waitMs|waitMilliseconds)$/i;
+
+/**
+ * The wait helpers a file declares (a function or arrow whose name reads as a wait, see
+ * `WAITING_CALLEES`) and the positions of their budget parameters. A caller that passes a number
+ * there sets a deadline the same as one that spells it `{ timeoutMs }`. The scan merges the tables of
+ * every scanned file, so a helper declared in a support module is read at its call sites everywhere.
+ */
+export function collectPositionalBudgets(sourceFile: ts.SourceFile): Map<string, number[]> {
+  const found = new Map<string, number[]>();
+  const record = (name: string, parameters: ts.NodeArray<ts.ParameterDeclaration>): void => {
+    if (!WAITING_CALLEES.test(name)) return;
+    const positions = parameters.flatMap((parameter, index) =>
+      ts.isIdentifier(parameter.name) && BUDGET_PARAMETER.test(parameter.name.text) ? [index] : [],
+    );
+    if (positions.length > 0) found.set(name, [...(found.get(name) ?? []), ...positions]);
+  };
+  walk(sourceFile, (node) => {
+    if (ts.isFunctionDeclaration(node) && node.name !== undefined) {
+      record(node.name.text, node.parameters);
+    } else if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer !== undefined &&
+      (ts.isArrowFunction(unwrap(node.initializer)) ||
+        ts.isFunctionExpression(unwrap(node.initializer)))
+    ) {
+      record(node.name.text, (unwrap(node.initializer) as ts.ArrowFunction).parameters);
+    } else if (ts.isMethodDeclaration(node) && ts.isIdentifier(node.name)) {
+      record(node.name.text, node.parameters);
+    }
+  });
+  return found;
+}
+
+export function findDeadlineViolations(
+  sourceFile: ts.SourceFile,
+  helperBudgets: PositionalBudgets = collectPositionalBudgets(sourceFile),
+): DeadlineViolation[] {
   const violations: DeadlineViolation[] = [];
   const constants = collectConstants(sourceFile);
 
@@ -574,6 +624,25 @@ export function findDeadlineViolations(sourceFile: ts.SourceFile): DeadlineViola
 
     // A callee with no name (a computed or parenthesised call) is none of what follows.
     if (name === null) return;
+
+    // A budget handed to a wait helper by position: `waitForMessage(ws, matches, 1_000)`.
+    const positions = helperBudgets.get(name);
+    if (positions !== undefined && !isLoadProof(sourceFile, node) && !isUnderFakeTimers(node)) {
+      const hangGuardSelfTest =
+        HANG_GUARD_CALLEES.has(name) &&
+        (selfTestReason(sourceFile, node)?.length ?? 0) >= MINIMUM_SELF_TEST_REASON;
+      for (const position of positions) {
+        const budget = node.arguments[position];
+        if (
+          budget !== undefined &&
+          !hangGuardSelfTest &&
+          isShort(budget, constants, { unresolvedIsShort: false, allowZero: true })
+        ) {
+          violations.push(violation(sourceFile, node, 'wait-budget'));
+          break;
+        }
+      }
+    }
 
     // Testing Library's asynchronous utilities.
     if (TESTING_LIBRARY_WAIT.test(name)) {
@@ -934,17 +1003,21 @@ function findDefaultedBudgets(
   return violations;
 }
 
-// Names that mean "do nothing for n milliseconds": `sleep`, `delay`, `pause`, `nap`, `wait`, and the
-// test helper that waits for real timers. `sleepForTesting` is not here: in real mode it yields one
-// scheduler turn rather than waiting n milliseconds, which is a fixed-turn pause (a blind spot below).
+// Names that mean "do nothing for n milliseconds": `sleep`, `delay`, `pause`, `nap`, `wait`, the test
+// helper that waits for real timers, and `sleepForTesting`, which under real timers yields ONE
+// scheduler turn whatever `n` is (see `SINGLE_TURN_SLEEP`).
 const SLEEP_NAME =
-  /^(sleep|delay|pause|nap)(ForReal|Real|Ms|Milliseconds)?$|^wait$|^waitForRealTimersForTesting$/;
+  /^(sleep|delay|pause|nap)(ForReal|Real|Ms|Milliseconds|ForTesting)?$|^wait$|^waitForRealTimersForTesting$/;
 // Sleeps that Bun's fake timers advance. Everything else (`Bun.sleep`, `node:timers/promises`, the
 // real-timer helper) keeps real time under `useFakeTimers`.
-const VIRTUAL_SLEEP = new Set<string>();
+const VIRTUAL_SLEEP = new Set<string>(['sleepForTesting']);
+// `sleepForTesting(n)` does not wait n milliseconds under real timers: it yields one scheduler turn.
+// A step that needs real work (a socket, a child process, a storage round trip) to finish inside that
+// one turn is load-sensitive, so it is read only before an assertion that something happened.
+const SINGLE_TURN_SLEEP = new Set(['sleepForTesting']);
 
 /** What a promise that settles on a real timer is waiting for, and whether fake timers advance it. */
-type TimerPromise = { delay: ts.Expression; virtual: boolean };
+type TimerPromise = { delay: ts.Expression; virtual: boolean; singleTurn?: boolean };
 
 /** The facts about a file that decide which `sleep` is the real one. */
 type TimerContext = {
@@ -1053,7 +1126,11 @@ function timerPromiseOf(
     if (ts.isIdentifier(callee)) {
       if (context.aliases.has(callee.text)) return { delay, virtual: false };
       if (SLEEP_NAME.test(callee.text) && !context.injected.has(callee.text)) {
-        return { delay, virtual: VIRTUAL_SLEEP.has(callee.text) };
+        return {
+          delay,
+          virtual: VIRTUAL_SLEEP.has(callee.text),
+          singleTurn: SINGLE_TURN_SLEEP.has(callee.text),
+        };
       }
       return null;
     }
@@ -1102,6 +1179,24 @@ function timerPromiseOf(
  * opened (`ws.close(); await pause(50);` and then nothing) checks nothing about the pause's length;
  * it is a pause before an assertion, or a setup step, that a slow host defeats.
  */
+/**
+ * Whether the first assertion after `node` in its block reads as "something happened". A single-turn
+ * yield before such an assertion bets that real work finishes inside one scheduler turn.
+ */
+function positiveAssertionFollows(sourceFile: ts.SourceFile, node: ts.Node): boolean {
+  if (!ts.isBlock(node.parent)) return false;
+  const siblings = node.parent.statements;
+  for (const next of siblings.slice(siblings.indexOf(node as ts.Statement) + 1)) {
+    const text = next.getText(sourceFile);
+    if (!/\bexpect\(/.test(text)) {
+      if (containsAwait(next)) return false;
+      continue;
+    }
+    return POSITIVE_ASSERTION.test(text) && !/\.not\./.test(text);
+  }
+  return false;
+}
+
 function pausesBeforeAssertion(
   registration: ts.CallExpression,
   body: ts.Node,
@@ -1161,7 +1256,9 @@ function findSleepSynchronization(
       !isRegistration(body.parent) ||
       (timer.virtual && isUnderFakeTimers(node)) ||
       isLoadProof(sourceFile, node) ||
-      !pausesBeforeAssertion(body.parent, body, node)
+      !(timer.singleTurn === true
+        ? positiveAssertionFollows(sourceFile, node)
+        : pausesBeforeAssertion(body.parent, body, node))
     ) {
       return;
     }
@@ -1407,11 +1504,19 @@ async function scan(): Promise<string[]> {
   const runners: string[] = [];
   for (const directory of SCANNED_DIRECTORIES) collectFiles(join(root, directory), tests, runners);
 
+  const parsed: Array<{ path: string; sourceFile: ts.SourceFile }> = [];
+  const helperBudgets = new Map<string, number[]>();
   for (const path of tests.toSorted()) {
     const source = await Bun.file(path).text();
     if (OPT_IN_BROWSER_GATE.test(source)) continue;
     const sourceFile = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
-    for (const found of findDeadlineViolations(sourceFile)) {
+    parsed.push({ path, sourceFile });
+    for (const [name, positions] of collectPositionalBudgets(sourceFile)) {
+      helperBudgets.set(name, [...new Set([...(helperBudgets.get(name) ?? []), ...positions])]);
+    }
+  }
+  for (const { path, sourceFile } of parsed) {
+    for (const found of findDeadlineViolations(sourceFile, helperBudgets)) {
       findings.push(`${relative(root, path)}:${found.line} — ${found.rule} — ${found.text}`);
     }
   }

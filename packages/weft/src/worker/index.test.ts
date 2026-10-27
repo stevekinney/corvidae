@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
-import { awakeTurns } from '../../scripts/lib/wait-until.ts';
+import { awakeTurns, quietFor } from '../../scripts/lib/wait-until.ts';
 import type { ActivityInterceptor } from '../core/interceptor.ts';
 import {
   restoreRealTimers,
@@ -902,7 +902,8 @@ describe('RemoteWorker', () => {
     });
 
     await worker.connect();
-    await sleepForTesting(100);
+    // load-proof: the worker must stay connected after the stray frame; a slow host can only delay a (wrong) disconnect
+    await quietFor(100);
 
     // Worker should still be connected and working fine
     expect(worker.connected).toBe(true);
@@ -1793,7 +1794,8 @@ describe('RemoteWorker', () => {
     });
 
     await worker.connect();
-    await sleepForTesting(100);
+    // load-proof: no taskResult may be sent and the worker must stay connected; a slow host can only delay a wrong one
+    await quietFor(100);
 
     // Worker should still be connected and no taskResult should have been sent
     expect(worker.connected).toBe(true);
@@ -3892,7 +3894,8 @@ describe('RemoteWorker — send-failure recovery and backpressure', () => {
         // Socket already closed server-side — fine.
       }
     }
-    await sleepForTesting(50);
+    // load-proof: the detached socket's late frame must not shut the worker down; a slow host can only delay that
+    await quietFor(50);
     expect(worker.connected).toBe(true);
 
     await worker.disconnect();

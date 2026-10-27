@@ -307,6 +307,7 @@ describe('runStdioSession — engine-backed integration', () => {
 
       // Short timeout window in case any asynchronous emission lands after
       // the workflow completion commit.
+      // load-proof: no delivery may arrive after the rejected subscribe, and a loaded host can only delay one
       const deliverPromise = waitForLine(
         output.lines.bind(output),
         (parsed: any) => parsed?.method === 'weft.events.deliver',

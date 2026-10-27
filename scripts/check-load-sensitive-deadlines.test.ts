@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import ts from 'typescript';
 import {
+  collectPositionalBudgets,
   findDeadlineViolations,
   findPackageScriptViolations,
   findTestRunnerSpawnViolations,
@@ -622,5 +623,91 @@ describe('a wait helper imported under the name waitFor', () => {
     expect(
       inspect("test('a', async () => {\n  await waitFor(() => ready, { timeoutMs: 1000 });\n});"),
     ).toEqual(['wait-budget']);
+  });
+});
+
+describe('a budget handed to a wait helper by position', () => {
+  const helper =
+    'async function waitForMessage(ws: unknown, matches: unknown, timeoutMs = 120_000) {}\n';
+
+  test.each([
+    ['a function declaration', `${helper}await waitForMessage(ws, matches, 1_000);`],
+    [
+      'an arrow function',
+      'const waitForLine = (lines, matches, timeoutMs) => {};\nawait waitForLine(lines, matches, 200);',
+    ],
+    [
+      'a constant budget',
+      `${helper}const WINDOW = 500;\nawait waitForMessage(ws, matches, WINDOW);`,
+    ],
+  ])('reports %s', (_name, source) => {
+    expect(inspect(source)).toContain('wait-budget');
+  });
+
+  test.each([
+    ['no budget, so the default applies', `${helper}await waitForMessage(ws, matches);`],
+    ['the hang guard', `${helper}await waitForMessage(ws, matches, HANG_GUARD_MILLISECONDS);`],
+    [
+      'a window that must pass without a match, under a load-proof marker',
+      `${helper}// load-proof: nothing may arrive after the unsubscribe, and a loaded host can only delay it\nawait waitForMessage(ws, matches, 200);`,
+    ],
+    [
+      'a self-test of the helper, under its marker',
+      `${helper}// hang-guard-self-test: nothing ever matches, so no load can satisfy the wait before it gives up\nawait waitForMessage(ws, () => false, 10);`,
+    ],
+    [
+      'a helper whose name is not a wait',
+      'function shiftBy(value: number, offsetMs: number) {}\nshiftBy(1, 10);',
+    ],
+  ])('accepts %s', (_name, source) => {
+    expect(inspect(source)).toEqual([]);
+  });
+
+  test('reads a helper declared in another file through the shared table', () => {
+    const declaring = ts.createSourceFile(
+      'support.test-support.ts',
+      'export function waitForFrames(ws, count, timeoutMs) {}',
+      ts.ScriptTarget.Latest,
+      true,
+    );
+    const calling = ts.createSourceFile(
+      'use.test.ts',
+      'await waitForFrames(ws, 2, 750);',
+      ts.ScriptTarget.Latest,
+      true,
+    );
+
+    expect(
+      findDeadlineViolations(calling, collectPositionalBudgets(declaring)).map(
+        (violation) => violation.rule,
+      ),
+    ).toEqual(['wait-budget']);
+  });
+});
+
+describe('a single-turn yield used to let real work finish', () => {
+  test('reports sleepForTesting before an assertion that something happened', () => {
+    expect(
+      inspect(
+        "test('a', async () => {\n  start();\n  await sleepForTesting(10);\n  expect(worker.postMessage).toHaveBeenCalled();\n});",
+      ),
+    ).toEqual(['sleep-synchronization']);
+  });
+
+  test.each([
+    [
+      'an assertion of absence',
+      "test('a', async () => {\n  await sleepForTesting(10);\n  expect(calls).toEqual([]);\n});",
+    ],
+    [
+      'fake timers, which advance it',
+      "test('a', async () => {\n  useFakeTimers();\n  await sleepForTesting(10);\n  expect(done()).toBe(true);\n});",
+    ],
+    [
+      'a following wait, which carries the assertion',
+      "test('a', async () => {\n  await sleepForTesting(10);\n  await waitFor(ready);\n  expect(done()).toBe(true);\n});",
+    ],
+  ])('accepts %s', (_name, source) => {
+    expect(inspect(source)).toEqual([]);
   });
 });

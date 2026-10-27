@@ -569,9 +569,8 @@ describe('WorkflowEventSubscription', () => {
       { webSocketFactory: server.factory },
     );
 
-    await waitFor(() => server.sockets.length === 1 && server.latest().opened);
-    // Give the failed catch-up a moment to settle, then deliver a live frame.
-    await sleepForTesting(5);
+    // The stream is live once its socket is open and the failed catch-up has settled.
+    await subscription.whenConnected();
     server.latest().deliver(event('workflow:started'));
     await waitFor(() => received.length === 1);
     expect(received[0]?.type).toBe('workflow:started');
@@ -650,9 +649,9 @@ describe('WorkflowEventSubscription', () => {
     );
 
     // First socket open, failed catch-up has settled.
-    await waitFor(() => server.sockets.length === 1 && server.latest().opened);
-    await waitFor(() => historyCalls === 1);
-    await sleepForTesting(5);
+    // Live once the socket is open and the failed catch-up has settled.
+    await subscription.whenConnected();
+    expect(historyCalls).toBe(1);
 
     // A live frame B lands after the failed catch-up. It is delivered, but must
     // not advance the (frozen) history watermark.

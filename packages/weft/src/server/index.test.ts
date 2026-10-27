@@ -7032,7 +7032,7 @@ describe('concurrent scanner deduplication', () => {
     // deadline heap, so only reconcileOrphanedRecords will find it — and it
     // will only find it once even if multiple reconciliation cycles run.
     ({ engine, storage } = createEngineWithStorage());
-    server = serveTestServer({ engine, port: 0, visibilityPollIntervalMs: 50 });
+    server = serveTestServer({ engine, port: 0, visibilityPollIntervalMs: 10 });
 
     const ws = await connectWorker(server);
     const received = collectAndCompleteTaskMessages(ws);
@@ -7051,7 +7051,7 @@ describe('concurrent scanner deduplication', () => {
     });
     await storage.put(taskLedgerKey('dedup-orphan-op'), encodeRemoteTaskRecord(orphanRecord));
 
-    // Wait for two full reconciliation cycles (2 * 600ms = 1200ms) plus slack.
+    // Wait for two full reconciliation cycles (2 * 120ms at a 10ms poll interval) plus slack.
     // Without the deduplication guard a second concurrent reconciliation cycle
     // would re-dispatch the same record a second time.
     await waitFor(
@@ -7060,7 +7060,7 @@ describe('concurrent scanner deduplication', () => {
         label: 'dedup-orphan-op reassigned',
       },
     );
-    await quietFor(1400);
+    await quietFor(400);
 
     // The orphaned task must be re-dispatched exactly once.
     const taskMessages = received.filter(

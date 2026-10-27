@@ -1502,11 +1502,7 @@ describe('HttpClient request surface', () => {
       void (async () => {
         // The subscription opens lazily on addEventListener; once the socket
         // is open and catch-up has run, deliver the live terminal event.
-        for await (const _turn of awakeTurns()) {
-          if (wsServer.sockets.length > 0 && wsServer.latest().opened) break;
-          await sleepForTesting(2);
-        }
-        await sleepForTesting(5); // let the catch-up fetch settle
+        await handle.whenConnected();
         wsServer.latest().deliver({
           type: 'workflow:completed',
           timestamp: 1,
@@ -1591,7 +1587,7 @@ describe('HttpClient request surface', () => {
     handle.addEventListener('workflow:started', () => {});
     handle.addEventListener('workflow:completed', () => {});
 
-    await sleepForTesting(5);
+    await handle.whenConnected();
     expect(wsServer.sockets).toHaveLength(1);
   });
 
@@ -1610,7 +1606,7 @@ describe('HttpClient request surface', () => {
     const listener = (() => {}) as EventListener;
 
     handle.addEventListener('workflow:started', listener);
-    await sleepForTesting(5);
+    await handle.whenConnected();
     handle.removeEventListener('workflow:started', listener);
     handle[Symbol.dispose]();
 

@@ -320,7 +320,9 @@ describe('InlineExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await waitForCondition(() => resolveHandler !== undefined, {
+        label: 'the message handler to be waiting',
+      });
 
       const pendingTurn = strategy.waitForWorkflowTurn('wf-1');
       expect(pendingTurn).toBeDefined();
@@ -494,7 +496,9 @@ describe('InlineExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await waitForCondition(() => strategy.getContext('wf-1') !== undefined, {
+        label: 'the workflow to start',
+      });
 
       expect(strategy.hasGenerator('wf-1')).toBe(true);
       expect(strategy.getContext('wf-1')).toBeDefined();
@@ -646,7 +650,9 @@ describe('InlineExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await waitForCondition(() => strategy.getContext('wf-1') !== undefined, {
+        label: 'the workflow to start',
+      });
       expect(strategy.getContext('wf-1')).toBeDefined();
 
       // The default (suspend/terminate) form hard-evicts: no parked Context.
@@ -678,7 +684,9 @@ describe('InlineExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await waitForCondition(() => strategy.getContext('wf-1') !== undefined, {
+        label: 'the workflow to start',
+      });
 
       // Signal-park retains the context.
       strategy.parkWorkflow('wf-1', { retainContext: true });
@@ -713,7 +721,9 @@ describe('InlineExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await waitForCondition(() => strategy.getContext('wf-1') !== undefined, {
+        label: 'the workflow to start',
+      });
       strategy.parkWorkflow('wf-1', { retainContext: true });
       expect(strategy.getParkedContext('wf-1')).toBeDefined();
 
@@ -744,7 +754,9 @@ describe('InlineExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await waitForCondition(() => strategy.getContext('wf-1') !== undefined, {
+        label: 'the workflow to start',
+      });
       strategy.parkWorkflow('wf-1', { retainContext: true });
       expect(strategy.getParkedContext('wf-1')).toBeDefined();
 
@@ -791,7 +803,9 @@ describe('InlineExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await waitForCondition(() => strategy.getContext('wf-1') !== undefined, {
+        label: 'the workflow to start',
+      });
       strategy.parkWorkflow('wf-1', { retainContext: true });
       expect(strategy.getParkedContext('wf-1')).toBeDefined();
 
