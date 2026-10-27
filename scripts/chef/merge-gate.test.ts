@@ -312,6 +312,69 @@ describe('mergeGate', () => {
       expect(report.fixesMain).toBeUndefined();
     });
 
+    const waiver = {
+      reason: 'a test that passes alone on main, failed under load',
+      controlHead: BASE,
+    };
+
+    test('waives a load flake whose control is on main, and records it apart from the fixes', () => {
+      writeHealth(1);
+      options.loadFlakeWaiver = waiver;
+      const { runner } = withHistory();
+      const report = mergeGate(options, { runner, now: () => new Date('2026-10-23T00:00:00Z') });
+      expect(report.failedStep).toBeNull();
+      expect(report.fixesMain).toBeUndefined();
+      expect(report.waiver).toEqual({ ...waiver, blockedHead: redHead });
+      expect(renderMergeGate(report, false)).toContain(
+        `main health: red at ${redHead.slice(0, 12)}; waived as a load flake (control ${BASE.slice(0, 12)}): ${waiver.reason}`,
+      );
+      const health = JSON.parse(readFileSync(options.healthFile as string, 'utf8'));
+      expect(health.fixes).toEqual([]);
+      expect(health.waivers).toEqual([
+        { pr: 12, time: '2026-10-23T00:00:00.000Z', blockedHead: redHead, ...waiver },
+      ]);
+    });
+
+    test('refuses a waiver whose control head is not on main', () => {
+      writeHealth(1);
+      options.loadFlakeWaiver = { ...waiver, controlHead: OTHER };
+      const { runner, merged } = withHistory();
+      const report = mergeGate(options, { runner });
+      expect(report.failedStep).toBe('main-health');
+      expect(report.detail).toContain(`control head ${OTHER.slice(0, 12)} is not on origin/main`);
+      expect(merged()).toBe(false);
+      expect(
+        JSON.parse(readFileSync(options.healthFile as string, 'utf8')).waivers,
+      ).toBeUndefined();
+    });
+
+    test('names the waiver in the refusal, and records nothing for a waiver on a green main', () => {
+      writeHealth(1);
+      expect(mergeGate(options, { runner: withHistory().runner }).detail).toContain(
+        '--waive-load-flake <reason> --control-head <sha>',
+      );
+      writeHealth(0);
+      options.loadFlakeWaiver = waiver;
+      const report = mergeGate(options, { runner: withHistory().runner });
+      expect(report.failedStep).toBeNull();
+      expect(report.waiver).toBeUndefined();
+      expect(
+        JSON.parse(readFileSync(options.healthFile as string, 'utf8')).waivers,
+      ).toBeUndefined();
+    });
+
+    test('a dry run reports the waiver without recording it', () => {
+      writeHealth(1);
+      options.loadFlakeWaiver = waiver;
+      options.dryRun = true;
+      const report = mergeGate(options, { runner: withHistory().runner });
+      expect(report.failedStep).toBeNull();
+      expect(report.waiver?.controlHead).toBe(BASE);
+      expect(
+        JSON.parse(readFileSync(options.healthFile as string, 'utf8')).waivers,
+      ).toBeUndefined();
+    });
+
     test('a failure at a head that is not on main does not block', () => {
       writeHealth(1);
       const report = mergeGate(options, { runner: withHistory([BASE]).runner });
@@ -736,6 +799,24 @@ describe('run', () => {
     expect(() => run([...argv(), 'extra'], { runner })).toThrow(UsageError);
     expect(() => run([...argv(), '--pr', 'x'], { runner })).toThrow(UsageError);
     expect(() => run([...argv(), '--bogus'], { runner })).toThrow(UsageError);
+    expect(() => run([...argv(), '--waive-load-flake', 'a load flake'], { runner })).toThrow(
+      'go together',
+    );
+    expect(() => run([...argv(), '--control-head', BASE], { runner })).toThrow('go together');
+    expect(() =>
+      run([...argv(), '--waive-load-flake', ' ', '--control-head', BASE], { runner }),
+    ).toThrow('needs a reason');
+    expect(() =>
+      run([...argv(), '--waive-load-flake', 'a load flake', '--control-head', 'c'.repeat(12)], {
+        runner,
+      }),
+    ).toThrow('is not a full commit SHA');
+    expect(() =>
+      run(
+        [...argv(), '--fixes-main', '--waive-load-flake', 'a load flake', '--control-head', BASE],
+        { runner },
+      ),
+    ).toThrow('are exclusive');
     writeFileSync(options.commentFile, '  \n');
     expect(() => run(argv(), { runner })).toThrow('is empty');
     expect(() =>

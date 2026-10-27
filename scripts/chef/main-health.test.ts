@@ -11,6 +11,7 @@ import {
   readHealth,
   recordBatchRun,
   recordFix,
+  recordWaiver,
   renderMainHealth,
   resolveHealthFile,
 } from './main-health.ts';
@@ -47,10 +48,10 @@ const historyRunner =
 describe('the health file', () => {
   test('lives in the main checkout and tolerates a missing or corrupt file', () => {
     expect(healthFilePath('/repo')).toBe('/repo/tmp/chef/main-health.json');
-    expect(readHealth(healthFile)).toEqual({ runs: [], fixes: [] });
+    expect(readHealth(healthFile)).toEqual({ runs: [], fixes: [], waivers: [] });
     recordBatchRun(healthFile, entry(sha('a'), 0));
     writeFileSync(healthFile, '{not json');
-    expect(readHealth(healthFile)).toEqual({ runs: [], fixes: [] });
+    expect(readHealth(healthFile)).toEqual({ runs: [], fixes: [], waivers: [] });
     writeFileSync(
       healthFile,
       JSON.stringify({ runs: [entry(sha('a'), 1), { head: 3 }], fixes: 7 }),
@@ -66,6 +67,28 @@ describe('the health file', () => {
     expect(health.runs[0]?.head).toBe('5');
     expect(health.fixes).toEqual([{ pr: 9, time: 't', blockedHead: sha('b') }]);
     expect(existsSync(`${healthFile}.${process.pid}.tmp`)).toBe(false);
+  });
+
+  test('keeps waivers apart from fixes, and drops a waiver without its reason or control', () => {
+    const waiver = {
+      pr: 10,
+      time: 't',
+      blockedHead: sha('b'),
+      reason: 'a load flake that passes alone',
+      controlHead: sha('c'),
+    };
+    recordFix(healthFile, { pr: 9, time: 't', blockedHead: sha('b') });
+    recordWaiver(healthFile, waiver);
+    expect(readHealth(healthFile)).toEqual({
+      runs: [],
+      fixes: [{ pr: 9, time: 't', blockedHead: sha('b') }],
+      waivers: [waiver],
+    });
+    writeFileSync(
+      healthFile,
+      JSON.stringify({ waivers: [waiver, { pr: 11, time: 't', blockedHead: sha('b') }] }),
+    );
+    expect(readHealth(healthFile).waivers).toEqual([waiver]);
   });
 
   test('resolveHealthFile asks Git for the main checkout, and is undefined when it cannot', () => {
