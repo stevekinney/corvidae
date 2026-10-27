@@ -34,6 +34,12 @@ export interface RepositoryConfig {
   installCommand: string;
   gateCommand: string;
   affectedCheckCommand: string;
+  /**
+   * The quick typecheck and lint `deliver.ts` runs after merging the default branch in, for the
+   * workspaces both sides touched. `{filters}` is replaced by one `--filter=./<directory>` per
+   * workspace. Omit to skip the command (the removed-names scan still runs).
+   */
+  fastCheckCommand?: string;
   /** The batch validate; `gate-run.ts run` records its result as main's health. Omit to record none. */
   batchCommand?: string;
   /** Command prefix for a gate run, such as `caffeinate -ims`; omit on a host without it. */
@@ -53,6 +59,7 @@ const knownFields = [
   'installCommand',
   'gateCommand',
   'affectedCheckCommand',
+  'fastCheckCommand',
   'batchCommand',
   'gateWrapper',
   'lockPattern',
@@ -123,6 +130,11 @@ export function validateRepositoryConfig(
     affectedCheckCommand: text(source, record, 'affectedCheckCommand'),
     mergeMethod: mergeMethod as MergeMethod,
   };
+  if (record['fastCheckCommand'] !== undefined) {
+    config.fastCheckCommand = text(source, record, 'fastCheckCommand');
+    if (!config.fastCheckCommand.includes('{filters}'))
+      throw new UsageError(`${source}: "fastCheckCommand" must hold the {filters} placeholder.`);
+  }
   if (record['batchCommand'] !== undefined)
     config.batchCommand = text(source, record, 'batchCommand');
   if (record['gateWrapper'] !== undefined) config.gateWrapper = text(source, record, 'gateWrapper');
