@@ -86,7 +86,16 @@ function isSessionPrimitive(method: unknown): boolean {
 export function createJsonRpcWebSocketSession(
   options: JsonRpcWebSocketSessionOptions,
 ): JsonRpcWebSocketSession {
-  const { registry, engine, principal, emitter, feed, fleetFeed } = options;
+  const {
+    registry,
+    engine,
+    principal,
+    emitter,
+    feed,
+    fleetFeed,
+    acquireWorkflowSubscription,
+    acquireFleetSubscription,
+  } = options;
   const maxSubscriptions = options.maxSubscriptions ?? DEFAULT_MAX_SUBSCRIPTIONS;
   const maxFrameBytes = options.maxFrameBytes ?? DEFAULT_MAX_FRAME_BYTES;
   const transport = options.transport ?? 'jsonRpcWebSocket';
@@ -146,24 +155,27 @@ export function createJsonRpcWebSocketSession(
       return;
     }
 
-    await startSubscription(request, () =>
-      executeSubscription(
-        WORKFLOW_EVENTS_OPERATION_NAME,
-        {
-          workflowId: validation.workflowId,
-          selector: validation.selector,
-          ...(validation.fromCursor === undefined ? {} : { fromCursor: validation.fromCursor }),
-        },
-        {
-          principal,
-          host: { feed },
-          // Subscribe is a session primitive, but the transport identity still
-          // needs to reflect the adapter reusing this implementation so
-          // availability checks enforce stdio-only and websocket-only policies.
-          transport,
-          registry,
-        },
-      ),
+    await startSubscription(
+      request,
+      () =>
+        executeSubscription(
+          WORKFLOW_EVENTS_OPERATION_NAME,
+          {
+            workflowId: validation.workflowId,
+            selector: validation.selector,
+            ...(validation.fromCursor === undefined ? {} : { fromCursor: validation.fromCursor }),
+          },
+          {
+            principal,
+            host: { feed },
+            // Subscribe is a session primitive, but the transport identity still
+            // needs to reflect the adapter reusing this implementation so
+            // availability checks enforce stdio-only and websocket-only policies.
+            transport,
+            registry,
+          },
+        ),
+      acquireWorkflowSubscription,
     );
   }
 
@@ -171,19 +183,23 @@ export function createJsonRpcWebSocketSession(
     request: SessionRequest,
     params: Record<string, unknown> | undefined,
   ): Promise<void> {
-    await startSubscription(request, () =>
-      executeSubscription(FLEET_EVENTS_OPERATION_NAME, params ?? {}, {
-        principal,
-        host: { fleetFeed },
-        transport,
-        registry,
-      }),
+    await startSubscription(
+      request,
+      () =>
+        executeSubscription(FLEET_EVENTS_OPERATION_NAME, params ?? {}, {
+          principal,
+          host: { fleetFeed },
+          transport,
+          registry,
+        }),
+      acquireFleetSubscription,
     );
   }
 
   async function startSubscription(
     request: SessionRequest,
     execute: () => SubscriptionExecution,
+    acquire?: () => { release(): void },
   ): Promise<void> {
     if (subscriptions.size >= maxSubscriptions) {
       emitResponse(request, {
@@ -225,6 +241,7 @@ export function createJsonRpcWebSocketSession(
       return;
     }
     const { subscriptionId, cursor } = envelope;
+    const lease = acquire?.();
 
     emitResponse(request, {
       jsonrpc: JSON_RPC_VERSION,
@@ -239,7 +256,10 @@ export function createJsonRpcWebSocketSession(
       closeSubscription,
       shouldSuppressOutput,
       emit,
-      onComplete: () => subscriptions.delete(subscriptionId),
+      onComplete: () => {
+        lease?.release();
+        subscriptions.delete(subscriptionId);
+      },
     });
     subscriptions.set(subscriptionId, {
       id: subscriptionId,

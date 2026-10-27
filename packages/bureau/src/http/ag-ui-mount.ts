@@ -89,6 +89,7 @@ import {
 import type { AgUiErrorCode } from './ag-ui-vocabulary.ts';
 import { type AgUiA2uiDeclaration, a2uiDeclarationOf } from './ag-ui-surface-source.ts';
 import { ownerOfPrincipal, type OwnerAccessPredicate } from './owner-predicate.ts';
+import { createAgUiLiveFeedRegistry } from './ag-ui-live-feed.ts';
 
 /** `createBureauHandler`'s `agUi` option. Omitted, nothing is mounted. */
 export type AgUiOptions = {
@@ -136,7 +137,8 @@ const PROTOCOL_VERSION = '1.0';
 const SETTLED_TASK_STATES: ReadonlySet<TaskState> = new Set(['completed', 'failed', 'canceled']);
 
 /** What the mount reads from the Bureau. */
-export type AgUiBureau = AgUiStreamBureau &
+export type AgUiBureau = Pick<Bureau, 'addEventListener' | 'removeEventListener'> &
+  AgUiStreamBureau &
   Pick<Bureau, 'assets'> & {
     readonly tasks: Pick<
       BureauTasks,
@@ -205,12 +207,33 @@ export function createAgUiMount(
 ): OperationHandlerMount {
   const pathPrefix = (options.pathPrefix ?? DEFAULT_AG_UI_PATH_PREFIX).replace(/\/+$/, '');
   const runtime = options.runtime ?? createDefaultRuntimeServices();
+  const liveFeeds = createAgUiLiveFeedRegistry(
+    (listener) => bureau.frames(listener),
+    options.liveBufferSize ?? DEFAULT_AG_UI_LIVE_BUFFER_SIZE,
+    async (runId, sessionId) => {
+      if (sessionId === undefined) return undefined;
+      await bureau.internals.whenTaskRecorded(runId);
+      const session = await bureau.contexts.get(sessionId);
+      return session === undefined ? undefined : new Set(session.conversationHistory.ids);
+    },
+  );
+  const removed = (event: { runId: string }): void => liveFeeds.remove(event.runId);
+  bureau.addEventListener('run.removed', removed);
+  bureau.addEventListener(
+    'bureau.disposed',
+    () => {
+      liveFeeds.dispose();
+      bureau.removeEventListener('run.removed', removed);
+    },
+    { once: true },
+  );
   const environment: AgUiStreamEnvironment = {
     bureau,
     runtime,
     maxStreamDurationMs: options.maxStreamDurationMs ?? DEFAULT_AG_UI_MAX_STREAM_DURATION_MS,
     liveBufferSize: options.liveBufferSize ?? DEFAULT_AG_UI_LIVE_BUFFER_SIZE,
     keepAliveMs: options.keepAliveIntervalMs ?? DEFAULT_AG_UI_KEEP_ALIVE_INTERVAL_MS,
+    liveFeeds,
   };
   const now = (): number => runtime.clock.now();
   let resumeRun: ReturnType<typeof createResume> | undefined;
@@ -387,6 +410,7 @@ export function createAgUiMount(
     threadId: string,
     principal: Principal,
     a2ui: AgUiA2uiDeclaration | undefined,
+    resumeCursor: string | undefined,
   ): Promise<Response> {
     const missing = refuse('THREAD_NOT_FOUND', `Thread "${threadId}" was not found`);
     const authorized = await authorizeThread(threadId, principal, 'bureau.tasks:read');
@@ -401,6 +425,7 @@ export function createAgUiMount(
       nativeRunId: runId,
       owner: authorized.owner,
       replay: 'open-step',
+      ...(resumeCursor === undefined ? {} : { resumeCursor }),
       messagesSnapshot: true,
       ...(a2ui === undefined ? {} : { a2ui }),
     });
@@ -423,6 +448,7 @@ export function createAgUiMount(
     runId: string,
     principal: Principal,
     a2ui: AgUiA2uiDeclaration | undefined,
+    resumeCursor: string | undefined,
   ): Promise<Response> {
     const missing = (): Response => refuse('RUN_NOT_FOUND', `Run "${runId}" was not found`);
     const owner = await authorization.ownerOf({ kind: 'run', id: runId });
@@ -442,6 +468,7 @@ export function createAgUiMount(
           nativeRunId: runId,
           owner,
           replay: 'open-step',
+          ...(resumeCursor === undefined ? {} : { resumeCursor }),
           messagesSnapshot: true,
           ...(a2ui === undefined ? {} : { a2ui }),
         });
@@ -457,6 +484,7 @@ export function createAgUiMount(
         parentRunId: child.parentRunId,
         child,
         replay: 'open-step',
+        ...(resumeCursor === undefined ? {} : { resumeCursor }),
         messagesSnapshot: true,
       });
     }
@@ -466,6 +494,7 @@ export function createAgUiMount(
       nativeRunId: runId,
       owner,
       replay: 'open-step',
+      ...(resumeCursor === undefined ? {} : { resumeCursor }),
       messagesSnapshot: true,
       ...(a2ui === undefined ? {} : { a2ui }),
     });
@@ -783,7 +812,12 @@ export function createAgUiMount(
           406,
         );
       }
-      return attachByThread(second!, principal, a2uiDeclarationOf(request.headers));
+      return attachByThread(
+        second!,
+        principal,
+        a2uiDeclarationOf(request.headers),
+        request.headers.get('Last-Event-ID') ?? undefined,
+      );
     }
     if (segments.length === 2 && first === 'runs') {
       if (method !== 'GET') return json({ code: 'MethodNotAllowed', message: 'Use GET' }, 405);
@@ -793,7 +827,12 @@ export function createAgUiMount(
           406,
         );
       }
-      return attachByRun(second!, principal, a2uiDeclarationOf(request.headers));
+      return attachByRun(
+        second!,
+        principal,
+        a2uiDeclarationOf(request.headers),
+        request.headers.get('Last-Event-ID') ?? undefined,
+      );
     }
     if (segments.length === 3 && first === 'runs' && third === 'cancel') {
       if (method !== 'POST') return json({ code: 'MethodNotAllowed', message: 'Use POST' }, 405);

@@ -3,6 +3,7 @@ import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { noToolCalls } from '../conditions';
+import { drainMicrotasks } from '../testing/drain-microtasks.test-support.ts';
 import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import type { GenerateFunction } from '../types';
 import { createSessionStore } from './create-session-store';
@@ -68,7 +69,7 @@ describe('session.run() — durable engine and terminal authority', () => {
     // Resolve the generate so the run can finish.
     resolveGenerate();
     await run.result();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     // After completion, the ref must be updated to a terminal status in-place
     // (still only 1 RunRef — not appended).
@@ -107,7 +108,7 @@ describe('session.run() — durable engine and terminal authority', () => {
       expect(error).toBeInstanceOf(Error);
       expect(errorMessage(error)).toContain('failed to persist terminal run');
     }
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
     expect(updateCalls).toBe(2);
   });
 
@@ -211,7 +212,7 @@ describe('session.run() — durable engine and terminal authority', () => {
     // so the result promise will reject too — we swallow that).
     const run = h.run('durable please');
     await run.result().catch(() => {});
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     // The durable engine's start() must have been called with the derived id
     // in `${sessionId}:${sequence}` format.

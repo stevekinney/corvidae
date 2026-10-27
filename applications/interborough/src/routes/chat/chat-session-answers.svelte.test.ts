@@ -137,16 +137,21 @@ const refusal = (code: string, message: string) => () =>
 
 const BUSY = refusal('THREAD_BUSY', 'Thread has a run in progress');
 
-function mount(starts: Array<(body: Body) => Response>, attaches: Array<() => Response> = []) {
+function mount(
+  starts: Array<(body: Body) => Response>,
+  attaches: Array<(messages: Body['messages']) => Response> = [],
+) {
   const bodies: Body[] = [];
   const requests: string[] = [];
   const fetchStub: Fetcher = async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     requests.push(`${init?.method ?? 'GET'} ${url}`);
-    if (url.endsWith('/messages')) return Response.json({ threadId: THREAD, messages: [] });
+    if (url.endsWith('/messages'))
+      return Response.json({ threadId: THREAD, messages: bodies[0]?.messages ?? [] });
     if (url.includes('/threads/') && url.endsWith('/run')) {
       return (
-        attaches.shift()?.() ?? sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }])
+        attaches.shift()?.(bodies[0]?.messages ?? []) ??
+        sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }])
       );
     }
     if (url.includes('/runs/')) {
@@ -163,10 +168,10 @@ function mount(starts: Array<(body: Body) => Response>, attaches: Array<() => Re
 /** The attach a re-read makes of a thread whose run is still parked on `interrupts`. */
 const stillParkedOn =
   (...interrupts: unknown[]) =>
-  () =>
+  (messages: Body['messages'] = []) =>
     sse([
       { type: 'RUN_STARTED', threadId: THREAD, runId: 'attach', metadata: meta },
-      { type: 'MESSAGES_SNAPSHOT', messages: [] },
+      { type: 'MESSAGES_SNAPSHOT', messages },
       {
         type: 'RUN_FINISHED',
         threadId: THREAD,
@@ -313,7 +318,8 @@ describe('a message typed after a refusal that kept what the person had answered
 
     expect(await sent).toEqual(new Error(CHAT_COPY.answersNotApplied));
     expect(mounted.bodies).toHaveLength(3);
-    expect(userRows(session)).toEqual(['Ship it', 'staging']);
+    expect(userRows(session)).toEqual(['Ship it']);
+    expect(mounted.bodies[2]?.resume).toEqual(mounted.bodies[1]?.resume);
   });
 });
 

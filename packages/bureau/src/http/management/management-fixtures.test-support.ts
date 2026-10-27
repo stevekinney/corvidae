@@ -48,6 +48,11 @@ const credentials: Record<string, { subject: string; scopes: readonly Authorizat
   'goals-writer-key': { subject: 'goals-writer', scopes: ['bureau.goals:write'] },
   'audit-reader-key': { subject: 'audit-reader', scopes: ['bureau.audit:read'] },
   'decisions-writer-key': { subject: 'decisions-writer', scopes: ['bureau.decisions:write'] },
+  'settings-reader-key': { subject: 'settings-reader', scopes: ['bureau.settings:read'] },
+  'settings-writer-key': {
+    subject: 'settings-writer',
+    scopes: ['bureau.settings:read', 'bureau.settings:write'],
+  },
   'alice-assets-key': {
     subject: 'alice',
     scopes: ['bureau.assets:read', 'bureau.assets:write'],
@@ -176,6 +181,50 @@ export async function readFrames(
   }
   return frames;
 }
+
+/**
+ * Every block of a Server-Sent-Events response, in wire order, heartbeat and replay-complete
+ * `ping` blocks included (unlike `readFrames`, which drops them). Reads until `stop` says it has
+ * enough or the stream ends; the reader is cancelled either way.
+ */
+export async function readWireBlocks(
+  response: Response,
+  stop: (blocks: readonly WireBlock[]) => boolean = () => false,
+): Promise<WireBlock[]> {
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  const blocks: WireBlock[] = [];
+  let buffer = '';
+  try {
+    while (!stop(blocks)) {
+      const next = await reader.read();
+      if (next.done) break;
+      buffer += decoder.decode(next.value, { stream: true });
+      for (
+        let boundary = buffer.indexOf('\n\n');
+        boundary !== -1;
+        boundary = buffer.indexOf('\n\n')
+      ) {
+        const block = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        const event = block.match(/^event: (.*)$/m)?.[1];
+        const data = block.match(/^data: (.*)$/m)?.[1];
+        if (event !== undefined && data !== undefined) {
+          blocks.push({ event, data: JSON.parse(data) as WireBlock['data'] });
+        }
+      }
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+  return blocks;
+}
+
+/** One block of a Server-Sent-Events response: its event name and parsed data. */
+export type WireBlock = {
+  event: string;
+  data: Record<string, unknown> & { replayComplete?: unknown };
+};
 
 /** A generate function that parks the run until its signal aborts, then fails the step. */
 export const parkingUntilAborted: GenerateFunction = ({ signal }) =>

@@ -21,13 +21,21 @@ export interface LateDecisions {
   readonly decisions: BureauDecisions;
   /**
    * What a run owned by `owner` needs to be offered the `decide` tool, or `undefined` when it is
-   * not: `decide: false`, nothing could answer, or `durable` is false.
+   * not: its grant leaves `decide` out (`offered` is false), nothing could answer, or `durable` is
+   * false.
    */
-  toolWiringFor(durable: boolean, owner: string | undefined): DecideToolWiring | undefined;
+  toolWiringFor(
+    durable: boolean,
+    owner: string | undefined,
+    offered: boolean,
+  ): DecideToolWiring | undefined;
 }
 
-/** Builds a {@link LateDecisions}. `decide` is {@link BureauOptions.decide}. */
-export function createLateDecisions(decide: false | undefined): LateDecisions {
+/**
+ * Builds a {@link LateDecisions}. Whether a task is offered `decide` is its tool grant
+ * (COR-1710), which the caller passes to {@link LateDecisions.toolWiringFor}.
+ */
+export function createLateDecisions(): LateDecisions {
   let composition: DecisionsComposition | undefined;
   const composed = (): DecisionsComposition => {
     if (composition === undefined) throw new Error('Decisions are not composed yet.');
@@ -46,9 +54,9 @@ export function createLateDecisions(decide: false | undefined): LateDecisions {
     get decisions() {
       return composed().decisions;
     },
-    toolWiringFor: (durable, owner) =>
-      durable && decide !== false && composition?.configured === true
-        ? { decisions: source, maximumPerTask: composition.maximumPerTask, principal: owner }
+    toolWiringFor: (durable, owner, offered) =>
+      durable && offered && composition?.configured === true
+        ? { decisions: source, maximumPerTask: composition.maximumPerTask(), principal: owner }
         : undefined,
   };
 }

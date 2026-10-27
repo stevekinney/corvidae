@@ -168,6 +168,7 @@ describe('timeout race', () => {
       slowCalls++;
       // Yield one event-loop turn via MessageChannel so fast is unambiguously
       // first to settle without depending on real wall-clock time.
+      // load-proof: scripted slow branch: it waits one task so the fast branch, which resolves within microtasks, settles first; microtasks always run before the next task whatever the load
       await yieldToPortableEventLoop();
       return 'slow-result';
     };

@@ -15,6 +15,8 @@
 //   bun scripts/chef/linear.ts blockers <ID> [--json]
 //   bun scripts/chef/linear.ts block <ID> --by <ID> [--json]
 //
+// `read` prints the summary line, the last three comments' first lines, then the full description
+// (`--json` adds it as `description`).
 // `create` refuses (exit 1) when an issue with the same title already exists in the project, or in
 // the team when no project is named. `block <ID> --by <OTHER>` makes OTHER block ID.
 //
@@ -202,6 +204,7 @@ export interface Outcome {
 export async function readIssue(client: LinearClient, identifier: string): Promise<Outcome> {
   const issue = await fetchIssue(client, identifier);
   const comments = await fetchComments(client, identifier);
+  const description = issue.description ?? '';
   const last = comments.slice(-3).map((comment) => ({
     id: comment.id,
     createdAt: comment.createdAt,
@@ -212,6 +215,8 @@ export async function readIssue(client: LinearClient, identifier: string): Promi
     summary: [
       `${issue.identifier}: state=${issue.state.name} updatedAt=${issue.updatedAt} comments=${comments.length}`,
       ...last.map((comment) => `  ${comment.createdAt} ${comment.firstLine}`),
+      // The whole body follows the summary, so a worker reads appended revisions here too.
+      ...(description === '' ? [] : ['', description]),
     ].join('\n'),
     data: {
       identifier: issue.identifier,
@@ -220,6 +225,7 @@ export async function readIssue(client: LinearClient, identifier: string): Promi
       updatedAt: issue.updatedAt,
       comments: comments.length,
       lastComments: last,
+      description,
     },
   };
 }

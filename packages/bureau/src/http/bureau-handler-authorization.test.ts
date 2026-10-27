@@ -178,6 +178,10 @@ function definitionParameters(operation: CatalogOperation) {
   if (operation.name === 'bureau.agents.models') return { agentName: 'x' };
   // COR-1709: a complete request, so the call reaches its own check instead of failing validation.
   if (operation.name === 'bureau.decisions.decide') return { kind: 'boolean', question: 'Is it?' };
+  // COR-1710: a complete patch, so the call reaches its own check instead of failing validation.
+  if (operation.name === 'bureau.settings.update') {
+    return { patch: { 'tools.wakeup': false }, expectedRevision: 0 };
+  }
   if (operation.name.startsWith('bureau.assets.')) return ASSET_PARAMETERS;
   if (operation.name.startsWith('bureau.schedules.')) return SCHEDULE_PARAMETERS;
   if (operation.name.startsWith('bureau.goals.')) return GOAL_PARAMETERS;
@@ -950,9 +954,13 @@ describe('transcripts stay inside the Bureau', () => {
         },
       });
       const bodies: string[] = [];
+      // The settings stream is live and replays nothing, so a resume from the first revision is what
+      // gives it an event to scan.
+      await bureau.settings.update({ 'decisions.maximumPerTask': 3 }, { expectedRevision: 0 });
 
       for (const operation of BUREAU_HANDLER_OPERATIONS) {
         const params = paramsFor(operation, {
+          ...(operation.name === 'bureau.settings.events' ? { fromCursor: '0' } : {}),
           id: operation.name.startsWith('bureau.agents.definitions.') ? 'support' : alice.reviewId,
           runId: alice.run.id,
           taskId: alice.run.id,
@@ -997,7 +1005,9 @@ describe('transcripts stay inside the Bureau', () => {
                 response,
                 operation.name === 'bureau.events'
                   ? 'event: review.approved'
-                  : 'event: run.completed',
+                  : operation.name === 'bureau.settings.events'
+                    ? 'event: settings.changed'
+                    : 'event: run.completed',
               ),
         );
       }

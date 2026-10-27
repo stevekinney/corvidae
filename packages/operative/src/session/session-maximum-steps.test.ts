@@ -3,6 +3,7 @@ import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { MaximumStepsExceededError } from '../errors';
+import { drainMicrotasks } from '../testing/drain-microtasks.test-support.ts';
 import { createSessionStore } from './create-session-store';
 import { createSessionHandle } from './session-handle';
 import { finishReasonToStatus } from './session-handle-support';
@@ -52,7 +53,7 @@ describe('a session run that hits its step limit (COR-1627)', () => {
     const { store, handle } = stepLimitFixture();
 
     const result = await handle.run('go').result();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     expect(result.finishReason).toBe('maximum-steps');
     const session = await store.load('step-limit-session');

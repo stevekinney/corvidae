@@ -824,6 +824,27 @@ describe('a decision made somewhere else', () => {
 });
 
 describe('what went wrong', () => {
+  test('offers a Cinder reconnect action that starts a fresh attach after failure', async () => {
+    let attempts = 0;
+    restore = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url) => {
+      if (url.includes('/threads/')) {
+        attempts += 1;
+        return new Response('', { status: 403 });
+      }
+      return undefined;
+    }).restore;
+    landAt('/chat/session-1');
+    const { findByRole, findByText } = mount({
+      sessionId: 'session-1',
+      title: 'Reconnect',
+      agentName: 'assistant',
+    });
+    expect(await findByText('The AG-UI request failed with HTTP 403.')).not.toBeNull();
+    const before = attempts;
+    await fireEvent.click(await findByRole('button', { name: 'Reconnect' }));
+    await waitFor(() => expect(attempts).toBe(before + 1));
+  });
+
   test('is shown when the session could not be read, and again when the same thing fails after a dismissal', async () => {
     restore = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url) => {
       if (url.endsWith('/messages') || url.includes('/threads/')) {

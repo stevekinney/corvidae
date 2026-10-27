@@ -5,6 +5,7 @@ import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { EVENTS_READ_EVENT_TYPES } from '../runtime/client-visible-events.ts';
+import type { ConnectionLease } from '../runtime/context.ts';
 import {
   decodeCursor,
   type Cursor,
@@ -31,6 +32,7 @@ type ReplayAwareFleetEventsOutput = ReplayAwareClosableIterable<FleetEventEnvelo
 
 type FleetEventStreamOperationContext = {
   readonly fleetEventFeed?: Pick<FleetEventFeed, 'subscribe'>;
+  readonly acquireFleetEventSubscriber?: () => ConnectionLease;
 };
 
 const INITIAL_CURSOR: Cursor = '-1';
@@ -125,6 +127,7 @@ function createFleetEventsIterable(
   }
 
   const controller = new AbortController();
+  const lease = context.acquireFleetEventSubscriber?.();
   const fromCursor = input.lastEventId ?? input.fromCursor ?? INITIAL_CURSOR;
   return createReplayAwareClosableIterable(
     (onReplayComplete) => {
@@ -142,7 +145,12 @@ function createFleetEventsIterable(
       };
       return feed.subscribe(subscribeOptions);
     },
-    { close: () => controller.abort() },
+    {
+      close: () => {
+        controller.abort();
+        lease?.release();
+      },
+    },
   );
 }
 

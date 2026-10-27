@@ -519,6 +519,64 @@ export const SCHEDULE_COPY = {
   },
 } as const;
 
+/** The words the settings page (`/settings`) uses outside its view states. */
+export const SETTINGS_COPY = {
+  intro:
+    'These apply to the whole deployment. A setting that applies live takes effect at its next use, and one that needs a restart is kept and applies when the host starts again.',
+  /** The accessible name of the form that holds every setting. */
+  formLabel: 'Settings',
+  saveAction: 'Save changes',
+  discardAction: 'Discard changes',
+  reloadAction: 'Reload settings',
+  /** The words under a switch or a field whose key has no value, so the code default applies. */
+  unset: 'Not set. The code default applies.',
+  milliseconds: 'milliseconds',
+  /** The label of the select that chooses between a setting's literals and its numbers. */
+  modeLabel: 'Kept for',
+  /** The label of the JSON editor under a switch, after the key's name. */
+  jsonLabel: 'options as JSON',
+  apply: { live: 'Applies live', restart: 'Needs a restart' },
+  pendingRestart: 'Restart pending',
+  locked: 'Locked',
+  lockedNote: 'The deployment sets this one, and it cannot be changed here.',
+  notPersisted:
+    'This Bureau does not keep its settings. They go back to the code defaults when the host stops.',
+  saved: {
+    title: 'Settings saved',
+    description: 'The changes apply live where a setting allows it.',
+    pendingRestart: (keys: readonly string[]): string =>
+      `These apply when the host starts again: ${keys.join(', ')}.`,
+  },
+  /** A save the Bureau refused because the settings changed since the page read them. */
+  stale: {
+    title: 'The settings changed since you loaded them',
+    description:
+      'Someone or something changed them after this page read them, so nothing was saved. Reload to see what they are now. Reloading discards your changes.',
+  },
+  /** The page found the settings changed while it held edits. */
+  changedElsewhere: {
+    title: 'The settings changed while you were editing',
+    description:
+      'Reload to see what they are now. Reloading discards your changes, and saving them first would overwrite the change.',
+  },
+  /** The settings could not be read again while the page already holds them. */
+  refreshFailed: {
+    title: 'The settings could not be refreshed',
+    description: 'What you see may be out of date. Your edits are kept.',
+  },
+  saveFailed: 'The settings were not saved',
+  forbidden: 'You may read the settings but not change them.',
+  hostPaths: {
+    title: 'Where the host keeps its files',
+    description: 'These are set by the host and cannot be changed here.',
+    agents: 'Agent files',
+    workflows: 'Workflow files',
+    configuration: 'Configuration file',
+    providers: 'Provider key files',
+    unavailable: 'The host did not say where it keeps its files.',
+  },
+} as const;
+
 /** The words the goals (`/goals`) use outside its view states. */
 export const GOALS_COPY = {
   newAction: 'New goal',
@@ -1509,6 +1567,18 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       description: 'The Bureau did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: 'The audit trail is locked' },
+  },
+  settings: {
+    label: 'Settings',
+    loading: {
+      title: 'Loading settings',
+      description: 'Reading the settings the Bureau is running with.',
+    },
+    error: {
+      title: 'Settings are unavailable',
+      description: 'The Bureau did not answer. Check that the host is running, then try again.',
+    },
+    forbidden: { title: 'Settings are locked' },
   },
   goals: {
     label: 'Goals',

@@ -1,7 +1,7 @@
 import { describe, expect, it, mock } from 'bun:test';
 
 import { MemoryStorage } from '../../storage/memory.ts';
-import { yieldToEventLoop } from '../../testing/fake-timers.test-support.ts';
+import { settleInlineLaunches } from '../../testing/inline-launch-settle.test-support.ts';
 import { Engine } from '../engine.ts';
 import { workflow, type WorkflowContext } from '../types.ts';
 import { CURRENT_CHECKPOINT_SCHEMA_VERSION } from '../types/checkpoint.ts';
@@ -55,8 +55,7 @@ describe('inline launch queue', () => {
     // COR-1425: the timeout flush is scheduled, so the engine is held until it runs.
     expect(isEngineHeldForScheduledInlineFlushForTesting(internals)).toBe(true);
 
-    await yieldToEventLoop();
-    await yieldToEventLoop();
+    await settleInlineLaunches();
 
     expect(swallowPromiseRejection.mock.calls.length).toBeGreaterThanOrEqual(1);
     expect(onStarted).toHaveBeenCalledTimes(1);

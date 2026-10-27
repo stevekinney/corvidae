@@ -11,9 +11,24 @@
 // A validate is due when `origin/<default>` has moved since the last recorded batch head AND either
 // at least `--min-merges` (default 5) first-parent commits (merges) have landed since that head or
 // at least `--max-age-hours` (default 2) have passed since it ran. With no usable record (none, or
-// its head is not on `main`'s first-parent history) one is due. It runs only while the one-minute
-// load average is under `--max-load` (default 8), and never beside another run it started: a lock
-// file in `<main checkout>/tmp/chef/` names the running process.
+// its head is not on `main`'s first-parent history) one is due. It is never due while the health
+// file already holds a green record at the current `origin/<default>` head, even if a later run at
+// that head failed: `main` is as healthy as it was measured to be at that commit.
+//
+// The load average is not consulted unless `--max-load <n>` is given, in which case a due validate
+// waits while the one-minute load average is at or above `n`. It used to default to 8; `main` now
+// enforces deterministic tests (`scripts/check-load-sensitive-deadlines.ts`), and on a host shared
+// by several sessions that threshold never held, so the batch validate never ran.
+//
+// One run at a time on the host: a lock file in the Git common directory
+// (`<common dir>/corvidae-batch-validate.lock`, JSON with the holder's `pid`, its process start
+// time and the `head` being validated) is created exclusively before any work. A second coordinator
+// that finds a live holder exits 0 with "already running by pid N" and touches nothing. A lock whose
+// pid is dead, or is now another process (its start time differs), is reclaimed. Reclaiming a stale
+// lock is a remove-then-create, so two coordinators that both find the same stale lock in the same
+// instant can still race; the loser's exclusive create fails and it exits as a second coordinator.
+// The decision is made again after the lock is held, so a run that finished while this one waited
+// on nothing but the lock does not repeat.
 //
 // It fetches `origin/<default>`, makes or reuses the dedicated worktree `<claude worktree
 // root>/batch-validate` at that commit (detached), installs with the configuration's
@@ -24,12 +39,21 @@
 // This script adds no scheduler. A coordinator schedules it with a Claude Code scheduled task or
 // `/loop` (see `.agents/skills/chef/references/program-runs.md` "Batch validate on a timer").
 //
-// Exit codes: 0 skipped (not due, load too high, or already running) or the validate passed,
+// Exit codes: 0 skipped (not due, load over an explicit `--max-load`, or already running) or the validate passed,
 // 1 the validate failed or could not start, 2 invalid CLI usage.
 
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  writeSync,
+} from 'node:fs';
 import { loadavg } from 'node:os';
 import { dirname, join } from 'node:path';
+import { processStartTime } from '../run-exclusively.ts';
 import { fetchWithRetry } from './fetch-retry.ts';
 import { runGate } from './gate-run.ts';
 import {
@@ -53,7 +77,6 @@ export { UsageError };
 
 export const defaultMinimumMerges = 5;
 export const defaultMaximumAgeHours = 2;
-export const defaultMaximumLoad = 8;
 
 export interface DueInput {
   /** The head of `origin/<default>`. */
@@ -66,7 +89,10 @@ export interface DueInput {
   minimumMerges: number;
   maximumAgeHours: number;
   load: number;
-  maximumLoad: number;
+  /** Opt-in: the load average at or above which a due validate waits; `undefined` ignores the load. */
+  maximumLoad?: number | undefined;
+  /** Whether the health file holds a green record at `tip`, whatever ran there afterwards. */
+  greenAtTip?: boolean | undefined;
 }
 
 export interface Due {
@@ -76,6 +102,11 @@ export interface Due {
 
 /** Whether a batch validate should start now. Pure. */
 export function decideDue(input: DueInput): Due {
+  if (input.greenAtTip === true)
+    return {
+      due: false,
+      reason: 'a green batch validate is already recorded at the current head of main',
+    };
   if (input.last !== undefined && input.last.head === input.tip)
     return { due: false, reason: 'main has not moved since the last batch validate' };
   let reason: string;
@@ -94,7 +125,7 @@ export function decideDue(input: DueInput): Due {
         reason: `${input.mergesSince} merges and ${ageHours.toFixed(1)} hours since the last batch validate`,
       };
   }
-  if (input.load >= input.maximumLoad)
+  if (input.maximumLoad !== undefined && input.load >= input.maximumLoad)
     return {
       due: false,
       reason: `${reason}, but the load is ${input.load.toFixed(1)} (limit ${input.maximumLoad})`,
@@ -106,7 +137,8 @@ export interface BatchValidateOptions {
   configPath: string;
   minimumMerges: number;
   maximumAgeHours: number;
-  maximumLoad: number;
+  /** Opt-in load limit (`--max-load`); `undefined` ignores the load average. */
+  maximumLoad: number | undefined;
   worktree: string | undefined;
   dryRun: boolean;
 }
@@ -126,6 +158,8 @@ export interface BatchValidateDependencies {
   load: () => number;
   /** Whether a process is alive; defaults to `process.kill(pid, 0)`. */
   alive: (pid: number) => boolean;
+  /** A process's start time as `ps` prints it, or `undefined` when it is gone; guards pid reuse. */
+  processStart: (pid: number) => string | undefined;
   gate: typeof runGate;
   pid: number;
   /** Blocks between fetch retries; defaults to `Bun.sleepSync`. */
@@ -143,6 +177,65 @@ function isAlive(pid: number): boolean {
 
 function firstLine(text: string): string {
   return (text.split('\n').find((line) => line.trim() !== '') ?? '').trim().slice(0, 200);
+}
+
+/** What the lock file records about the run that holds it. */
+export interface BatchLockRecord {
+  pid: number;
+  /** `ps -o lstart` for `pid` when the lock was taken, so a recycled pid is not mistaken for it. */
+  startedAt?: string;
+  /** The `origin/<default>` commit being validated. */
+  head: string;
+  acquiredAt: string;
+}
+
+function readLock(path: string): BatchLockRecord | undefined {
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf8')) as Partial<BatchLockRecord>;
+    return typeof parsed.pid === 'number' && Number.isInteger(parsed.pid) && parsed.pid > 0
+      ? (parsed as BatchLockRecord)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Take the host-wide batch-validate lock at `path`, or say who holds it. The file is created with
+ * `wx`, so only one creator wins. A lock whose holder is dead, or whose pid now has another start
+ * time, is removed and taken again (at most three tries); an unreadable file counts as stale.
+ */
+export function acquireBatchLock(
+  path: string,
+  record: BatchLockRecord,
+  alive: (pid: number) => boolean,
+  processStart: (pid: number) => string | undefined,
+): { acquired: true } | { acquired: false; holder: BatchLockRecord } {
+  mkdirSync(dirname(path), { recursive: true });
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const descriptor = openSync(path, 'wx');
+      try {
+        writeSync(descriptor, `${JSON.stringify(record)}\n`);
+      } finally {
+        closeSync(descriptor);
+      }
+      return { acquired: true };
+    } catch (error) {
+      if ((error as { code?: string }).code !== 'EEXIST') throw error;
+    }
+    const holder = readLock(path);
+    if (
+      holder !== undefined &&
+      alive(holder.pid) &&
+      (holder.startedAt === undefined || processStart(holder.pid) === holder.startedAt)
+    )
+      return { acquired: false, holder };
+    rmSync(path, { force: true });
+  }
+  // Three creators in a row lost the race to someone else's fresh lock; report that holder.
+  const holder = readLock(path);
+  return { acquired: false, holder: holder ?? { pid: 0, head: '', acquiredAt: '' } };
 }
 
 /** Decide, and when due, run the batch validate. Never throws for a failed step; the result names it. */
@@ -174,36 +267,59 @@ export async function batchValidate(
   const history = firstParentHistory(runner, mainCheckout, config.defaultBranch);
   if (history === undefined) return fail(`could not list origin/${config.defaultBranch}'s history`);
   const healthFile = healthFilePath(mainCheckout);
-  const last = lastRunOnMain(readHealth(healthFile).runs, history);
-  const mergesSince = last === undefined ? undefined : history.indexOf(last.head);
-  const decision = decideDue({
-    tip,
-    last,
-    mergesSince: mergesSince === undefined || mergesSince < 0 ? undefined : mergesSince,
-    now: now(),
-    minimumMerges: options.minimumMerges,
-    maximumAgeHours: options.maximumAgeHours,
-    load: (partial.load ?? (() => loadavg()[0] ?? 0))(),
-    maximumLoad: options.maximumLoad,
-  });
+  const load = partial.load ?? (() => loadavg()[0] ?? 0);
+  /** Read the health file afresh, so a run that finished meanwhile is seen. */
+  const decide = (): Due => {
+    const runs = readHealth(healthFile).runs;
+    const last = lastRunOnMain(runs, history);
+    const mergesSince = last === undefined ? undefined : history.indexOf(last.head);
+    return decideDue({
+      tip,
+      last,
+      mergesSince: mergesSince === undefined || mergesSince < 0 ? undefined : mergesSince,
+      now: now(),
+      minimumMerges: options.minimumMerges,
+      maximumAgeHours: options.maximumAgeHours,
+      load: options.maximumLoad === undefined ? 0 : load(),
+      maximumLoad: options.maximumLoad,
+      greenAtTip: runs.some((entry) => entry.head === tip && entry.exitCode === 0),
+    });
+  };
+  const decision = decide();
   if (!decision.due) return { ran: false, code: 0, reason: `not run: ${decision.reason}` };
   if (options.dryRun)
     return { ran: false, code: 0, reason: `would run: ${decision.reason}`, head: tip };
 
-  const lockFile = join(mainCheckout, 'tmp', 'chef', 'batch-validate.lock');
-  const alive = partial.alive ?? isAlive;
-  if (existsSync(lockFile)) {
-    const holder = Number(readFileSync(lockFile, 'utf8').trim());
-    if (Number.isInteger(holder) && holder > 0 && alive(holder))
-      return {
-        ran: false,
-        code: 0,
-        reason: `not run: a batch validate is already running (pid ${holder})`,
-      };
-  }
-  mkdirSync(dirname(lockFile), { recursive: true });
-  writeFileSync(lockFile, `${partial.pid ?? process.pid}\n`);
+  const common = runner(['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'], {
+    cwd: mainCheckout,
+  });
+  if (common.code !== 0 || common.stdout.trim() === '')
+    return fail(`could not find the Git common directory: ${firstLine(common.stderr)}`);
+  const lockFile = join(common.stdout.trim(), 'corvidae-batch-validate.lock');
+  const pid = partial.pid ?? process.pid;
+  const processStart = partial.processStart ?? processStartTime;
+  const startedAt = processStart(pid);
+  const lock = acquireBatchLock(
+    lockFile,
+    {
+      pid,
+      ...(startedAt === undefined ? {} : { startedAt }),
+      head: tip,
+      acquiredAt: now().toISOString(),
+    },
+    partial.alive ?? isAlive,
+    processStart,
+  );
+  if (!lock.acquired)
+    return {
+      ran: false,
+      code: 0,
+      reason: `not run: a batch validate is already running by pid ${lock.holder.pid}${lock.holder.head === '' ? '' : ` at ${lock.holder.head.slice(0, 12)}`}`,
+    };
   try {
+    // Another coordinator may have finished a run between the first decision and the lock.
+    const recheck = decide();
+    if (!recheck.due) return { ran: false, code: 0, reason: `not run: ${recheck.reason}` };
     const worktree = options.worktree ?? join(config.worktreeRoots.claude, 'batch-validate');
     const git = (...args: string[]) => runner(['git', ...args], { cwd: worktree });
     if (!existsSync(worktree)) {
@@ -265,7 +381,10 @@ export async function run(
       configPath: parsed.values['config'] ?? DEFAULT_CONFIGURATION_PATH,
       minimumMerges: numberOption(parsed.values, 'min-merges', defaultMinimumMerges),
       maximumAgeHours: numberOption(parsed.values, 'max-age-hours', defaultMaximumAgeHours),
-      maximumLoad: numberOption(parsed.values, 'max-load', defaultMaximumLoad),
+      maximumLoad:
+        parsed.values['max-load'] === undefined
+          ? undefined
+          : numberOption(parsed.values, 'max-load', 0),
       worktree: parsed.values['worktree'],
       dryRun: parsed.flags.has('dry-run'),
     },

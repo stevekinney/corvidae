@@ -90,6 +90,7 @@ import type { BureauEventMap } from './events';
 import type { BureauGoals } from './goal-types';
 import type { BureauModelPolicyOptions } from './model-policy';
 import type { BureauDecisions, DecisionsOptions } from './decisions/types';
+import type { BureauSettings, SettingsOptions } from './settings/types';
 import type { Models, ModelsOptions } from './models/create-models';
 import type { OnlineEvalSampler, OnlineEvalSamplerOptions } from './online-evals';
 import type { ForkSessionRequest, ForkSessionResult } from './session-fork';
@@ -619,6 +620,12 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   decisions?: DecisionsOptions;
   /**
+   * COR-1710 — the runtime settings: the code options above are each setting's default, a value
+   * stored through {@link Bureau.settings} overrides one, and `locked` names the keys the store may
+   * not override. See {@link SettingsOptions}.
+   */
+  settings?: SettingsOptions;
+  /**
    * Opt into OpenTelemetry spans + metrics for durable runs. `true` enables the
    * default interceptor; pass an {@link ObservabilityOptions} (minus `eventTarget`,
    * which the engine supplies) to customize. Has effect only when a durable engine
@@ -816,6 +823,7 @@ export type DurableGuardrailsConfiguration = Pick<
   | 'checkpointSizeWarningThreshold'
   | 'checkpointHistory'
   | 'payloadSize'
+  | 'maxNestingDepth'
   | 'onCheckpointSizeWarning'
 >;
 
@@ -2081,6 +2089,11 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * {@link BureauDecisions}.
    */
   readonly decisions: BureauDecisions;
+  /**
+   * COR-1710 — the deployment's runtime settings: `get`, `schema`, `update`, and `subscribe` over
+   * the revisioned `settings` record. See {@link BureauSettings}.
+   */
+  readonly settings: BureauSettings;
 
   /**
    * The typed agent catalog (AB-15, AB-22) — the immutable, read-only view

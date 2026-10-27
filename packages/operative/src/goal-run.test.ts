@@ -37,6 +37,7 @@ import {
 } from './goal-run';
 import { createSessionStore } from './session/create-session-store';
 import { createSessionHandle } from './session/session-handle';
+import { drainMicrotasks } from './testing/drain-microtasks.test-support.ts';
 import type { GenerateContext, GenerateFunction, GenerateResponse, RunOptions } from './types';
 
 afterEach(async () => {
@@ -925,7 +926,7 @@ describe('malformed validator output', () => {
     expect(validator.signals[0]?.aborted).toBe(true);
     expect(fixture.runtime.pendingTimers()).toEqual([]);
     never.resolve(PASS);
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
     expect(run.status()).toBe('failed');
     expect(run.attempts()[0]?.validation?.outcome.kind).toBe('error');
   });
@@ -1262,7 +1263,7 @@ describe('state machine', () => {
       run.abortAttempt({}, 'late');
       run[Symbol.dispose]();
       await fixture.runtime.advance(10_000);
-      await yieldToPortableEventLoop();
+      await drainMicrotasks();
 
       expect(run.status()).toBe(status);
       expect(run.terminalReason()).toBe(reason);
@@ -1455,7 +1456,7 @@ describe('abort', () => {
     expect(run.attempts()[0]?.status).toBe('aborted');
 
     release.resolve(PASS);
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
     expect(run.status()).toBe('canceled');
     expect(run.attempts()[0]?.validation).toBeUndefined();
     const seen = types(await events);
@@ -1487,7 +1488,7 @@ describe('abort', () => {
     run.abort('stop');
     expect(await statusOf(run)).toBe('canceled');
     gate.resolve();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
     expect(runSpy).toHaveBeenCalledTimes(1);
     const seen = types(await events);
     expect(seen.filter((type) => type === 'goal.attempt.started')).toHaveLength(1);
@@ -1578,7 +1579,7 @@ describe('abort', () => {
     expect(attemptId).toBeDefined();
 
     run.abortAttempt({ attemptId: 'not-the-current-attempt' }, 'wrong target');
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
     expect(firstSignal?.aborted).toBe(false);
     expect(run.status()).toBe('running');
 
@@ -1694,7 +1695,7 @@ describe('abort', () => {
     const run = startGoal(goalOptions(fixture, validator));
     await reached.promise;
     run.abortAttempt();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
     // The aborted run has not settled yet, so the goal is still on attempt 0.
     expect(run.attempts()).toHaveLength(1);
     expect(validator.calls).toHaveLength(0);
@@ -1810,7 +1811,7 @@ describe('abort', () => {
     await fixture.runtime.advance(1000);
     const result = await run.result();
     gate.resolve();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
     expect(result).toMatchObject({
       status: 'exhausted',
       terminalReason: 'aggregate-budget-exceeded',
@@ -1985,7 +1986,7 @@ describe('abort', () => {
     const attemptsAfter = run.attempts();
     // A non-retryable failure landing late would end the goal if it were applied.
     late.resolve(failing(false));
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
     expect(run.status()).toBe('succeeded');
     expect(run.usage()).toEqual(usageAfter);
     expect(run.attempts()).toEqual(attemptsAfter);
@@ -2140,7 +2141,7 @@ describe('event feed return()', () => {
       if (step.done || step.value.type === 'goal.attempt.started') break;
     }
     const pending = iterator.next();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
     await iterator.return?.();
     expect(await pending).toEqual({ value: undefined, done: true });
     gate.resolve(PASS);
@@ -2228,7 +2229,7 @@ describe('closed()', () => {
       settled = true;
       return acknowledgement;
     });
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
     expect(settled).toBe(false);
     run.abort();
     const acknowledgement = await closing;
@@ -2244,7 +2245,7 @@ describe('closed()', () => {
     const closing = run.closed().then(() => {
       settled = true;
     });
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
     expect(settled).toBe(false);
     run.abort();
     await closing;
@@ -2322,7 +2323,7 @@ describe('closed()', () => {
       }),
     );
     await fixture.runtime.advance(60_000);
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
     expect(runSpy).toHaveBeenCalledTimes(1);
     expect(run.status()).toBe('exhausted');
   });

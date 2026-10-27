@@ -18,7 +18,8 @@ import { describe, expect, it } from 'bun:test';
 
 import { KEYS, type BatchOperation } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { flushPortableMicrotasks, yieldToPortableEventLoop } from '../../testing/event-loop.ts';
+import { flushPortableMicrotasks } from '../../testing/event-loop.ts';
+import { drainMicrotasks } from '../../testing/fake-timers.test-support.ts';
 import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { deserializeCheckpoint, serializeCheckpoint } from '../checkpoint.ts';
 import { decode, encode } from '../codec/api.ts';
@@ -249,10 +250,9 @@ function attemptReached(times: number): {
   };
 }
 
-/** The exit's remaining steps are storage reads and in-memory work: two turns land them. */
+/** The exit's remaining steps are storage reads and in-memory work: a microtask drain lands them. */
 async function letTheExitDecide(): Promise<void> {
-  await yieldToPortableEventLoop();
-  await yieldToPortableEventLoop();
+  await drainMicrotasks();
 }
 
 /**
@@ -627,8 +627,7 @@ async function expectReplacementUntouched(
   const internals = getInternals(run.engine);
   const batchOfA = checkpointBatchOf(run.id, run.token);
   await run.refusing.whenAttempts(ATTEMPTS, batchOfA);
-  await yieldToPortableEventLoop();
-  await yieldToPortableEventLoop();
+  await drainMicrotasks();
 
   expect(run.refusing.attemptsMatching(batchOfA as never)).toHaveLength(ATTEMPTS);
   expect(run.refusing.attemptsMatching(failedPut(run.id))).toHaveLength(0);

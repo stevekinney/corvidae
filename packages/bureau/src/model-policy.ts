@@ -103,7 +103,11 @@ export interface PlanSelectionRequest {
 export interface CreateModelPolicyPlannerOptions<D extends AgentDefinitions> {
   readonly agents: D;
   readonly models: Pick<Models, 'catalog'>;
-  readonly modelPolicy?: BureauModelPolicyOptions;
+  /**
+   * The policy plans are composed against. A function is read for every plan and every step of a
+   * selection gate, so a policy that changes while the Bureau runs applies from the next one.
+   */
+  readonly modelPolicy?: BureauModelPolicyOptions | (() => BureauModelPolicyOptions | undefined);
   /** Defaults to the wall clock; inject in tests for byte-stable plans. */
   readonly now?: () => string;
   /** Defaults to `crypto.randomUUID`; inject in tests for byte-stable plans. */
@@ -266,9 +270,12 @@ function buildSelectOptions<D extends AgentDefinitions>(
 export function createModelPolicyPlanner<D extends AgentDefinitions>(
   options: CreateModelPolicyPlannerOptions<D>,
 ): ModelPolicyPlanner {
-  const { agents, models, modelPolicy, now, newPlanId } = options;
+  const { agents, models, now, newPlanId } = options;
+  const policy = (): BureauModelPolicyOptions | undefined =>
+    typeof options.modelPolicy === 'function' ? options.modelPolicy() : options.modelPolicy;
 
   function plan(request: PlanSelectionRequest): SelectionPlan {
+    const modelPolicy = policy();
     const selectionRequest = buildSelectionRequest(request, models, modelPolicy);
     const selectOptions = buildSelectOptions(request, agents, models, modelPolicy, now, newPlanId);
     return select(selectionRequest, selectOptions);
@@ -277,8 +284,8 @@ export function createModelPolicyPlanner<D extends AgentDefinitions>(
   function createSelectionGateFor(request: PlanSelectionRequest): SelectionGate {
     return createSelectionGate({
       initialPlan: plan(request),
-      request: (context) => buildSelectionRequest(request, models, modelPolicy, context),
-      options: () => buildSelectOptions(request, agents, models, modelPolicy, now, newPlanId),
+      request: (context) => buildSelectionRequest(request, models, policy(), context),
+      options: () => buildSelectOptions(request, agents, models, policy(), now, newPlanId),
     });
   }
 
