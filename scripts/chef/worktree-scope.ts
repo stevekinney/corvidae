@@ -8,6 +8,11 @@
 // Usage:
 //   bun scripts/chef/worktree-scope.ts capture --configuration <json> --output <json>
 //   bun scripts/chef/worktree-scope.ts verify --configuration <json> --before <json>
+//   bun scripts/chef/worktree-scope.ts verify --capture <json>
+//
+// `verify --capture <json>` takes the capture file `capture` wrote (or `worktree.ts create
+// --scope-output` wrote) as both the baseline and the configuration: the worktree root and allowed
+// paths come from the capture. It cannot be combined with `--configuration` or `--before`.
 //
 // Exit codes: 0 accepted, 1 scope or evidence failure, 2 invalid CLI usage (an unknown command or
 // option, a missing required option or value). The report is one JSON object on stdout.
@@ -414,7 +419,8 @@ export function parseCommandLine(argv: string[]): {
     );
   }
   const options = parseOptions(rest, {
-    values: command === 'capture' ? ['configuration', 'output'] : ['configuration', 'before'],
+    values:
+      command === 'capture' ? ['configuration', 'output'] : ['configuration', 'before', 'capture'],
   });
   if (options.positionals.length > 0)
     throw new UsageError(`unexpected argument: ${options.positionals[0]}`);
@@ -422,6 +428,11 @@ export function parseCommandLine(argv: string[]): {
   // create a file named `--configuration`.
   for (const [name, value] of Object.entries(options.values)) {
     if (value.startsWith('--')) throw new UsageError(`missing value for --${name}`);
+  }
+  if (command === 'verify' && options.values['capture'] !== undefined) {
+    if (options.values['configuration'] !== undefined || options.values['before'] !== undefined)
+      throw new UsageError('--capture replaces --configuration and --before; give one form.');
+    return { command, options };
   }
   requireOption(options, 'configuration');
   requireOption(options, command === 'capture' ? 'output' : 'before');
@@ -444,12 +455,28 @@ function readConfiguration(flagValue: string): ScopeConfiguration {
   }
 }
 
+/** The configuration and baseline `verify` checks: from `--capture`, or `--configuration` and `--before`. */
+export function resolveVerifyInputs(options: ParsedOptions): {
+  configuration: ScopeConfiguration;
+  before: ScopeEvidence;
+} {
+  const capturePath = options.values['capture'];
+  if (capturePath !== undefined) {
+    const before = readEvidence(capturePath);
+    return { configuration: { root: before.root, paths: before.paths }, before };
+  }
+  return {
+    configuration: readConfiguration(requireOption(options, 'configuration')),
+    before: readEvidence(requireOption(options, 'before')),
+  };
+}
+
 export function main(argv: string[]): number {
   try {
     const { command, options } = parseCommandLine(argv);
-    const configuration = readConfiguration(requireOption(options, 'configuration'));
 
     if (command === 'capture') {
+      const configuration = readConfiguration(requireOption(options, 'configuration'));
       const output = requireOption(options, 'output');
       const evidence = capture(configuration, output);
       console.log(
@@ -467,7 +494,8 @@ export function main(argv: string[]): number {
       return 0;
     }
 
-    const report = verify(configuration, readEvidence(requireOption(options, 'before')));
+    const inputs = resolveVerifyInputs(options);
+    const report = verify(inputs.configuration, inputs.before);
     console.log(JSON.stringify(report, null, 2));
     return report.errors.length > 0 ? 1 : 0;
   } catch (error) {
