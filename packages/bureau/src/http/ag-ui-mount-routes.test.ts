@@ -149,7 +149,7 @@ describe('start', () => {
         for (const frame of liveDeltas) {
           expect(bureauMetadata(frame.event)).toMatchObject({ durable: false });
           expect(bureauMetadata(frame.event)['cursor']).toBeUndefined();
-          expect(frame.id).toBeUndefined();
+          expect(frame.id).toMatch(/^agui-live-v1\./);
         }
         const finished = frames.at(-1)!;
         const nativeRunId = String(bureauMetadata(frames[0]!.event)['runId']);
@@ -163,8 +163,13 @@ describe('start', () => {
           cursor: record?.cursor,
         });
         expect(finished.id).toBe(record?.cursor);
-        // Only the events that are history records carry an SSE id.
-        expect(frames.filter((frame) => frame.id !== undefined)).toHaveLength(1);
+        // The durable terminal keeps its history cursor; projected live events
+        // carry distinct transient IDs without claiming durable history.
+        const transient = frames.filter((frame) => frame.id?.startsWith('agui-live-v1.'));
+        expect(new Set(transient.map((frame) => frame.id)).size).toBe(transient.length);
+        expect(
+          frames.filter((frame) => frame.id !== undefined && !frame.id.startsWith('agui-live-v1.')),
+        ).toHaveLength(1);
       },
     );
   });

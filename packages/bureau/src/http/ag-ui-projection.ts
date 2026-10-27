@@ -1,12 +1,13 @@
 /**
  * Projects one native run's events onto AG-UI events.
  *
- * The projector is a small state machine for ONE stream. It reads two kinds of
+ * The projector is a small state machine for one native run. It reads two kinds of
  * input, the run's recorded events (`step.started`, `generate.completed`,
  * `tools.executing`, `tools.executed`, `step.completed`, and the terminal ones)
  * and the live text-delta frames, and returns the AG-UI events each one yields.
- * Nothing in it is shared between streams, so one stream's position never moves
- * another's, and nothing in it holds a handle on the native run.
+ * A mount's live producer shares one instance across attachments; settled and
+ * peer replay paths own an instance. Only the producer advances a shared
+ * projector, while attachments read its checkpoint without changing it.
  *
  * Why the recorded events and not the replay-live feed `operative.runs.events`
  * serves: that feed is projected for observers and leaves out tool arguments,
@@ -34,6 +35,7 @@ import {
 } from '@lostgradient/operative';
 
 import { assetPartsOf } from './ag-ui-asset-parts.ts';
+import { ProjectionCheckpoint } from './ag-ui-projection-checkpoint.ts';
 import {
   ASSET_PART_EVENT_NAME,
   type AssetPartAnnouncement,
@@ -133,6 +135,7 @@ export class RunProjector {
   private readonly resulted = new Set<string>();
   private readonly held = new Set<string>();
   private tripwire = false;
+  private readonly checkpoint = new ProjectionCheckpoint();
 
   constructor(
     private readonly runId: string,
@@ -140,7 +143,9 @@ export class RunProjector {
   ) {}
 
   private live<TEvent extends Event>(event: TEvent): TEvent {
-    return stamp(event, this.context, { durable: false });
+    const stamped = stamp(event, this.context, { durable: false });
+    this.checkpoint.record(stamped);
+    return stamped;
   }
 
   /**
@@ -154,6 +159,11 @@ export class RunProjector {
   /** The step in flight, if one has started and not finished. */
   get currentStep(): number | undefined {
     return this.openStep;
+  }
+
+  /** The in-flight step at one synchronous producer cut; reading never advances projection. */
+  snapshot(held: ReadonlySet<string> = new Set()): Event[] {
+    return this.checkpoint.read(held);
   }
 
   /** One of the run's recorded events. */
@@ -240,21 +250,27 @@ export class RunProjector {
    * still streaming, and the step in flight. The native step stays open when the
    * run is merely parked; this is the AG-UI run's close, not the run's.
    */
-  closeOpen(): Event[] {
+  closeOpen(preserve = false): Event[] {
     const events: Event[] = [];
     if (this.text !== undefined && this.text.started && !this.text.ended) {
-      this.text.ended = true;
+      if (!preserve) this.text.ended = true;
       events.push(
-        this.live({
-          type: EventType.TEXT_MESSAGE_END,
-          messageId: this.messageId(this.text.step),
-        }),
+        stamp(
+          { type: EventType.TEXT_MESSAGE_END, messageId: this.messageId(this.text.step) },
+          this.context,
+          { durable: false },
+        ),
       );
     }
     if (this.openStep !== undefined) {
-      events.push(this.live({ type: EventType.STEP_FINISHED, stepName: stepName(this.openStep) }));
-      this.openStep = undefined;
+      events.push(
+        stamp({ type: EventType.STEP_FINISHED, stepName: stepName(this.openStep) }, this.context, {
+          durable: false,
+        }),
+      );
+      if (!preserve) this.openStep = undefined;
     }
+    if (!preserve) for (const event of events) this.checkpoint.record(event);
     return events;
   }
 

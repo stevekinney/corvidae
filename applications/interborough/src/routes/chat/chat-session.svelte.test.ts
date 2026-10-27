@@ -236,7 +236,7 @@ describe('an attach', () => {
     expect(session.conversation.ids).toEqual([]);
   });
 
-  test('keeps a row typed while the transcript was being read, behind the rows it restores', async () => {
+  test('replaces even a row typed while the authoritative transcript was being read', async () => {
     let release: (() => void) | undefined;
     const held = new Promise<void>((resolve) => {
       release = resolve;
@@ -271,7 +271,7 @@ describe('an attach', () => {
     await attaching;
 
     const texts = slow.conversation.ids.map((id) => slow.conversation.messages[id]?.content);
-    expect(texts).toEqual(['An earlier question', 'An earlier answer.', 'Typed meanwhile']);
+    expect(texts).toEqual(['An earlier question', 'An earlier answer.']);
   });
 
   test('tells the page when a run it started begins', async () => {
