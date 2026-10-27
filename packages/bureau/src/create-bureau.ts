@@ -16763,7 +16763,12 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
 
     const policy: 'abort' | 'drain' | 'detach' = shutdownOptions?.policy ?? 'abort';
     const timeoutMilliseconds = shutdownOptions?.timeoutMilliseconds;
-    const detachedRunCount = policy === 'detach' && runtime.durable ? activeRuns.size : 0;
+    // Capture the durable runs that detach owns at admission close. The report
+    // must count the same run identities that are still active when teardown
+    // settles, not a stale size snapshot: a run may complete while shutdown
+    // is waiting for workflow/toolbox/owner cleanup.
+    const detachedRuns =
+      policy === 'detach' && runtime.durable ? new Set(activeRuns) : new Set<ActiveRun>();
 
     // COR-1527: stop reacting to the workflow files at once, so nothing registers with an engine
     // that is about to be disposed; the chain below waits for the apply in progress first.
@@ -16798,7 +16803,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       return Object.freeze({
         admissionClosed: true,
         policy,
-        detached: detachedRunCount,
+        detached: [...detachedRuns].filter((run) => activeRuns.has(run)).length,
         requested: owners.length,
         completed: owners.filter((owner) => owner.outcome === 'completed').length,
         failed: owners.filter((owner) => owner.outcome === 'failed').length,

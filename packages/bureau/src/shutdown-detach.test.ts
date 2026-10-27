@@ -5,14 +5,16 @@
  * default policy aborts a durable parked run, while a process-local run is aborted and settles.
  */
 import { createAgent, stopWhen } from '@lostgradient/operative';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
+import { createRuntimeComposition } from './runtime-composition';
 import type { Bureau } from './types';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
@@ -159,6 +161,72 @@ describe('COR-1716 shutdown readiness baseline', () => {
     });
   });
 
+  test('detach reports zero when a captured durable run completes after shutdown begins', async () => {
+    let releaseEngineDispose!: () => void;
+    const engineDisposeGate = new Promise<void>((resolve) => {
+      releaseEngineDispose = resolve;
+    });
+    const probe = await createRuntimeComposition({
+      generate: async () => ({ content: 'probe', toolCalls: [] }),
+      toolbox: createToolbox([]),
+      storage: { type: 'memory' },
+      durable: true,
+    });
+    const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
+      [Symbol.asyncDispose]: () => Promise<void>;
+    };
+    probe.durable!.engine[Symbol.dispose]?.();
+    probe.disposeStorage?.();
+    const originalAsyncDispose = enginePrototype[Symbol.asyncDispose];
+    const asyncDisposeSpy = spyOn(enginePrototype, Symbol.asyncDispose).mockImplementation(
+      async function (this: unknown) {
+        await engineDisposeGate;
+        return originalAsyncDispose.call(this as never);
+      },
+    );
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const runtime = createManualRuntimeServices();
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => {
+            started.resolve();
+            await release.promise;
+            return { content: 'completed', toolCalls: [] };
+          },
+          toolbox: createToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
+      storage: { type: 'memory' },
+      durable: true,
+      runtime,
+    });
+    bureaus.push(bureau);
+    try {
+      const run = await bureau.createRun({
+        agentName: 'default',
+        message: 'finish during shutdown',
+      });
+      await started.promise;
+      const shutdown = bureau.shutdown({ policy: 'detach', timeoutMilliseconds: 50 });
+      for (let tick = 0; tick < 20; tick += 1) await Promise.resolve();
+      release.resolve();
+      for (let tick = 0; tick < 100 && bureau.getRun(run.id)?.status === 'running'; tick += 1) {
+        await yieldToPortableEventLoop();
+      }
+      expect(bureau.getRun(run.id)?.status).toBe('completed');
+      await runtime.advance(50);
+      const report = await shutdown;
+      expect(report.detached).toBe(0);
+      releaseEngineDispose();
+    } finally {
+      releaseEngineDispose();
+      asyncDisposeSpy.mockRestore();
+    }
+  });
+
   test('detach aborts a process-local run and still settles closed()', async () => {
     const generating = Promise.withResolvers<void>();
     const bureau = await createBureau<AgentDefinitions>({
@@ -247,5 +315,116 @@ describe('COR-1716 shutdown readiness baseline', () => {
 
     const report = await bureau.shutdown({ policy: 'detach' });
     expect(report.detached).toBe(0);
+  });
+
+  test('detach aborts an executing toolbox call through its process-local signal', async () => {
+    const started = Promise.withResolvers<void>();
+    const aborted = Promise.withResolvers<void>();
+    const tool = createTool({
+      name: 'slow-tool',
+      description: 'waits until the toolbox is aborted',
+      input: z.object({}),
+      execute: async (_input, { signal }) =>
+        new Promise<never>((_resolve, reject) => {
+          started.resolve();
+          if (signal === undefined) {
+            reject(new Error('expected an execution signal'));
+            return;
+          }
+          signal.addEventListener(
+            'abort',
+            () => {
+              aborted.resolve();
+              reject(signal.reason);
+            },
+            { once: true },
+          );
+        }),
+    });
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => ({
+            content: '',
+            toolCalls: [{ id: 'slow-call', name: 'slow-tool', arguments: {} }],
+          }),
+          toolbox: createToolbox([tool]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
+      storage: { type: 'memory' },
+      durable: true,
+    });
+    bureaus.push(bureau);
+    const run = await bureau.createRun({ agentName: 'default', message: 'abort the tool' });
+    await started.promise;
+
+    const shutdown = bureau.shutdown({ policy: 'detach' });
+    await aborted.promise;
+    for (
+      let attempt = 0;
+      attempt < 100 && bureau.getRun(run.id)?.status === 'running';
+      attempt += 1
+    ) {
+      await yieldToPortableEventLoop();
+    }
+    const report = await shutdown;
+
+    expect(report.policy).toBe('detach');
+    expect(report.detached).toBeGreaterThanOrEqual(0);
+  });
+
+  test('detach timeout returns an unresolved durable owner while teardown continues', async () => {
+    let releaseEngineDispose!: () => void;
+    const engineDisposeGate = new Promise<void>((resolve) => {
+      releaseEngineDispose = resolve;
+    });
+    const runtime = createManualRuntimeServices();
+    const probe = await createRuntimeComposition({
+      generate: async () => ({ content: 'probe', toolCalls: [] }),
+      toolbox: createToolbox([]),
+      storage: { type: 'memory' },
+      durable: true,
+    });
+    const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
+      [Symbol.asyncDispose]: () => Promise<void>;
+    };
+    probe.durable!.engine[Symbol.dispose]?.();
+    probe.disposeStorage?.();
+    const originalAsyncDispose = enginePrototype[Symbol.asyncDispose];
+    let engineDisposed = false;
+    const asyncDisposeSpy = spyOn(enginePrototype, Symbol.asyncDispose).mockImplementation(
+      async function (this: unknown) {
+        await engineDisposeGate;
+        engineDisposed = true;
+        return originalAsyncDispose.call(this as never);
+      },
+    );
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({ generate: async () => ({ content: 'done', toolCalls: [] }) }),
+      },
+      storage: { type: 'memory' },
+      durable: true,
+      runtime,
+    });
+    bureaus.push(bureau);
+    try {
+      const shutdown = bureau.shutdown({ policy: 'detach', timeoutMilliseconds: 50 });
+      for (let tick = 0; tick < 20; tick += 1) await Promise.resolve();
+      await runtime.advance(50);
+      const report = await shutdown;
+      expect(report.policy).toBe('detach');
+      expect(report.owners.find((owner) => owner.kind === 'durable-engine')?.outcome).toBe(
+        'unresolved',
+      );
+      expect(report.unresolved).toBe(1);
+      expect(engineDisposed).toBe(false);
+      releaseEngineDispose();
+      for (let tick = 0; tick < 20 && !engineDisposed; tick += 1) await Promise.resolve();
+      expect(engineDisposed).toBe(true);
+    } finally {
+      asyncDisposeSpy.mockRestore();
+    }
   });
 });
