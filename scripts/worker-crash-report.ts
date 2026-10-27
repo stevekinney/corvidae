@@ -56,7 +56,7 @@ export function bunCrashReportsSince(
       modified: statSync(join(directory, name)).mtimeMs,
     }))
     .filter((entry) => entry.modified >= sinceMilliseconds)
-    .sort((a, b) => b.modified - a.modified)
+    .toSorted((a, b) => b.modified - a.modified)
     .map((entry) => entry.path);
 }
 
