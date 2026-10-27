@@ -38,8 +38,11 @@ function sleepFor(milliseconds: number, signal: AbortSignal): Promise<void> {
 
 /** What the follower reads from its page. */
 export type SettingsFollowerOptions = {
-  /** Called when the Bureau accepts a subscription, and after every change. */
-  readonly onChange: () => void;
+  /**
+   * Called when the Bureau accepts a subscription (with no revision), and after every change (with
+   * the revision it reports).
+   */
+  readonly onChange: (revision?: number) => void;
   readonly fetch?: Fetcher;
   /** Waits out a backoff. Tests stand a sleep they release themselves in for the timer. */
   readonly sleep?: (milliseconds: number, signal: AbortSignal) => Promise<void>;
@@ -111,7 +114,7 @@ export class SettingsFollower {
         });
         for await (const change of changes) {
           this.#cursor = change.cursor;
-          this.#options.onChange();
+          this.#options.onChange(change.revision);
         }
         if (this.#disposed) return;
         // The Bureau ended the stream, which is not a failure: open it again after the first step.

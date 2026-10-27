@@ -26,6 +26,7 @@
   import { queryKeys } from '../../lib/query.ts';
   import SettingsEditor from './settings-editor.svelte';
   import { SettingsFollower } from './settings-follower.ts';
+  import { SettingsReader } from './settings-reader.ts';
 
   const schema = createQuery(
     () => ({
@@ -46,10 +47,23 @@
     undefined,
   );
 
+  // A refetch of a query that holds no data joins the fetch in flight, which may have read the
+  // settings before the change; the reader reads again when the read it got is not known to be new
+  // enough (`settings-reader.ts`).
+  const reader = new SettingsReader({
+    read: async () => {
+      const joined = snapshot.isFetching && snapshot.data === undefined;
+      const result = await snapshot.refetch();
+      return result.isSuccess ? { revision: result.data.revision, fresh: !joined } : undefined;
+    },
+  });
+
   // A change made elsewhere reaches the page as an event; the settings are read again on each one,
   // and once the Bureau accepts the subscription, so none is missed in between.
   onMount(() => {
-    const follower = new SettingsFollower({ onChange: () => void snapshot.refetch() });
+    const follower = new SettingsFollower({
+      onChange: (revision) => void reader.notify(revision),
+    });
     void follower.start();
     return () => follower.dispose();
   });

@@ -80,6 +80,16 @@ function keyStates(served: SettingsServed): Record<string, SettingKeyState> {
   );
 }
 
+/** What `bureau.settings.get` answers for `served`, as of now. */
+export function settingsSnapshot(served: SettingsServed) {
+  return {
+    values: served.values,
+    revision: served.revision,
+    persisted: served.persisted,
+    keys: keyStates(served),
+  };
+}
+
 /**
  * Serves `bureau.settings.get`, `.schema`, and `.update` from `served`. An update names a stale
  * revision as `StaleRevision`, a locked key as `Unprocessable`, and applies every key of a patch or
@@ -92,12 +102,7 @@ export function installSettingsBureau(
 ): BureauStub {
   return installBureauStub(
     {
-      'bureau.settings.get': () => ({
-        values: served.values,
-        revision: served.revision,
-        persisted: served.persisted,
-        keys: keyStates(served),
-      }),
+      'bureau.settings.get': () => settingsSnapshot(served),
       'bureau.settings.schema': () => ({ schema: PUBLISHED_SCHEMA }),
       'bureau.settings.update': (params) => {
         const patch = params['patch'] as Record<string, unknown>;
@@ -136,6 +141,8 @@ export type SettingsStream = {
   readonly opened: Array<string | undefined>;
   push(revision: number, keys?: readonly string[]): void;
   end(): void;
+  /** Whether the page has taken in every change pushed so far (it has read them off the connection). */
+  drained(): boolean;
 };
 
 /** A stream with no change yet. Each connection gets its own body; `push` and `end` act on the latest. */
@@ -178,5 +185,6 @@ export function settingsStream(): SettingsStream {
     end: () => {
       controller?.close();
     },
+    drained: () => controller === undefined || (controller.desiredSize ?? 1) > 0,
   };
 }
