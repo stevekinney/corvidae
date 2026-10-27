@@ -1402,6 +1402,26 @@ export function createBureauA2ARequestHandler(
   }
 
   /**
+   * Releases a claim whose send took no effect. A refused send's history slot (`slot`) is given
+   * back while the claim is still held: once the claim is released, an exact retry may claim
+   * afresh and reserve the same slot, which a later give-back would take from it. A release that
+   * fails leaves the claim with another attempt, or pending, so the slot is restored for it.
+   * Resolves whether the claim was released.
+   */
+  async function releaseClaim(
+    entry: Parameters<A2ASendLedger['release']>[0],
+    slot:
+      { readonly message: Message; readonly view: TaskView; readonly inbound: Inbound } | undefined,
+  ): Promise<boolean> {
+    if (slot !== undefined) await releaseContinuation(slot.message, slot.view.id);
+    const released = await ledger.release(entry).catch(() => false);
+    if (slot !== undefined && !released) {
+      await recordContinuation(slot.message, slot.view, slot.inbound);
+    }
+    return released;
+  }
+
+  /**
    * The history length a send naming `expectedRevision` reserves its slot at, once the revision is
    * checked; `undefined` for a send that names none. A slot an earlier attempt of this message
    * reserved before it could claim moved the revision itself, so it passes.
@@ -1422,7 +1442,9 @@ export function createBureauA2ARequestHandler(
 
   /**
    * Reserves a send's slot (see {@link reserveContinuation}), or refuses the send as stale. No
-   * claim names what the send admitted yet, so a refusal or a failed write discards it.
+   * claim names what the send admitted yet, so a refusal discards it, and so does a failed write
+   * once the record provably holds no entry for the message: a write that committed with its
+   * response lost left an entry naming these assets, which then stay.
    */
   async function reserveOrRefuse(
     message: Message,
@@ -1435,7 +1457,11 @@ export function createBureauA2ARequestHandler(
     try {
       reserved = await reserveContinuation(message, view, inbound, slot.length);
     } catch (error) {
-      await discard();
+      const held = await records.read(view.id).then(
+        (record) => holdsMessage(record, message.messageId),
+        () => true,
+      );
+      if (!held) await discard();
       throw error;
     }
     if (reserved) return;
@@ -1798,14 +1824,13 @@ export function createBureauA2ARequestHandler(
         // committed: the claim then stays, with the assets it names, for the retry to finish.
         const refused = isRefusal(error);
         if (refused || (delivered.length === 0 && recorded === undefined)) {
-          const released = await ledger.release(entry).catch(() => false);
+          const released = await releaseClaim(
+            entry,
+            refused && reserving ? { message, view: continued, inbound } : undefined,
+          );
           // Deleted only when this send provably took no effect and the claim is really gone:
-          // otherwise another attempt may have completed it and its rows name these assets. The
-          // history slot it reserved is given back on the same evidence.
-          if (refused && released) {
-            await discardMine();
-            if (reserving) await releaseContinuation(message, continued.id);
-          }
+          // otherwise another attempt may have completed it and its rows name these assets.
+          if (refused && released) await discardMine();
         }
       }
       throw error;
