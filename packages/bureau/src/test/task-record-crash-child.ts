@@ -1,11 +1,17 @@
 /**
  * COR-1481 — the child half of the task-record SIGKILL tests.
  *
- * Usage: `bun task-record-crash-child.ts settlement <sqlitePath> <markerPath>`
+ * Usage: `bun task-record-crash-child.ts <settlement|admission> <sqlitePath> <markerPath>`
  *
- * Stands up a durable Bureau over a storage wrapper that holds the task-record write that
- * records a settlement for ever, then kills the process with SIGKILL once the task's durable
- * workflow is `completed`.
+ * Stands up a durable Bureau over a storage wrapper that holds one kind of task-record write
+ * for ever, then kills the process with SIGKILL once the durable state has gone as far as the
+ * crash window needs:
+ *
+ * - `settlement`: a task finishes, and its durable workflow is `completed`, while the write that
+ *   records its settlement on the task is still held.
+ * - `admission`: a task of an asking agent, in a named context, is started while the write that
+ *   records its admission is held. `tasks.start` writes that record before anything of the run
+ *   starts, so the start waits on it; the task's id is read from the held write's key.
  *
  * No `dispose()`, no `shutdown()`, no flush: whatever the next process finds was on disk
  * before this one died. Not a test file: it is spawned by `task-record-crash.slow.test.ts`.
@@ -17,17 +23,24 @@ import { resolveStorage, type Storage } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 
 import { createBureau } from '../create-bureau';
-import { finishes } from './task-record-crash-agent';
+import { createAskingAgent, finishes } from './task-record-crash-agent';
 import type { AgentDefinitions } from '../agent-catalog';
 
 const [mode, storagePath, markerPath] = process.argv.slice(2);
 
-if (mode !== 'settlement' || storagePath === undefined || markerPath === undefined) {
-  process.stderr.write('usage: task-record-crash-child settlement <path> <marker>\n');
+if (
+  (mode !== 'settlement' && mode !== 'admission') ||
+  storagePath === undefined ||
+  markerPath === undefined
+) {
+  process.stderr.write('usage: task-record-crash-child <settlement|admission> <path> <marker>\n');
   process.exit(2);
 }
 
 let held = false;
+/** The held write's arguments as text, once it is held. */
+let heldText: string | undefined;
+const CONTEXT_ID = 'crash-context';
 /** The arguments of a storage call as text, values (stored as bytes) decoded. */
 const textOf = (args: readonly unknown[]): string =>
   JSON.stringify(args, (_key, value: unknown) =>
@@ -36,7 +49,7 @@ const textOf = (args: readonly unknown[]): string =>
 const holdsThisWrite = (args: readonly unknown[]): boolean => {
   const text = textOf(args);
   if (!text.includes('bureau-task:v1:')) return false;
-  return text.includes('\\"settled\\"');
+  return mode === 'settlement' ? text.includes('\\"settled\\"') : text.includes('\\"history\\"');
 };
 
 const raw = await resolveStorage({ type: 'sqlite', path: storagePath });
@@ -47,6 +60,7 @@ const storage = new Proxy(raw, {
     return (...args: unknown[]) => {
       if (typeof property === 'string' && !held && holdsThisWrite(args)) {
         held = true;
+        heldText = textOf(args);
         return new Promise<never>(() => undefined);
       }
       return (member as (...a: unknown[]) => unknown).apply(target, args);
@@ -57,6 +71,7 @@ const storage = new Proxy(raw, {
 const bureau = await createBureau<AgentDefinitions>({
   id: 'task-record-crash',
   agents: {
+    asker: createAskingAgent(),
     default: createAgent({
       generate: finishes,
       toolbox: createToolbox([]),
@@ -76,9 +91,28 @@ const kill = (runId: string): never => {
   return undefined as never;
 };
 
-const run = await bureau.tasks.start('default', 'finish me', { principal: 'api-key:alice' });
-for (;;) {
-  const durable = await bureau.tasks.workflow(run.id);
-  if (held && durable?.status === 'completed') kill(run.id);
-  await sleep(10);
+if (mode === 'settlement') {
+  const run = await bureau.tasks.start('default', 'finish me', { principal: 'api-key:alice' });
+  for (;;) {
+    const durable = await bureau.tasks.workflow(run.id);
+    if (held && durable?.status === 'completed') kill(run.id);
+    await sleep(10);
+  }
+} else {
+  // Not awaited: the start waits on the held admission write for ever.
+  void bureau.tasks.start('asker', 'which environment?', {
+    principal: 'api-key:alice',
+    contextId: CONTEXT_ID,
+  });
+  for (;;) {
+    // The held write is this task's admission: it names the context and carries the message.
+    const admission =
+      heldText?.includes(CONTEXT_ID) === true && heldText.includes('which environment?')
+        ? heldText
+        : undefined;
+    const taskId =
+      admission === undefined ? undefined : /bureau-task:v1:([^"\\]+)/u.exec(admission)?.[1];
+    if (taskId !== undefined) kill(taskId);
+    await sleep(10);
+  }
 }

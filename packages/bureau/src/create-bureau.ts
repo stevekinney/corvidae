@@ -15329,6 +15329,51 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
    * none, so it rebuilds the context from the session's persisted authority, as recovery does,
    * and refuses when it cannot.
    */
+  /**
+   * Refuses a human-wait decision with `CONFLICT`, before anything is delivered, once the engine
+   * reports the run settled: canceled by the engine, say, before this process's review list heard.
+   * A signal to a settled workflow would be accepted and answered as success while deciding
+   * nothing. The engine, not the review list, is the source of truth here, as for a catalog park
+   * (`run-human-waits.ts`). A run the engine still holds is delivered to even when it is not yet
+   * waiting on the signal: the review is listed when the run parks, before the engine records
+   * the wait, and a signal sent in between is buffered for it. A run the engine has no workflow
+   * for (one registered on the store by hand) is left to the delivery, as before.
+   */
+  async function assertHumanWaitRunUnsettled(
+    review: Extract<SessionPendingReview, { kind: 'human-wait' }>,
+  ): Promise<void> {
+    const state = await runtime.durable?.engine.get(review.runId);
+    if (state === undefined || state === null) return;
+    if (!DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(state.status)) {
+      throw new BureauError(
+        `Run "${review.runId}" has settled, so review "${review.id}" is closed`,
+        'CONFLICT',
+      );
+    }
+  }
+
+  /**
+   * The check `resolveReview` makes on a human wait this call is the first to decide: it is
+   * delivered only to a run the engine has not settled ({@link assertHumanWaitRunUnsettled}). A
+   * same-decision re-drive skips it, because its claimant may have delivered already and the keyed
+   * signal lands at most once. A refusal gives up the claim this call wrote (nothing was
+   * delivered) and the in-process resolving mark, then throws.
+   */
+  async function refuseSettledHumanWait(
+    review: SessionPendingReview,
+    claim: Awaited<ReturnType<typeof reviewDecisions.claim>>,
+    claimRequest: ReviewDecisionRequest,
+  ): Promise<void> {
+    if (review.kind !== 'human-wait' || claim.outcome === 'same') return;
+    try {
+      await assertHumanWaitRunUnsettled(review);
+    } catch (error) {
+      if (claim.outcome === 'claimed') await releaseApprovalClaim(claimRequest, claim.value);
+      resolvingReviewIds.delete(review.id);
+      throw error;
+    }
+  }
+
   async function assertHumanWaitApprovalAuthority(
     review: Extract<SessionPendingReview, { kind: 'human-wait' }>,
     peer: boolean,
@@ -15727,6 +15772,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         resolvingReviewIds.delete(review.id);
       }
     }
+    await refuseSettledHumanWait(review, claim, claimRequest);
     const heldApprovalClaim =
       claim.outcome === 'claimed' && review.kind === 'tool-approval' ? claim.value : undefined;
     // Set once a step that cannot be shown not to have acted has begun: a throw before it is a

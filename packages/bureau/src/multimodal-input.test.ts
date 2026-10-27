@@ -207,8 +207,6 @@ describe('bureau.run takes its input as it was when called (COR-716)', () => {
   }
 });
 
-describe('a durable catalog run records its input as submitted (COR-716)', () => {});
-
 describe('session input carrying a managed asset (COR-716)', () => {
   it('resolves the asset at the step boundary that delivers it, as the run owner', async () => {
     const seen: GenerateContext[] = [];

@@ -289,6 +289,37 @@ describe('bureau.tasks.start of a catalog agent', () => {
     }
   });
 
+  it('ends the task, generating nothing, when its start signal is already aborted', async () => {
+    let generateCalls = 0;
+    const bureau = await createBureau({
+      agents: {
+        echo: createAgent({
+          name: 'echo',
+          generate: async () => {
+            generateCalls += 1;
+            return { content: 'ok', toolCalls: [] };
+          },
+        }),
+      },
+      storage: { type: 'memory' },
+    });
+    try {
+      const controller = new AbortController();
+      controller.abort('cancelled before the start');
+      const task = await bureau.tasks.start('echo', 'hi', { signal: controller.signal });
+      const result = await task.result();
+
+      // The run exists once the start resolves, and the abort ends it before its first step.
+      expect([result.finishReason, task.snapshot().status, generateCalls]).toEqual([
+        'aborted',
+        'terminal',
+        0,
+      ]);
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
   it('refuses an agent that does not support definition resolution with UNSUPPORTED_CAPABILITY, starting nothing', async () => {
     const nonResolvingAgent: RunnableAgent = {
       name: 'plain',

@@ -6,10 +6,12 @@
  * test then opens a fresh Bureau over the same storage and asserts what boot recovery made of
  * the record:
  *
- * A task that finished but whose settlement was never written is settled from the durable
- * state, not left `working` for ever. (A task's record is written before its run starts, so no
- * run goes on without one; and a recovered task is held by the run store, so a graceful
- * shutdown cancels it as it does any task.)
+ * 1. a task that finished but whose settlement was never written is settled from the durable
+ *    state, not left `working` for ever;
+ * 2. a task whose admission write never landed left no run going on without a record: the
+ *    engine holds no workflow for it, and its context takes the next task, which gets a whole
+ *    record and settles when it ends. (`tasks.start` writes the record before anything of the
+ *    run starts, so the start itself waits on the lost write.)
  *
  * It spawns a process, so it lives in the `test:slow` lane, each scenario once at module
  * scope off Bun's per-test clock (see `test/hoisted-scenario.ts`).
@@ -26,7 +28,7 @@ import { describe, expect, it } from 'bun:test';
 import { createBureau } from './create-bureau';
 import { unexpectedChildStderr } from './test/child-stderr';
 import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
-import { finishes } from './test/task-record-crash-agent';
+import { createAskingAgent, finishes } from './test/task-record-crash-agent';
 import type { Bureau, BureauReviews, BureauInternals } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 
@@ -37,6 +39,7 @@ function openBureau(storagePath: string) {
   return createBureau<AgentDefinitions>({
     id: 'task-record-crash',
     agents: {
+      asker: createAskingAgent(),
       default: createAgent({
         generate: finishes,
         toolbox: createToolbox([]),
@@ -52,7 +55,7 @@ function openBureau(storagePath: string) {
 }
 
 async function crashScenario(
-  mode: 'settlement',
+  mode: 'settlement' | 'admission',
   scope: ScenarioScope,
   verify: (
     bureau: Pick<Bureau, 'tasks'> & {
@@ -99,10 +102,65 @@ const outcomes = {
       }),
     HANG_GUARD_MILLISECONDS,
   ),
+  admission: await settleScenario(
+    (scope) =>
+      crashScenario('admission', scope, async (bureau, lostId) => {
+        // No run went on without its record: the lost task has neither.
+        expect(await bureau.internals.taskRegistry.get(lostId)).toBeUndefined();
+        expect(await bureau.tasks.workflow(lostId)).toBeNull();
+
+        const task = await bureau.tasks.start('asker', 'which environment?', {
+          principal: 'api-key:alice',
+          contextId: 'crash-context',
+        });
+        const runId = task.id;
+        const recorded = await bureau.internals.taskRegistry.get(runId);
+        // The context the start named, not the run's own id.
+        expect(recorded).toMatchObject({
+          id: runId,
+          owner: 'api-key:alice',
+          agentName: 'asker',
+          contextId: 'crash-context',
+        });
+        const inContext = await bureau.internals.taskRegistry.enumerate({
+          contextId: 'crash-context',
+          limit: 10,
+          offset: 0,
+        });
+        expect(inContext.tasks.map((listed) => listed.id)).toEqual([runId]);
+        const history = await bureau.internals.taskRegistry.history(runId);
+        expect(history?.map((message) => message.text)).toEqual(['which environment?']);
+        let review = bureau.reviews.list().find((candidate) => candidate.runId === runId);
+        for (let attempt = 0; review === undefined && attempt < 400; attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          review = bureau.reviews.list().find((candidate) => candidate.runId === runId);
+        }
+        expect(review).toBeDefined();
+        await bureau.reviews.resolve({
+          id: review!.id,
+          decision: 'approve',
+          principal: 'api-key:alice',
+          payload: 'staging',
+        });
+        await bureau.tasks.wait(runId);
+        for (let attempt = 0; attempt < 400; attempt += 1) {
+          const current = await bureau.internals.taskRegistry.get(runId);
+          if (current?.status === 'completed') break;
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        const settled = await bureau.internals.taskRegistry.get(runId);
+        expect(settled?.status).toBe('completed');
+      }),
+    HANG_GUARD_MILLISECONDS,
+  ),
 };
 
 describe('a task record survives SIGKILL', () => {
   it('settles a finished task whose settlement write was lost', () => {
     expectScenarioPassed(outcomes.settlement);
+  });
+
+  it('leaves no run going on without a record when a task’s admission write was lost, and its context takes the next task, which settles', () => {
+    expectScenarioPassed(outcomes.admission);
   });
 });

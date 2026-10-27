@@ -220,6 +220,49 @@ describe('a bureau.run() park', () => {
     expect(bureau.reviews.list()).toEqual([]);
   });
 
+  it('answers CONFLICT to a resolve after the engine cancelled the run, before the index heard', async () => {
+    const bureau = await start({ asker: askingAgent(newSeen()) });
+    const run = await bureau.tasks.start('asker', 'deploy');
+    const review = await nextReview(bureau, run.id);
+
+    await bureau.durableEngine()!.cancel(run.id);
+    const refusal = await rejectionOf(
+      bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'operator' }),
+    );
+    await run.result().catch(() => undefined);
+
+    // The engine, not the index, says the run has settled, so the review is closed.
+    expect((refusal as BureauError).code).toBe('CONFLICT');
+    const workflow = await bureau.tasks.workflow(run.id);
+    expect(workflow?.status).toBe('cancelled');
+    await pollUntil(async () => {
+      const task = await bureau.tasks.get(run.id);
+      return task?.status === 'canceled';
+    });
+  });
+
+  it('lets a resolve that landed first win over a later engine cancel, which answers the registry outcome', async () => {
+    const seen = newSeen(true);
+    const bureau = await start({ asker: askingAgent(seen) });
+    const run = await bureau.tasks.start('asker', 'deploy');
+    const review = await nextReview(bureau, run.id);
+
+    const resolved = await bureau.reviews.resolve({
+      id: review.id,
+      decision: 'approve',
+      principal: 'operator',
+    });
+    const cancel = await bureau.tasks.cancel(run.id);
+    seen.release();
+    await run.result().catch(() => undefined);
+
+    expect(resolved).toMatchObject({ id: review.id, kind: 'human-wait', decision: 'approve' });
+    // The decision stands: the review is closed, and a second resolve finds nothing to decide.
+    expect(bureau.reviews.list().filter((pending) => pending.runId === run.id)).toEqual([]);
+    // The run was live when the cancel came, so the registry took the request.
+    expect(cancel.receipt).toBe('cancel-requested');
+  });
+
   it('lets exactly one of two concurrent resolves through', async () => {
     const seen = newSeen(true);
     const bureau = await start({ asker: askingAgent(seen) });

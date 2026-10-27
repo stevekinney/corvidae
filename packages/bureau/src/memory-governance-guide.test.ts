@@ -366,4 +366,56 @@ describe('documented Bureau memory limits', () => {
       });
     });
   }
+
+  for (const durability of ['in-memory', 'durable'] as const) {
+    it(`attaches no memory hooks to a ${durability} bureau.children child, while its parent task has both`, async () => {
+      const { memory, notifications } = governedMemory();
+      const release = Promise.withResolvers<void>();
+      const parent = createAgent({
+        name: 'parent',
+        generate: async () => {
+          await release.promise;
+          return { content: 'Parent answer.', toolCalls: [] };
+        },
+      });
+      const assistant = createAgent({
+        name: 'assistant',
+        generate: createMockGenerate([{ content: 'Child answer.', toolCalls: [] }]),
+      });
+      const bureau = await createBureau({
+        id: BUREAU_ID,
+        agents: { parent, assistant },
+        memory,
+        ...(durability === 'durable'
+          ? { storage: { type: 'sqlite' as const, path: databasePath } }
+          : {}),
+      });
+      try {
+        const task = await bureau.tasks.start('parent', 'Plan.');
+        const dispatched = await bureau.children.dispatch({
+          parentRunId: task.id,
+          agentName: 'assistant',
+          input: 'Remember this.',
+          childRunId: 'memory-child',
+        });
+        expect(dispatched).toMatchObject({ outcome: 'started' });
+        const waited = await bureau.children.wait({
+          parentRunId: task.id,
+          childRunId: 'memory-child',
+        });
+        release.resolve();
+        await task.result();
+        expect(waited).toMatchObject({ outcome: 'settled', child: { status: 'completed' } });
+        const runsHeard = new Set(
+          notifications.map((notification) => notification.correlation?.runId),
+        );
+        // The parent, a task, recalled and wrote; the child it dispatched did neither.
+        expect(runsHeard.has(task.id)).toBe(true);
+        expect(runsHeard.has('memory-child')).toBe(false);
+      } finally {
+        release.resolve();
+        await bureau.dispose();
+      }
+    });
+  }
 });
