@@ -365,6 +365,8 @@ describe('bureau.events through createOperationHandler with no Engine', () => {
       '/v1/subscriptions/operative.runs.events',
     ]);
     expect((openRpc['methods'] as { name: string }[]).map((method) => method.name)).toEqual([
+      'bureau.events',
+      'operative.runs.events',
       'rpc.discover',
     ]);
     expect(Object.keys(openApi['paths'] as object).toSorted()).toEqual([
