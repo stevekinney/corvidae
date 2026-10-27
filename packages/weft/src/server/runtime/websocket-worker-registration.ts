@@ -105,7 +105,7 @@ function buildWorkerRegistrationInfo(
  *     the owner at close so the stale-socket guard did not trip), and it
  *     will not fire again. That path is made safe here — the deferred-
  *     requeue timer is cleared, and the caller's `workerSockets.set`
- *     overwrites the stale entry, not the close handler.
+ *     installs the fresh socket.
  * A different unauthenticated or malicious client claiming an actively-
  * connected workerId (no pending requeue) is rejected here instead.
  *
