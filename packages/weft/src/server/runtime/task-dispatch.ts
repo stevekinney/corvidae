@@ -340,11 +340,14 @@ async function selectAndReserveWorker(
   );
   if (task.workflowId !== undefined) {
     options.engine.dispatchEvent(
-      new ActivityStartedEvent(
-        result.record.operationId,
-        task.workflowId,
-        result.record.activityName,
-        result.record.attempt,
+      tagWorkflowEventGeneration(
+        new ActivityStartedEvent(
+          result.record.operationId,
+          task.workflowId,
+          result.record.activityName,
+          result.record.attempt,
+        ),
+        result.record.workflowExecutionToken,
       ),
     );
   }

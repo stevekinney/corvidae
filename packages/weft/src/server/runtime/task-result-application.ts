@@ -21,6 +21,7 @@
  */
 
 import { ActivityCompletedEvent } from '../../core/events.ts';
+import { tagWorkflowEventGeneration } from '../../core/events/workflow-event-generation.ts';
 import type { MetricsCollector } from '../../observability/metrics.ts';
 import type { ServeOptions } from '../index.ts';
 import { bridgeRemoteActivityResult } from './remote-activity-result-bridge.ts';
@@ -73,17 +74,21 @@ function dispatchActivityCompletedEvent(
   committed: Extract<Awaited<ReturnType<typeof commitTaskLedgerCompletion>>, { ok: true }>,
 ): void {
   if (
-    committed.terminal?.status !== 'completed' ||
+    committed.terminal?.disposition !== 'resolved' ||
+    committed.terminal.status !== 'completed' ||
     committed.completing?.workflowId === undefined
   ) {
     return;
   }
   options.engine.dispatchEvent(
-    new ActivityCompletedEvent(
-      committed.completing.operationId,
-      committed.completing.workflowId,
-      committed.completing.activityName,
-      Math.max(0, Date.now() - committed.completing.startedAt),
+    tagWorkflowEventGeneration(
+      new ActivityCompletedEvent(
+        committed.completing.operationId,
+        committed.completing.workflowId,
+        committed.completing.activityName,
+        Math.max(0, Date.now() - committed.completing.startedAt),
+      ),
+      committed.completing.workflowExecutionToken,
     ),
   );
 }

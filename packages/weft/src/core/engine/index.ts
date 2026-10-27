@@ -18,11 +18,7 @@ import { deserializeCheckpoint } from '../checkpoint.ts';
 import type { StoredStreamChunk } from '../context.ts';
 import { createHandleCacheFinalizer } from '../engine-helpers.ts';
 import type { TypedEventTarget, WeftEventMap } from '../events.ts';
-import {
-  RemoteActivityQueuedEvent,
-  SignalDeliveredEvent,
-  StorageSizeReportedEvent,
-} from '../events.ts';
+import { RemoteActivityQueuedEvent } from '../events.ts';
 import {
   WorkflowRevisionActivatedEvent,
   WorkflowRevisionDrainingEvent,
@@ -187,6 +183,7 @@ import {
   createCleanupIntervalTick,
   createQueuedInlineWorkflowStartHandler,
   createSecondInstanceDetectorResolver,
+  createStorageSizeReportTick,
   drainQueuedInlineWorkflowStartsForEngine,
   flushQueuedInlineWorkflowStartsForEngine,
   isActivityDefinition,
@@ -934,6 +931,7 @@ export class Engine<
       disposed: false,
       cleanupInterval: null,
       secondInstanceDetectionInterval: null,
+      storageSizeReportInterval: null,
       testToken: consumeNextEngineLeakWarningTokenForTesting(),
     };
     const cleanupInterval =
@@ -943,23 +941,17 @@ export class Engine<
     cleanupIntervalDisposalTracker.cleanupInterval = cleanupInterval;
     getInternals(this).cleanupInterval = cleanupInterval;
     getInternals(this).cleanupIntervalDisposalTracker = cleanupIntervalDisposalTracker;
-    getInternals(this).storageSizeReportInterval =
+    const storageSizeReportInterval =
       resolvedOptions.backgroundTaskMode === 'automatic' &&
       resolvedOptions.storageSizeReportIntervalMs > 0 &&
       typeof storage.sizeBytes === 'function'
-        ? setInterval(() => {
-            if (getInternals(this).disposed) return;
-            void storage
-              .sizeBytes?.()
-              .then((sizeBytes) => {
-                if (!getInternals(this).disposed) {
-                  this.dispatchEvent(new StorageSizeReportedEvent(sizeBytes));
-                }
-                return sizeBytes;
-              })
-              .catch(() => {});
-          }, resolvedOptions.storageSizeReportIntervalMs)
+        ? setInterval(
+            createStorageSizeReportTick(weakEngine, cleanupIntervalDisposalTracker),
+            resolvedOptions.storageSizeReportIntervalMs,
+          )
         : null;
+    cleanupIntervalDisposalTracker.storageSizeReportInterval = storageSizeReportInterval;
+    getInternals(this).storageSizeReportInterval = storageSizeReportInterval;
     engineCleanupIntervalFinalizer.register(
       this,
       cleanupIntervalDisposalTracker,
@@ -1588,9 +1580,6 @@ export class Engine<
         // `releaseSignalWaiter`. The poll's ownership confirmation above is an
         // await, so the waiter can be replaced meanwhile.
         if (releaseSignalWaiter(internals, workflowId, waiterKey, waiter)) {
-          this.dispatchEvent(
-            new SignalDeliveredEvent(workflowId, waiterKey.slice(workflowId.length + 1)),
-          );
           waiter();
         }
       },
