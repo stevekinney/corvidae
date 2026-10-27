@@ -1,5 +1,9 @@
 import { outcomeOf, rethrow } from '@lostgradient/testing';
-import { runWithHangGuard, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
+import {
+  HANG_GUARD_MILLISECONDS,
+  runWithHangGuard,
+  spawnWithHangGuard,
+} from '@lostgradient/testing/hang-guard';
 import { describe, expect, it } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -25,7 +29,12 @@ import {
   selectShard,
 } from './static-playground-cases.ts';
 import { runPreflight } from './static-playground-preflight.ts';
-import { exitedWithin, interruptRunner } from './static-playground-processes.ts';
+import {
+  descendantProcesses,
+  interruptRunner,
+  isZombie,
+  readProcessTable,
+} from './static-playground-processes.ts';
 import { loadStaticHostConfiguration, startStaticServer } from './static-playground-server.ts';
 
 const FIXTURES = join(import.meta.dirname, 'fixtures', 'static-playground');
@@ -34,17 +43,36 @@ const CHECK = join(import.meta.dirname, 'check-static-playground.ts');
 
 type GateRun = { exitCode: number; report: GateReport; stderr: string };
 
-/** A stuck gate fails its scenario at this bound rather than leaking. */
-const GATE_RUN_MILLISECONDS = 4_500;
+/**
+ * How a scenario's gate run ends. A gate is awaited until it exits: `spawnWithHangGuard` and the
+ * scenario's `outcomeOf` already turn a gate that never exits into a failure, on awake time. A
+ * wall-clock bound here measured the host instead; it dated from when each scenario ran inside
+ * Bun's 5 s per-test budget, and under a loaded batch validate a healthy gate outlived it.
+ * `interruptOnceRunning` is for the hang scenario: it stops the gate as a reader's Ctrl-C would,
+ * once the gate's test runner is running, rather than after a guessed delay.
+ */
+type GateRunOptions = { interruptOnceRunning?: boolean };
 
-type GateRunOptions = { guardMilliseconds?: number };
+/** The stand-in test runner's script, which names it in the process table. */
+const STAND_IN_RUNNER = 'stand-in-test-runner.ts';
 
-class GateHang extends Error {
+/** How often the hang scenario rereads the process table for the gate's runner. */
+const PROCESS_POLL_MILLISECONDS = 25;
+
+/** Whether the gate has started its stand-in test runner, or has exited without one. */
+function runnerStartedOrGateExited(gate: Bun.Subprocess): boolean {
+  if (gate.exitCode !== null || gate.signalCode !== null) return true;
+  return descendantProcesses(gate.pid, readProcessTable()).some(
+    (row) => !isZombie(row) && row.args.includes(STAND_IN_RUNNER),
+  );
+}
+
+class GateInterrupted extends Error {
   constructor(
     readonly stop: Awaited<ReturnType<typeof interruptRunner>>,
     readonly exitCode: number | null,
   ) {
-    super('the gate did not exit within the hang guard');
+    super('the gate was interrupted while its test runner ran');
   }
 }
 
@@ -64,14 +92,18 @@ async function runGate(
     void (async () => {
       for await (const chunk of gate.stdout) stdout += new TextDecoder().decode(chunk);
     })();
-    const exitCode = await exitedWithin(gate, options.guardMilliseconds ?? GATE_RUN_MILLISECONDS);
-    if (exitCode === undefined) {
+    if (options.interruptOnceRunning === true) {
+      while (!runnerStartedOrGateExited(gate)) await Bun.sleep(PROCESS_POLL_MILLISECONDS);
       // Stop it the way a reader's Ctrl-C would, so its own cleanup runs, then kill anything
-      // still attributable to its run directory; never SIGKILL the driver alone.
+      // still attributable to its run directory; never SIGKILL the driver alone. The cleanup gets
+      // the hang guard's budget, so a loaded host cannot turn a graceful stop into a SIGKILL.
       const runDirectory = /run directory (\S+)/.exec(stdout)?.[1];
-      const stop = await interruptRunner(gate, runDirectory, { graceMilliseconds: 1_000 });
-      throw new GateHang(stop, gate.exitCode);
+      const stop = await interruptRunner(gate, runDirectory, {
+        graceMilliseconds: HANG_GUARD_MILLISECONDS,
+      });
+      throw new GateInterrupted(stop, gate.exitCode);
     }
+    const exitCode = await gate.exited;
     const stderr = await new Response(gate.stderr).text();
     const report = (await Bun.file(join(output, 'report.json')).json()) as GateReport;
     return { exitCode, report, stderr };
@@ -228,8 +260,7 @@ const nestedOutputDirectoryIsRefused = await outcomeOf(async () => {
         stderr: 'pipe',
       },
     );
-    const exitCode = await exitedWithin(gate, GATE_RUN_MILLISECONDS);
-    if (exitCode === undefined) gate.kill('SIGKILL');
+    const exitCode = await gate.exited;
     const stderr = await new Response(gate.stderr).text();
 
     expect(exitCode).toBe(1);
@@ -245,14 +276,14 @@ const hungGateStopsGracefully = await outcomeOf(async () => {
   const outcome = await runGate(
     [process.execPath, DRIVER, '--fixture', 'good', '--mode', 'hang'],
     readScrubbedEnvironment(),
-    { guardMilliseconds: 1_500 },
+    { interruptOnceRunning: true },
   ).then(
     () => undefined,
     (error: unknown) => error,
   );
 
-  expect(outcome).toBeInstanceOf(GateHang);
-  const hang = outcome as GateHang;
+  expect(outcome).toBeInstanceOf(GateInterrupted);
+  const hang = outcome as GateInterrupted;
   expect(hang.stop).toEqual({ survivors: [], runnerExited: true });
   // 130 is the gate's own exit for SIGINT: it ran its cleanup, rather than being SIGKILLed.
   expect(hang.exitCode).toBe(130);
