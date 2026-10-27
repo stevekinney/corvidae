@@ -6,7 +6,7 @@ import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { TASK_COPY } from '../../../app/copy.ts';
+import { REVIEWS_COPY, TASK_COPY } from '../../../app/copy.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
 import {
   humanWaitFixture,
@@ -216,6 +216,33 @@ describe('what a run is waiting on', () => {
 
     await waitFor(() => expect(view.container.querySelector('.ib-run-wait__note')).not.toBeNull());
     expect(view.getByRole('button', { name: 'Approve' })).not.toBeNull();
+  });
+
+  test('a decision sends the round of the approval shown, and one that changed is not decided (COR-1714)', async () => {
+    const approval = toolApprovalFixture({ id: 'approval:run-1:call-1', runId: 'run-1', round: 1 });
+    const view = open(waitingOn('tool-approval', approval.id), { reviews: [approval] });
+    stub?.on('bureau.reviews.resolve', () => {
+      throw new StubFault('Conflict', 409, 'The review moved on.', {
+        reason: 'REVIEW_ROUND_CHANGED: now at round 2',
+      });
+    });
+    const reads = stub?.callsTo('bureau.reviews.get').length ?? 0;
+
+    await fireEvent.click(await view.findByRole('button', { name: 'Approve' }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve')).toHaveLength(1));
+    expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toMatchObject({
+      id: approval.id,
+      decision: 'approve',
+      round: 1,
+    });
+    await waitFor(() =>
+      expect(view.container.querySelector('.ib-run-wait__note')?.textContent).toContain(
+        REVIEWS_COPY.roundChanged.title,
+      ),
+    );
+    expect(view.container.textContent).toContain(REVIEWS_COPY.roundChanged.message);
+    await waitFor(() => expect(stub?.callsTo('bureau.reviews.get').length).toBeGreaterThan(reads));
   });
 
   test('a review that is no longer pending, or that the Bureau lost, is not a wait to answer', async () => {
