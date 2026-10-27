@@ -26,6 +26,7 @@ const PATHS: Readonly<Record<ViewName, string>> = {
   storage: '/storage',
   system: '/system',
   audit: '/audit',
+  settings: '/settings',
   goals: '/goals',
   engine: '/engine',
 };
@@ -76,6 +77,13 @@ const PROBES: Readonly<Record<ViewName, ProbeRoute>> = {
   agents: bureauProbe('bureau.agents.list', { agents: [] }),
   audit: bureauProbe('bureau.audit.query', { records: [], nextCursor: null }),
   goals: bureauProbe('bureau.goals.list', { goals: [], nextOffset: null }),
+  // Never empty (`VIEWS.settings.canBeEmpty`), so the answer is never served as an empty one.
+  settings: bureauProbe('bureau.settings.get', {
+    values: {},
+    revision: 0,
+    persisted: true,
+    keys: {},
+  }),
   'agent-editor': jsonRpcProbe('bureau.agents.catalog'),
   // The list joins the engine's definitions with the Bureau's files, so it asks both, and it is
   // empty only when neither lists anything.

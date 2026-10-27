@@ -104,6 +104,7 @@ import {
 } from './skills';
 import { createDecideToolbox, type DecideToolWiring } from './decisions/decide-tool';
 import { humanInputEnabled, humanInputSchemasOf } from './human-input-option';
+import type { TaskToolGrant } from './task-registry';
 import { withAddedTools, withToolboxLayer } from './toolbox-additions';
 import {
   type AnyWorkflowDefinition,
@@ -625,10 +626,39 @@ function raceRequestAuthorityValidation(
 }
 
 /**
+ * COR-1710 — what a task's tool grant offers it. Without a grant (a composition with no settings
+ * wired), the options decide, as they did before grants were recorded.
+ */
+export function grantedTools(
+  grant: TaskToolGrant | undefined,
+  options: Pick<RuntimeCompositionOptions, 'humanInput' | 'wakeup'>,
+): {
+  readonly humanInput: boolean;
+  readonly inputSchemas: Readonly<Record<string, HumanInputSchema>> | undefined;
+  readonly wakeup: boolean;
+  readonly decide: boolean;
+} {
+  if (grant === undefined) {
+    return {
+      humanInput: humanInputEnabled(options.humanInput),
+      inputSchemas: humanInputSchemasOf(options.humanInput),
+      wakeup: options.wakeup !== false,
+      decide: true,
+    };
+  }
+  return {
+    humanInput: grant.humanInput !== false,
+    inputSchemas: humanInputSchemasOf(grant.humanInput),
+    wakeup: grant.wakeup,
+    decide: grant.decide,
+  };
+}
+
+/**
  * Discriminate a `StorageConfiguration` object from a raw Weft `Storage`.
  * `StorageConfiguration` always carries a `type` string discriminant.
  */
-function isStorageConfiguration(
+export function isStorageConfiguration(
   value: StorageConfiguration | Storage,
 ): value is StorageConfiguration {
   const candidate = value as unknown as Record<string, unknown>;
@@ -839,6 +869,11 @@ export type GoalAttemptClaimFence = 'fenced' | 'foreign';
 
 export interface CatalogRunRecoveryRecord {
   readonly schemaVersion: 1;
+  /**
+   * COR-1710 — the tools the task was granted when it started, so its recovery offers the same
+   * ones. Absent in a record written before grants were recorded.
+   */
+  readonly tools?: TaskToolGrant | undefined;
   readonly agentName: string;
   readonly definitionRevision: number;
   readonly input: AgentInput;
@@ -1527,6 +1562,13 @@ export type MediaRowHolder = 'session' | 'run';
 export type RuntimeCompositionDependencies = {
   resolveProviderGenerate: typeof resolveProviderGenerate;
   /**
+   * COR-1710 — whether this composition disposes a raw `Storage` passed as `options.storage`.
+   * `createBureau` resolves a storage configuration itself, to read the settings record before
+   * the engine exists, and hands the resulting storage over with this set, so it is still
+   * disposed with the composition. A storage configuration is always disposed.
+   */
+  ownsStorage?: boolean;
+  /**
    * Builds the session store this composition uses over its resolved KV
    * view. Defaults to operative's own `createSessionStore` — the real
    * production wiring. A caller (test or platform package) that supplies a
@@ -1629,7 +1671,16 @@ export type RuntimeCompositionDependencies = {
    * `undefined` when the tool is not offered (`decide: false`, or nothing can answer). Late-bound
    * by `createBureau`: the decisions are built after this composition.
    */
-  decideToolFor?: (principalId: string | undefined) => DecideToolWiring | undefined;
+  decideToolFor?: (
+    principalId: string | undefined,
+    offered: boolean,
+  ) => DecideToolWiring | undefined;
+  /**
+   * COR-1710 — the tools task `taskId` was granted when it started, from its admission record;
+   * for a task recorded before grants were, the settings now, recorded on it once. Without this,
+   * a resumed task is offered what the options say, as before grants existed.
+   */
+  toolGrantFor?: (taskId: string) => Promise<TaskToolGrant>;
   /**
    * COR-1524 — the definition a file-backed agent's run started with. A scheduled fire records its
    * binding here as a session run does, so recovering it resolves the agent it started with, not the
@@ -2803,6 +2854,7 @@ async function buildRuntimeComposition(
       ownsDurableStorage = true;
     } else {
       durableStorage = effectiveStorage;
+      ownsDurableStorage = dependencies.ownsStorage === true;
     }
     kv = textValueStore(durableStorage, { disposeUnderlyingStorage: false });
   }
@@ -3829,17 +3881,22 @@ async function buildRuntimeComposition(
     // this function returns).
     let runToolbox: BureauToolbox = runRuntime.toolbox;
     const servicesRef: { current?: DurableRunDeps } = {};
-    const wantsHumanInput = humanInputEnabled(options.humanInput) && runId !== undefined;
-    const wantsWakeup = options.wakeup !== false && runId !== undefined;
+    // COR-1710 — the grant the task started with, not the settings of the moment.
+    const grant = grantedTools(
+      runId === undefined ? undefined : await dependencies.toolGrantFor?.(runId),
+      options,
+    );
+    const wantsHumanInput = grant.humanInput && runId !== undefined;
+    const wantsWakeup = grant.wakeup && runId !== undefined;
     // COR-1709: offered to exactly the runs that are offered `requestHumanInput`.
     const decide =
       runId === undefined
         ? undefined
-        : dependencies.decideToolFor?.(recoveredOwnerOf(session, runId));
+        : dependencies.decideToolFor?.(recoveredOwnerOf(session, runId), grant.decide);
     if (wantsHumanInput || wantsWakeup || decide !== undefined) {
       runToolbox = wireDurableOptInTools(runRuntime.toolbox, servicesRef, {
         humanInput: wantsHumanInput,
-        inputSchemas: humanInputSchemasOf(options.humanInput),
+        inputSchemas: grant.inputSchemas,
         wakeup: wantsWakeup,
         ...(decide === undefined ? {} : { decide }),
         // `runId` is non-undefined here (both `wantsHumanInput`/`wantsWakeup`
@@ -4457,8 +4514,14 @@ async function buildRuntimeComposition(
     // when its fresh dispatch was: the option is on, the engine is durable, and it is neither a
     // child nor a goal attempt. The tool parks through the services object being returned, so
     // that object is captured once it exists, as `buildRunDepsFromSession` does.
+    // COR-1710 — the grant recorded when the task started; one recorded before grants were
+    // resumes with the settings now.
+    const catalogGrant = grantedTools(
+      record.tools ?? (await dependencies.toolGrantFor?.(runId)),
+      options,
+    );
     const offersHumanInput =
-      humanInputEnabled(options.humanInput) &&
+      catalogGrant.humanInput &&
       durable !== undefined &&
       record.goalAttempt === undefined &&
       record.workflowStep === undefined &&
@@ -4472,13 +4535,13 @@ async function buildRuntimeComposition(
       record.workflowStep === undefined &&
       resolution.recoveredChild !== true;
     const decide = offersDecide
-      ? dependencies.decideToolFor?.(ownerOrLocal(record.principal))
+      ? dependencies.decideToolFor?.(ownerOrLocal(record.principal), catalogGrant.decide)
       : undefined;
     const toolbox =
       offersHumanInput || decide !== undefined
         ? wireDurableOptInTools(resolution.options.toolbox, humanInputServices, {
             humanInput: offersHumanInput,
-            inputSchemas: humanInputSchemasOf(options.humanInput),
+            inputSchemas: catalogGrant.inputSchemas,
             wakeup: false,
             runId,
             ...(decide === undefined ? {} : { decide }),
@@ -4932,12 +4995,15 @@ async function buildRuntimeComposition(
     // catalog run captures it.
     const humanInputServices: { current?: DurableRunDeps } = {};
     // COR-1709: a fire is offered `decide` as it is offered `requestHumanInput`, as its owner.
-    const fireDecide = durable === undefined ? undefined : dependencies.decideToolFor?.(owner);
+    // COR-1710 — the grant recorded on the fire's task when it was first admitted.
+    const fireGrant = grantedTools(await dependencies.toolGrantFor?.(runId), options);
+    const fireDecide =
+      durable === undefined ? undefined : dependencies.decideToolFor?.(owner, fireGrant.decide);
     const fireToolbox =
-      (humanInputEnabled(options.humanInput) && durable !== undefined) || fireDecide !== undefined
+      (fireGrant.humanInput && durable !== undefined) || fireDecide !== undefined
         ? wireDurableOptInTools(runRuntime.toolbox, humanInputServices, {
-            humanInput: humanInputEnabled(options.humanInput) && durable !== undefined,
-            inputSchemas: humanInputSchemasOf(options.humanInput),
+            humanInput: fireGrant.humanInput && durable !== undefined,
+            inputSchemas: fireGrant.inputSchemas,
             wakeup: false,
             runId,
             ...(fireDecide === undefined ? {} : { decide: fireDecide }),

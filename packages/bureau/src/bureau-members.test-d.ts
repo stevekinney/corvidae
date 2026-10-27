@@ -8,6 +8,7 @@ import { z } from 'zod';
 
 import type { AgentModels } from './agent-models.ts';
 import type { BureauDecisions } from './decisions/types.ts';
+import type { BureauSettings } from './settings/types.ts';
 import type { BureauMemberPath } from './http/operation-map.ts';
 import type {
   Bureau,
@@ -247,8 +248,8 @@ export type StringStartIsAnUntypedHandle = AssertTrue<
 // COR-1708: the Bureau's top-level members, fixed as an exact set. Adding a member, or removing
 // one, fails here and nowhere else, so a flat method cannot return and a namespace cannot lose an
 // entry unnoticed. The list is the project document's table of top-level members (Bureau API, DX,
-// and architecture, "The in-process surface") without `settings`, which the later issue that adds
-// it extends this list with. COR-1709 added `decisions`. `runtimeServices` and `peerCalls` are members the
+// and architecture, "The in-process surface"). COR-1709 added `decisions` and COR-1710 `settings`.
+// `runtimeServices` and `peerCalls` are members the
 // table does not mention and this issue does not change.
 type TopLevelMembers =
   // Namespaces.
@@ -258,6 +259,7 @@ type TopLevelMembers =
   | 'schedules'
   | 'models'
   | 'decisions'
+  | 'settings'
   | 'audit'
   | 'internals'
   | 'agents'
@@ -331,4 +333,10 @@ export type BooleanDecisionIsABoolean = AssertTrue<
 >;
 export type ChoiceDecisionIsAKey = AssertTrue<
   Equals<Awaited<typeof choiceDecision>['value'], string>
+>;
+
+// COR-1710: `settings` is declared, with its four operations.
+export type SettingsAreDeclared = AssertTrue<Equals<Bureau['settings'], BureauSettings>>;
+export type SettingsMembers = AssertTrue<
+  Equals<keyof BureauSettings, 'get' | 'schema' | 'update' | 'subscribe'>
 >;

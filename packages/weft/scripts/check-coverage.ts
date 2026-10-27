@@ -331,9 +331,9 @@ const COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer('COVERAGE_ALLOWANCE_OVE
     'src/server/json-rpc-websocket.ts',
     {
       reason:
-        'Transport disconnect and concurrency exits are behaviorally tested, but Bun does not deterministically attribute the emit() catch-block’s emitterBroken = true line (line 117).',
+        'Transport disconnect and concurrency exits are behaviorally tested, but Bun does not deterministically attribute the emit() catch-block’s emitterBroken = true line (line 160).',
       functions: 2,
-      lines: new Set([117]),
+      lines: new Set([160]),
       requireUncoveredLines: true,
     },
   ],

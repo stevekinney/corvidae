@@ -45,6 +45,8 @@ export const BUREAU_SCOPES = [
   'bureau.assets:write',
   'bureau.events:observe-all',
   'bureau.decisions:write',
+  'bureau.settings:read',
+  'bureau.settings:write',
 ] as const satisfies readonly PackageAuthorizationScope[];
 
 /** One of the scopes in {@link BUREAU_SCOPES}. */

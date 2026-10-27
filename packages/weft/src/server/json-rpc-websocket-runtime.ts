@@ -7,6 +7,7 @@ import {
 } from './json-rpc-websocket.ts';
 import type { OperationRegistry } from './operation-catalog.ts';
 import { anonymousPrincipal, type Principal } from './principal.ts';
+import type { ConnectionLease } from './runtime/context.ts';
 import type { WorkflowEventFeed } from './workflow-event-feed.ts';
 
 export type ConnectionType = 'worker' | 'stream' | 'watch' | 'generic' | 'jsonrpc';
@@ -27,6 +28,7 @@ export interface WebSocketData {
   watchReplayInProgress?: boolean;
   pendingWatchMessages?: Array<{ sequence: number; message: string }>;
   workflowStreamConnectionAccepted?: boolean;
+  workflowWebSocketConnectionLease?: ConnectionLease;
   principal?: Principal;
   jsonRpcSession?: JsonRpcWebSocketSession;
 }
@@ -54,6 +56,8 @@ export function openJsonRpcWebSocketSession(options: {
   engine: unknown;
   feed: WorkflowEventFeed;
   fleetFeed?: FleetEventFeed;
+  acquireWorkflowSubscription?: () => ConnectionLease;
+  acquireFleetSubscription?: () => ConnectionLease;
   activeSessions: Set<JsonRpcWebSocketSession>;
 }): void {
   try {
@@ -64,6 +68,12 @@ export function openJsonRpcWebSocketSession(options: {
       emitter: { send: (message) => options.ws.send(message) },
       feed: options.feed,
       ...(options.fleetFeed !== undefined ? { fleetFeed: options.fleetFeed } : {}),
+      ...(options.acquireWorkflowSubscription !== undefined
+        ? { acquireWorkflowSubscription: options.acquireWorkflowSubscription }
+        : {}),
+      ...(options.acquireFleetSubscription !== undefined
+        ? { acquireFleetSubscription: options.acquireFleetSubscription }
+        : {}),
       transport: 'jsonRpcWebSocket',
     });
     options.ws.data.jsonRpcSession = session;

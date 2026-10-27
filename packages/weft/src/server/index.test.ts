@@ -117,6 +117,29 @@ async function connectAuthenticatedWebSocket(url: string, apiKey: string): Promi
   return ws;
 }
 
+function waitForJsonRpcMessage(
+  ws: WebSocket,
+  predicate: (message: Record<string, unknown>) => boolean,
+): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    const onMessage = (event: MessageEvent): void => {
+      let message: Record<string, unknown>;
+      try {
+        message = JSON.parse(String(event.data)) as Record<string, unknown>;
+      } catch {
+        return;
+      }
+      if (!predicate(message)) return;
+      ws.removeEventListener('message', onMessage);
+      resolve(message);
+    };
+    ws.addEventListener('message', onMessage);
+    ws.addEventListener('error', () => reject(new Error('JSON-RPC WebSocket failed')), {
+      once: true,
+    });
+  });
+}
+
 async function waitForWorkerMessage(
   ws: WebSocket,
   predicate: (message: Record<string, unknown>) => boolean,
@@ -964,6 +987,7 @@ describe('serve', () => {
     server = serveTestServer({
       engine,
       port: 0,
+      workerReconnectGracePeriodMs: 0,
       auth: {
         apiKeys: ['weft_key_valid123456789012345678901'],
         defaultApiKeyScopes: ['workflows:read'],
@@ -3478,6 +3502,173 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
       context.workflowEventFeed.dispose();
       context.fleetEventFeed.dispose();
     }
+  });
+
+  it('reports live transport subscriber counts and metrics through the public server surface', async () => {
+    const apiKey = 'connections-system-read-key';
+    engine = createEngine();
+    server = serveTestServer({
+      engine,
+      port: 0,
+      workerReconnectGracePeriodMs: 0,
+      auth: {
+        apiKeys: [apiKey],
+        defaultApiKeyScopes: ['events:read', 'streams:read', 'workers:write', 'system:read'],
+      },
+    });
+
+    const readMetrics = async (): Promise<Record<string, { type: string; value?: number }>> => {
+      const response = await fetch(`${server.url}/v1/metrics/json`, {
+        headers: { 'x-api-key': apiKey },
+      });
+      expect(response.status).toBe(200);
+      return (await response.json()) as Record<string, { type: string; value?: number }>;
+    };
+    const zero = {
+      fleetSse: 0,
+      fleetWebSocket: 0,
+      workflowSse: 0,
+      workflowWebSocket: 0,
+      workers: 0,
+    };
+    expect(server.connections()).toEqual(zero);
+    expect(await readMetrics()).toMatchObject({
+      'weft.connection.fleet_sse': { type: 'gauge', value: 0 },
+      'weft.connection.fleet_websocket': { type: 'gauge', value: 0 },
+      'weft.connection.workflow_sse': { type: 'gauge', value: 0 },
+      'weft.connection.workflow_websocket': { type: 'gauge', value: 0 },
+      'weft.connection.workers': { type: 'gauge', value: 0 },
+    });
+
+    const workflowSseAbort = new AbortController();
+    const workflowSse = await fetch(`${server.url}/v1/workflows/connections-probe/events/sse`, {
+      headers: { Accept: 'text/event-stream', 'x-api-key': apiKey },
+      signal: workflowSseAbort.signal,
+    });
+    await workflowSse.body!.getReader().read();
+    await waitFor(() => server.connections().workflowSse === 1, {
+      label: 'workflow SSE connection count',
+    });
+    expect(server.connections()).toMatchObject({ ...zero, workflowSse: 1 });
+    workflowSseAbort.abort();
+    await workflowSse.body!.cancel().catch(() => undefined);
+    await waitFor(() => server.connections().workflowSse === 0, {
+      label: 'workflow SSE close count',
+    });
+
+    const fleetSseAbort = new AbortController();
+    const fleetSse = await fetch(`${server.url}/v1/events/sse`, {
+      headers: { Accept: 'text/event-stream', 'x-api-key': apiKey },
+      signal: fleetSseAbort.signal,
+    });
+    await fleetSse.body!.getReader().read();
+    await waitFor(() => server.connections().fleetSse === 1, {
+      label: 'fleet SSE connection count',
+    });
+    expect(server.connections()).toMatchObject({ ...zero, fleetSse: 1 });
+    fleetSseAbort.abort();
+    await fleetSse.body!.cancel().catch(() => undefined);
+    await waitFor(() => server.connections().fleetSse === 0, {
+      label: 'fleet SSE close count',
+    });
+
+    const wsUrl = server.url.replace('http://', 'ws://');
+    const stream = await connectAuthenticatedWebSocket(
+      `${wsUrl}/v1/workflows/connections-probe/stream`,
+      apiKey,
+    );
+    await waitFor(() => server.connections().workflowWebSocket === 1, {
+      label: 'workflow stream connection count',
+    });
+    stream.close();
+    await waitFor(() => server.connections().workflowWebSocket === 0, {
+      label: 'workflow stream close count',
+    });
+
+    const idleJsonRpc = await connectAuthenticatedWebSocket(`${wsUrl}/jsonrpc`, apiKey);
+    await waitFor(() => server.connections().fleetWebSocket === 0, {
+      label: 'idle JSON-RPC socket remains uncounted',
+    });
+    const firstSubscription = waitForJsonRpcMessage(idleJsonRpc, (message) => message['id'] === 1);
+    idleJsonRpc.send(
+      JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'weft.events.subscribe', params: {} }),
+    );
+    await firstSubscription;
+    await waitFor(() => server.connections().fleetWebSocket === 1, {
+      label: 'first fleet WebSocket subscriber count',
+    });
+    const secondSubscription = waitForJsonRpcMessage(idleJsonRpc, (message) => message['id'] === 2);
+    idleJsonRpc.send(
+      JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'weft.events.subscribe', params: {} }),
+    );
+    await secondSubscription;
+    await waitFor(() => server.connections().fleetWebSocket === 2, {
+      label: 'multiple fleet subscriptions on one socket',
+    });
+    idleJsonRpc.close();
+    await waitFor(() => server.connections().fleetWebSocket === 0, {
+      label: 'fleet WebSocket subscriber cleanup',
+    });
+
+    const workflowJsonRpc = await connectAuthenticatedWebSocket(`${wsUrl}/jsonrpc`, apiKey);
+    const workflowSubscription = waitForJsonRpcMessage(
+      workflowJsonRpc,
+      (message) => message['id'] === 4,
+    );
+    workflowJsonRpc.send(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 4,
+        method: 'weft.workflows.subscribe',
+        params: { workflowId: 'connections-probe', selector: 'events' },
+      }),
+    );
+    await workflowSubscription;
+    await waitFor(() => server.connections().workflowWebSocket === 1, {
+      label: 'workflow JSON-RPC subscriber count',
+    });
+    workflowJsonRpc.close();
+    await waitFor(() => server.connections().workflowWebSocket === 0, {
+      label: 'workflow JSON-RPC subscriber cleanup',
+    });
+
+    const worker = await connectAuthenticatedWebSocket(`${wsUrl}/v1/tasks/default/stream`, apiKey);
+    await registerWorker(worker, {
+      workerId: 'connections-probe-worker',
+      activities: ['test.charge'],
+    });
+    await waitFor(() => server.connections().workers === 1, {
+      label: 'registered worker connection count',
+    });
+    worker.close();
+    await waitFor(() => server.connections().workers === 0, {
+      label: 'worker close count',
+    });
+
+    const stopSseAbort = new AbortController();
+    const stopSse = await fetch(`${server.url}/v1/events/sse`, {
+      headers: { Accept: 'text/event-stream', 'x-api-key': apiKey },
+      signal: stopSseAbort.signal,
+    });
+    await stopSse.body!.getReader().read();
+    await waitFor(() => server.connections().fleetSse === 1, {
+      label: 'shutdown SSE connection count',
+    });
+    const stopSocket = await connectAuthenticatedWebSocket(`${wsUrl}/jsonrpc`, apiKey);
+    const stopSubscription = waitForJsonRpcMessage(stopSocket, (message) => message['id'] === 3);
+    stopSocket.send(
+      JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'weft.events.subscribe', params: {} }),
+    );
+    await stopSubscription;
+    await waitFor(() => server.connections().fleetWebSocket === 1, {
+      label: 'shutdown JSON-RPC subscriber count',
+    });
+    await server.stop();
+    await waitFor(() => Object.values(server.connections()).every((value) => value === 0), {
+      label: 'server stop clears connection counts',
+    });
+    stopSseAbort.abort();
+    expect(server.connections()).toEqual(zero);
   });
 
   it('receives live token events through the stream connection', async () => {

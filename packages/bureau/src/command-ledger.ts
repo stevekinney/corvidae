@@ -337,9 +337,10 @@ export interface CreateCommandLedgerOptions<TClaim = unknown, TResult = unknown>
   /**
    * How long a binding is retained after its command settles, in
    * milliseconds. A positive integer; default
-   * {@link COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS} (24 hours).
+   * {@link COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS} (24 hours). A function is read each time
+   * a binding's window is measured, so a change applies from then on.
    */
-  readonly terminalRetentionMs?: number | undefined;
+  readonly terminalRetentionMs?: number | (() => number | undefined) | undefined;
   /**
    * When `entry`'s retention window starts, in epoch milliseconds, or
    * `undefined` while its command is still in progress, which holds the
@@ -483,7 +484,13 @@ export function createCommandLedger<TClaim, TResult>(
   // The trailing delimiter keeps `request-1` from listing `request-10`'s conflicts.
   const conflictKeyPrefixOf = (identity: CommandLedgerIdentity): string =>
     `${conflictPrefix}${identityKeySuffix(identity)}:`;
-  const terminalRetentionMs = validateTerminalRetentionMs(options.terminalRetentionMs);
+  const retentionOption = options.terminalRetentionMs;
+  // A fixed value is refused at construction; a function is checked each time it is read.
+  if (typeof retentionOption !== 'function') validateTerminalRetentionMs(retentionOption);
+  const terminalRetention = (): number =>
+    validateTerminalRetentionMs(
+      typeof retentionOption === 'function' ? retentionOption() : retentionOption,
+    );
   type Entry = CommandLedgerEntry<TClaim, TResult>;
   type Completed = CommandLedgerCompletedEntry<TClaim, TResult>;
 
@@ -493,6 +500,7 @@ export function createCommandLedger<TClaim, TResult>(
    */
   async function expiredAt(entry: Entry): Promise<number | undefined> {
     const now = clock.now();
+    const terminalRetentionMs = terminalRetention();
     const earliest = Date.parse(latestTimestamp(entry)) + terminalRetentionMs;
     if (now < earliest) return undefined;
     if (retentionStart === undefined) return earliest;
@@ -983,9 +991,11 @@ export interface CreateRunCreationLedgerOptions {
   readonly observe: (claim: RunCreationClaim) => Promise<RunCreationObservation>;
   /**
    * How long a binding is retained after its run settles, in milliseconds.
-   * Default {@link COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS} (24 hours).
+   * Default {@link COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS} (24 hours). A function is read
+   * each time a binding's window is measured, so a window changed while the Bureau runs applies
+   * to the bindings measured from then on (COR-1710).
    */
-  readonly terminalRetentionMs?: number | undefined;
+  readonly terminalRetentionMs?: number | (() => number | undefined) | undefined;
 }
 
 /** Which run-creation request a receipt query is for. */

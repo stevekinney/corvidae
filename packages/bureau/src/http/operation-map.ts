@@ -124,6 +124,11 @@ export const OPERATION_MAP = {
 
   'bureau.decisions.decide': { member: 'decisions.decide' },
 
+  'bureau.settings.get': { member: 'settings.get' },
+  'bureau.settings.schema': { member: 'settings.schema' },
+  'bureau.settings.update': { member: 'settings.update' },
+  'bureau.settings.events': { member: 'settings.subscribe' },
+
   'bureau.agents.list': { member: 'agents.list' },
   // Describes one catalog agent against the models catalog (COR-1708).
   'bureau.agents.models': { member: 'agents.models' },

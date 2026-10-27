@@ -39,6 +39,7 @@ import {
   type DispatchResult,
   type SubscriptionStartEnvelope,
 } from './operation-catalog.ts';
+import type { ConnectionLease } from './runtime/context.ts';
 
 export type {
   JsonRpcWebSocketEmitter,
@@ -104,6 +105,16 @@ function hasRequiredSubscriptionEnvelope(
   return !requiresStartEnvelope || isSubscriptionStartEnvelope(envelope);
 }
 
+function releaseSubscriptionLease(lease: ConnectionLease | undefined): void {
+  lease?.release();
+}
+
+function acquireSubscriptionLease(
+  acquire: (() => ConnectionLease) | undefined,
+): ConnectionLease | undefined {
+  return acquire?.();
+}
+
 function isSessionPrimitive(method: unknown): boolean {
   return (
     method === SESSION_METHODS.SUBSCRIBE ||
@@ -116,31 +127,28 @@ function isSessionPrimitive(method: unknown): boolean {
 export function createJsonRpcWebSocketSession(
   options: JsonRpcWebSocketSessionOptions,
 ): JsonRpcWebSocketSession {
-  const { registry, engine, principal, emitter, feed, fleetFeed, discoverDocument } = options;
+  const {
+    registry,
+    engine,
+    principal,
+    emitter,
+    feed,
+    fleetFeed,
+    discoverDocument,
+    acquireWorkflowSubscription,
+    acquireFleetSubscription,
+  } = options;
   const maxSubscriptions = options.maxSubscriptions ?? DEFAULT_MAX_SUBSCRIPTIONS;
   const maxFrameBytes = options.maxFrameBytes ?? DEFAULT_MAX_FRAME_BYTES;
   const transport = options.transport ?? 'jsonRpcWebSocket';
   const subscriptions = new Map<string, ActiveSubscription>();
   const pendingSubscriptions = new Set<PendingSubscription>();
-  // `emitterBroken` tracks the emitter's liveness — set to `true` only
-  // when `emitter.send` (or `JSON.stringify`) throws. `disposed`
-  // tracks whether `close()` ran — drives subscription teardown.
-  // Keeping them separate means a broken emitter does NOT skip the
-  // cleanup path in `close()`; background pumps would otherwise leak
-  // feed listeners indefinitely, spinning `deliver` → no-op `emit`.
+  // Keep emitter failure separate from disposal so close() still tears down
+  // active subscriptions after a socket send fails.
   let emitterBroken = false;
   let disposed = false;
 
-  /**
-   * Send a frame on the wire. Guards against emitter failures: a
-   * thrown `JSON.stringify` (circular reference) or a thrown
-   * `emitter.send` (closed socket) cannot bubble into background
-   * subscription pumps as an unhandled rejection — swallowed here
-   * with `emitterBroken` set so subsequent emits are silent no-ops.
-   * Critically this does NOT set `disposed`: `close()` must still run
-   * its cleanup path to abort active subscriptions; otherwise the
-   * pumps leak feed listeners indefinitely.
-   */
+  /** Send a frame while containing closed-socket failures. */
   function emit(message: Record<string, unknown>): void {
     if (disposed || emitterBroken) return;
     try {
@@ -198,6 +206,7 @@ export function createJsonRpcWebSocketSession(
           },
         ),
       true,
+      acquireWorkflowSubscription,
     );
   }
 
@@ -215,6 +224,7 @@ export function createJsonRpcWebSocketSession(
           registry,
         }),
       true,
+      acquireFleetSubscription,
     );
   }
 
@@ -222,6 +232,7 @@ export function createJsonRpcWebSocketSession(
     request: SessionRequest,
     execute: () => SubscriptionExecution,
     requiresStartEnvelope = false,
+    acquire?: () => ConnectionLease,
   ): Promise<void> {
     if (subscriptions.size >= maxSubscriptions) {
       emitResponse(request, {
@@ -275,6 +286,7 @@ export function createJsonRpcWebSocketSession(
       });
       return;
     }
+    const lease = acquireSubscriptionLease(acquire);
     emitResponse(request, {
       jsonrpc: JSON_RPC_VERSION,
       result: subscriptionResponseEnvelope(envelope, subscriptionId, requiresStartEnvelope),
@@ -288,7 +300,10 @@ export function createJsonRpcWebSocketSession(
       closeSubscription: closeOnce,
       shouldSuppressOutput,
       emit,
-      onComplete: () => subscriptions.delete(subscriptionId),
+      onComplete: () => {
+        releaseSubscriptionLease(lease);
+        subscriptions.delete(subscriptionId);
+      },
     });
     subscriptions.set(subscriptionId, {
       id: subscriptionId,
@@ -417,6 +432,7 @@ export function createJsonRpcWebSocketSession(
             registry,
           }),
         false,
+        undefined,
       );
       return true;
     }

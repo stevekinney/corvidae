@@ -40,6 +40,7 @@
     ScrollText,
     ServerCog,
     Settings,
+    SlidersHorizontal,
     Workflow,
   } from '@lucide/svelte';
   import { MediaQuery } from 'svelte/reactivity';
@@ -175,6 +176,13 @@
           view: 'workflows',
           path: '/workflows',
           icon: Workflow,
+          badge: undefined,
+          badgeVariant: 'warning',
+        },
+        {
+          view: 'settings',
+          path: '/settings',
+          icon: SlidersHorizontal,
           badge: undefined,
           badgeVariant: 'warning',
         },
