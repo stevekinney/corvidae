@@ -175,10 +175,10 @@ const parkedStart =
 
 const attachParkedOn =
   (interrupts: unknown[], withCall = false) =>
-  () =>
+  (messages: Row[] = []) =>
     sse([
       { type: 'RUN_STARTED', threadId: THREAD, runId: 'attach', metadata: meta },
-      { type: 'MESSAGES_SNAPSHOT', messages: [] },
+      { type: 'MESSAGES_SNAPSHOT', messages },
       ...(withCall ? toolCall : []),
       {
         type: 'RUN_FINISHED',
@@ -188,17 +188,19 @@ const attachParkedOn =
       },
     ]);
 
-function mount(starts: Answer[], attaches: Array<() => Response> = []) {
+function mount(starts: Answer[], attaches: Array<(messages: Row[]) => Response> = []) {
   const thread = new Thread();
   const bodies: Body[] = [];
   const requests: string[] = [];
   const fetchStub: Fetcher = async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     requests.push(`${init?.method ?? 'GET'} ${url}`);
-    if (url.endsWith('/messages')) return Response.json({ threadId: THREAD, messages: [] });
+    if (url.endsWith('/messages'))
+      return Response.json({ threadId: THREAD, messages: thread.rows });
     if (url.includes('/threads/') && url.endsWith('/run')) {
       return (
-        attaches.shift()?.() ?? sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }])
+        attaches.shift()?.(thread.rows) ??
+        sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }])
       );
     }
     if (url.includes('/runs/')) {
@@ -241,7 +243,8 @@ describe('a message typed while a refused resume is owed', () => {
     const fetchStub: Fetcher = async (input, init) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       requests.push(`${init?.method ?? 'GET'} ${url}`);
-      if (url.endsWith('/messages')) return Response.json({ threadId: THREAD, messages: [] });
+      if (url.endsWith('/messages'))
+        return Response.json({ threadId: THREAD, messages: thread.rows });
       if (url.includes('/threads/') && url.endsWith('/run')) return attachParkedOn([environment])();
       if (url.includes('/runs/')) {
         return sse([{ type: 'RUN_ERROR', message: 'over', code: 'RUN_NOT_FOUND' }]);
@@ -305,9 +308,10 @@ describe('a message typed while a refused resume is owed', () => {
     const fetchStub: Fetcher = async (input, init) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       requests.push(`${init?.method ?? 'GET'} ${url}`);
-      if (url.endsWith('/messages')) return Response.json({ threadId: THREAD, messages: [] });
+      if (url.endsWith('/messages'))
+        return Response.json({ threadId: THREAD, messages: thread.rows });
       if (url.includes('/threads/') && url.endsWith('/run'))
-        return attachParkedOn([approval], true)();
+        return attachParkedOn([approval], true)(thread.rows);
       if (url.includes('/runs/')) {
         return sse([{ type: 'RUN_ERROR', message: 'over', code: 'RUN_NOT_FOUND' }]);
       }
@@ -370,12 +374,12 @@ describe('a message typed while a refused resume is owed', () => {
     ]);
     expect(bodies[2]?.messages.map((message) => message.content) ?? []).not.toContain('Also this');
     expect(bodies[2]?.resume?.map((entry) => entry.interruptId)).toEqual([approval.id]);
-    // The follow-up is still the person's to retry, as the follow-up it was.
+    // The authoritative snapshot removes an unaccepted local follow-up; its text
+    // was not promoted into a new request when the held decision was retried.
     const followUp = session.conversation.ids
       .map((id) => session.conversation.messages[id])
       .find((message) => message?.content === 'Also this');
-    expect(followUp?.metadata?.['_followUp']).toBe(true);
-    expect(followUp?.metadata?.['_deliveryStatus']).toBe('failed');
+    expect(followUp).toBeUndefined();
   });
 
   test('is the answer to a question the thread surfaced beside a decision that is kept', async () => {
