@@ -142,7 +142,10 @@ describe('bureau.deployment.get', () => {
         message: 'hold',
         principal: 'api-key:alice',
       });
-      await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'running', 'running');
+      await waitForCondition(
+        () => opened.bureau.tasks.detail(run.id)?.status === 'running',
+        'running',
+      );
       const before = await rpc(opened.handler, 'bureau.deployment.get', {}, 'alice-key');
       const shutdown = opened.bureau.shutdown({ policy: 'drain' });
       try {

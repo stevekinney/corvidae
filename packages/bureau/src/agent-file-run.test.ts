@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { BureauError, UnknownScheduleAgentError } from './create-bureau';
-import { waitForRunState } from './test';
+import { waitForTaskState } from './test';
 import {
   agentFileText,
   KNOWN_MODEL,
@@ -132,7 +132,7 @@ describe('bureau.run of a file agent', () => {
 
     await bureau.runDurableMaintenance(occurrence);
     const status = await pollUntil(async () => {
-      const page = await bureau.listDurableRuns();
+      const page = await bureau.tasks.workflows();
       const fire = page?.items.find((item) => item.status !== 'running');
       return fire?.status;
     }, 'the fire to settle');
@@ -226,7 +226,7 @@ describe('a session run of a file agent', () => {
 
     await bureau.run('researcher', 'hello').result();
     const created = await bureau.createRun({ message: 'hello', agentName: 'researcher' });
-    await waitForRunState(bureau, created.id);
+    await waitForTaskState(bureau, created.id);
 
     const [catalogRun, sessionRun] = observed as [Observation, Observation];
     expect(sessionRun).toEqual(catalogRun);
@@ -257,7 +257,7 @@ describe('a session run of a file agent', () => {
     );
     expect(outcomes.map((outcome) => outcome.status).toSorted()).toEqual(['fulfilled', 'rejected']);
     for (const outcome of outcomes) {
-      if (outcome.status === 'fulfilled') await waitForRunState(bureau, outcome.value.id);
+      if (outcome.status === 'fulfilled') await waitForTaskState(bureau, outcome.value.id);
     }
 
     // The loser kept no reference, and with it no snapshot; the winner's run holds its own.

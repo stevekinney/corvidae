@@ -265,7 +265,7 @@ const outcomes = {
     });
     try {
       await recovering.waitForRecovery?.();
-      await recovering.waitForDurableRun(runId);
+      await recovering.tasks.wait(runId);
       expect(generateCalls).toBeGreaterThan(0);
     } finally {
       await recovering.dispose();
@@ -337,8 +337,8 @@ const outcomes = {
       });
       try {
         await recovering.waitForRecovery?.();
-        await recovering.waitForDurableRun(runId).catch(() => {});
-        const recovered = await recovering.getDurableRun(runId);
+        await recovering.tasks.wait(runId).catch(() => {});
+        const recovered = await recovering.tasks.workflow(runId);
         expect(recovered?.status).toBe('failed');
         expect(generateCalls).toBe(0);
       } finally {
@@ -384,8 +384,8 @@ const outcomes = {
       });
       try {
         await recovering.waitForRecovery?.();
-        await recovering.waitForDurableRun(runId).catch(() => {});
-        const recovered = await recovering.getDurableRun(runId);
+        await recovering.tasks.wait(runId).catch(() => {});
+        const recovered = await recovering.tasks.workflow(runId);
         expect(recovered?.status).toBe('failed');
         expect(generateCalls).toBe(0);
       } finally {

@@ -90,9 +90,9 @@ describe('the Engine console', () => {
     await new HttpClient({ baseUrl: host.url.origin }).cancel(run.id);
 
     // The Bureau's own live run is torn down, not merely marked cancelled in storage.
-    const state = await host.bureau.waitForDurableRun(run.id);
+    const state = await host.bureau.tasks.wait(run.id);
     release();
     expect(state?.status).toBe('cancelled');
-    expect(host.bureau.getRun(run.id)?.status).toBe('aborted');
+    expect(host.bureau.tasks.detail(run.id)?.status).toBe('aborted');
   });
 });

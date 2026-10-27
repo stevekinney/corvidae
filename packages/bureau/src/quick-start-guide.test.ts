@@ -85,7 +85,7 @@ describe('README — Quick Start', () => {
       });
     });
 
-    const detail = bureau.getRun(run.id);
+    const detail = bureau.tasks.detail(run.id);
     // One of the README's `"stop-condition" | "maximum-steps" | …`: the agent's default stop
     // condition ends the run on the first answer that calls no tool.
     expect(detail?.finishReason).toBe('stop-condition');

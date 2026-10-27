@@ -197,7 +197,10 @@ describe('task.resynced', () => {
     const kinds = await kindsOf(opened, run.id);
     expect(kinds).not.toContain('review.requested');
     await answer(opened, run.id);
-    await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'completed', 'finish');
+    await waitForCondition(
+      () => opened.bureau.tasks.detail(run.id)?.status === 'completed',
+      'finish',
+    );
 
     const frames = await framesOf(opened, run.id);
     const [resync] = resyncs(frames);
@@ -230,7 +233,10 @@ describe('task.resynced', () => {
     const opened = await open(faulty, parksThenAnswers());
     const run = await park(opened, faulty.faults, 2);
     await answer(opened, run.id);
-    await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'completed', 'finish');
+    await waitForCondition(
+      () => opened.bureau.tasks.detail(run.id)?.status === 'completed',
+      'finish',
+    );
     await opened.bureau.runDurableMaintenance();
     await waitForCondition(
       async () => (await resyncCount(opened, run.id)) > 0,
@@ -271,7 +277,10 @@ describe('task.resynced', () => {
     const run = await park(first, faulty.faults, 0);
     await answer(first, run.id);
     await done;
-    await waitForCondition(() => first.bureau.getRun(run.id)?.status === 'completed', 'finish');
+    await waitForCondition(
+      () => first.bureau.tasks.detail(run.id)?.status === 'completed',
+      'finish',
+    );
     // No mark survives the crash: the record is settled and nothing says its end was lost.
     await first.dispose();
     faulty.faults.failAppends = 0;
@@ -430,7 +439,10 @@ describe('the task event projection of task.resynced', () => {
     const run = await park(first, faulty.faults, 0);
     await answer(first, run.id);
     await done;
-    await waitForCondition(() => first.bureau.getRun(run.id)?.status === 'completed', 'finish');
+    await waitForCondition(
+      () => first.bureau.tasks.detail(run.id)?.status === 'completed',
+      'finish',
+    );
     await first.dispose();
     faulty.faults.failAppends = 0;
     await clearMark(faulty, run.id);

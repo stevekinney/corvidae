@@ -26,7 +26,7 @@ import { z } from 'zod';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { createBureau } from './create-bureau';
-import { waitForCondition, waitForRunState } from './test';
+import { waitForCondition, waitForTaskState } from './test';
 import { holdFirstTerminalRunCommit } from './test/held-terminal-commit';
 import type { BureauOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';
@@ -77,7 +77,7 @@ async function collectRunFrames(
       if (frame.type === 'run-envelope') frames.push(frame.frame);
     });
     const summary = await bureau.createRun({ agentName: 'default', message: 'Go.' });
-    const settled = await waitForRunState(bureau, summary.id);
+    const settled = await waitForTaskState(bureau, summary.id);
     unsubscribe();
     return { frames, finishReason: settled.finishReason };
   } finally {

@@ -1,6 +1,6 @@
-// Type-level tripwire (COR-1703, COR-1704, COR-1705, COR-1706): the flat review, schedule, and session methods and the members
+// Type-level tripwire (COR-1703, COR-1704, COR-1705, COR-1706, COR-1707): the flat review, schedule, session, and run methods and the members
 // that moved onto `bureau.internals` must not return to `Bureau`'s top level. If this file stops
-// compiling, a member that belongs behind `reviews`, `schedules`, `contexts`, or `internals` was declared on
+// compiling, a member that belongs behind `reviews`, `schedules`, `contexts`, `tasks`, or `internals` was declared on
 // `Bureau` again.
 
 import type { BureauMemberPath } from './http/operation-map.ts';
@@ -69,7 +69,14 @@ type MovedToInternals = Extract<
   | 'whenRunRecorded'
 >;
 
+// COR-1707: the run members merged into `tasks`.
+type RemovedTaskMembers = Extract<
+  keyof Bureau,
+  'getRun' | 'subscribeRunSnapshot' | 'getDurableRun' | 'waitForDurableRun' | 'listDurableRuns'
+>;
+
 export type NoFlatReviewMembers = AssertNever<RemovedReviewMembers>;
+export type NoFlatTaskMembers = AssertNever<RemovedTaskMembers>;
 export type NoFlatScheduleMembers = AssertNever<RemovedScheduleMembers>;
 export type NoFlatSessionMembers = AssertNever<RemovedSessionMembers>;
 export type NothingMovedStaysOnBureau = AssertNever<MovedToInternals>;

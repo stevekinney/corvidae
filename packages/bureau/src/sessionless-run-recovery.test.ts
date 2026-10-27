@@ -138,7 +138,7 @@ describe('a sessionless durable run recovered after a crash', () => {
     resume.resolve();
     await waitForCondition(
       async () => {
-        const state = await second.getRun(run.id);
+        const state = await second.tasks.detail(run.id);
         return state?.status !== 'running';
       },
       'the recovered run never finished',
@@ -226,7 +226,7 @@ describe('a sessionless durable run recovered after a crash', () => {
     cleanups.push(async () => unsubscribe());
     const restored = await reviewOf(second, run.id);
     await second.reviews.resolve({ id: restored.id, decision: 'approve', principal: 'operator' });
-    const finished = await second.waitForDurableRun(run.id);
+    const finished = await second.tasks.wait(run.id);
     expect(finished?.status).toBe('completed');
     const parts = (finished?.result as { parts?: MediaContent[] } | undefined)?.parts ?? [];
     const image = parts.find((part) => part.type === 'image');

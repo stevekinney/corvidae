@@ -28,7 +28,7 @@ async function openBureau() {
 
 async function settle(bureau: Awaited<ReturnType<typeof openBureau>>, runId: string) {
   await waitForCondition(
-    () => bureau.getRun(runId)?.status !== 'running',
+    () => bureau.tasks.detail(runId)?.status !== 'running',
     `run ${runId} never settled`,
   );
 }
@@ -44,8 +44,8 @@ describe('the owner of a run and of its session (COR-718)', () => {
       });
       await settle(bureau, run.id);
 
-      expect(bureau.getRun(run.id)?.principal).toBe('api-key:alice');
-      expect(bureau.getRun(run.id)?.liveness.owner).toBe('api-key:alice');
+      expect(bureau.tasks.detail(run.id)?.principal).toBe('api-key:alice');
+      expect(bureau.tasks.detail(run.id)?.liveness.owner).toBe('api-key:alice');
       const session = await bureau.contexts.get(run.sessionId);
       expect(session?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('api-key:alice');
       expect(session?.metadata['lastRunOwningPrincipals']).toEqual({ [run.id]: 'api-key:alice' });
@@ -62,8 +62,8 @@ describe('the owner of a run and of its session (COR-718)', () => {
       const run = await bureau.createRun({ agentName: 'default', message: 'hello' });
       await settle(bureau, run.id);
 
-      expect(bureau.getRun(run.id)?.principal).toBe('anonymous:local');
-      expect(bureau.getRun(run.id)?.liveness.owner).toBe('anonymous:local');
+      expect(bureau.tasks.detail(run.id)?.principal).toBe('anonymous:local');
+      expect(bureau.tasks.detail(run.id)?.liveness.owner).toBe('anonymous:local');
       const session = await bureau.contexts.get(run.sessionId);
       expect(session?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('anonymous:local');
       expect(await bureau.getOwner({ kind: 'run', id: run.id })).toBe('anonymous:local');

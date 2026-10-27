@@ -1001,7 +1001,7 @@ describe('resuming a human wait', () => {
           content: '[signal:human-response] "yes"',
         });
         // The run's own conversation holds the answer under the id the stream gave it.
-        expect(bureau.getRun(first.nativeRunId)!.transcript!.ids).toContain(id);
+        expect(bureau.tasks.detail(first.nativeRunId)!.transcript!.ids).toContain(id);
       },
     );
   });
@@ -1018,7 +1018,7 @@ describe('resuming a human wait', () => {
         const first = await startUntilInterrupted(handler);
         const threadId = String((first.frames[0]!.event as { threadId?: unknown }).threadId);
         const id = `${first.nativeRunId}:signal:human-response:0`;
-        expect(bureau.getRun(first.nativeRunId)?.transcript?.ids ?? []).not.toContain(id);
+        expect(bureau.tasks.detail(first.nativeRunId)?.transcript?.ids ?? []).not.toContain(id);
 
         const frames = await readAgUiStream(
           openRunStream(
@@ -1125,7 +1125,7 @@ describe('a human wait answered by a caller who may write but not read', () => {
       }
       // The answer was delivered: the run went on with it.
       await waitForCondition(
-        () => bureau.getRun(first.nativeRunId)?.status === 'completed',
+        () => bureau.tasks.detail(first.nativeRunId)?.status === 'completed',
         'the run did not continue',
       );
       const continuation = generate.calls.at(-1)!.context.conversation;
@@ -1813,7 +1813,7 @@ describe('an approval no run can continue from', () => {
       await withHarness(await settledWithApproval(charges), async ({ handler, bureau }) => {
         await readAgUiStream(await handler(startRequest(runAgentInput())));
         await waitForCondition(
-          () => bureau.getRun(bureau.listRuns()[0]!.id)?.status === 'completed',
+          () => bureau.tasks.detail(bureau.listRuns()[0]!.id)?.status === 'completed',
           'run did not settle',
         );
         const id = bureau.reviews.list()[0]!.id;
@@ -1866,7 +1866,7 @@ describe('an approval no run can continue from', () => {
         const { handler, bureau } = harness;
         await readAgUiStream(await handler(startRequest(runAgentInput())));
         await waitForCondition(
-          () => bureau.getRun(bureau.listRuns()[0]!.id)?.status === 'completed',
+          () => bureau.tasks.detail(bureau.listRuns()[0]!.id)?.status === 'completed',
           'run did not settle',
         );
         const entries = [
@@ -1919,7 +1919,7 @@ describe('an approval no run can continue from', () => {
         const { handler, bureau } = harness;
         await readAgUiStream(await handler(startRequest(runAgentInput())));
         await waitForCondition(
-          () => bureau.getRun(bureau.listRuns()[0]!.id)?.status === 'completed',
+          () => bureau.tasks.detail(bureau.listRuns()[0]!.id)?.status === 'completed',
           'run did not settle',
         );
         const id = bureau.reviews.list()[0]!.id;
@@ -1965,7 +1965,7 @@ describe('an approval no run can continue from', () => {
     await withHarness(await settledWithApproval(charges), async ({ handler, bureau }) => {
       await readAgUiStream(await handler(startRequest(runAgentInput())));
       await waitForCondition(
-        () => bureau.getRun(bureau.listRuns()[0]!.id)?.status === 'completed',
+        () => bureau.tasks.detail(bureau.listRuns()[0]!.id)?.status === 'completed',
         'run did not settle',
       );
       const id = bureau.reviews.list()[0]!.id;
@@ -2081,7 +2081,7 @@ describe('a step that asks a human and calls a gated tool', () => {
       async ({ handler, bureau }) => {
         const start = await readAgUiStream(await handler(startRequest(runAgentInput())));
         await waitForCondition(
-          () => bureau.getRun(bureau.listRuns()[0]!.id)?.status === 'completed',
+          () => bureau.tasks.detail(bureau.listRuns()[0]!.id)?.status === 'completed',
           'run did not settle',
         );
         const id = bureau.reviews.list()[0]!.id;
@@ -2233,8 +2233,8 @@ describe('the human’s answer, streamed under the id the run commits it by', ()
    * it was (COR-1632).
    */
   const withTranscriptHidden = (bureau: Harness['bureau']) => {
-    const getRun = bureau.getRun.bind(bureau);
-    return spyOn(bureau, 'getRun').mockImplementation((runId) => {
+    const getRun = bureau.tasks.detail.bind(bureau.tasks);
+    return spyOn(bureau.tasks, 'detail').mockImplementation((runId) => {
       const detail = getRun(runId);
       return detail === undefined ? detail : { ...detail, transcript: undefined };
     });
@@ -2327,8 +2327,8 @@ describe('the human’s answer, streamed under the id the run commits it by', ()
         generate.release('after-answer');
         await answering.rest();
 
-        const committed = bureau
-          .getRun(first.nativeRunId)!
+        const committed = bureau.tasks
+          .detail(first.nativeRunId)!
           .transcript!.ids.filter((id) => id.includes(':signal:'));
         expect(committed).toHaveLength(1);
         expect(userTextRows(opening)).toEqual([]);

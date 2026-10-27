@@ -45,6 +45,7 @@ import type {
   PendingToolApprovalReview,
   BureauContexts,
   BureauReviews,
+  BureauTasks,
 } from '../types.ts';
 import { toInterrupt } from './ag-ui-interrupts.ts';
 import { type AnswerRow, snapshotMessages, snapshotMessagesWithAnswers } from './ag-ui-messages.ts';
@@ -73,10 +74,9 @@ export const PEER_SESSION_SETTLE_GRACE_MS = 2000;
 export const PEER_PARK_RECHECK_INTERVAL_MS = 500;
 
 /** What a peer's stream reads from the Bureau. */
-export type PeerStreamBureau = Pick<
-  Bureau,
-  'getDurableRun' | 'eventHistory' | 'waitForDurableRun' | 'subscribeEventHistory'
-> & { readonly reviews: Pick<BureauReviews, 'pendingOf'> } & {
+export type PeerStreamBureau = Pick<Bureau, 'eventHistory' | 'subscribeEventHistory'> & {
+  readonly tasks: Pick<BureauTasks, 'workflow' | 'wait'>;
+} & { readonly reviews: Pick<BureauReviews, 'pendingOf'> } & {
   readonly contexts: Pick<BureauContexts, 'get' | 'subscribeEvents'>;
 };
 
@@ -387,7 +387,7 @@ async function tail(
     else {
       // Under `maintenance: 'manual'` the wait is refused, and the history's terminal
       // and the stream's deadline are what end the stream.
-      bureau.waitForDurableRun(nativeRunId).then(fromStatus, () => undefined);
+      bureau.tasks.wait(nativeRunId).then(fromStatus, () => undefined);
     }
 
     // A park writes nothing this process can subscribe to (see the module doc), so the waits are
@@ -467,7 +467,7 @@ async function endParked(
   context: PeerStreamContext,
   waits: ReadonlyArray<PendingHumanWaitReview>,
 ): Promise<void> {
-  const durable = await context.bureau.getDurableRun(context.nativeRunId).catch(() => undefined);
+  const durable = await context.bureau.tasks.workflow(context.nativeRunId).catch(() => undefined);
   if (context.isEnded()) return;
   context.writeEvents(await context.surfaceEvents());
   if (context.isEnded()) return;

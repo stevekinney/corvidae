@@ -86,6 +86,7 @@ import type {
   BureauAudit,
   BureauInternals,
   BureauReviews,
+  BureauTasks,
   BureauContexts,
   BureauSchedules,
 } from '../types.ts';
@@ -193,15 +194,11 @@ export type BureauHandlerSource = Pick<
   | 'subscribeEventHistory'
   | 'waitForRecovery'
   | 'createRun'
-  | 'getRun'
   | 'abortRun'
   | 'listRuns'
   | 'subscribeLiveFrames'
-  | 'subscribeRunSnapshot'
   | 'locateRunCreationReceipt'
   | 'children'
-  | 'getDurableRun'
-  | 'waitForDurableRun'
   | 'cancelDurableRun'
   | 'models'
   | 'workflows'
@@ -211,7 +208,7 @@ export type BureauHandlerSource = Pick<
   | 'surfaces'
   | 'addEventListener'
   | 'removeEventListener'
-> & {
+> & { readonly tasks: Pick<BureauTasks, 'detail' | 'snapshot' | 'workflow' | 'wait'> } & {
   readonly reviews: Pick<BureauReviews, 'list' | 'get' | 'resolve' | 'pendingOf'>;
   readonly audit: Pick<BureauAudit, 'query'>;
   readonly contexts: Pick<
@@ -1044,7 +1041,7 @@ export function buildBureauHandlerHost(
     },
     tasks: bureau.internals.taskRegistry,
     inspection: {
-      liveness: (runId) => bureau.getRun(runId)?.liveness,
+      liveness: (runId) => bureau.tasks.detail(runId)?.liveness,
       children: (runId) => bureau.children.list(runId),
     },
     taskHistory: bureau,

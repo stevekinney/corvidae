@@ -19,12 +19,8 @@ import {
   createWeftMemoryRecordStorage,
   type MemoryGovernanceNotification,
 } from '@lostgradient/memory';
-import {
-  createAgent,
-  createMockGenerate,
-  stopWhen,
-  waitForRunState,
-} from '@lostgradient/operative';
+import { createAgent, createMockGenerate, stopWhen } from '@lostgradient/operative';
+import { waitForTaskState } from './test';
 import { MemoryStorage } from '@lostgradient/weft';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
@@ -125,7 +121,7 @@ describe('packages/bureau/README.md — Governed memory', () => {
         },
       },
     });
-    await waitForRunState(bureau, run.id);
+    await waitForTaskState(bureau, run.id);
 
     // The host reads memory with its own authority, never with the run's.
     const auditor = createMemoryAuthority({
@@ -168,7 +164,7 @@ describe('documented Bureau memory limits', () => {
         message: 'Remember this.',
         sessionId: 'session-1',
       });
-      await waitForRunState(bureau, run.id);
+      await waitForTaskState(bureau, run.id);
       const [stored] = await memory.list(auditorFor(BUREAU_ID, LOCAL_OWNER), {
         collection: DEFAULT_AGENT,
       });
@@ -202,7 +198,7 @@ describe('documented Bureau memory limits', () => {
         message: 'Remember this.',
         sessionId: 'session-1',
       });
-      await waitForRunState(bureau, run.id);
+      await waitForTaskState(bureau, run.id);
       const [stored] = await memory.list(auditorFor(BUREAU_ID, LOCAL_OWNER), {
         collection: DEFAULT_AGENT,
       });
@@ -256,7 +252,7 @@ describe('documented Bureau memory limits', () => {
           message: 'Remember this.',
           sessionId: 'session-1',
         });
-        const settled = await waitForRunState(bureau, run.id);
+        const settled = await waitForTaskState(bureau, run.id);
         expect(settled.status).toBe('error');
         const reader = createGovernedMemory({
           storage: createWeftMemoryRecordStorage(storage),
@@ -353,7 +349,7 @@ describe('documented Bureau memory limits', () => {
                   },
                 }),
           });
-          const settled = await waitForRunState(bureau, run.id);
+          const settled = await waitForTaskState(bureau, run.id);
           outcomes[sink] = { status: settled.status, events: [...events] };
           if (sink === 'collecting') {
             // Nothing was written, and the ledger holds both refusals.

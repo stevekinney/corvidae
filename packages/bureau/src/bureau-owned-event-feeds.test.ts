@@ -19,7 +19,7 @@ import { describe, expect, it } from 'bun:test';
 
 import type { BureauEventEnvelope } from './bureau-event-feed.ts';
 import { createBureau } from './create-bureau';
-import { waitForCondition, waitForRunState } from './test';
+import { waitForCondition, waitForTaskState } from './test';
 import { retireSettledTasks, SHORT_TASK_RETENTION } from './testing/run-retirement.test-support';
 import type { BureauOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';
@@ -100,7 +100,7 @@ describe('a bureau’s own event feed', () => {
     // `subscribe` awaits a tail snapshot and drains replay first, so a bare
     // microtask yield would test a different thing.
     const summary = await bureau.createRun({ agentName: 'default', message: 'hello' });
-    await waitForRunState(bureau, summary.id);
+    await waitForTaskState(bureau, summary.id);
     await waitForCondition(() => seen.length > 0, 'the watcher never received an event');
 
     await bureau.dispose();
@@ -126,7 +126,7 @@ describe('the run feeds a bureau owns', () => {
     const bureau = await buildBureau();
     try {
       const summary = await bureau.createRun({ agentName: 'default', message: 'hello' });
-      await waitForRunState(bureau, summary.id);
+      await waitForTaskState(bureau, summary.id);
 
       const runFeed = bureau.internals.runEventFeeds.get(summary.id);
       expect(runFeed).toBeDefined();
@@ -178,7 +178,7 @@ describe('the run feeds a bureau owns', () => {
     const bureau = await buildBureau();
     try {
       const summary = await bureau.createRun({ agentName: 'default', message: 'hello' });
-      await waitForRunState(bureau, summary.id);
+      await waitForTaskState(bureau, summary.id);
 
       const runFeed = bureau.internals.runEventFeeds.get(summary.id);
       expect(runFeed).toBeDefined();
@@ -212,7 +212,7 @@ describe('the run feeds a bureau owns', () => {
     });
     try {
       const summary = await bureau.createRun({ agentName: 'default', message: 'hello' });
-      await waitForRunState(bureau, summary.id);
+      await waitForTaskState(bureau, summary.id);
 
       const runFeed = bureau.internals.runEventFeeds.get(summary.id);
       expect(runFeed).toBeDefined();
@@ -231,7 +231,7 @@ describe('the run feeds a bureau owns', () => {
     const bureau = await buildBureau(undefined, { runtime, ...SHORT_TASK_RETENTION });
     try {
       const summary = await bureau.createRun({ agentName: 'default', message: 'hello' });
-      await waitForRunState(bureau, summary.id);
+      await waitForTaskState(bureau, summary.id);
       const runFeed = bureau.internals.runEventFeeds.get(summary.id);
       expect(runFeed).toBeDefined();
 
@@ -263,7 +263,7 @@ describe('the run feeds a bureau owns', () => {
     const bureau = await buildBureau(CANARY);
     try {
       const summary = await bureau.createRun({ agentName: 'default', message: 'hello' });
-      await waitForRunState(bureau, summary.id);
+      await waitForTaskState(bureau, summary.id);
       const runFeed = bureau.internals.runEventFeeds.get(summary.id);
 
       const envelopes = [];
@@ -304,7 +304,7 @@ describe('the event-feed pump’s isolation', () => {
       };
 
       const summary = await bureau.createRun({ agentName: 'default', message: 'hello' });
-      await waitForRunState(bureau, summary.id);
+      await waitForTaskState(bureau, summary.id);
 
       // The run still ran, and the failure was reported rather than swallowed.
       expect(bureau.internals.store.getRun(summary.id)?.status).not.toBe('running');
@@ -349,7 +349,7 @@ describe('the event-feed pump’s isolation', () => {
       expect(poisoned).toBe(true);
 
       // Settles rather than hanging — the whole point.
-      const settled = await waitForRunState(bureau, summary.id);
+      const settled = await waitForTaskState(bureau, summary.id);
       expect(settled.status).not.toBe('running');
       expect(diagnostics).toContain('event-feed');
     } finally {

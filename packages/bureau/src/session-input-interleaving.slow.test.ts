@@ -92,7 +92,7 @@ describe('a run whose session is recreated while it starts (COR-1476)', () => {
 
       // The new incarnation's run delivers the input at its next boundary.
       release2.resolve();
-      await b.bureau.waitForDurableRun(second.id);
+      await b.bureau.tasks.wait(second.id);
       expect(prompts2).toEqual([['Second'], ['Second', 'X']]);
     } finally {
       release2.resolve();

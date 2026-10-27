@@ -952,7 +952,7 @@ describe('a bureau.run() run stays off the store scan (COR-1302)', () => {
     await reviewOf(bureau, run.id);
     // The run is on the store while it lives, which is what the guard keeps the scan off. A
     // `bureau.run()` approval never reaches the scan either way, so the wait is what shows it.
-    expect(bureau.getRun(run.id)).toBeDefined();
+    expect(bureau.tasks.detail(run.id)).toBeDefined();
 
     // One entry: a scan of the store for this run would list the wait a second time.
     expect(reviewsOf(bureau, run.id).map((review) => review.kind)).toEqual(['human-wait']);

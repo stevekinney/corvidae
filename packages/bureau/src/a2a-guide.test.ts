@@ -148,7 +148,10 @@ async function example(console: Recorder): Promise<void> {
   const watcher = await factory.createFromUrl(`${publicUrl}/a2a/watcher/`);
   const running = await watcher.sendMessage(send('Watch the feed.', true));
   if (!('status' in running)) throw new Error('a Bureau send answers with a task');
-  await waitForCondition(() => bureau.getRun(running.id)?.status === 'running', 'it never ran');
+  await waitForCondition(
+    () => bureau.tasks.detail(running.id)?.status === 'running',
+    'it never ran',
+  );
   await watcher.cancelTask({ tenant: '', id: running.id, metadata: undefined });
   await waitForCondition(async () => {
     const task = await watcher.getTask({ tenant: '', id: running.id });

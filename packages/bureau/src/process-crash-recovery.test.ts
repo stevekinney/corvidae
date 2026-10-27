@@ -174,19 +174,19 @@ async function recoveryScenario(backend: Backend, scope: ScenarioScope): Promise
     const bureaus = racers.map((racer) => racer.bureau);
     await waitForBureauState(
       bureaus,
-      () => racers.some((racer) => racer.bureau.getRun(marker.runId)?.status === 'completed'),
+      () => racers.some((racer) => racer.bureau.tasks.detail(marker.runId)?.status === 'completed'),
       { runIds: [marker.runId] },
     );
     const winners = racers.filter(
-      (racer) => racer.bureau.getRun(marker.runId)?.status === 'completed',
+      (racer) => racer.bureau.tasks.detail(marker.runId)?.status === 'completed',
     );
     expect(winners).toHaveLength(1);
     const winner = winners[0] as Racer;
 
     for (const racer of racers) {
       // Weft's own result waiter: it settles after the durable commit, for the loser too.
-      await racer.bureau.waitForDurableRun(marker.runId);
-      const durableRun = await racer.bureau.getDurableRun(marker.runId);
+      await racer.bureau.tasks.wait(marker.runId);
+      const durableRun = await racer.bureau.tasks.workflow(marker.runId);
       expect(durableRun?.status).toBe('completed');
     }
 

@@ -7,7 +7,7 @@ import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createSqliteStorageFixture } from './test/storage-fixtures';
-import { waitForRunState } from './test';
+import { waitForTaskState } from './test';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
 import type { BureauOptions } from './types';
@@ -93,10 +93,10 @@ describe('snapshot retention', () => {
     const harness = await start();
     const { bureau, runtime, at } = harness;
     const first = await bureau.createRun({ message: 'one', agentName: 'researcher' });
-    await waitForRunState(bureau, first.id);
+    await waitForTaskState(bureau, first.id);
     at(10 * DAY_MS);
     const second = await bureau.createRun({ message: 'two', agentName: 'researcher' });
-    await waitForRunState(bureau, second.id);
+    await waitForTaskState(bureau, second.id);
     await runtime.deferred.drain();
 
     // 30 days after the first settled but only 20 after the second: its task goes, the snapshot
@@ -104,13 +104,13 @@ describe('snapshot retention', () => {
     at(30 * DAY_MS + 1);
     await bureau.runDurableMaintenance();
     await runtime.deferred.drain();
-    expect(bureau.getRun(first.id)).toBeUndefined();
+    expect(bureau.tasks.detail(first.id)).toBeUndefined();
     expect(await revisionCount(harness)).toBe(1);
 
     at(40 * DAY_MS + 1);
     await bureau.runDurableMaintenance();
     await runtime.deferred.drain();
-    expect(bureau.getRun(second.id)).toBeUndefined();
+    expect(bureau.tasks.detail(second.id)).toBeUndefined();
     expect(await revisionCount(harness)).toBe(0);
   });
 
@@ -118,14 +118,14 @@ describe('snapshot retention', () => {
     const harness = await start();
     const { bureau, runtime, at } = harness;
     const created = await bureau.createRun({ message: 'one', agentName: 'researcher' });
-    await waitForRunState(bureau, created.id);
+    await waitForTaskState(bureau, created.id);
     await runtime.deferred.drain();
     expect(await revisionCount(harness)).toBe(1);
 
     at(30 * DAY_MS + 1);
     await bureau.runDurableMaintenance();
     await runtime.deferred.drain();
-    expect(bureau.getRun(created.id)).toBeUndefined();
+    expect(bureau.tasks.detail(created.id)).toBeUndefined();
     expect(await revisionCount(harness)).toBe(0);
   });
 

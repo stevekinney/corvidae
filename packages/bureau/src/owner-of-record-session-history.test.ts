@@ -49,7 +49,7 @@ async function settled(bureau: OpenBureau, principal: string, sessionId: string)
     principal,
   });
   await waitForCondition(
-    () => bureau.getRun(run.id)?.status !== 'running',
+    () => bureau.tasks.detail(run.id)?.status !== 'running',
     `run ${run.id} never settled`,
   );
   return run;
@@ -401,7 +401,7 @@ describe('the history of a deleted session (COR-718)', () => {
         principal: BOB,
       });
       await waitForCondition(
-        () => bureau.getRun(run.id)?.status !== 'running',
+        () => bureau.tasks.detail(run.id)?.status !== 'running',
         `run ${run.id} never settled`,
       );
 

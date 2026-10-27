@@ -61,7 +61,7 @@ async function crashAndRecover(principal: string | undefined) {
     durableOwnership: { ownership: 'none' },
   });
   await waitForCondition(
-    () => recovered.getRun(run.id)?.status !== 'running',
+    () => recovered.tasks.detail(run.id)?.status !== 'running',
     'the recovered run never finished',
   );
   return {
@@ -80,7 +80,7 @@ describe('a run recovered after a restart (COR-718)', () => {
     const { run, recovered, cleanup } = await crashAndRecover('api-key:alice');
     try {
       expect(await recovered.getOwner({ kind: 'run', id: run.id })).toBe('api-key:alice');
-      expect(recovered.getRun(run.id)?.principal).toBe('api-key:alice');
+      expect(recovered.tasks.detail(run.id)?.principal).toBe('api-key:alice');
       await waitForCondition(async () => {
         const entries = await recovered.internals.auditTrail?.query({
           runId: run.id,

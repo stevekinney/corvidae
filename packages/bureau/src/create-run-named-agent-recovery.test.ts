@@ -14,7 +14,7 @@ import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
-import { waitForRunState } from './test';
+import { waitForTaskState } from './test';
 import type { Bureau } from './types';
 
 const databasePaths: string[] = [];
@@ -221,7 +221,7 @@ describe('requestHumanInput on a named session run', () => {
       principal: 'operator',
       payload: { environment: 'staging' },
     });
-    await waitForRunState(bureau, run.id);
+    await waitForTaskState(bureau, run.id);
 
     await pollUntil(async () => {
       const replies = await assistantReplies(bureau, run.sessionId);

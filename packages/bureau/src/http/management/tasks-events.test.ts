@@ -85,7 +85,7 @@ describe('bureau.tasks.events', () => {
           principal: OWNER.alice,
         });
         await waitForCondition(
-          () => opened.bureau.getRun(run.id)?.status === 'completed',
+          () => opened.bureau.tasks.detail(run.id)?.status === 'completed',
           'finish',
         );
 
@@ -146,7 +146,10 @@ describe('bureau.tasks.events', () => {
         message: 'go',
         principal: OWNER.alice,
       });
-      await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'completed', 'finish');
+      await waitForCondition(
+        () => opened.bureau.tasks.detail(run.id)?.status === 'completed',
+        'finish',
+      );
       await waitForCondition(async () => {
         const page = await opened.bureau.eventHistory({ kind: 'run', id: run.id });
         return 'events' in page && page.events.some((event) => event.kind === 'run.completed');

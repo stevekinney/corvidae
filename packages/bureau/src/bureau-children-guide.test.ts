@@ -50,13 +50,13 @@ const untilAborted: GenerateFunction = ({ signal }) =>
 // agent until the durable dispatch resolves, then carries the durable run
 // identifier. Children can be dispatched under it once the engine has the workflow.
 async function durableRunId(
-  bureau: Pick<Bureau, 'getDurableRun'>,
+  bureau: Pick<Bureau, 'tasks'>,
   run: Pick<AgentRun, 'snapshot'>,
 ): Promise<string> {
   for (;;) {
     const { id, durability, status } = run.snapshot();
     if (durability === 'durable') {
-      if (await bureau.getDurableRun(id)) return id;
+      if (await bureau.tasks.workflow(id)) return id;
     } else if (status !== 'created') {
       throw new Error(`Run "${id}" is not durable, so it cannot own Bureau children.`);
     }
@@ -214,7 +214,7 @@ describe('documentation/multi-agent-lifecycle.md — a durable bureau.run parent
     let listed: readonly { readonly id: string; readonly createdAt: number }[] = [];
     while (!listed.some(({ id }) => id === 'first-plan-helper')) {
       await Bun.sleep(5);
-      const page = await bureau.listDurableRuns();
+      const page = await bureau.tasks.workflows();
       listed = page?.items ?? [];
     }
     // The handle still names its own run once others have started.

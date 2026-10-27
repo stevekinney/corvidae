@@ -38,9 +38,9 @@ import {
   stopWhen,
   type Validator,
   waitForCondition,
-  waitForRunState,
   withBackendDescriptors,
 } from '@lostgradient/operative';
+import { waitForTaskState } from './test';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
@@ -274,7 +274,7 @@ async function storageDirectory(): Promise<{
 }
 
 async function durableStatusOf(bureau: Bureau, runId: string): Promise<string | undefined> {
-  const run = await bureau.getDurableRun(runId);
+  const run = await bureau.tasks.workflow(runId);
   return run?.status;
 }
 
@@ -446,7 +446,7 @@ describe.each([
     });
     cleanups.push(async () => {
       bureau.abortRun(parent.id);
-      await waitForRunState(bureau, parent.id);
+      await waitForTaskState(bureau, parent.id);
       parked.open();
     });
     const image = await suppliedImage(bureau);

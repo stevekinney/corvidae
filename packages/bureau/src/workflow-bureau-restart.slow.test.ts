@@ -107,7 +107,7 @@ for (const [label, ownership] of OWNERSHIPS) {
 
       await second.bureau.durableEngine()!.signal('waiter-run', 'go', null);
       for (const id of ['sleeper-run', 'waiter-run', 'midstep-run']) {
-        const state = await second.bureau.waitForDurableRun(id);
+        const state = await second.bureau.tasks.wait(id);
         expect(state?.status, id).toBe('completed');
       }
       expect(

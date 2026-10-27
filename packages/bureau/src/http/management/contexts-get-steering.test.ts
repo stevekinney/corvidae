@@ -38,7 +38,10 @@ async function liveSession(opened: OpenedBureau) {
     agentName: 'picker',
     principal: OWNER.alice,
   });
-  await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'running', 'run started');
+  await waitForCondition(
+    () => opened.bureau.tasks.detail(run.id)?.status === 'running',
+    'run started',
+  );
   return run;
 }
 

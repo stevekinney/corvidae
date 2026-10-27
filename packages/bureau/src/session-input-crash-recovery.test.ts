@@ -115,7 +115,7 @@ function recoveredScenario(backend: Backend): ReturnType<typeof settleScenario> 
       });
       try {
         await recovering.waitForRecovery?.();
-        await recovering.waitForDurableRun(runId);
+        await recovering.tasks.wait(runId);
         // Step 0 was checkpointed by the child, so only step 1 generates again,
         // and it sees each input exactly once, oldest first.
         expect(prompts).toEqual([{ step: 1, texts: ['Start', 'first', 'second'] }]);

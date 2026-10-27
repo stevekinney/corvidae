@@ -14,9 +14,9 @@ import {
   type GenerateContext,
   stopWhen,
   waitForCondition,
-  waitForRunState,
   withBackendDescriptors,
 } from '@lostgradient/operative';
+import { waitForTaskState } from './test';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 import type { MediaContent } from 'conversationalist';
@@ -357,7 +357,7 @@ describe('a child run', () => {
     });
     cleanups.push(async () => {
       bureau.abortRun(parent.id);
-      await waitForRunState(bureau, parent.id);
+      await waitForTaskState(bureau, parent.id);
     });
     return { bureau, parent };
   }

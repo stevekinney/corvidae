@@ -120,7 +120,10 @@ describe('bureau.tasks.respond answering a human wait', () => {
         principal: OWNER.alice,
         payload: 'the human said so',
       });
-      await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'completed', 'finish');
+      await waitForCondition(
+        () => opened.bureau.tasks.detail(run.id)?.status === 'completed',
+        'finish',
+      );
     });
   });
 
@@ -225,7 +228,10 @@ describe('bureau.tasks.respond answering a human wait', () => {
       const params = { taskId: run.id, messageId: 'm1', answer: 'once' };
 
       const first = await rpc(handler, 'bureau.tasks.respond', params, 'alice-key');
-      await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'completed', 'finish');
+      await waitForCondition(
+        () => opened.bureau.tasks.detail(run.id)?.status === 'completed',
+        'finish',
+      );
       const retry = await rpc(handler, 'bureau.tasks.respond', params, 'alice-key');
 
       expect(first.result).toBeDefined();
@@ -283,7 +289,10 @@ describe('bureau.tasks.respond answering a human wait', () => {
         message: 'busy',
         principal: OWNER.alice,
       });
-      await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'running', 'running');
+      await waitForCondition(
+        () => opened.bureau.tasks.detail(run.id)?.status === 'running',
+        'running',
+      );
       const { resolved, handler } = recording(opened);
 
       const body = await rpc(

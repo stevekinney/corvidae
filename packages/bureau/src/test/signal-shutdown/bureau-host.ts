@@ -131,12 +131,12 @@ async function recover(): Promise<never> {
   // The previous process may have died holding the run's claim; maintenance
   // adopts it once the claim lapses.
   for (let attempt = 0; attempt < POLL_ATTEMPTS; attempt += 1) {
-    const durable = await bureau.getDurableRun(runId);
+    const durable = await bureau.tasks.workflow(runId);
     if (durable?.status !== undefined && TERMINAL_STATUSES.has(durable.status)) break;
     await bureau.runDurableMaintenance();
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, POLL_DELAY_MS));
   }
-  const durable = await bureau.getDurableRun(runId);
+  const durable = await bureau.tasks.workflow(runId);
   writeMarker(directory, 'bureau-recovered', {
     recovery: report?.outcome,
     durableStatus: durable?.status,
@@ -163,7 +163,7 @@ handleShutdownSignals({
     writeMarker(directory, 'bureau-shutdown', {
       report: summarize(report),
       refusal,
-      runStatus: bureau.getRun(runId)?.status,
+      runStatus: bureau.tasks.detail(runId)?.status,
     });
     return report.unresolved === 0;
   },

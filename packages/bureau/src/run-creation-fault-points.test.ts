@@ -335,12 +335,12 @@ async function withScenario(
 }
 
 async function durableRunIds(bureau: Bureau): Promise<string[] | undefined> {
-  const page = await bureau.listDurableRuns();
+  const page = await bureau.tasks.workflows();
   return page?.items.map((run) => run.id);
 }
 
 async function durableStatus(bureau: Bureau, runId: string): Promise<string | undefined> {
-  const state = await bureau.getDurableRun(runId);
+  const state = await bureau.tasks.workflow(runId);
   return state?.status;
 }
 

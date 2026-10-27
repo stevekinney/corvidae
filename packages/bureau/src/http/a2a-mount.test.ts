@@ -181,7 +181,7 @@ describe('SendMessage creating a task', () => {
       const task = taskOf(sent.body);
 
       expect(['TASK_STATE_SUBMITTED', 'TASK_STATE_WORKING']).toContain(task.status.state);
-      expect(opened.bureau.getRun(task.id)).toBeDefined();
+      expect(opened.bureau.tasks.detail(task.id)).toBeDefined();
     });
   });
 
@@ -437,7 +437,7 @@ describe('CancelTask', () => {
         configuration: { returnImmediately: true },
       });
       await waitForCondition(
-        () => opened.bureau.getRun(working.id)?.status === 'running',
+        () => opened.bureau.tasks.detail(working.id)?.status === 'running',
         'running',
       );
       const canceled = await call(opened, 'asker', 'CancelTask', { id: working.id });
@@ -555,7 +555,10 @@ describe('A2A extension activation', () => {
         message: message('wait'),
         configuration: { returnImmediately: true },
       });
-      await waitForCondition(() => opened.bureau.getRun(task.id)?.status === 'running', 'running');
+      await waitForCondition(
+        () => opened.bureau.tasks.detail(task.id)?.status === 'running',
+        'running',
+      );
       await call(opened, 'asker', 'CancelTask', { id: task.id });
 
       const plain = await call(opened, 'asker', 'GetTask', { id: task.id });
@@ -643,7 +646,7 @@ describe('continuing a task by its other paths', () => {
         configuration: { returnImmediately: true },
       });
       await waitForCondition(
-        () => opened.bureau.getRun(working.id)?.status === 'running',
+        () => opened.bureau.tasks.detail(working.id)?.status === 'running',
         'running',
       );
 

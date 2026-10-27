@@ -60,3 +60,4 @@ export {
   createSqliteStorageFixture,
 } from './storage-fixtures';
 export { waitForCondition, waitForRunState } from '@lostgradient/operative';
+export { waitForTaskState } from './wait-for-task-state';

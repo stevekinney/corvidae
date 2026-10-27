@@ -121,9 +121,13 @@ async function humanWaitScenario(
 
     const reviewsFor = () => bureau.reviews.list().filter((review) => review.runId === runId);
     await waitForBureauState([bureau], () => reviewsFor().length > 0, { runIds: [runId] });
-    await waitForBureauState([bureau], () => bureau.getRun(runId)?.liveness.status === 'waiting', {
-      runIds: [runId],
-    });
+    await waitForBureauState(
+      [bureau],
+      () => bureau.tasks.detail(runId)?.liveness.status === 'waiting',
+      {
+        runIds: [runId],
+      },
+    );
 
     const reviews = reviewsFor();
     expect(reviews).toHaveLength(1);
@@ -143,7 +147,7 @@ async function humanWaitScenario(
         false,
       );
     }
-    const liveness = bureau.getRun(runId)?.liveness;
+    const liveness = bureau.tasks.detail(runId)?.liveness;
     expect(liveness?.declaredWait?.reason).toBe('review');
     expect(liveness?.declaredWait?.dependency).toBe(expectedSignal as string);
     // The recovered run is parked, not looping: nothing generated before approval.
@@ -151,14 +155,14 @@ async function humanWaitScenario(
 
     await bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'operator' });
 
-    await waitForBureauState([bureau], () => bureau.getRun(runId)?.status === 'completed', {
+    await waitForBureauState([bureau], () => bureau.tasks.detail(runId)?.status === 'completed', {
       runIds: [runId],
     });
     expect(generateCalls).toBe(1);
     expect(reviewsFor()).toHaveLength(0);
-    expect(bureau.getRun(runId)?.liveness.declaredWait).toBeUndefined();
+    expect(bureau.tasks.detail(runId)?.liveness.declaredWait).toBeUndefined();
     // Weft's own result waiter: it settles after the durable commit.
-    const durableState = await bureau.waitForDurableRun(runId);
+    const durableState = await bureau.tasks.wait(runId);
     expect(durableState?.status).toBe('completed');
   } finally {
     // allSettled never rejects, so the directory is always removed after shutdown.

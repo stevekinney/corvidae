@@ -88,7 +88,7 @@ import {
 import { BureauError } from '../create-bureau.ts';
 import { TaskListingTokenError } from '../task-list-snapshots.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
-import type { Bureau, BureauContexts, BureauReviews } from '../types.ts';
+import type { Bureau, BureauContexts, BureauReviews, BureauTasks } from '../types.ts';
 import { A2UI_EXTENSION_URI, supportedCatalogIdsOf } from '../a2ui/catalogs.ts';
 import { surfaceActionOf } from './a2a-surface-actions.ts';
 import { declaredExtensionsOf } from './a2a-agent-card.ts';
@@ -271,7 +271,6 @@ export type A2ABureau = Pick<
   Bureau,
   | 'createRun'
   | 'locateRunCreationReceipt'
-  | 'getRun'
   | 'getOwner'
   | 'eventHistory'
   | 'subscribeEventHistory'
@@ -279,7 +278,9 @@ export type A2ABureau = Pick<
   | 'removeEventListener'
   | 'assets'
   | 'surfaces'
-> & { readonly reviews: Pick<BureauReviews, 'get'> } & {
+> & { readonly tasks: Pick<BureauTasks, 'detail'> } & {
+  readonly reviews: Pick<BureauReviews, 'get'>;
+} & {
   readonly contexts: Pick<BureauContexts, 'get' | 'input'>;
 } & {
   readonly internals: FormsAuditInternals & {

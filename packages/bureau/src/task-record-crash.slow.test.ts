@@ -58,7 +58,7 @@ async function crashScenario(
   mode: 'settlement' | 'admission',
   scope: ScenarioScope,
   verify: (
-    bureau: Pick<Bureau, 'waitForDurableRun'> & {
+    bureau: Pick<Bureau, 'tasks'> & {
       readonly reviews: Pick<BureauReviews, 'list' | 'resolve'>;
     } & { readonly internals: Pick<BureauInternals, 'taskRegistry'> },
     runId: string,
@@ -131,7 +131,7 @@ async function disposedScenario(scope: ScenarioScope): Promise<void> {
     scope.onHang(() => third.shutdown());
     try {
       await third.waitForRecovery?.();
-      const durable = await third.getDurableRun(runId);
+      const durable = await third.tasks.workflow(runId);
       expect(durable?.status).toBe('running');
       expect(OPEN_STATES.has(await taskStatusOf(third, runId))).toBe(true);
       await third.internals.taskRegistry.cancel(runId, 0);
@@ -189,7 +189,7 @@ const outcomes = {
           principal: 'api-key:alice',
           payload: 'staging',
         });
-        await bureau.waitForDurableRun(runId);
+        await bureau.tasks.wait(runId);
         for (let attempt = 0; attempt < 400; attempt += 1) {
           const current = await bureau.internals.taskRegistry.get(runId);
           if (current?.status === 'completed') break;

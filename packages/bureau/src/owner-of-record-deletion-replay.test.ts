@@ -62,7 +62,7 @@ async function settled(bureau: FirstBureau, principal: string, sessionId: string
     principal,
   });
   await waitForCondition(
-    () => bureau.getRun(run.id)?.status !== 'running',
+    () => bureau.tasks.detail(run.id)?.status !== 'running',
     `run ${run.id} never settled`,
   );
 }

@@ -21,9 +21,9 @@ afterEach(async () => {
 async function firstFinishedFire(host: Host) {
   const deadline = Date.now() + 4_000;
   while (Date.now() < deadline) {
-    const runs = await host.bureau.listDurableRuns();
+    const runs = await host.bureau.tasks.workflows();
     for (const item of runs?.items ?? []) {
-      const state = await host.bureau.getDurableRun(item.id);
+      const state = await host.bureau.tasks.workflow(item.id);
       if (state?.status === 'completed' || state?.status === 'failed') return state;
     }
     await Bun.sleep(50);

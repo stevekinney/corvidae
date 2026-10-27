@@ -331,7 +331,7 @@ export async function assertBureauQuiescent<D extends AgentDefinitions = AgentDe
   const durableAttempts: LeakedResource[] = [];
   const detachedDurable: { readonly kind: string; readonly id: string }[] = [];
   for (const registration of harness.durableRegistrations) {
-    const state = await bureau.getDurableRun(registration.runId);
+    const state = await bureau.tasks.workflow(registration.runId);
     if (registration.detached) {
       // COR-84: a detachment only counts when the engine confirms the run.
       // `undefined` (no durable engine composed) and `null` (run unknown to

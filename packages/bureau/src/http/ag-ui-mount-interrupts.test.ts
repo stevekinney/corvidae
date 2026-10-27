@@ -357,7 +357,7 @@ describe('a human wait', () => {
           },
         });
         expect(bureauMetadata(frames.at(-1)!.event)['durable']).toBe(false);
-        expect(bureau.getRun(nativeRunId)?.status).toBe('running');
+        expect(bureau.tasks.detail(nativeRunId)?.status).toBe('running');
       },
     );
   });

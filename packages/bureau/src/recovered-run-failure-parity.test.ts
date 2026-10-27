@@ -116,10 +116,10 @@ async function settle(bureau: Bureau, runId: string, sessionId: string): Promise
   }, 'the run never settled');
   await waitForCondition(
     async () =>
-      bureau.getRun(runId)?.events.some((event) => event.event === 'run.completed') === true,
+      bureau.tasks.detail(runId)?.events.some((event) => event.event === 'run.completed') === true,
     'the run never recorded its completion',
   );
-  const run = bureau.getRun(runId)!;
+  const run = bureau.tasks.detail(runId)!;
   const session = (await bureau.contexts.get(sessionId))!;
   const history = await bureau.eventHistory({ kind: 'run', id: runId });
   const recorded = 'events' in history ? history.events : [];

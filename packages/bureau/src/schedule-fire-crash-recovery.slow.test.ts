@@ -119,7 +119,7 @@ async function scheduleFireCrashScenario(backend: Backend, scope: ScenarioScope)
 
       // (2) The interrupted fire is on record, and recovery drove it to a terminal state.
       expect(await settled).toBe(marker.fireId);
-      const fire = await bureau.getDurableRun(marker.fireId);
+      const fire = await bureau.tasks.workflow(marker.fireId);
       expect(fire?.status).toBe('completed');
       expect(generateCalls).toBeGreaterThan(0);
       expect(conversations.size).toBe(1);

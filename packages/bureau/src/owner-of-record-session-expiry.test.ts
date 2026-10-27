@@ -51,7 +51,7 @@ async function settled(bureau: OpenBureau, principal: string, sessionId: string)
     principal,
   });
   await waitForCondition(
-    () => bureau.getRun(run.id)?.status !== 'running',
+    () => bureau.tasks.detail(run.id)?.status !== 'running',
     `run ${run.id} never settled`,
   );
   return run;
@@ -310,7 +310,7 @@ async function expiryDuringRun(open: (generate: GenerateFunction) => Promise<Any
       principal: BOB,
     });
     await waitForCondition(
-      () => bureau.getRun(bobRun.id)?.status !== 'running',
+      () => bureau.tasks.detail(bobRun.id)?.status !== 'running',
       'bob never settled',
     );
     const bobIncarnation = (await bureau.internals.sessionStore!.load('shared'))!.incarnation;
@@ -318,7 +318,7 @@ async function expiryDuringRun(open: (generate: GenerateFunction) => Promise<Any
 
     release.resolve();
     await waitForCondition(
-      () => bureau.getRun(aliceRun.id)?.status !== 'running',
+      () => bureau.tasks.detail(aliceRun.id)?.status !== 'running',
       'alice never settled',
     );
     // Alice's terminal save, if one was started, was queued on the store before her
@@ -329,7 +329,7 @@ async function expiryDuringRun(open: (generate: GenerateFunction) => Promise<Any
     expect(session?.incarnation).toBe(bobIncarnation);
     expect(JSON.stringify(session)).not.toContain('ALICE-SECRET');
     expect(await bureau.getOwner({ kind: 'session', id: 'shared' })).toBe(BOB);
-    expect(bureau.getRun(aliceRun.id)?.status).toBe('aborted');
+    expect(bureau.tasks.detail(aliceRun.id)?.status).toBe('aborted');
   } finally {
     release.resolve();
     await bureau.dispose();

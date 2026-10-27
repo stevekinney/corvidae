@@ -141,7 +141,7 @@ describe('the host’s agent directory', () => {
     const home = await prepareHome({ 'researcher.md': RESEARCHER });
     const host = await startAt(home, { resolveProviderGenerate: resolver });
     const created = await host.bureau.createRun({ message: 'Hello', agentName: 'researcher' });
-    const outcome = await host.bureau.waitForDurableRun(created.id);
+    const outcome = await host.bureau.tasks.wait(created.id);
     expect(outcome).toBeDefined();
     const session = await host.bureau.contexts.get(created.sessionId);
     expect(session?.agentName).toBe('researcher');

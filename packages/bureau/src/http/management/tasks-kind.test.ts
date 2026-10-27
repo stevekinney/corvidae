@@ -51,7 +51,7 @@ describe('a task view’s kind', () => {
         principal: OWNER.alice,
       });
       await waitForCondition(
-        () => opened.bureau.getRun(chat.id)?.status === 'running',
+        () => opened.bureau.tasks.detail(chat.id)?.status === 'running',
         'the session run never started',
       );
       const catalog = opened.bureau.run('holder', 'work', { principal: OWNER.alice });

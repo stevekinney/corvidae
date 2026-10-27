@@ -223,7 +223,7 @@ describe('a durable run restarted over SQLite (COR-713)', () => {
     await first.dispose();
 
     const second = await open();
-    const durable = await second.getDurableRun(runId);
+    const durable = await second.tasks.workflow(runId);
     expect(durable?.status).toBe('completed');
     const summary = durable?.result as { schemaVersion: number; parts: typeof result.parts };
     expect(summary.schemaVersion).toBe(3);

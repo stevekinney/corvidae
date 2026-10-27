@@ -791,7 +791,7 @@ export interface WaitForDurableRunDependencies {
 }
 
 /**
- * The resolution algorithm behind {@link Bureau.waitForDurableRun}, independent of a real
+ * The resolution algorithm behind {@link BureauTasks.wait}, independent of a real
  * `runtime.durable.engine`. A rejection of the result waiter is accepted only when the store then
  * confirms the run is terminal (a failed, cancelled or timed-out run rejects its own result);
  * any other rejection says nothing about the run and propagates.
@@ -10406,7 +10406,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
 
   /**
    * Resolve once a run's durable workflow is terminal in the durable store — see the
-   * {@link Bureau.waitForDurableRun} doc comment. Built on Weft's result waiter
+   * {@link BureauTasks.wait} doc comment. Built on Weft's result waiter
    * (`engine.getHandle(runId).result()`), which settles from the store for a run another engine
    * finishes; its rejection carries a failed run's error, which this wrapper turns back into the
    * run's state.
@@ -18748,15 +18748,10 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     createRun: createRunFromRequest,
     locateRunCreationReceipt,
     listRuns,
-    getRun,
     getOwner,
-    subscribeRunSnapshot,
     abortRun,
-    getDurableRun,
     durableEngine,
-    waitForDurableRun,
     cancelDurableRun,
-    listDurableRuns,
     runDurableMaintenance,
     setRequestAuthorityValidator(validator) {
       requestAuthorityValidator = validator;
@@ -18909,7 +18904,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     );
     taskResyncInstance = createTaskResync({
       answerOf: (taskId) => {
-        const content = bureau.getRun(taskId)?.stepDetails.findLast((step) => step.final)?.content;
+        const content = bureau.tasks
+          .detail(taskId)
+          ?.stepDetails.findLast((step) => step.final)?.content;
         if (content === undefined || content === '') return undefined;
         return {
           text: content.slice(0, TASK_ARTIFACT_TEXT_LIMIT),

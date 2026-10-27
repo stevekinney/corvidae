@@ -9,9 +9,9 @@ import {
   createSessionHandle,
   SESSION_OWNER_METADATA_KEY,
   stopWhen,
-  waitForRunState,
   withBackendDescriptors,
 } from '@lostgradient/operative';
+import { waitForTaskState } from './test';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -87,7 +87,7 @@ async function paint(bureau: PaintingBureau, sessionId: string) {
     principal: alice.id,
     sessionId,
   });
-  await waitForRunState(bureau, created.id);
+  await waitForTaskState(bureau, created.id);
   for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
 }
 

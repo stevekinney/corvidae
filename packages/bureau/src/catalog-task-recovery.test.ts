@@ -94,7 +94,7 @@ describe('a catalog task across a boot', () => {
     await restarted.waitForRecovery?.();
 
     const record = await restarted.internals.taskRegistry.record(run.id);
-    const durable = await restarted.getDurableRun(run.id);
+    const durable = await restarted.tasks.workflow(run.id);
     expect(record).toMatchObject({ taskId: run.id, owner: 'api-key:alice', agentName: 'asker' });
     expect(record?.createdAt).toBe(new Date(durable!.createdAt).toISOString());
     const listed = await restarted.internals.taskRegistry.enumerate({ limit: 50, offset: 0 });
@@ -123,7 +123,7 @@ describe('a catalog task across a boot', () => {
       principal: 'api-key:alice',
       payload: 'staging',
     });
-    await restarted.waitForDurableRun(run.id);
+    await restarted.tasks.wait(run.id);
 
     await waitForCondition(async () => {
       const task = await restarted.internals.taskRegistry.get(run.id);

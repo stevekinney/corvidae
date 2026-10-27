@@ -54,7 +54,10 @@ async function finishedSession(
     principal: options.principal,
     ...(options.agentName === undefined ? {} : { agentName: options.agentName }),
   });
-  await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'completed', 'finish');
+  await waitForCondition(
+    () => opened.bureau.tasks.detail(run.id)?.status === 'completed',
+    'finish',
+  );
   await pause();
   return run;
 }
@@ -390,7 +393,7 @@ describe('bureau.contexts.list activity', () => {
         principal: OWNER.alice,
       });
       await waitForCondition(
-        () => opened.bureau.getRun(running.id)?.status === 'running',
+        () => opened.bureau.tasks.detail(running.id)?.status === 'running',
         'running',
       );
       await waitForCondition(

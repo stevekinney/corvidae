@@ -936,7 +936,7 @@ describe('transcripts stay inside the Bureau', () => {
         principal: 'api-key:alice',
       });
       await waitForCondition(
-        () => bureau.getRun(alice.run.id)?.status !== 'running',
+        () => bureau.tasks.detail(alice.run.id)?.status !== 'running',
         'the approved run never finished',
       );
       const handler = createBureauHandler(bureau, {
@@ -1425,7 +1425,7 @@ describe('what bureau.tasks:write grants on the AG-UI routes', () => {
       ]);
       expect(answered.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
       await waitForCondition(
-        () => harness.bureau.getRun(nativeRunId)?.status === 'completed',
+        () => harness.bureau.tasks.detail(nativeRunId)?.status === 'completed',
         'the run did not continue with the answer',
       );
 

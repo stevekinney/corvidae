@@ -92,7 +92,7 @@ describe('admission against a run ending, across two processes (COR-1476)', () =
       const outcome = await submitting;
       expect(outcome.outcome).toBe('admitted');
       if (outcome.outcome === 'admitted') expect(outcome.receipt.state).toBe('canceled');
-      await a.bureau.waitForDurableRun(run.id);
+      await a.bureau.tasks.wait(run.id);
       expect(a.bureau.listRuns()).toHaveLength(1);
       expect(b.bureau.listRuns()).toHaveLength(0);
     } finally {
@@ -144,7 +144,7 @@ describe('admission against a run ending, across two processes (COR-1476)', () =
       const cancelled = await cancelling;
       expect(cancelled.status).toBe('requested');
       heldTerminalSave.release();
-      await a.bureau.waitForDurableRun(run.id);
+      await a.bureau.tasks.wait(run.id);
       expect(await mailboxState(a.bureau, a.real, run.sessionId)).toBe('cancelled');
       expect(a.bureau.listRuns()).toHaveLength(1);
       expect(b.bureau.listRuns()).toHaveLength(0);
@@ -192,7 +192,7 @@ describe("a run's end against a session recreated while it ran (COR-1476)", () =
         principal: 'alice',
         sessionId: SESSION,
       });
-      await b.bureau.waitForDurableRun(second.id);
+      await b.bureau.tasks.wait(second.id);
       const recreated = await b.bureau.contexts.get(SESSION);
       if (recreated === undefined) throw new Error('the recreated session is gone');
       const admitTo = async (incarnation: string, id: string) => {
@@ -213,7 +213,7 @@ describe("a run's end against a session recreated while it ran (COR-1476)", () =
       // Run 1 ends. Its settlement reads and cancels its own incarnation's
       // mailbox, which is what it started in, and nothing else.
       release1.resolve();
-      await a.bureau.waitForDurableRun(first.id);
+      await a.bureau.tasks.wait(first.id);
       // The settlement follows the run's terminal save.
       await pollUntil(async () => {
         const receipt = await old.mailbox.receipt(old.commandId);
@@ -282,9 +282,9 @@ describe('input admitted to a recreated session while an old run still drains (C
       // The old run drains its own, empty mailbox and ends; the new run
       // delivers the input at its next boundary.
       held.release();
-      await a.bureau.waitForDurableRun(run.id);
+      await a.bureau.tasks.wait(run.id);
       release2.resolve();
-      await b.bureau.waitForDurableRun(second.id);
+      await b.bureau.tasks.wait(second.id);
       expect(prompts2).toEqual([['Second'], ['Second', 'X']]);
       expect(await mailboxState(b.bureau, b.real, SESSION)).toBe('applied');
     } finally {

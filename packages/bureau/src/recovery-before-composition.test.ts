@@ -128,12 +128,12 @@ describe('a run reclaimed while the bureau is still being composed (COR-1509)', 
     const report = await bureau.waitForRecovery?.();
     expect(report?.outcome).toBe('clean');
 
-    const state = await bureau.getDurableRun(run.id);
+    const state = await bureau.tasks.workflow(run.id);
     expect(state?.status).not.toBe('failed');
     expect(state?.error ?? '').not.toContain('composition not ready');
 
     await waitForCondition(
-      () => bureau.getRun(run.id)?.status === 'completed',
+      () => bureau.tasks.detail(run.id)?.status === 'completed',
       'the reclaimed run never completed',
     );
     const auditTrail = bureau.internals.auditTrail;

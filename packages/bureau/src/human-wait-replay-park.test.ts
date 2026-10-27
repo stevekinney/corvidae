@@ -112,7 +112,7 @@ async function listStepRecordTexts(storage: Storage, runId: string): Promise<str
 }
 
 function parkedEventCount(bureau: Bureau, runId: string): number {
-  const run = bureau.getRun(runId);
+  const run = bureau.tasks.detail(runId);
   return run?.events.filter((event) => event.event === HumanWaitParkedEvent.type).length ?? 0;
 }
 
@@ -122,7 +122,7 @@ function reviewsFor(bureau: Bureau, runId: string) {
 
 async function waitForCompleted(bureau: Bureau, runId: string): Promise<void> {
   await waitForCondition(
-    () => bureau.getRun(runId)?.status === 'completed',
+    () => bureau.tasks.detail(runId)?.status === 'completed',
     `expected run ${runId} to complete`,
   );
 }
@@ -207,7 +207,7 @@ describe('a reattached run whose first park happens after boot-time reconstructi
         durableOwnership: { ownership: 'none' },
       });
       expect(bCalls).toBe(0);
-      const durableRun = await bureauB.getDurableRun(runId);
+      const durableRun = await bureauB.tasks.workflow(runId);
       expect(durableRun?.status).toBe('running');
 
       // The fix: the replayed park reaches bureau B's emitter.
@@ -221,15 +221,15 @@ describe('a reattached run whose first park happens after boot-time reconstructi
       expect(review.prompt).toBe(PROMPT);
 
       await waitForCondition(
-        () => bureauB!.getRun(runId)?.liveness.status === 'waiting',
+        () => bureauB!.tasks.detail(runId)?.liveness.status === 'waiting',
         'expected bureau B liveness to enter waiting',
       );
-      const declaredWait = bureauB.getRun(runId)?.liveness.declaredWait;
+      const declaredWait = bureauB.tasks.detail(runId)?.liveness.declaredWait;
       expect(declaredWait?.reason).toBe('review');
       expect(declaredWait?.dependency).toBe('human-response');
       expect(parkedEventCount(bureauB, runId)).toBe(1);
       expect(bCalls).toBe(0);
-      const durableRunAfter = await bureauB.getDurableRun(runId);
+      const durableRunAfter = await bureauB.tasks.workflow(runId);
       expect(durableRunAfter?.status).toBe('running');
 
       const result = await bureauB.reviews.resolve({
@@ -242,7 +242,7 @@ describe('a reattached run whose first park happens after boot-time reconstructi
 
       expect(bCalls).toBe(1);
       expect(reviewsFor(bureauB, runId)).toHaveLength(0);
-      expect(bureauB.getRun(runId)?.liveness.declaredWait).toBeUndefined();
+      expect(bureauB.tasks.detail(runId)?.liveness.declaredWait).toBeUndefined();
       // Weft re-runs a recovered run's body when the signal is delivered, and
       // the wait is not yet cached at that point, so the marker fires once more
       // just before the wait returns. That is the tolerated duplicate
@@ -322,7 +322,7 @@ describe('a reattached run whose first park happens after boot-time reconstructi
       expect(bCalls).toBe(1);
       expect(parkedEventCount(bureauB, runId)).toBe(0);
       expect(bureauB.reviews.list()).toHaveLength(0);
-      expect(bureauB.getRun(runId)?.liveness.declaredWait).toBeUndefined();
+      expect(bureauB.tasks.detail(runId)?.liveness.declaredWait).toBeUndefined();
     } finally {
       await bureauB?.dispose();
       await bureauA?.dispose();
@@ -481,10 +481,10 @@ describe('flow-control slot accounting under dual dispatch (COR-121 guard)', () 
 
       resolveBlocking({ content: 'done', toolCalls: [] });
       await waitForCompleted(bureau, runOne.id);
-      expect(bureau.getRun(runOne.id)?.status).toBe('completed');
+      expect(bureau.tasks.detail(runOne.id)?.status).toBe('completed');
       expect(parkedEventCount(bureau, runOne.id)).toBe(1);
       expect(bureau.reviews.list()).toHaveLength(0);
-      expect(bureau.getRun(runOne.id)?.liveness.declaredWait).toBeUndefined();
+      expect(bureau.tasks.detail(runOne.id)?.liveness.declaredWait).toBeUndefined();
     } finally {
       intercept.release();
       await bureau?.dispose();

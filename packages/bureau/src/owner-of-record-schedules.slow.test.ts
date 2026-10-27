@@ -141,7 +141,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
         message: 'mine',
         principal: 'api-key:bob',
       });
-      await waitForReal(() => bureau.getRun(run.id)?.status !== 'running');
+      await waitForReal(() => bureau.tasks.detail(run.id)?.status !== 'running');
       const failed: string[] = [];
       bureau.addEventListener('schedule.failed', (event) => failed.push(event.runId));
       const summary = await bureau.schedules.create({
@@ -168,7 +168,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       expect(await bureau.getOwner({ kind: 'run', id: refusedRunId })).toBe('api-key:alice');
       expect(await bureau.getOwner({ kind: 'audit', runId: refusedRunId })).toBe('api-key:alice');
       // And it tells Alice only that the session was not found, never that Bob owns it.
-      const refused = await bureau.getDurableRun(refusedRunId);
+      const refused = await bureau.tasks.workflow(refusedRunId);
       expect(refused?.error).toContain('was not found');
       expect(refused?.error).not.toMatch(/owner|another principal/i);
     } finally {
@@ -268,7 +268,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       expect(session?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('api-key:bob');
       expect(JSON.stringify(session?.conversationHistory)).not.toContain('racing tick');
       // The failed run says only that the session was not found, never whose it is.
-      const failedRun = await bureau.getDurableRun(failed[0]!);
+      const failedRun = await bureau.tasks.workflow(failed[0]!);
       const outcome = failedRun?.result as { errorMessage?: string } | undefined;
       expect(outcome?.errorMessage).toContain('not found');
       expect(outcome?.errorMessage).not.toMatch(/owner|another principal/i);

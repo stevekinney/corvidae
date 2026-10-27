@@ -105,7 +105,7 @@ async function withBureau(
 /** Creates a run and waits for it to finish. */
 async function settledRun(bureau: Bureau, message = 'work') {
   const created = await bureau.createRun({ agentName: 'default', message, principal: 'alice' });
-  expect(await pollUntil(() => bureau.getRun(created.id)?.status === 'completed')).toBe(true);
+  expect(await pollUntil(() => bureau.tasks.detail(created.id)?.status === 'completed')).toBe(true);
   return created;
 }
 
@@ -312,11 +312,11 @@ describe('retention.tasks', () => {
       // A task exactly as old as the window is not older than it.
       at(30 * DAY_MS);
       await bureau.runDurableMaintenance();
-      expect(bureau.getRun(run.id)).toBeDefined();
+      expect(bureau.tasks.detail(run.id)).toBeDefined();
 
       at(30 * DAY_MS + 1);
       await bureau.runDurableMaintenance();
-      expect(bureau.getRun(run.id)).toBeUndefined();
+      expect(bureau.tasks.detail(run.id)).toBeUndefined();
     });
   });
 
@@ -331,16 +331,22 @@ describe('retention.tasks', () => {
           message: 'fails',
           principal: 'alice',
         });
-        expect(await pollUntil(() => bureau.getRun(created.id)?.status === 'error')).toBe(true);
+        expect(await pollUntil(() => bureau.tasks.detail(created.id)?.status === 'error')).toBe(
+          true,
+        );
 
         // `run.error` is followed by `run.completed`, which closes the run and
         // starts its window; poll the passes until it has and the run goes.
         at(2 * DAY_MS);
-        for (let attempt = 0; attempt < 400 && bureau.getRun(created.id) !== undefined; attempt++) {
+        for (
+          let attempt = 0;
+          attempt < 400 && bureau.tasks.detail(created.id) !== undefined;
+          attempt++
+        ) {
           await bureau.runDurableMaintenance();
           await new Promise((resolve) => setTimeout(resolve, 5));
         }
-        expect(bureau.getRun(created.id)).toBeUndefined();
+        expect(bureau.tasks.detail(created.id)).toBeUndefined();
       },
       {
         retention: { tasks: { olderThan: DAY_MS } },
@@ -365,8 +371,8 @@ describe('retention.tasks', () => {
         at(365 * DAY_MS);
         await bureau.runDurableMaintenance();
 
-        expect(bureau.getRun(running.id)?.status).toBe('running');
-        expect(bureau.getRun(settled.id)).toBeUndefined();
+        expect(bureau.tasks.detail(running.id)?.status).toBe('running');
+        expect(bureau.tasks.detail(settled.id)).toBeUndefined();
         gate.resolve();
       },
       {
@@ -411,7 +417,9 @@ describe('retention.tasks', () => {
           runCreationRequestId: 'request-1',
         } as const;
         const created = await bureau.createRun(request);
-        expect(await pollUntil(() => bureau.getRun(created.id)?.status === 'completed')).toBe(true);
+        expect(await pollUntil(() => bureau.tasks.detail(created.id)?.status === 'completed')).toBe(
+          true,
+        );
         // Records when the run settled, which starts the binding's window.
         expect(await bureau.locateRunCreationReceipt(locate)).toMatchObject({ status: 'recorded' });
 
@@ -426,10 +434,10 @@ describe('retention.tasks', () => {
         expect(await bureau.locateRunCreationReceipt(locate)).toMatchObject({
           status: 'not-found',
         });
-        expect(bureau.getRun(created.id)).toBeDefined();
+        expect(bureau.tasks.detail(created.id)).toBeDefined();
 
         await bureau.runDurableMaintenance();
-        expect(bureau.getRun(created.id)).toBeUndefined();
+        expect(bureau.tasks.detail(created.id)).toBeUndefined();
       },
       { retention: { tasks: { olderThan: 60_000 }, receipts: { olderThan: 60_000 } } },
     );
@@ -441,7 +449,7 @@ describe('retention.tasks', () => {
         const run = await settledRun(bureau);
         at(10_000 * DAY_MS);
         await bureau.runDurableMaintenance();
-        expect(bureau.getRun(run.id)).toBeDefined();
+        expect(bureau.tasks.detail(run.id)).toBeDefined();
       },
       { retention: { tasks: 'forever' } },
     );
@@ -486,15 +494,17 @@ describe('runDurableMaintenance in a fully ephemeral bureau (COR-1477)', () => {
         message: 'work',
         principal: 'alice',
       });
-      expect(await pollUntil(() => bureau.getRun(created.id)?.status === 'completed')).toBe(true);
+      expect(await pollUntil(() => bureau.tasks.detail(created.id)?.status === 'completed')).toBe(
+        true,
+      );
 
       // Inside the window: nothing to maintain.
       expect(await bureau.runDurableMaintenance()).toBeUndefined();
-      expect(bureau.getRun(created.id)).toBeDefined();
+      expect(bureau.tasks.detail(created.id)).toBeDefined();
 
       runtime.setTime(ORIGIN_MS + DAY_MS + 1);
       expect(await bureau.runDurableMaintenance()).toBe(true);
-      expect(bureau.getRun(created.id)).toBeUndefined();
+      expect(bureau.tasks.detail(created.id)).toBeUndefined();
 
       // Nothing left to remove.
       expect(await bureau.runDurableMaintenance()).toBeUndefined();

@@ -116,7 +116,7 @@ async function pollUntil(check: () => boolean): Promise<boolean> {
 /** Creates the request's run, waits for it to finish, and lets a receipt query observe that. */
 async function settledRun(bureau: Bureau, request: CreateRunRequest = REQUEST) {
   const created = await bureau.createRun(request);
-  expect(await pollUntil(() => bureau.getRun(created.id)?.status === 'completed')).toBe(true);
+  expect(await pollUntil(() => bureau.tasks.detail(created.id)?.status === 'completed')).toBe(true);
   expect(await bureau.locateRunCreationReceipt(LOCATE)).toEqual(
     recorded(created.receipt, created.sessionId),
   );
@@ -133,7 +133,7 @@ function recorded(
 }
 
 async function durableRunIds(bureau: Bureau): Promise<string[] | undefined> {
-  const page = await bureau.listDurableRuns();
+  const page = await bureau.tasks.workflows();
   return page?.items.map((run) => run.id).toSorted();
 }
 
@@ -219,7 +219,9 @@ describe.each(BACKENDS)('run-creation retention over %s', (_backend, factory) =>
         const settledAt = ORIGIN_MS + 5_000;
         runtime.setTime(settledAt);
         gate.resolve();
-        expect(await pollUntil(() => bureau.getRun(created.id)?.status === 'completed')).toBe(true);
+        expect(await pollUntil(() => bureau.tasks.detail(created.id)?.status === 'completed')).toBe(
+          true,
+        );
 
         // No retry or query observes the run until a week later.
         runtime.setTime(ORIGIN_MS + 7 * DAY_MS);

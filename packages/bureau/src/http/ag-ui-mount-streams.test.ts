@@ -194,8 +194,8 @@ describe('the live backlog bound', () => {
         const starter = await handler(startRequest(runAgentInput()));
         await waitForCondition(
           () =>
-            bureau
-              .getRun(bureau.listRuns()[0]?.id ?? '')
+            bureau.tasks
+              .detail(bureau.listRuns()[0]?.id ?? '')
               ?.events.some((event) => event.event === 'tools.executing') === true,
           'the calls never started',
         );
@@ -227,8 +227,8 @@ describe('the revision of the state a stream reports', () => {
       { script: [{ kind: 'block', barrier: 'hold' }, say('Done.')] },
       async ({ handler, bureau, generate }) => {
         const observers: Array<(snapshot: never) => void> = [];
-        const subscribe = bureau.subscribeRunSnapshot.bind(bureau);
-        bureau.subscribeRunSnapshot = (runId, observer, options) => {
+        const subscribe = bureau.tasks.snapshot.bind(bureau.tasks);
+        bureau.tasks.snapshot = (runId, observer, options) => {
           observers.push(observer);
           return subscribe(runId, observer, options);
         };
@@ -240,7 +240,7 @@ describe('the revision of the state a stream reports', () => {
         await attached.until(EventType.STEP_STARTED);
         const observe = observers.at(-1)!;
         const snapshot = (revision: number, status: string) =>
-          ({ ...bureau.getRun(runId)!.liveness, revision, status }) as never;
+          ({ ...bureau.tasks.detail(runId)!.liveness, revision, status }) as never;
 
         observe(snapshot(99, 'waiting'));
         observe(snapshot(1, 'running'));
@@ -387,8 +387,8 @@ describe('the answer an onMaximumSteps handler leaves, for a client that attache
           role: 'assistant' as const,
           content: 'Out of steps.',
         };
-        const getRun = bureau.getRun.bind(bureau);
-        bureau.getRun = (runId) => {
+        const getRun = bureau.tasks.detail.bind(bureau.tasks);
+        bureau.tasks.detail = (runId) => {
           const detail = getRun(runId);
           return detail?.transcript === undefined
             ? detail

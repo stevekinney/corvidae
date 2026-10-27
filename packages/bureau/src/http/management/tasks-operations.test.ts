@@ -58,7 +58,7 @@ async function startRun(
     ...(options.sessionId === undefined ? {} : { sessionId: options.sessionId }),
   });
   await waitForCondition(
-    () => opened.bureau.getRun(run.id)?.status === 'running',
+    () => opened.bureau.tasks.detail(run.id)?.status === 'running',
     `run ${run.id} never started`,
   );
   return run;
@@ -279,7 +279,7 @@ describe('bureau.tasks.list', () => {
         sessionId: 'reused-context',
       });
       await waitForCondition(
-        () => opened.bureau.getRun(before.id)?.status === 'completed',
+        () => opened.bureau.tasks.detail(before.id)?.status === 'completed',
         'before',
       );
       await opened.bureau.contexts.delete('reused-context');
@@ -289,7 +289,10 @@ describe('bureau.tasks.list', () => {
         principal: OWNER.alice,
         sessionId: 'reused-context',
       });
-      await waitForCondition(() => opened.bureau.getRun(after.id)?.status === 'completed', 'after');
+      await waitForCondition(
+        () => opened.bureau.tasks.detail(after.id)?.status === 'completed',
+        'after',
+      );
 
       const body = await rpc(
         opened.handler,
@@ -309,14 +312,20 @@ describe('bureau.tasks.list', () => {
         message: 'one',
         principal: OWNER.alice,
       });
-      await waitForCondition(() => opened.bureau.getRun(first.id)?.status === 'completed', 'one');
+      await waitForCondition(
+        () => opened.bureau.tasks.detail(first.id)?.status === 'completed',
+        'one',
+      );
       const second = await opened.bureau.createRun({
         agentName: 'default',
         message: 'two',
         principal: OWNER.alice,
         sessionId: first.sessionId,
       });
-      await waitForCondition(() => opened.bureau.getRun(second.id)?.status === 'completed', 'two');
+      await waitForCondition(
+        () => opened.bureau.tasks.detail(second.id)?.status === 'completed',
+        'two',
+      );
 
       const body = await rpc(
         opened.handler,
@@ -420,7 +429,7 @@ describe('bureau.tasks.cancel', () => {
       );
       expect(bob.error?.data?.httpStatus).toBe(404);
       expect(reader.error?.data?.httpStatus).toBe(404);
-      expect(opened.bureau.getRun(run.id)?.status).toBe('running');
+      expect(opened.bureau.tasks.detail(run.id)?.status).toBe('running');
 
       const writer = await rpc(
         opened.handler,
@@ -526,7 +535,10 @@ describe('bureau.tasks.cancel', () => {
         message: 'quick',
         principal: OWNER.alice,
       });
-      await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'completed', 'finish');
+      await waitForCondition(
+        () => opened.bureau.tasks.detail(run.id)?.status === 'completed',
+        'finish',
+      );
       await waitForCondition(async () => {
         const task = await rpc(opened.handler, 'bureau.tasks.get', { taskId: run.id }, 'alice-key');
         return task.result?.['status'] === 'completed';

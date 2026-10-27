@@ -422,7 +422,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
       // the engine commits a first checkpoint) to actually exist and read
       // non-terminal — the fact this negative test is asserting.
       await waitForCondition(async () => {
-        const state = await harness.bureau.getDurableRun(summary.id);
+        const state = await harness.bureau.tasks.workflow(summary.id);
         return state !== null && state !== undefined && state.status === 'running';
       }, 'durable run never reached a persisted "running" state');
       // Registered by runId only — the process-local `AgentRun`/`ActiveRun`
@@ -478,7 +478,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
         message: 'deliberately detached durable run',
       });
       await waitForCondition(async () => {
-        const state = await harness.bureau.getDurableRun(summary.id);
+        const state = await harness.bureau.tasks.workflow(summary.id);
         return state !== null && state !== undefined && state.status === 'running';
       }, 'durable run never reached a persisted "running" state');
       harness.registerDurableRun(summary.id, { detached: true });
@@ -516,7 +516,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
 
   it('COR-84: a detached registration is never reported as detached when no durable engine is composed (getDurableRun resolves undefined)', async () => {
     const harness = await harnessWithMemoryStorage();
-    expect(await harness.bureau.getDurableRun('stale-run')).toBeUndefined();
+    expect(await harness.bureau.tasks.workflow('stale-run')).toBeUndefined();
     harness.registerDurableRun('stale-run', { detached: true });
 
     const report = await assertBureauQuiescent(harness);
@@ -535,7 +535,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
 
   it('COR-84: a detached registration is never reported as detached when the durable engine does not know the run (getDurableRun resolves null)', async () => {
     const harness = await harnessWithMemoryStorage({ durable: true });
-    expect(await harness.bureau.getDurableRun('unknown-run')).toBeNull();
+    expect(await harness.bureau.tasks.workflow('unknown-run')).toBeNull();
     harness.registerDurableRun('unknown-run', { detached: true });
 
     const report = await assertBureauQuiescent(harness);
@@ -992,7 +992,7 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
       maximumSteps: 1,
     });
     await waitForCondition(
-      () => harness.bureau.getRun(summary.id)?.status === 'completed',
+      () => harness.bureau.tasks.detail(summary.id)?.status === 'completed',
       'session run never completed',
     );
 

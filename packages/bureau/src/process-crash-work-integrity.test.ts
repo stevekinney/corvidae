@@ -193,7 +193,7 @@ function requireAuditTrail(bureau: Bureau) {
 }
 
 async function recoveredRunCompleted(bureau: Bureau, runId: string): Promise<boolean> {
-  await waitForBureauState([bureau], () => bureau.getRun(runId)?.status === 'completed', {
+  await waitForBureauState([bureau], () => bureau.tasks.detail(runId)?.status === 'completed', {
     runIds: [runId],
   });
   await bureau.waitForRecovery?.();
@@ -349,8 +349,8 @@ async function abortSiblingScenario(backend: Backend, scope: ScenarioScope): Pro
     await waitForBureauState(
       [bureau],
       () =>
-        bureau.getRun(marker.xRunId)?.status === 'running' &&
-        bureau.getRun(marker.yRunId)?.status === 'running' &&
+        bureau.tasks.detail(marker.xRunId)?.status === 'running' &&
+        bureau.tasks.detail(marker.yRunId)?.status === 'running' &&
         deferreds.has('crash harness run X') &&
         deferreds.has('crash harness run Y'),
       {
@@ -368,10 +368,14 @@ async function abortSiblingScenario(backend: Backend, scope: ScenarioScope): Pro
     const xCallsBeforeAbort = calls.filter((call) => call.message === xMessage).length;
 
     expect(bureau.abortRun(marker.xRunId).status).toBe('aborting');
-    await waitForBureauState([bureau], () => bureau.getRun(marker.xRunId)?.status === 'aborted', {
-      runIds: [marker.xRunId],
-    });
-    const durableX = await bureau.getDurableRun(marker.xRunId);
+    await waitForBureauState(
+      [bureau],
+      () => bureau.tasks.detail(marker.xRunId)?.status === 'aborted',
+      {
+        runIds: [marker.xRunId],
+      },
+    );
+    const durableX = await bureau.tasks.workflow(marker.xRunId);
     expect(durableX?.status).not.toBe('running');
     expect(durableX?.status).not.toBe('completed');
     await waitForBureauState([bureau], () => bureau.internals.abortingTasks().length === 0, {
@@ -385,13 +389,17 @@ async function abortSiblingScenario(backend: Backend, scope: ScenarioScope): Pro
     expect(xKinds).not.toContain('run.completed');
 
     // Y is untouched, and nothing re-entered generate for X.
-    expect(bureau.getRun(marker.yRunId)?.status).toBe('running');
+    expect(bureau.tasks.detail(marker.yRunId)?.status).toBe('running');
     expect(calls).toHaveLength(callsBeforeAbort);
 
     deferreds.get('crash harness run Y')?.resolve({ content: 'Y done', toolCalls: [] });
-    await waitForBureauState([bureau], () => bureau.getRun(marker.yRunId)?.status === 'completed', {
-      runIds: [marker.yRunId],
-    });
+    await waitForBureauState(
+      [bureau],
+      () => bureau.tasks.detail(marker.yRunId)?.status === 'completed',
+      {
+        runIds: [marker.yRunId],
+      },
+    );
     const yEvents = await bureau.eventHistory({ kind: 'run', id: marker.yRunId });
     if ('outcome' in yEvents) throw new Error(`expected a page, got ${JSON.stringify(yEvents)}`);
     const yKinds = yEvents.events.map((event) => event.kind);

@@ -41,7 +41,10 @@ async function withBureau<T>(body: (opened: OpenedBureau) => Promise<T>): Promis
 /** A session of the selectable agent whose run is going. */
 async function liveSession(opened: OpenedBureau, principal: string = OWNER.alice) {
   const run = await opened.bureau.createRun({ message: 'work', agentName: 'picker', principal });
-  await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'running', 'run started');
+  await waitForCondition(
+    () => opened.bureau.tasks.detail(run.id)?.status === 'running',
+    'run started',
+  );
   return run;
 }
 
@@ -139,7 +142,7 @@ describe('bureau.contexts.steer admission outcomes', () => {
       const run = await liveSession(opened);
       opened.bureau.abortRun(run.id);
       await waitForCondition(
-        () => opened.bureau.getRun(run.id)?.status !== 'running',
+        () => opened.bureau.tasks.detail(run.id)?.status !== 'running',
         'run stopped',
       );
 

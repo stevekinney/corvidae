@@ -86,7 +86,7 @@ describe('a Bureau over a store with a run of a workflow type it has no trace of
     expect(recoveryDiagnostics(diagnostics)).toHaveLength(1);
 
     await second.bureau.durableEngine()!.signal('healthy-run', 'go', null);
-    const healthy = await second.bureau.waitForDurableRun('healthy-run');
+    const healthy = await second.bureau.tasks.wait('healthy-run');
     expect(healthy?.status).toBe('completed');
     expect(second.calls.map((call) => call.message)).toEqual(['healthy question']);
     // The skipped run is untouched in storage.
@@ -106,7 +106,7 @@ describe('a Bureau over a store with a run of a workflow type it has no trace of
     });
     expect(recoveryDiagnostics(diagnostics)).toEqual([]);
     await third.bureau.durableEngine()!.signal('stranded-run', 'go', null);
-    const resumed = await third.bureau.waitForDurableRun('stranded-run');
+    const resumed = await third.bureau.tasks.wait('stranded-run');
     expect(resumed?.status).toBe('completed');
     expect(third.calls.map((call) => call.message)).toEqual(['stranded question']);
   });
@@ -188,6 +188,6 @@ describe('a Bureau started without workflowSource over a store with workflow ins
 
     // The agent run that was in flight beside it recovers and carries on.
     expect(await pollUntil(() => steps.includes(1))).toBe(true);
-    expect(recovering.getRun(agentRun.id)).toBeDefined();
+    expect(recovering.tasks.detail(agentRun.id)).toBeDefined();
   });
 });

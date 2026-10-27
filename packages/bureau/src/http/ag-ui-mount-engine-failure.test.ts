@@ -403,10 +403,10 @@ describe('a durable run ended while its step is being committed (COR-1597)', () 
       const runId = bureau.listRuns()[0]!.id;
 
       bureau.abortRun(runId);
-      let durableRun = await bureau.getDurableRun(runId);
+      let durableRun = await bureau.tasks.workflow(runId);
       while (durableRun?.status !== 'cancelled') {
         await macrotasks(1);
-        durableRun = await bureau.getDurableRun(runId);
+        durableRun = await bureau.tasks.workflow(runId);
       }
       let shutdownDone = false;
       const disposing = bureau.dispose().finally(() => (shutdownDone = true));

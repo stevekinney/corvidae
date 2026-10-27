@@ -115,7 +115,7 @@ describe('every kind of resource keeps its owner across a restart (COR-718)', ()
         principal: 'api-key:reviewer',
       });
       await waitForCondition(
-        () => first.getRun(run.id)?.status !== 'running',
+        () => first.tasks.detail(run.id)?.status !== 'running',
         'the approved run never finished',
       );
       await first.dispose();

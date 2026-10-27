@@ -10,9 +10,9 @@ import {
   createAgentSession,
   createModelCatalog,
   SESSION_OWNER_METADATA_KEY,
-  waitForRunState,
   withBackendDescriptors,
 } from '@lostgradient/operative';
+import { waitForTaskState } from './test';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import {
@@ -100,7 +100,7 @@ async function paint(
     principal: alice.id,
     sessionId,
   });
-  await waitForRunState(bureau, created.id);
+  await waitForTaskState(bureau, created.id);
   for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
   return created;
 }

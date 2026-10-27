@@ -89,7 +89,7 @@ describe('a schedule’s fire', () => {
       bureaus.push(second);
       await second.runDurableMaintenance(created!.nextFireAt!);
       const status = await pollUntil(async () => {
-        const page = await second.listDurableRuns();
+        const page = await second.tasks.workflows();
         const fire = page?.items[0];
         return fire?.status === 'failed' || fire?.status === 'completed' ? fire.status : undefined;
       }, 'the fire to settle');
@@ -137,7 +137,7 @@ describe('a schedule’s fire', () => {
       bureaus.push(second);
       await second.runDurableMaintenance(created!.nextFireAt!);
       const status = await pollUntil(async () => {
-        const page = await second.listDurableRuns();
+        const page = await second.tasks.workflows();
         const fire = page?.items[0];
         return fire?.status === 'failed' || fire?.status === 'completed' ? fire.status : undefined;
       }, 'the fire to settle');
@@ -167,7 +167,7 @@ describe('a fire into a session another agent began', () => {
       principal: OWNER.alice,
     });
     await pollUntil(async () => {
-      const run = await bureau.getRun(begun.id);
+      const run = await bureau.tasks.detail(begun.id);
       return run?.status === 'completed' ? true : undefined;
     }, 'the first run to finish');
 
@@ -180,7 +180,7 @@ describe('a fire into a session another agent began', () => {
     });
     await bureau.runDurableMaintenance(created!.nextFireAt!);
     await pollUntil(async () => {
-      const page = await bureau.listDurableRuns();
+      const page = await bureau.tasks.workflows();
       return page?.items.some((run) => run.status === 'failed') ? true : undefined;
     }, 'the fire to fail');
 
@@ -193,7 +193,7 @@ describe('the origin of a session a fire creates (COR-1645)', () => {
     const schedule = await bureau.schedules.get(scheduleId);
     await bureau.runDurableMaintenance(schedule!.nextFireAt!);
     await pollUntil(async () => {
-      const page = await bureau.listDurableRuns();
+      const page = await bureau.tasks.workflows();
       return page?.items.some((run) => run.status === 'completed') ? true : undefined;
     }, 'the fire to complete');
   }
@@ -230,7 +230,7 @@ describe('the origin of a session a fire creates (COR-1645)', () => {
       principal: OWNER.alice,
     });
     await pollUntil(async () => {
-      const run = await bureau.getRun(begun.id);
+      const run = await bureau.tasks.detail(begun.id);
       return run?.status === 'completed' ? true : undefined;
     }, 'the first run to finish');
     const created = await bureau.schedules.create({

@@ -395,7 +395,7 @@ async function relaunchRecover(): Promise<void> {
   await pollUntil(
     'the relaunched run to reach a terminal status',
     async () => {
-      const durable = await bureau.getDurableRun(runId);
+      const durable = await bureau.tasks.workflow(runId);
       if (durable !== null && durable !== undefined && TERMINAL_STATUSES.has(durable.status)) {
         return true;
       }
@@ -405,7 +405,7 @@ async function relaunchRecover(): Promise<void> {
     // The parent test kills this child at its own deadline and reports that.
     Number.POSITIVE_INFINITY,
   );
-  const durable = await bureau.getDurableRun(runId);
+  const durable = await bureau.tasks.workflow(runId);
   if (durable?.status !== 'completed') {
     // A run that ended any other way will never complete, so say how it ended
     // now rather than leaving the parent to wait out its deadline.
@@ -420,7 +420,7 @@ async function relaunchRecover(): Promise<void> {
       runId,
       recoveryOutcome: report?.outcome,
       durableStatus: durable?.status,
-      runStatus: bureau.getRun(runId)?.status,
+      runStatus: bureau.tasks.detail(runId)?.status,
       stepZeroCalls,
       laterStepCalls,
     }),
@@ -443,7 +443,7 @@ async function verify(): Promise<void> {
     memory: governed.memory,
   });
   const report = await bureau.waitForRecovery?.();
-  const runningRuns = await bureau.listDurableRuns({ status: 'running' });
+  const runningRuns = await bureau.tasks.workflows({ status: 'running' });
   const running = runningRuns?.items.length;
   writeMarker({ recoveryOutcome: report?.outcome, running });
   await bureau.shutdown();

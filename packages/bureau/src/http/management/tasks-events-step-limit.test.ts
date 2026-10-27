@@ -65,7 +65,7 @@ describe.each([
         principal: OWNER.alice,
       });
       await waitForCondition(
-        () => bureau.getRun(run.id)?.status === 'error',
+        () => bureau.tasks.detail(run.id)?.status === 'error',
         'the run never failed',
       );
       await runtime.deferred.drain();

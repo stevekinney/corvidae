@@ -16,7 +16,7 @@ import { decode, resolveStorage, type Storage } from '@lostgradient/weft';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { CATALOG_RUN_RECOVERY_KEY_PREFIX } from './runtime-composition';
-import { waitForCondition, waitForRunState } from './test';
+import { waitForCondition, waitForTaskState } from './test';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
 import type { Bureau } from './types';
@@ -100,7 +100,7 @@ describe('a run of a file agent', () => {
     const { bureau } = harness;
 
     const created = await bureau.createRun({ message: 'hello', agentName: 'researcher' });
-    await waitForRunState(bureau, created.id);
+    await waitForTaskState(bureau, created.id);
 
     const session = await bureau.contexts.get(created.sessionId);
     expect(session?.metadata['lastAgentRevision']).toBe(2);

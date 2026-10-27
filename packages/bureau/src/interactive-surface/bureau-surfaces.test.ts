@@ -174,7 +174,7 @@ describe('interactive surfaces on a Bureau', () => {
       await createForm(bureau, taskId);
       await bureau.internals.taskRegistry.cancel(taskId, 0);
       await waitForCondition(async () => {
-        const run = await bureau.getRun(taskId);
+        const run = await bureau.tasks.detail(taskId);
         return run?.status !== 'running';
       }, 'the run stops');
       const surfaces = surfacesOf(bureau);
@@ -184,11 +184,11 @@ describe('interactive surfaces on a Bureau', () => {
       });
 
       await retireSettledTasks(bureau, runtime);
-      expect(await bureau.getRun(taskId)).toBeDefined();
+      expect(await bureau.tasks.detail(taskId)).toBeDefined();
 
       Reflect.set(surfaces, 'removeTask', removeTask);
       await retireSettledTasks(bureau, runtime);
-      expect(await bureau.getRun(taskId)).toBeUndefined();
+      expect(await bureau.tasks.detail(taskId)).toBeUndefined();
       expect(
         await surfaces.snapshot(
           { type: 'surface.snapshot', contractVersion: version, taskId, surfaceId: 'confirm' },

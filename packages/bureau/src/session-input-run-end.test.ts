@@ -147,7 +147,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
 
       // With no step left, the run cannot drain the input, so its end cancels it.
       releaseStepZero.resolve();
-      await bureau.waitForDurableRun(run.id);
+      await bureau.tasks.wait(run.id);
       await pollUntil(
         async () =>
           (await receiptState(storage, run.sessionId, incarnation, 'input-x', 'late')) ===
@@ -488,11 +488,11 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
 
       // The first run ends with the second still live: it releases, cancels nothing.
       release[0]!.resolve();
-      await bureau.waitForDurableRun(first.id);
+      await bureau.tasks.wait(first.id);
       // The second run's next boundary delivers the input, which it could not
       // do had the first run's end cancelled it.
       release[1]!.resolve();
-      await bureau.waitForDurableRun(second.id);
+      await bureau.tasks.wait(second.id);
 
       expect(prompts.find((entry) => entry.step === 1)?.texts).toEqual([
         'First',
@@ -553,7 +553,7 @@ describe('a run that ends over a lease a gone holder left behind (COR-1476)', ()
       // The run ends with the lease standing: its settlement requests the
       // cancellation, which the holder will never settle, and keeps the marker.
       releaseStepZero.resolve();
-      await bureau.waitForDurableRun(run.id);
+      await bureau.tasks.wait(run.id);
       await pollUntil(async () => (await state()) === 'cancellation-requested');
       expect(await markers(storage)).toHaveLength(1);
       expect(await receiptState(storage, run.sessionId, incarnation, 'input-x', 'late')).toBe(
@@ -589,7 +589,7 @@ describe('a run whose start fails after its promotion (COR-1476)', () => {
         message: 'First',
         principal: 'alice',
       });
-      await bureau.waitForDurableRun(first.id);
+      await bureau.tasks.wait(first.id);
       await pollUntil(async () => {
         const session = await bureau.contexts.get(first.sessionId);
         return session?.metadata['lastRunStatus'] === 'completed';
@@ -687,7 +687,7 @@ describe('a cancellation that reaches a run after it appended the turn (COR-1476
       // The checkpoint commits the turn: promoted, and the command closes as
       // cancelled through the acknowledgement.
       releaseStepOne.resolve();
-      await bureau.waitForDurableRun(run.id);
+      await bureau.tasks.wait(run.id);
       expect(await receiptState(storage, run.sessionId, incarnation, 'input-x', 'delivered')).toBe(
         'promoted',
       );
@@ -749,7 +749,7 @@ describe('a promoted input whose command was never acknowledged (COR-1476)', () 
       );
       holds.push(atMarkerRead);
       releaseStepZero.resolve();
-      await bureau.waitForDurableRun(run.id);
+      await bureau.tasks.wait(run.id);
       expect(prompts[1]).toEqual(['First', 'delivered']);
       expect(failing.attempts()).toBe(1);
 
@@ -876,7 +876,7 @@ describe('what the retry loop must not hold (COR-1476)', () => {
         principal: 'alice',
         maximumSteps: 1,
       });
-      await bureau.waitForDurableRun(run.id);
+      await bureau.tasks.wait(run.id);
       // The loop is in its first wait, which nothing has released.
       const firstBackoffDueAt = runtime.monotonic.now() + 10;
       await pollUntil(() =>
@@ -976,7 +976,7 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
         principal: 'alice',
         maximumSteps: 1,
       });
-      await bureau.waitForDurableRun(run.id);
+      await bureau.tasks.wait(run.id);
       // Each wait is a timer on the runtime: the loop's schedule is read off the clock, one wait
       // at a time, doubling from 10 ms and holding at 2000 ms.
       const expectedDelays = [10, 20, 40, 80, 160, 320, 640, 1280, 2000, 2000, 2000];
@@ -1096,7 +1096,7 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
 
       // The run has ended and its write keeps failing: it retries, and in the
       // meantime it never looks at the mailbox, so the input stays as admitted.
-      await first.waitForDurableRun(run.id);
+      await first.tasks.wait(run.id);
       await pollUntil(() => failing.attempts() >= 3);
       expect(mailboxReads()).toBe(0);
       expect(await receiptState(real, run.sessionId, incarnation, 'input-x', 'late')).toBe(

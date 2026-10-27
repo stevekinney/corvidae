@@ -94,7 +94,7 @@ if (mode === 'settlement') {
     principal: 'api-key:alice',
   });
   for (;;) {
-    const durable = await bureau.getDurableRun(run.id);
+    const durable = await bureau.tasks.workflow(run.id);
     if (held && durable?.status === 'completed') kill(run.id);
     await sleep(10);
   }

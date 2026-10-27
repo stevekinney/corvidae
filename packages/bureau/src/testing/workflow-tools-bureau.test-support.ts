@@ -24,7 +24,7 @@ import { workflowFileDirectory } from '../sources/workflow-file-directory';
 /** Wait, by the clock and not by a count of turns, until a session run is no longer running. */
 async function settledRun(bureau: Bureau<AgentDefinitions>, runId: string): Promise<void> {
   for (let attempt = 0; attempt < 2000; attempt += 1) {
-    const run = bureau.getRun(runId);
+    const run = bureau.tasks.detail(runId);
     if (run !== undefined && run.status !== 'running') return;
     await Bun.sleep(5);
   }

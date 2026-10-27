@@ -56,7 +56,7 @@ describe('the Interborough host', () => {
     const first = await start(home);
     const run = first.bureau.run('assistant', 'Remember this run.');
     await run.result();
-    const runsBefore = await first.bureau.listDurableRuns();
+    const runsBefore = await first.bureau.tasks.workflows();
     const runIds = runsBefore?.items.map((item) => item.id) ?? [];
     expect(runIds.length).toBeGreaterThan(0);
     const schedulesBefore = await first.bureau.schedules.list();
@@ -67,10 +67,10 @@ describe('the Interborough host', () => {
     const second = await start(home);
     // Only the database explains these: the host rebuilt the agents, and kept nothing in memory.
     expect(second.bureau.id).toBe(second.deploymentId);
-    const runsAfter = await second.bureau.listDurableRuns();
+    const runsAfter = await second.bureau.tasks.workflows();
     expect(runsAfter?.items.map((item) => item.id)).toEqual(expect.arrayContaining(runIds));
     for (const id of runIds) {
-      const state = await second.bureau.getDurableRun(id);
+      const state = await second.bureau.tasks.workflow(id);
       expect(state?.status, id).toBe('completed');
     }
     const schedulesAfter = await second.bureau.schedules.list();

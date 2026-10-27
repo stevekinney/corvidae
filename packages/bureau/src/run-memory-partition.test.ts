@@ -21,7 +21,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
-import { waitForRunState } from './test';
+import { waitForTaskState } from './test';
 import type { Bureau } from './types';
 
 const BUREAU_ID = 'memory-partition-bureau';
@@ -96,7 +96,7 @@ async function chat(
   request: { agentName: string; sessionId: string; principal?: string; message: string },
 ): Promise<void> {
   const run = await bureau.createRun(request);
-  await waitForRunState(bureau, run.id);
+  await waitForTaskState(bureau, run.id);
 }
 
 describe('a Bureau run’s memory (COR-1546)', () => {

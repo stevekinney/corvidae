@@ -293,7 +293,7 @@ describe('bureau.children over an ephemeral bureau', () => {
 
     try {
       expect(bureau.abortRun(parent.id)).toMatchObject({ status: 'aborting' });
-      expect(bureau.getRun(parent.id)).toMatchObject({ status: 'running' });
+      expect(bureau.tasks.detail(parent.id)).toMatchObject({ status: 'running' });
 
       expect(
         await bureau.children.dispatch({
@@ -485,12 +485,12 @@ describe('bureau.children over an ephemeral bureau', () => {
 describe('bureau.children over a durable bureau', () => {
   /** The first durable `bureau.run` run not in `known` once it has started. */
   async function startedDurableRun(
-    bureau: Pick<Bureau, 'listDurableRuns'>,
+    bureau: Pick<Bureau, 'tasks'>,
     known: readonly string[] = [],
   ): Promise<string> {
     let runId: string | undefined;
     await pollUntil(async () => {
-      const runs = await bureau.listDurableRuns();
+      const runs = await bureau.tasks.workflows();
       runId = runs?.items.find(
         (item) => item.id.startsWith('agent-run-') && !known.includes(item.id),
       )?.id;
@@ -553,7 +553,7 @@ describe('bureau.children over a durable bureau', () => {
       expect(await history('mallory')).toEqual({ outcome: 'not-found' });
       expect(decode((await storage.get(recoveryKey))!)).toEqual(recoveryRecord);
       expect(await bureau.children.list(malloryRunId)).toEqual([]);
-      expect(await bureau.getDurableRun(aliceRunId)).toMatchObject({ status: 'running' });
+      expect(await bureau.tasks.workflow(aliceRunId)).toMatchObject({ status: 'running' });
       // Alice's run is still the parent Bureau knows by that identifier.
       expect(
         await bureau.children.dispatch({
@@ -610,8 +610,8 @@ describe('bureau.children over a durable bureau', () => {
       expect(
         await bureau.children.get({ parentRunId, childRunId: 'detached-child' }),
       ).toMatchObject({ status: 'running' });
-      expect(await bureau.getDurableRun('cascade-child')).toMatchObject({ status: 'cancelled' });
-      const detachedWorkflow = await bureau.getDurableRun('detached-child');
+      expect(await bureau.tasks.workflow('cascade-child')).toMatchObject({ status: 'cancelled' });
+      const detachedWorkflow = await bureau.tasks.workflow('detached-child');
       expect(detachedWorkflow?.status).not.toBe('cancelled');
     } finally {
       await bureau.dispose();
@@ -706,7 +706,7 @@ describe('bureau.children over a durable bureau', () => {
       });
       expect(
         await pollUntil(async () => {
-          const workflow = await bureau.getDurableRun('lazy-child');
+          const workflow = await bureau.tasks.workflow('lazy-child');
           return workflow?.status === 'running';
         }),
       ).toBe(true);
@@ -751,7 +751,7 @@ describe('bureau.children over a durable bureau', () => {
       ).toMatchObject({ outcome: 'started' });
       expect(
         await pollUntil(async () => {
-          const workflow = await bureau.getDurableRun('middle');
+          const workflow = await bureau.tasks.workflow('middle');
           return workflow?.status === 'running';
         }),
       ).toBe(true);
@@ -776,7 +776,7 @@ describe('bureau.children over a durable bureau', () => {
         child: { status: 'aborted' },
       });
       expect(await bureau.children.list('middle')).toEqual([]);
-      expect(await bureau.getDurableRun('late')).toBeNull();
+      expect(await bureau.tasks.workflow('late')).toBeNull();
     } finally {
       await bureau.dispose();
     }
@@ -821,7 +821,7 @@ describe('bureau.children across a process restart', () => {
     });
     bureauA.run('planner', 'plan');
     await pollUntil(() => parentAtStep1);
-    const runs = await bureauA.listDurableRuns();
+    const runs = await bureauA.tasks.workflows();
     const parentRunId = runs?.items.find((item) => item.id.startsWith('agent-run-'))?.id;
     if (parentRunId === undefined) throw new Error('parent run was not checkpointed');
 
@@ -886,7 +886,7 @@ describe('bureau.children across a process restart', () => {
           recoveries: 1,
           workflow: { kind: 'durable', workflowId: childRunId },
         });
-        const durableRuns = await bureauB.listDurableRuns();
+        const durableRuns = await bureauB.tasks.workflows();
         expect(durableRuns?.items.filter((item) => item.id === childRunId)).toHaveLength(1);
 
         expect(
@@ -1018,7 +1018,7 @@ describe('bureau.children across a process restart', () => {
             ?.map((record) => record.type)
             .filter((type) => type.startsWith('child.') || type.startsWith('delegation.')),
         ).toEqual(['child.started', 'delegation.rejected', 'child.aborted']);
-        const durableChild = await bureauB.getDurableRun(childRunId);
+        const durableChild = await bureauB.tasks.workflow(childRunId);
         expect(durableChild?.status).toBe('cancelled');
       } finally {
         await bureauB.dispose();

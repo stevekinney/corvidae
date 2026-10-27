@@ -30,7 +30,7 @@ import { z } from 'zod';
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { createMemoryRecallHook, createRunMemoryAuthority } from './runtime-composition';
-import { waitForCondition, waitForRunState } from './test';
+import { waitForCondition, waitForTaskState } from './test';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import type { Bureau } from './types';
 
@@ -183,7 +183,7 @@ describe('the epoch records the memory bundle a turn consumed (COR-771)', () => 
       principal: 'owner-a',
       requestContext,
     });
-    await waitForRunState(bureau, run.id);
+    await waitForTaskState(bureau, run.id);
 
     const [turn] = turns;
     expect(turn?.rows).toHaveLength(1);
@@ -206,7 +206,7 @@ describe('the epoch records the memory bundle a turn consumed (COR-771)', () => 
       sessionId: 'session-2',
       agentName: 'scout',
     });
-    await waitForRunState(plain, unmemoried.id);
+    await waitForTaskState(plain, unmemoried.id);
     expect(turns.at(-1)?.source?.disposition).toEqual({ kind: 'absent-by-composition' });
   });
 
@@ -234,7 +234,7 @@ describe('the epoch records the memory bundle a turn consumed (COR-771)', () => 
       principal: 'owner-a',
       requestContext,
     });
-    await waitForRunState(bureau, run.id);
+    await waitForTaskState(bureau, run.id);
 
     const [first, second] = turns;
     expect(first?.source?.disposition).toEqual({ kind: 'included' });
@@ -272,7 +272,7 @@ describe('a session’s next run (COR-771)', () => {
         principal: 'owner-a',
         requestContext,
       });
-      await waitForRunState(bureau, run.id);
+      await waitForTaskState(bureau, run.id);
     };
     await ask();
     await activateNextPolicy(memory);
@@ -455,7 +455,7 @@ describe('a durable run recovered by a restarted Bureau (COR-771)', () => {
       principal: 'owner-a',
       payload: 'the electric one',
     });
-    await restarted.waitForDurableRun(run.id);
+    await restarted.tasks.wait(run.id);
     return {
       car,
       first: turns.find((turn) => turn.step === 0),

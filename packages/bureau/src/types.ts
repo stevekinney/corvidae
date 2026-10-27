@@ -525,7 +525,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * Has no effect without any `storage` (a durable engine needs a backend).
    *
    * Recovered runs are registered through Weft's pre-resume recovery hook, so
-   * {@link Bureau.getRun} and live event subscribers see them before resumed
+   * {@link BureauTasks.detail} and live event subscribers see them before resumed
    * user code advances.
    */
   durable?: boolean;
@@ -2130,19 +2130,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * its id.
    */
   listRuns(status?: string): RunSummary[];
-  /**
-   * A run this process holds, by id: a `createRun` run's `RunSummary.id`, or
-   * the `id` on a `bureau.run()` handle (COR-1302). A `createRun` run is held
-   * after it settles, until its task expires under {@link BureauRetentionOptions.tasks}. A `bureau.run()` run is held from the
-   * moment `bureau.run()` returns until it settles, and then released on its
-   * own, as it was before it could be read by id. Until its agent's run is
-   * built — and for its whole life when Bureau cannot build it (a
-   * hand-written agent, or the durable branch's in-memory fallback) — it
-   * reads as `running` with no steps, actions, or usage, and the handle's own
-   * liveness snapshot. A durable `bureau.run()` run recovered after a restart
-   * is not held; `getDurableRun` reads it. `undefined` for any other id.
-   */
-  getRun(id: string): RunDetail | undefined;
 
   /**
    * The owner of record of a resource (COR-718), or `undefined` when no such
@@ -2168,28 +2155,8 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   getOwner(resource: OwnedResource): Promise<string | undefined>;
 
   /**
-   * Subscribes to live liveness updates for a run (AB-88/AB-214),
-   * delegating to the underlying `ActiveRun`'s `subscribeSnapshot`. Delivers
-   * the current snapshot synchronously before returning, then a new
-   * snapshot on every revision change; already-terminal work delivers the
-   * terminal snapshot once. A caller with only `getRun(id)` sees the
-   * liveness observed at that call; a caller wanting live updates uses this
-   * instead of polling `getRun`.
-   *
-   * Throws when `id` names no known run — matching `abortRun`'s unknown-id
-   * behavior rather than `getRun`'s `undefined`-returning one, because there
-   * is no snapshot value to hand back synchronously to `observer` for an id
-   * this bureau has never registered.
-   */
-  subscribeRunSnapshot(
-    runId: string,
-    observer: (snapshot: LivenessSnapshot) => void,
-    options?: { signal?: AbortSignal },
-  ): Subscription;
-
-  /**
    * Requests cancellation of a running run and returns its summary with
-   * `status: 'aborting'`. Accepts the ids {@link Bureau.getRun} accepts. For a
+   * `status: 'aborting'`. Accepts the ids {@link BureauTasks.detail} accepts. For a
    * `bureau.run()` run (COR-1302) this works from the moment `bureau.run()`
    * returns: a run aborted before its agent's run is built is cancelled
    * through its handle. Once a `bureau.run()` run has settled it is released,
@@ -2197,16 +2164,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * returns its terminal summary.
    */
   abortRun(id: string): RunSummary;
-
-  /**
-   * Read the durable engine's view of a run: its full {@link WorkflowState}
-   * (status, step cursor, failure category, termination reason, timestamps).
-   * Backed by `engine.get(runId)`. Returns `null` when the run is unknown to the
-   * engine and `undefined` when no durable engine is composed. This is the only
-   * way to see a run's durable status mid-flight — session metadata is written
-   * only at terminal transitions, and a recovered run is otherwise opaque.
-   */
-  getDurableRun(runId: string): Promise<WorkflowState | null | undefined>;
 
   /**
    * The durable Weft engine this bureau composed, or `undefined` when none is composed. It is the
@@ -2225,30 +2182,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   durableEngine(): RegistryAgnosticEngine | undefined;
 
   /**
-   * Waits until a run's durable workflow has reached a terminal state in the durable store, then
-   * resolves with its {@link WorkflowState}. Terminal means any status other than `pending`,
-   * `running` or `suspended` (so `completed`, `failed`, `cancelled` or `timed-out`). A failed or
-   * cancelled run resolves with its state rather than rejecting.
-   *
-   * It resolves after the durable commit. Live frames, bureau events and `getRun(id).status` are
-   * announced by this process and can precede it, so a caller that is about to read the durable
-   * store (`getDurableRun`, `eventHistory`, a second bureau over the same store) waits here
-   * instead. The wait is Weft's own result waiter (`engine.getHandle(runId).result()`): it settles
-   * from this engine's terminal delivery, or from the store when another engine over the same
-   * store finishes the run, which needs the engine to own workflows with
-   * `ownership: 'workflow-lease'` so that Weft polls for the other engine's completion.
-   *
-   * Resolves `undefined` when no durable engine is composed and `null` when the engine has no such
-   * run, the same meanings as {@link Bureau.getDurableRun}. A run that is already terminal
-   * resolves immediately. It rejects when Weft's result waiter fails for a reason that leaves the
-   * run non-terminal in the store (a disposed engine, a transient read failure), and it rejects
-   * with an `UNSUPPORTED_CAPABILITY` `BureauError` for a non-terminal run under
-   * `maintenance: 'manual'`, where nothing re-reads the store between maintenance
-   * passes: use `runDurableMaintenance()` and `getDurableRun()` there.
-   */
-  waitForDurableRun(runId: string): Promise<WorkflowState | null | undefined>;
-
-  /**
    * Cancel a durable run that has no live, process-local `ActiveRun` (AB-37,
    * AB-205) — the boot-recovered fire that makes `abortRun` throw
    * `NOT_FOUND`. Asynchronous, unlike `abortRun`, and never rejects: every
@@ -2261,20 +2194,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * any other terminal status resolves `'already-terminal'`.
    */
   cancelDurableRun(runId: string): Promise<CancelDurableRunOutcome>;
-
-  /**
-   * List durable runs from the engine, optionally filtered (status, type, tags).
-   * Backed by `engine.list(filter, options)`. Returns `undefined` when no durable
-   * engine is composed. Note the engine internally types the filter as a
-   * `TypedListFilter`; the plain {@link ListFilter} accepted here is structurally
-   * compatible as long as `attributes` is omitted. A scan-cap breach from the
-   * engine surfaces as a thrown weft fault (catch generically — the cap error is
-   * not on the public barrel).
-   */
-  listDurableRuns(
-    filter?: ListFilter,
-    options?: ListOptions,
-  ): Promise<PaginatedResult<WorkflowSummary> | undefined>;
 
   /**
    * Run one host-driven durable-engine maintenance cycle. This fires due

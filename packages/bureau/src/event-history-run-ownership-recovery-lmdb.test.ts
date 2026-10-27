@@ -181,11 +181,11 @@ describe('bureau.eventHistory run ownership survives a process restart over LMDB
         // rather than a bare `!== 'running'` check that would read
         // "not yet recovered" as "already done" (copilot review, PR #564).
         await pollUntilWithRealDelay(() => {
-          const status = bureauB.getRun(run.id)?.status;
+          const status = bureauB.tasks.detail(run.id)?.status;
           return status !== undefined && status !== 'running';
         });
 
-        const recovered = bureauB.getRun(run.id);
+        const recovered = bureauB.tasks.detail(run.id);
         expect(recovered).toMatchObject({
           id: run.id,
           sessionId: run.sessionId,
@@ -226,7 +226,7 @@ describe('bureau.eventHistory run ownership survives a process restart over LMDB
         // A run id the recovered bureau never registered has no status;
         // a trusted caller reading it gets an empty page, not another run's
         // events.
-        expect(bureauB.getRun('run-that-never-existed')).toBeUndefined();
+        expect(bureauB.tasks.detail('run-that-never-existed')).toBeUndefined();
         expect(await bureauB.eventHistory({ kind: 'run', id: 'run-that-never-existed' })).toEqual({
           events: [],
           hasMore: false,

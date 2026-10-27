@@ -26,7 +26,10 @@ async function withBureau<T>(
 /** A session whose run is still going, so it can take input. */
 async function liveSession(opened: OpenedBureau, principal: string = OWNER.alice) {
   const run = await opened.bureau.createRun({ agentName: 'default', message: 'work', principal });
-  await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'running', 'run started');
+  await waitForCondition(
+    () => opened.bureau.tasks.detail(run.id)?.status === 'running',
+    'run started',
+  );
   return run;
 }
 
@@ -95,7 +98,10 @@ describe('bureau.contexts.input', () => {
         message: 'done soon',
         principal: OWNER.alice,
       });
-      await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'completed', 'finish');
+      await waitForCondition(
+        () => opened.bureau.tasks.detail(run.id)?.status === 'completed',
+        'finish',
+      );
 
       const body = await send(opened, run.sessionId, 'alice-key');
 

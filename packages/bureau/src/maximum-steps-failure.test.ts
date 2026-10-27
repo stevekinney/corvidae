@@ -79,7 +79,7 @@ describe.each(EXECUTIONS)('a run that stops at its step limit, %s (COR-1627)', (
 
     const run = await runToLimit(bureau);
 
-    const detail = bureau.getRun(run.id);
+    const detail = bureau.tasks.detail(run.id);
     expect(detail?.status).toBe('error');
     expect(detail?.finishReason).toBe('maximum-steps');
     expect(bureau.listRuns()[0]?.status).toBe('error');

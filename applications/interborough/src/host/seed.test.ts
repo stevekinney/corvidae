@@ -330,7 +330,7 @@ describe('the seeded agents through session runs', () => {
       principal: 'anonymous:local',
       payload: { environment: 'staging' },
     });
-    const finished = await host.bureau.waitForDurableRun(run.id);
+    const finished = await host.bureau.tasks.wait(run.id);
     expect(finished?.status).toBe('completed');
     expect(host.bureau.reviews.list()).toEqual([]);
   });

@@ -547,7 +547,7 @@ describe('cancel', () => {
         agent.abortRun();
         await starting;
         await starterObserver.frames();
-        expect(harness.bureau.getRun(nativeRunId)?.status).toBe('running');
+        expect(harness.bureau.tasks.detail(nativeRunId)?.status).toBe('running');
 
         const attaching = follow(pipeline(`${served.base}/ag-ui/runs/${nativeRunId}`));
         await attaching.opened;
@@ -833,7 +833,7 @@ describe('cleanup', () => {
         let subscribed = Promise.withResolvers<void>();
         let allGone = Promise.withResolvers<void>();
         const subscribeLiveFrames = harness.bureau.subscribeLiveFrames.bind(harness.bureau);
-        const subscribeRunSnapshot = harness.bureau.subscribeRunSnapshot.bind(harness.bureau);
+        const subscribeRunSnapshot = harness.bureau.tasks.snapshot.bind(harness.bureau.tasks);
         harness.bureau.subscribeLiveFrames = (listener) => {
           frameListeners += 1;
           subscribed.resolve();
@@ -844,7 +844,7 @@ describe('cleanup', () => {
             stop();
           };
         };
-        harness.bureau.subscribeRunSnapshot = (runId, observer, options) => {
+        harness.bureau.tasks.snapshot = (runId, observer, options) => {
           snapshotSubscriptions += 1;
           const subscription = subscribeRunSnapshot(runId, observer, options);
           return {
@@ -883,7 +883,7 @@ describe('cleanup', () => {
         abandoned.abortRun();
         await aborted;
         await allGone.promise;
-        expect(harness.bureau.getRun(abandonedRunId)?.status).toBe('running');
+        expect(harness.bureau.tasks.detail(abandonedRunId)?.status).toBe('running');
         harness.generate.release('hold');
         await abandonedObserver.frames();
 

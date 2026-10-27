@@ -8,7 +8,7 @@
 import type { BackendDescriptor, GenerateFunction } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { waitForRunState } from './test';
+import { waitForTaskState } from './test';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
 import type { BureauDiagnostic } from './types';
@@ -111,7 +111,7 @@ describe('a file agent with no models list', () => {
 
     const outcome = await steer(harness, run.sessionId, 'switch', GPT_4_1);
     resolver.release();
-    await waitForRunState(harness.bureau, run.id);
+    await waitForTaskState(harness.bureau, run.id);
 
     expect(outcome.outcome).toBe('accepted');
     expect(resolver.calls).toEqual(['claude-opus-5-5', 'gpt-4.1']);
@@ -122,11 +122,11 @@ describe('a file agent with no models list', () => {
     resolver.release();
     const harness = await start(resolver, PICKER());
     const first = await runPicker(harness);
-    await waitForRunState(harness.bureau, first.id);
+    await waitForTaskState(harness.bureau, first.id);
 
     const outcome = await steer(harness, first.sessionId, 'idle', OPUS_5);
     const second = await runPicker(harness, first.sessionId);
-    await waitForRunState(harness.bureau, second.id);
+    await waitForTaskState(harness.bureau, second.id);
 
     expect(outcome.outcome).toBe('accepted');
     expect(resolver.calls).toEqual([
@@ -142,7 +142,7 @@ describe('a file agent with no models list', () => {
     resolver.release();
     const harness = await start(resolver, PICKER());
     const run = await runPicker(harness);
-    await waitForRunState(harness.bureau, run.id);
+    await waitForTaskState(harness.bureau, run.id);
 
     expect(resolver.calls).toEqual(['claude-opus-5-5', 'claude-opus-5-5']);
   });
@@ -154,7 +154,7 @@ describe('a file agent with a models list', () => {
     resolver.release();
     const harness = await start(resolver, PICKER(`[${KNOWN_MODEL}, openai/gpt-4.1]`));
     const run = await runPicker(harness);
-    await waitForRunState(harness.bureau, run.id);
+    await waitForTaskState(harness.bureau, run.id);
 
     const outside = await steer(harness, run.sessionId, 'outside', OPUS_5);
     const inside = await steer(harness, run.sessionId, 'inside', GPT_4_1);
@@ -171,7 +171,7 @@ describe('a file agent with a models list', () => {
     resolver.release();
     const harness = await start(resolver, PICKER(`[${KNOWN_MODEL}, openai/gpt-4.1]`));
     const run = await runPicker(harness);
-    await waitForRunState(harness.bureau, run.id);
+    await waitForTaskState(harness.bureau, run.id);
 
     const outcome = await steer(harness, run.sessionId, 'unusable', GPT_4_1);
 
@@ -188,7 +188,7 @@ describe('an override that can no longer be used', () => {
     resolver.release();
     const harness = await start(resolver, PICKER(`[${KNOWN_MODEL}, openai/gpt-4.1]`), diagnostics);
     const first = await runPicker(harness);
-    await waitForRunState(harness.bureau, first.id);
+    await waitForTaskState(harness.bureau, first.id);
     const switched = await steer(harness, first.sessionId, 'switch', GPT_4_1);
     expect(switched.outcome).toBe('accepted');
     const callsBefore = resolver.calls.length;
@@ -197,9 +197,9 @@ describe('an override that can no longer be used', () => {
     await harness.put('picker.md', PICKER(`[${KNOWN_MODEL}]`));
     await harness.bureau.agents.refresh();
     const second = await runPicker(harness, first.sessionId);
-    await waitForRunState(harness.bureau, second.id);
+    await waitForTaskState(harness.bureau, second.id);
 
-    const summary = harness.bureau.getRun(second.id);
+    const summary = harness.bureau.tasks.detail(second.id);
     expect(summary?.status).toBe('error');
     expect(summary?.error).toContain('gpt-4.1');
     // No provider call was made for it, with the override or with the default.

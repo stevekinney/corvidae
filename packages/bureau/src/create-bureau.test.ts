@@ -124,7 +124,7 @@ import {
   createRuntimeComposition,
   createWakeupContext,
 } from './runtime-composition';
-import { waitForCondition, waitForRunState } from './test';
+import { waitForCondition, waitForRunState, waitForTaskState } from './test';
 import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 import { type Bureau, type BureauContexts, type BureauDiagnostic, type ServerFrame } from './types';
 import { advancingTurn, withAdvancingClock } from './testing/advancing-turn.test-support';
@@ -245,7 +245,7 @@ function createTrulyHungGenerate(): { generate: GenerateFunction; invoked: Promi
 }
 
 async function waitForRunCompletion(bureau: Bureau, runId: string) {
-  await waitForRunState(bureau, runId);
+  await waitForTaskState(bureau, runId);
   // Drain Weft's deferred inline-launch queue (its `setTimeout(0)` starts) so the
   // terminal session-persistence listeners settle. yieldToPortableEventLoop is a
   // macrotask (MessageChannel), which advances that queue — a microtask flush
@@ -794,7 +794,7 @@ describe('createBureau', () => {
     });
 
     const summary = await bureau.createRun({ agentName: 'default', message: 'Hello' });
-    const detail = bureau.getRun(summary.id);
+    const detail = bureau.tasks.detail(summary.id);
 
     expect(detail?.liveness).toBeDefined();
     expect(detail?.liveness.kind).toBe('agent-run');
@@ -818,7 +818,7 @@ describe('createBureau', () => {
     try {
       const summary = await bureau.createRun({ agentName: 'default', message: 'Hello' });
       await waitForRunCompletion(bureau, summary.id);
-      const detail = bureau.getRun(summary.id);
+      const detail = bureau.tasks.detail(summary.id);
       const transcript = detail?.transcript;
 
       expect(transcript).toBeDefined();
@@ -847,7 +847,7 @@ describe('createBureau', () => {
       message: 'Hello',
       principal: 'user-42',
     });
-    const detail = bureau.getRun(summary.id);
+    const detail = bureau.tasks.detail(summary.id);
 
     expect(detail?.liveness.owner).toBe('user-42');
   });
@@ -860,7 +860,7 @@ describe('createBureau', () => {
     });
 
     const summary = await bureau.createRun({ agentName: 'default', message: 'Hello' });
-    const detail = bureau.getRun(summary.id);
+    const detail = bureau.tasks.detail(summary.id);
 
     expect(detail?.liveness.owner).toBe('anonymous:local');
   });
@@ -875,7 +875,7 @@ describe('createBureau', () => {
     const summary = await bureau.createRun({ agentName: 'default', message: 'Hello' });
 
     const received: string[] = [];
-    const subscription = bureau.subscribeRunSnapshot(summary.id, (snapshot) => {
+    const subscription = bureau.tasks.snapshot(summary.id, (snapshot) => {
       received.push(snapshot.status);
     });
 
@@ -890,7 +890,7 @@ describe('createBureau', () => {
       },
     });
 
-    expect(() => bureau.subscribeRunSnapshot('does-not-exist', () => {})).toThrow(
+    expect(() => bureau.tasks.snapshot('does-not-exist', () => {})).toThrow(
       expect.objectContaining({ code: 'NOT_FOUND' }),
     );
   });
@@ -1571,7 +1571,7 @@ describe('createBureau', () => {
         // longer invisible to the live surface the way a pre-#5b recovered run was.
         // (Registration is synchronous in `recoverDurableRuns`, so the run is
         // visible from the moment boot returned, even while it was still resuming.)
-        const recoveredDetail = bureauB.getRun(run.id);
+        const recoveredDetail = bureauB.tasks.detail(run.id);
         expect(recoveredDetail).toBeDefined();
         expect(recoveredDetail?.id).toBe(run.id);
 
@@ -1744,7 +1744,7 @@ describe('createBureau', () => {
         durable: true,
       });
 
-      const state = await bureauB.getDurableRun(run.id);
+      const state = await bureauB.tasks.workflow(run.id);
       expect(state).not.toBeNull();
       expect(state).not.toBeUndefined();
       expect(state?.id).toBe(run.id);
@@ -2048,7 +2048,7 @@ describe('createBureau', () => {
       // minted workflow id — read the real durable workflow id back off the
       // engine's own listing, the same way `bureau.run()`'s own
       // "checkpointed and discoverable" test does.
-      const beforeRestart = await bureauA.listDurableRuns();
+      const beforeRestart = await bureauA.tasks.workflows();
       const runId = beforeRestart?.items.find((item) => item.id.startsWith('agent-run-'))?.id;
       expect(runId).toBeDefined();
       // Deliberately NOT disposing bureauA — see the interactive recovery
@@ -2080,7 +2080,7 @@ describe('createBureau', () => {
         expect(bSteps).toEqual([1]);
 
         const completed = await pollUntil(async () => {
-          const after = await bureauB.listDurableRuns();
+          const after = await bureauB.tasks.workflows();
           return after?.items.find((item) => item.id === runId)?.status === 'completed';
         });
         expect(completed).toBe(true);
@@ -2130,7 +2130,7 @@ describe('createBureau', () => {
       // minted workflow id — read the real durable workflow id back off the
       // engine's own listing, the same way `bureau.run()`'s own
       // "checkpointed and discoverable" test does.
-      const beforeRestart = await bureauA.listDurableRuns();
+      const beforeRestart = await bureauA.tasks.workflows();
       const runId = beforeRestart?.items.find((item) => item.id.startsWith('agent-run-'))?.id;
       expect(runId).toBeDefined();
 
@@ -2145,7 +2145,7 @@ describe('createBureau', () => {
 
       try {
         const failed = await pollUntil(async () => {
-          const after = await bureauB.listDurableRuns();
+          const after = await bureauB.tasks.workflows();
           return after?.items.find((item) => item.id === runId)?.status === 'failed';
         });
         expect(failed).toBe(true);
@@ -2195,7 +2195,7 @@ describe('createBureau', () => {
       await pollUntil(() => bureauAReachedStep1);
       expect(bureauAReachedStep1).toBe(true);
 
-      const beforeRestart = await bureauA.listDurableRuns();
+      const beforeRestart = await bureauA.tasks.workflows();
       const runId = beforeRestart?.items.find((item) => item.id.startsWith('agent-run-'))?.id;
       expect(runId).toBeDefined();
 
@@ -2220,7 +2220,7 @@ describe('createBureau', () => {
 
       try {
         const failed = await pollUntil(async () => {
-          const after = await bureauB.listDurableRuns();
+          const after = await bureauB.tasks.workflows();
           return after?.items.find((item) => item.id === runId)?.status === 'failed';
         });
         expect(failed).toBe(true);
@@ -2328,7 +2328,7 @@ describe('createBureau', () => {
       // before dispatch. `bureau.listDurableRuns()` correctly stays empty
       // of it; asserting the OPPOSITE (as this test did pre-AB-339) would
       // reassert the exact false-leak-causing durable launch AB-339 fixed.
-      const durableRuns = await bureau.listDurableRuns();
+      const durableRuns = await bureau.tasks.workflows();
       expect(durableRuns?.items.some((item) => item.id.startsWith('agent-run-'))).toBe(false);
     } finally {
       await bureau.dispose();
@@ -2524,7 +2524,7 @@ describe('createBureau', () => {
       runIds: runs.map((run) => run.id),
       runsSettled: () =>
         runs.every((run) => {
-          const status = bureau.getRun(run.id)?.status;
+          const status = bureau.tasks.detail(run.id)?.status;
           return status !== undefined && status !== 'running';
         }),
       async cleanup() {
@@ -2999,8 +2999,8 @@ describe('createBureau', () => {
         // a `workflow.reattached` marker, so the run-detail view can surface
         // "resumed under a different workflow version" without re-deriving
         // it from a console.warn string.
-        const reattachEvent = bureauB
-          .getRun(run.id)
+        const reattachEvent = bureauB.tasks
+          .detail(run.id)
           ?.events.find((event) => event.event === 'workflow.reattached');
         expect(reattachEvent?.detail).toMatchObject({
           versionMismatch: true,
@@ -3140,7 +3140,7 @@ describe('createBureau', () => {
 
       try {
         const completed = await pollUntil(async () => {
-          const state = await bureau.getDurableRun(runId);
+          const state = await bureau.tasks.workflow(runId);
           return state?.status === 'completed';
         });
         expect(completed).toBe(true);
@@ -3234,7 +3234,7 @@ describe('createBureau', () => {
 
       try {
         const completed = await pollUntil(async () => {
-          const state = await bureau.getDurableRun(runId);
+          const state = await bureau.tasks.workflow(runId);
           return state?.status === 'completed';
         });
         expect(completed).toBe(true);
@@ -3325,7 +3325,7 @@ describe('createBureau', () => {
       let recoveredRunVisibleWhenAuditCreated: boolean | undefined;
       const auditTrailSpy = spyOn(auditTrailModule, 'createAuditTrail').mockImplementation(
         (observedBureau, kv) => {
-          recoveredRunVisibleWhenAuditCreated = observedBureau.getRun(run.id) !== undefined;
+          recoveredRunVisibleWhenAuditCreated = observedBureau.tasks.detail(run.id) !== undefined;
           return realCreateAuditTrail(observedBureau, kv);
         },
       );
@@ -3751,7 +3751,7 @@ describe('createBureau', () => {
       });
 
       try {
-        await pollUntil(() => bureauB.getRun(run.id)?.status === 'running');
+        await pollUntil(() => bureauB.tasks.detail(run.id)?.status === 'running');
         bureauB.abortRun(run.id);
         await pollUntil(async () => {
           const current = await bureauB.contexts.get(run.sessionId);
@@ -3846,7 +3846,7 @@ describe('createBureau', () => {
         // reattached + store.register'd — otherwise its write-free-rejecting
         // handle would leave a store entry stuck `running` forever (committee/
         // Bugbot review). It was cancelled, not registered.
-        expect(bureauB.getRun(run.id)).toBeUndefined();
+        expect(bureauB.tasks.detail(run.id)).toBeUndefined();
       } finally {
         await bureauB.dispose();
       }
@@ -3888,7 +3888,7 @@ describe('createBureau', () => {
     await waitForRunCompletion(bureau, run.id);
 
     // The run is registered and observed to completion through the durable path.
-    const detail = bureau.getRun(run.id);
+    const detail = bureau.tasks.detail(run.id);
     expect(detail).toBeDefined();
     expect(detail?.status).toBe('completed');
     expect(detail?.finishReason).toBe('stop-condition');
@@ -3946,7 +3946,7 @@ describe('createBureau', () => {
       // (active-run-adapter.ts) actually fired on the durable path — step 0's tool
       // call must surface, not merely the run-lifecycle events.
       expect(actions.some((type) => type.startsWith('toolbox.'))).toBe(true);
-      const detail = bureau.getRun(run.id);
+      const detail = bureau.tasks.detail(run.id);
       expect(detail).toBeDefined();
       expect(detail?.status).toBe('completed');
       expect(detail?.finishReason).toBe('stop-condition');
@@ -4127,7 +4127,7 @@ describe('createBureau', () => {
     await waitForRunCompletion(bureau, run.id);
 
     const summary = bureau.listRuns().find((entry) => entry.id === run.id);
-    const detail = bureau.getRun(run.id);
+    const detail = bureau.tasks.detail(run.id);
 
     expect(summary?.sessionId).toBe(run.sessionId);
     expect(detail?.sessionId).toBe(run.sessionId);
@@ -4146,7 +4146,7 @@ describe('createBureau', () => {
     const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
     await waitForRunCompletion(bureau, run.id);
 
-    const detail = bureau.getRun(run.id);
+    const detail = bureau.tasks.detail(run.id);
 
     expect(detail).toBeDefined();
     expect(detail?.sessionId).toBe(run.sessionId);
@@ -4176,11 +4176,11 @@ describe('createBureau', () => {
     // stopped yet) rather than `abortRun`'s own transitional value, so the
     // widely used "`status !== 'running'` means settled" idiom (e.g.
     // `waitForRunState`) is never falsely satisfied before teardown starts.
-    expect(bureau.getRun(run.id)?.status).toBe('running');
+    expect(bureau.tasks.detail(run.id)?.status).toBe('running');
     expect(bureau.listRuns().find((entry) => entry.id === run.id)?.status).toBe('running');
 
-    await pollUntil(() => bureau.getRun(run.id)?.status === 'aborted');
-    expect(bureau.getRun(run.id)?.status).toBe('aborted');
+    await pollUntil(() => bureau.tasks.detail(run.id)?.status === 'aborted');
+    expect(bureau.tasks.detail(run.id)?.status).toBe('aborted');
 
     bureau.dispose();
   });
@@ -4216,7 +4216,7 @@ describe('createBureau', () => {
     // only prove via mutation testing, never observe from a public surface.
     for (let i = 0; i < 20; i++) await Promise.resolve();
     expect(bureau.internals.abortingTasks().map((entry) => entry.runId)).toContain(run.id);
-    expect(bureau.getRun(run.id)?.status).toBe('running');
+    expect(bureau.tasks.detail(run.id)?.status).toBe('running');
 
     bureau.dispose();
   });
@@ -4245,7 +4245,7 @@ describe('createBureau', () => {
 
     let caughtWindow = false;
     for (let i = 0; i < 200; i++) {
-      const status = bureau.getRun(run.id)?.status;
+      const status = bureau.tasks.detail(run.id)?.status;
       const hasEntry = bureau.internals.abortingTasks().some((entry) => entry.runId === run.id);
       if (status !== 'running' && hasEntry) {
         caughtWindow = true;
@@ -4309,7 +4309,7 @@ describe('createBureau', () => {
     expect(first.status).toBe('aborting');
     expect(second.status).toBe('aborting');
 
-    await pollUntil(() => bureau.getRun(run.id)?.status === 'aborted');
+    await pollUntil(() => bureau.tasks.detail(run.id)?.status === 'aborted');
 
     bureau.dispose();
   });
@@ -4326,9 +4326,9 @@ describe('createBureau', () => {
     });
 
     const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
-    await pollUntil(() => bureau.getRun(run.id)?.status !== 'running');
+    await pollUntil(() => bureau.tasks.detail(run.id)?.status !== 'running');
 
-    expect(bureau.getRun(run.id)?.status).toBe('completed');
+    expect(bureau.tasks.detail(run.id)?.status).toBe('completed');
 
     // A repeat call after the run finished on its own no longer throws
     // `CONFLICT` — it returns the run's current (real, terminal) summary.
@@ -4348,7 +4348,7 @@ describe('createBureau', () => {
 
     const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
     bureau.abortRun(run.id);
-    await pollUntil(() => bureau.getRun(run.id)?.status === 'aborted');
+    await pollUntil(() => bureau.tasks.detail(run.id)?.status === 'aborted');
 
     const repeat = bureau.abortRun(run.id);
     expect(repeat.status).toBe('aborted');
@@ -4528,7 +4528,7 @@ describe('createBureau', () => {
 
       const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
       await pollUntil(async () => {
-        const state = await bureau.getDurableRun(run.id);
+        const state = await bureau.tasks.workflow(run.id);
         return state?.status === 'completed';
       });
 
@@ -4550,14 +4550,14 @@ describe('createBureau', () => {
 
       const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
       await pollUntil(async () => {
-        const state = await bureau.getDurableRun(run.id);
+        const state = await bureau.tasks.workflow(run.id);
         return state?.status === 'running';
       });
 
       const outcome = await bureau.cancelDurableRun(run.id);
       expect(outcome).toEqual({ status: 'requested' });
 
-      const state = await bureau.getDurableRun(run.id);
+      const state = await bureau.tasks.workflow(run.id);
       expect(state?.status).toBe('cancelled');
 
       bureau.dispose();
@@ -5041,7 +5041,7 @@ describe('createBureau', () => {
       const run = await bureau.createRun({ agentName: 'default', message: 'Never settles' });
       await waitForRunCompletion(bureau, run.id);
 
-      const detail = bureau.getRun(run.id);
+      const detail = bureau.tasks.detail(run.id);
       expect(detail?.finishReason).toBe('maximum-steps');
       // COR-1627: a run that stops at its step limit is a failure in its record.
       expect(detail?.status).toBe('error');
@@ -5092,7 +5092,7 @@ describe('createBureau', () => {
       });
 
       // The run must have been fully registered — not aborted mid-setup.
-      expect(bureau.getRun(run.id)).toBeDefined();
+      expect(bureau.tasks.detail(run.id)).toBeDefined();
       // A well-behaved sibling listener still received frames despite the
       // other listener throwing on every one of them.
       expect(goodFrameTypes.length).toBeGreaterThan(0);
@@ -5185,7 +5185,7 @@ describe('createBureau', () => {
           message: 'Survive a throwing sink',
         });
 
-        expect(bureau.getRun(run.id)).toBeDefined();
+        expect(bureau.tasks.detail(run.id)).toBeDefined();
         expect(errorSpy).toHaveBeenCalled();
       } finally {
         bureau.dispose();
@@ -5631,8 +5631,8 @@ describe('createBureau durable inspection surface', () => {
       },
     });
 
-    expect(await bureau.getDurableRun('any-run')).toBeUndefined();
-    expect(await bureau.listDurableRuns()).toBeUndefined();
+    expect(await bureau.tasks.workflow('any-run')).toBeUndefined();
+    expect(await bureau.tasks.workflows()).toBeUndefined();
     expect(await bureau.runDurableMaintenance()).toBeUndefined();
   });
 
@@ -5681,16 +5681,16 @@ describe('createBureau durable inspection surface', () => {
       durable: true,
     });
 
-    expect(await bureau.getDurableRun('nonexistent-run')).toBeNull();
+    expect(await bureau.tasks.workflow('nonexistent-run')).toBeNull();
 
     const run = await bureau.createRun({ agentName: 'default', message: 'durable inspection' });
     await waitForRunCompletion(bureau, run.id);
 
-    const state = await bureau.getDurableRun(run.id);
+    const state = await bureau.tasks.workflow(run.id);
     expect(state).not.toBeNull();
     expect(state?.status).toBe('completed');
 
-    const listed = await bureau.listDurableRuns();
+    const listed = await bureau.tasks.workflows();
     expect(listed).toBeDefined();
     expect(listed!.items.some((summary) => summary.id === run.id)).toBe(true);
   });
@@ -5870,13 +5870,13 @@ describe('createBureau scheduler-origin crash semantics (#25)', () => {
         // untagged (legacy) scheduler runs must be cancelled — the sweep matches by
         // id prefix, not by tag.
         const swept = await pollUntil(async () => {
-          const tagged = await bureau.getDurableRun(runId);
-          const legacy = await bureau.getDurableRun(legacyRunId);
+          const tagged = await bureau.tasks.workflow(runId);
+          const legacy = await bureau.tasks.workflow(legacyRunId);
           return tagged?.status === 'cancelled' && legacy?.status === 'cancelled';
         }, 50);
         expect(swept).toBe(true);
-        const taggedFinal = await bureau.getDurableRun(runId);
-        const legacyFinal = await bureau.getDurableRun(legacyRunId);
+        const taggedFinal = await bureau.tasks.workflow(runId);
+        const legacyFinal = await bureau.tasks.workflow(legacyRunId);
         expect(taggedFinal?.status).toBe('cancelled');
         expect(legacyFinal?.status).toBe('cancelled');
       } finally {
@@ -6910,7 +6910,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
           );
         }),
       ).toBe(true);
-      expect(bureau.getRun(runA.id)?.status).toBe('running');
+      expect(bureau.tasks.detail(runA.id)?.status).toBe('running');
       return { bureau, runA, releaseRunB };
     } catch (error) {
       releaseRunB.resolve();
@@ -7020,7 +7020,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
           );
         }, 200),
       ).toBe(true);
-      expect(bureauA.getRun(runA.id)?.status).toBe('running');
+      expect(bureauA.tasks.detail(runA.id)?.status).toBe('running');
 
       const alice = await bureauB.contexts.input(runA.sessionId, {
         principal: 'alice',
@@ -8152,8 +8152,8 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
         sessionId: runA.sessionId,
       });
       await pollUntil(async () => {
-        const detailA = bureau.getRun(runA.id);
-        const detailB = bureau.getRun(runB.id);
+        const detailA = bureau.tasks.detail(runA.id);
+        const detailB = bureau.tasks.detail(runB.id);
         return detailA?.status === 'running' && detailB?.status === 'running';
       });
 
@@ -8209,7 +8209,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
         sessionId: runA.sessionId,
       });
       await waitForRunCompletion(bureau, runB.id);
-      await pollUntil(async () => bureau.getRun(runA.id)?.status === 'running');
+      await pollUntil(async () => bureau.tasks.detail(runA.id)?.status === 'running');
 
       // B's own terminal transition pruned lastRequestAuthorities[B],
       // leaving lastRunId: B and A's now-uncorrelated entry behind — a
@@ -9852,7 +9852,7 @@ describe('createBureau review queue (AB-20)', () => {
           // The genuinely crashed sibling still recovers to completion.
           await pollUntil(() => bSteps.includes(1));
           expect(bSteps).toEqual([1]);
-          expect(bureauB.getRun(run.id)).toBeDefined();
+          expect(bureauB.tasks.detail(run.id)).toBeDefined();
         } finally {
           recoverAllSpy.mockRestore();
           await bureauB.dispose();
@@ -10021,7 +10021,7 @@ describe('createBureau review queue (AB-20)', () => {
 
           await pollUntil(() => bSteps.includes(1));
           expect(bSteps).toEqual([1]);
-          expect(bureauB.getRun(run.id)).toBeDefined();
+          expect(bureauB.tasks.detail(run.id)).toBeDefined();
         } finally {
           listSpy.mockRestore();
           await bureauB.dispose();
@@ -11196,7 +11196,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
 
       const [review] = bureau.reviews.list();
       expect(review!.kind).toBe('human-wait');
-      expect(bureau.getRun(run.id)?.status).toBe('running');
+      expect(bureau.tasks.detail(run.id)?.status).toBe('running');
 
       const outcome = await bureau.reviews.resolve({
         id: review!.id,
@@ -11208,7 +11208,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
 
       await waitForRunCompletion(bureau, run.id);
 
-      const finalRun = bureau.getRun(run.id);
+      const finalRun = bureau.tasks.detail(run.id);
       expect(finalRun?.status).toBe('completed');
       expect(bureau.reviews.list()).toHaveLength(0);
     } finally {
@@ -12616,7 +12616,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
       // re-transition it, and fire a SECOND, duplicate `review.*` event for an
       // id that is already resolved — this issue's own named rollback trigger.
       await retireSettledTasks(bureau, runtime);
-      expect(bureau.getRun(run.id)).toBeUndefined();
+      expect(bureau.tasks.detail(run.id)).toBeUndefined();
       expect(revoked).toEqual([]);
       expect(canceled).toEqual([]);
 
@@ -12659,15 +12659,15 @@ describe('createBureau flow control (AB-13)', () => {
 
     // Settling one run (abort → run.aborted → flowController.settle) frees its slot.
     bureau.abortRun(first.id);
-    await waitForRunState(bureau, first.id);
+    await waitForTaskState(bureau, first.id);
 
     const third = await bureau.createRun({ agentName: 'default', message: 'three-retry' });
     expect(third.id).not.toBe(first.id);
 
     bureau.abortRun(second.id);
     bureau.abortRun(third.id);
-    await waitForRunState(bureau, second.id);
-    await waitForRunState(bureau, third.id);
+    await waitForTaskState(bureau, second.id);
+    await waitForTaskState(bureau, third.id);
 
     bureau.dispose();
   });
@@ -12697,8 +12697,8 @@ describe('createBureau flow control (AB-13)', () => {
 
     bureau.abortRun(runA.id);
     bureau.abortRun(runB.id);
-    await waitForRunState(bureau, runA.id);
-    await waitForRunState(bureau, runB.id);
+    await waitForTaskState(bureau, runA.id);
+    await waitForTaskState(bureau, runB.id);
 
     bureau.dispose();
   });
@@ -12769,7 +12769,7 @@ describe('createBureau flow control (AB-13)', () => {
     expect(independent.id).not.toBe(first.id);
 
     bureau.abortRun(first.id);
-    await waitForRunState(bureau, first.id);
+    await waitForTaskState(bureau, first.id);
 
     // Once the original settles, a fresh trigger with the same key is admitted.
     const afterSettle = await bureau.createRun({
@@ -12781,8 +12781,8 @@ describe('createBureau flow control (AB-13)', () => {
 
     bureau.abortRun(independent.id);
     bureau.abortRun(afterSettle.id);
-    await waitForRunState(bureau, independent.id);
-    await waitForRunState(bureau, afterSettle.id);
+    await waitForTaskState(bureau, independent.id);
+    await waitForTaskState(bureau, afterSettle.id);
 
     bureau.dispose();
   });
@@ -12890,7 +12890,7 @@ describe('createBureau human input wiring — real durable park (F3)', () => {
       await waitForRunCompletion(bureau, run2.id);
       await waitForRunCompletion(bureau, run1.id);
 
-      const finalRun1 = bureau.getRun(run1.id);
+      const finalRun1 = bureau.tasks.detail(run1.id);
       expect(finalRun1?.status).toBe('completed');
     } finally {
       bureau.dispose();
@@ -12950,7 +12950,7 @@ describe('createBureau human input wiring — real durable park (F3)', () => {
 
       // The run is genuinely still parked (a real durable ctx.waitForSignal,
       // not a synthetic fixture) — it has not settled.
-      expect(bureau.getRun(run.id)?.status).toBe('running');
+      expect(bureau.tasks.detail(run.id)?.status).toBe('running');
 
       const result = await bureau.reviews.resolve({
         id: review!.id,
@@ -12961,7 +12961,7 @@ describe('createBureau human input wiring — real durable park (F3)', () => {
 
       await waitForRunCompletion(bureau, run.id);
 
-      const finalRun = bureau.getRun(run.id);
+      const finalRun = bureau.tasks.detail(run.id);
       expect(finalRun?.status).toBe('completed');
 
       // Resolved reviews disappear from the queue immediately.
@@ -13338,11 +13338,11 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
       // timer without an explicit tick — polling WITHOUT ticking must never
       // observe completion, and the continuation step must never run.
       const firedWithoutTick = await pollUntil(
-        () => bureau.getRun(run.id)?.status === 'completed',
+        () => bureau.tasks.detail(run.id)?.status === 'completed',
         5,
       );
       expect(firedWithoutTick).toBe(false);
-      expect(bureau.getRun(run.id)?.status).not.toBe('completed');
+      expect(bureau.tasks.detail(run.id)?.status).not.toBe('completed');
       expect(generate.callCount).toBe(1);
 
       // Drive the scheduler directly past the wakeup's deadline — no real
@@ -13354,7 +13354,7 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
       const deadline = Date.parse('2099-01-01T00:00:00.000Z');
       const completed = await pollUntil(async () => {
         await bureau.runDurableMaintenance(deadline);
-        return bureau.getRun(run.id)?.status === 'completed';
+        return bureau.tasks.detail(run.id)?.status === 'completed';
       });
       expect(completed).toBe(true);
       expect(generate.callCount).toBe(2);
@@ -13400,7 +13400,7 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
       // Genuine park proof, same as config 3: no tick is issued in this
       // process, so completion must never be observed here.
       const firedInBureauA = await pollUntil(
-        () => bureauA.getRun(run.id)?.status === 'completed',
+        () => bureauA.tasks.detail(run.id)?.status === 'completed',
         5,
       );
       expect(firedInBureauA).toBe(false);
@@ -13445,15 +13445,15 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
 
       try {
         // The recovered run is visible immediately on boot.
-        expect(bureauB.getRun(run.id)).toBeDefined();
-        expect(bureauB.getRun(run.id)?.status).not.toBe('completed');
+        expect(bureauB.tasks.detail(run.id)).toBeDefined();
+        expect(bureauB.tasks.detail(run.id)?.status).not.toBe('completed');
 
         // Drive the rebooted engine's scheduler directly past the deadline —
         // no real wall-clock wait for the fire.
         const deadline = Date.parse('2099-01-01T00:00:00.000Z');
         const completed = await pollUntil(async () => {
           await bureauB.runDurableMaintenance(deadline);
-          return bureauB.getRun(run.id)?.status === 'completed';
+          return bureauB.tasks.detail(run.id)?.status === 'completed';
         });
         expect(completed).toBe(true);
         expect(generateB.callCount).toBe(1);
@@ -13928,7 +13928,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
       message: 'Still running during drain',
     });
     await waitForCondition(
-      () => bureau.getRun(run.id)?.status === 'running',
+      () => bureau.tasks.detail(run.id)?.status === 'running',
       'run never reached running before shutdown() was called',
     );
 
@@ -13942,7 +13942,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
     // caller-owned runs) and shutdown() has not resolved yet.
     await Promise.resolve();
     await Promise.resolve();
-    expect(bureau.getRun(run.id)?.status).toBe('running');
+    expect(bureau.tasks.detail(run.id)?.status).toBe('running');
     expect(shutdownSettled).toBe(false);
 
     releaseGenerate();
@@ -13951,7 +13951,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
     expect(shutdownSettled).toBe(true);
     expect(report.policy).toBe('drain');
     await waitForCondition(
-      () => bureau.getRun(run.id)?.status === 'completed',
+      () => bureau.tasks.detail(run.id)?.status === 'completed',
       'drained run never reached its own natural terminal result',
     );
   });
@@ -13987,7 +13987,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
         message: 'Save me while draining',
       });
       await waitForCondition(
-        () => bureau.getRun(run.id)?.status === 'running',
+        () => bureau.tasks.detail(run.id)?.status === 'running',
         'run never reached running before shutdown() was called',
       );
       const shutdownPromise = bureau.shutdown({ policy: 'drain' });
@@ -14102,7 +14102,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
     await disposePromise;
 
     expect(disposed).toBe(true);
-    expect(bureau.getRun(run.id)?.status).toBe('running');
+    expect(bureau.tasks.detail(run.id)?.status).toBe('running');
   });
 
   it('shutdown({ timeoutMilliseconds }) resolves within a bounded margin of N, reporting a still-unresolved owner "unresolved" and every other owner its real outcome — the underlying drain keeps running rather than being abandoned', async () => {
@@ -14944,7 +14944,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
       await runtime.deferred.drain();
       await retireSettledTasks(bureau, runtime);
       await runtime.deferred.drain();
-      expect(bureau.getRun(run.id)).toBeUndefined();
+      expect(bureau.tasks.detail(run.id)).toBeUndefined();
 
       // Even the ORIGINAL owning principal is denied once the run's
       // in-memory attribution is gone — this is the fail-closed trade-off
@@ -16110,7 +16110,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
       try {
         // Never reattached: getRun confirms bureau B has no live handle for
         // it at all, proving this read does not ride reattachRecoveredRun.
-        expect(bureauB.getRun(run.id)).toBeUndefined();
+        expect(bureauB.tasks.detail(run.id)).toBeUndefined();
 
         const asOwner = await bureauB.eventHistory(
           { kind: 'run', id: run.id },
@@ -16359,7 +16359,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
           sessionId: 'alice-session-auth',
           principal: 'alice',
         });
-        await waitForRunState(bureau, runOne.id);
+        await waitForTaskState(bureau, runOne.id);
 
         const runTwo = await bureau.createRun({
           agentName: 'default',
@@ -16367,7 +16367,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
           sessionId: 'bob-session-auth',
           principal: 'bob',
         });
-        await waitForRunState(bureau, runTwo.id);
+        await waitForTaskState(bureau, runTwo.id);
 
         const asAliceOnRunOne = await bureau.eventHistory(
           { kind: 'run', id: runOne.id },
@@ -16441,14 +16441,14 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
           message: 'go A',
           principal: 'alice',
         });
-        await waitForRunState(bureau, runA.id);
+        await waitForTaskState(bureau, runA.id);
         const runB = await bureau.createRun({
           agentName: 'default',
           message: 'go B',
           sessionId: runA.sessionId,
           principal: 'alice',
         });
-        await waitForRunState(bureau, runB.id);
+        await waitForTaskState(bureau, runB.id);
         // A different principal cannot add itself to the session's readers by
         // starting a run on it: that is refused as a session that is not there.
         expect(
@@ -16496,14 +16496,14 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
           message: 'go A',
           principal: 'alice',
         });
-        await waitForRunState(bureau, runA.id);
+        await waitForTaskState(bureau, runA.id);
         const runB = await bureau.createRun({
           agentName: 'default',
           message: 'go B',
           sessionId: runA.sessionId,
           principal: 'alice',
         });
-        await waitForRunState(bureau, runB.id);
+        await waitForTaskState(bureau, runB.id);
 
         const page = await bureau.eventHistory(
           { kind: 'session', id: runA.sessionId },
@@ -16574,7 +16574,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
           sessionId: runA.sessionId,
           principal: 'alice',
         });
-        await waitForRunState(bureau, runB.id);
+        await waitForTaskState(bureau, runB.id);
 
         const verdicts = await sessionHistoryVerdicts(bureau, runA.sessionId);
         expect(verdicts).toEqual({ alice: 'page', bob: 'not-found', mallory: 'not-found' });
@@ -19815,7 +19815,7 @@ describe('deleteSession aborts every run it owns (AB-207)', () => {
 
     const firstRun = await bureau.createRun({ agentName: 'default', message: 'First session run' });
     await waitForCondition(
-      () => bureau.getRun(firstRun.id)?.status === 'running',
+      () => bureau.tasks.detail(firstRun.id)?.status === 'running',
       'first run never reached running before deleteSession() was called',
     );
     const secondRun = await bureau.createRun({
@@ -19824,14 +19824,14 @@ describe('deleteSession aborts every run it owns (AB-207)', () => {
       sessionId: firstRun.sessionId,
     });
     await waitForCondition(
-      () => bureau.getRun(secondRun.id)?.status === 'running',
+      () => bureau.tasks.detail(secondRun.id)?.status === 'running',
       'second run never reached running before deleteSession() was called',
     );
 
     // Neither run has any pending-approval bookkeeping at all — the
     // narrower `persistedApprovalRunIds` set is empty for this session.
-    expect(bureau.getRun(firstRun.id)?.status).toBe('running');
-    expect(bureau.getRun(secondRun.id)?.status).toBe('running');
+    expect(bureau.tasks.detail(firstRun.id)?.status).toBe('running');
+    expect(bureau.tasks.detail(secondRun.id)?.status).toBe('running');
 
     let deleteSessionSettled = false;
     const deletion = bureau.contexts.delete(firstRun.sessionId).then(() => {
@@ -19854,8 +19854,8 @@ describe('deleteSession aborts every run it owns (AB-207)', () => {
     await deletion;
     expect(deleteSessionSettled).toBe(true);
 
-    expect(bureau.getRun(firstRun.id)?.status).toBe('aborted');
-    expect(bureau.getRun(secondRun.id)?.status).toBe('aborted');
+    expect(bureau.tasks.detail(firstRun.id)?.status).toBe('aborted');
+    expect(bureau.tasks.detail(secondRun.id)?.status).toBe('aborted');
     await bureau.dispose();
   });
 });
@@ -21514,7 +21514,7 @@ describe('AB-389 — session commit outbox', () => {
       // the crashed run stays unrecovered until a validator is attached —
       // if boot had run `recoverDurableRuns()` normally instead of
       // deferring it, this run would already be reattached and visible.
-      expect(bureauB.getRun(run.id)).toBeUndefined();
+      expect(bureauB.tasks.detail(run.id)).toBeUndefined();
 
       // The unrelated outbox entry drains anyway — authority-independent
       // draining runs before the defer decision, not gated behind it.
@@ -21530,7 +21530,7 @@ describe('AB-389 — session commit outbox', () => {
 
       // Attaching a validator now lets the deferred recovery proceed.
       bureauB.setRequestAuthorityValidator(() => true);
-      await pollUntil(() => bureauB.getRun(run.id) !== undefined);
+      await pollUntil(() => bureauB.tasks.detail(run.id) !== undefined);
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();
@@ -24254,11 +24254,11 @@ describe('Bureau shutdown quiescence (COR-690)', () => {
     const run = await bureau.createRun({ agentName: 'default', message: 'abort me mid-tool' });
     await toolStarted;
     bureau.abortRun(run.id);
-    expect(await pollUntil(() => bureau.getRun(run.id)?.status === 'aborted')).toBe(true);
+    expect(await pollUntil(() => bureau.tasks.detail(run.id)?.status === 'aborted')).toBe(true);
     // Remove the run's id-keyed entry the way task retention does, so only
     // the tracked-toolbox set can still lead shutdown to the live callback.
     await retireSettledTasks(bureau, runtime);
-    expect(bureau.getRun(run.id)).toBeUndefined();
+    expect(bureau.tasks.detail(run.id)).toBeUndefined();
 
     let shutdownSettled = false;
     const shutdownPromise = bureau.shutdown().then((report) => {

@@ -21,7 +21,7 @@ import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { BureauError, createBureau } from './create-bureau';
-import { waitForRunState } from './test';
+import { waitForTaskState } from './test';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauOptions, CreateRunRequest } from './types';
 import { storageOverTextStore } from './testing/text-store-storage.test-support';
@@ -97,7 +97,7 @@ async function replies(bureau: Bureau<AgentDefinitions>, sessionId: string): Pro
 }
 
 async function finish(bureau: Bureau<AgentDefinitions>, runId: string): Promise<void> {
-  await waitForRunState(bureau, runId);
+  await waitForTaskState(bureau, runId);
   // Let the terminal session save land: a macrotask turn advances Weft's deferred launch queue.
   for (let turn = 0; turn < 10; turn += 1) await yieldToPortableEventLoop();
 }

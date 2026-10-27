@@ -14,9 +14,9 @@ import {
   stopWhen,
   type Toolbox,
   waitForCondition,
-  waitForRunState,
   createAgent,
 } from '@lostgradient/operative';
+import { waitForTaskState } from './test';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it, spyOn } from 'bun:test';
@@ -82,7 +82,7 @@ function regatingToolbox(charges: number[]): Toolbox {
 }
 
 async function settle(bureau: Bureau, runId: string): Promise<void> {
-  await waitForRunState(bureau, runId);
+  await waitForTaskState(bureau, runId);
   for (let turn = 0; turn < 10; turn++) await yieldToPortableEventLoop();
 }
 
@@ -426,7 +426,7 @@ describe('an approval resolved while its run is still going', () => {
           (error: unknown) => error,
         );
       generate.release('next-step');
-      await waitForRunState(bureau, run.id);
+      await waitForTaskState(bureau, run.id);
 
       expect(outcome).toBeInstanceOf(ApprovalOutcomeNotWrittenError);
       expect(charges).toEqual([500]);

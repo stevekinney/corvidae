@@ -127,7 +127,7 @@ await new Promise<void>((resolve) => {
   });
 });
 
-const detail = bureau.getRun(run.id);
+const detail = bureau.tasks.detail(run.id);
 console.log(detail?.finishReason); // "stop-condition" | "maximum-steps" | …
 
 await bureau.dispose();
@@ -879,7 +879,7 @@ console.log(events[0]); // 'task'
 const watcher = await factory.createFromUrl(`${publicUrl}/a2a/watcher/`);
 const running = await watcher.sendMessage(send('Watch the feed.', true));
 if (!('status' in running)) throw new Error('a Bureau send answers with a task');
-await waitForCondition(() => bureau.getRun(running.id)?.status === 'running', 'it never ran');
+await waitForCondition(() => bureau.tasks.detail(running.id)?.status === 'running', 'it never ran');
 await watcher.cancelTask({ tenant: '', id: running.id, metadata: undefined });
 await waitForCondition(async () => {
   const task = await watcher.getTask({ tenant: '', id: running.id });
@@ -1498,7 +1498,7 @@ const run = await bureau.createRun({
     },
   },
 });
-await waitForRunState(bureau, run.id);
+await waitForRunState({ getRun: (id) => bureau.tasks.detail(id) }, run.id);
 
 // The host reads memory with its own authority, never with the run's.
 const auditor = createMemoryAuthority({

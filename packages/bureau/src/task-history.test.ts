@@ -83,7 +83,7 @@ describe('a task’s own message history', () => {
         message: 'before the restart',
         principal: 'api-key:alice',
       });
-      await waitForCondition(() => first.getRun(run.id)?.status === 'completed', 'finish');
+      await waitForCondition(() => first.tasks.detail(run.id)?.status === 'completed', 'finish');
       await waitForCondition(async () => {
         const task = await first.internals.taskRegistry.get(run.id);
         return task?.status === 'completed';
@@ -125,7 +125,7 @@ describe('a task’s own message history', () => {
         message: 'short lived',
         principal: 'api-key:alice',
       });
-      await waitForCondition(() => bureau.getRun(run.id)?.status === 'completed', 'finish');
+      await waitForCondition(() => bureau.tasks.detail(run.id)?.status === 'completed', 'finish');
 
       await retireSettledTasks(bureau, runtime);
 
@@ -156,7 +156,7 @@ describe('a task’s own message history', () => {
         message: 'short lived',
         principal: 'api-key:alice',
       });
-      await waitForCondition(() => bureau.getRun(run.id)?.status === 'completed', 'finish');
+      await waitForCondition(() => bureau.tasks.detail(run.id)?.status === 'completed', 'finish');
       await bureau.internals.kv?.set(
         `${TASK_RECORD_KEY_PREFIX}${encodeStorageKeyComponent(run.id)}`,
         '{not json',
@@ -164,7 +164,7 @@ describe('a task’s own message history', () => {
 
       await retireSettledTasks(bureau, runtime);
 
-      expect(bureau.getRun(run.id)).toBeUndefined();
+      expect(bureau.tasks.detail(run.id)).toBeUndefined();
       expect(diagnostics.some((message) => message.includes('unreadable task record'))).toBe(true);
     } finally {
       await bureau.dispose();
@@ -193,7 +193,7 @@ describe('a task’s own message history', () => {
         message: 'hold',
         principal: 'api-key:alice',
       });
-      await waitForCondition(() => first.getRun(run.id)?.status === 'running', 'running');
+      await waitForCondition(() => first.tasks.detail(run.id)?.status === 'running', 'running');
       await first.shutdown({ policy: 'abort' });
 
       const second = await open();
@@ -250,7 +250,7 @@ describe('a task’s own message history', () => {
         message: 'finish at once',
         principal: 'api-key:alice',
       });
-      await waitForCondition(() => first.getRun(run.id)?.status === 'completed', 'finish');
+      await waitForCondition(() => first.tasks.detail(run.id)?.status === 'completed', 'finish');
       await first.dispose();
 
       // A caller-supplied storage is not closed by dispose, so what shows the write was awaited

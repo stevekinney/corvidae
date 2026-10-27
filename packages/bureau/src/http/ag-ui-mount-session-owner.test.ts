@@ -101,7 +101,7 @@ async function withScene<T>(body: (scene: Scene) => Promise<T>): Promise<T> {
     );
     const bob = await startParked(harness, 'bob-key', BOB_THREAD, 'bob-run', BOB_MESSAGE);
     const bobSession = await harness.bureau.contexts.get(BOB_THREAD);
-    const bobRun = harness.bureau.getRun(bob.runId);
+    const bobRun = harness.bureau.tasks.detail(bob.runId);
     if (bobSession === undefined || bobRun === undefined) throw new Error('bob has no session');
     const bobLiveRun: RunSummary = { ...bobRun, sessionId: ALICE_THREAD, status: 'running' };
     return await body({ harness, alice, bob, bobSession, bobLiveRun });
@@ -264,7 +264,7 @@ describe('a run stream over a session or run that is another owner’s than the 
       const bureau: AgUiStreamBureau = {
         ...scene.harness.bureau,
         internals: { ...scene.harness.bureau.internals, whenTaskRecorded: async () => undefined },
-        getRun: () => undefined,
+        tasks: { ...scene.harness.bureau.tasks, detail: () => undefined },
         contexts: {
           ...scene.harness.bureau.contexts,
           get: async () => scene.bobSession,
@@ -291,11 +291,14 @@ describe('a run stream over a session or run that is another owner’s than the 
 
   it('is one RUN_NOT_FOUND event when the run held is not the authorized owner’s', async () => {
     await withScene(async (scene) => {
-      const held = scene.harness.bureau.getRun(scene.alice.runId);
+      const held = scene.harness.bureau.tasks.detail(scene.alice.runId);
       if (held === undefined) throw new Error('alice has no run');
       const bureau: AgUiStreamBureau = {
         ...scene.harness.bureau,
-        getRun: () => ({ ...held, principal: 'api-key:bob' }),
+        tasks: {
+          ...scene.harness.bureau.tasks,
+          detail: () => ({ ...held, principal: 'api-key:bob' }),
+        },
       };
 
       const response = openRunStream(environmentFor(bureau), {

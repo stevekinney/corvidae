@@ -24,7 +24,7 @@ import {
 } from './schedule-fire-fixtures.test-support';
 import { createAgentSkills } from './agent-skills';
 import { removeSkillRoots, skillCatalogOnDisk } from './skill-policy-fixtures.test-support';
-import { waitForRunState } from './test';
+import { waitForTaskState } from './test';
 import { AGENT_STEP, workflowFileText } from './testing/workflow-file-fixtures.test-support';
 import { startWorkflowBureau } from './testing/workflow-bureau.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
@@ -107,7 +107,7 @@ async function sessionTaskTools(options: ToolOptions & { durable?: boolean }): P
     options,
   );
   const run = await bureau.createRun({ message: 'hello', agentName: 'alpha' });
-  await waitForRunState(bureau, run.id);
+  await waitForTaskState(bureau, run.id);
   for (let turn = 0; turn < 10; turn += 1) await yieldToPortableEventLoop();
   return offered.flat();
 }

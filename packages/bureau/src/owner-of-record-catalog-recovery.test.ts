@@ -48,7 +48,7 @@ describe('a catalog run recovered after a restart (COR-718)', () => {
       first.run('echo', 'unowned');
       first.run('echo', 'owned', { principal: 'api-key:alice' });
       await waitForCondition(() => reachedStepOne >= 2, 'both runs never reached step one');
-      const listed = await first.listDurableRuns();
+      const listed = await first.tasks.workflows();
       const runIds = (listed?.items ?? [])
         .filter((item) => item.id.startsWith('agent-run-'))
         .map((item) => item.id);
@@ -70,7 +70,7 @@ describe('a catalog run recovered after a restart (COR-718)', () => {
       });
       try {
         await waitForCondition(async () => {
-          const after = await second.listDurableRuns();
+          const after = await second.tasks.workflows();
           return runIds.every(
             (id) => after?.items.find((item) => item.id === id)?.status === 'completed',
           );

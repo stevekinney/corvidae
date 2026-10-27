@@ -80,12 +80,12 @@ describe('durable steering across two Bureau processes', () => {
       // run as its own deletion would, rather than letting it keep working.
       await bureauB.contexts.delete(run.sessionId);
       for (let attempt = 0; attempt < 1_000; attempt += 1) {
-        if (bureauA.getRun(run.id)?.status !== 'running') break;
+        if (bureauA.tasks.detail(run.id)?.status !== 'running') break;
         await Bun.sleep(10);
       }
-      expect(bureauA.getRun(run.id)?.status).toBe('aborted');
+      expect(bureauA.tasks.detail(run.id)?.status).toBe('aborted');
       expect(generateCalls).toBe(1);
-      await bureauA.waitForDurableRun(run.id).catch(() => {});
+      await bureauA.tasks.wait(run.id).catch(() => {});
       expect(await bureauB.contexts.get(run.sessionId)).toBeUndefined();
     } finally {
       releaseTool?.();
@@ -167,7 +167,7 @@ describe('durable steering across two Bureau processes', () => {
       await Bun.sleep(0);
       releaseTool?.();
       await Bun.sleep(300);
-      expect(bureauA.getRun(run.id)?.status).toBe('running');
+      expect(bureauA.tasks.detail(run.id)?.status).toBe('running');
       expect(generateCalls).toBe(1);
 
       // B resumes it; A's waiting run is released by the next poll.
@@ -177,10 +177,10 @@ describe('durable steering across two Bureau processes', () => {
       });
       expect(resumed.outcome).toBe('accepted');
       for (let attempt = 0; attempt < 1_000; attempt += 1) {
-        if (bureauA.getRun(run.id)?.status !== 'running') break;
+        if (bureauA.tasks.detail(run.id)?.status !== 'running') break;
         await Bun.sleep(10);
       }
-      expect(bureauA.getRun(run.id)?.status).toBe('completed');
+      expect(bureauA.tasks.detail(run.id)?.status).toBe('completed');
       expect(generateCalls).toBe(2);
     } finally {
       releaseTool?.();
@@ -247,20 +247,20 @@ describe('durable steering across two Bureau processes', () => {
       // The tool returns; the run stops at step 1's boundary, paused.
       releaseTool?.();
       await Bun.sleep(200);
-      expect(bureauA.getRun(run.id)?.status).toBe('running');
+      expect(bureauA.tasks.detail(run.id)?.status).toBe('running');
       expect(generateCalls).toBe(1);
 
       // B deletes the session. Nothing in B knows A's run; A sees the
       // deletion from the paused run's own watch and releases it.
       await bureauB.contexts.delete(run.sessionId);
       for (let attempt = 0; attempt < 1_000; attempt += 1) {
-        if (bureauA.getRun(run.id)?.status !== 'running') break;
+        if (bureauA.tasks.detail(run.id)?.status !== 'running') break;
         await Bun.sleep(10);
       }
-      expect(bureauA.getRun(run.id)?.status).toBe('completed');
+      expect(bureauA.tasks.detail(run.id)?.status).toBe('completed');
       expect(generateCalls).toBe(2);
       // Its terminal save is fenced to the deleted incarnation.
-      await bureauA.waitForDurableRun(run.id);
+      await bureauA.tasks.wait(run.id);
       expect(await bureauB.contexts.get(run.sessionId)).toBeUndefined();
 
       // A paused run that is aborted instead stops its watch with the wait.

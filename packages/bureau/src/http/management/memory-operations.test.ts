@@ -29,7 +29,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import type { AgentDefinitions } from '../../agent-catalog.ts';
 import { createMemoryAssetStorage } from '../../assets/storage';
 import { createBureau } from '../../create-bureau.ts';
-import { waitForRunState } from '../../test';
+import { waitForTaskState } from '../../test';
 import type { Bureau } from '../../types.ts';
 import { createBureauHandler, BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
 
@@ -137,7 +137,7 @@ async function chat(
   sessionId = `chat-${message.slice(0, 12)}`,
 ): Promise<string> {
   const run = await bureau.createRun({ agentName: 'assistant', principal, sessionId, message });
-  await waitForRunState(bureau, run.id);
+  await waitForTaskState(bureau, run.id);
   return run.id;
 }
 

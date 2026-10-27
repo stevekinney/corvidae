@@ -568,7 +568,7 @@ describe('a bureau.run() park after a restart', () => {
 
     expect(second).toMatchObject({ kind: 'human-wait', signalName: 'second' });
     await restarted.reviews.resolve({ id: second!.id, decision: 'approve', principal: 'operator' });
-    const finished = await restarted.waitForDurableRun(run.id);
+    const finished = await restarted.tasks.wait(run.id);
     expect(finished?.status).toBe('completed');
   });
 
@@ -600,7 +600,7 @@ describe('a bureau.run() park after a restart', () => {
       principal: 'operator',
       payload: { environment: 'production' },
     });
-    const finished = await restarted.waitForDurableRun(run.id);
+    const finished = await restarted.tasks.wait(run.id);
 
     expect(finished?.status).toBe('completed');
     expect(after.resumed.join('')).toContain('production');
@@ -777,7 +777,7 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
       principal: 'operator',
       payload: { environment: 'production' },
     });
-    const finished = await restarted.waitForDurableRun(run.id);
+    const finished = await restarted.tasks.wait(run.id);
 
     expect(restored.id).toBe(original.id);
     const sentBefore = signalIdOf(before.mock.calls[0]);

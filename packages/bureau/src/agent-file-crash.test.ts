@@ -138,10 +138,10 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
         `durable run ${run.kind} ${run.name} ${run.runId}`,
         async () => {
           scope.observe(async () => {
-            const state = await recovering.getDurableRun(run.runId);
+            const state = await recovering.tasks.workflow(run.runId);
             return `durable status ${JSON.stringify(state?.status)}`;
           });
-          return recovering.waitForDurableRun(run.runId);
+          return recovering.tasks.wait(run.runId);
         },
       );
       // `waitForDurableRun` resolves for a run that failed too, so a run the engine ended before
@@ -157,7 +157,8 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
         [recovering],
         () =>
           marker.runs.every(
-            (run) => run.kind === 'catalog' || recovering.getRun(run.runId)?.status === 'completed',
+            (run) =>
+              run.kind === 'catalog' || recovering.tasks.detail(run.runId)?.status === 'completed',
           ),
         {
           scope,
@@ -165,10 +166,12 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
           describe: async () => {
             const sessions = marker.runs
               .filter((run) => run.kind === 'session')
-              .map((run) => `${run.name} ${run.runId}: ${recovering.getRun(run.runId)?.status}`);
+              .map(
+                (run) => `${run.name} ${run.runId}: ${recovering.tasks.detail(run.runId)?.status}`,
+              );
             const durable = await Promise.all(
               marker.runs.map(async (run) => {
-                const state = await recovering.getDurableRun(run.runId);
+                const state = await recovering.tasks.workflow(run.runId);
                 return `${run.kind} ${run.name} ${run.runId}: ${state?.status}${
                   state?.error === undefined ? '' : ` (${state.error})`
                 }`;
@@ -180,7 +183,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
       ),
     );
     for (const run of marker.runs) {
-      const durable = await bureau.getDurableRun(run.runId);
+      const durable = await bureau.tasks.workflow(run.runId);
       expect(durable?.status).toBe('completed');
     }
 

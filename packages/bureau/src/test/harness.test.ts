@@ -1,7 +1,8 @@
 import type { ManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import type { GenerateFunction } from '@lostgradient/operative';
-import { createAgent, stopWhen, waitForRunState } from '@lostgradient/operative';
+import { createAgent, stopWhen } from '@lostgradient/operative';
+import { waitForTaskState } from '.';
 import { createProcessLocalApprovalStateStore, createTool, createToolbox } from 'armorer';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
@@ -40,7 +41,7 @@ async function waitForTerminalSnapshot(bureau: Bureau, runId: string): Promise<v
   await new Promise<void>((resolve, reject) => {
     const controller = new AbortController();
     try {
-      bureau.subscribeRunSnapshot(
+      bureau.tasks.snapshot(
         runId,
         (snapshot) => {
           if (snapshot.status === 'terminal') {
@@ -209,10 +210,10 @@ describe('createBureauTestHarness', () => {
         agentName: 'default',
         message: 'hello session',
       });
-      await waitForRunState(harness.bureau, summary.id);
+      await waitForTaskState(harness.bureau, summary.id);
 
       expect(summary.sessionId).toBeDefined();
-      expect(harness.bureau.getRun(summary.id)?.status).toBe('completed');
+      expect(harness.bureau.tasks.detail(summary.id)?.status).toBe('completed');
     });
   });
 
@@ -249,7 +250,7 @@ describe('createBureauTestHarness', () => {
         agentName: 'default',
         message: 'no durable engine here',
       });
-      await waitForRunState(harness.bureau, summary.id);
+      await waitForTaskState(harness.bureau, summary.id);
 
       expect(await harness.reattachDurable(summary.id)).toBeUndefined();
     });
@@ -263,7 +264,7 @@ describe('createBureauTestHarness', () => {
         agentName: 'default',
         message: 'no durable engine here',
       });
-      await waitForRunState(harness.bureau, summary.id);
+      await waitForTaskState(harness.bureau, summary.id);
 
       expect(
         await throwingRejectionOf(harness.deliverSignal(summary.sessionId, 'wake', {})),
@@ -315,7 +316,7 @@ describe('createBureauTestHarness', () => {
         agentName: 'default',
         message: 'trigger approval',
       });
-      await waitForRunState(harness.bureau, summary.id);
+      await waitForTaskState(harness.bureau, summary.id);
 
       const reviews = harness.bureau.reviews.list();
       expect(reviews).toHaveLength(1);
@@ -377,7 +378,7 @@ describe('createBureauTestHarness — durable backend (sqlite)', () => {
       expect(schedule?.status).toBe('active');
 
       const summary = await harness.startSession({ agentName: 'default', message: 'durable run' });
-      await waitForRunState(harness.bureau, summary.id);
+      await waitForTaskState(harness.bureau, summary.id);
 
       const durableRun = await harness.reattachDurable(summary.id);
       expect(durableRun).toBeDefined();

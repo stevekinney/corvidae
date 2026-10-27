@@ -285,7 +285,7 @@ describe('the limits the documentation names', () => {
     const { bureau, handler } = await servedBureau(answers);
     try {
       const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
-      await waitForCondition(() => bureau.getRun(run.id)?.status === 'completed', 'finish');
+      await waitForCondition(() => bureau.tasks.detail(run.id)?.status === 'completed', 'finish');
 
       const stream = await handler(
         new Request(
@@ -308,7 +308,10 @@ describe('the limits the documentation names', () => {
     const { bureau, handler } = await servedBureau(never);
     try {
       const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
-      await waitForCondition(() => bureau.getRun(run.id)?.status === 'running', 'the run began');
+      await waitForCondition(
+        () => bureau.tasks.detail(run.id)?.status === 'running',
+        'the run began',
+      );
 
       const answer = await localCall(handler, 'bureau.contexts.input', {
         contextId: run.sessionId,

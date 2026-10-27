@@ -14,7 +14,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
-import { waitForRunState } from './test';
+import { waitForTaskState } from './test';
 import {
   appendSteeringLogEvent,
   readSteeringLogEntries,
@@ -239,7 +239,7 @@ describe('an idle session takes a model override', () => {
   it('admits it as accepted, where pause is still session-terminal', async () => {
     const bureau = await openBureau();
     const run = await startRun(bureau);
-    await waitForRunState(bureau, run.id);
+    await waitForTaskState(bureau, run.id);
 
     const model = await steer(bureau, run.sessionId, 'idle-model', OPUS_5.model, OPUS_5.provider);
     const pause = await bureau.contexts.steer(run.sessionId, {
@@ -255,7 +255,7 @@ describe('an idle session takes a model override', () => {
   it('still keeps a model the agent does not allow out of an idle session', async () => {
     const bureau = await openBureau();
     const run = await startRun(bureau);
-    await waitForRunState(bureau, run.id);
+    await waitForTaskState(bureau, run.id);
 
     const outcome = await steer(bureau, run.sessionId, 'idle-outside', GPT_4_1.model);
 
@@ -273,10 +273,10 @@ describe('a switched model reaches the provider call', () => {
     const outcome = await steer(bureau, run.sessionId, 'switch', OPUS_5.model, OPUS_5.provider);
     expect(outcome.outcome).toBe('accepted');
     stepped.releaseFirstStep();
-    await waitForRunState(bureau, run.id);
+    await waitForTaskState(bureau, run.id);
 
     const second = await startRun(bureau, run.sessionId);
-    await waitForRunState(bureau, second.id);
+    await waitForTaskState(bureau, second.id);
 
     // Step 0 of the first run was already running; its next step and both of the second run's use the override.
     expect(stepped.observed).toEqual([
@@ -296,14 +296,14 @@ describe('a switched model reaches the provider call', () => {
     await first.firstStepEntered;
     await steer(bureau, run.sessionId, 'switch', OPUS_5.model, OPUS_5.provider);
     first.releaseFirstStep();
-    await waitForRunState(bureau, run.id);
+    await waitForTaskState(bureau, run.id);
     await bureau.dispose();
 
     const second = createSteppedGenerate();
     second.releaseFirstStep();
     const restarted = await openBureau({ generate: second.generate, path });
     const resumed = await startRun(restarted, run.sessionId);
-    await waitForRunState(restarted, resumed.id);
+    await waitForTaskState(restarted, resumed.id);
 
     expect(second.observed[0]).toEqual({ model: 'claude-opus-5', provider: 'anthropic' });
     expect(await restarted.contexts.steering(run.sessionId)).toEqual({
@@ -319,7 +319,7 @@ describe('a Bureau that is shutting down', () => {
     cleanups.push(() => removeTemporaryPath(path));
     const bureau = await openBureau({ path });
     const run = await startRun(bureau);
-    await waitForRunState(bureau, run.id);
+    await waitForTaskState(bureau, run.id);
     const closing = bureau.dispose();
 
     const attempt = await steer(bureau, run.sessionId, 'during-shutdown', OPUS_5.model).then(
@@ -341,7 +341,7 @@ describe('a steering log written before the provider field existed', () => {
     cleanups.push(() => removeTemporaryPath(path));
     const bureau = await openBureau({ path });
     const run = await startRun(bureau);
-    await waitForRunState(bureau, run.id);
+    await waitForTaskState(bureau, run.id);
     const session = await bureau.contexts.get(run.sessionId);
     const kv = bureau.internals.kv!;
     // The record exactly as the previous version wrote it: a bare model string, no provider.
@@ -417,7 +417,7 @@ describe('a routed or opaque agent lists no models', () => {
     });
     cleanups.push(() => bureau.dispose());
     const run = await bureau.createRun({ message: 'go', agentName: name, principal: 'alice' });
-    await waitForRunState(bureau, run.id);
+    await waitForTaskState(bureau, run.id);
     return { bureau, run };
   }
 

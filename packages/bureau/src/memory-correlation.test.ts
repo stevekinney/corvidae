@@ -23,7 +23,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
-import { waitForRunState } from './test';
+import { waitForTaskState } from './test';
 import type { Bureau } from './types';
 
 const requestContext: ToolRequestContext = {
@@ -75,7 +75,7 @@ async function answerOnce(createContextEpoch?: () => ContextEpochSealer) {
     principal: 'owner-a',
     requestContext,
   });
-  await waitForRunState(bureau, run.id);
+  await waitForTaskState(bureau, run.id);
   const written = notifications.find((item) => item.type === 'memory.write.admitted');
   return { runId: run.id, written };
 }

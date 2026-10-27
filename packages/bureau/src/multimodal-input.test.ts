@@ -295,7 +295,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
     expect(admitted.outcome).toBe('admitted');
 
     releaseStepZero.resolve();
-    await bureau.waitForDurableRun(run.id);
+    await bureau.tasks.wait(run.id);
     await yieldToPortableEventLoop();
 
     const step = seen.find((context) => context.step === 1)!;
@@ -363,7 +363,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
     });
     expect(admitted.outcome).toBe('admitted');
     releaseStepZero.resolve();
-    await bureau.waitForDurableRun(run.id);
+    await bureau.tasks.wait(run.id);
     await yieldToPortableEventLoop();
 
     const step = seen.find((context) => context.step === 1)!;
@@ -427,7 +427,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
     expect(admitted.outcome).toBe('admitted');
 
     releaseStepZero.resolve();
-    await bureau.waitForDurableRun(run.id);
+    await bureau.tasks.wait(run.id);
 
     const step = seen.find((context) => context.step === 1)!;
     const delivered = step.conversation

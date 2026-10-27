@@ -163,7 +163,7 @@ describe('a catalog agent run reclaimed while the Bureau scans its agent files (
     // defect. Releasing on the first makes the test red on code that does the second.
     const reached = await pollUntil(async () => {
       if (diagnostics.some((entry) => isParkedDiagnostic(entry, runId))) return true;
-      const durableRun = await owner.getDurableRun(runId);
+      const durableRun = await owner.tasks.workflow(runId);
       return durableRun?.status === 'failed';
     });
     expect(reached).toBe(true);
@@ -171,7 +171,7 @@ describe('a catalog agent run reclaimed while the Bureau scans its agent files (
     hold.release();
     const built = await successor;
 
-    const state = await built.waitForDurableRun(runId);
+    const state = await built.tasks.wait(runId);
     expect(state?.error).toBeUndefined();
     expect(state?.status).toBe('completed');
     expect(diagnostics.filter((entry) => entry.level === 'error')).toEqual([]);
@@ -497,7 +497,7 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
       // and the bounded poll sees it.
       failedBeforeDispose = settled
         ? await pollUntil(async () => {
-            const durableRun = await owner.getDurableRun(runId);
+            const durableRun = await owner.tasks.workflow(runId);
             return durableRun?.status === 'failed';
           })
         : false;
@@ -514,7 +514,7 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).message).toBe('catalog exploded');
     expect(failedBeforeDispose).toBe(false);
-    const afterFailure = await owner.getDurableRun(runId);
+    const afterFailure = await owner.tasks.workflow(runId);
     expect(afterFailure?.status).toBe('running');
 
     // A correctly configured boot over the same storage resumes the run under its own agent.
@@ -528,7 +528,7 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
       durableOwnership: leaseOptions,
     });
     try {
-      const state = await second.waitForDurableRun(runId);
+      const state = await second.tasks.wait(runId);
       expect(state?.status).toBe('completed');
       expect(state?.error).toBeUndefined();
     } finally {

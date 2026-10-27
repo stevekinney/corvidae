@@ -184,7 +184,7 @@ async function durableStatus(
   bureau: Bureau<AgentDefinitions>,
   runId: string,
 ): Promise<string | undefined> {
-  const record = await bureau.getDurableRun(runId);
+  const record = await bureau.tasks.workflow(runId);
   return record?.status;
 }
 

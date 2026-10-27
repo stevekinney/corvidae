@@ -54,7 +54,7 @@ describe('bureau.tasks.events below the retention floor', () => {
         message: 'first',
         principal: OWNER.alice,
       });
-      await waitForCondition(() => bureau.getRun(first.id)?.status === 'completed', 'first');
+      await waitForCondition(() => bureau.tasks.detail(first.id)?.status === 'completed', 'first');
       await runtime.deferred.drain();
 
       const whole = await readFrames(
@@ -71,7 +71,10 @@ describe('bureau.tasks.events below the retention floor', () => {
         message: 'second',
         principal: OWNER.alice,
       });
-      await waitForCondition(() => bureau.getRun(second.id)?.status === 'completed', 'second');
+      await waitForCondition(
+        () => bureau.tasks.detail(second.id)?.status === 'completed',
+        'second',
+      );
       await runtime.deferred.drain();
 
       const resumed = await readFrames(
@@ -160,7 +163,10 @@ describe('bureau.tasks.events below the retention floor', () => {
         principal: OWNER.alice,
         payload: 'yes',
       });
-      await waitForCondition(() => bureau.getRun(run.id)?.status === 'completed', 'completion');
+      await waitForCondition(
+        () => bureau.tasks.detail(run.id)?.status === 'completed',
+        'completion',
+      );
       await runtime.deferred.drain();
 
       const frames = await readFrames(

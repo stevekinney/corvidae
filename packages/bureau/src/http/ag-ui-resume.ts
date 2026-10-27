@@ -55,6 +55,7 @@ import type {
   ResolveReviewInput,
   BureauContexts,
   BureauReviews,
+  BureauTasks,
   BureauInternals,
 } from '../types.ts';
 import { type AgUiResumePayload, interruptKey, roundOfEntry } from './ag-ui-interrupts.ts';
@@ -102,7 +103,9 @@ type Settled = { readonly result: ResumeResult; readonly applied: boolean };
 
 type Refusal = { readonly code: AgUiErrorCode; readonly message: string };
 
-export type ResumeBureau = Pick<Bureau, 'getRun' | 'createRun' | 'locateRunCreationReceipt'> & {
+export type ResumeBureau = Pick<Bureau, 'createRun' | 'locateRunCreationReceipt'> & {
+  readonly tasks: Pick<BureauTasks, 'detail'>;
+} & {
   readonly reviews: Pick<BureauReviews, 'get' | 'list' | 'pendingOf' | 'resolve'>;
 } & {
   readonly contexts: Pick<BureauContexts, 'get'>;
@@ -269,7 +272,7 @@ export function createResume(context: ResumeContext) {
    */
   async function interruptibleReviewsOf(runId: string): Promise<PendingReview[]> {
     const local = interruptibleReviews(bureau, runId);
-    if (local.length > 0 || bureau.getRun(runId) !== undefined) return local;
+    if (local.length > 0 || bureau.tasks.detail(runId) !== undefined) return local;
     return bureau.reviews.pendingOf(runId);
   }
 

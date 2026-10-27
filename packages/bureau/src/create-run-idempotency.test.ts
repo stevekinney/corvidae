@@ -99,7 +99,7 @@ async function withDurableBureau(
 }
 
 async function durableRunIds(bureau: Bureau): Promise<string[] | undefined> {
-  const page = await bureau.listDurableRuns();
+  const page = await bureau.tasks.workflows();
   return page?.items.map((run) => run.id).toSorted();
 }
 
@@ -301,7 +301,7 @@ describe('createRun with a run-creation request id', () => {
 
         release();
         await waitForCondition(
-          () => bureau.getRun(occupying.id)?.status === 'completed',
+          () => bureau.tasks.detail(occupying.id)?.status === 'completed',
           'the occupying run did not complete',
         );
 
@@ -340,7 +340,7 @@ describe('createRun on a session bound to an agent (COR-1577)', () => {
     });
     release();
     await waitForCondition(
-      () => bureau.getRun(creator.id)?.status === 'completed',
+      () => bureau.tasks.detail(creator.id)?.status === 'completed',
       'the session-creating run did not complete',
     );
     return creator.id;

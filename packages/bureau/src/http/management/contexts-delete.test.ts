@@ -46,7 +46,7 @@ async function startRun(
     ...(options.sessionId === undefined ? {} : { sessionId: options.sessionId }),
   });
   await waitForCondition(
-    () => opened.bureau.getRun(run.id)?.status === 'running',
+    () => opened.bureau.tasks.detail(run.id)?.status === 'running',
     `run ${run.id} never started`,
   );
   return run;
@@ -73,9 +73,12 @@ describe('bureau.contexts.delete access', () => {
         message: 'theirs',
         principal: OWNER.bob,
       });
-      await waitForCondition(() => opened.bureau.getRun(mine.id)?.status === 'completed', 'mine');
       await waitForCondition(
-        () => opened.bureau.getRun(theirs.id)?.status === 'completed',
+        () => opened.bureau.tasks.detail(mine.id)?.status === 'completed',
+        'mine',
+      );
+      await waitForCondition(
+        () => opened.bureau.tasks.detail(theirs.id)?.status === 'completed',
         'theirs',
       );
 
@@ -115,7 +118,10 @@ describe('bureau.contexts.delete access', () => {
         message: 'mine',
         principal: OWNER.alice,
       });
-      await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'completed', 'finish');
+      await waitForCondition(
+        () => opened.bureau.tasks.detail(run.id)?.status === 'completed',
+        'finish',
+      );
 
       const stranger = await deleteContext(opened, run.sessionId, 'bob-key');
       const tasksScope = await deleteContext(opened, run.sessionId, 'tasks-writer-key');
@@ -136,7 +142,7 @@ describe('bureau.contexts.delete access', () => {
       const run = opened.bureau.run('worker', 'catalog work', { principal: OWNER.alice });
       try {
         await waitForCondition(
-          () => opened.bureau.getRun(run.id)?.status === 'running',
+          () => opened.bureau.tasks.detail(run.id)?.status === 'running',
           'the dispatch never started',
         );
 
@@ -165,7 +171,7 @@ describe('bureau.contexts.delete receipts', () => {
         receipt: 'cleaned-up',
         tasks: [{ taskId: run.id, cleanup: 'cleaned-up' }],
       });
-      expect(opened.bureau.getRun(run.id)?.status).toBe('aborted');
+      expect(opened.bureau.tasks.detail(run.id)?.status).toBe('aborted');
       expect(await opened.bureau.contexts.get(run.sessionId)).toBeUndefined();
     });
   });
@@ -208,8 +214,8 @@ describe('bureau.contexts.delete receipts', () => {
       }>;
       const reported = cancelled.map((task) => task.taskId).toSorted();
       expect(reported).toEqual([first.id, second.id].toSorted());
-      expect(opened.bureau.getRun(first.id)?.status).toBe('aborted');
-      expect(opened.bureau.getRun(second.id)?.status).toBe('aborted');
+      expect(opened.bureau.tasks.detail(first.id)?.status).toBe('aborted');
+      expect(opened.bureau.tasks.detail(second.id)?.status).toBe('aborted');
       // Neither run saves the session it was cancelled in, then or later.
       await new Promise((resolve) => setTimeout(resolve, 50));
       expect(await opened.bureau.contexts.get(first.sessionId)).toBeUndefined();
@@ -521,7 +527,10 @@ describe('erasing the originating messages of a deleted context', () => {
         message: 'ERASE-ME',
         principal: OWNER.alice,
       });
-      await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'completed', 'finish');
+      await waitForCondition(
+        () => opened.bureau.tasks.detail(run.id)?.status === 'completed',
+        'finish',
+      );
       await waitForCondition(async () => {
         const task = await opened.bureau.internals.taskRegistry.get(run.id);
         return task?.status === 'completed';
@@ -623,7 +632,7 @@ describe('a context id that is reused while a request for it is in flight', () =
       const body = await rpc(opened.handler, 'bureau.contexts.get', { contextId }, 'alice-key');
 
       // Bob's run is live under the same id, in another incarnation.
-      expect(opened.bureau.getRun(bobsRun().id)?.status).toBe('running');
+      expect(opened.bureau.tasks.detail(bobsRun().id)?.status).toBe('running');
       expect((body.result as { activity?: string }).activity).toBe('idle');
     });
   });
@@ -640,7 +649,7 @@ describe('a context id that is reused while a request for it is in flight', () =
       expect(survivor?.metadata['sessionOwner']).toBe(OWNER.bob);
       // The incarnation check in the Bureau comes before anything is cancelled or erased.
       const bob = bobsRun();
-      expect(opened.bureau.getRun(bob.id)?.status).toBe('running');
+      expect(opened.bureau.tasks.detail(bob.id)?.status).toBe('running');
       const history = await opened.bureau.internals.taskRegistry.history(bob.id);
       expect(history?.map((message) => message.text)).toEqual(['BOB-PRIVATE-OPENING']);
     });

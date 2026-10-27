@@ -270,7 +270,8 @@ export function createAgUiMount(
     const pending = bureau.reviews
       .list()
       .some((review) => review.runId === lastRunId && review.kind === 'tool-approval');
-    if (pending || bureau.getRun(lastRunId) !== undefined) return pending ? lastRunId : undefined;
+    if (pending || bureau.tasks.detail(lastRunId) !== undefined)
+      return pending ? lastRunId : undefined;
     // A run another process holds, or settled with an approval no process restored: the
     // session's durable record says whether it is one to attach to. A run this process holds is
     // decided by what it holds.
@@ -287,7 +288,7 @@ export function createAgUiMount(
     try {
       const metadata = session.metadata;
       if (metadata['lastRunId'] === runId && metadata['lastRunStatus'] === 'running') {
-        const durable = await bureau.getDurableRun(runId);
+        const durable = await bureau.tasks.workflow(runId);
         if (durable !== undefined && durable !== null && isDurableRunUnsettled(durable.status)) {
           return true;
         }
@@ -327,7 +328,7 @@ export function createAgUiMount(
       const lastRunId = metadata?.['lastRunId'];
       if (metadata === undefined || typeof lastRunId !== 'string') return false;
       if (metadata['lastRunStatus'] === 'running') {
-        const durable = await bureau.getDurableRun(lastRunId);
+        const durable = await bureau.tasks.workflow(lastRunId);
         if (durable !== undefined && durable !== null && isDurableRunUnsettled(durable.status)) {
           return true;
         }
@@ -347,8 +348,8 @@ export function createAgUiMount(
    * durable record: its session (from the durable run's input) must say it is attachable.
    */
   async function attachableRunOfRecord(runId: string): Promise<string | undefined> {
-    if (bureau.getRun(runId) !== undefined) return undefined;
-    const durable = await bureau.getDurableRun(runId).catch(() => undefined);
+    if (bureau.tasks.detail(runId) !== undefined) return undefined;
+    const durable = await bureau.tasks.workflow(runId).catch(() => undefined);
     if (durable === undefined || durable === null) return undefined;
     const sessionId = await sessionOfRun(runId);
     if (sessionId === undefined) return undefined;
@@ -360,7 +361,7 @@ export function createAgUiMount(
   async function attachableRun(
     runId: string,
   ): Promise<{ sessionId: string; runId: string } | undefined> {
-    const detail = bureau.getRun(runId);
+    const detail = bureau.tasks.detail(runId);
     const pending = bureau.reviews.list().filter((review) => review.runId === runId);
     const live = detail?.status === 'running' || detail?.status === 'aborting';
     if (!live && !pending.some((review) => review.kind === 'tool-approval')) return undefined;
@@ -407,9 +408,9 @@ export function createAgUiMount(
 
   /** The session a run belongs to: the one this process holds it for, or its durable run's input. */
   async function sessionOfRun(runId: string): Promise<string | undefined> {
-    const held = bureau.getRun(runId)?.sessionId;
+    const held = bureau.tasks.detail(runId)?.sessionId;
     if (held !== undefined) return held;
-    const state = await bureau.getDurableRun(runId).catch(() => undefined);
+    const state = await bureau.tasks.workflow(runId).catch(() => undefined);
     const input: unknown = state?.input;
     const sessionId =
       typeof input === 'object' && input !== null
@@ -507,7 +508,7 @@ export function createAgUiMount(
       case 'requested':
         return json({ runId, status: 'aborting' }, 200);
       case 'already-terminal': {
-        const settled = await bureau.getDurableRun(runId);
+        const settled = await bureau.tasks.workflow(runId);
         const ended =
           settled === undefined || settled === null ? undefined : settledOutcomeOf(settled);
         // The settled run's own outcome: `completed`, `aborted` or `error`.

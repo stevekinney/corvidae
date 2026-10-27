@@ -4,7 +4,8 @@
  * the receipts an idempotent run needs (`hasDurableEngine`).
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { waitForRunState, createAgent } from '@lostgradient/operative';
+import { createAgent } from '@lostgradient/operative';
+import { waitForTaskState } from './test';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
@@ -32,7 +33,7 @@ function builtRows(now: string, ...inputs: Array<MessageInput & { id: string }>)
 }
 
 async function settle(bureau: Bureau, runId: string): Promise<void> {
-  await waitForRunState(bureau, runId);
+  await waitForTaskState(bureau, runId);
   for (let turn = 0; turn < 10; turn++) await yieldToPortableEventLoop();
 }
 

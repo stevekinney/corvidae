@@ -148,7 +148,7 @@ describe('a completed task whose reply this instance cannot read yet', () => {
       let hidden = true;
       // The same Bureau, seen from an instance the run's reply has not reached yet.
       const bureau = Object.create(opened.bureau, {
-        getRun: { value: (id: string) => (hidden ? undefined : opened.bureau.getRun(id)) },
+        getRun: { value: (id: string) => (hidden ? undefined : opened.bureau.tasks.detail(id)) },
         eventHistory: {
           value: (...args: Parameters<typeof opened.bureau.eventHistory>) =>
             hidden

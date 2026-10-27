@@ -481,7 +481,7 @@ export async function createBureauTestHarness<D extends AgentDefinitions = Agent
     },
 
     reattachDurable(runId) {
-      return readyBureau.getDurableRun(runId);
+      return readyBureau.tasks.workflow(runId);
     },
 
     supports() {

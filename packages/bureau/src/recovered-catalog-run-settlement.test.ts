@@ -60,8 +60,8 @@ async function taskStatusOf(
 }
 
 /** The status of a run in the durable engine. */
-async function durableStatusOf(bureau: Pick<Bureau, 'getDurableRun'>, runId: string) {
-  const state = await bureau.getDurableRun(runId);
+async function durableStatusOf(bureau: Pick<Bureau, 'tasks'>, runId: string) {
+  const state = await bureau.tasks.workflow(runId);
   return state?.status;
 }
 

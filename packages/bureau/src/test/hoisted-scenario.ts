@@ -241,7 +241,7 @@ export async function waitForBureauState(
         const key = `${index}:${runId}`;
         if (snapshotSubscriptions.has(key)) continue;
         try {
-          subscriptions.push(bureau.subscribeRunSnapshot(runId, notify));
+          subscriptions.push(bureau.tasks.snapshot(runId, notify));
           snapshotSubscriptions.add(key);
         } catch {
           // The bureau does not know the run yet; the next announcement tries again.

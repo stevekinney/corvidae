@@ -9,7 +9,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { BureauError, BureauShuttingDownError } from '../../create-bureau.ts';
 import { SessionForkRefusedError, type SessionForkRefusalReason } from '../../session-fork.ts';
-import { waitForRunState } from '../../test';
+import { waitForTaskState } from '../../test';
 import { noopTool, OPUS_5, OPUS_5_5 } from '../../testing/model-override.test-support.ts';
 import { buildBureauHandlerHost, BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
 import {
@@ -48,7 +48,7 @@ async function withBureau<T>(body: (opened: OpenedBureau) => Promise<T>): Promis
 
 async function finishedSession(opened: OpenedBureau, principal: string = OWNER.alice) {
   const run = await opened.bureau.createRun({ message: 'go', agentName: 'agent', principal });
-  await waitForRunState(opened.bureau, run.id);
+  await waitForTaskState(opened.bureau, run.id);
   return run;
 }
 
@@ -137,7 +137,7 @@ describe('bureau.contexts.fork', () => {
         principal: OWNER.alice,
         sessionId: run.sessionId,
       });
-      await waitForRunState(opened.bureau, second.id);
+      await waitForTaskState(opened.bureau, second.id);
       const first = await forkCall(opened, run.sessionId, 'alice-key', {
         throughMessageId: `${run.id}:step:1`,
       });

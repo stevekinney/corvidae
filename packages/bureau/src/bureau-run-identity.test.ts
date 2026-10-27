@@ -90,16 +90,16 @@ describe('bureau.run() run identity (COR-1302)', () => {
       expect(run.id).toBe(id);
       expect(run.snapshot().id).toBe(id);
 
-      const durableRuns = await bureau.listDurableRuns();
+      const durableRuns = await bureau.tasks.workflows();
       expect(durableRuns?.items.map((item) => item.id)).toContain(id);
-      expect(await bureau.getDurableRun(id)).toMatchObject({ id });
+      expect(await bureau.tasks.workflow(id)).toMatchObject({ id });
 
       // The run has settled and Bureau has released it from its run store,
       // without `deleteRun`: its attribution stays, so alice's read still
       // resolves the id to her run. The page is empty because a catalog run's
       // actions stay off the bureau's `'action'` stream, which is what durable
       // event history records; the release is not recorded as a deletion.
-      expect(bureau.getRun(id)).toBeUndefined();
+      expect(bureau.tasks.detail(id)).toBeUndefined();
       expect(await bureau.eventHistory({ kind: 'run', id }, { principal: 'alice' })).toEqual({
         events: [],
         hasMore: false,
@@ -154,7 +154,7 @@ describe('bureau.run() run identity (COR-1302)', () => {
           const run = bureau.run('echo', 'hi', { principal: 'alice' });
           await gated.entered;
 
-          const live = bureau.getRun(run.id);
+          const live = bureau.tasks.detail(run.id);
           expect(live?.id).toBe(run.id);
           expect(live?.status).toBe('running');
           expect(live?.liveness.id).toBe(run.id);
@@ -178,7 +178,7 @@ describe('bureau.run() run identity (COR-1302)', () => {
           // A settled `bureau.run()` run is released on its own, as it was
           // before it could be read by id, so a long-lived bureau does not
           // keep one entry per historical run (AB-22).
-          expect(bureau.getRun(run.id)).toBeUndefined();
+          expect(bureau.tasks.detail(run.id)).toBeUndefined();
           expect(() => bureau.abortRun(run.id)).toThrow('Run not found');
         } finally {
           gated.release();
@@ -204,7 +204,7 @@ describe('bureau.run() run identity (COR-1302)', () => {
 
           // Nothing has been built for the run yet: Bureau resolves it from
           // its handle, which reports the same id and owner.
-          const pending = bureau.getRun(run.id);
+          const pending = bureau.tasks.detail(run.id);
           expect(pending).toMatchObject({
             id: run.id,
             status: 'running',
@@ -218,7 +218,7 @@ describe('bureau.run() run identity (COR-1302)', () => {
           expect(bureau.abortRun(run.id)).toMatchObject({ id: run.id, status: 'aborting' });
           const result = await run.result();
           expect(result.finishReason).toBe('aborted');
-          expect(bureau.getRun(run.id)).toBeUndefined();
+          expect(bureau.tasks.detail(run.id)).toBeUndefined();
         } finally {
           gated.release();
           await bureau.dispose();
@@ -238,12 +238,12 @@ describe('bureau.run() run identity (COR-1302)', () => {
         const run = bureau.run('hand', 'hi');
         await gated.entered;
 
-        expect(bureau.getRun(run.id)).toMatchObject({ id: run.id, status: 'running' });
+        expect(bureau.tasks.detail(run.id)).toMatchObject({ id: run.id, status: 'running' });
         expect(bureau.abortRun(run.id)).toMatchObject({ id: run.id, status: 'aborting' });
         gated.release();
         const result = await run.result();
         expect(result.finishReason).toBe('aborted');
-        expect(bureau.getRun(run.id)).toBeUndefined();
+        expect(bureau.tasks.detail(run.id)).toBeUndefined();
       } finally {
         gated.release();
         await bureau.dispose();
@@ -280,7 +280,7 @@ describe('bureau.run() run identity (COR-1302)', () => {
         await run.closed();
 
         expect(registeredRunIds).not.toContain(run.id);
-        expect(bureau.getRun(run.id)).toBeUndefined();
+        expect(bureau.tasks.detail(run.id)).toBeUndefined();
       } finally {
         gated.release();
         await bureau.dispose();
@@ -292,7 +292,7 @@ describe('bureau.run() run identity (COR-1302)', () => {
       try {
         const run = bureau.run('echo', 'hi');
         await run.result();
-        expect(bureau.getRun(`${run.id}-unknown`)).toBeUndefined();
+        expect(bureau.tasks.detail(`${run.id}-unknown`)).toBeUndefined();
         expect(() => bureau.abortRun(`${run.id}-unknown`)).toThrow('Run not found');
       } finally {
         await bureau.dispose();
@@ -310,8 +310,8 @@ describe('bureau.run() run identity (COR-1302)', () => {
       const second = bureau.run('echo', 'second');
       await Promise.all([first.result(), second.result()]);
 
-      expect(bureau.getRun(first.id)).toBeUndefined();
-      expect(bureau.getRun(second.id)).toBeUndefined();
+      expect(bureau.tasks.detail(first.id)).toBeUndefined();
+      expect(bureau.tasks.detail(second.id)).toBeUndefined();
       const loggedRunIds = store.getState().actions.map((action) => action.runId);
       expect(loggedRunIds).not.toContain(first.id);
       expect(loggedRunIds).not.toContain(second.id);

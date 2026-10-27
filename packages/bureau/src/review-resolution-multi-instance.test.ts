@@ -238,7 +238,7 @@ async function settledApproval(charges: Charges) {
     message: 'Charge the customer',
     principal: 'alice',
   });
-  await setup.bureau.waitForDurableRun(run.id);
+  await setup.bureau.tasks.wait(run.id);
   await pollUntil(async () => {
     const session = await setup.bureau.contexts.get(run.sessionId);
     return session?.metadata['lastRunStatus'] !== 'running';
@@ -306,7 +306,7 @@ describe('the by-run derivation (COR-1579)', () => {
       await a.bureau.reviews.resolve({ id: local.id, decision: 'approve', principal: 'alice' });
     }
     await catalogRun.result();
-    await a.bureau.waitForDurableRun(sessionRun.id);
+    await a.bureau.tasks.wait(sessionRun.id);
     expect(await b.bureau.reviews.pendingOf(sessionRun.id)).toEqual([]);
     expect(await b.bureau.reviews.pendingOf(catalogRun.id)).toEqual([]);
   });
@@ -331,7 +331,7 @@ describe('a session human wait another process holds (COR-1579)', () => {
       }),
     ).toMatchObject({ id: review.id, kind: 'human-wait', decision: 'approve' });
 
-    await a.bureau.waitForDurableRun(run.id);
+    await a.bureau.tasks.wait(run.id);
     expect(seenByA.resumed).toHaveLength(1);
     expect(seenByA.resumed[0]).toContain('from-b');
     expect(await reviewAuditEntries(a.bureau, run.id, review.id)).toHaveLength(1);
@@ -671,7 +671,7 @@ describe('a Bureau with no key-value store (COR-1579)', () => {
 
       expect(codeOf(concurrent)).toBe('CONFLICT');
       expect((concurrent as Error).message).toContain('already being resolved');
-      await bureau.waitForDurableRun(run.id);
+      await bureau.tasks.wait(run.id);
       expect(seen.resumed).toHaveLength(1);
       expect(seen.resumed[0]).toContain('staging');
       const decisionRecords: string[] = [];

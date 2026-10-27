@@ -11,9 +11,9 @@ import {
   MediaAdmissionError,
   stopWhen,
   type Toolbox,
-  waitForRunState,
   withBackendDescriptors,
 } from '@lostgradient/operative';
+import { waitForTaskState } from './test';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { toolContent } from 'armorer/protocol';
@@ -173,7 +173,7 @@ describe('a tool-returned image through an approved review', () => {
       message: 'Take a snapshot',
       principal: alice.id,
     });
-    await waitForRunState(bureau, run.id);
+    await waitForTaskState(bureau, run.id);
     for (let turn = 0; turn < 10; turn++) await yieldToPortableEventLoop();
     const [review] = bureau.reviews.list();
     expect(review?.kind).toBe('tool-approval');

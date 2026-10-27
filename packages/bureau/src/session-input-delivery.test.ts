@@ -191,7 +191,7 @@ describe('createBureau delivers admitted session input at the next step boundary
         expect(admitted.outcome).toBe('admitted');
       }
       releaseStepZero.resolve();
-      await bureau.waitForDurableRun(run.id);
+      await bureau.tasks.wait(run.id);
 
       expect(prompts).toEqual([
         ['First'],
@@ -242,7 +242,7 @@ describe('createBureau delivers admitted session input at the next step boundary
         principal: 'alice',
         sessionId: first.sessionId,
       });
-      await bureau.waitForDurableRun(second.id);
+      await bureau.tasks.wait(second.id);
 
       const secondRun = prompts.filter(({ run }) => run === 2);
       expect(secondRun).toEqual([{ run: 2, texts: ['Second'] }]);
@@ -376,7 +376,7 @@ describe('createBureau delivers admitted session input at the next step boundary
         reason: 'changed my mind',
       });
       releaseStepOne.resolve();
-      await bureau.waitForDurableRun(run.id);
+      await bureau.tasks.wait(run.id);
 
       // The transcript holds it, so the receipt is promoted even though the
       // mailbox closed the command as cancelled.

@@ -14,7 +14,7 @@ import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
-import { waitForRunState } from './test';
+import { waitForTaskState } from './test';
 import { withResolvedOptions } from './testing/named-agent.test-support';
 import type { Bureau } from './types';
 
@@ -82,14 +82,14 @@ describe('a named agent’s structured output on a session run', () => {
 
     const direct = await bureau.run('viaRun', 'question').result();
     const run = await bureau.createRun({ message: 'question', agentName: 'viaSession' });
-    await waitForRunState(bureau, run.id);
+    await waitForTaskState(bureau, run.id);
 
     // The same contract: one retry, then the valid answer.
     expect(viaRun).toHaveLength(2);
     expect(direct.finishReason).not.toBe('error');
     expect(viaSession).toHaveLength(2);
     expect(messages.at(-1)).toContain('Reply with JSON');
-    expect(bureau.getRun(run.id)?.status).toBe('completed');
+    expect(bureau.tasks.detail(run.id)?.status).toBe('completed');
   });
 });
 

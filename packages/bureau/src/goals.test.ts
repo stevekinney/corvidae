@@ -562,7 +562,7 @@ describe('bureau.goals', () => {
           transitionSeq: 1,
         },
       });
-      expect(await bureau.getDurableRun('goal:g1')).toBeNull();
+      expect(await bureau.tasks.workflow('goal:g1')).toBeNull();
       expect(ran).toBe(false);
     });
 

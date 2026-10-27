@@ -13,7 +13,7 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { waitForRunState } from '@lostgradient/operative';
+import { waitForTaskState } from '../test';
 import type { BatchOperation, Storage } from '@lostgradient/weft';
 import { type ContentSource, type Modality } from 'conversationalist';
 
@@ -959,7 +959,7 @@ describe('conversation state holds references, not bytes', () => {
         message: `turn ${turn}: describe ${reference}`,
         sessionId,
       });
-      await waitForRunState(harness.bureau, run.id);
+      await waitForTaskState(harness.bureau, run.id);
     }
     const session = await harness.bureau.contexts.get(sessionId);
     const userTurns = Object.values(session!.conversationHistory.messages).filter(

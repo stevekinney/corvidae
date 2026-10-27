@@ -501,7 +501,7 @@ describe('media the model does not take', () => {
         expect(frames.at(-1)).toBe(errors[0]);
         expect(harness.generate.callCount).toBe(0);
         const runId = bureauMetadata(frames[0]!.event)['runId'] as string;
-        const events = harness.bureau.getRun(runId)?.events ?? [];
+        const events = harness.bureau.tasks.detail(runId)?.events ?? [];
         expect(events.map((event) => event.event)).not.toContain('generate.started');
       },
     );

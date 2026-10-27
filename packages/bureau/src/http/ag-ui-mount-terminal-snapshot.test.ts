@@ -250,7 +250,8 @@ describe('a session that cannot be read at the end of a run that took input', ()
           get: async (id: string) => {
             // The thread is readable while the run is going and owned, and unreadable once it ended.
             if (
-              opened.bureau.getRun(opened.bureau.listRuns()[0]?.id ?? '')?.status === 'completed'
+              opened.bureau.tasks.detail(opened.bureau.listRuns()[0]?.id ?? '')?.status ===
+              'completed'
             ) {
               throw new Error('The session store is unavailable.');
             }

@@ -78,7 +78,7 @@ const bureau = await createBureau<AgentDefinitions>({
 });
 
 async function parentRunId(): Promise<string | undefined> {
-  const runs = await bureau.listDurableRuns();
+  const runs = await bureau.tasks.workflows();
   return runs?.items.find((item) => item.id !== CHILD_RUN_ID)?.id;
 }
 
@@ -119,7 +119,7 @@ async function startParentWithChild(): Promise<void> {
 async function readState() {
   const id = await parentRunId();
   if (id === undefined) return { parent: null, child: null };
-  const parent = await bureau.getDurableRun(id);
+  const parent = await bureau.tasks.workflow(id);
   const child = await bureau.children.get({
     parentRunId: id,
     childRunId: CHILD_RUN_ID,
@@ -143,7 +143,7 @@ if (command === 'start') {
   await bureau.waitForRecovery?.();
   await bureau.runDurableMaintenance(now);
   await pollUntil('every durable run to leave running', async () => {
-    const runs = await bureau.listDurableRuns();
+    const runs = await bureau.tasks.workflows();
     return runs?.items.every((item) => item.status !== 'running') ?? false;
   });
 } else if (command !== 'read') {

@@ -19,7 +19,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
-import { waitForRunState } from './test';
+import { waitForTaskState } from './test';
 import type { Bureau } from './types';
 
 /** Paraphrases share a dimension, so the semantic stage is deterministic through Bureau too. */
@@ -161,7 +161,7 @@ describe('Bureau runs recall through the retrieval plan (COR-771)', () => {
       principal: context.authority.ownerId,
       requestContext: context,
     });
-    await waitForRunState(bureau, run.id);
+    await waitForTaskState(bureau, run.id);
     return recalled.at(-1);
   }
 

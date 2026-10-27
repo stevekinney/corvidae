@@ -225,7 +225,7 @@ export async function reviewOf(bureau: Bureau, runId: string): Promise<PendingRe
 }
 
 export async function durableStatus(bureau: Bureau, runId: string): Promise<string | undefined> {
-  const run = await bureau.getDurableRun(runId);
+  const run = await bureau.tasks.workflow(runId);
   return run?.status;
 }
 

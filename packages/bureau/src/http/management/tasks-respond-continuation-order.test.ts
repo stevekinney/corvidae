@@ -246,7 +246,7 @@ describe('bureau.tasks.respond when the run parks again before the answer is rec
       );
       expect(second.error).toBeUndefined();
       await waitForCondition(
-        () => opened.bureau.getRun(run.id)?.status === 'completed',
+        () => opened.bureau.tasks.detail(run.id)?.status === 'completed',
         'the run never finished after its second answer',
       );
     });

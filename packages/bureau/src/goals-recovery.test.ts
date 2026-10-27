@@ -1024,7 +1024,7 @@ describe('the attempt behind a running goal', () => {
       goalAttempt: { goalRunId: 'g1', attemptIndex: 0 },
     });
     await view.store.create(pendingGoal());
-    expect(await bureau.getDurableRun('goal-g1-a0')).toBeNull();
+    expect(await bureau.tasks.workflow('goal-g1-a0')).toBeNull();
 
     expect(await bureau.goals.recover('g1')).toMatchObject({
       goals: [{ goalRunId: 'g1', outcome: 'started' }],

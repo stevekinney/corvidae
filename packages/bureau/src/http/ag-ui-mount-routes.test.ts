@@ -437,7 +437,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
     );
   const settled = (harness: Harness) =>
     waitForCondition(
-      () => harness.bureau.getRun(harness.bureau.listRuns()[0]!.id)?.status === 'completed',
+      () => harness.bureau.tasks.detail(harness.bureau.listRuns()[0]!.id)?.status === 'completed',
       'run did not settle',
     );
 
@@ -686,7 +686,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
           principal: 'anonymous:local',
         });
         await waitForCondition(
-          () => harness.bureau.getRun(second.id)?.status === 'completed',
+          () => harness.bureau.tasks.detail(second.id)?.status === 'completed',
           'second run did not settle',
         );
 
@@ -740,7 +740,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
         // workflow `pending` until its inline launch runs, and that is still unsettled.
         const first = await harness.handler(startRequest(runAgentInput()));
         const session = await harness.bureau.contexts.get('thread-1');
-        const durable = await harness.bureau.getDurableRun(
+        const durable = await harness.bureau.tasks.workflow(
           session?.metadata['lastRunId'] as string,
         );
         expect(durable?.status).toBe('pending');
@@ -914,7 +914,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
           ? undefined
           : { ...session, metadata: { ...session.metadata, lastRunStatus: 'running' } };
       });
-      spyOn(harness.bureau, 'getDurableRun').mockRejectedValue(new Error('store unavailable'));
+      spyOn(harness.bureau.tasks, 'workflow').mockRejectedValue(new Error('store unavailable'));
 
       const refused = await readAgUiStream(await harness.handler(startWithMessage('run-b')));
 
@@ -1367,14 +1367,14 @@ describe('a client that goes away', () => {
 
         await starter.cancel();
 
-        expect(bureau.getRun(runId)?.status).toBe('running');
+        expect(bureau.tasks.detail(runId)?.status).toBe('running');
         const attached = new FrameReader(await handler(attachRunRequest(runId)));
         const opening = await attached.until(EventType.STATE_SNAPSHOT);
         expect(opening[0]!.event.type).toBe(EventType.RUN_STARTED);
         generate.release('hold');
         await attached.rest();
         await waitForCondition(
-          () => bureau.getRun(runId)?.status === 'completed',
+          () => bureau.tasks.detail(runId)?.status === 'completed',
           'the run never finished',
         );
       },

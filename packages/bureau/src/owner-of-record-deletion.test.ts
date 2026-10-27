@@ -32,7 +32,7 @@ async function createdSession(
     ...(principal === undefined ? {} : { principal }),
   });
   await waitForCondition(
-    () => bureau.getRun(run.id)?.status !== 'running',
+    () => bureau.tasks.detail(run.id)?.status !== 'running',
     `run ${run.id} never settled`,
   );
   return run;

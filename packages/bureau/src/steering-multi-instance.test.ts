@@ -407,10 +407,10 @@ describe('durable steering across two Bureau processes', () => {
 
       releaseTool?.();
       for (let attempt = 0; attempt < 500; attempt += 1) {
-        if (bureauA.getRun(run.id)?.status !== 'running') break;
+        if (bureauA.tasks.detail(run.id)?.status !== 'running') break;
         await Bun.sleep(10);
       }
-      expect(bureauA.getRun(run.id)?.status).toBe('completed');
+      expect(bureauA.tasks.detail(run.id)?.status).toBe('completed');
 
       // A second run keeps the session live (a terminal session answers
       // `session-terminal` before any idempotency check).
@@ -1369,10 +1369,10 @@ describe('durable steering across two Bureau processes', () => {
       );
       bureau.abortRun(runId);
       for (let attempt = 0; attempt < 200; attempt += 1) {
-        if (bureau.getRun(runId)?.status !== 'running') break;
+        if (bureau.tasks.detail(runId)?.status !== 'running') break;
         await Bun.sleep(10);
       }
-      expect(bureau.getRun(runId)?.status).toBe('aborted');
+      expect(bureau.tasks.detail(runId)?.status).toBe('aborted');
       await bureau.dispose();
       disposed = true;
 

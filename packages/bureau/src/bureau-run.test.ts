@@ -313,12 +313,12 @@ describe('bureau.run', () => {
       durable: true,
     });
     try {
-      const before = await bureau.listDurableRuns();
+      const before = await bureau.tasks.workflows();
       const run = bureau.run('echo', 'hi');
       const result = await run.result();
       expect(result.content).toBe('durable hello');
 
-      const after = await bureau.listDurableRuns();
+      const after = await bureau.tasks.workflows();
       expect(after?.total ?? 0).toBeGreaterThan(before?.total ?? 0);
       // The workflow id bureau.run() minted is discoverable through the
       // engine's own durable-run listing — proof this went through the
@@ -393,10 +393,10 @@ describe('bureau.run', () => {
       durable: true,
     });
     try {
-      const before = await bureau.listDurableRuns();
+      const before = await bureau.tasks.workflows();
       const result = await bureau.run('plain', 'hi').result();
       expect(result.content).toBe('plain hello');
-      const after = await bureau.listDurableRuns();
+      const after = await bureau.tasks.workflows();
       // No new durable workflow was created — this agent's own in-memory
       // run() handled it directly, bypassing the durable engine entirely.
       expect(after?.total ?? 0).toBe(before?.total ?? 0);
@@ -428,10 +428,10 @@ describe('bureau.run', () => {
       durable: true,
     });
     try {
-      const before = await bureau.listDurableRuns();
+      const before = await bureau.tasks.workflows();
       const result = await bureau.run('plain', 'hi').result();
       expect(result.content).toBe('lazy plain hello');
-      const after = await bureau.listDurableRuns();
+      const after = await bureau.tasks.workflows();
       expect(after?.total ?? 0).toBe(before?.total ?? 0);
     } finally {
       await bureau.dispose();
@@ -1227,7 +1227,7 @@ describe('every Bureau hook hand-off is a merge (COR-1265 criterion 3)', () => {
       for (let attempt = 0; attempt < 50 && seen.length === 0; attempt += 1) {
         await waitOneTimerTurn();
       }
-      expect(bureau.getRun(run.id)).toBeDefined();
+      expect(bureau.tasks.detail(run.id)).toBeDefined();
       expect(seen).toContain('BUREAU-TIER-REACHED');
     } finally {
       await bureau.dispose();

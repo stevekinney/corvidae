@@ -19,7 +19,7 @@ import {
   type ForkLedgerClaim,
   SessionForkRefusedError,
 } from './session-fork';
-import { waitForCondition, waitForRunState } from './test';
+import { waitForCondition, waitForTaskState } from './test';
 import { approvalToolbox } from './http/management/management-fixtures.test-support';
 import { noopTool, OPUS_5, OPUS_5_5 } from './testing/model-override.test-support';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
@@ -103,7 +103,7 @@ async function completedSession(
     principal: ALICE,
     ...(sessionId === undefined ? {} : { sessionId }),
   });
-  await waitForRunState(bureau, run.id);
+  await waitForTaskState(bureau, run.id);
   await waitForStoredMessage(bureau, run.sessionId, `${run.id}:step:${lastStep}`);
   return run;
 }
@@ -373,7 +373,7 @@ describe('a message that is not a branch point', () => {
     });
     await entered.promise;
     holding.abortRun(run.id);
-    await waitForRunState(holding, run.id);
+    await waitForTaskState(holding, run.id);
     await waitForStoredMessage(holding, run.sessionId, `${run.id}:step:0`);
 
     expect(await refusalOf(fork(holding, run.sessionId, `${run.id}:step:0`))).toBe(
@@ -400,7 +400,7 @@ describe('a message that is not a branch point', () => {
     });
     cleanups.push(() => bureau.dispose());
     const run = await bureau.createRun({ agentName: 'default', message: 'go', principal: ALICE });
-    await waitForRunState(bureau, run.id);
+    await waitForTaskState(bureau, run.id);
 
     expect(await refusalOf(fork(bureau, run.sessionId, `${run.id}:step:0`))).toBe(
       'branch-with-pending-approval',
@@ -676,7 +676,7 @@ describe('a parent whose model a policy profile chose', () => {
     });
     cleanups.push(() => bureau.dispose());
     const run = await bureau.createRun({ message: 'go', agentName: 'agent', principal: ALICE });
-    await waitForRunState(bureau, run.id);
+    await waitForTaskState(bureau, run.id);
     await waitForStoredMessage(bureau, run.sessionId, `${run.id}:step:0`);
     return { bureau, run, observed };
   }
@@ -809,7 +809,7 @@ describe('a file agent’s fork', () => {
       agentName: 'picker',
       principal: ALICE,
     });
-    await waitForRunState(harness.bureau, run.id);
+    await waitForTaskState(harness.bureau, run.id);
     return { harness, run };
   }
 
