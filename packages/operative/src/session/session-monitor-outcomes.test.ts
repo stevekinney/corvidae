@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { OperativeEventMap } from '../events';
 import { SessionMonitorDoneEvent, SessionMonitorTickEvent } from '../events';
+import { drainMicrotasks } from '../testing/drain-microtasks.test-support.ts';
 import { createSessionStore } from './create-session-store';
 import { createSessionHandle } from './session-handle';
 import { createSessionHandleFixture, createTestRunOptions } from './session-handle-test-support';
@@ -201,7 +202,7 @@ describe('session.monitor() — outcomes and persistence', () => {
     });
 
     // Give persistence callbacks a moment to flush.
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     const session = await store.load('monitor-runs-session');
     // 2 ticks × 1 run each.

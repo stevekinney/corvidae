@@ -2,6 +2,9 @@ import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgr
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
+
+import { drainMicrotasks } from '../testing/drain-microtasks.test-support.ts';
 import type { GenerateFunction } from '../types';
 import { createSessionStore } from './create-session-store';
 import { createSessionHandle } from './session-handle';
@@ -45,8 +48,10 @@ describe('session.recover()', () => {
     // The handle is set synchronously in run(), recovered after one await tick.
     expect(recovered).toBe(run);
 
-    // Yield a tick so the run loop starts and resolveGenerate is assigned.
-    await yieldToPortableEventLoop();
+    // Wait for the run loop to start, which is when resolveGenerate is assigned.
+    await waitUntil(() => resolveGenerate !== undefined, {
+      message: 'the run loop to call generate',
+    });
 
     // Clean up: resolve the blocking generate so the run can finish.
     resolveGenerate?.({ content: 'done', toolCalls: [] });
@@ -59,7 +64,7 @@ describe('session.recover()', () => {
     const run = handle.run('quick run');
     await run.result();
     // Allow the `.finally()` callback to clear currentRun.
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     expect(await handle.recover()).toBeNull();
   });

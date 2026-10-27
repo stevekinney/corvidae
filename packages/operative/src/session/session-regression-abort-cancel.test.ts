@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
 
 import { createAgentSession } from '../agent-session';
+import { drainMicrotasks } from '../testing/drain-microtasks.test-support.ts';
 import { createSessionStore } from './create-session-store';
 import { createSessionEngine } from './session-engine-test-fixture';
 import { createSessionHandle } from './session-handle';
@@ -98,7 +99,7 @@ describe('regression — durable abort and cancel', () => {
     agentRun.abort('test-abort');
 
     // Allow the abort to propagate through the promise chain.
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     // engine.cancel() must have been called, proving the abort was forwarded
     // through the inner durable ActiveRun to the Weft engine. Without the fix
@@ -188,7 +189,7 @@ describe('regression: [Symbol.dispose]() forwards to the durable inner run (PRRT
     agentRun[Symbol.dispose]();
 
     // Allow disposal to propagate through the promise chain.
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     // engine.cancel() must have been called, proving [Symbol.dispose]() forwarded
     // through activeInnerRun to the Weft engine — not just firing the AbortController.

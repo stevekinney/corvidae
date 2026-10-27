@@ -70,12 +70,12 @@ export class InvocationDriver {
   }
 
   /**
-   * Starts `bun <entry> <directory> <command> <label> [blockActivity]` as its
+   * Starts `bun --no-install <entry> <directory> <command> <label> [blockActivity]` as its
    * own OS process. With `blockActivity`, the invocation holds that activity
    * open until the driver releases or kills it.
    */
   spawn(entry: string, command: string, label: string, blockActivity?: string): RunningInvocation {
-    const argv = [process.execPath, entry, this.#directory, command, label];
+    const argv = [process.execPath, '--no-install', entry, this.#directory, command, label];
     if (blockActivity !== undefined) argv.push(blockActivity);
     const child = Bun.spawn(argv, {
       timeout: HANG_GUARD_MILLISECONDS,

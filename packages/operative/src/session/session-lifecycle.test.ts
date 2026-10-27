@@ -2,6 +2,7 @@ import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgr
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { drainMicrotasks } from '../testing/drain-microtasks.test-support.ts';
 import type { GenerateFunction } from '../types';
 import { createSessionStore } from './create-session-store';
 import { createSessionHandle } from './session-handle';
@@ -64,11 +65,11 @@ describe('RunRef sequence invariant', () => {
     const { handle, store } = createSessionHandleFixture({ sessionId: 'seq-test' });
 
     await handle.run('run 0').result();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
     await handle.run('run 1').result();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
     await handle.run('run 2').result();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     const session = await store.load('seq-test');
     expect(session!.runs).toHaveLength(3);
@@ -81,9 +82,9 @@ describe('RunRef sequence invariant', () => {
     const { handle, store } = createSessionHandleFixture({ sessionId: 'monotonic-test' });
 
     await handle.run('a').result();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
     await handle.run('b').result();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     const session = await store.load('monotonic-test');
     const sequences = session!.runs.map((r) => r.sequence);
