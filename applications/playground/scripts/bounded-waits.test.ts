@@ -62,8 +62,9 @@ const standInRunnerEndsAtItsWaitBudget = await outcomeOf(async () => {
       },
     );
 
-    const exitCode = await watchdog(standIn.exited, 3_000);
-    if (exitCode === 'hung') standIn.kill('SIGKILL');
+    // Awaited outright: the hang guard ends a stand-in that ignores its budget, and a watchdog
+    // here would time the stand-in's boot on a loaded host rather than its budget.
+    const exitCode = await standIn.exited;
 
     expect(exitCode).toBe(1);
     expect(await new Response(standIn.stderr).text()).toContain('timed out waiting for');
@@ -91,6 +92,7 @@ describe('bounded waits', () => {
     } as unknown as Bun.Subprocess;
 
     const outcome = await watchdog(
+      // wait-bound: the stub's exit never settles, so only the grace itself is under test
       interruptRunner(neverExits, undefined, { graceMilliseconds: 200 }),
       2_000,
     );
