@@ -14,6 +14,7 @@ import { KEYS, type Storage } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import {
   createDeferred,
+  drainMicrotasks,
   expectPromisePending,
   waitForCondition,
   yieldToEventLoop,
@@ -217,7 +218,7 @@ describe('a parent awaiting a child its engine lost', () => {
     const scenario = await lostChildScenario({ manual: true });
     try {
       const parentOutcome = scenario.parentHandle.result();
-      await yieldToEventLoop();
+      await drainMicrotasks();
       expect(scenario.loserInternals.pendingResultPollTimers.size).toBe(0);
       expect(await scenario.finishChildOnWinner()).toBe('done');
       await expectPromisePending(parentOutcome);
@@ -287,7 +288,7 @@ describe('how a parent view ends', () => {
           workflowExecutionToken: 'the-generation-this-engine-lost',
         }),
       );
-      await yieldToEventLoop();
+      await drainMicrotasks();
       await loser.runMaintenance();
 
       expect(((await view) as Error).message).toBe(
@@ -314,7 +315,7 @@ describe('how a parent view ends', () => {
         getGeneratorOwnedWorkflowResultPromise(internals, 'purged-child', parent.id),
       );
       waiter.reject(new WorkflowCheckpointConflictError('purged-child'));
-      await yieldToEventLoop();
+      await drainMicrotasks();
       await loser.runMaintenance();
 
       expect(((await view) as Error).message).toBe('Workflow "purged-child" not found in storage');
@@ -367,7 +368,7 @@ describe('how a parent view ends', () => {
       );
       failures = 1;
       waiter.reject(await lostWith(storage, 'flaky-read-child-id'));
-      await yieldToEventLoop();
+      await drainMicrotasks();
 
       // The first read failed: not a verdict on the child, so the view is still waiting.
       expect(await Promise.race([view, Promise.resolve('pending')])).toBe('pending');
@@ -385,7 +386,7 @@ describe('how a parent view ends', () => {
     const scenario = await lostChildScenario({ manual: true });
     try {
       void scenario.parentHandle.result().catch(() => {});
-      await yieldToEventLoop();
+      await drainMicrotasks();
       expect(pendingChildOutcomePollCount(scenario.loserInternals)).toBe(1);
 
       abandonExecutionAttempt(
@@ -438,14 +439,14 @@ describe('how a parent view ends', () => {
       const view = getGeneratorOwnedWorkflowResultPromise(internals, 'slow-child-id', parent.id);
       gating = true;
       waiter.reject(await lostWith(storage, 'slow-child-id'));
-      await yieldToEventLoop();
+      await drainMicrotasks();
 
       // `runMaintenance()` awaits exactly this. It must wait for the read already in flight.
       let polled = false;
       const polling = pollChildOutcomes(internals).then(() => {
         polled = true;
       });
-      await yieldToEventLoop();
+      await drainMicrotasks();
       expect(polled).toBe(false);
       gate.resolve();
       await polling;
@@ -496,7 +497,7 @@ describe('a parent that no longer awaits the lost child', () => {
       );
       branch.abort();
       waiter.reject(await lostWith(internals.storage, 'done-child-id'));
-      await yieldToEventLoop();
+      await drainMicrotasks();
 
       await loser.runMaintenance();
 
@@ -563,7 +564,7 @@ describe('a parent that no longer awaits the lost child', () => {
       const view = getGeneratorOwnedWorkflowResultPromise(internals, 'done-child-id', parent.id);
       await loser.suspend(parent.id);
       waiter.reject(await lostWith(internals.storage, 'done-child-id'));
-      await yieldToEventLoop();
+      await drainMicrotasks();
 
       await loser.runMaintenance();
 
@@ -580,7 +581,7 @@ describe('a parent that no longer awaits the lost child', () => {
       const view = getGeneratorOwnedWorkflowResultPromise(internals, 'done-child-id', parent.id);
       beginExecutionAttempt(internals, parent.id, tokenOf(internals, parent.id));
       waiter.reject(await lostWith(internals.storage, 'done-child-id'));
-      await yieldToEventLoop();
+      await drainMicrotasks();
 
       await loser.runMaintenance();
 
@@ -597,7 +598,7 @@ describe('a parent that no longer awaits the lost child', () => {
       const view = getGeneratorOwnedWorkflowResultPromise(internals, 'done-child-id', parent.id);
       internals.terminalizingWorkflows.add(parent.id);
       waiter.reject(await lostWith(internals.storage, 'done-child-id'));
-      await yieldToEventLoop();
+      await drainMicrotasks();
 
       await loser.runMaintenance();
       internals.terminalizingWorkflows.delete(parent.id);

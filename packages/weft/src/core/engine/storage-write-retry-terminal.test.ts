@@ -359,9 +359,11 @@ describe('disposal during an attempt', () => {
     expect(await rejectionOf(run.result)).toBeInstanceOf(EngineDisposedError);
     // A further attempt would follow the wait that disposal ends; give its zero-length timer, which
     // was armed first, its turn before counting.
+    // load-proof: timer order: the retry attempt a disposal ends was armed on a zero-length timer before this yield, and timers of one clock fire in order of their deadlines, so its turn comes first whatever the load
     await yieldToPortableEventLoop();
     // load-proof: negative window: asserts no further retry attempt follows disposal; load can only delay an attempt, never create one
     await sleepForTesting(1);
+    // load-proof: negative window: asserts no further retry attempt follows disposal; load can only delay an attempt, never create one
     await yieldToPortableEventLoop();
     // The attempt in flight when the engine was disposed was the last.
     expect(run.refusing.attemptsMatching(putsCheckpoint('dispose-in-flight'))).toHaveLength(2);

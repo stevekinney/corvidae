@@ -6,6 +6,7 @@ import { Conversation, createConversationHistory } from 'conversationalist';
 import { createAgentSession } from '../agent-session';
 import { AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION } from '../durable/run-workflow-result';
 import { UnsupportedRunResultVersionError } from '../run-envelope';
+import { drainMicrotasks } from '../testing/drain-microtasks.test-support.ts';
 import { createSessionStore } from './create-session-store';
 import { reconstructRunConversation } from './run-conversation-boundary';
 import { createSessionEngine } from './session-engine-test-fixture';
@@ -98,7 +99,7 @@ describe('terminal conversation boundaries on durable and failure paths', () => 
       .run('durable please')
       .result()
       .catch(() => {});
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     const session = await store.load('boundary-engine-rejection');
     const runRef = session?.runs[0];

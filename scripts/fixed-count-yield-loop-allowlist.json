@@ -14,7 +14,6 @@
   "packages/operative/src/durable/run-workflow.test.ts": 1,
   "packages/operative/test/scheduler/create-durable-heartbeat.test.ts": 1,
   "packages/operative/test/scheduler/create-scheduler-retention.test.ts": 1,
-  "packages/operative/test/scheduler/durable-preemption.test.ts": 1,
   "packages/weft/src/a2a/peer-client.test.ts": 1,
   "packages/weft/src/core/concurrency-workflow.test.ts": 1,
   "packages/weft/src/core/engine/lease-manager.test.ts": 1,

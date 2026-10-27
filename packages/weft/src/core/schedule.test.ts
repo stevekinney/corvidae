@@ -3,8 +3,8 @@ import {
   createDeferred,
   flushMicrotasks,
   waitForCondition,
-  yieldToEventLoop,
 } from '../testing/fake-timers.test-support.ts';
+import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { BatchOperation, ConditionalBatchCondition } from '../storage/interface.ts';
@@ -216,8 +216,7 @@ class ControlledScheduleBatchStorage extends MemoryStorage {
 }
 
 async function drainEngine(): Promise<void> {
-  await yieldToEventLoop();
-  await yieldToEventLoop();
+  await settleInlineLaunches();
 }
 
 function registerWorkflow<TInput, TOutput>(

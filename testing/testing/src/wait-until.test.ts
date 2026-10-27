@@ -1,6 +1,6 @@
 import { describe, expect, jest, test } from 'bun:test';
 import { throwingRejectionOf } from './helpers/promise-outcome.ts';
-import { awakeTurns, waitUntil, yieldEventLoopTurn } from './wait-until.ts';
+import { awakeTurns, waitUntil } from './wait-until.ts';
 
 describe('waitUntil', () => {
   test('returns at once when the condition already holds', async () => {
@@ -39,8 +39,6 @@ describe('waitUntil', () => {
     setTimeout(() => {
       fired = true;
     }, 0);
-    await yieldEventLoopTurn();
-    await yieldEventLoopTurn();
     await waitUntil(() => fired);
     expect(fired).toBe(true);
   });

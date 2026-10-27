@@ -128,6 +128,7 @@ describe('fake timer testing helpers', () => {
       });
     }, 0);
 
+    // load-proof: the helper under test: its zero-length timer is armed after the one that queues the continuation, and timers of one clock fire in order of their deadlines, so the continuation has run when it resolves
     await yieldToEventLoop();
 
     expect(continuationRan).toBe(true);
@@ -142,6 +143,7 @@ describe('fake timer testing helpers', () => {
       });
     }, 0);
 
+    // load-proof: the helper under test: its zero-length timer is armed after the one that queues the continuation, and timers of one clock fire in order of their deadlines, so the continuation has run when it resolves
     await yieldToEventLoop();
 
     expect(continuationRan).toBe(true);
