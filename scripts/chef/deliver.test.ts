@@ -704,6 +704,25 @@ describe('fixes-main', () => {
     expect(received[0]?.fixesMain).toBe(false);
     expect(result.output).toContain('main-health');
   });
+
+  test('--waive-load-flake and --control-head reach the merge gate as a waiver, not a fix', async () => {
+    const { runner } = fake({ contains: true });
+    const { partial } = seams();
+    const received: MergeGateOptions[] = [];
+    const merge = async (mergeOptions: MergeGateOptions) => {
+      received.push(mergeOptions);
+      return mergedReport();
+    };
+    const controlHead = 'f'.repeat(40);
+    const result = await run(
+      args(['--waive-load-flake', 'passes alone on main', '--control-head', controlHead]),
+      { ...partial, merge, runner },
+    );
+    expect(result.code).toBe(0);
+    expect(received.map((entry) => [entry.fixesMain, entry.loadFlakeWaiver])).toEqual([
+      [false, { reason: 'passes alone on main', controlHead }],
+    ]);
+  });
 });
 
 describe('run', () => {
@@ -725,6 +744,9 @@ describe('run', () => {
     expect(await usage('--pr', '1', ...base, '--bogus')).toBeInstanceOf(UsageError);
     expect(await usage('--pr', '1', ...base, '--usage-log', 'u.tsv')).toBeInstanceOf(UsageError);
     expect(await usage('--pr', '1', ...base, '--transcript', 't.jsonl')).toBeInstanceOf(UsageError);
+    const waiver = ['--waive-load-flake', 'passes alone on main', '--control-head', 'f'.repeat(40)];
+    expect(await usage('--pr', '1', ...base, '--fixes-main', ...waiver)).toBeInstanceOf(UsageError);
+    expect(await usage('--pr', '1', ...base, ...waiver.slice(0, 2))).toBeInstanceOf(UsageError);
     const removal = ['--remove-worktree'];
     expect(
       await usage('--pr', '1', ...base, ...removal, '--provider', 'nobody', '--name', 'a'),

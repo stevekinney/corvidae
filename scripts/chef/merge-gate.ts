@@ -6,6 +6,7 @@
 // Usage:
 //   bun scripts/chef/merge-gate.ts [--config <json>] --pr <n> --worktree <dir> --gate-log <file>
 //                                  --comment-file <md> [--dry-run] [--json]
+//                                  [--fixes-main | --waive-load-flake <reason> --control-head <sha>]
 //                                  [--usage-log <file> --transcript <path>...]
 //
 // The steps run in order and stop at the first failure, which is named:
@@ -20,7 +21,12 @@
 //                     and the overlapping paths;
 //   3b. main-health   `main`'s last batch validate (`main-health.ts`) at a head on `origin/<default>`'s
 //                     first-parent history did not fail, unless the pull request is declared the fix
-//                     with `--fixes-main`, which is recorded in the report and the health file;
+//                     with `--fixes-main`, or the failure is waived as a load flake with
+//                     `--waive-load-flake <reason> --control-head <sha>`: the reason names the test
+//                     and why it is load, and the control head is the full SHA of the commit on
+//                     `origin/<default>`'s first-parent history where the failing test passed alone.
+//                     Either is recorded in the report and the health file, a waiver apart from the
+//                     fixes, so `fixes` lists only pull requests that repaired `main`;
 //   4. gate           the gate log's exit code is 0, its HEAD equals the pull request's head, and the
 //                     worktree was clean (`git status --porcelain` empty) at the start and at the end
 //                     of the run with HEAD unmoved (start head = end head = the pull request's head);
@@ -76,7 +82,14 @@ import {
 } from '../run-exclusively.ts';
 import { fetchWithRetry } from './fetch-retry.ts';
 import { readGateLog } from './gate-run.ts';
-import { mainHealth, recordFix, renderMainHealth, resolveHealthFile } from './main-health.ts';
+import {
+  firstParentHistory,
+  mainHealth,
+  recordFix,
+  recordWaiver,
+  renderMainHealth,
+  resolveHealthFile,
+} from './main-health.ts';
 import {
   overlappingFiles,
   readWorkspaceGraph,
@@ -110,6 +123,8 @@ export interface MergeGateOptions {
   checkMainHealth?: boolean | undefined;
   /** Declares this pull request the fix for a red `main`, so the main-health step lets it through. */
   fixesMain?: boolean | undefined;
+  /** Waives a red `main` whose failure is a load flake, with the reason and the control's head. */
+  loadFlakeWaiver?: LoadFlakeWaiver | undefined;
   /** Where the cross-session merge lock lives; defaults to the Git common directory. */
   lockDirectory?: string | undefined;
   /** How often a waiter rechecks the merge lock, in milliseconds. */
@@ -118,6 +133,13 @@ export interface MergeGateOptions {
   usageLog?: string | undefined;
   /** Transcript files or directories whose token usage the spend record totals. */
   transcripts?: string[] | undefined;
+}
+
+export interface LoadFlakeWaiver {
+  /** Which test failed and why the failure is load, not this change or `main`. */
+  reason: string;
+  /** The full SHA of the commit on `main` where the failing test passed alone. */
+  controlHead: string;
 }
 
 export interface MergeGateReport {
@@ -138,6 +160,8 @@ export interface MergeGateReport {
   mergeTree?: string;
   /** Whether the pull request was declared the fix for a red `main` (`--fixes-main`). */
   fixesMain?: boolean;
+  /** The load-flake waiver the main-health step applied to a red `main`. */
+  waiver?: LoadFlakeWaiver & { blockedHead: string };
   /** The step that failed, or `null` when every step passed. */
   failedStep: string | null;
   /** Why it failed, in one line. */
@@ -340,18 +364,33 @@ export function mergeGate(
   if (healthFile !== undefined) {
     const health = mainHealth(runner, options.worktree, defaultBranch, healthFile);
     if (health.red && health.run !== undefined) {
-      if (options.fixesMain !== true)
+      const time = () => (partial.now ?? (() => new Date()))().toISOString();
+      const waiver = options.loadFlakeWaiver;
+      if (waiver !== undefined) {
+        const history = firstParentHistory(runner, options.worktree, defaultBranch);
+        if (history?.includes(waiver.controlHead) !== true)
+          return fail(
+            'main-health',
+            `The control head ${waiver.controlHead.slice(0, 12)} is not on origin/${defaultBranch}'s first-parent history.`,
+          );
+        report.waiver = { ...waiver, blockedHead: health.run.head };
+        if (!options.dryRun)
+          recordWaiver(healthFile, {
+            pr: options.pr,
+            time: time(),
+            blockedHead: health.run.head,
+            ...waiver,
+          });
+      } else if (options.fixesMain === true) {
+        report.fixesMain = true;
+        if (!options.dryRun)
+          recordFix(healthFile, { pr: options.pr, time: time(), blockedHead: health.run.head });
+      } else {
         return fail(
           'main-health',
-          `${renderMainHealth(health, defaultBranch)} Merge only the fix, declared with --fixes-main.`,
+          `${renderMainHealth(health, defaultBranch)} Merge only the fix, declared with --fixes-main, or waive a load flake with --waive-load-flake <reason> --control-head <sha>.`,
         );
-      report.fixesMain = true;
-      if (!options.dryRun)
-        recordFix(healthFile, {
-          pr: options.pr,
-          time: (partial.now ?? (() => new Date()))().toISOString(),
-          blockedHead: health.run.head,
-        });
+      }
     }
   }
 
@@ -581,6 +620,11 @@ export function renderMergeGate(report: MergeGateReport, dryRun: boolean): strin
     `base path: ${report.basePath ?? 'not checked'}`,
     `threads: ${report.threads === null ? 'not checked' : `seen ${report.threads.seen} of ${report.threads.total}, ${report.threads.unresolved} unresolved`}`,
   ];
+  if (report.fixesMain === true) lines.push('main health: red; merged as the declared fix');
+  if (report.waiver !== undefined)
+    lines.push(
+      `main health: red at ${report.waiver.blockedHead.slice(0, 12)}; waived as a load flake (control ${report.waiver.controlHead.slice(0, 12)}): ${report.waiver.reason}`,
+    );
   if (report.failedStep !== null) {
     lines.push(`FAILED at ${report.failedStep}: ${report.detail ?? ''}`);
     if (report.merged)
@@ -601,9 +645,42 @@ export function renderMergeGate(report: MergeGateReport, dryRun: boolean): strin
   return lines.join('\n');
 }
 
+/**
+ * The waiver `--waive-load-flake` and `--control-head` describe: both or neither, a reason that is
+ * not blank, a full SHA, and never beside `--fixes-main`. `deliver.ts` parses its flags with it.
+ */
+export function parseLoadFlakeWaiver(
+  reason: string | undefined,
+  controlHead: string | undefined,
+  fixesMain: boolean,
+): LoadFlakeWaiver | undefined {
+  if (reason === undefined && controlHead === undefined) return undefined;
+  if (fixesMain)
+    throw new UsageError(
+      '--fixes-main and --waive-load-flake are exclusive: a pull request either fixes main or merges past a load flake.',
+    );
+  if (reason === undefined || controlHead === undefined)
+    throw new UsageError('--waive-load-flake and --control-head go together.');
+  if (reason.trim() === '')
+    throw new UsageError('--waive-load-flake needs a reason naming the test and why it is load.');
+  if (!/^[0-9a-f]{40}$/.test(controlHead))
+    throw new UsageError(`--control-head "${controlHead}" is not a full commit SHA.`);
+  return { reason: reason.trim(), controlHead };
+}
+
 function parseArguments(argv: string[]): { options: MergeGateOptions; json: boolean } {
   const parsed = parseOptions(argv, {
-    values: ['config', 'pr', 'worktree', 'gate-log', 'comment-file', 'usage-log', 'health-file'],
+    values: [
+      'config',
+      'pr',
+      'worktree',
+      'gate-log',
+      'comment-file',
+      'usage-log',
+      'health-file',
+      'waive-load-flake',
+      'control-head',
+    ],
     repeated: ['transcript'],
     flags: ['dry-run', 'json', 'fixes-main'],
   });
@@ -611,6 +688,11 @@ function parseArguments(argv: string[]): { options: MergeGateOptions; json: bool
     throw new UsageError(`Unexpected argument ${parsed.positionals[0]}.`);
   const pr = requireOption(parsed, 'pr');
   if (!/^[1-9]\d*$/.test(pr)) throw new UsageError(`"${pr}" is not a pull request number.`);
+  const loadFlakeWaiver = parseLoadFlakeWaiver(
+    parsed.values['waive-load-flake'],
+    parsed.values['control-head'],
+    parsed.flags.has('fixes-main'),
+  );
   return {
     json: parsed.flags.has('json'),
     options: {
@@ -623,6 +705,7 @@ function parseArguments(argv: string[]): { options: MergeGateOptions; json: bool
       healthFile: parsed.values['health-file'],
       checkMainHealth: true,
       fixesMain: parsed.flags.has('fixes-main'),
+      loadFlakeWaiver,
       usageLog: parsed.values['usage-log'],
       transcripts: parsed.repeated['transcript'] ?? [],
     },
