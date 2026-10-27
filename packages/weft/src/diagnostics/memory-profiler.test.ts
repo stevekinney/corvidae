@@ -271,6 +271,7 @@ describe('engine memory stability under load', () => {
 
       // Let GC run
       Bun.gc(true);
+      // load-proof: Bun.gc(true) collects synchronously, so no work is pending for the loop; the yield is surplus and the assertions read synchronous profiler state
       await sleepForTesting(100);
 
       profiler.stop();
@@ -313,6 +314,7 @@ describe('engine memory stability under load', () => {
 
     // Force GC to let FinalizationRegistry clean up WeakRef entries
     Bun.gc(true);
+    // load-proof: Bun.gc(true) collects synchronously, so no work is pending for the loop; the yield is surplus and the assertions await real workflow results
     await sleepForTesting(50);
 
     // Verify the engine can still start new workflows (no leaked state

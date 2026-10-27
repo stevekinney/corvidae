@@ -261,6 +261,7 @@ describe('sending to the socket', () => {
     subject.socket.buffered = 64 * 1024;
     subject.process.stream.push(new TextEncoder().encode('output'));
     await subject.process.stream.source.kind;
+    // load-proof: a negative window: the assertion that follows is that the socket was not closed, and load can delay a close but never create one
     await Bun.sleep(0);
     expect(subject.socket.closes).toEqual([]);
     expect(subject.messages().map((message) => message.kind)).toEqual(['capabilities', 'output']);
@@ -331,6 +332,7 @@ describe('failures inside the connection', () => {
     const awaited23 = await subject.slot.current?.closed;
     expect(awaited23?.cause).toBe('disconnect');
     expect(process.cleanups).toBe(1);
+    // load-proof: the finish of the connection is a promise continuation of the cleanup already awaited, with no socket I/O pending, so a microtask drain completes it
     await Bun.sleep(0);
     expect(subject.finished).toContain(subject.connection);
   });
@@ -343,6 +345,7 @@ describe('failures inside the connection', () => {
     };
     const subject = rig({ createProcess: () => hosted });
     await attach(subject);
+    // load-proof: a negative window: the assertion that follows is that the socket was not closed, and load can delay a close but never create one
     await Bun.sleep(0);
     expect(subject.socket.closes).toEqual([]);
   });
@@ -453,6 +456,7 @@ describe('frames before the attachment exists', () => {
     const hello = subject.client.hello();
     if (!hello.ok) throw new Error('no hello');
     const pending = subject.connection.receive(hello.value);
+    // load-proof: the connection is driven through its in-memory socket double, so the pending receive reaches its admission wait inside the promise chain
     await Bun.sleep(0);
     await subject.connection.receive('x'.repeat(100));
     expect(subject.socket.closes).toEqual([1002]);
@@ -520,6 +524,7 @@ describe('release failures', () => {
     const hello = subject.client.hello();
     if (!hello.ok) throw new Error('no hello');
     await connection.receive(hello.value);
+    // load-proof: the rejecting dispose and the finish are promise continuations of the received hello on in-memory doubles, so a microtask drain completes them
     await Bun.sleep(0);
     expect(subject.socket.closes).toEqual([1011]);
     expect(finished).toContain(connection);

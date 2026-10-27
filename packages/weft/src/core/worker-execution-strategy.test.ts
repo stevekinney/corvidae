@@ -19,6 +19,12 @@ import { WORKER_PROTOCOL_VERSION } from './worker-protocol.ts';
 // Mock helpers
 // ---------------------------------------------------------------------------
 
+/** Let the strategy's queued continuations run before a test reads its messages. */
+// load-proof: the strategy talks to in-memory mock workers that reply inside the promise chain, so only microtasks are pending and no timer, socket or process is awaited
+async function settleStrategy(): Promise<void> {
+  await sleepForTesting(10);
+}
+
 interface MockWorker {
   postMessage: ReturnType<typeof mock>;
   terminate: ReturnType<typeof mock>;
@@ -409,7 +415,7 @@ describe('WorkerExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const message = firstMessage();
       expect(message.type).toBe('failed');
@@ -435,7 +441,7 @@ describe('WorkerExecutionStrategy', () => {
           checkpoint: new ArrayBuffer(0),
         });
 
-        await sleepForTesting(10);
+        await settleStrategy();
 
         const worker = firstWorker();
         const callsBefore = worker.postMessage.mock.calls.length;
@@ -474,7 +480,7 @@ describe('WorkerExecutionStrategy', () => {
           checkpoint: new ArrayBuffer(0),
         });
 
-        await sleepForTesting(10);
+        await settleStrategy();
 
         const worker = firstWorker();
         dispatchToMockWorker(
@@ -551,7 +557,7 @@ describe('WorkerExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const worker = firstWorker();
 
@@ -597,7 +603,7 @@ describe('WorkerExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const worker = firstWorker();
       const checkpointMessage: WorkerOutboundMessage = {
@@ -644,7 +650,7 @@ describe('WorkerExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const worker = firstWorker();
       dispatchToMockWorker(
@@ -664,7 +670,7 @@ describe('WorkerExecutionStrategy', () => {
         }),
       );
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       expect(mockPool.release).not.toHaveBeenCalled();
       expect(worker.postMessage).toHaveBeenCalledTimes(1);
@@ -755,7 +761,7 @@ describe('WorkerExecutionStrategy', () => {
       );
 
       unblockSignalCheckpoint!();
-      await sleepForTesting(10);
+      await settleStrategy();
 
       expect(mockPool.release).not.toHaveBeenCalled();
       expect(worker.postMessage.mock.calls.at(-1)?.[0]).toMatchObject({
@@ -774,7 +780,7 @@ describe('WorkerExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const worker = firstWorker();
       dispatchToMockWorker(
@@ -801,7 +807,7 @@ describe('WorkerExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       expect(worker.postMessage).toHaveBeenCalledTimes(2);
       expect(worker.postMessage.mock.calls[1]?.[0]).toMatchObject({
@@ -828,7 +834,7 @@ describe('WorkerExecutionStrategy', () => {
         operationResult: { status: 'completed', value: 'resume payload' },
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       expect(worker.postMessage).toHaveBeenCalledTimes(3);
       expect(worker.postMessage.mock.calls[2]?.[0]).toMatchObject({
@@ -866,7 +872,7 @@ describe('WorkerExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const parkedWorker = firstWorker();
       dispatchToMockWorker(
@@ -892,7 +898,7 @@ describe('WorkerExecutionStrategy', () => {
         operationResult: { status: 'completed', value: 'resume payload' },
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       expect(parkedWorker.postMessage.mock.calls.at(-1)?.[0]).toMatchObject({
         type: 'resume',
@@ -911,7 +917,7 @@ describe('WorkerExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const worker = firstWorker();
       dispatchToMockWorker(
@@ -938,7 +944,7 @@ describe('WorkerExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       strategy.resumeWorkflow({
         workflowId: 'wf-parked-crash',
@@ -954,7 +960,7 @@ describe('WorkerExecutionStrategy', () => {
         }),
       );
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       expect(
         messages.filter(
@@ -973,7 +979,7 @@ describe('WorkerExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const worker = firstWorker();
 
@@ -1004,7 +1010,7 @@ describe('WorkerExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const worker = firstWorker();
 
@@ -1183,7 +1189,7 @@ describe('WorkerExecutionStrategy', () => {
         input: null,
         checkpoint: new ArrayBuffer(0),
       });
-      await sleepForTesting(10);
+      await settleStrategy();
 
       dispatchToMockWorker(
         firstWorker(),
@@ -1218,7 +1224,7 @@ describe('WorkerExecutionStrategy', () => {
         input: null,
         checkpoint: new ArrayBuffer(0),
       });
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const runMessage = firstWorker().postMessage.mock.calls[0]?.[0] as {
         turnId: number;
@@ -1259,7 +1265,7 @@ describe('WorkerExecutionStrategy', () => {
         input: null,
         checkpoint: new ArrayBuffer(0),
       });
-      await sleepForTesting(10);
+      await settleStrategy();
 
       dispatchToMockWorker(firstWorker(), 'messageerror', new MessageEvent('messageerror'));
 
@@ -1305,7 +1311,7 @@ describe('WorkerExecutionStrategy', () => {
         input: null,
         checkpoint: new ArrayBuffer(0),
       });
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const runMessage = firstWorker().postMessage.mock.calls[0]?.[0] as {
         turnId: number;
@@ -1344,7 +1350,7 @@ describe('WorkerExecutionStrategy', () => {
         input: null,
         checkpoint: new ArrayBuffer(0),
       });
-      await sleepForTesting(10);
+      await settleStrategy();
 
       strategy.resumeWorkflow({
         workflowId: 'wf-large-active-resume',
@@ -1373,7 +1379,7 @@ describe('WorkerExecutionStrategy', () => {
         input: null,
         checkpoint: new ArrayBuffer(0),
       });
-      await sleepForTesting(10);
+      await settleStrategy();
 
       firstWorker().postMessage.mockImplementationOnce(() => {
         throw new Error('resume postMessage failed');
@@ -1405,7 +1411,7 @@ describe('WorkerExecutionStrategy', () => {
         input: null,
         checkpoint: new ArrayBuffer(0),
       });
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const worker = firstWorker();
       const runMessage = worker.postMessage.mock.calls[0]?.[0] as { turnId: number };
@@ -1433,7 +1439,7 @@ describe('WorkerExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
         operationResult: { status: 'completed', value: 'x'.repeat(5_000) },
       });
-      await sleepForTesting(10);
+      await settleStrategy();
 
       expect(worker.postMessage).toHaveBeenCalledTimes(1);
       expect(mockPool.discard).toHaveBeenCalledWith(worker);
@@ -1462,7 +1468,7 @@ describe('WorkerExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
         revision: 'rev-1',
       });
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const worker = firstWorker();
       const runMessage = worker.postMessage.mock.calls[0]?.[0] as { turnId: number };
@@ -1561,7 +1567,7 @@ describe('WorkerExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const worker = firstWorker();
       const checkpoint = new ArrayBuffer(16);
@@ -1610,7 +1616,7 @@ describe('WorkerExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       strategy.cancelWorkflow('wf-1');
 
@@ -1643,7 +1649,7 @@ describe('WorkerExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const worker = firstWorker();
       dispatchToMockWorker(
@@ -1664,7 +1670,7 @@ describe('WorkerExecutionStrategy', () => {
       );
 
       strategy.cancelWorkflow('wf-parked-cancel');
-      await sleepForTesting(10);
+      await settleStrategy();
 
       expect(worker.postMessage.mock.calls.at(-1)?.[0]).toEqual({
         type: 'cancel',
@@ -1694,7 +1700,7 @@ describe('WorkerExecutionStrategy', () => {
         input: null,
         checkpoint: new ArrayBuffer(0),
       });
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const cancelledWorker = firstWorker();
       strategy.cancelWorkflow('wf-discard-on-cancel');
@@ -1709,7 +1715,7 @@ describe('WorkerExecutionStrategy', () => {
         input: null,
         checkpoint: new ArrayBuffer(0),
       });
-      await sleepForTesting(10);
+      await settleStrategy();
 
       expect(mockWorkers[1]?.postMessage).toHaveBeenCalledTimes(1);
       expect(mockWorkers[1]?.postMessage.mock.calls[0]?.[0]).toMatchObject({
@@ -1887,7 +1893,7 @@ describe('WorkerExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const worker = firstWorker();
 
@@ -1932,7 +1938,7 @@ describe('WorkerExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const worker = firstWorker();
 
@@ -1994,7 +2000,7 @@ describe('WorkerExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const acquireMock = mockPool.acquire as unknown as ReturnType<typeof mock>;
       const acquireCallsBeforeDispose = acquireMock.mock.calls.length;
@@ -2117,7 +2123,7 @@ describe('WorkerExecutionStrategy', () => {
         input: null,
         checkpoint: new ArrayBuffer(0),
       });
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const worker = firstWorker();
       dispatchToMockWorker(
@@ -2131,7 +2137,7 @@ describe('WorkerExecutionStrategy', () => {
           } satisfies WorkerOutboundMessage,
         }),
       );
-      await sleepForTesting(10);
+      await settleStrategy();
 
       // The turn's outcome was never durably committed, so the worker must
       // never be quietly returned to the pool as though the workflow had
@@ -2151,7 +2157,7 @@ describe('WorkerExecutionStrategy', () => {
         input: null,
         checkpoint: new ArrayBuffer(0),
       });
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const worker = firstWorker();
       dispatchToMockWorker(
@@ -2165,7 +2171,7 @@ describe('WorkerExecutionStrategy', () => {
           } satisfies WorkerOutboundMessage,
         }),
       );
-      await sleepForTesting(10);
+      await settleStrategy();
 
       expect(mockPool.release).not.toHaveBeenCalled();
       expect(mockPool.discard).toHaveBeenCalledWith(worker);
@@ -2193,7 +2199,7 @@ describe('WorkerExecutionStrategy', () => {
         input: null,
         checkpoint: new ArrayBuffer(0),
       });
-      await sleepForTesting(10);
+      await settleStrategy();
 
       dispatchToMockWorker(
         firstWorker(),
@@ -2206,7 +2212,7 @@ describe('WorkerExecutionStrategy', () => {
           } satisfies WorkerOutboundMessage,
         }),
       );
-      await sleepForTesting(10);
+      await settleStrategy();
 
       // "Settled as failed/retryable per existing engine semantics": the
       // strategy's OWN reaction to an unprovable commit is the same
@@ -2977,7 +2983,7 @@ describe('WorkerExecutionStrategy', () => {
         input: null,
         checkpoint: new ArrayBuffer(0),
       });
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const worker = firstWorker();
       // Default config sends `run` immediately (no handshake required); a `ready`
@@ -2985,7 +2991,7 @@ describe('WorkerExecutionStrategy', () => {
       // would otherwise discard the worker for a message with no `workflowId`.
       expect(worker.postMessage).toHaveBeenCalledTimes(1);
       dispatchReady(worker);
-      await sleepForTesting(10);
+      await settleStrategy();
 
       expect(mockPool.discard).not.toHaveBeenCalled();
       expect(messages.some((message) => message.type === 'failed')).toBe(false);
@@ -3183,7 +3189,7 @@ describe('WorkerExecutionStrategy', () => {
       const worker = firstWorker();
 
       strategy[Symbol.dispose]();
-      await sleepForTesting(10);
+      await settleStrategy();
 
       expect(worker.postMessage).not.toHaveBeenCalled();
     });

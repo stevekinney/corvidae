@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { sleepForTesting } from '../../testing/fake-timers.test-support.ts';
+import { settleInlineLaunches } from '../../testing/inline-launch-settle.test-support.ts';
 
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
@@ -11,7 +11,7 @@ import type { WorkflowContext } from '../types.ts';
 import { workflow } from '../types.ts';
 
 async function flush(): Promise<void> {
-  await sleepForTesting(10);
+  await settleInlineLaunches();
 }
 
 describe('Acceptance criterion: Virtual-Object-style session state', () => {

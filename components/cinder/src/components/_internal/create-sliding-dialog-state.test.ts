@@ -866,9 +866,11 @@ describe('createSlidingDialogState', () => {
     // queued as a genuine TASK, modeled here with a real `setTimeout`
     // rather than a direct synchronous call.
     dialogElement.close();
+    const queuedTask = Promise.withResolvers<void>();
     setTimeout(() => {
       queuedTaskHasRun = true;
       dialogState.handleClose();
+      queuedTask.resolve();
     }, 0);
 
     // The dialog is closed, but NOTHING has processed that yet — neither
@@ -887,7 +889,7 @@ describe('createSlidingDialogState', () => {
     // this resolves, exactly one of the two possible reporting paths has
     // genuinely fired — proven by `queuedTaskHadRunWhenReported` below,
     // not merely by the final count.
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await queuedTask.promise;
     await tick();
 
     // Exactly ONE report — the in-flight transition callback correctly

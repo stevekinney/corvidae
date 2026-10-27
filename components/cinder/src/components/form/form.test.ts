@@ -32,6 +32,7 @@ describe('Form', () => {
     expect(form.hasAttribute('data-cinder-submitting')).toBe(true);
     release();
     await pending;
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(form.hasAttribute('data-cinder-submitting')).toBe(false);
   });

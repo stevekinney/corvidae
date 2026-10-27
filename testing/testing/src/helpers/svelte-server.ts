@@ -1,6 +1,8 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
+import { spawnWithHangGuard } from '../hang-guard.ts';
+
 const compileProgram = `
 import { sveltePlugin } from '@lostgradient/testing';
 import { dirname, join } from 'node:path';
@@ -91,13 +93,13 @@ async function runServerProgram(
   program: string,
   payload: Record<string, unknown>,
 ): Promise<string> {
-  const child = Bun.spawn([process.execPath, '--eval', program], {
+  // Through the hang guard, which kills a child that never exits after 120 s of awake time and
+  // starts Bun with `--no-install`.
+  const child = spawnWithHangGuard([process.execPath, '--eval', program], {
     cwd: packageRoot,
     stdin: new TextEncoder().encode(serializeServerInput(payload)),
     stdout: 'pipe',
     stderr: 'pipe',
-    // A hang detector for a child that never exits, never a performance bound.
-    timeout: 120_000,
   });
   const [status, output, errors] = await Promise.all([
     child.exited,

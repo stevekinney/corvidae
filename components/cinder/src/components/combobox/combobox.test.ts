@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { flushSync, tick } from 'svelte';
 
-import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
+import { requiredInstance, setupHappyDom, trackTimers } from '@lostgradient/testing';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { stripCinderComponentsLayer } from '../../test/css.ts';
 
 expect.extend(matchers);
@@ -324,10 +325,10 @@ describe('Combobox structure', () => {
     expect(hidden?.value).toBe('apple');
 
     form.reset();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(input?.value).toBe('Banana');
-    expect(hidden?.value).toBe('banana');
+    await waitFor(() => {
+      expect(input?.value).toBe('Banana');
+      expect(hidden?.value).toBe('banana');
+    });
     expect(container.querySelector('[role="listbox"]')).toBeNull();
   });
 
@@ -356,10 +357,10 @@ describe('Combobox structure', () => {
     expect(hidden?.value).toBe('apple');
 
     form.reset();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(input?.value).toBe('');
-    expect(hidden?.value).toBe('');
+    await waitFor(() => {
+      expect(input?.value).toBe('');
+      expect(hidden?.value).toBe('');
+    });
     expect(container.querySelector('[role="listbox"]')).toBeNull();
   });
 
@@ -385,8 +386,15 @@ describe('Combobox structure', () => {
     await fireEvent.mouseDown(appleOption);
     form.addEventListener('reset', (event) => event.preventDefault());
 
-    form.dispatchEvent(new Event('reset', { bubbles: true, cancelable: true }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    const timers = trackTimers();
+    try {
+      form.dispatchEvent(new Event('reset', { bubbles: true, cancelable: true }));
+      await waitUntil(() => timers.active().size === 0, {
+        message: 'the component finishes its form-reset timer',
+      });
+    } finally {
+      timers.release();
+    }
 
     expect(input?.value).toBe('Apple');
     expect(hidden?.value).toBe('apple');

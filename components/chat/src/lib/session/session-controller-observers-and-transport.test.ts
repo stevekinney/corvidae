@@ -161,6 +161,7 @@ describe('chat session controller', () => {
       onStreamEnd: () => ends.push('end'),
     });
     const pending = controller.adapter.sendMessage({ role: 'user', content: 'stop' }, []);
+    // load-proof: the mock transport and the session controller settle inside the promise chain, so this turn only drains microtasks
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     await controller.adapter.stopGenerating?.('user');
     await pending;

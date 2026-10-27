@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, test } from 'bun:test';
-import { flushSync, tick } from 'svelte';
+import { flushSync } from 'svelte';
 
 import { renderSvelteOnServer, setupHappyDom } from '@lostgradient/testing';
 
@@ -51,11 +51,6 @@ async function beginRenameWithF2(container: HTMLElement): Promise<HTMLInputEleme
   flushSync();
   expect(document.activeElement).toBe(renameInput(container));
   return renameInput(container);
-}
-
-async function flushLiveRegion(): Promise<void> {
-  await new Promise<void>((resolve) => setTimeout(resolve, 0));
-  await tick();
 }
 
 describe('Tree — inline label rename', () => {
@@ -191,9 +186,10 @@ describe('Tree — inline label rename', () => {
     const describedBy = renameInput(container).getAttribute('aria-describedby');
     expect(container.querySelector(`#${describedBy}`)?.textContent).toBe('Label is required.');
 
-    await flushLiveRegion();
-    const alert = container.querySelector('[role="alert"][aria-live="assertive"]');
-    expect(alert?.textContent).toContain('Label is required.');
+    await waitFor(() => {
+      const alert = container.querySelector('[role="alert"][aria-live="assertive"]');
+      expect(alert?.textContent).toContain('Label is required.');
+    });
   });
 
   test('onRename rejection keeps edit mode active and exposes the error accessibly', async () => {
@@ -224,9 +220,10 @@ describe('Tree — inline label rename', () => {
     expect(container.querySelector(`#${describedBy}`)?.textContent).toBe(
       'Rename failed: Name already exists.',
     );
-    await flushLiveRegion();
-    const alert = container.querySelector('[role="alert"][aria-live="assertive"]');
-    expect(alert?.textContent).toContain('Rename failed: Name already exists.');
+    await waitFor(() => {
+      const alert = container.querySelector('[role="alert"][aria-live="assertive"]');
+      expect(alert?.textContent).toContain('Rename failed: Name already exists.');
+    });
   });
 
   test('disabled items do not enter edit mode', async () => {

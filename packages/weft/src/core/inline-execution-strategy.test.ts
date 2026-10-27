@@ -11,6 +11,12 @@ import type { WorkerOutboundMessage, WorkflowFunction } from './types.ts';
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** Let the strategy's queued continuations run before a test reads its messages. */
+// load-proof: the strategy runs generator workflows in-process, so only microtasks are pending and no timer, socket or process is awaited
+async function settleStrategy(): Promise<void> {
+  await sleepForTesting(10);
+}
+
 function createStrategy(
   registrations: Map<string, { handler: WorkflowFunction; version: string }>,
 ): InlineExecutionStrategy {
@@ -140,7 +146,7 @@ describe('InlineExecutionStrategy', () => {
       });
 
       // Allow microtask to complete
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const message = firstMessage();
       expect(message.type).toBe('completed');
@@ -173,7 +179,7 @@ describe('InlineExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const message = firstMessage();
       expect(message.type).toBe('checkpoint');
@@ -189,7 +195,7 @@ describe('InlineExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const message = firstMessage();
       expect(message.type).toBe('failed');
@@ -215,7 +221,7 @@ describe('InlineExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const message = firstMessage();
       expect(message.type).toBe('failed');
@@ -367,12 +373,12 @@ describe('InlineExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
       messages.length = 0;
 
       strategy.continueWorkflow('wf-1', 42);
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const message = firstMessage();
       expect(message.type).toBe('completed');
@@ -411,12 +417,12 @@ describe('InlineExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
       messages.length = 0;
 
       strategy.throwIntoWorkflow('wf-1', new Error('activity failed'));
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const message = firstMessage();
       expect(message.type).toBe('failed');
@@ -453,12 +459,12 @@ describe('InlineExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
       messages.length = 0;
 
       strategy.throwIntoWorkflow('wf-1', new Error('oops'));
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const message = firstMessage();
       expect(message.type).toBe('completed');
@@ -597,7 +603,7 @@ describe('InlineExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const contextBeforePark = strategy.getContext('wf-1');
       expect(contextBeforePark).toBeDefined();
@@ -843,7 +849,7 @@ describe('InlineExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
       messages.length = 0;
 
       strategy.resumeWorkflow({
@@ -852,7 +858,7 @@ describe('InlineExecutionStrategy', () => {
         operationResult: { status: 'completed', value: 'hello' },
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const message = firstMessage();
       expect(message.type).toBe('completed');
@@ -884,7 +890,7 @@ describe('InlineExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
       messages.length = 0;
 
       strategy.resumeWorkflow({
@@ -893,7 +899,7 @@ describe('InlineExecutionStrategy', () => {
         operationResult: { status: 'failed', error: 'oops' },
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const message = firstMessage();
       expect(message.type).toBe('failed');
@@ -929,7 +935,7 @@ describe('InlineExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
       messages.length = 0;
 
       strategy.resumeWorkflow({
@@ -943,7 +949,7 @@ describe('InlineExecutionStrategy', () => {
         },
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const message = firstMessage();
       expect(message.type).toBe('failed');
@@ -987,10 +993,10 @@ describe('InlineExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
       messages.length = 0;
       strategy.throwIntoWorkflow('wf-1', new Error('activity failed'));
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const message = firstMessage();
       expect(message.type).toBe('checkpoint');
@@ -1023,10 +1029,10 @@ describe('InlineExecutionStrategy', () => {
         input: null,
         checkpoint: new ArrayBuffer(0),
       });
-      await sleepForTesting(10);
+      await settleStrategy();
       messages.length = 0;
       strategy.throwIntoWorkflow('wf-1', error, 'timeout');
-      await sleepForTesting(10);
+      await settleStrategy();
 
       const message = firstMessage();
       expect(message.type).toBe('failed');
@@ -1058,7 +1064,7 @@ describe('InlineExecutionStrategy', () => {
       strategy.adoptWorkflow('wf-aborted', generator, context, abortController);
 
       strategy.continueWorkflow('wf-aborted', undefined);
-      await sleepForTesting(10);
+      await settleStrategy();
 
       expect(advanced).toBe(false);
       expect(messages).toHaveLength(0);
@@ -1094,7 +1100,7 @@ describe('InlineExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await settleStrategy();
 
       strategy[Symbol.dispose]();
 

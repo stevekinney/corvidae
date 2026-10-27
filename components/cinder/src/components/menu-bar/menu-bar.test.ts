@@ -158,6 +158,7 @@ describe('MenuBar', () => {
 
     await tick();
     target.setAttribute('dir', 'rtl');
+    // load-proof: negative window: the assertion that follows only requires that nothing has fired once the microtask queue has drained
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(root.getAttribute('dir')).toBeNull();
 

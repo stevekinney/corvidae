@@ -276,6 +276,7 @@ describe('Engine.subscribeWorkflowFeedCommits — listener isolation', () => {
       await engine.signal(handle.id, 'release', 'go');
       await handle.result();
       // Give microtasks a turn so any leaked rejection would land.
+      // load-proof: negative window for a late rejection: load can only delay an unhandled rejection, never produce one earlier, so the absence check cannot flip
       await sleepForTesting(10);
     } finally {
       process.off('unhandledRejection', handler);

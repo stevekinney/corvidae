@@ -1,4 +1,4 @@
-import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
+import { flushMicrotasks } from '../testing/fake-timers.test-support.ts';
 /**
  * Tests for `dispatchJsonRpc` — the transport-neutral JSON-RPC dispatcher
  * that every JSON-RPC transport adapter (HTTP POST, WebSocket frame,
@@ -236,20 +236,23 @@ describe('dispatchJsonRpc — batch', () => {
   });
 
   it('dispatches batch items SEQUENTIALLY (side-effect order matches request order)', async () => {
-    // Stable contract — batches dispatch sequentially, not concurrently. Use staggered
-    // delays (first-slowest) so that a parallel `Promise.all`-style
-    // implementation would produce the reversed order ['third',
-    // 'second', 'first']. Only a sequential `for await` loop blocks
-    // long enough for the delays to be observed in request order.
+    // Stable contract — batches dispatch sequentially, not concurrently. Every invocation holds
+    // for a few microtask turns while it is "in flight"; a parallel `Promise.all`-style
+    // implementation would have all three in flight at once, a sequential `for await` loop never
+    // more than one. No timer is involved, so the outcome cannot depend on host load.
     const callOrder: string[] = [];
-    const delays: Record<string, number> = { first: 30, second: 20, third: 10 };
+    let inFlight = 0;
+    let maximumInFlight = 0;
     const registry = createOperationRegistry([
       makeOp({
         name: 'weft.test.seq',
         inputSchema: z.object({ id: z.string() }),
         outputSchema: z.object({}),
         invoke: async ({ input }) => {
-          await sleepForTesting(delays[input.id] ?? 0);
+          inFlight += 1;
+          maximumInFlight = Math.max(maximumInFlight, inFlight);
+          await flushMicrotasks(20);
+          inFlight -= 1;
           callOrder.push(input.id);
           return {};
         },
@@ -262,6 +265,7 @@ describe('dispatchJsonRpc — batch', () => {
     ]);
     await dispatchJsonRpc(body, { ...baseContext(), registry });
     expect(callOrder).toEqual(['first', 'second', 'third']);
+    expect(maximumInFlight).toBe(1);
   });
 
   it('returns kind=batch with all error responses when every item is invalid', async () => {

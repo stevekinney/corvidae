@@ -90,6 +90,7 @@ describe('Portal', () => {
     const iconLink = document.createElement('link');
     iconLink.rel = 'icon';
     document.head.append(iconLink);
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(removedQueries).not.toContain('(prefers-reduced-transparency: reduce)');

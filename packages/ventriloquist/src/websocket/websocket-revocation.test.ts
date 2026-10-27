@@ -98,11 +98,13 @@ describe('expiry of the principal', () => {
       const client = connect(harness);
       await client.opened;
       client.hello();
+      // load-proof: the hello reaches the pending authorization inside the promise chain on the in-memory harness, and the clock then advances by hand, not by time
       await Bun.sleep(0);
       harness.clock.advance(1_000);
       const awaited28 = await client.closed;
       expect(awaited28.code).toBe(1008);
       decision.resolve({ allowed: true, grant: 'interactive', launch: LAUNCH });
+      // load-proof: a negative window: the assertion that follows is that no session was created after the revocation, and load can delay a creation but never cause one
       await Bun.sleep(0);
       expect(created).toBe(0);
     } finally {

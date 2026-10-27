@@ -3,11 +3,12 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
 import { SvelteSet } from 'svelte/reactivity';
 
-import { setupHappyDom } from '@lostgradient/testing';
+import { setupHappyDom, trackTimers } from '@lostgradient/testing';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 setupHappyDom();
 
-const { cleanup, fireEvent, render, screen } = await import('@testing-library/svelte');
+const { cleanup, fireEvent, render, screen, waitFor } = await import('@testing-library/svelte');
 const { default: Fixture } = await import('../../test/fixtures/segmented-control-fixture.svelte');
 
 beforeEach(() => document.body.replaceChildren());
@@ -241,7 +242,7 @@ describe('SegmentedControl — single mode', () => {
     expect(selected).toBe('rendered');
 
     form.dispatchEvent(new Event('reset', { bubbles: true, cancelable: true }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await waitFor(() => expect(selected).toBe('source'));
     await tick();
 
     expect(selected).toBe('source');
@@ -433,13 +434,11 @@ describe('SegmentedControl — multiple mode', () => {
     expect(Array.from(selected)).toEqual(['bold', 'italic']);
 
     form.dispatchEvent(new Event('reset', { bubbles: true, cancelable: true }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await tick();
-
-    const hiddenInputs = Array.from(
-      container.querySelectorAll<HTMLInputElement>('input[type="hidden"][name="format"]'),
-    );
-    expect(hiddenInputs.map((input) => input.value)).toEqual(['bold']);
+    const hiddenValues = () =>
+      Array.from(
+        container.querySelectorAll<HTMLInputElement>('input[type="hidden"][name="format"]'),
+      ).map((input) => input.value);
+    await waitFor(() => expect(hiddenValues()).toEqual(['bold']));
   });
 
   test('canceled form reset leaves the current multiple selection unchanged', async () => {
@@ -461,8 +460,16 @@ describe('SegmentedControl — multiple mode', () => {
     selected.add('italic');
     await tick();
     form.addEventListener('reset', (event) => event.preventDefault());
-    form.dispatchEvent(new Event('reset', { bubbles: true, cancelable: true }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    const timers = trackTimers();
+    try {
+      form.dispatchEvent(new Event('reset', { bubbles: true, cancelable: true }));
+      await waitUntil(() => timers.active().size === 0, {
+        message: 'the component finishes its form-reset timer',
+      });
+    } finally {
+      timers.release();
+    }
+
     await tick();
 
     const hiddenInputs = Array.from(

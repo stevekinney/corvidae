@@ -700,6 +700,7 @@ describe('WorkflowEventSubscription', () => {
 
     // Give any rogue reconnect timer a chance to fire; the count must stay put.
     const settledCount = server.sockets.length;
+    // load-proof: negative window: a loaded host can only delay a rogue reconnect timer, never make one fire, so the unchanged socket count cannot flip
     await sleepForTesting(20);
     expect(server.sockets.length).toBe(settledCount);
   });

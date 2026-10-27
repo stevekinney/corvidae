@@ -605,15 +605,22 @@ describe('applying file changes to the engine', () => {
     return summary?.status;
   }
 
-  async function failingOnce(engine: Engine, method: 'pauseSchedule') {
+  /**
+   * Make `pauseSchedule` fail until the returned function is called. A failed apply is retried by
+   * every rescan that finishes after it, and one refresh can run more than one rescan (a changed
+   * file marks the catalog dirty again while it is being scanned), so a failure that ends after one
+   * call would be consumed or outlived depending on whether the second rescan's file read beats the
+   * failing apply. A failure the test releases does not depend on that order.
+   */
+  function failingUntilReleased(engine: Engine, method: 'pauseSchedule'): () => void {
     const original = engine[method].bind(engine);
-    let failures = 1;
+    let failing = true;
     engine[method] = async (...args: Parameters<Engine['pauseSchedule']>) => {
-      if (failures > 0) {
-        failures -= 1;
-        throw new Error('storage unavailable');
-      }
+      if (failing) throw new Error('storage unavailable');
       return original(...args);
+    };
+    return () => {
+      failing = false;
     };
   }
 
@@ -632,7 +639,7 @@ describe('applying file changes to the engine', () => {
     const { engine, runtime } = await w.boot();
     // The apply that startup queues behind itself must be over before a failure is armed.
     await runtime.workflows.refresh();
-    await failingOnce(engine, 'pauseSchedule');
+    const release = failingUntilReleased(engine, 'pauseSchedule');
     const hash = runtime.workflows.list()[0]?.hash ?? '';
 
     const error = await caught(runtime.workflows.pause('digest', { expectedHash: hash }));
@@ -643,7 +650,8 @@ describe('applying file changes to the engine', () => {
     expect(runtime.workflows.list()[0]?.paused).toBe(true);
     expect(await scheduleStatus(engine)).toBe('active');
 
-    // A rescan that finds no change still applies what failed.
+    // A rescan that finds no change still applies what failed, once the storage works again.
+    release();
     await runtime.workflows.refresh();
     expect(await scheduleStatus(engine)).toBe('paused');
   });
@@ -654,11 +662,12 @@ describe('applying file changes to the engine', () => {
     const { engine, runtime } = await w.boot();
     // The apply that startup queues behind itself must be over before a failure is armed.
     await runtime.workflows.refresh();
-    await failingOnce(engine, 'pauseSchedule');
+    const release = failingUntilReleased(engine, 'pauseSchedule');
     await w.put('digest', { ...parked('digest', 'a'), paused: true });
 
     await runtime.workflows.refresh();
     expect(await scheduleStatus(engine)).toBe('active');
+    release();
     await runtime.workflows.refresh();
 
     expect(await scheduleStatus(engine)).toBe('paused');
@@ -670,9 +679,10 @@ describe('applying file changes to the engine', () => {
     const { engine, runtime } = await w.boot();
     // The apply that startup queues behind itself must be over before a failure is armed.
     await runtime.workflows.refresh();
-    await failingOnce(engine, 'pauseSchedule');
+    const release = failingUntilReleased(engine, 'pauseSchedule');
     const hash = runtime.workflows.list()[0]?.hash ?? '';
     await caught(runtime.workflows.pause('digest', { expectedHash: hash }));
+    release();
     await runtime.workflows.refresh();
 
     const paused = runtime.workflows.list()[0]?.hash ?? '';

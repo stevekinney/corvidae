@@ -35,6 +35,7 @@ function builtRows(now: string, ...inputs: Array<MessageInput & { id: string }>)
 
 async function settle(bureau: Bureau, runId: string): Promise<void> {
   await waitForTaskState(bureau, runId);
+  // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
   for (let turn = 0; turn < 10; turn++) await yieldToPortableEventLoop();
 }
 

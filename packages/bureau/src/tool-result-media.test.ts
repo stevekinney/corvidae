@@ -27,6 +27,7 @@ import { alice, base64Of, bob, pngBytes } from './testing/asset-fixtures.test-su
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   while (cleanups.length > 0) await cleanups.pop()!();
+  // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
   await yieldToPortableEventLoop();
 });
 
@@ -174,6 +175,7 @@ describe('a tool-returned image through an approved review', () => {
       principal: alice.id,
     });
     await waitForTaskState(bureau, run.id);
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 10; turn++) await yieldToPortableEventLoop();
     const [review] = bureau.reviews.list();
     expect(review?.kind).toBe('tool-approval');

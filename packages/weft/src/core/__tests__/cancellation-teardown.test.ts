@@ -11,7 +11,8 @@
 
 import { describe, expect, it } from 'bun:test';
 import { makeActivity } from '../../testing/activity.test-support.ts';
-import { sleepForTesting, waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { settleInlineLaunches } from '../../testing/inline-launch-settle.test-support.ts';
 
 import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
 import { KEYS } from '../../storage/interface.ts';
@@ -23,7 +24,7 @@ import type { WorkflowContext } from '../types.ts';
 import { activity, workflow } from '../types.ts';
 
 async function flush(): Promise<void> {
-  await sleepForTesting(10);
+  await settleInlineLaunches();
 }
 
 // ---------------------------------------------------------------------------
@@ -275,6 +276,7 @@ describe('ctx.onCancel()', () => {
       ctx: WorkflowContext,
     ) {
       ctx.onCancel(async () => {
+        // load-proof: the delay is the handler's own simulated async work inside the code under test; the engine awaits it and the test asserts only after cancel() and the rejected result() settle
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
         sequence.push('async-handler-done');
       });

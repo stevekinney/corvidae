@@ -79,6 +79,7 @@ const emptyCheckpointStore = createCheckpointStore(
 );
 
 /** Resolves after one macrotask, so a rejection nobody handled has been reported by then. */
+// load-proof: every caller awaits the settled run result first, and the events it then asserts are emitted before that result resolves; this turn only lets a late unhandled-rejection report arrive before the absence assertion
 const macrotask = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 let unhandledRejections: unknown[] = [];

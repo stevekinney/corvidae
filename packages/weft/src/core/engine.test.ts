@@ -8,6 +8,7 @@ import {
   useFakeTimers,
   withTimeout,
 } from '../testing/fake-timers.test-support.ts';
+import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
 
 import type {
   BatchOperation,
@@ -78,7 +79,7 @@ import {
 
 /** Drain microtasks so fire-and-forget work completes. */
 async function flush(): Promise<void> {
-  await sleepForTesting(10);
+  await settleInlineLaunches();
 }
 
 type WorkflowHandleObservable = {
@@ -215,6 +216,7 @@ class ConcurrentAttributeReadCountingStorage extends AttributeReadCountingStorag
     );
 
     try {
+      // load-proof: storage double that holds each attribute read in flight so the concurrency counters can overlap; the test asserts them only after the awaited workflow results
       await sleepForTesting(1);
       return await this.getStoredValue(key);
     } finally {
@@ -2933,6 +2935,7 @@ describe('Engine', () => {
     const engine = new Engine();
     const fast = async () => 'fast';
     const slow = async () => {
+      // load-proof: the slow branch needs a macrotask while the fast branch resolves in microtasks, so the race order is fixed by the event loop and cannot be flipped by host load
       await sleepForTesting(100);
       return 'slow';
     };
@@ -7182,6 +7185,7 @@ describe('Engine speculative execution', () => {
         return `result:${typedInput}`;
       },
       verify: async (result: string) => {
+        // load-proof: simulated async work inside an activity body under test; the result is awaited through handle.result() before anything is asserted
         await sleepForTesting(10);
         events.push(`verify:${result}`);
         return true;
@@ -7224,6 +7228,7 @@ describe('Engine speculative execution', () => {
         return `result:${typedInput}`;
       },
       verify: async (result: string) => {
+        // load-proof: simulated async work inside an activity body under test; the result is awaited through handle.result() before anything is asserted
         await sleepForTesting(20);
         events.push(`verify:${result}`);
         return false;
@@ -7298,6 +7303,7 @@ describe('Engine speculative execution', () => {
         return `result:${typedInput}`;
       },
       verify: async (result: string) => {
+        // load-proof: simulated async work inside an activity body under test; the result is awaited through handle.result() before anything is asserted
         await sleepForTesting(10);
         events.push(`verify:${result}`);
         return false;
@@ -7311,6 +7317,7 @@ describe('Engine speculative execution', () => {
       name: 'run-all-second',
       execute: async (input: unknown) => {
         const typedInput = String(input);
+        // load-proof: simulated async work inside an activity body under test; the result is awaited through handle.result() before anything is asserted
         await sleepForTesting(5);
         events.push(`execute:${typedInput}`);
         return `result:${typedInput}`;

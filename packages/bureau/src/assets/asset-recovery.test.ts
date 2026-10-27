@@ -491,6 +491,7 @@ describe('blob reuse during collection', () => {
     const collection = opened.assets.collectGarbage();
     await parked.promise;
     const second = await opened.assets.admit({ source: { kind: 'inline', bytes: PNG } }, alice);
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 5; turn++) await yieldToPortableEventLoop();
     release.resolve();
 

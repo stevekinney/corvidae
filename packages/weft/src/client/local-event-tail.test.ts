@@ -280,6 +280,7 @@ describe('createLocalWorkflowEventTail', () => {
     handle.dispatchEvent(new WorkflowCompletedEvent('wf-overlap', 'ok', 1));
     // Let the pump cycle the dispatched events into #pendingLive before the
     // catch-up drains (the engine iterator delivers them across microtasks).
+    // load-proof: the engine iterator delivers the dispatched events across microtasks only (no timer or socket), so a microtask drain settles the pump
     await sleepForTesting(5);
     releaseFetch.resolve();
 

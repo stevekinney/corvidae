@@ -43,6 +43,7 @@ mock.module('../../utilities/json-schema-interpreter.ts', () => ({
 const { cleanup, fireEvent, render, screen } = await import('@testing-library/svelte');
 const { default: SchemaForm } = await import('./schema-form.svelte');
 
+// load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
 async function flush(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }

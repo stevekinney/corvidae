@@ -8,7 +8,7 @@ import { principalFromApiKey } from '../server/principal.ts';
 import type { EventEnvelope, WorkflowEventFeed } from '../server/workflow-event-feed.ts';
 import { IndexedDBStorage } from '../storage/indexeddb.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
+import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
 import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { resetSetupServiceWorkerRegistry, setupServiceWorker } from './setup.ts';
 
@@ -199,6 +199,7 @@ describe('setupServiceWorker', () => {
       expect(dispose).toHaveBeenCalledTimes(1);
       await realDisposal;
       // The background disposal's rejection is absorbed rather than surfacing unhandled.
+      // load-proof: negative window: asserts the background disposal's rejection is absorbed; load can only delay an unhandled rejection, never produce one earlier
       await new Promise<void>((resolve) => setImmediate(resolve));
     } finally {
       dispose.mockRestore();
@@ -590,7 +591,7 @@ describe('setupServiceWorker', () => {
 
 /** Drain the microtask queue so fire-and-forget engine work settles. */
 async function flush(): Promise<void> {
-  await sleepForTesting(10);
+  await settleInlineLaunches();
 }
 
 const parkingWorkflow = workflow({ name: 'parking-workflow' }).execute(async function* (ctx) {

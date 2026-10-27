@@ -173,6 +173,7 @@ describe('history and reset', () => {
     const entries = controller.history!.entries.length;
     workbench.setContext({ colorMode: 'dark', motion: 'default' });
     await controller.flush();
+    // load-proof: the editors flush through Svelte and the in-memory evaluator, so the update settles inside the microtask queue
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(workbench.properties[0]?.value).toBe('9px');
     expect(workbench.context.colorMode).toBe('dark');

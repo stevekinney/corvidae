@@ -1,5 +1,7 @@
 import { readdirSync } from 'node:fs';
 
+import { awakeTurns } from '@lostgradient/testing/wait-until';
+
 import { trackHostedProcess } from '../bun/bun-process.test-support.ts';
 import type { HostedProcess, ProcessExitReceiver, ProcessProfile } from '../bun/process-types.ts';
 import { ClientEndpoint } from '../protocol/client-endpoint.ts';
@@ -380,6 +382,7 @@ function createDirectRig(options: RigOptions, observed: ObservedProcess): Rig {
       await session.closed;
       await sessionDisposal;
       // The connection closes the transport after it sends the cleanup result; let that step run.
+      // load-proof: this rig's transport is the in-memory fixture transport, which closes in a promise continuation of the cleanup result
       await Bun.sleep(0);
       return transport.closeCodes[0];
     },
@@ -464,10 +467,13 @@ function createWebSocketRig(options: RigOptions, observed: ObservedProcess): Rig
     },
     stop: async () => {
       await harness.stop();
-      // The client's own socket has seen the close, and the runtime then releases the descriptor
-      // behind it on its next turn; counting descriptors before that would count one still closing.
+      // The client's own socket has seen the close, but the server learns of it on its own I/O
+      // event, so wait for the server to account for it before reading the counts below. A socket
+      // that never closes is a leak, and the wait ends on the hang guard.
       await socketClient.closed;
-      await Bun.sleep(0);
+      for await (const _turn of awakeTurns()) {
+        if (harness.server.pendingWebSockets === 0 && harness.terminal.connectionCount === 0) break;
+      }
       // The session already cleaned up; this is the safety net, and its failure changes nothing.
       await Promise.allSettled([observed.hosted.backend.cleanup()]);
       return {

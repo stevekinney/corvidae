@@ -515,6 +515,7 @@ describe('partial-failure preservation worker-mode boundary', () => {
     await signalWaiters.registration.promise;
     // Let the post-registration scan finish so the old operation is parked on
     // its waiter promise before replacement races the delivered wake.
+    // load-proof: the registration promise was awaited and the scan that follows runs inside the promise chain on in-memory waiters, so a microtask drain parks the old operation
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     const oldWaiter = signalWaiters.get('workflow-id:release');
     if (!oldWaiter) throw new Error('expected the old waiter');

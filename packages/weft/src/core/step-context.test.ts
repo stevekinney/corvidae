@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
+import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
 
 import { MemoryStorage } from '../storage/memory.ts';
 import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
@@ -72,10 +73,12 @@ describe('step-context', () => {
     const asyncStepsWorkflow = workflow({ name: 'async-steps' }).execute(
       compileStepWorkflow(async (ctx: StepWorkflowContext, _input: unknown) => {
         const value = await ctx.step('fetch', async () => {
+          // load-proof: simulated async step work inside a workflow body; handle.result() is awaited before anything is asserted
           await sleepForTesting(1);
           return 42;
         });
         const doubled = await ctx.step('double', async () => {
+          // load-proof: simulated async step work inside a workflow body; handle.result() is awaited before anything is asserted
           await sleepForTesting(1);
           return value * 2;
         });
@@ -262,7 +265,7 @@ describe('step-context', () => {
 describe('step-context durability', () => {
   /** Drain microtasks so fire-and-forget engine work settles. */
   async function flush(): Promise<void> {
-    await sleepForTesting(10);
+    await settleInlineLaunches();
   }
 
   it('does not re-execute completed steps after a crash and recovery', async () => {
