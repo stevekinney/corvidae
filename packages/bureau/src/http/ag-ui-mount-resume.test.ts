@@ -964,10 +964,10 @@ describe('the resume command ledger', () => {
         expect(ran).toBe(true);
         expect(diagnostics).toEqual([]);
         // The receipt for the run the first start created is still there.
-        const located = await bureau.locateRunCreationReceipt({
+        const located = await bureau.tasks.receipt({
           principal: 'anonymous:local',
+          commandId: 'client-run-1',
           agentName: 'assistant',
-          runCreationRequestId: 'client-run-1',
         });
         expect(located.status).toBe('recorded');
       },

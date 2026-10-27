@@ -196,10 +196,7 @@ describe('bureau.eventHistory run ownership survives a process restart over LMDB
           usage: { prompt: 0, completion: 0, total: 0 },
         });
 
-        const asOwner = await bureauB.eventHistory(
-          { kind: 'run', id: run.id },
-          { principal: 'alice' },
-        );
+        const asOwner = await bureauB.tasks.events(run.id, { principal: 'alice' });
         if ('outcome' in asOwner) {
           throw new Error(
             `expected a page for the owning principal, got ${JSON.stringify(asOwner)}`,
@@ -209,15 +206,12 @@ describe('bureau.eventHistory run ownership survives a process restart over LMDB
         expect(toolCallId).toMatch(/^tool-call-/);
         expect(asOwner as unknown).toEqual(expectedRecoveredPage(run.id, toolCallId));
 
-        const asStranger = await bureauB.eventHistory(
-          { kind: 'run', id: run.id },
-          { principal: 'mallory' },
-        );
+        const asStranger = await bureauB.tasks.events(run.id, { principal: 'mallory' });
         expect(asStranger).toEqual({ outcome: 'not-found' });
 
         // A trusted caller that omits `principal` entirely still bypasses
         // the check, exactly as it does for a never-restarted run.
-        const trusted = await bureauB.eventHistory({ kind: 'run', id: run.id });
+        const trusted = await bureauB.tasks.events(run.id);
         if ('outcome' in trusted) {
           throw new Error(`expected a page for a trusted caller, got ${JSON.stringify(trusted)}`);
         }
@@ -227,7 +221,7 @@ describe('bureau.eventHistory run ownership survives a process restart over LMDB
         // a trusted caller reading it gets an empty page, not another run's
         // events.
         expect(bureauB.tasks.detail('run-that-never-existed')).toBeUndefined();
-        expect(await bureauB.eventHistory({ kind: 'run', id: 'run-that-never-existed' })).toEqual({
+        expect(await bureauB.tasks.events('run-that-never-existed')).toEqual({
           events: [],
           hasMore: false,
         });

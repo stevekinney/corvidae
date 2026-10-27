@@ -22,6 +22,7 @@ import type {
 import type { RegistryAgnosticEngine } from '@lostgradient/weft';
 
 import type { GoalState } from './goal-state';
+import type { DurableEventHistoryRead, DurableEventHistorySubscribe } from './types';
 
 /** The slice of the durable engine the goal control plane drives. */
 export type GoalEngine = Pick<
@@ -430,4 +431,18 @@ export interface BureauGoals<TName extends string = string> {
   recover(goalRunId?: string, query?: BureauGoalQuery): Promise<BureauGoalRecoveryReport>;
   /** Terminal goals only. Idempotent; each call re-applies the checkpoint retention. */
   close(goalRunId: string, query?: BureauGoalQuery): Promise<BureauGoalCloseOutcome>;
+  /**
+   * A page of the goal's durable event history: its attempts, validations, and end. With
+   * `options.principal`, a goal that principal may not read answers as one that does not exist.
+   */
+  events(
+    goalRunId: string,
+    options?: Parameters<DurableEventHistoryRead>[1],
+  ): ReturnType<DurableEventHistoryRead>;
+  /** Subscribes to the goal's durable event history: a replay from the cursor, then the live tail. */
+  subscribeEvents(
+    goalRunId: string,
+    listener: Parameters<DurableEventHistorySubscribe>[1],
+    options?: Parameters<DurableEventHistorySubscribe>[2],
+  ): ReturnType<DurableEventHistorySubscribe>;
 }

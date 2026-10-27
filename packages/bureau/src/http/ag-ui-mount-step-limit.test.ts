@@ -275,7 +275,7 @@ describe('a peer stream of a run that stops at its step limit', () => {
       { ...STEP_LIMIT, script: [hold('a-generating'), say('one'), say('two')] },
       async (harness) => {
         const received = await followFromPeer(harness, (peer) => {
-          peer.bureau.eventHistory = async () => {
+          peer.bureau.tasks.events = async () => {
             throw new Error('The event history is unavailable.');
           };
         });

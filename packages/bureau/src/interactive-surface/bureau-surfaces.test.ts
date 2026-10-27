@@ -153,7 +153,7 @@ describe('interactive surfaces on a Bureau', () => {
           representation: { kind: 'input-form' },
         },
       });
-      const page = await bureau.eventHistory({ kind: 'run', id: taskId }, { limit: 200 });
+      const page = await bureau.tasks.events(taskId, { limit: 200 });
       const kinds = 'events' in page ? page.events.map((event) => event.kind) : [];
       expect(kinds.filter((kind) => kind.startsWith('surface.'))).toEqual([
         'surface.created',

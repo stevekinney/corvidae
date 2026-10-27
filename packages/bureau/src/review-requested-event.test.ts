@@ -18,7 +18,7 @@ async function runEvents(
   bureau: Awaited<ReturnType<typeof createBureau>>,
   runId: string,
 ): Promise<HistoryEvent[]> {
-  const page = await bureau.eventHistory({ kind: 'run', id: runId });
+  const page = await bureau.tasks.events(runId);
   if (!('events' in page)) throw new Error(`no event page: ${JSON.stringify(page)}`);
   return page.events.map((event) => ({ kind: event.kind, payload: event.payload }));
 }

@@ -3,7 +3,14 @@ import type { AgentRun, RunEvent, RunResult } from '@lostgradient/operative';
 import type { BureauChildren } from '../child-topology.ts';
 import type { RunCreationReceipt } from '../command-ledger.ts';
 import type { TaskRegistry } from '../task-registry.ts';
-import type { Bureau, BureauTasks, TaskHandle, TaskInput, TaskInspection } from '../types.ts';
+import type {
+  BureauTasks,
+  DurableEventHistoryRead,
+  DurableEventHistorySubscribe,
+  TaskHandle,
+  TaskInput,
+  TaskInspection,
+} from '../types.ts';
 
 /**
  * What {@link createTasks} composes `bureau.tasks` from: the Bureau's own task implementations,
@@ -31,9 +38,9 @@ export type TasksDependencies = {
   /** The child topology `inspect` lists a task's children from. */
   readonly children: Pick<BureauChildren<string>, 'list'>;
   /** The Bureau's durable event history read, which {@link BureauTasks.events} narrows to the run owner. */
-  readonly eventHistory: Bureau['eventHistory'];
+  readonly eventHistory: DurableEventHistoryRead;
   /** The durable event history subscription, which {@link BureauTasks.subscribeEvents} narrows to the run owner. */
-  readonly subscribeEventHistory: Bureau['subscribeEventHistory'];
+  readonly subscribeEventHistory: DurableEventHistorySubscribe;
   /** The error a missing task is refused with. */
   readonly notFound: (message: string) => Error;
 };

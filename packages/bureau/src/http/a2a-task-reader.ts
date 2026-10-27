@@ -32,8 +32,8 @@ import type { MultiModalContent } from 'conversationalist';
 import { replyPartsOf } from './a2a-reply-parts.ts';
 
 /** The part of a Bureau the reader needs. */
-export type A2ATaskReaderBureau = Pick<Bureau, 'eventHistory' | 'assets' | 'surfaces'> & {
-  readonly tasks: Pick<BureauTasks, 'detail'>;
+export type A2ATaskReaderBureau = Pick<Bureau, 'assets' | 'surfaces'> & {
+  readonly tasks: Pick<BureauTasks, 'detail' | 'events'>;
 } & { readonly reviews: Pick<BureauReviews, 'get'> } & {
   readonly internals: FormsAuditInternals & { readonly taskRegistry: Pick<TaskRegistry, 'record'> };
 };
@@ -105,10 +105,10 @@ export function createTaskReader(options: {
     let content: string | undefined;
     let held: readonly unknown[] = [];
     for (;;) {
-      const page = await bureau.eventHistory(
-        { kind: 'run', id: view.id },
-        { ...(since === undefined ? {} : { since }), limit: 200 },
-      );
+      const page = await bureau.tasks.events(view.id, {
+        ...(since === undefined ? {} : { since }),
+        limit: 200,
+      });
       if (!('events' in page)) break;
       for (const event of page.events) {
         if (event.kind !== 'run.completed') continue;

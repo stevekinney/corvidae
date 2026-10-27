@@ -190,10 +190,7 @@ async function recoveryScenario(backend: Backend, scope: ScenarioScope): Promise
       expect(durableRun?.status).toBe('completed');
     }
 
-    const asOwner = await winner.bureau.eventHistory(
-      { kind: 'run', id: marker.runId },
-      { principal: 'alice' },
-    );
+    const asOwner = await winner.bureau.tasks.events(marker.runId, { principal: 'alice' });
     if ('outcome' in asOwner) {
       throw new Error(`expected a page for alice, got ${JSON.stringify(asOwner)}`);
     }
@@ -201,9 +198,9 @@ async function recoveryScenario(backend: Backend, scope: ScenarioScope): Promise
     expect(kinds.filter((kind) => kind === 'run.completed')).toHaveLength(1);
     expect(kinds).not.toContain('run.error');
     expect(kinds).not.toContain('run.aborted');
-    expect(
-      await winner.bureau.eventHistory({ kind: 'run', id: marker.runId }, { principal: 'mallory' }),
-    ).toEqual({ outcome: 'not-found' });
+    expect(await winner.bureau.tasks.events(marker.runId, { principal: 'mallory' })).toEqual({
+      outcome: 'not-found',
+    });
 
     // Fencing: the post-crash step ran once across both racers; step 0 never reran.
     expect(b.stepsAtOrAfterOne() + c.stepsAtOrAfterOne()).toBe(1);
@@ -238,10 +235,9 @@ async function recoveryScenario(backend: Backend, scope: ScenarioScope): Promise
     expect(indices).toEqual(indices.map((_, position) => position));
 
     // Continuity: the pre-crash cursor still resumes without a gap.
-    const resumed = await winner.bureau.eventHistory(
-      { kind: 'session', id: marker.sessionId },
-      { since: marker.sessionCursor },
-    );
+    const resumed = await winner.bureau.contexts.events(marker.sessionId, {
+      since: marker.sessionCursor,
+    });
     if ('outcome' in resumed) {
       throw new Error(`expected a resumable page, got ${JSON.stringify(resumed)}`);
     }

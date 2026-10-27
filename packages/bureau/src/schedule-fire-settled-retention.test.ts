@@ -59,10 +59,9 @@ async function openAt(
 
 /** The fire's settled events the history retains, reading past a retention gap. */
 async function settledEventsOf(bureau: Bureau, fireId: string) {
-  const owner = { kind: 'run', id: fireId } as const;
-  let page = await bureau.eventHistory(owner);
+  let page = await bureau.tasks.events(fireId);
   if ('outcome' in page && page.outcome === 'gap') {
-    page = await bureau.eventHistory(owner, {
+    page = await bureau.tasks.events(fireId, {
       since: String(Math.max(page.firstRetainedSequence - 1, -1)),
     });
   }

@@ -157,15 +157,12 @@ describe('the owner of a run and of its session (COR-718)', () => {
       });
       await settle(bureau, run.id);
 
-      const asOwner = await bureau.eventHistory(
-        { kind: 'session', id: run.sessionId },
-        { principal: 'api-key:alice' },
-      );
+      const asOwner = await bureau.contexts.events(run.sessionId, { principal: 'api-key:alice' });
       expect('outcome' in asOwner).toBe(false);
       for (const principal of ['api-key:bob', 'anonymous:local']) {
-        expect(
-          await bureau.eventHistory({ kind: 'session', id: run.sessionId }, { principal }),
-        ).toEqual({ outcome: 'not-found' });
+        expect(await bureau.contexts.events(run.sessionId, { principal })).toEqual({
+          outcome: 'not-found',
+        });
       }
     } finally {
       await bureau.dispose();
@@ -288,14 +285,8 @@ describe('durable history follows the owner of record (COR-718)', () => {
       const run = await bureau.createRun({ agentName: 'default', message: 'no principal' });
       await settle(bureau, run.id);
 
-      const asLocal = await bureau.eventHistory(
-        { kind: 'run', id: run.id },
-        { principal: 'anonymous:local' },
-      );
-      const asStranger = await bureau.eventHistory(
-        { kind: 'run', id: run.id },
-        { principal: 'api-key:bob' },
-      );
+      const asLocal = await bureau.tasks.events(run.id, { principal: 'anonymous:local' });
+      const asStranger = await bureau.tasks.events(run.id, { principal: 'api-key:bob' });
 
       expect([verdict(asLocal), verdict(asStranger)]).toEqual(['page', 'not-found']);
     } finally {
@@ -320,7 +311,7 @@ describe('durable history follows the owner of record (COR-718)', () => {
       });
       await bureau.schedules.cancel(owned!.id);
       const read = async (id: string, principal: string) =>
-        verdict(await bureau.eventHistory({ kind: 'schedule', id }, { principal }));
+        verdict(await bureau.schedules.events(id, { principal }));
 
       expect([
         await read(owned!.id, 'api-key:alice'),
@@ -357,7 +348,7 @@ describe('the history of a live catalog run (COR-718)', () => {
       const unowned = bureau.run('worker', 'work');
       const owned = bureau.run('worker', 'work', { principal: 'api-key:alice' });
       const history = async (id: string, principal: string) => {
-        const page = await bureau.eventHistory({ kind: 'run', id }, { principal });
+        const page = await bureau.tasks.events(id, { principal });
         return 'outcome' in page ? page.outcome : 'page';
       };
 

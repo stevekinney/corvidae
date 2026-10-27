@@ -382,7 +382,7 @@ async function abortSiblingScenario(backend: Backend, scope: ScenarioScope): Pro
       runIds: [marker.xRunId],
     });
 
-    const xEvents = await bureau.eventHistory({ kind: 'run', id: marker.xRunId });
+    const xEvents = await bureau.tasks.events(marker.xRunId);
     if ('outcome' in xEvents) throw new Error(`expected a page, got ${JSON.stringify(xEvents)}`);
     const xKinds = xEvents.events.map((event) => event.kind);
     expect(xKinds.filter((kind) => kind === 'run.aborted')).toHaveLength(1);
@@ -400,7 +400,7 @@ async function abortSiblingScenario(backend: Backend, scope: ScenarioScope): Pro
         runIds: [marker.yRunId],
       },
     );
-    const yEvents = await bureau.eventHistory({ kind: 'run', id: marker.yRunId });
+    const yEvents = await bureau.tasks.events(marker.yRunId);
     if ('outcome' in yEvents) throw new Error(`expected a page, got ${JSON.stringify(yEvents)}`);
     const yKinds = yEvents.events.map((event) => event.kind);
     expect(yKinds.filter((kind) => kind === 'run.completed')).toHaveLength(1);

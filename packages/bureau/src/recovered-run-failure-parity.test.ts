@@ -121,7 +121,7 @@ async function settle(bureau: Bureau, runId: string, sessionId: string): Promise
   );
   const run = bureau.tasks.detail(runId)!;
   const session = (await bureau.contexts.get(sessionId))!;
-  const history = await bureau.eventHistory({ kind: 'run', id: runId });
+  const history = await bureau.tasks.events(runId);
   const recorded = 'events' in history ? history.events : [];
   return {
     runId,

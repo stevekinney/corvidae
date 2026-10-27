@@ -66,7 +66,7 @@ async function parkedRun(opened: OpenedBureau, principal = OWNER.alice) {
     'the run never parked',
   );
   await waitForCondition(async () => {
-    const page = await opened.bureau.eventHistory({ kind: 'run', id: run.id });
+    const page = await opened.bureau.tasks.events(run.id);
     return 'events' in page && page.events.some((event) => event.kind === 'review.requested');
   }, 'review.requested never reached the history');
   return run;
@@ -151,7 +151,7 @@ describe('bureau.tasks.events', () => {
         'finish',
       );
       await waitForCondition(async () => {
-        const page = await opened.bureau.eventHistory({ kind: 'run', id: run.id });
+        const page = await opened.bureau.tasks.events(run.id);
         return 'events' in page && page.events.some((event) => event.kind === 'run.completed');
       }, 'run.completed never reached the history');
 
@@ -236,7 +236,7 @@ describe('bureau.tasks.events', () => {
           'the approval never became pending',
         );
         await waitForCondition(async () => {
-          const page = await opened.bureau.eventHistory({ kind: 'run', id: run.id });
+          const page = await opened.bureau.tasks.events(run.id);
           return 'events' in page && page.events.some((event) => event.kind === 'review.requested');
         }, 'review.requested never reached the history');
 
@@ -269,7 +269,7 @@ describe('bureau.tasks.events', () => {
         'alice-key',
       );
       await waitForCondition(async () => {
-        const page = await opened.bureau.eventHistory({ kind: 'run', id: run.id });
+        const page = await opened.bureau.tasks.events(run.id);
         return 'events' in page && page.events.some((event) => event.kind === 'run.completed');
       }, 'run.completed never reached the history');
       const all = await readFrames(

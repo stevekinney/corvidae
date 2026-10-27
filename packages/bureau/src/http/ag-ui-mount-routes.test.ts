@@ -151,7 +151,7 @@ describe('start', () => {
         }
         const finished = frames.at(-1)!;
         const nativeRunId = String(bureauMetadata(frames[0]!.event)['runId']);
-        const history = await bureau.eventHistory({ kind: 'run', id: nativeRunId });
+        const history = await bureau.tasks.events(nativeRunId);
         if (!('events' in history)) throw new Error('expected a page of history');
         const record = history.events.findLast((event) => event.kind === 'run.completed');
         expect(record?.cursor).toBeString();

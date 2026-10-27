@@ -181,6 +181,6 @@ void COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS;
 export const retentionOption: NonNullable<BureauOptions['retention']> = {
   receipts: { olderThan: 86_400_000 },
 };
-type LocateReturn424 = Awaited<ReturnType<Bureau['locateRunCreationReceipt']>>;
+type LocateReturn424 = Awaited<ReturnType<Bureau['tasks']['receipt']>>;
 declare const locatedReceipt: LocateReturn424;
 export const receiptLocation: RunCreationReceiptLocation = locatedReceipt;

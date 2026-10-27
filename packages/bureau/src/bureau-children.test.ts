@@ -534,8 +534,7 @@ describe('bureau.children over a durable bureau', () => {
       const recoveryKey = `${CATALOG_RUN_RECOVERY_KEY_PREFIX}${aliceRunId}`;
       const recoveryRecord = decode((await storage.get(recoveryKey))!);
       expect(recoveryRecord).toMatchObject({ agentName: 'worker', principal: 'alice' });
-      const history = (principal: string) =>
-        bureau.eventHistory({ kind: 'run', id: aliceRunId }, { principal });
+      const history = (principal: string) => bureau.tasks.events(aliceRunId, { principal });
       expect(await history('alice')).not.toEqual({ outcome: 'not-found' });
       expect(await history('mallory')).toEqual({ outcome: 'not-found' });
 

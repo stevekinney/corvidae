@@ -57,10 +57,12 @@ import {
 import { type AgUiErrorCode, type EventStamp, stamp } from './ag-ui-vocabulary.ts';
 
 /** What a stream reads from the Bureau. */
-export type AgUiStreamBureau = Pick<
-  Bureau,
-  'subscribeLiveFrames' | 'eventHistory' | 'subscribeEventHistory' | 'children' | 'surfaces'
-> & { readonly tasks: Pick<BureauTasks, 'detail' | 'snapshot' | 'wait' | 'workflow'> } & {
+export type AgUiStreamBureau = Pick<Bureau, 'subscribeLiveFrames' | 'children' | 'surfaces'> & {
+  readonly tasks: Pick<
+    BureauTasks,
+    'detail' | 'snapshot' | 'wait' | 'workflow' | 'events' | 'subscribeEvents'
+  >;
+} & {
   readonly reviews: Pick<BureauReviews, 'list' | 'pendingOf'>;
 } & {
   readonly contexts: Pick<BureauContexts, 'get' | 'inputsDeliveredBy' | 'subscribeEvents'>;
@@ -174,10 +176,7 @@ async function readRunHistory(bureau: AgUiStreamBureau, nativeRunId: string): Pr
   let since: string | undefined;
   let terminal: ReadHistory['terminal'];
   for (;;) {
-    const page = await bureau.eventHistory(
-      { kind: 'run', id: nativeRunId },
-      since === undefined ? {} : { since },
-    );
+    const page = await bureau.tasks.events(nativeRunId, since === undefined ? {} : { since });
     if (!('events' in page)) break;
     for (const event of page.events) {
       lastCursorByKind.set(event.kind, event.cursor);
@@ -794,8 +793,8 @@ export function openRunStream(
       surfaceSource = createSurfaceSource({
         surfaces: bureau.surfaces,
         subscribe: (listener, since) =>
-          bureau.subscribeEventHistory(
-            { kind: 'run', id: request.nativeRunId },
+          bureau.tasks.subscribeEvents(
+            request.nativeRunId,
             listener,
             since === undefined ? {} : { since },
           ),

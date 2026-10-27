@@ -72,7 +72,7 @@ import { createConversationHistory } from 'conversationalist';
 import { AssetNotFoundError } from '../assets/errors.ts';
 import { BureauLedgerConflictError } from '../command-ledger.ts';
 import { BureauError, isDurableRunUnsettled } from '../create-bureau.ts';
-import type { Bureau, BureauReviews, BureauInternals } from '../types.ts';
+import type { Bureau, BureauReviews, BureauInternals, BureauTasks } from '../types.ts';
 import { managedAssetIdsOf, rowsAddedBy, snapshotMessages } from './ag-ui-messages.ts';
 import { createAgUiLeases, releaseQuietly } from './ag-ui-lease.ts';
 import { settledOutcomeOf } from './ag-ui-peer-stream.ts';
@@ -134,15 +134,9 @@ const PROTOCOL_VERSION = '1.0';
 
 /** What the mount reads from the Bureau. */
 export type AgUiBureau = AgUiStreamBureau &
-  Pick<
-    Bureau,
-    | 'abortRun'
-    | 'cancelDurableRun'
-    | 'createRun'
-    | 'listRuns'
-    | 'locateRunCreationReceipt'
-    | 'assets'
-  > & { readonly reviews: Pick<BureauReviews, 'get' | 'resolve'> } & {
+  Pick<Bureau, 'abortRun' | 'cancelDurableRun' | 'createRun' | 'listRuns' | 'assets'> & {
+    readonly tasks: Pick<BureauTasks, 'receipt'>;
+  } & { readonly reviews: Pick<BureauReviews, 'get' | 'resolve'> } & {
     readonly internals: Pick<BureauInternals, 'hasDurableEngine' | 'kv'>;
   };
 
@@ -662,12 +656,8 @@ export function createAgUiMount(
         // createRun, whose ledger refuses the changed request. A runId that names a
         // run of another thread is a conflict, not an attach to that run.
         if (appendMessages.length === 0) {
-          const earlier = await bureau
-            .locateRunCreationReceipt({
-              principal: owner,
-              agentName,
-              runCreationRequestId: input.runId,
-            })
+          const earlier = await bureau.tasks
+            .receipt({ principal: owner, commandId: input.runId, agentName })
             .catch(() => undefined);
           if (earlier?.status === 'recorded' || earlier?.status === 'pending') {
             if (earlier.sessionId !== input.threadId) {

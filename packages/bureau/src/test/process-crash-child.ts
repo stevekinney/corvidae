@@ -144,7 +144,6 @@ async function parkAfterStepZero(): Promise<void> {
     message: 'crash harness run',
     principal: 'alice',
   });
-  const session = { kind: 'session', id: run.sessionId } as const;
 
   await pollUntil('generate to be invoked at step 1', () => reachedStepOne);
   await pollUntil('the step-0 step.completed audit record', async () => {
@@ -152,13 +151,13 @@ async function parkAfterStepZero(): Promise<void> {
     return records.length > 0;
   });
   await pollUntil('a non-empty session event page', async () => {
-    const page = await bureau.eventHistory(session);
+    const page = await bureau.contexts.events(run.sessionId);
     return !('outcome' in page) && page.events.length > 0;
   });
 
   const records = await auditTrail.query({ runId: run.id });
   const maxAuditSequence = Math.max(...records.map((record) => record.sequence ?? -1));
-  const page = await bureau.eventHistory(session);
+  const page = await bureau.contexts.events(run.sessionId);
   if ('outcome' in page) {
     process.stderr.write(`child: expected an event page, got ${JSON.stringify(page)}\n`);
     process.exit(4);

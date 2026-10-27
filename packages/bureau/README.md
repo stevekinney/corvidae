@@ -516,7 +516,7 @@ import type { Bureau } from '@lostgradient/bureau';
 declare const bureau: Bureau;
 declare const runId: string;
 
-const page = await bureau.eventHistory({ kind: 'run', id: runId });
+const page = await bureau.tasks.events(runId);
 if ('outcome' in page) {
   // 'unsupported-capability' (ephemeral bureau) or 'gap' (since predates retention)
 } else {
@@ -1425,8 +1425,8 @@ declare const bureau: Bureau;
 declare const runId: string;
 declare const lastKnownCursor: string;
 
-const subscription = bureau.subscribeEventHistory(
-  { kind: 'run', id: runId },
+const subscription = bureau.tasks.subscribeEvents(
+  runId,
   (event) => console.log(event.kind, event.payload),
   { since: lastKnownCursor },
 );

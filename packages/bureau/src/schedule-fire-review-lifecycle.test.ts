@@ -839,7 +839,7 @@ describe('a fire’s review is announced', () => {
     const review = await reviewOf(approval, fireId);
 
     const announced = await pollUntil(async () => {
-      const page = await approval.eventHistory({ kind: 'run', id: fireId });
+      const page = await approval.tasks.events(fireId);
       if (!('events' in page)) return undefined;
       const events = page.events.filter((event) => event.kind === 'review.requested');
       return events.length > 0 ? events : undefined;
@@ -875,7 +875,7 @@ describe('a fire’s review is announced', () => {
     const review = await reviewOf(bureau, fireId);
 
     const announced = await pollUntil(async () => {
-      const page = await bureau.eventHistory({ kind: 'run', id: fireId });
+      const page = await bureau.tasks.events(fireId);
       if (!('events' in page)) return undefined;
       const events = page.events.filter((event) => event.kind === 'review.requested');
       return events.length > 0 ? events : undefined;

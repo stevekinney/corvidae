@@ -392,10 +392,10 @@ describe('a media task nobody read before a restart', () => {
 
   /** The Bureau as a restarted process sees it: no live run, and (optionally) no event history. */
   function restarted(opened: OpenedBureau, options: { history: boolean }): void {
-    const bureau = opened.bureau as unknown as Record<string, unknown>;
-    bureau['getRun'] = () => undefined;
+    const tasks = opened.bureau.tasks as unknown as Record<string, unknown>;
+    tasks['detail'] = () => undefined;
     if (!options.history) {
-      bureau['eventHistory'] = async () => ({ outcome: 'unsupported-capability' });
+      tasks['events'] = async () => ({ outcome: 'unsupported-capability' });
     }
   }
 

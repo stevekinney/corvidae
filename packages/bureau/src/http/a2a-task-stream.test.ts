@@ -42,7 +42,7 @@ function envelope(sequence: number, kind: string, payload: unknown = {}): Durabl
 function standIn(
   overrides: {
     view?: TaskView;
-    eventHistory?: A2AStreamBureau['eventHistory'];
+    eventHistory?: A2AStreamBureau['tasks']['events'];
     getDelayMs?: number;
   } = {},
 ) {
@@ -51,13 +51,15 @@ function standIn(
   let changed: ((view: TaskView) => void) | undefined;
   const bureau: A2AStreamBureau = {
     reviews: { get: async () => undefined },
-    eventHistory:
-      overrides.eventHistory ??
-      (async () => ({ events: [], hasMore: false, nextCursor: undefined })),
-    subscribeEventHistory: (_owner, listener, options) => {
-      deliver = listener;
-      closed = options?.onClosed ?? undefined;
-      return { unsubscribe: () => undefined } as never;
+    tasks: {
+      events:
+        overrides.eventHistory ??
+        (async () => ({ events: [], hasMore: false, nextCursor: undefined })),
+      subscribeEvents: (_taskId, listener, options) => {
+        deliver = listener;
+        closed = options?.onClosed ?? undefined;
+        return { unsubscribe: () => undefined } as never;
+      },
     },
     addEventListener: () => undefined,
     removeEventListener: () => undefined,

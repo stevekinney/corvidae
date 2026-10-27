@@ -72,7 +72,14 @@ type MovedToInternals = Extract<
 // COR-1707: the run members merged into `tasks`.
 type RemovedTaskMembers = Extract<
   keyof Bureau,
-  'getRun' | 'subscribeRunSnapshot' | 'getDurableRun' | 'waitForDurableRun' | 'listDurableRuns'
+  | 'getRun'
+  | 'subscribeRunSnapshot'
+  | 'getDurableRun'
+  | 'waitForDurableRun'
+  | 'listDurableRuns'
+  | 'locateRunCreationReceipt'
+  | 'eventHistory'
+  | 'subscribeEventHistory'
 >;
 
 export type NoFlatReviewMembers = AssertNever<RemovedReviewMembers>;

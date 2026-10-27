@@ -134,7 +134,7 @@ async function open(
 }
 
 const kindsOf = async (opened: OpenedBureau, runId: string): Promise<string[]> => {
-  const page = await opened.bureau.eventHistory({ kind: 'run', id: runId });
+  const page = await opened.bureau.tasks.events(runId);
   return 'events' in page ? page.events.map((event) => event.kind) : [];
 };
 
@@ -244,7 +244,7 @@ describe('task.resynced', () => {
     );
 
     // The resync follows the terminal event it must not contradict, and states the end.
-    const page = await opened.bureau.eventHistory({ kind: 'run', id: run.id });
+    const page = await opened.bureau.tasks.events(run.id);
     const events = 'events' in page ? page.events : [];
     const at = events.findIndex((event) => event.kind === TASK_RESYNCED_EVENT_KIND);
     expect(events.filter((event) => event.kind === TASK_RESYNCED_EVENT_KIND)).toHaveLength(1);

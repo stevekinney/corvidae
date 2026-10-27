@@ -178,8 +178,7 @@ describe('retention.events', () => {
     await withBureau(async ({ bureau, runtime, at }) => {
       const run = await settledRun(bureau);
       await runtime.deferred.drain();
-      const owner = { kind: 'run', id: run.id } as const;
-      const before = await bureau.eventHistory(owner);
+      const before = await bureau.tasks.events(run.id);
       if (!('events' in before)) throw new Error('expected a page of events');
       const cursor = before.events[0]?.cursor;
       expect(cursor).toBeDefined();
@@ -191,7 +190,7 @@ describe('retention.events', () => {
       await runtime.deferred.drain();
 
       const received: DurableEventEnvelope[] = [];
-      const subscription = bureau.subscribeEventHistory(owner, (event) => received.push(event), {
+      const subscription = bureau.tasks.subscribeEvents(run.id, (event) => received.push(event), {
         since: cursor,
       });
       expect(
@@ -395,7 +394,7 @@ describe('retention.tasks', () => {
 
         expect(removed.toSorted()).toEqual([first.id, second.id].toSorted());
         // The deletion is also recorded as the durable `run.removed` event.
-        const history = await bureau.eventHistory({ kind: 'run', id: first.id });
+        const history = await bureau.tasks.events(first.id);
         expect(history).toMatchObject({ outcome: 'deleted-aggregate' });
       },
       { retention: { tasks: { olderThan: DAY_MS }, events: 'forever' } },
@@ -414,24 +413,24 @@ describe('retention.tasks', () => {
         const locate = {
           principal: 'alice',
           agentName: 'default',
-          runCreationRequestId: 'request-1',
+          commandId: 'request-1',
         } as const;
         const created = await bureau.createRun(request);
         expect(await pollUntil(() => bureau.tasks.detail(created.id)?.status === 'completed')).toBe(
           true,
         );
         // Records when the run settled, which starts the binding's window.
-        expect(await bureau.locateRunCreationReceipt(locate)).toMatchObject({ status: 'recorded' });
+        expect(await bureau.tasks.receipt(locate)).toMatchObject({ status: 'recorded' });
 
         // `retention.tasks` equals the binding retention, and the horizon passes
         // before the ledger sweep has run: the binding is expired but stored.
         at(60_001);
-        expect(await bureau.locateRunCreationReceipt(locate)).toMatchObject({ status: 'expired' });
+        expect(await bureau.tasks.receipt(locate)).toMatchObject({ status: 'expired' });
         await bureau.runDurableMaintenance();
 
         // The sweep deleted the binding in this pass, after the task step had
         // already seen it: the task survives, and the retry finds nothing bound.
-        expect(await bureau.locateRunCreationReceipt(locate)).toMatchObject({
+        expect(await bureau.tasks.receipt(locate)).toMatchObject({
           status: 'not-found',
         });
         expect(bureau.tasks.detail(created.id)).toBeDefined();

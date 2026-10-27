@@ -211,7 +211,7 @@ describe('the interrupt of a settled approval', () => {
 
         const attached = await readAgUiStream(await handler(attachThreadRequest('thread-1')));
 
-        const history = await bureau.eventHistory({ kind: 'run', id: nativeRunId });
+        const history = await bureau.tasks.events(nativeRunId);
         if (!('events' in history)) throw new Error('expected a page of history');
         const record = history.events.findLast((event) => event.kind === 'run.completed');
         const last = attached.at(-1)!;

@@ -199,10 +199,10 @@ describe('createRun with a run-creation request id', () => {
       // A padded principal is a different owner, so it never replays to `alice`.
       expect(exact.id).not.toBe(padded.id);
       expect(await durableRunIds(bureau)).toEqual([padded.id, exact.id].toSorted());
-      const located = await bureau.locateRunCreationReceipt({
+      const located = await bureau.tasks.receipt({
         principal: 'alice',
+        commandId: 'request-1',
         agentName: 'default',
-        runCreationRequestId: 'request-1',
       });
       expect(located.status === 'recorded' && located.receipt.runId).toBe(exact.id);
     });
@@ -383,17 +383,17 @@ describe('createRun on a session bound to an agent (COR-1577)', () => {
     await withDurableBureau(async (bureau, release) => {
       await bindSession(bureau, release);
       const omitted = await bureau.createRun(SESSION_REQUEST as CreateRunRequest);
-      const key = { principal: 'alice', runCreationRequestId: 'request-1' } as const;
+      const key = { principal: 'alice', commandId: 'request-1' } as const;
 
-      const bySession = await bureau.locateRunCreationReceipt({ ...key, sessionId: 'bound' });
-      const byAgent = await bureau.locateRunCreationReceipt({ ...key, agentName: 'researcher' });
-      const byBoth = await bureau.locateRunCreationReceipt({
+      const bySession = await bureau.tasks.receipt({ ...key, contextId: 'bound' });
+      const byAgent = await bureau.tasks.receipt({ ...key, agentName: 'researcher' });
+      const byBoth = await bureau.tasks.receipt({
         ...key,
         agentName: 'researcher',
-        sessionId: 'bound',
+        contextId: 'bound',
       });
       // With neither, there is no agent to look under (COR-323: no implicit default exists).
-      const byNeither = await rejectionOf(bureau.locateRunCreationReceipt(key));
+      const byNeither = await rejectionOf(bureau.tasks.receipt(key));
 
       for (const located of [bySession, byAgent, byBoth]) {
         expect(located.status === 'recorded' && located.receipt.runId).toBe(omitted.id);
@@ -406,22 +406,22 @@ describe('createRun on a session bound to an agent (COR-1577)', () => {
     await withDurableBureau(async (bureau, release) => {
       await bindSession(bureau, release);
       const omitted = await bureau.createRun(SESSION_REQUEST as CreateRunRequest);
-      const key = { principal: 'alice', runCreationRequestId: 'request-1' } as const;
+      const key = { principal: 'alice', commandId: 'request-1' } as const;
 
       // No such session: the stated agent alone keys the request, as it does for a new session.
-      const unknownSession = await bureau.locateRunCreationReceipt({
+      const unknownSession = await bureau.tasks.receipt({
         ...key,
         agentName: 'researcher',
-        sessionId: 'no-such-session',
+        contextId: 'no-such-session',
       });
       // A session bound to `researcher` cannot be asked about as `bureau`, as a run cannot name it.
       const contradiction = await rejectionOf(
-        bureau.locateRunCreationReceipt({ ...key, agentName: 'default', sessionId: 'bound' }),
+        bureau.tasks.receipt({ ...key, agentName: 'default', contextId: 'bound' }),
       );
 
       // An unseen session with no stated agent leaves nothing to look under.
       const unseenWithoutAgent = await rejectionOf(
-        bureau.locateRunCreationReceipt({ ...key, sessionId: 'no-such-session' }),
+        bureau.tasks.receipt({ ...key, contextId: 'no-such-session' }),
       );
 
       expect((unseenWithoutAgent as BureauError).code).toBe('BAD_REQUEST');

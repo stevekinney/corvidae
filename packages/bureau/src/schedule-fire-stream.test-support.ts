@@ -57,7 +57,7 @@ export async function driveUntil(done: () => boolean, what: string): Promise<voi
 }
 
 export async function settledEventsOf(bureau: Bureau, fireId: string) {
-  const page = await bureau.eventHistory({ kind: 'run', id: fireId });
+  const page = await bureau.tasks.events(fireId);
   if (!('events' in page)) return [];
   return page.events.filter((event) => event.kind === SCHEDULE_FIRE_SETTLED_EVENT_KIND);
 }

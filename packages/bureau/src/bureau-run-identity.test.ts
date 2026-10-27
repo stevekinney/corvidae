@@ -100,17 +100,17 @@ describe('bureau.run() run identity (COR-1302)', () => {
       // actions stay off the bureau's `'action'` stream, which is what durable
       // event history records; the release is not recorded as a deletion.
       expect(bureau.tasks.detail(id)).toBeUndefined();
-      expect(await bureau.eventHistory({ kind: 'run', id }, { principal: 'alice' })).toEqual({
+      expect(await bureau.tasks.events(id, { principal: 'alice' })).toEqual({
         events: [],
         hasMore: false,
       });
       // A principal-gated read answers `not-found` for an id no run is
       // attributed under, so alice's page above is the id resolving to her
       // run, and another principal is refused that same id.
-      expect(
-        await bureau.eventHistory({ kind: 'run', id: `${id}-unknown` }, { principal: 'alice' }),
-      ).toEqual({ outcome: 'not-found' });
-      expect(await bureau.eventHistory({ kind: 'run', id }, { principal: 'mallory' })).toEqual({
+      expect(await bureau.tasks.events(`${id}-unknown`, { principal: 'alice' })).toEqual({
+        outcome: 'not-found',
+      });
+      expect(await bureau.tasks.events(id, { principal: 'mallory' })).toEqual({
         outcome: 'not-found',
       });
     } finally {

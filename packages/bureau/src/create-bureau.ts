@@ -18586,6 +18586,55 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     resolve: resolveAnyReview,
   });
 
+  /**
+   * The durable event history of a task, context, or schedule, which `tasks.events`,
+   * `contexts.events`, and `schedules.events` narrow to their owner kind.
+   */
+  function readEventHistory(
+    owner: DurableEventOwner,
+    eventHistoryOptions?: DurableEventHistoryPageOptions,
+  ): Promise<
+    | DurableEventPage
+    | DurableEventGap
+    | EventHistoryUnsupportedOutcome
+    | EventHistoryNotFoundOutcome
+    | EventHistoryDeletedAggregateOutcome
+  > {
+    if (!eventHistoryInstance) {
+      return Promise.resolve({
+        outcome: 'unsupported-capability',
+        reason: 'no-persistent-storage',
+      });
+    }
+    return resolveEventHistory(eventHistoryInstance, owner, eventHistoryOptions);
+  }
+
+  /**
+   * Subscribes to an owner's durable event history, a replay from the cursor and then the live
+   * tail, which each namespace's `subscribeEvents` narrows to its owner kind.
+   */
+  function subscribeToEventHistory(
+    owner: DurableEventOwner,
+    listener: (event: DurableEventEnvelope) => void,
+    subscribeOptions?: DurableEventHistorySubscribeOptions,
+  ): Subscription {
+    if (!eventHistoryInstance) {
+      // No persistent storage backend: nothing to subscribe to. Mirrors
+      // `eventHistory()`'s graceful `'unsupported-capability'` outcome,
+      // projected onto `Subscription`'s synchronous-return shape (which
+      // carries no room for an outcome value) as an already-closed
+      // subscription that never delivers — a caller that must
+      // distinguish "unsupported" from "supported but empty" calls
+      // `eventHistory()` first.
+      return { unsubscribe() {}, closed: true };
+    }
+    const principal = subscribeOptions?.principal;
+    // An omitted principal is a trusted caller, as it is for `eventHistory()`.
+    return principal === undefined
+      ? eventHistoryInstance.subscribeEventHistory(owner, listener, subscribeOptions)
+      : subscribeAuthorized(eventHistoryInstance, owner, listener, principal, subscribeOptions);
+  }
+
   // COR-1704: the schedule operations stay private implementations that share the durable engine,
   // the emitter, and the transition outbox; `events` reads the `schedule` owner of the history the
   // Bureau already serves.
@@ -18599,9 +18648,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     update: updateSchedule,
     agentName: getScheduleAgentName,
     inputPreview: getScheduleInputPreview,
-    eventHistory: (owner, eventHistoryOptions) => bureau.eventHistory(owner, eventHistoryOptions),
-    subscribeEventHistory: (owner, listener, subscribeOptions) =>
-      bureau.subscribeEventHistory(owner, listener, subscribeOptions),
+    eventHistory: readEventHistory,
+    subscribeEventHistory: subscribeToEventHistory,
   });
 
   // COR-1706: the context operations stay private implementations that share the session store,
@@ -18617,9 +18665,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     steer: submitSteeringCommand,
     steering: getSessionSteering,
     fork: forkSession,
-    eventHistory: (owner, eventHistoryOptions) => bureau.eventHistory(owner, eventHistoryOptions),
-    subscribeEventHistory: (owner, listener, subscribeOptions) =>
-      bureau.subscribeEventHistory(owner, listener, subscribeOptions),
+    eventHistory: readEventHistory,
+    subscribeEventHistory: subscribeToEventHistory,
   });
 
   // COR-1707: `start` is a session run over the task input, returned as a handle; the reads and
@@ -18640,9 +18687,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     snapshot: subscribeRunSnapshot,
     registry: tasks,
     children: childTopology.children,
-    eventHistory: (owner, eventHistoryOptions) => bureau.eventHistory(owner, eventHistoryOptions),
-    subscribeEventHistory: (owner, listener, subscribeOptions) =>
-      bureau.subscribeEventHistory(owner, listener, subscribeOptions),
+    eventHistory: readEventHistory,
+    subscribeEventHistory: subscribeToEventHistory,
     notFound: (message) => new BureauError(message, 'NOT_FOUND'),
   }) as Bureau<D>['tasks'];
 
@@ -18702,51 +18748,18 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     // agent names a caller may pass, exactly as `run` above.
     children: childTopology.children as BureauChildren<AgentNames<D>>,
     peerCalls,
-    goals: goalsComposition.goals as BureauGoals<AgentNames<D>>,
-    eventHistory(
-      owner: DurableEventOwner,
-      eventHistoryOptions?: DurableEventHistoryPageOptions,
-    ): Promise<
-      | DurableEventPage
-      | DurableEventGap
-      | EventHistoryUnsupportedOutcome
-      | EventHistoryNotFoundOutcome
-      | EventHistoryDeletedAggregateOutcome
-    > {
-      if (!eventHistoryInstance) {
-        return Promise.resolve({
-          outcome: 'unsupported-capability',
-          reason: 'no-persistent-storage',
-        });
-      }
-      return resolveEventHistory(eventHistoryInstance, owner, eventHistoryOptions);
-    },
-    subscribeEventHistory(
-      owner: DurableEventOwner,
-      listener: (event: DurableEventEnvelope) => void,
-      subscribeOptions?: DurableEventHistorySubscribeOptions,
-    ): Subscription {
-      if (!eventHistoryInstance) {
-        // No persistent storage backend: nothing to subscribe to. Mirrors
-        // `eventHistory()`'s graceful `'unsupported-capability'` outcome,
-        // projected onto `Subscription`'s synchronous-return shape (which
-        // carries no room for an outcome value) as an already-closed
-        // subscription that never delivers — a caller that must
-        // distinguish "unsupported" from "supported but empty" calls
-        // `eventHistory()` first.
-        return { unsubscribe() {}, closed: true };
-      }
-      const principal = subscribeOptions?.principal;
-      // An omitted principal is a trusted caller, as it is for `eventHistory()`.
-      return principal === undefined
-        ? eventHistoryInstance.subscribeEventHistory(owner, listener, subscribeOptions)
-        : subscribeAuthorized(eventHistoryInstance, owner, listener, principal, subscribeOptions);
-    },
+    // COR-1707: a goal's history is the `goal` owner of the history the Bureau serves.
+    goals: {
+      ...goalsComposition.goals,
+      events: (goalRunId, eventHistoryOptions) =>
+        readEventHistory({ kind: 'goal', id: goalRunId }, eventHistoryOptions),
+      subscribeEvents: (goalRunId, listener, subscribeOptions) =>
+        subscribeToEventHistory({ kind: 'goal', id: goalRunId }, listener, subscribeOptions),
+    } as BureauGoals<AgentNames<D>>,
     get assets(): AssetService | undefined {
       return assetServiceInstance;
     },
     createRun: createRunFromRequest,
-    locateRunCreationReceipt,
     listRuns,
     getOwner,
     abortRun,

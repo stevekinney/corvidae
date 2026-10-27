@@ -424,7 +424,7 @@ export async function auditRecordsOf(
 
 /** The `review.*` kinds a run's durable history holds, oldest first. */
 export async function historyKinds(bureau: Bureau, runId: string): Promise<string[]> {
-  const page = await bureau.eventHistory({ kind: 'run', id: runId });
+  const page = await bureau.tasks.events(runId);
   if (!('events' in page)) return [];
   return page.events.filter((event) => event.kind.startsWith('review.')).map((event) => event.kind);
 }

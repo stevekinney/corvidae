@@ -103,8 +103,8 @@ type Settled = { readonly result: ResumeResult; readonly applied: boolean };
 
 type Refusal = { readonly code: AgUiErrorCode; readonly message: string };
 
-export type ResumeBureau = Pick<Bureau, 'createRun' | 'locateRunCreationReceipt'> & {
-  readonly tasks: Pick<BureauTasks, 'detail'>;
+export type ResumeBureau = Pick<Bureau, 'createRun'> & {
+  readonly tasks: Pick<BureauTasks, 'detail' | 'receipt'>;
 } & {
   readonly reviews: Pick<BureauReviews, 'get' | 'list' | 'pendingOf' | 'resolve'>;
 } & {

@@ -1981,19 +1981,13 @@ describe('createBureau', () => {
       // The run's REAL owner, supplying the SAME principal the request
       // used, must NOT be locked out — this is the assertion that failed
       // before the review fix (it returned `{ outcome: 'not-found' }`).
-      const ownedOutcome = await bureau.eventHistory(
-        { kind: 'run', id: runId },
-        { principal: 'the-real-owner' },
-      );
+      const ownedOutcome = await bureau.tasks.events(runId, { principal: 'the-real-owner' });
       expect(ownedOutcome).not.toEqual({ outcome: 'not-found' });
 
       // An unrelated caller supplying a DIFFERENT principal is still
       // correctly denied — this fix restores attribution, it does not
       // disable the authorization check.
-      const strangerOutcome = await bureau.eventHistory(
-        { kind: 'run', id: runId },
-        { principal: 'someone-else' },
-      );
+      const strangerOutcome = await bureau.tasks.events(runId, { principal: 'someone-else' });
       expect(strangerOutcome).toEqual({ outcome: 'not-found' });
 
       const report = await bureau.shutdown();
@@ -13654,7 +13648,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
       durable: true,
     });
 
-    const outcome = await bureau.eventHistory({ kind: 'run', id: 'run-1' });
+    const outcome = await bureau.tasks.events('run-1');
     expect(outcome).toEqual({ outcome: 'unsupported-capability', reason: 'no-persistent-storage' });
 
     const report = await bureau.shutdown();
@@ -13671,7 +13665,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
       },
     });
 
-    const outcome = await bureau.eventHistory({ kind: 'session', id: 'session-1' });
+    const outcome = await bureau.contexts.events('session-1');
     expect(outcome).toEqual({ outcome: 'unsupported-capability', reason: 'no-persistent-storage' });
 
     await bureau.dispose();
@@ -13697,7 +13691,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
       // schedule-fire families AB-87's matrix classifies as durable, but
       // only ever for owners something actually happened to — `'run-1'`
       // here was never a registered run.
-      const outcome = await bureau.eventHistory({ kind: 'run', id: 'run-1' });
+      const outcome = await bureau.tasks.events('run-1');
       expect(outcome).toEqual({ events: [], hasMore: false });
 
       const before = await runtime.deferred.drain();
@@ -14326,7 +14320,7 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
       await waitForRunCompletion(bureau, run.id);
       await runtime.deferred.drain();
 
-      const outcome = await bureau.eventHistory({ kind: 'run', id: run.id });
+      const outcome = await bureau.tasks.events(run.id);
       if ('outcome' in outcome) throw new Error(`expected a page, got ${outcome.outcome}`);
       expect(outcome.events.map((event) => event.kind)).toEqual(['run.completed']);
       expect(outcome.events[0]?.owner).toEqual({ kind: 'run', id: run.id });
@@ -14391,12 +14385,12 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
       });
       await runtime.deferred.drain();
 
-      const pageA = await bureau.eventHistory({ kind: 'session', id: 'sess-A' });
+      const pageA = await bureau.contexts.events('sess-A');
       if ('outcome' in pageA) throw new Error(`expected a page, got ${pageA.outcome}`);
       expect(pageA.events.map((event) => event.kind)).toEqual(['session.created']);
       expect(pageA.events[0]?.owner).toEqual({ kind: 'session', id: 'sess-A' });
 
-      const pageB = await bureau.eventHistory({ kind: 'session', id: 'sess-B' });
+      const pageB = await bureau.contexts.events('sess-B');
       if ('outcome' in pageB) throw new Error(`expected a page, got ${pageB.outcome}`);
       expect(pageB.events.map((event) => event.kind)).toEqual(['session.saved']);
 
@@ -14447,7 +14441,7 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
       const incarnation = session!.incarnation;
       expect(incarnation).not.toBe('');
 
-      const outcome = await bureau.eventHistory({ kind: 'session', id: run.sessionId });
+      const outcome = await bureau.contexts.events(run.sessionId);
       if ('outcome' in outcome) throw new Error(`expected a page, got ${outcome.outcome}`);
       expect(outcome.events.map((event) => event.kind)).toEqual([
         'session.created',
@@ -14462,7 +14456,7 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
       await bureau.contexts.delete(run.sessionId);
       await runtime.deferred.drain();
 
-      const deletedOutcome = await bureau.eventHistory({ kind: 'session', id: run.sessionId });
+      const deletedOutcome = await bureau.contexts.events(run.sessionId);
       if (!('outcome' in deletedOutcome) || deletedOutcome.outcome !== 'deleted-aggregate') {
         throw new Error(`expected deleted-aggregate, got ${JSON.stringify(deletedOutcome)}`);
       }
@@ -14502,7 +14496,7 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
       bureau.internals.store.recordAction(run.id, 'session.created', { agentName: 'x' }); // no sessionId
       await runtime.deferred.drain();
 
-      const runPage = await bureau.eventHistory({ kind: 'run', id: run.id });
+      const runPage = await bureau.tasks.events(run.id);
       if ('outcome' in runPage) throw new Error(`expected a page, got ${runPage.outcome}`);
       // The malformed action lands nowhere durable — only the run's own
       // eventual `run.completed` (once it settles below).
@@ -14547,7 +14541,7 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
       await runtime.deferred.drain();
 
       const received: DurableEventEnvelope[] = [];
-      const subscription = bureau.subscribeEventHistory({ kind: 'run', id: run.id }, (event) => {
+      const subscription = bureau.tasks.subscribeEvents(run.id, (event) => {
         received.push(event);
       });
 
@@ -14591,17 +14585,13 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
       await runtime.deferred.drain();
 
       const owned: string[] = [];
-      const allowed = bureau.subscribeEventHistory(
-        { kind: 'run', id: run.id },
-        (event) => owned.push(event.kind),
-        { principal: 'alice' },
-      );
+      const allowed = bureau.tasks.subscribeEvents(run.id, (event) => owned.push(event.kind), {
+        principal: 'alice',
+      });
       const stolen: string[] = [];
-      const denied = bureau.subscribeEventHistory(
-        { kind: 'run', id: run.id },
-        (event) => stolen.push(event.kind),
-        { principal: 'mallory' },
-      );
+      const denied = bureau.tasks.subscribeEvents(run.id, (event) => stolen.push(event.kind), {
+        principal: 'mallory',
+      });
 
       await waitForCondition(() => owned.length > 0, 'the attributed principal got no replay');
       // The stranger's replay races the attributed principal's; give a leak every chance to land.
@@ -14630,7 +14620,7 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
     });
 
     let delivered = false;
-    const subscription = bureau.subscribeEventHistory({ kind: 'run', id: 'run-1' }, () => {
+    const subscription = bureau.tasks.subscribeEvents('run-1', () => {
       delivered = true;
     });
     expect(subscription.closed).toBe(true);
@@ -14642,7 +14632,7 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
     await waitForRunCompletion(bureau, run.id);
 
     expect(delivered).toBe(false);
-    const outcome = await bureau.eventHistory({ kind: 'run', id: run.id });
+    const outcome = await bureau.tasks.events(run.id);
     expect(outcome).toEqual({ outcome: 'unsupported-capability', reason: 'no-persistent-storage' });
 
     // The already-closed subscription's own `unsubscribe()` is still a
@@ -14714,10 +14704,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
       await waitForRunCompletion(bureau, run.id);
       await runtime.deferred.drain();
 
-      const deniedOutcome = await bureau.eventHistory(
-        { kind: 'run', id: run.id },
-        { principal: 'mallory' },
-      );
+      const deniedOutcome = await bureau.tasks.events(run.id, { principal: 'mallory' });
       expect(deniedOutcome).toEqual({ outcome: 'not-found' });
 
       // A genuinely never-existing run id also fails closed once a
@@ -14725,22 +14712,16 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
       // `runAttribution` entry cannot be told apart from a deleted or
       // recovered run's lost attribution, so it is never treated as
       // open) — indistinguishable from the denied-owner case above.
-      const unknownOutcome = await bureau.eventHistory(
-        { kind: 'run', id: 'no-such-run' },
-        { principal: 'mallory' },
-      );
+      const unknownOutcome = await bureau.tasks.events('no-such-run', { principal: 'mallory' });
       expect(unknownOutcome).toEqual({ outcome: 'not-found' });
 
       // Omitting `principal` entirely still reads the unknown run as an
       // ordinary empty page — the check is skipped, not failed, for a
       // trusted caller.
-      const unknownTrusted = await bureau.eventHistory({ kind: 'run', id: 'no-such-run' });
+      const unknownTrusted = await bureau.tasks.events('no-such-run');
       expect(unknownTrusted).toEqual({ events: [], hasMore: false });
 
-      const allowedOutcome = await bureau.eventHistory(
-        { kind: 'run', id: run.id },
-        { principal: 'alice' },
-      );
+      const allowedOutcome = await bureau.tasks.events(run.id, { principal: 'alice' });
       if ('outcome' in allowedOutcome) throw new Error('expected a page');
       expect(allowedOutcome.events.map((event) => event.kind)).toEqual(['run.completed']);
 
@@ -14783,13 +14764,10 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
       await waitForRunCompletion(bureau, run.id);
       await runtime.deferred.drain();
 
-      const withPrincipal = await bureau.eventHistory(
-        { kind: 'run', id: run.id },
-        { principal: 'anyone' },
-      );
+      const withPrincipal = await bureau.tasks.events(run.id, { principal: 'anyone' });
       expect(withPrincipal).toEqual({ outcome: 'not-found' });
 
-      const withoutPrincipal = await bureau.eventHistory({ kind: 'run', id: run.id });
+      const withoutPrincipal = await bureau.tasks.events(run.id);
       if ('outcome' in withoutPrincipal) throw new Error('expected a page');
       expect(withoutPrincipal.events.map((event) => event.kind)).toEqual(['run.completed']);
 
@@ -14815,10 +14793,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
 
       // A different caller's principal fails closed, matching createRun's
       // own run-kind authorization gate exactly.
-      const deniedOutcome = await bureau.eventHistory(
-        { kind: 'run', id: runId },
-        { principal: 'mallory' },
-      );
+      const deniedOutcome = await bureau.tasks.events(runId, { principal: 'mallory' });
       expect(deniedOutcome).toEqual({ outcome: 'not-found' });
 
       // The attributed principal reads back successfully — never
@@ -14830,10 +14805,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
       // COR-1302 keeps its actions off the bureau's `'action'` stream), so an
       // empty page is the expected shape — the AB-313 "never-recorded id
       // reads as an ordinary empty page" convention, not a failure.
-      const allowedOutcome = await bureau.eventHistory(
-        { kind: 'run', id: runId },
-        { principal: 'alice' },
-      );
+      const allowedOutcome = await bureau.tasks.events(runId, { principal: 'alice' });
       expect(allowedOutcome).toEqual({ events: [], hasMore: false });
 
       await bureau.shutdown();
@@ -14906,10 +14878,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
       // The attribution this run recorded under `expectedRunId` before the
       // resolver rejected must be gone — a supplied principal reads it as
       // 'not-found', identical to a run that was never attributed at all.
-      const outcome = await bureau.eventHistory(
-        { kind: 'run', id: expectedRunId },
-        { principal: 'alice' },
-      );
+      const outcome = await bureau.tasks.events(expectedRunId, { principal: 'alice' });
       expect(outcome).toEqual({ outcome: 'not-found' });
 
       await bureau.shutdown();
@@ -14952,19 +14921,13 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
       // is denied rather than silently reopened for anyone (including the
       // real prior owner). The events remain reachable only for a caller
       // that omits `principal` entirely (an internal/trusted caller).
-      const asOriginalOwner = await bureau.eventHistory(
-        { kind: 'run', id: run.id },
-        { principal: 'alice' },
-      );
+      const asOriginalOwner = await bureau.tasks.events(run.id, { principal: 'alice' });
       expect(asOriginalOwner).toEqual({ outcome: 'not-found' });
 
-      const asAnyoneElse = await bureau.eventHistory(
-        { kind: 'run', id: run.id },
-        { principal: 'mallory' },
-      );
+      const asAnyoneElse = await bureau.tasks.events(run.id, { principal: 'mallory' });
       expect(asAnyoneElse).toEqual({ outcome: 'not-found' });
 
-      const trusted = await bureau.eventHistory({ kind: 'run', id: run.id });
+      const trusted = await bureau.tasks.events(run.id);
       if (!('outcome' in trusted) || trusted.outcome !== 'deleted-aggregate') {
         throw new Error(`expected deleted-aggregate, got ${JSON.stringify(trusted)}`);
       }
@@ -15001,16 +14964,10 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
         return session?.metadata['lastRunStatus'] === 'running';
       });
 
-      const deniedOutcome = await bureau.eventHistory(
-        { kind: 'session', id: run.sessionId },
-        { principal: 'mallory' },
-      );
+      const deniedOutcome = await bureau.contexts.events(run.sessionId, { principal: 'mallory' });
       expect(deniedOutcome).toEqual({ outcome: 'not-found' });
 
-      const allowedOutcome = await bureau.eventHistory(
-        { kind: 'session', id: run.sessionId },
-        { principal: 'alice' },
-      );
+      const allowedOutcome = await bureau.contexts.events(run.sessionId, { principal: 'alice' });
       expect('outcome' in allowedOutcome).toBe(false);
 
       await bureau.dispose();
@@ -15046,7 +15003,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
       await retireSettledTasks(bureau, runtime);
       await runtime.deferred.drain();
 
-      const outcome = await bureau.eventHistory({ kind: 'run', id: run.id });
+      const outcome = await bureau.tasks.events(run.id);
       if (!('outcome' in outcome) || outcome.outcome !== 'deleted-aggregate') {
         throw new Error(`expected deleted-aggregate, got ${JSON.stringify(outcome)}`);
       }
@@ -15096,7 +15053,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
       await waitForRunCompletion(bureau, run.id);
       await runtime.deferred.drain();
 
-      const deletedOutcome = await bureau.eventHistory({ kind: 'session', id: 'sess-deleted' });
+      const deletedOutcome = await bureau.contexts.events('sess-deleted');
       if (!('outcome' in deletedOutcome) || deletedOutcome.outcome !== 'deleted-aggregate') {
         throw new Error(`expected deleted-aggregate, got ${JSON.stringify(deletedOutcome)}`);
       }
@@ -15106,7 +15063,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
       // A genuinely never-recorded id stays an ordinary empty page — the
       // detection is evidence-based (a `session.deleted` event inside the
       // page), never "the live record is merely absent."
-      const freshOutcome = await bureau.eventHistory({ kind: 'session', id: 'never-existed' });
+      const freshOutcome = await bureau.contexts.events('never-existed');
       expect(freshOutcome).toEqual({ events: [], hasMore: false });
 
       await bureau.shutdown();
@@ -15170,7 +15127,7 @@ describe('bureau.eventHistory deleted-aggregate detection is independent of the 
       // Read the full history once (no window) to confirm the marker's
       // position, exactly the way the sibling AB-372 "reauthorizes ... even
       // when the requested page omits its deletion marker" test does.
-      const fullOutcome = await bureau.eventHistory({ kind: 'run', id: run.id });
+      const fullOutcome = await bureau.tasks.events(run.id);
       if (!('outcome' in fullOutcome) || fullOutcome.outcome !== 'deleted-aggregate') {
         throw new Error(`expected deleted-aggregate, got ${JSON.stringify(fullOutcome)}`);
       }
@@ -15183,10 +15140,7 @@ describe('bureau.eventHistory deleted-aggregate detection is independent of the 
 
       // A page limited to the first two events never reaches the marker —
       // the pre-AB-385 detection would have reported an ordinary page here.
-      const outOfWindowOutcome = await bureau.eventHistory(
-        { kind: 'run', id: run.id },
-        { limit: 2 },
-      );
+      const outOfWindowOutcome = await bureau.tasks.events(run.id, { limit: 2 });
       if (
         !('outcome' in outOfWindowOutcome) ||
         outOfWindowOutcome.outcome !== 'deleted-aggregate'
@@ -15245,7 +15199,7 @@ describe('bureau.eventHistory deleted-aggregate detection is independent of the 
       bureau.internals.store.recordAction(run.id, 'session.saved', { sessionId });
       await runtime.deferred.drain();
 
-      const fullOutcome = await bureau.eventHistory({ kind: 'session', id: sessionId });
+      const fullOutcome = await bureau.contexts.events(sessionId);
       if (!('outcome' in fullOutcome) || fullOutcome.outcome !== 'deleted-aggregate') {
         throw new Error(`expected deleted-aggregate, got ${JSON.stringify(fullOutcome)}`);
       }
@@ -15260,10 +15214,7 @@ describe('bureau.eventHistory deleted-aggregate detection is independent of the 
       )?.cursor;
       if (markerCursor === undefined) throw new Error('expected a session.deleted cursor');
 
-      const outOfWindowOutcome = await bureau.eventHistory(
-        { kind: 'session', id: sessionId },
-        { since: markerCursor },
-      );
+      const outOfWindowOutcome = await bureau.contexts.events(sessionId, { since: markerCursor });
       if (
         !('outcome' in outOfWindowOutcome) ||
         outOfWindowOutcome.outcome !== 'deleted-aggregate'
@@ -15323,7 +15274,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       await bureau.contexts.delete(run.sessionId);
       await runtime.deferred.drain();
 
-      const outcome = await bureau.eventHistory({ kind: 'session', id: run.sessionId });
+      const outcome = await bureau.contexts.events(run.sessionId);
       if (!('outcome' in outcome) || outcome.outcome !== 'deleted-aggregate') {
         throw new Error(`expected deleted-aggregate, got ${JSON.stringify(outcome)}`);
       }
@@ -15381,7 +15332,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       ]);
       await runtime.deferred.drain();
 
-      const outcome = await bureau.eventHistory({ kind: 'session', id: run.sessionId });
+      const outcome = await bureau.contexts.events(run.sessionId);
       if (!('outcome' in outcome) || outcome.outcome !== 'deleted-aggregate') {
         throw new Error(`expected deleted-aggregate, got ${JSON.stringify(outcome)}`);
       }
@@ -15429,7 +15380,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
 
       // Confirm the marker is really there before recreating — otherwise
       // this test would trivially pass for the wrong reason.
-      const deletedOutcome = await bureau.eventHistory({ kind: 'session', id: sessionId });
+      const deletedOutcome = await bureau.contexts.events(sessionId);
       if (!('outcome' in deletedOutcome) || deletedOutcome.outcome !== 'deleted-aggregate') {
         throw new Error(`expected deleted-aggregate, got ${JSON.stringify(deletedOutcome)}`);
       }
@@ -15444,7 +15395,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       await runtime.deferred.drain();
       expect(await bureau.contexts.get(sessionId)).toBeDefined();
 
-      const liveOutcome = await bureau.eventHistory({ kind: 'session', id: sessionId });
+      const liveOutcome = await bureau.contexts.events(sessionId);
       expect('outcome' in liveOutcome).toBe(false);
       if ('outcome' in liveOutcome) throw new Error('unreachable');
       // The historical marker is still visible in the page — nothing is
@@ -15511,17 +15462,11 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       // A principal never authorized for either incarnation must be denied
       // the SAME not-found-shaped outcome every other unauthorized read
       // gets — not the recreated session's live history.
-      const deniedOutcome = await bureau.eventHistory(
-        { kind: 'session', id: sessionId },
-        { principal: 'mallory' },
-      );
+      const deniedOutcome = await bureau.contexts.events(sessionId, { principal: 'mallory' });
       expect(deniedOutcome).toEqual({ outcome: 'not-found' });
 
       // The actual owner still reads the live page.
-      const allowedOutcome = await bureau.eventHistory(
-        { kind: 'session', id: sessionId },
-        { principal: 'alice' },
-      );
+      const allowedOutcome = await bureau.contexts.events(sessionId, { principal: 'alice' });
       expect('outcome' in allowedOutcome).toBe(false);
 
       await bureau.shutdown();
@@ -15586,10 +15531,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       const loadSpy = spyOn(sessionStore, 'load').mockImplementationOnce(async () => undefined);
 
       try {
-        const deniedOutcome = await bureau.eventHistory(
-          { kind: 'session', id: sessionId },
-          { principal: 'mallory' },
-        );
+        const deniedOutcome = await bureau.contexts.events(sessionId, { principal: 'mallory' });
         expect(deniedOutcome).toEqual({ outcome: 'not-found' });
       } finally {
         loadSpy.mockRestore();
@@ -15597,10 +15539,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
 
       // The actual owner still reads the live page (a fresh call this
       // time, with no mocked read).
-      const allowedOutcome = await bureau.eventHistory(
-        { kind: 'session', id: sessionId },
-        { principal: 'alice' },
-      );
+      const allowedOutcome = await bureau.contexts.events(sessionId, { principal: 'alice' });
       expect('outcome' in allowedOutcome).toBe(false);
 
       await bureau.shutdown();
@@ -15647,7 +15586,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
 
       // Find the deletion marker's own cursor so the next read can be
       // positioned strictly AFTER it.
-      const deletedOutcome = await bureau.eventHistory({ kind: 'session', id: sessionId });
+      const deletedOutcome = await bureau.contexts.events(sessionId);
       if (!('outcome' in deletedOutcome) || deletedOutcome.outcome !== 'deleted-aggregate') {
         throw new Error(`expected deleted-aggregate, got ${JSON.stringify(deletedOutcome)}`);
       }
@@ -15667,16 +15606,16 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
 
       // A page starting strictly AFTER the marker's own cursor never
       // includes it.
-      const deniedNoMarker = await bureau.eventHistory(
-        { kind: 'session', id: sessionId },
-        { principal: 'mallory', since: markerCursor },
-      );
+      const deniedNoMarker = await bureau.contexts.events(sessionId, {
+        principal: 'mallory',
+        since: markerCursor,
+      });
       expect(deniedNoMarker).toEqual({ outcome: 'not-found' });
 
-      const allowedNoMarker = await bureau.eventHistory(
-        { kind: 'session', id: sessionId },
-        { principal: 'alice', since: markerCursor },
-      );
+      const allowedNoMarker = await bureau.contexts.events(sessionId, {
+        principal: 'alice',
+        since: markerCursor,
+      });
       expect('outcome' in allowedNoMarker).toBe(false);
       if ('outcome' in allowedNoMarker) throw new Error('unreachable');
       expect(allowedNoMarker.events.map((event) => event.kind)).not.toContain('session.deleted');
@@ -15727,10 +15666,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       bureau.internals.store.recordAction(run.id, 'session.saved', { sessionId: run.sessionId });
       await runtime.deferred.drain();
 
-      const beforeGap = await bureau.eventHistory(
-        { kind: 'session', id: run.sessionId },
-        { principal: 'alice' },
-      );
+      const beforeGap = await bureau.contexts.events(run.sessionId, { principal: 'alice' });
       if ('outcome' in beforeGap)
         throw new Error(`expected a page, got ${JSON.stringify(beforeGap)}`);
       const lastEvent = beforeGap.events.at(-1);
@@ -15746,17 +15682,11 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       adminStorage[Symbol.dispose]();
 
       // An unauthorized principal is denied — never the gap.
-      const deniedOutcome = await bureau.eventHistory(
-        { kind: 'session', id: run.sessionId },
-        { principal: 'mallory' },
-      );
+      const deniedOutcome = await bureau.contexts.events(run.sessionId, { principal: 'mallory' });
       expect(deniedOutcome).toEqual({ outcome: 'not-found' });
 
       // The actual owner still sees the real gap outcome.
-      const ownerOutcome = await bureau.eventHistory(
-        { kind: 'session', id: run.sessionId },
-        { principal: 'alice' },
-      );
+      const ownerOutcome = await bureau.contexts.events(run.sessionId, { principal: 'alice' });
       expect(ownerOutcome).toMatchObject({ outcome: 'gap' });
 
       await bureau.shutdown();
@@ -15805,10 +15735,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       bureau.internals.store.recordAction(run.id, 'session.saved', { sessionId: run.sessionId });
       await runtime.deferred.drain();
 
-      const beforeGap = await bureau.eventHistory(
-        { kind: 'session', id: run.sessionId },
-        { principal: 'alice' },
-      );
+      const beforeGap = await bureau.contexts.events(run.sessionId, { principal: 'alice' });
       if ('outcome' in beforeGap)
         throw new Error(`expected a page, got ${JSON.stringify(beforeGap)}`);
       const lastEvent = beforeGap.events.at(-1);
@@ -15828,10 +15755,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
         // An unauthorized caller must be denied — never the gap — even
         // though the STALE pre-page snapshot (mocked away here) saw
         // nothing to deny against.
-        const deniedOutcome = await bureau.eventHistory(
-          { kind: 'session', id: run.sessionId },
-          { principal: 'mallory' },
-        );
+        const deniedOutcome = await bureau.contexts.events(run.sessionId, { principal: 'mallory' });
         expect(deniedOutcome).toEqual({ outcome: 'not-found' });
       } finally {
         loadSpy.mockRestore();
@@ -15839,10 +15763,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
 
       // The actual owner still sees the real gap outcome (a fresh call
       // this time, with no mocked read).
-      const ownerOutcome = await bureau.eventHistory(
-        { kind: 'session', id: run.sessionId },
-        { principal: 'alice' },
-      );
+      const ownerOutcome = await bureau.contexts.events(run.sessionId, { principal: 'alice' });
       expect(ownerOutcome).toMatchObject({ outcome: 'gap' });
 
       await bureau.shutdown();
@@ -15924,9 +15845,9 @@ describe('two Bureau processes racing deleteSession over one shared persistent s
       // the total across both.
       expect(notifications).toBe(1);
 
-      let deletedAggregatePage: Awaited<ReturnType<Bureau['eventHistory']>> | undefined;
+      let deletedAggregatePage: Awaited<ReturnType<Bureau['contexts']['events']>> | undefined;
       await waitForCondition(async () => {
-        const page = await bureauA.eventHistory({ kind: 'session', id: run.sessionId });
+        const page = await bureauA.contexts.events(run.sessionId);
         if ('outcome' in page && page.outcome === 'deleted-aggregate') {
           deletedAggregatePage = page;
           return true;
@@ -16025,10 +15946,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
           [run.id]: 'alice',
         });
 
-        const asOwner = await bureauB.eventHistory(
-          { kind: 'run', id: run.id },
-          { principal: 'alice' },
-        );
+        const asOwner = await bureauB.tasks.events(run.id, { principal: 'alice' });
         if ('outcome' in asOwner) {
           throw new Error(
             `expected a page for the owning principal, got ${JSON.stringify(asOwner)}`,
@@ -16036,15 +15954,12 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         }
         expect(asOwner.events.map((event) => event.kind)).toContain('run.completed');
 
-        const asStranger = await bureauB.eventHistory(
-          { kind: 'run', id: run.id },
-          { principal: 'mallory' },
-        );
+        const asStranger = await bureauB.tasks.events(run.id, { principal: 'mallory' });
         expect(asStranger).toEqual({ outcome: 'not-found' });
 
         // A trusted caller that omits `principal` entirely still bypasses
         // the check, exactly as it does for a never-restarted run.
-        const trusted = await bureauB.eventHistory({ kind: 'run', id: run.id });
+        const trusted = await bureauB.tasks.events(run.id);
         if ('outcome' in trusted) {
           throw new Error(`expected a page for a trusted caller, got ${JSON.stringify(trusted)}`);
         }
@@ -16112,10 +16027,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         // it at all, proving this read does not ride reattachRecoveredRun.
         expect(bureauB.tasks.detail(run.id)).toBeUndefined();
 
-        const asOwner = await bureauB.eventHistory(
-          { kind: 'run', id: run.id },
-          { principal: 'alice' },
-        );
+        const asOwner = await bureauB.tasks.events(run.id, { principal: 'alice' });
         if ('outcome' in asOwner) {
           throw new Error(
             `expected a page for the owning principal, got ${JSON.stringify(asOwner)}`,
@@ -16123,10 +16035,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         }
         expect(asOwner.events.map((event) => event.kind)).toContain('run.completed');
 
-        const asStranger = await bureauB.eventHistory(
-          { kind: 'run', id: run.id },
-          { principal: 'mallory' },
-        );
+        const asStranger = await bureauB.tasks.events(run.id, { principal: 'mallory' });
         expect(asStranger).toEqual({ outcome: 'not-found' });
       } finally {
         await bureauB.shutdown();
@@ -16191,18 +16100,12 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
           [run.id]: 'anonymous:local',
         });
 
-        const withPrincipal = await bureauB.eventHistory(
-          { kind: 'run', id: run.id },
-          { principal: 'anyone' },
-        );
+        const withPrincipal = await bureauB.tasks.events(run.id, { principal: 'anyone' });
         expect(withPrincipal).toEqual({ outcome: 'not-found' });
-        const asLocal = await bureauB.eventHistory(
-          { kind: 'run', id: run.id },
-          { principal: 'anonymous:local' },
-        );
+        const asLocal = await bureauB.tasks.events(run.id, { principal: 'anonymous:local' });
         expect('outcome' in asLocal).toBe(false);
 
-        const trusted = await bureauB.eventHistory({ kind: 'run', id: run.id });
+        const trusted = await bureauB.tasks.events(run.id);
         if ('outcome' in trusted) {
           throw new Error(`expected a page for a trusted caller, got ${JSON.stringify(trusted)}`);
         }
@@ -16369,15 +16272,9 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         });
         await waitForTaskState(bureau, runTwo.id);
 
-        const asAliceOnRunOne = await bureau.eventHistory(
-          { kind: 'run', id: runOne.id },
-          { principal: 'alice' },
-        );
+        const asAliceOnRunOne = await bureau.tasks.events(runOne.id, { principal: 'alice' });
         if ('outcome' in asAliceOnRunOne) throw new Error('expected a page for alice on run one');
-        const asBobOnRunTwo = await bureau.eventHistory(
-          { kind: 'run', id: runTwo.id },
-          { principal: 'bob' },
-        );
+        const asBobOnRunTwo = await bureau.tasks.events(runTwo.id, { principal: 'bob' });
         if ('outcome' in asBobOnRunTwo) throw new Error('expected a page for bob on run two');
 
         // Neither principal is authorized against the OTHER run — this is
@@ -16385,15 +16282,9 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         // if `runAttribution` (or the gate reading it) ever collapsed to a
         // single session-wide entry instead of one per run id, one of
         // these two would wrongly return a page instead of `not-found`.
-        const asAliceOnRunTwo = await bureau.eventHistory(
-          { kind: 'run', id: runTwo.id },
-          { principal: 'alice' },
-        );
+        const asAliceOnRunTwo = await bureau.tasks.events(runTwo.id, { principal: 'alice' });
         expect(asAliceOnRunTwo).toEqual({ outcome: 'not-found' });
-        const asBobOnRunOne = await bureau.eventHistory(
-          { kind: 'run', id: runOne.id },
-          { principal: 'bob' },
-        );
+        const asBobOnRunOne = await bureau.tasks.events(runOne.id, { principal: 'bob' });
         expect(asBobOnRunOne).toEqual({ outcome: 'not-found' });
       } finally {
         await bureau.dispose();
@@ -16410,7 +16301,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
    */
   async function sessionHistoryVerdicts(bureau: Bureau, sessionId: string) {
     const verdictFor = async (principal: string) => {
-      const result = await bureau.eventHistory({ kind: 'session', id: sessionId }, { principal });
+      const result = await bureau.contexts.events(sessionId, { principal });
       return 'outcome' in result ? result.outcome : 'page';
     };
     return {
@@ -16505,16 +16396,13 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         });
         await waitForTaskState(bureau, runB.id);
 
-        const page = await bureau.eventHistory(
-          { kind: 'session', id: runA.sessionId },
-          { principal: 'alice' },
-        );
+        const page = await bureau.contexts.events(runA.sessionId, { principal: 'alice' });
         if ('outcome' in page) throw new Error(`expected a page, got ${page.outcome}`);
         expect(page.events.length).toBeGreaterThan(0);
 
         const received: DurableEventEnvelope[] = [];
-        const subscription = bureau.subscribeEventHistory(
-          { kind: 'session', id: runA.sessionId },
+        const subscription = bureau.contexts.subscribeEvents(
+          runA.sessionId,
           (event) => {
             received.push(event);
           },
@@ -16708,7 +16596,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         // trusted caller this maintenance-adjacent assertion is — the
         // in-memory `runAttribution` entry the removal clears would fail
         // an authenticated `alice` lookup closed instead (AB-313).
-        const runADeletedOutcome = await bureau.eventHistory({ kind: 'run', id: runA.id });
+        const runADeletedOutcome = await bureau.tasks.events(runA.id);
         if (
           !('outcome' in runADeletedOutcome) ||
           runADeletedOutcome.outcome !== 'deleted-aggregate'
@@ -16742,17 +16630,17 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         // `durable-event-history.test.ts`) — so this only confirms run A
         // is no more readable than before; it is not, by itself, proof
         // that pruning was scoped correctly. `afterA`/`afterB` above are.
-        const runAHistory = await bureau.eventHistory({ kind: 'run', id: runA.id });
+        const runAHistory = await bureau.tasks.events(runA.id);
         expect(runAHistory).toMatchObject({ outcome: 'gap' });
 
         // Run B is unaffected: still owner-authorized, and its own event —
         // genuinely retained, just past the floor boundary — is readable
         // from a cursor at that boundary (`lastEventForA.cursor`, exactly
         // where the retained window now starts).
-        const asBob = await bureau.eventHistory(
-          { kind: 'run', id: runB.id },
-          { principal: 'bob', since: lastEventForA.cursor },
-        );
+        const asBob = await bureau.tasks.events(runB.id, {
+          principal: 'bob',
+          since: lastEventForA.cursor,
+        });
         if ('outcome' in asBob) throw new Error('expected a page for bob on run B');
         expect(asBob.events.map((event) => event.kind)).toContain('run.completed');
       } finally {
@@ -16803,7 +16691,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       });
       await waitForRunCompletion(bureau, completedRun.id);
 
-      const completedPage = await bureau.eventHistory({ kind: 'run', id: completedRun.id });
+      const completedPage = await bureau.tasks.events(completedRun.id);
       if ('outcome' in completedPage) throw new Error('expected a page for the completed run');
       const lastSequenceForCompleted = Math.max(
         ...completedPage.events.map((event) => event.sequence),
@@ -16933,7 +16821,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         await retireSettledTasks(bureau, runtime);
         await runtime.deferred.drain();
 
-        const completedOutcome = await bureau.eventHistory({ kind: 'run', id: completedRun.id });
+        const completedOutcome = await bureau.tasks.events(completedRun.id);
         if (!('outcome' in completedOutcome) || completedOutcome.outcome !== 'deleted-aggregate') {
           throw new Error(
             `expected a deleted-aggregate outcome for the completed run, got ${JSON.stringify(completedOutcome)}`,
@@ -17024,7 +16912,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         });
         await waitForRunCompletion(bureau, completedRun.id);
 
-        const completedPage = await bureau.eventHistory({ kind: 'run', id: completedRun.id });
+        const completedPage = await bureau.tasks.events(completedRun.id);
         if ('outcome' in completedPage) throw new Error('expected a page for the completed run');
         const lastEvent = completedPage.events.at(-1);
         if (!lastEvent) throw new Error('expected at least one durable event');
@@ -17093,7 +16981,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         });
         await waitForRunCompletion(bureau, run.id);
 
-        const page = await bureau.eventHistory({ kind: 'run', id: run.id });
+        const page = await bureau.tasks.events(run.id);
         if ('outcome' in page) throw new Error('expected a page for the run');
         const lastEvent = page.events.at(-1);
         if (!lastEvent) throw new Error('expected at least one durable event');
@@ -17172,7 +17060,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         });
         await waitForRunCompletion(bureau, run.id);
 
-        const page = await bureau.eventHistory({ kind: 'run', id: run.id });
+        const page = await bureau.tasks.events(run.id);
         if ('outcome' in page) throw new Error('expected a page for the run');
         const lastEvent = page.events.at(-1);
         if (!lastEvent) throw new Error('expected at least one durable event');
@@ -17246,7 +17134,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         });
         await waitForRunCompletion(bureau, run.id);
 
-        const page = await bureau.eventHistory({ kind: 'run', id: run.id });
+        const page = await bureau.tasks.events(run.id);
         if ('outcome' in page) throw new Error('expected a page for the run');
         const lastEvent = page.events.at(-1);
         if (!lastEvent) throw new Error('expected at least one durable event');
@@ -17256,10 +17144,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         // removal event") — delete it first so the ONLY remaining question
         // is whether the write that follows stamps a fresh `updatedAt`.
         await retireSettledTasksOnRealClock(bureau);
-        const deletedOutcome = await bureau.eventHistory(
-          { kind: 'run', id: run.id },
-          { since: lastEvent.cursor },
-        );
+        const deletedOutcome = await bureau.tasks.events(run.id, { since: lastEvent.cursor });
         if (!('outcome' in deletedOutcome) || deletedOutcome.outcome !== 'deleted-aggregate') {
           throw new Error(
             `expected a deleted-aggregate outcome after deletion, got ${JSON.stringify(deletedOutcome)}`,
@@ -17324,7 +17209,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         });
         await waitForRunCompletion(bureau, run.id);
 
-        const page = await bureau.eventHistory({ kind: 'run', id: run.id });
+        const page = await bureau.tasks.events(run.id);
         if ('outcome' in page) throw new Error('expected a page for the run');
         const lastEventBeforeDeletion = page.events.at(-1);
         if (!lastEventBeforeDeletion) throw new Error('expected at least one durable event');
@@ -17355,10 +17240,9 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           // the equivalent note earlier in this describe block) — reading
           // `since` the run's own last pre-deletion cursor instead scopes
           // this to exactly the one new event deletion added.
-          const deletedOutcome = await bureau.eventHistory(
-            { kind: 'run', id: run.id },
-            { since: lastEventBeforeDeletion.cursor },
-          );
+          const deletedOutcome = await bureau.tasks.events(run.id, {
+            since: lastEventBeforeDeletion.cursor,
+          });
           if (!('outcome' in deletedOutcome) || deletedOutcome.outcome !== 'deleted-aggregate') {
             throw new Error(
               `expected a deleted-aggregate outcome after deletion, got ${JSON.stringify(deletedOutcome)}`,
@@ -17425,15 +17309,14 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         // from pruning (Codex review, "Preserve ownership for a later run
         // removal event") — delete it first so this test isolates the
         // automatic timer, not that separate exclusion signal.
-        const page = await bureau.eventHistory({ kind: 'run', id: run.id });
+        const page = await bureau.tasks.events(run.id);
         if ('outcome' in page) throw new Error('expected a page for the run');
         const lastEventBeforeDeletion = page.events.at(-1);
         if (!lastEventBeforeDeletion) throw new Error('expected at least one durable event');
         await retireSettledTasks(bureau, runtime);
-        const deletedOutcome = await bureau.eventHistory(
-          { kind: 'run', id: run.id },
-          { since: lastEventBeforeDeletion.cursor },
-        );
+        const deletedOutcome = await bureau.tasks.events(run.id, {
+          since: lastEventBeforeDeletion.cursor,
+        });
         if (!('outcome' in deletedOutcome) || deletedOutcome.outcome !== 'deleted-aggregate') {
           throw new Error(
             `expected a deleted-aggregate outcome after deletion, got ${JSON.stringify(deletedOutcome)}`,
@@ -17515,7 +17398,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         // The retention floor must be above 0, or `pruneStaleRunOwnership`
         // returns before ever calling `sessionStore.list()` — this test
         // needs that call reached, so it can inject the failure there.
-        const page = await bureau.eventHistory({ kind: 'run', id: run.id });
+        const page = await bureau.tasks.events(run.id);
         if ('outcome' in page) throw new Error('expected a page for the run');
         const lastEvent = page.events.at(-1);
         if (!lastEvent) throw new Error('expected at least one durable event');
@@ -17591,15 +17474,14 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         // `store.getRun(runId) !== undefined` excludes a still-present run
         // from pruning — delete it first so the released first pass
         // actually has something prunable to prove it completed.
-        const page = await bureau.eventHistory({ kind: 'run', id: run.id });
+        const page = await bureau.tasks.events(run.id);
         if ('outcome' in page) throw new Error('expected a page for the run');
         const lastEventBeforeDeletion = page.events.at(-1);
         if (!lastEventBeforeDeletion) throw new Error('expected at least one durable event');
         await retireSettledTasks(bureau, runtime);
-        const deletedOutcome = await bureau.eventHistory(
-          { kind: 'run', id: run.id },
-          { since: lastEventBeforeDeletion.cursor },
-        );
+        const deletedOutcome = await bureau.tasks.events(run.id, {
+          since: lastEventBeforeDeletion.cursor,
+        });
         if (!('outcome' in deletedOutcome) || deletedOutcome.outcome !== 'deleted-aggregate') {
           throw new Error(
             `expected a deleted-aggregate outcome after deletion, got ${JSON.stringify(deletedOutcome)}`,
@@ -17695,15 +17577,14 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       await waitForRunCompletion(bureau, run.id);
       await runtime.deferred.drain();
 
-      const page = await bureau.eventHistory({ kind: 'run', id: run.id });
+      const page = await bureau.tasks.events(run.id);
       if ('outcome' in page) throw new Error('expected a page for the run');
       const lastEventBeforeDeletion = page.events.at(-1);
       if (!lastEventBeforeDeletion) throw new Error('expected at least one durable event');
       await retireSettledTasks(bureau, runtime);
-      const deletedOutcome = await bureau.eventHistory(
-        { kind: 'run', id: run.id },
-        { since: lastEventBeforeDeletion.cursor },
-      );
+      const deletedOutcome = await bureau.tasks.events(run.id, {
+        since: lastEventBeforeDeletion.cursor,
+      });
       if (!('outcome' in deletedOutcome) || deletedOutcome.outcome !== 'deleted-aggregate') {
         throw new Error(
           `expected a deleted-aggregate outcome after deletion, got ${JSON.stringify(deletedOutcome)}`,
@@ -17813,15 +17694,14 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         // from pruning (Codex review, "Preserve ownership for a later run
         // removal event") — delete it first so this test's later explicit
         // `runDurableMaintenance()` call can actually prune it.
-        const page = await bureau.eventHistory({ kind: 'run', id: run.id });
+        const page = await bureau.tasks.events(run.id);
         if ('outcome' in page) throw new Error('expected a page for the run');
         const lastEventBeforeDeletion = page.events.at(-1);
         if (!lastEventBeforeDeletion) throw new Error('expected at least one durable event');
         await retireSettledTasks(bureau, runtime);
-        const deletedOutcome = await bureau.eventHistory(
-          { kind: 'run', id: run.id },
-          { since: lastEventBeforeDeletion.cursor },
-        );
+        const deletedOutcome = await bureau.tasks.events(run.id, {
+          since: lastEventBeforeDeletion.cursor,
+        });
         if (!('outcome' in deletedOutcome) || deletedOutcome.outcome !== 'deleted-aggregate') {
           throw new Error(
             `expected a deleted-aggregate outcome after deletion, got ${JSON.stringify(deletedOutcome)}`,
@@ -18016,16 +17896,15 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
             principal: 'alice',
           });
           await waitForRunCompletion(bureau, run.id);
-          const page = await bureau.eventHistory({ kind: 'run', id: run.id });
+          const page = await bureau.tasks.events(run.id);
           if ('outcome' in page) throw new Error('expected a page for the run');
           const lastEventBeforeDeletion = page.events.at(-1);
           if (!lastEventBeforeDeletion) throw new Error('expected a durable event');
           await retireSettledTasks(bureau, runtime);
           await runtime.deferred.drain();
-          const deleted = await bureau.eventHistory(
-            { kind: 'run', id: run.id },
-            { since: lastEventBeforeDeletion.cursor },
-          );
+          const deleted = await bureau.tasks.events(run.id, {
+            since: lastEventBeforeDeletion.cursor,
+          });
           if (!('outcome' in deleted) || deleted.outcome !== 'deleted-aggregate') {
             throw new Error(`expected a deleted-aggregate outcome, got ${JSON.stringify(deleted)}`);
           }
@@ -18964,7 +18843,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         // event instead guarantees every seed-era row, under every owner,
         // is retired, regardless of how many rows seed produced or what
         // order they landed in.
-        const runAPage = await bureau.eventHistory({ kind: 'run', id: runA.id });
+        const runAPage = await bureau.tasks.events(runA.id);
         if ('outcome' in runAPage) throw new Error('expected a durable page for run A');
         const runAFirstEvent = runAPage.events[0];
         if (!runAFirstEvent) throw new Error('expected at least one durable event for run A');
@@ -19151,7 +19030,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         await waitForRunCompletion(bureau, runFence.id);
         await runtime.deferred.drain();
 
-        const runFencePage = await bureau.eventHistory({ kind: 'run', id: runFence.id });
+        const runFencePage = await bureau.tasks.events(runFence.id);
         if ('outcome' in runFencePage) throw new Error('expected a durable page for the fence run');
         const runFenceFirstEvent = runFencePage.events[0];
         if (!runFenceFirstEvent) {
@@ -19296,11 +19175,11 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         // HIGHER of the run's and its session's own last event closes
         // this for real, rather than coincidentally passing only when a
         // session write happens not to outrun the run's page.
-        const runPage = await bureau.eventHistory({ kind: 'run', id: run.id });
+        const runPage = await bureau.tasks.events(run.id);
         if ('outcome' in runPage) throw new Error('expected a durable page for the run');
         const runLastEvent = runPage.events[runPage.events.length - 1];
         if (!runLastEvent) throw new Error('expected at least one durable event for the run');
-        const sessionPage = await bureau.eventHistory({ kind: 'session', id: run.sessionId });
+        const sessionPage = await bureau.contexts.events(run.sessionId);
         const sessionLastEvent =
           !('outcome' in sessionPage) && sessionPage.events.length > 0
             ? sessionPage.events[sessionPage.events.length - 1]
@@ -19386,11 +19265,11 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         // `emittedAtMs` (the same clock reading the run's own audit
         // records carry), which silently defeats this test's own prune —
         // see the "prunes on its own timer" sibling test's identical fix.
-        const runPage = await bureauA.eventHistory({ kind: 'run', id: run.id });
+        const runPage = await bureauA.tasks.events(run.id);
         if ('outcome' in runPage) throw new Error('expected a durable page for the run');
         const runLastEvent = runPage.events[runPage.events.length - 1];
         if (!runLastEvent) throw new Error('expected at least one durable event for the run');
-        const sessionPage = await bureauA.eventHistory({ kind: 'session', id: run.sessionId });
+        const sessionPage = await bureauA.contexts.events(run.sessionId);
         const sessionLastEvent =
           !('outcome' in sessionPage) && sessionPage.events.length > 0
             ? sessionPage.events[sessionPage.events.length - 1]
@@ -20960,7 +20839,7 @@ describe('AB-389 — session commit outbox', () => {
     try {
       await bureau.waitForRecovery?.();
 
-      const page = await bureau.eventHistory({ kind: 'session', id: session.id });
+      const page = await bureau.contexts.events(session.id);
       if ('outcome' in page) throw new Error(`expected a page, got outcome "${page.outcome}"`);
       expect(page.events.map((event) => event.kind)).toEqual(['session.created']);
 
@@ -21067,7 +20946,7 @@ describe('AB-389 — session commit outbox', () => {
       await sessionStoreA.save({ ...reloaded!, updatedAt: reloaded!.updatedAt });
       await runtime.deferred.drain();
 
-      const page = await bureauA.eventHistory({ kind: 'session', id: session.id });
+      const page = await bureauA.contexts.events(session.id);
       if ('outcome' in page) throw new Error(`expected a page, got outcome "${page.outcome}"`);
       expect(page.events.map((event) => event.kind)).toEqual(['session.created', 'session.saved']);
       // Ordinal order, not merely dispatch order: the durable record's own
@@ -21118,7 +20997,7 @@ describe('AB-389 — session commit outbox', () => {
       await Promise.all([sessionStore.save(session), bureau.runDurableMaintenance()]);
       await runtime.deferred.drain();
 
-      const page = await bureau.eventHistory({ kind: 'session', id: session.id });
+      const page = await bureau.contexts.events(session.id);
       if ('outcome' in page) throw new Error(`expected a page, got outcome "${page.outcome}"`);
       expect(page.events.map((event) => event.kind)).toEqual(['session.created']);
     } finally {
@@ -21294,7 +21173,7 @@ describe('AB-389 — session commit outbox', () => {
       // acknowledges the entry.
       await bureau.runDurableMaintenance();
       expect(await sessionStore.outbox.pending()).toHaveLength(0);
-      const page = await bureau.eventHistory({ kind: 'session', id: session.id });
+      const page = await bureau.contexts.events(session.id);
       if ('outcome' in page) throw new Error(`expected a page, got outcome "${page.outcome}"`);
       expect(page.events.map((event) => event.kind)).toEqual(['session.created']);
     } finally {
@@ -21524,7 +21403,7 @@ describe('AB-389 — session commit outbox', () => {
         const pending = await recoveredSessionStore.outbox.pending();
         return pending.length === 0;
       }, 'expected the unrelated outbox entry to drain even though durable run recovery is deferred');
-      const page = await bureauB.eventHistory({ kind: 'session', id: outboxSession.id });
+      const page = await bureauB.contexts.events(outboxSession.id);
       if ('outcome' in page) throw new Error(`expected a page, got outcome "${page.outcome}"`);
       expect(page.events.map((event) => event.kind)).toEqual(['session.created']);
 

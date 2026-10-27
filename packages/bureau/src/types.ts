@@ -346,7 +346,7 @@ export interface BureauRetentionOptions {
    * the runtime clock from the run's terminal action; a run that settled
    * before a restart and was not reattached is measured from when the ledger
    * first observes it settled. A run still in progress holds its binding.
-   * Once the window has passed, {@link Bureau.locateRunCreationReceipt}
+   * Once the window has passed, {@link BureauTasks.receipt}
    * reports `expired`, the same request id creates a new run, and durable
    * maintenance deletes the binding. `createBureau` throws
    * `BureauError(..., 'BAD_REQUEST')` for any other value.
@@ -1575,7 +1575,7 @@ export interface BureauSchedules {
   /**
    * One page of the schedule definition's durable event history (`schedule.created`, paused,
    * resumed, and cancelled), from the exclusive `options.since` cursor. It is
-   * {@link Bureau.eventHistory} for the `schedule` owner: the outcomes, `options.principal`
+   * {@link BureauTasks.events} for the `schedule` owner: the outcomes, `options.principal`
    * authorization, and paging are that method's, so see it for the full contract.
    */
   events(
@@ -1592,7 +1592,7 @@ export interface BureauSchedules {
   /**
    * Replays the schedule definition's durable event history from the exclusive `options.since`
    * cursor, then delivers live events with no gap and no duplicate at the handoff. It is
-   * {@link Bureau.subscribeEventHistory} for the `schedule` owner, so an ephemeral bureau returns
+   * {@link BureauTasks.subscribeEvents} for the `schedule` owner, so an ephemeral bureau returns
    * an already-closed subscription and `options.principal` applies as it does there.
    */
   subscribeEvents(
@@ -1789,7 +1789,7 @@ export interface BureauContexts {
 
   /**
    * One page of the context's durable event history, from the exclusive `options.since` cursor. It
-   * is {@link Bureau.eventHistory} for the `session` owner: the outcomes, `options.principal`
+   * is {@link BureauTasks.events} for the `session` owner: the outcomes, `options.principal`
    * authorization, and paging are that method's, so see it for the full contract.
    */
   events(
@@ -1806,7 +1806,7 @@ export interface BureauContexts {
   /**
    * Replays the context's durable event history from the exclusive `options.since` cursor, then
    * delivers live events with no gap and no duplicate at the handoff. It is
-   * {@link Bureau.subscribeEventHistory} for the `session` owner, so an ephemeral bureau returns an
+   * {@link BureauTasks.subscribeEvents} for the `session` owner, so an ephemeral bureau returns an
    * already-closed subscription and `options.principal` applies as it does there.
    */
   subscribeEvents(
@@ -2111,20 +2111,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    */
   createRun(request: CreateRunRequest): Promise<CreatedRunSummary>;
   /**
-   * COR-424 — where a run-creation request's receipt stands: `recorded`,
-   * `pending` (claimed, with no started run), `expired` once its binding's
-   * retention window has passed (the same request id then creates a new
-   * run), or `not-found`. Scoped like the ledger key, to the principal and to
-   * the agent the run is: the session's, when the request continued an existing session (name it
-   * with `sessionId`), otherwise `agentName`, which is then required. A query that finds the
-   * run started records its receipt, exactly as a retry would. Rejects
-   * with `BureauError` (`BAD_REQUEST`) for a blank principal or request id,
-   * and (`NOT_CONFIGURED`, subject `durable`) without a durable engine.
-   */
-  locateRunCreationReceipt(
-    request: LocateRunCreationReceiptRequest,
-  ): Promise<RunCreationReceiptLocation>;
-  /**
    * The runs `createRun` started that this process still holds. A
    * `bureau.run()` run is not listed, though `getRun` and `abortRun` accept
    * its id.
@@ -2386,96 +2372,36 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * its in-flight asset work and awaits every cleanup acknowledgement.
    */
   readonly assets: AssetService | undefined;
-
-  /**
-   * Pages `owner`'s durable event history (AB-91's `ab91-01` slice,
-   * AB-310) — a bounded, sequence-ordered page of events after the
-   * exclusive `since` cursor, a {@link DurableEventGap} when `since`
-   * predates the store's retention floor, or
-   * `{ outcome: 'unsupported-capability', reason: 'no-persistent-storage'
-   * }` for an ephemeral bureau (no persistent storage backend
-   * configured) — matching the `unsupported-capability` locator outcome
-   * AB-91's own source spec and AB-42's precedent both use for a missing
-   * durable backend.
-   *
-   * A producer sinks the run/session/schedule-fire families AB-87's matrix
-   * classifies as durable into this store (AB-311's coordinator amendment
-   * — see `durable-event-history.ts`'s `createDurableEventProducer` doc
-   * comment for exactly which events, and why a `schedule.created`/
-   * `paused`/`resumed`/`cancelled` definition event is not among them).
-   *
-   * AB-313 adds two outcomes for `owner.kind` `'run'`/`'session'`, and COR-718
-   * extends the first to `'goal'` and `'schedule'` owners:
-   *
-   * - `options.principal`, when provided, is checked against the owner of
-   *   record of the run, session, goal, or schedule (see
-   *   {@link Bureau.getOwner}): only that owner reads its history. A resource
-   *   created with no principal, or recorded before owners existed, belongs to
-   *   `anonymous:local`, and a malformed session owner fails closed. A caller
-   *   whose principal is not the owner gets `{ outcome: 'not-found' }` — the same
-   *   not-found-shaped denial `submitSessionInput` (AB-194) uses, so an
-   *   unauthorized caller cannot distinguish "wrong id" from "exists, not
-   *   yours." Omitting `options.principal` entirely skips the check (an
-   *   internal/trusted caller, or a gateway request from a privileged
-   *   connection).
-   * - When the owner's live Bureau record is gone (the session was
-   *   deleted, or the run's task expired under `retention.tasks`) but this
-   *   store still holds committed events for it, this returns
-   *   `{ outcome: 'deleted-aggregate', owner, events, hasMore, nextCursor?
-   *   }` instead of an ordinary page — distinguishable from BOTH an
-   *   ordinary empty page (an id nothing was ever recorded under) and
-   *   `not-found` (no committed events at all): AB-87's retention/deletion
-   *   posture is that deleting the owner record never deletes its
-   *   history, so the events remain queryable through this same call
-   *   rather than requiring a second one. That outcome is for a trusted
-   *   caller, one that states no principal (COR-718): a caller that states
-   *   one is told `not-found` for a session that no longer exists, because
-   *   history is keyed by id alone and a deleted session has no owner left to
-   *   compare. For a session id that has since been recreated, a caller that
-   *   states a principal must own the live session and sees only the events
-   *   recorded for the live session's incarnation, whatever `since` and
-   *   `limit` it passes; an event recorded for no incarnation is never shown
-   *   to such a caller.
-   */
-  eventHistory(
-    owner: DurableEventOwner,
-    options?: DurableEventHistoryPageOptions,
-  ): Promise<
-    | DurableEventPage
-    | DurableEventGap
-    | EventHistoryUnsupportedOutcome
-    | EventHistoryNotFoundOutcome
-    | EventHistoryDeletedAggregateOutcome
-  >;
-
-  /**
-   * Replays `owner`'s durable event history from the exclusive `since`
-   * cursor, then transitions to live delivery with no gap and no
-   * duplicate at the handoff (AB-311) — see
-   * `durable-event-history.ts`'s `DurableEventHistory.subscribeEventHistory`
-   * doc comment for the full race-freedom, disposal, and error-isolation
-   * contract. Returns an already-closed, never-delivering `Subscription`
-   * for an ephemeral bureau (no persistent storage backend configured) —
-   * a caller that must distinguish "unsupported" from "supported but
-   * empty" calls `eventHistory()` first.
-   *
-   * COR-851 — `options.principal` applies the same authorization
-   * `eventHistory()` applies to its own `principal`, to the replay and to live
-   * delivery alike: omitted, the caller is trusted; present, each event is
-   * delivered only while the principal may read the owner (checked fresh per
-   * event, so an owner created after the subscription is authorized by its
-   * first event), and an owner it may not read, or that does not exist, yields
-   * silence — never a refusal that would tell the two apart.
-   */
-  subscribeEventHistory(
-    owner: DurableEventOwner,
-    listener: (event: DurableEventEnvelope) => void,
-    options?: DurableEventHistorySubscribeOptions,
-  ): Subscription;
 }
 
 /**
- * Returned by {@link Bureau.eventHistory} when the bureau has no
+ * Reads one page of an owner's durable event history. {@link BureauTasks.events},
+ * {@link BureauContexts.events}, and {@link BureauSchedules.events} are this read narrowed to their
+ * owner kind.
+ */
+export type DurableEventHistoryRead = (
+  owner: DurableEventOwner,
+  options?: DurableEventHistoryPageOptions,
+) => Promise<
+  | DurableEventPage
+  | DurableEventGap
+  | EventHistoryUnsupportedOutcome
+  | EventHistoryNotFoundOutcome
+  | EventHistoryDeletedAggregateOutcome
+>;
+
+/**
+ * Subscribes to an owner's durable event history: a replay from the cursor, then the live tail.
+ * Each namespace's `subscribeEvents` is this subscription narrowed to its owner kind.
+ */
+export type DurableEventHistorySubscribe = (
+  owner: DurableEventOwner,
+  listener: (event: DurableEventEnvelope) => void,
+  options?: DurableEventHistorySubscribeOptions,
+) => Subscription;
+
+/**
+ * Returned by an event history read ({@link BureauTasks.events} and its siblings) when the bureau has no
  * persistent storage backend configured.
  */
 export interface EventHistoryUnsupportedOutcome {
@@ -2484,7 +2410,7 @@ export interface EventHistoryUnsupportedOutcome {
 }
 
 /**
- * Returned by {@link Bureau.eventHistory} (AB-313) when `options.principal`
+ * Returned by an event history read ({@link BureauTasks.events} and its siblings) (AB-313) when `options.principal`
  * is provided and does not match `owner`'s recorded principal — the same
  * not-found-shaped denial `submitSessionInput` (AB-42/AB-194) returns, so an
  * unauthorized caller cannot distinguish "no such run/session" from "exists,
@@ -2495,7 +2421,7 @@ export interface EventHistoryNotFoundOutcome {
 }
 
 /**
- * Returned by {@link Bureau.eventHistory} (AB-313) when `owner`'s live
+ * Returned by an event history read ({@link BureauTasks.events} and its siblings) (AB-313) when `owner`'s live
  * Bureau record is gone (its task expired under `retention.tasks`, or a deleted session) but this store
  * still holds committed durable events for it — distinguishable from both
  * an ordinary empty {@link DurableEventPage} (an id nothing was ever
@@ -2729,7 +2655,7 @@ export interface CreateRunRequest {
   runCreationRequestId?: string | undefined;
 }
 
-/** COR-424 — which run-creation request {@link Bureau.locateRunCreationReceipt} looks up. */
+/** COR-424 — which run-creation request {@link BureauTasks.receipt} looks up. */
 export interface LocateRunCreationReceiptRequest {
   /** The authenticated caller that issued the request. */
   principal: string;

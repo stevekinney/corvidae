@@ -190,14 +190,11 @@ export type BureauHandlerSource = Pick<
   | 'durableEngine'
   | 'getOwner'
   | 'lifecycle'
-  | 'eventHistory'
-  | 'subscribeEventHistory'
   | 'waitForRecovery'
   | 'createRun'
   | 'abortRun'
   | 'listRuns'
   | 'subscribeLiveFrames'
-  | 'locateRunCreationReceipt'
   | 'children'
   | 'cancelDurableRun'
   | 'models'
@@ -208,7 +205,12 @@ export type BureauHandlerSource = Pick<
   | 'surfaces'
   | 'addEventListener'
   | 'removeEventListener'
-> & { readonly tasks: Pick<BureauTasks, 'detail' | 'snapshot' | 'workflow' | 'wait'> } & {
+> & {
+  readonly tasks: Pick<
+    BureauTasks,
+    'detail' | 'snapshot' | 'workflow' | 'wait' | 'events' | 'subscribeEvents' | 'receipt'
+  >;
+} & {
   readonly reviews: Pick<BureauReviews, 'list' | 'get' | 'resolve' | 'pendingOf'>;
   readonly audit: Pick<BureauAudit, 'query'>;
   readonly contexts: Pick<
@@ -1044,7 +1046,7 @@ export function buildBureauHandlerHost(
       liveness: (runId) => bureau.tasks.detail(runId)?.liveness,
       children: (runId) => bureau.children.list(runId),
     },
-    taskHistory: bureau,
+    taskHistory: bureau.tasks,
     contexts: {
       list: (listOptions) => bureau.contexts.list(listOptions),
       get: (id) => bureau.contexts.get(id),

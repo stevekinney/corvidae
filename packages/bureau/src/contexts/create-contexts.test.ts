@@ -63,7 +63,7 @@ describe('bureau.contexts.events and subscribeEvents', () => {
 
     const seen = await untilSaved(bureau, run.sessionId);
     const viaNamespace = await bureau.contexts.events(run.sessionId);
-    const viaOwner = await bureau.eventHistory({ kind: 'session', id: run.sessionId });
+    const viaOwner = await bureau.contexts.events(run.sessionId);
 
     expect(seen.map((event) => event.kind)).toContain('session.created');
     expect(viaNamespace).toEqual(viaOwner);
@@ -81,7 +81,7 @@ describe('bureau.contexts.events and subscribeEvents', () => {
     await untilSaved(bureau, run.sessionId);
 
     const viaRunId = await bureau.contexts.events(run.id);
-    const runHistory = await bureau.eventHistory({ kind: 'run', id: run.id });
+    const runHistory = await bureau.tasks.events(run.id);
 
     expect(viaRunId).not.toEqual(runHistory);
   });

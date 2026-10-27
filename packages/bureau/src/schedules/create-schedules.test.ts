@@ -54,7 +54,7 @@ describe('bureau.schedules.events', () => {
     await bureau.schedules.pause(summary!.id);
 
     const viaNamespace = await bureau.schedules.events(summary!.id);
-    const viaOwner = await bureau.eventHistory({ kind: 'schedule', id: summary!.id });
+    const viaOwner = await bureau.schedules.events(summary!.id);
 
     expect(viaNamespace).toEqual(viaOwner);
     if (!('events' in viaNamespace)) throw new Error('expected a page');

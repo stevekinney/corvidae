@@ -146,7 +146,7 @@ const statuses = (frames: readonly SseFrame[]) =>
   );
 
 async function historyKinds(opened: OpenedBureau, runId: string): Promise<string[]> {
-  const page = await opened.bureau.eventHistory({ kind: 'run', id: runId });
+  const page = await opened.bureau.tasks.events(runId);
   return 'events' in page ? page.events.map((event) => event.kind) : [];
 }
 

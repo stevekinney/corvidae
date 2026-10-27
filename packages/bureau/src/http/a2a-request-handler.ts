@@ -269,16 +269,8 @@ export class BureauA2AUser implements User {
 /** The part of a Bureau the request handler reads. */
 export type A2ABureau = Pick<
   Bureau,
-  | 'createRun'
-  | 'locateRunCreationReceipt'
-  | 'getOwner'
-  | 'eventHistory'
-  | 'subscribeEventHistory'
-  | 'addEventListener'
-  | 'removeEventListener'
-  | 'assets'
-  | 'surfaces'
-> & { readonly tasks: Pick<BureauTasks, 'detail'> } & {
+  'createRun' | 'getOwner' | 'addEventListener' | 'removeEventListener' | 'assets' | 'surfaces'
+> & { readonly tasks: Pick<BureauTasks, 'detail' | 'receipt' | 'events' | 'subscribeEvents'> } & {
   readonly reviews: Pick<BureauReviews, 'get'>;
 } & {
   readonly contexts: Pick<BureauContexts, 'get' | 'input'>;
@@ -1066,11 +1058,11 @@ export function createBureauA2ARequestHandler(
    */
   async function holdsRun(message: Message, owner: Owner, version: string): Promise<boolean> {
     try {
-      const located = await bureau.locateRunCreationReceipt({
+      const located = await bureau.tasks.receipt({
         principal: owner,
         agentName,
-        ...(message.contextId === '' ? {} : { sessionId: message.contextId }),
-        runCreationRequestId: `a2a:${version}:${message.messageId}`,
+        ...(message.contextId === '' ? {} : { contextId: message.contextId }),
+        commandId: `a2a:${version}:${message.messageId}`,
       });
       return located.status === 'recorded';
     } catch {

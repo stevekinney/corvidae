@@ -62,7 +62,7 @@ async function read(
   sessionId: string,
   options: { principal?: string; since?: string } = {},
 ) {
-  return bureau.eventHistory({ kind: 'session', id: sessionId }, options);
+  return bureau.contexts.events(sessionId, options);
 }
 
 function eventsOf(page: Awaited<ReturnType<typeof read>>): readonly DurableEventEnvelope[] {
@@ -142,8 +142,8 @@ describe('the history of an expired session (COR-718)', () => {
       const own = eventsOf(await read(bureau, 'expired-sub', { principal: BOB }));
 
       const received: DurableEventEnvelope[] = [];
-      const subscription = bureau.subscribeEventHistory(
-        { kind: 'session', id: 'expired-sub' },
+      const subscription = bureau.contexts.subscribeEvents(
+        'expired-sub',
         (event) => {
           received.push(event);
         },

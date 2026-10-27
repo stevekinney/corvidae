@@ -81,7 +81,7 @@ describe('a catalog run recovered after a restart (COR-718)', () => {
           ['anonymous:local', 'api-key:alice'],
         );
         const read = async (id: string, principal: string) => {
-          const page = await second.eventHistory({ kind: 'run', id }, { principal });
+          const page = await second.tasks.events(id, { principal });
           return 'outcome' in page ? page.outcome : 'page';
         };
         const verdicts = await Promise.all(
