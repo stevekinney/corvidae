@@ -627,6 +627,7 @@ describe('createBureauHandler catalog', () => {
   it('streams bureau.events over Server-Sent Events from the Bureau itself', async () => {
     await withBureau({ id: 'events-bureau' }, async (bureau) => {
       bureau.internals.eventFeed.publish(new RunRegisteredEvent('run-1'));
+      bureau.internals.eventFeed.publish(new RunRemovedEvent('run-1'));
       const handler = createBureauHandler(bureau, { authentication: allScopes });
 
       const response = await handler(
@@ -789,6 +790,7 @@ describe('createBureauHandler WebSocket transport', () => {
   it('serves bureau.events over a real authenticated WebSocket', async () => {
     await withBureau({ id: 'websocket-bureau' }, async (bureau) => {
       bureau.internals.eventFeed.publish(new RunRegisteredEvent('run-1'));
+      bureau.internals.eventFeed.publish(new RunRemovedEvent('run-1'));
       const handler = createBureauHandler(bureau, { authentication: allScopes });
       const server = Bun.serve({
         port: 0,
@@ -804,8 +806,13 @@ describe('createBureauHandler WebSocket transport', () => {
         const socket = new WebSocket(`ws://localhost:${server.port}/jsonrpc`, {
           headers: credentials,
         } as never);
-        const frame = new Promise<Record<string, unknown>>((resolve, reject) => {
-          socket.addEventListener('message', (event) => resolve(JSON.parse(String(event.data))));
+        const frames: Array<Record<string, unknown>> = [];
+        const delivered = new Promise<Record<string, unknown>>((resolve, reject) => {
+          socket.addEventListener('message', (event) => {
+            const parsed = JSON.parse(String(event.data)) as Record<string, unknown>;
+            frames.push(parsed);
+            if (parsed['method'] === 'weft.events.deliver') resolve(parsed);
+          });
           socket.addEventListener('error', () => reject(new Error('WebSocket failed')));
         });
         await new Promise<void>((resolve) => socket.addEventListener('open', () => resolve()));
@@ -814,13 +821,20 @@ describe('createBureauHandler WebSocket transport', () => {
             jsonrpc: '2.0',
             id: 1,
             method: 'bureau.events',
-            params: { bureauId: bureau.id },
+            params: { bureauId: bureau.id, kinds: ['run.registered'] },
           }),
         );
-        expect(await frame).toMatchObject({
+        expect(await delivered).toMatchObject({
+          method: 'weft.events.deliver',
+          params: {
+            envelope: { kind: 'run.registered', payload: { runId: 'run-1' } },
+          },
+        });
+        expect(frames[0]).toMatchObject({
           id: 1,
           result: { subscriptionId: expect.any(String) },
         });
+        expect(frames).toHaveLength(2);
         socket.close();
       } finally {
         server.stop(true);

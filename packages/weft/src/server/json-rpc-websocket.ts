@@ -55,6 +55,15 @@ type ActiveSubscription = {
   isTerminating: boolean;
 };
 
+type PendingSubscription = {
+  readonly controller: AbortController;
+  close?: () => Promise<void>;
+};
+
+async function closeSubscriptionAfterClose(closeSubscription: () => Promise<void>): Promise<void> {
+  await closeSubscription().catch(() => {});
+}
+
 type SessionRequest = {
   readonly id: JsonRpcId | undefined;
   readonly expectsResponse: boolean;
@@ -91,6 +100,7 @@ export function createJsonRpcWebSocketSession(
   const maxFrameBytes = options.maxFrameBytes ?? DEFAULT_MAX_FRAME_BYTES;
   const transport = options.transport ?? 'jsonRpcWebSocket';
   const subscriptions = new Map<string, ActiveSubscription>();
+  const pendingSubscriptions = new Set<PendingSubscription>();
   // `emitterBroken` tracks the emitter's liveness — set to `true` only
   // when `emitter.send` (or `JSON.stringify`) throws. `disposed`
   // tracks whether `close()` ran — drives subscription teardown.
@@ -203,25 +213,30 @@ export function createJsonRpcWebSocketSession(
     }
 
     const controller = new AbortController();
+    const pending: PendingSubscription = { controller };
+    pendingSubscriptions.add(pending);
     const result = await execute();
+    pendingSubscriptions.delete(pending);
     if (!result.ok) {
-      const error = faultToJsonRpcError(result.fault);
-      emitResponse(request, {
-        jsonrpc: JSON_RPC_VERSION,
-        error: { code: error.code, message: error.message, data: error.data },
-        id: request.id ?? null,
-      });
+      emitSubscriptionFault(request, result.fault);
       return;
     }
 
     const { envelope, iterable, close: closeSubscription } = result.value;
+    let closeStarted = false;
+    const closeOnce = async (): Promise<void> => {
+      if (closeStarted) return;
+      closeStarted = true;
+      await closeSubscription();
+    };
+    pending.close = closeOnce;
+    if (disposed || controller.signal.aborted) {
+      await closeSubscriptionAfterClose(closeOnce);
+      return;
+    }
     if (!isSubscriptionStartEnvelope(envelope)) {
-      await closeSubscription().catch(() => {});
-      emitResponse(request, {
-        jsonrpc: JSON_RPC_VERSION,
-        error: { code: JSON_RPC_ERROR_CODES.INTERNAL_ERROR, message: 'internal error' },
-        id: request.id ?? null,
-      });
+      await closeSubscriptionAfterClose(closeOnce);
+      emitInvalidSubscription(request);
       return;
     }
     const { subscriptionId, cursor } = envelope;
@@ -236,7 +251,7 @@ export function createJsonRpcWebSocketSession(
       subscriptionId,
       iterable,
       signal: controller.signal,
-      closeSubscription,
+      closeSubscription: closeOnce,
       shouldSuppressOutput,
       emit,
       onComplete: () => subscriptions.delete(subscriptionId),
@@ -246,6 +261,26 @@ export function createJsonRpcWebSocketSession(
       controller,
       pump,
       isTerminating: false,
+    });
+  }
+
+  function emitSubscriptionFault(
+    request: SessionRequest,
+    fault: Parameters<typeof faultToJsonRpcError>[0],
+  ): void {
+    const error = faultToJsonRpcError(fault);
+    emitResponse(request, {
+      jsonrpc: JSON_RPC_VERSION,
+      error: { code: error.code, message: error.message, data: error.data },
+      id: request.id ?? null,
+    });
+  }
+
+  function emitInvalidSubscription(request: SessionRequest): void {
+    emitResponse(request, {
+      jsonrpc: JSON_RPC_VERSION,
+      error: { code: JSON_RPC_ERROR_CODES.INTERNAL_ERROR, message: 'internal error' },
+      id: request.id ?? null,
     });
   }
 
@@ -402,13 +437,17 @@ export function createJsonRpcWebSocketSession(
   async function close(): Promise<void> {
     if (disposed) return;
     disposed = true;
-    const pending: Promise<void>[] = [];
+    const pendingCloses: Promise<void>[] = [];
     for (const sub of subscriptions.values()) {
       sub.controller.abort();
-      pending.push(sub.pump.catch(() => {}));
+      pendingCloses.push(sub.pump.catch(() => {}));
+    }
+    for (const pending of pendingSubscriptions) {
+      pending.controller.abort();
+      if (pending.close !== undefined) pendingCloses.push(pending.close().catch(() => {}));
     }
     subscriptions.clear();
-    await Promise.all(pending);
+    await Promise.all(pendingCloses);
   }
 
   return { handleMessage, close };

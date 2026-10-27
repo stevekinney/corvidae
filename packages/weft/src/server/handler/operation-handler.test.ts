@@ -223,6 +223,62 @@ describe('createOperationHandler', () => {
     socket.close();
   });
 
+  it('closes a subscription that completes setup after the socket closes', async () => {
+    let resolveSetup: (() => void) | undefined;
+    let setupEntered: (() => void) | undefined;
+    let closed = 0;
+    const entered = new Promise<void>((resolve) => {
+      setupEntered = resolve;
+    });
+    const operation = defineOperation({
+      name: 'probe.websocket.deferred',
+      mcpExposable: false,
+      kind: 'subscription',
+      summary: 'deferred websocket events',
+      destructive: false,
+      inputSchema: z.object({}),
+      outputSchema: z.object({ subscriptionId: z.string(), cursor: z.string() }),
+      eventSchema: z.object({ value: z.string() }),
+      access: { kind: 'public' as const },
+      transports: { http: false, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
+      unknownKeyPolicy: { http: 'reject' as const, jsonRpc: 'reject' as const },
+      invoke: async () => {
+        setupEntered?.();
+        await new Promise<void>((resolve) => {
+          resolveSetup = resolve;
+        });
+        return {
+          envelope: { subscriptionId: 'sub_deferred', cursor: '-1' },
+          iterable: (async function* () {})(),
+          close: async () => {
+            closed += 1;
+          },
+        };
+      },
+    });
+    const handler = createOperationHandler({ operations: [operation], host: {} });
+    websocketServer = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        if (request.headers.get('upgrade')?.toLowerCase() === 'websocket') {
+          if (await handler.upgrade(request, websocketServer!)) return undefined;
+        }
+        return handler(request);
+      },
+      websocket: handler.websocket,
+    });
+    const socket = new WebSocket(`ws://localhost:${websocketServer.port}/jsonrpc`);
+    await new Promise<void>((resolve) => socket.addEventListener('open', () => resolve()));
+    socket.send(
+      JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'probe.websocket.deferred', params: {} }),
+    );
+    await entered;
+    socket.close();
+    resolveSetup?.();
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    expect(closed).toBe(1);
+  });
+
   it('is exported from the package entry point', () => {
     expect(weft.createOperationHandler).toBe(createOperationHandler);
     expect(weft.createOperationHandlerAuthenticator).toBe(createOperationHandlerAuthenticator);
