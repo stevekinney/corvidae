@@ -3303,7 +3303,10 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
    */
   async function waitForPersistedTokens(workflowId: string, count: number): Promise<void> {
     await waitFor(
-      async () => (await engine.getStreamChunks(workflowId, 'tokens')).length >= count,
+      async () => {
+        const chunks = await engine.getStreamChunks(workflowId, 'tokens');
+        return chunks.length >= count;
+      },
       {
         label: `${count} token chunk(s) of ${workflowId} persisted`,
       },
@@ -4038,9 +4041,15 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
     // The third chunk must be in storage before the replay reads, so that the replay and the buffered
     // live frame both carry it: that overlap is what this test exists to deduplicate. The ungated
     // original is read, since the replay's own read is held at the gate.
-    await waitFor(async () => (await originalGetStreamChunks('wf-overlap', 'tokens')).length >= 3, {
-      label: 'third token chunk persisted',
-    });
+    await waitFor(
+      async () => {
+        const chunks = await originalGetStreamChunks('wf-overlap', 'tokens');
+        return chunks.length >= 3;
+      },
+      {
+        label: 'third token chunk persisted',
+      },
+    );
 
     releaseReplay();
     await waitFor(
@@ -6155,7 +6164,10 @@ describe('visibility timeout expiry triggers task reassignment', () => {
     // (simulating a worker that stops heartbeating). Instead, just disconnect:
     ws.close();
     await waitFor(
-      async () => (await readLedgerRecord(storage, 'fallback-expiry-op'))?.state === 'queued',
+      async () => {
+        const record = await readLedgerRecord(storage, 'fallback-expiry-op');
+        return record?.state === 'queued';
+      },
       {
         label: 'fallback-expiry-op requeued',
       },

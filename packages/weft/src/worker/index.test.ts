@@ -2707,9 +2707,7 @@ describe('RemoteWorker — connect() re-entrancy', () => {
     const second = worker.connect();
 
     // The first promise must settle (reject) rather than hang forever.
-    expect(await throwingRejectionOf(first)).toThrow(
-      'Superseded by a new connect() call',
-    );
+    expect(await throwingRejectionOf(first)).toThrow('Superseded by a new connect() call');
 
     await waitForCondition(() => registerCount === 2 && ackSocket !== undefined, {
       label: 'second register received',

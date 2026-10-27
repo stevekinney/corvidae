@@ -137,7 +137,9 @@ describe('the watcher', () => {
     // by advancing the clock.
     let reported = false;
     void fixture
-      .nextChange((change) => change.added.includes('watched') || change.changed.includes('watched'))
+      .nextChange(
+        (change) => change.added.includes('watched') || change.changed.includes('watched'),
+      )
       .then(() => {
         reported = true;
       });

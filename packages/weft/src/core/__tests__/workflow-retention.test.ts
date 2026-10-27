@@ -5,6 +5,7 @@ import {
   waitForRealTimersForTesting,
 } from '../../testing/fake-timers.test-support.ts';
 
+import { quietFor } from '../../../scripts/lib/wait-until.ts';
 import type {
   BatchOperation,
   ConditionalBatchCondition,
@@ -25,7 +26,6 @@ import {
   type WorkflowContext,
   type WorkflowDefinition,
 } from '../types.ts';
-import { quietFor } from '../../../scripts/lib/wait-until.ts';
 
 /**
  * Move `type`'s catalog active pointer to `revision`, tolerating a

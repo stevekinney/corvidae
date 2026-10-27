@@ -225,7 +225,9 @@ describe('a reader thread that dies', () => {
       endsWithIo: true,
       createWorker: () => new Worker(new URL('./no-such-worker-module.ts', import.meta.url).href),
     });
-    expect(await rejectionOf(created.stream.getReader().read()).then(() => 'failed')).toBe('failed');
+    expect(await rejectionOf(created.stream.getReader().read()).then(() => 'failed')).toBe(
+      'failed',
+    );
     expect(typeof (await created.stop())).toBe('boolean');
   });
 });

@@ -1109,9 +1109,9 @@ function pausesBeforeAssertion(
 ): boolean {
   // A hook runs before every test it covers, so a pause in `beforeEach`/`beforeAll` is a setup wait;
   // one in `afterEach`/`afterAll` closes what the test opened and checks nothing.
-  const root = chainRoot(registration.expression);
-  if (ts.isIdentifier(root) && /^before/.test(root.text)) return true;
-  if (ts.isIdentifier(root) && /^after/.test(root.text)) return false;
+  const hook = chainRoot(registration.expression);
+  if (ts.isIdentifier(hook) && hook.text.startsWith('before')) return true;
+  if (ts.isIdentifier(hook) && hook.text.startsWith('after')) return false;
   return assertsAfter(body, node);
 }
 
