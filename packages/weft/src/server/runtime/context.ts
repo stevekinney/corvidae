@@ -54,6 +54,15 @@ export interface PendingWorkerRequeue {
   readonly endsAt: number;
 }
 
+/** Point-in-time live transport subscriber/connection counts owned by `serve()`. */
+export interface ServerConnectionCounts {
+  fleetSse: number;
+  fleetWebSocket: number;
+  workflowSse: number;
+  workflowWebSocket: number;
+  workers: number;
+}
+
 /**
  * Internal closure state for a single `serve()` invocation.
  *
@@ -86,6 +95,8 @@ export interface ServerContext {
   readonly corsPolicy: ResolvedCorsPolicy | null;
   /** Server-owned process-local metrics collector used by runtime diagnostics. */
   readonly metricsCollector: MetricsCollector;
+  readonly connectionCounts: ServerConnectionCounts;
+  readonly refreshConnectionMetrics: () => void;
   readonly eventFeedBackend: ReturnType<typeof createEngineEventFeedBackend>;
   readonly workflowEventFeed: WorkflowEventFeed;
   readonly fleetEventFeed: FleetEventFeed;
@@ -145,4 +156,39 @@ export interface ServerContext {
    * been cleared.
    */
   stopping: boolean;
+}
+
+export type ConnectionLease = Readonly<{ release(): void }>;
+
+export function acquireFleetSseConnection(context: ServerContext): ConnectionLease {
+  return acquireConnection(context, 'fleetSse');
+}
+
+export function acquireFleetWebSocketConnection(context: ServerContext): ConnectionLease {
+  return acquireConnection(context, 'fleetWebSocket');
+}
+
+export function acquireWorkflowSseConnection(context: ServerContext): ConnectionLease {
+  return acquireConnection(context, 'workflowSse');
+}
+
+export function acquireWorkflowWebSocketConnection(context: ServerContext): ConnectionLease {
+  return acquireConnection(context, 'workflowWebSocket');
+}
+
+function acquireConnection(
+  context: ServerContext,
+  key: keyof Omit<ServerConnectionCounts, 'workers'>,
+): ConnectionLease {
+  context.connectionCounts[key] += 1;
+  context.refreshConnectionMetrics();
+  let released = false;
+  return {
+    release() {
+      if (released) return;
+      released = true;
+      context.connectionCounts[key] = Math.max(0, context.connectionCounts[key] - 1);
+      context.refreshConnectionMetrics();
+    },
+  };
 }

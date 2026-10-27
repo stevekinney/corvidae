@@ -113,7 +113,20 @@ function liveEventStreamContextFromOptions(
   if (options?.acquireWorkflowStreamConnection !== undefined) {
     context.acquireWorkflowStreamConnection = options.acquireWorkflowStreamConnection;
   }
+  addSubscriberLeases(context, options);
   return context;
+}
+
+function addSubscriberLeases(
+  context: LiveEventStreamContext,
+  options: HandlerOptions | undefined,
+): void {
+  if (options?.acquireFleetEventSubscriber !== undefined) {
+    context.acquireFleetEventSubscriber = options.acquireFleetEventSubscriber;
+  }
+  if (options?.acquireWorkflowEventSubscriber !== undefined) {
+    context.acquireWorkflowEventSubscriber = options.acquireWorkflowEventSubscriber;
+  }
 }
 
 async function dispatchRestBinding(
