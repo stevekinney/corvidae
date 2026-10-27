@@ -681,6 +681,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
       shutdownReport: {
         admissionClosed: true,
         policy: 'abort',
+        detached: 0,
         requested: 1,
         completed: 0,
         failed: 0,
