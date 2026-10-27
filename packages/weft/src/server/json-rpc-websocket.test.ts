@@ -264,6 +264,7 @@ describe('createJsonRpcWebSocketSession — frame dispatch', () => {
 
   it('preserves arbitrary subscription envelopes and uses the internal lifecycle id', async () => {
     let closeCalls = 0;
+    let release: (() => void) | undefined;
     const invalidSubscription = makeOp({
       name: 'weft.audit.invalidenvelope',
       kind: 'subscription',
@@ -275,9 +276,13 @@ describe('createJsonRpcWebSocketSession — frame dispatch', () => {
         envelope: { kind: 'custom', token: 'x' },
         iterable: (async function* () {
           yield { value: 'delivered' };
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
         })(),
         close: async () => {
           closeCalls += 1;
+          release?.();
         },
       }),
     });
@@ -301,8 +306,49 @@ describe('createJsonRpcWebSocketSession — frame dispatch', () => {
         message['method'] === 'weft.events.deliver' &&
         (message['params'] as { subscriptionId?: string }).subscriptionId === 'internal-custom',
     );
+    expect(closeCalls).toBe(0);
     await session.close();
     expect(closeCalls).toBe(1);
+    await session.close();
+    expect(closeCalls).toBe(1);
+  });
+
+  it('emits invalid requests without an id before invoking a registered subscription', async () => {
+    let invocationCalls = 0;
+    let closeCalls = 0;
+    const operation = makeOp({
+      name: 'weft.audit.noid',
+      kind: 'subscription',
+      inputSchema: z.object({}),
+      outputSchema: z.unknown(),
+      eventSchema: z.unknown(),
+      invoke: async () => {
+        invocationCalls += 1;
+        return {
+          subscriptionId: 'should-not-start',
+          envelope: { kind: 'custom' },
+          iterable: (async function* () {})(),
+          close: async () => {
+            closeCalls += 1;
+          },
+        };
+      },
+    });
+    const emitter = makeEmitter();
+    const session = createJsonRpcWebSocketSession({
+      registry: createOperationRegistry([operation]),
+      engine: fakeEngine,
+      principal: anonymousPrincipal(),
+      emitter,
+    });
+
+    await session.handleMessage(JSON.stringify({ method: 'weft.audit.noid', params: {} }));
+
+    expect(emitter.sent).toHaveLength(1);
+    expect(JSON.parse(emitter.sent[0]!).error.code).toBe(-32600);
+    expect(invocationCalls).toBe(0);
+    expect(closeCalls).toBe(0);
+    await session.close();
   });
 
   it('dispatches a single request and emits the response as a JSON frame', async () => {

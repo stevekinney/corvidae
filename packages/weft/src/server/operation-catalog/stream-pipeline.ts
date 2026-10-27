@@ -196,11 +196,13 @@ function isSubscriptionInvocation(
 ): value is SubscriptionOperationInvocation<unknown, unknown> {
   if (value === null || typeof value !== 'object') return false;
   return (
+    'subscriptionId' in value &&
     'envelope' in value &&
     'iterable' in value &&
     'close' in value &&
     isAsyncIterable(value.iterable) &&
-    typeof value.close === 'function'
+    typeof value.close === 'function' &&
+    typeof value.subscriptionId === 'string'
   );
 }
 

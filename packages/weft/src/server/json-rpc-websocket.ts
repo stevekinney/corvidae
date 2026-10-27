@@ -400,7 +400,7 @@ export function createJsonRpcWebSocketSession(
       };
       const parsed = parseJsonRpcRequest(validation.parsed);
       if (parsed.kind === 'invalid-request') {
-        emitResponse(request, {
+        emit({
           jsonrpc: JSON_RPC_VERSION,
           error: { code: parsed.code, message: parsed.message },
           id: parsed.id,

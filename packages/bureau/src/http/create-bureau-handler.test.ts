@@ -836,6 +836,28 @@ describe('createBureauHandler WebSocket transport', () => {
           result: { subscriptionId: expect.any(String) },
         });
         expect(frames).toHaveLength(2);
+        const deliveredFrame = frames.find((frame) => frame['method'] === 'weft.events.deliver')!;
+        const subscriptionId = (deliveredFrame['params'] as { subscriptionId: string })
+          .subscriptionId;
+        expect(subscriptionId).toEqual(expect.any(String));
+        const unsubscribed = new Promise<Record<string, unknown>>((resolve) => {
+          const listener = (event: MessageEvent) => {
+            const parsed = JSON.parse(String(event.data)) as Record<string, unknown>;
+            if (parsed['id'] !== 2) return;
+            socket.removeEventListener('message', listener);
+            resolve(parsed);
+          };
+          socket.addEventListener('message', listener);
+        });
+        socket.send(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 2,
+            method: 'weft.workflows.unsubscribe',
+            params: { subscriptionId },
+          }),
+        );
+        expect(await unsubscribed).toMatchObject({ id: 2, result: {} });
         socket.close();
       } finally {
         server.stop(true);

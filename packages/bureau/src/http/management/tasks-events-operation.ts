@@ -591,9 +591,11 @@ function followScheduleFire(
       },
     },
   );
+  const subscriptionId = `sub_${runtime.identifiers.next('task-subscription')}`;
   return {
+    subscriptionId,
     envelope: {
-      subscriptionId: `sub_${runtime.identifiers.next('task-subscription')}`,
+      subscriptionId,
       cursor: fromCursor ?? '-1',
     },
     iterable,
@@ -842,9 +844,11 @@ export const tasksEventsOperation = defineOperation<
       },
     );
 
+    const subscriptionId = `sub_${runtime.identifiers.next('task-subscription')}`;
     return {
+      subscriptionId,
       envelope: {
-        subscriptionId: `sub_${runtime.identifiers.next('task-subscription')}`,
+        subscriptionId,
         cursor: input.fromCursor ?? '-1',
       },
       iterable,
