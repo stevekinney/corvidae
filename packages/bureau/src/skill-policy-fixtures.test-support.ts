@@ -136,7 +136,7 @@ export async function pollForTime<T>(
 
 /** Whether the session has recorded an active skill. */
 export async function skillsRecorded(bureau: Bureau, sessionId: string): Promise<boolean> {
-  const session = await bureau.getSession(sessionId);
+  const session = await bureau.contexts.get(sessionId);
   const records = session?.metadata['activeSkillRecords'];
   return Array.isArray(records) && records.length > 0;
 }

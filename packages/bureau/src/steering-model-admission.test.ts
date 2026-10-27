@@ -30,7 +30,7 @@ import {
   twinModels,
   TWIN_OF_OPUS_5_5,
 } from './testing/model-override.test-support';
-import type { Bureau } from './types';
+import type { Bureau, BureauContexts } from './types';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -88,13 +88,13 @@ async function startRun(bureau: Bureau<AgentDefinitions>, sessionId?: string) {
 }
 
 const steer = (
-  bureau: Pick<Bureau, 'submitSteeringCommand'>,
+  bureau: { readonly contexts: Pick<BureauContexts, 'steer'> },
   sessionId: string,
   id: string,
   override: string,
   provider?: string,
 ) =>
-  bureau.submitSteeringCommand(sessionId, {
+  bureau.contexts.steer(sessionId, {
     id,
     principal: 'alice',
     requestedValue: {
@@ -130,14 +130,14 @@ describe('admission checks the model against the agent', () => {
     const bureau = await openBureau({ generate: stepped.generate });
     const run = await startRun(bureau);
     await stepped.firstStepEntered;
-    const before = await bureau.getSessionSteering(run.sessionId);
+    const before = await bureau.contexts.steering(run.sessionId);
 
     await steer(bureau, run.sessionId, 'outside', GPT_4_1.model);
-    expect(await bureau.getSessionSteering(run.sessionId)).toEqual(before);
+    expect(await bureau.contexts.steering(run.sessionId)).toEqual(before);
 
     const inside = await steer(bureau, run.sessionId, 'inside', OPUS_5.model, OPUS_5.provider);
     expect(inside.outcome).toBe('accepted');
-    expect(await bureau.getSessionSteering(run.sessionId)).toEqual({
+    expect(await bureau.contexts.steering(run.sessionId)).toEqual({
       model: { provider: 'anthropic', model: 'claude-opus-5' },
       configVersion: 1,
     });
@@ -169,7 +169,7 @@ describe('admission checks the model against the agent', () => {
 
     expect(retry).toEqual(first);
     expect(first.outcome === 'rejected' && first.failure.reason).toBe('model-not-allowed');
-    const session = await bureau.getSession(run.sessionId);
+    const session = await bureau.contexts.get(run.sessionId);
     const kv = bureau.internals.kv!;
     const head = await readSteeringLogHead(kv, run.sessionId, session!.incarnation);
     const events = await readSteeringLogEntries(
@@ -242,7 +242,7 @@ describe('an idle session takes a model override', () => {
     await waitForRunState(bureau, run.id);
 
     const model = await steer(bureau, run.sessionId, 'idle-model', OPUS_5.model, OPUS_5.provider);
-    const pause = await bureau.submitSteeringCommand(run.sessionId, {
+    const pause = await bureau.contexts.steer(run.sessionId, {
       id: 'idle-pause',
       principal: 'alice',
       requestedValue: { target: 'pause' },
@@ -306,7 +306,7 @@ describe('a switched model reaches the provider call', () => {
     await waitForRunState(restarted, resumed.id);
 
     expect(second.observed[0]).toEqual({ model: 'claude-opus-5', provider: 'anthropic' });
-    expect(await restarted.getSessionSteering(run.sessionId)).toEqual({
+    expect(await restarted.contexts.steering(run.sessionId)).toEqual({
       model: { provider: 'anthropic', model: 'claude-opus-5' },
       configVersion: 1,
     });
@@ -342,7 +342,7 @@ describe('a steering log written before the provider field existed', () => {
     const bureau = await openBureau({ path });
     const run = await startRun(bureau);
     await waitForRunState(bureau, run.id);
-    const session = await bureau.getSession(run.sessionId);
+    const session = await bureau.contexts.get(run.sessionId);
     const kv = bureau.internals.kv!;
     // The record exactly as the previous version wrote it: a bare model string, no provider.
     const legacy = JSON.parse(
@@ -370,7 +370,7 @@ describe('a steering log written before the provider field existed', () => {
     );
     expect(appended.status).toBe('appended');
 
-    const steering = await bureau.getSessionSteering(run.sessionId);
+    const steering = await bureau.contexts.steering(run.sessionId);
 
     expect(steering).toEqual({
       model: { provider: null, model: 'claude-opus-5' },
@@ -458,7 +458,7 @@ describe('a routed or opaque agent lists no models', () => {
       true,
     );
 
-    const outcome = await bureau.submitSteeringCommand(run.sessionId, {
+    const outcome = await bureau.contexts.steer(run.sessionId, {
       id: 'by-policy',
       principal: 'alice',
       requestedValue: { target: 'model', policyRef: 'fast-tier' },

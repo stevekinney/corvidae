@@ -170,7 +170,7 @@ async function runThatTakesInput(
   );
   await stream.until(EventType.STEP_STARTED);
   await opened.generate.reached('hold');
-  const admitted = await opened.bureau.submitSessionInput(threadId, {
+  const admitted = await opened.bureau.contexts.input(threadId, {
     id: 'follow-up-1',
     principal: 'anonymous:local',
     deliveryMode: 'steer',
@@ -245,12 +245,17 @@ describe('a session that cannot be read at the end of a run that took input', ()
     try {
       const failing = {
         ...opened.bureau,
-        getSession: async (id: string) => {
-          // The thread is readable while the run is going and owned, and unreadable once it ended.
-          if (opened.bureau.getRun(opened.bureau.listRuns()[0]?.id ?? '')?.status === 'completed') {
-            throw new Error('The session store is unavailable.');
-          }
-          return opened.bureau.getSession(id);
+        contexts: {
+          ...opened.bureau.contexts,
+          get: async (id: string) => {
+            // The thread is readable while the run is going and owned, and unreadable once it ended.
+            if (
+              opened.bureau.getRun(opened.bureau.listRuns()[0]?.id ?? '')?.status === 'completed'
+            ) {
+              throw new Error('The session store is unavailable.');
+            }
+            return opened.bureau.contexts.get(id);
+          },
         },
       };
       const stream = await runThatTakesInput(opened, mountOver(failing));
@@ -298,7 +303,7 @@ describe('the other ways a run that took input can end', () => {
       const stream = new FrameReader(await handler(startRequest(runAgentInput())));
       await stream.until(EventType.STEP_STARTED);
       await opened.generate.reached('hold');
-      await opened.bureau.submitSessionInput('thread-1', {
+      await opened.bureau.contexts.input('thread-1', {
         id: 'follow-up-1',
         principal: 'anonymous:local',
         deliveryMode: 'steer',
@@ -374,7 +379,7 @@ describe('a run that reported an error and was then abandoned without a save', (
       const stream = new FrameReader(await handler(startRequest(runAgentInput())));
       await stream.until(EventType.STEP_STARTED);
       await opened.generate.reached('hold');
-      await opened.bureau.submitSessionInput('thread-1', {
+      await opened.bureau.contexts.input('thread-1', {
         id: 'follow-up-1',
         principal: 'anonymous:local',
         deliveryMode: 'steer',
@@ -448,7 +453,7 @@ describe('the other ways a run that took input can end without its end being rec
     const stream = new FrameReader(await handler(startRequest(runAgentInput())));
     await stream.until(EventType.STEP_STARTED);
     await opened.generate.reached('hold');
-    await opened.bureau.submitSessionInput('thread-1', {
+    await opened.bureau.contexts.input('thread-1', {
       id: 'follow-up-1',
       principal: 'anonymous:local',
       deliveryMode: 'steer',

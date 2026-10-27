@@ -72,7 +72,7 @@ describe('a run whose session is recreated while it starts (COR-1476)', () => {
 
       // Process B deletes and recreates the session meanwhile, with a live run
       // of the new incarnation, and admits input to it.
-      await b.bureau.deleteSession(SESSION);
+      await b.bureau.contexts.delete(SESSION);
       const second = await b.bureau.createRun({
         agentName: 'default',
         message: 'Second',
@@ -80,7 +80,7 @@ describe('a run whose session is recreated while it starts (COR-1476)', () => {
         sessionId: SESSION,
       });
       await run2Started.promise;
-      const admitted = await b.bureau.submitSessionInput(SESSION, input);
+      const admitted = await b.bureau.contexts.input(SESSION, input);
       expect(admitted.outcome).toBe('admitted');
 
       // Run 1 starts on the session it was promoted in, which is gone: it has

@@ -66,7 +66,7 @@ describe('a session id a browser would resolve away', () => {
     expect(error).toBeInstanceOf(BureauError);
     expect(error).toMatchObject({ code: 'BAD_REQUEST' });
     expect((error as Error).message).toContain('unopenable-session-identifier');
-    expect(await bureau.getSession(sessionId)).toBeUndefined();
+    expect(await bureau.contexts.get(sessionId)).toBeUndefined();
   });
 
   it.each(UNOPENABLE)('may not be the new session %s of a schedule', async (sessionId) => {

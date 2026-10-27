@@ -107,7 +107,7 @@ if (mode === 'retry') {
   // Poll rather than sleep: the run must actually be live before a pause is
   // admissible, and a fixed delay would either be flaky or slow.
   for (let attempt = 0; attempt < 200; attempt += 1) {
-    const session = await bureau.getSession(sessionId);
+    const session = await bureau.contexts.get(sessionId);
     if (session?.metadata['lastRunStatus'] === 'running') break;
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, 10));
   }
@@ -115,10 +115,7 @@ if (mode === 'retry') {
 
 const outcomes = [];
 for (const name of commandNames) {
-  const outcome = await bureau.submitSteeringCommand(
-    sessionId,
-    COMMANDS[name as keyof typeof COMMANDS],
-  );
+  const outcome = await bureau.contexts.steer(sessionId, COMMANDS[name as keyof typeof COMMANDS]);
   if (mode === 'admit' && outcome.outcome !== 'accepted') {
     process.stderr.write(`child: expected accepted for ${name}, got ${outcome.outcome}\n`);
     process.exit(3);
@@ -128,7 +125,7 @@ for (const name of commandNames) {
 
 // The parent reads this to learn the session and the outcomes. Written
 // synchronously so it is on disk before the kill.
-const markedSession = await bureau.getSession(sessionId);
+const markedSession = await bureau.contexts.get(sessionId);
 writeFileSync(
   markerPath,
   JSON.stringify({ sessionId, runId, incarnation: markedSession?.incarnation, outcomes }),

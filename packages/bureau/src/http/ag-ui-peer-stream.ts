@@ -43,6 +43,7 @@ import type {
   PendingHumanWaitReview,
   PendingReview,
   PendingToolApprovalReview,
+  BureauContexts,
   BureauReviews,
 } from '../types.ts';
 import { toInterrupt } from './ag-ui-interrupts.ts';
@@ -74,8 +75,10 @@ export const PEER_PARK_RECHECK_INTERVAL_MS = 500;
 /** What a peer's stream reads from the Bureau. */
 export type PeerStreamBureau = Pick<
   Bureau,
-  'getSession' | 'getDurableRun' | 'eventHistory' | 'waitForDurableRun' | 'subscribeEventHistory'
-> & { readonly reviews: Pick<BureauReviews, 'pendingOf'> };
+  'getDurableRun' | 'eventHistory' | 'waitForDurableRun' | 'subscribeEventHistory'
+> & { readonly reviews: Pick<BureauReviews, 'pendingOf'> } & {
+  readonly contexts: Pick<BureauContexts, 'get' | 'subscribeEvents'>;
+};
 
 /** The terminal a peer learned, and whether it came from the run's durable history. */
 type PeerTerminal = NativeTerminal & { readonly cursor?: string | undefined };
@@ -341,14 +344,11 @@ async function tail(
   const { bureau, nativeRunId } = context;
   const sessionSaves = new Changes();
   const recheck = new ParkRecheck(context.timers);
-  const sessionSubscription = bureau.subscribeEventHistory(
-    { kind: 'session', id: context.threadId },
-    (event) => {
-      if (event.kind !== 'session.saved') return;
-      sessionSaves.bump();
-      recheck.wake();
-    },
-  );
+  const sessionSubscription = bureau.contexts.subscribeEvents(context.threadId, (event) => {
+    if (event.kind !== 'session.saved') return;
+    sessionSaves.bump();
+    recheck.wake();
+  });
   context.onDispose(() => sessionSubscription.unsubscribe());
 
   type Ending =

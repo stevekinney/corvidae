@@ -961,7 +961,7 @@ describe('conversation state holds references, not bytes', () => {
       });
       await waitForRunState(harness.bureau, run.id);
     }
-    const session = await harness.bureau.getSession(sessionId);
+    const session = await harness.bureau.contexts.get(sessionId);
     const userTurns = Object.values(session!.conversationHistory.messages).filter(
       (message) => message.role === 'user',
     );

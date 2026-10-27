@@ -53,6 +53,7 @@ import type {
   Bureau,
   PendingReview,
   ResolveReviewInput,
+  BureauContexts,
   BureauReviews,
   BureauInternals,
 } from '../types.ts';
@@ -101,10 +102,11 @@ type Settled = { readonly result: ResumeResult; readonly applied: boolean };
 
 type Refusal = { readonly code: AgUiErrorCode; readonly message: string };
 
-export type ResumeBureau = Pick<
-  Bureau,
-  'getRun' | 'createRun' | 'getSession' | 'locateRunCreationReceipt'
-> & { readonly reviews: Pick<BureauReviews, 'get' | 'list' | 'pendingOf' | 'resolve'> } & {
+export type ResumeBureau = Pick<Bureau, 'getRun' | 'createRun' | 'locateRunCreationReceipt'> & {
+  readonly reviews: Pick<BureauReviews, 'get' | 'list' | 'pendingOf' | 'resolve'>;
+} & {
+  readonly contexts: Pick<BureauContexts, 'get'>;
+} & {
   readonly internals: Pick<BureauInternals, 'kv'>;
 };
 

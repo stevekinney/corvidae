@@ -168,7 +168,7 @@ describe('the holder’s stream when another Bureau ends its run', () => {
         expect(await throwingRejectionOf(recorded)).toThrow('without its end being recorded');
         expect(holderWroteAborted()).toBe(false);
         expect(holderRecordedEnd()).toBe(false);
-        const session = await peer.bureau.getSession(THREAD);
+        const session = await peer.bureau.contexts.get(THREAD);
         expect(session?.metadata).toMatchObject({
           lastRunId: started.nativeRunId,
           lastRunStatus: 'aborted',
@@ -199,7 +199,7 @@ describe('the holder’s stream when another Bureau ends its run', () => {
         expect(holderWroteError()).toBe(false);
         expect(holderRecordedEnd()).toBe(false);
         // Nobody publishes a timeout's session status, the holder included.
-        const session = await peer.bureau.getSession(THREAD);
+        const session = await peer.bureau.contexts.get(THREAD);
         expect(session?.metadata['lastRunStatus']).toBe('running');
 
         holder.generate.release('a-generating');

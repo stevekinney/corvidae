@@ -723,7 +723,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   onEvent?: (event: BureauEventMap[BureauEventType]) => void | Promise<void>;
   /**
    * AB-42/AB-194 — per-session and per-principal backlog caps for pending
-   * `SessionInputRecord`s admitted through {@link Bureau.submitSessionInput}.
+   * `SessionInputRecord`s admitted through {@link BureauContexts.input}.
    * Both are validated as positive integers at `createBureau()` construction
    * time, throwing `BureauError('...', 'BAD_REQUEST')` for a non-positive-integer
    * value (0, a negative number, or a non-integer). Omitting a field leaves it
@@ -861,7 +861,7 @@ export interface PendingToolApprovalReview {
 /**
  * A durable run parked on `ctx.waitForSignal` by the `requestHumanInput` tool
  * (operative's F3 HITL primitive). `signalName` is the exact name
- * `reviews.resolve` passes to `Bureau.signalSession` on approve.
+ * `reviews.resolve` passes to `Bureau.contexts.signal` on approve.
  */
 export interface PendingHumanWaitReview {
   kind: 'human-wait';
@@ -1389,6 +1389,220 @@ export interface BureauSchedules {
 }
 
 /**
+ * The contexts (sessions) of a Bureau: reading and deleting them, signalling a parked run, admitting
+ * input and steering, branching, and the history of their events. A context is the durable
+ * conversation a task runs in; `bureau.contexts.*` operations served by `createBureauHandler`
+ * delegate to these members. None of them authorizes the caller: that is the caller's to do, as for
+ * {@link BureauContexts.get}.
+ */
+export interface BureauContexts {
+  /** The summaries of the contexts this Bureau holds, as `options` filters, sorts, and pages them. */
+  list(options?: SessionListOptions): Promise<SessionSummary[]>;
+
+  /** One context by id, or `undefined` when this Bureau does not hold it. */
+  get(id: string): Promise<AgentSession | undefined>;
+
+  /**
+   * Deletes a session (a context), and resolves a {@link ContextDeletionReport} of
+   * what the deletion did to the tasks that were live in it (COR-1481). A caller
+   * that ignores the report is unaffected.
+   *
+   * The deletion fences the session first: while it is in flight, a new run on the
+   * id, session input to it, and a signal to it read as a session that does not
+   * exist. It cancels every live run in the session, not only the latest, then
+   * deletes the session, and empties the originating message history of each of
+   * its tasks. With `options.incarnation` it deletes only that incarnation of the
+   * session: an id reused since the caller read the session is left untouched and the
+   * report says nothing was deleted. It resolves when every run it cancelled has ended; each task's
+   * `closed` acknowledgement may settle later.
+   */
+  delete(
+    id: string,
+    options?: { readonly incarnation?: string | undefined },
+  ): Promise<ContextDeletionReport>;
+
+  /**
+   * Deliver a fire-and-forget signal to a session's current in-flight durable run.
+   * Maps to `engine.signal(runId, name, payload)`. Requires a durable engine and a
+   * session store. Throws `BureauError('NOT_CONFIGURED', subject: 'durable')` when no durable
+   * engine is composed; throws `BureauError('NOT_FOUND')` when the session has no current run.
+   */
+  signal(contextId: string, name: string, payload?: unknown): Promise<void>;
+
+  /**
+   * AB-42/AB-194 — admit a caller's session input as a fifth session verb.
+   * Pre-admission checks run in AB-42's fixed order: authorization, then
+   * session lifecycle, then capability/capacity. An unauthorized caller or an
+   * unknown `sessionId` returns `{ outcome: 'not-found' }` (indistinguishable
+   * by design — the document's authorization-denial rule). An authorized
+   * caller naming a session already in a terminal state returns
+   * `{ outcome: 'session-terminal', sessionId }`. Both checks consult this
+   * process's live runs (COR-301, `resolveSessionPreAdmission`): a session
+   * with any live run is not terminal, whichever run last wrote
+   * `lastRunStatus`, and authorization targets the session's sole live run,
+   * falling back to `lastRunId` only when several runs are live.
+   *
+   * On a durably-configured Bureau every other authorized, non-terminal
+   * request is admitted to the session's durable mailbox (`admitted`,
+   * `replayed`, `conflict`, or `backlog-exhausted`). Each admitted input ends
+   * with exactly one terminal receipt. It reads `promoted` once a live run's
+   * step boundary appends its user turn to the conversation: before the run's
+   * next step generates, or once more after its last step generated while the
+   * run has a step left. The turn is appended at most once, in admission order
+   * within a run, keyed by the mailbox command so a reused `id` is a new input
+   * (an `id` must therefore be unique for the life of the session: the turn
+   * carries it as its message id, and a second turn under the same `id` takes
+   * a fresh message id instead),
+   * under the input's own `id` as its message id, and the promotion commits in
+   * the write that saves the turn, whatever that step's outcome. It reads
+   * `canceled` when the input was not appended before its run ended, however
+   * it ended (completed, failed, `abortRun`, `cancelDurableRun`, or promoted
+   * but never started), so the client resends it; Bureau never starts a run to
+   * answer input, and the ending run cancels what it never delivered unless
+   * another run of the session is live, whose end does the cancelling. With no
+   * run live or starting when the admission commits, this call cancels the
+   * input itself and returns the re-read receipt. Shutdown releases open input
+   * instead, for the next boot's recovered run to deliver or its sweep to
+   * cancel. An input still undelivered after seven days reads `expired`, one
+   * whose session is deleted reads `canceled`, and one that cannot be decoded
+   * reads `failed`. `steer` and `queue` share that one FIFO path; `expiresAt`
+   * and `supersedes` are stored but not yet honored. A Bureau with no session
+   * mailbox, durable storage, or key-value store, or a session id too long to
+   * address a mailbox, returns `{ outcome: 'unsupported-capability', reason:
+   * 'durable-mailbox-unavailable' }`.
+   */
+  input(
+    contextId: string,
+    request: SessionInputAdmissionRequest,
+  ): Promise<SessionInputAdmissionOutcome>;
+
+  /**
+   * COR-1490 — the identifiers of the conversation rows `runId` itself took session input into,
+   * in delivery order, from the durable delivery record (which commits with the transcript the
+   * run saved). Empty for a run that delivered none, and for a Bureau with no session mailbox.
+   */
+  inputsDeliveredBy(taskId: string, contextId: string): Promise<readonly string[]>;
+
+  /**
+   * AB-67/AB-199/AB-200 — admit a steering command as a sixth session verb,
+   * for in-memory and durable sessions alike. Reads
+   * authority and terminal status through the same pre-admission decision
+   * `contexts.input` uses (`resolveSessionPreAdmission`, COR-301), over
+   * the session's live runs: authorization targets the request's `runId`,
+   * else the session's sole live run, else `lastRunId`; and a session with
+   * any live run is not terminal. An unauthorized caller or unknown
+   * `sessionId` returns `{ outcome: 'not-found' }`; an authorized caller
+   * naming an already-terminal session returns `{ outcome: 'session-terminal',
+   * sessionId }`.
+   *
+   * All seven targets are admitted (AB-199/AB-200/AB-68, COR-1227):
+   * `pause`/`resume` bind to one run; `agent-identity` is deferred to the
+   * session's next run, and its `override` must name a key of this
+   * Bureau's `agents` map (otherwise `rejected` with `policy-denied`);
+   * `route`, `model`, `provider`, and `effort` apply at the next step
+   * boundary. A configuration `override` is checked against the live model
+   * catalog (`route` is not catalog-validated), and a configuration
+   * `policyRef` resolves through `modelPolicy.users` — an unknown profile,
+   * a profile that omits the coordinate, or an uncatalogued coordinate is
+   * `rejected` with `policy-denied`. Only an `agent-identity` `policyRef`
+   * returns `{ outcome: 'unsupported-capability', reason:
+   * 'selector-unavailable' }`.
+   *
+   * Durable sessions are admitted too, through the session's durable
+   * steering log (`steering-log.ts`): an append-only log of every
+   * admission and run-boundary transition, with the inputs each was decided
+   * from, committed atomically and never consumed. The session's gate is a
+   * fold of it, so desired configuration, agent identity, pause state,
+   * command states, and `configVersion` survive any number of restarts, and
+   * every Bureau process sharing the backend folds the same history before
+   * it decides. An exact `(principal, id)` retry replays and a mismatched
+   * one conflicts after any restart and across sessions and processes; a
+   * refused command's id stays decided too, answering an exact retry with
+   * the original refusal. `pause`/`resume` bind against the session's live
+   * runs in every process sharing the backend. A run reads its own process's gate: steering
+   * admitted by another process reaches it when this process next folds
+   * the log (before its next admission or run). `{ outcome:
+   * 'unsupported-capability', reason: 'durable-steering-unavailable' }` is
+   * returned only by the guard for a durably-configured Bureau with no
+   * resolved storage backend, which normal composition does not produce.
+   *
+   * A `pause` against an authorized, non-terminal session is
+   * accepted, increments the session's `configVersion` by exactly one, and
+   * is idempotent against a second `pause` while the first is still
+   * `accepted`/`applied` (no second increment). A `resume` against a session
+   * that is not currently paused is accepted as a no-op, matching the
+   * idempotent-abort precedent at
+   * `documentation/operative-type-safe-api.md#required-capabilities`. An `accepted`
+   * pause/resume transitions to `failed` with `SteeringCommandFailure.reason
+   * = 'run-terminal'` if the targeted run aborts or completes before its
+   * `runStep` boundary is reached. An exact retry of the same
+   * `(principal, id)` with an identical `requestedValue` replays the
+   * original command's current state; a same-`id`, different-`requestedValue`
+   * reuse returns a typed conflict.
+   */
+  steer(
+    contextId: string,
+    request: SteeringCommandRequest,
+  ): Promise<SteeringCommandAdmissionOutcome>;
+
+  /**
+   * What the session's steering has settled on (COR-1559): its latest admitted `model` override
+   * and its `configVersion`. On a durable Bureau the session's log is folded first, so the answer
+   * includes commands another process admitted. `undefined` for a session this Bureau does not
+   * hold. It does not authorize the caller: that is the caller's to do, as for `contexts.get`.
+   */
+  steering(contextId: string): Promise<SessionSteeringState | undefined>;
+
+  /**
+   * Branches a session after a completed agent reply (COR-1560): a new session, owned by
+   * `request.owner`, whose history is the parent's through `throughMessageId`, which must be the
+   * final assistant message of a run that ended `completed` in this session, with no tool approval
+   * pending and no tool call left without a result. The parent is unchanged. The new session
+   * records where it came from (`SessionSummary.parentContextId`, `forkedFromMessageId`) and keeps
+   * the parent's model choice: its latest `model` override is admitted on the fork as
+   * `<commandId>:model`, and that outcome is returned beside the new `contextId`; a refusal of it
+   * leaves the fork in place, on the agent's default.
+   *
+   * `commandId` is recorded in the durable command ledger (COR-424): an exact retry, even after a
+   * restart, returns the original result and creates nothing more, and a crash between the steps
+   * never forks twice. The same `commandId` with another `throughMessageId` throws a
+   * {@link SessionForkRefusedError} with reason `command-conflict`; a message that is not a branch
+   * point throws one naming why, and nothing is created. It does not authorize the caller: that is
+   * the caller's to do, as for `contexts.get`. Throws a `BureauError` `CONFLICT` when Bureau is
+   * shutting down.
+   */
+  fork(contextId: string, request: ForkSessionRequest): Promise<ForkSessionResult>;
+
+  /**
+   * One page of the context's durable event history, from the exclusive `options.since` cursor. It
+   * is {@link Bureau.eventHistory} for the `session` owner: the outcomes, `options.principal`
+   * authorization, and paging are that method's, so see it for the full contract.
+   */
+  events(
+    contextId: string,
+    options?: DurableEventHistoryPageOptions,
+  ): Promise<
+    | DurableEventPage
+    | DurableEventGap
+    | EventHistoryUnsupportedOutcome
+    | EventHistoryNotFoundOutcome
+    | EventHistoryDeletedAggregateOutcome
+  >;
+
+  /**
+   * Replays the context's durable event history from the exclusive `options.since` cursor, then
+   * delivers live events with no gap and no duplicate at the handoff. It is
+   * {@link Bureau.subscribeEventHistory} for the `session` owner, so an ephemeral bureau returns an
+   * already-closed subscription and `options.principal` applies as it does there.
+   */
+  subscribeEvents(
+    contextId: string,
+    listener: (event: DurableEventEnvelope) => void,
+    options?: DurableEventHistorySubscribeOptions,
+  ): Subscription;
+}
+
+/**
  * The seam between a Bureau and the code that serves or tests it: `createBureauHandler` reads
  * these members to serve the operations, and the test harness reads them to inspect what the
  * Bureau holds. An application builds on the other members of {@link Bureau}; none of these
@@ -1543,6 +1757,12 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * history (`events`, `subscribeEvents`). See {@link BureauSchedules}.
    */
   readonly schedules: BureauSchedules;
+  /**
+   * The contexts (sessions): `list`, `get`, `delete`, `signal`, `input`, `inputsDeliveredBy`,
+   * `steer`, `steering`, `fork`, and the context's event history (`events`, `subscribeEvents`).
+   * See {@link BureauContexts}.
+   */
+  readonly contexts: BureauContexts;
   /**
    * The audit trail read as redacted metadata: `query(filter, options?)`. See {@link BureauAudit}.
    */
@@ -1871,179 +2091,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    */
   runDurableMaintenance(now?: number): Promise<true | undefined>;
 
-  listSessions(options?: SessionListOptions): Promise<SessionSummary[]>;
-  getSession(id: string): Promise<AgentSession | undefined>;
-  /**
-   * Deletes a session (a context), and resolves a {@link ContextDeletionReport} of
-   * what the deletion did to the tasks that were live in it (COR-1481). A caller
-   * that ignores the report is unaffected.
-   *
-   * The deletion fences the session first: while it is in flight, a new run on the
-   * id, session input to it, and a signal to it read as a session that does not
-   * exist. It cancels every live run in the session, not only the latest, then
-   * deletes the session, and empties the originating message history of each of
-   * its tasks. With `options.incarnation` it deletes only that incarnation of the
-   * session: an id reused since the caller read the session is left untouched and the
-   * report says nothing was deleted. It resolves when every run it cancelled has ended; each task's
-   * `closed` acknowledgement may settle later.
-   */
-  deleteSession(
-    id: string,
-    options?: { readonly incarnation?: string | undefined },
-  ): Promise<ContextDeletionReport>;
-
-  /**
-   * Deliver a fire-and-forget signal to a session's current in-flight durable run.
-   * Maps to `engine.signal(runId, name, payload)`. Requires a durable engine and a
-   * session store. Throws `BureauError('NOT_CONFIGURED', subject: 'durable')` when no durable
-   * engine is composed; throws `BureauError('NOT_FOUND')` when the session has no current run.
-   */
-  signalSession(sessionId: string, name: string, payload?: unknown): Promise<void>;
-
-  /**
-   * AB-42/AB-194 — admit a caller's session input as a fifth session verb.
-   * Pre-admission checks run in AB-42's fixed order: authorization, then
-   * session lifecycle, then capability/capacity. An unauthorized caller or an
-   * unknown `sessionId` returns `{ outcome: 'not-found' }` (indistinguishable
-   * by design — the document's authorization-denial rule). An authorized
-   * caller naming a session already in a terminal state returns
-   * `{ outcome: 'session-terminal', sessionId }`. Both checks consult this
-   * process's live runs (COR-301, `resolveSessionPreAdmission`): a session
-   * with any live run is not terminal, whichever run last wrote
-   * `lastRunStatus`, and authorization targets the session's sole live run,
-   * falling back to `lastRunId` only when several runs are live.
-   *
-   * On a durably-configured Bureau every other authorized, non-terminal
-   * request is admitted to the session's durable mailbox (`admitted`,
-   * `replayed`, `conflict`, or `backlog-exhausted`). Each admitted input ends
-   * with exactly one terminal receipt. It reads `promoted` once a live run's
-   * step boundary appends its user turn to the conversation: before the run's
-   * next step generates, or once more after its last step generated while the
-   * run has a step left. The turn is appended at most once, in admission order
-   * within a run, keyed by the mailbox command so a reused `id` is a new input
-   * (an `id` must therefore be unique for the life of the session: the turn
-   * carries it as its message id, and a second turn under the same `id` takes
-   * a fresh message id instead),
-   * under the input's own `id` as its message id, and the promotion commits in
-   * the write that saves the turn, whatever that step's outcome. It reads
-   * `canceled` when the input was not appended before its run ended, however
-   * it ended (completed, failed, `abortRun`, `cancelDurableRun`, or promoted
-   * but never started), so the client resends it; Bureau never starts a run to
-   * answer input, and the ending run cancels what it never delivered unless
-   * another run of the session is live, whose end does the cancelling. With no
-   * run live or starting when the admission commits, this call cancels the
-   * input itself and returns the re-read receipt. Shutdown releases open input
-   * instead, for the next boot's recovered run to deliver or its sweep to
-   * cancel. An input still undelivered after seven days reads `expired`, one
-   * whose session is deleted reads `canceled`, and one that cannot be decoded
-   * reads `failed`. `steer` and `queue` share that one FIFO path; `expiresAt`
-   * and `supersedes` are stored but not yet honored. A Bureau with no session
-   * mailbox, durable storage, or key-value store, or a session id too long to
-   * address a mailbox, returns `{ outcome: 'unsupported-capability', reason:
-   * 'durable-mailbox-unavailable' }`.
-   */
-  submitSessionInput(
-    sessionId: string,
-    request: SessionInputAdmissionRequest,
-  ): Promise<SessionInputAdmissionOutcome>;
-
-  /**
-   * COR-1490 — the identifiers of the conversation rows `runId` itself took session input into,
-   * in delivery order, from the durable delivery record (which commits with the transcript the
-   * run saved). Empty for a run that delivered none, and for a Bureau with no session mailbox.
-   */
-  sessionInputsDeliveredBy(runId: string, sessionId: string): Promise<readonly string[]>;
-
-  /**
-   * AB-67/AB-199/AB-200 — admit a steering command as a sixth session verb,
-   * for in-memory and durable sessions alike. Reads
-   * authority and terminal status through the same pre-admission decision
-   * `submitSessionInput` uses (`resolveSessionPreAdmission`, COR-301), over
-   * the session's live runs: authorization targets the request's `runId`,
-   * else the session's sole live run, else `lastRunId`; and a session with
-   * any live run is not terminal. An unauthorized caller or unknown
-   * `sessionId` returns `{ outcome: 'not-found' }`; an authorized caller
-   * naming an already-terminal session returns `{ outcome: 'session-terminal',
-   * sessionId }`.
-   *
-   * All seven targets are admitted (AB-199/AB-200/AB-68, COR-1227):
-   * `pause`/`resume` bind to one run; `agent-identity` is deferred to the
-   * session's next run, and its `override` must name a key of this
-   * Bureau's `agents` map (otherwise `rejected` with `policy-denied`);
-   * `route`, `model`, `provider`, and `effort` apply at the next step
-   * boundary. A configuration `override` is checked against the live model
-   * catalog (`route` is not catalog-validated), and a configuration
-   * `policyRef` resolves through `modelPolicy.users` — an unknown profile,
-   * a profile that omits the coordinate, or an uncatalogued coordinate is
-   * `rejected` with `policy-denied`. Only an `agent-identity` `policyRef`
-   * returns `{ outcome: 'unsupported-capability', reason:
-   * 'selector-unavailable' }`.
-   *
-   * Durable sessions are admitted too, through the session's durable
-   * steering log (`steering-log.ts`): an append-only log of every
-   * admission and run-boundary transition, with the inputs each was decided
-   * from, committed atomically and never consumed. The session's gate is a
-   * fold of it, so desired configuration, agent identity, pause state,
-   * command states, and `configVersion` survive any number of restarts, and
-   * every Bureau process sharing the backend folds the same history before
-   * it decides. An exact `(principal, id)` retry replays and a mismatched
-   * one conflicts after any restart and across sessions and processes; a
-   * refused command's id stays decided too, answering an exact retry with
-   * the original refusal. `pause`/`resume` bind against the session's live
-   * runs in every process sharing the backend. A run reads its own process's gate: steering
-   * admitted by another process reaches it when this process next folds
-   * the log (before its next admission or run). `{ outcome:
-   * 'unsupported-capability', reason: 'durable-steering-unavailable' }` is
-   * returned only by the guard for a durably-configured Bureau with no
-   * resolved storage backend, which normal composition does not produce.
-   *
-   * A `pause` against an authorized, non-terminal session is
-   * accepted, increments the session's `configVersion` by exactly one, and
-   * is idempotent against a second `pause` while the first is still
-   * `accepted`/`applied` (no second increment). A `resume` against a session
-   * that is not currently paused is accepted as a no-op, matching the
-   * idempotent-abort precedent at
-   * `documentation/operative-type-safe-api.md#required-capabilities`. An `accepted`
-   * pause/resume transitions to `failed` with `SteeringCommandFailure.reason
-   * = 'run-terminal'` if the targeted run aborts or completes before its
-   * `runStep` boundary is reached. An exact retry of the same
-   * `(principal, id)` with an identical `requestedValue` replays the
-   * original command's current state; a same-`id`, different-`requestedValue`
-   * reuse returns a typed conflict.
-   */
-  submitSteeringCommand(
-    sessionId: string,
-    request: SteeringCommandRequest,
-  ): Promise<SteeringCommandAdmissionOutcome>;
-
-  /**
-   * What the session's steering has settled on (COR-1559): its latest admitted `model` override
-   * and its `configVersion`. On a durable Bureau the session's log is folded first, so the answer
-   * includes commands another process admitted. `undefined` for a session this Bureau does not
-   * hold. It does not authorize the caller: that is the caller's to do, as for `getSession`.
-   */
-  getSessionSteering(sessionId: string): Promise<SessionSteeringState | undefined>;
-
-  /**
-   * Branches a session after a completed agent reply (COR-1560): a new session, owned by
-   * `request.owner`, whose history is the parent's through `throughMessageId`, which must be the
-   * final assistant message of a run that ended `completed` in this session, with no tool approval
-   * pending and no tool call left without a result. The parent is unchanged. The new session
-   * records where it came from (`SessionSummary.parentContextId`, `forkedFromMessageId`) and keeps
-   * the parent's model choice: its latest `model` override is admitted on the fork as
-   * `<commandId>:model`, and that outcome is returned beside the new `contextId`; a refusal of it
-   * leaves the fork in place, on the agent's default.
-   *
-   * `commandId` is recorded in the durable command ledger (COR-424): an exact retry, even after a
-   * restart, returns the original result and creates nothing more, and a crash between the steps
-   * never forks twice. The same `commandId` with another `throughMessageId` throws a
-   * {@link SessionForkRefusedError} with reason `command-conflict`; a message that is not a branch
-   * point throws one naming why, and nothing is created. It does not authorize the caller: that is
-   * the caller's to do, as for `getSession`. Throws a `BureauError` `CONFLICT` when Bureau is
-   * shutting down.
-   */
-  forkSession(sessionId: string, request: ForkSessionRequest): Promise<ForkSessionResult>;
-
   /**
    * Installs the host-owned authority freshness check used immediately before
    * a delayed tool approval is resumed. Transports that issue revocable
@@ -2346,7 +2393,7 @@ export type OwnedResource =
       readonly detail?: unknown;
     };
 
-/** What {@link Bureau.deleteSession} did (COR-1481). */
+/** What {@link BureauContexts.delete} did (COR-1481). */
 export interface ContextDeletionReport {
   /** Whether a session existed and was deleted. */
   readonly deleted: boolean;

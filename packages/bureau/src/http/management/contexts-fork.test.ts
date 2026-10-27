@@ -160,7 +160,7 @@ describe('bureau.contexts.fork', () => {
   it('answers a user message as a Conflict not-a-branch-point, and a missing message as NotFound', async () => {
     await withBureau(async (opened) => {
       const run = await finishedSession(opened);
-      const session = await opened.bureau.getSession(run.sessionId);
+      const session = await opened.bureau.contexts.get(run.sessionId);
 
       const user = await forkCall(opened, run.sessionId, 'alice-key', {
         throughMessageId: session!.conversationHistory.ids[0],
@@ -200,7 +200,7 @@ describe('bureau.contexts.fork', () => {
       expect(foreign.error?.data).toMatchObject({ weftCode: 'NotFound', resource: 'context' });
       expect(missing.error?.data).toMatchObject({ weftCode: 'NotFound', resource: 'context' });
       expect(operator.error).toBeUndefined();
-      const child = await opened.bureau.getSession(operator.result?.['contextId'] as string);
+      const child = await opened.bureau.contexts.get(operator.result?.['contextId'] as string);
       expect(child?.metadata['sessionOwner']).toBe('api-key:operator');
     });
   });
@@ -208,7 +208,7 @@ describe('bureau.contexts.fork', () => {
   it('refuses a caller holding only the write scope, since a fork would copy a history it may not read', async () => {
     await withBureau(async (opened) => {
       const run = await finishedSession(opened);
-      const before = await opened.bureau.listSessions();
+      const before = await opened.bureau.contexts.list();
 
       const writeOnly = await forkCall(opened, run.sessionId, 'contexts-writer-key', {
         commandId: 'write-only-fork',
@@ -221,7 +221,7 @@ describe('bureau.contexts.fork', () => {
         resource: 'context',
         identifier: run.sessionId,
       });
-      const after = await opened.bureau.listSessions();
+      const after = await opened.bureau.contexts.list();
       expect(after.length).toBe(before.length);
     });
   });
@@ -252,9 +252,9 @@ describe('bureau.contexts.fork refusals', () => {
       host: {
         ...host,
         contexts: {
-          getSession: opened.bureau.getSession,
+          get: opened.bureau.contexts.get,
           internals: { sessionStore: opened.bureau.internals.sessionStore },
-          forkSession: fork,
+          fork,
         } as never,
       },
       authenticate: async () => ({

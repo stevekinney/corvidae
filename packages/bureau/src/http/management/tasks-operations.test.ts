@@ -282,7 +282,7 @@ describe('bureau.tasks.list', () => {
         () => opened.bureau.getRun(before.id)?.status === 'completed',
         'before',
       );
-      await opened.bureau.deleteSession('reused-context');
+      await opened.bureau.contexts.delete('reused-context');
       const after = await opened.bureau.createRun({
         agentName: 'default',
         message: 'after',

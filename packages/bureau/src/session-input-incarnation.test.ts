@@ -33,7 +33,7 @@ async function withLiveSession(
       maximumSteps: 1,
     });
     await started.promise;
-    const session = await bureau.getSession(run.sessionId);
+    const session = await bureau.contexts.get(run.sessionId);
     await body({ sessionId: run.sessionId, incarnation: session?.incarnation ?? '' }, bureau);
   } finally {
     release.resolve();
@@ -60,7 +60,7 @@ const input = { principal: 'alice', deliveryMode: 'queue' as const, payload: 'mo
 describe('submitSessionInput naming an incarnation', () => {
   it('admits input to the incarnation it names', async () => {
     await withLiveSession(async ({ sessionId, incarnation }, bureau) => {
-      const outcome = await bureau.submitSessionInput(sessionId, {
+      const outcome = await bureau.contexts.input(sessionId, {
         ...input,
         id: 'input-named',
         incarnation,
@@ -72,7 +72,7 @@ describe('submitSessionInput naming an incarnation', () => {
 
   it('refuses input checked against another incarnation, as input to a session that is not there', async () => {
     await withLiveSession(async ({ sessionId }, bureau) => {
-      const outcome = await bureau.submitSessionInput(sessionId, {
+      const outcome = await bureau.contexts.input(sessionId, {
         ...input,
         id: 'input-stale',
         incarnation: 'an-earlier-incarnation',

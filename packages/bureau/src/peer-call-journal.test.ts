@@ -191,7 +191,7 @@ describe('a durable peer call across a restart', () => {
     const second = await callerBureau(databasePath, peer.fetchPeer, secondHolder);
     peer.release();
     await eventually(async () => {
-      const session = await second.getSession(run.sessionId);
+      const session = await second.contexts.get(run.sessionId);
       return session?.metadata['lastRunStatus'] === 'completed';
     }, 'the restarted run never completed');
 
@@ -205,7 +205,7 @@ describe('a durable peer call across a restart', () => {
     ).toHaveLength(1);
     // The replay found the record and so wrote nothing new.
     expect(secondHolder.writes).toEqual([]);
-    const session = await second.getSession(run.sessionId);
+    const session = await second.contexts.get(run.sessionId);
     const history = JSON.stringify(session?.conversationHistory);
     expect(history).toContain('peer answer');
     expect(PEER_CALL_KEY_PREFIX).toBeTruthy();
@@ -237,7 +237,7 @@ describe('a durable peer call across a restart', () => {
     const second = await callerBureau(databasePath, peer.fetchPeer, { writes: [] });
     peer.release();
     await eventually(async () => {
-      const session = await second.getSession(run.sessionId);
+      const session = await second.contexts.get(run.sessionId);
       return session?.metadata['lastRunStatus'] === 'completed';
     }, 'the restarted run never completed');
 
@@ -246,7 +246,7 @@ describe('a durable peer call across a restart', () => {
     expect(peer.messageIds).toHaveLength(2);
     expect(peer.messageIds[1]).toBe(peer.messageIds[0]);
     expect(peer.received).toEqual(['run']);
-    const session = await second.getSession(run.sessionId);
+    const session = await second.contexts.get(run.sessionId);
     expect(JSON.stringify(session?.conversationHistory)).toContain('peer answer');
   });
 });
@@ -265,7 +265,7 @@ describe('the Bureau peer call journal', () => {
     bureaus.push(bureau);
     const run = await bureau.createRun({ message: 'go', agentName: 'caller' });
     await eventually(async () => {
-      const session = await bureau.getSession(run.sessionId);
+      const session = await bureau.contexts.get(run.sessionId);
       return session?.metadata['lastRunStatus'] === 'completed';
     }, 'the run never completed');
     return { bureau, run };

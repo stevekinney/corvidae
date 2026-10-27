@@ -467,7 +467,7 @@ describe('flow-control slot accounting under dual dispatch (COR-121 guard)', () 
       );
       expect(intercept.matched()).toBe(1);
 
-      await bureau.signalSession(runOne.sessionId, 'human-response', { approved: true });
+      await bureau.contexts.signal(runOne.sessionId, 'human-response', { approved: true });
       intercept.release();
       await waitForCondition(() => calls === 2, 'expected the continuation generate to start');
 

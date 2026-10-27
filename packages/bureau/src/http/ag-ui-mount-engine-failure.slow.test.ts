@@ -55,7 +55,7 @@ describe('a refused workflow-state or event-history write (COR-1626)', () => {
             await stream.until(EventType.STEP_STARTED);
             await generate.reached('hold');
             if (withFollowUp) {
-              const admitted = await bureau.submitSessionInput('thread-1', {
+              const admitted = await bureau.contexts.input('thread-1', {
                 id: 'follow-up-1',
                 principal: 'anonymous:local',
                 deliveryMode: 'steer',
@@ -79,7 +79,7 @@ describe('a refused workflow-state or event-history write (COR-1626)', () => {
             // run's end, so wait for that save: `internals.whenTaskRecorded` is what a stuck run never reached.
             await bureau.internals.whenTaskRecorded(runId);
             expect(bureau.listRuns()[0]?.status).toBe('error');
-            const session = await bureau.getSession('thread-1');
+            const session = await bureau.contexts.get('thread-1');
             expect(session?.metadata['lastRunStatus']).toBe('error');
             // The storage adapter's text stays in the operator's logs: no client-facing record
             // (the stream, the saved session, the run record) carries it.
@@ -137,7 +137,7 @@ describe('a completion that landed and then met refused retries (COR-1626)', () 
       const runId = bureau.listRuns()[0]!.id;
       await bureau.internals.whenTaskRecorded(runId);
       expect(bureau.listRuns()[0]?.status).toBe('completed');
-      const session = await bureau.getSession('thread-1');
+      const session = await bureau.contexts.get('thread-1');
       expect(session?.metadata['lastRunStatus']).toBe('completed');
     } finally {
       await stream.cancel().catch(() => undefined);

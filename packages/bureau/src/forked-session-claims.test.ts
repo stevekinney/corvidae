@@ -92,7 +92,7 @@ async function paint(bureau: PaintingBureau, sessionId: string) {
 }
 
 async function assetsOf(bureau: PaintingBureau, sessionId: string): Promise<string[]> {
-  const session = await bureau.getSession(sessionId);
+  const session = await bureau.contexts.get(sessionId);
   const history = session!.conversationHistory;
   return history.ids.flatMap((id) => {
     const content = history.messages[id]!.content;
@@ -108,7 +108,7 @@ describe('a forked session', () => {
     const { bureau, runtime } = await openBureau();
     await paint(bureau, 'original');
     const [assetId] = await assetsOf(bureau, 'original');
-    const source = await bureau.getSession('original');
+    const source = await bureau.contexts.get('original');
     expect(source!.metadata[SESSION_OWNER_METADATA_KEY]).toBe(alice.id);
 
     const handle = createSessionHandle('original', {
@@ -117,11 +117,11 @@ describe('a forked session', () => {
     });
     const forked = await handle.fork();
     for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
-    const fork = await bureau.getSession(forked.id);
+    const fork = await bureau.contexts.get(forked.id);
     expect(fork!.metadata).toEqual({ [SESSION_OWNER_METADATA_KEY]: alice.id });
     expect(await assetsOf(bureau, forked.id)).toEqual([assetId!]);
 
-    await bureau.deleteSession('original');
+    await bureau.contexts.delete('original');
     await runtime.advance(PAST_THE_FLOOR);
     const collected = await bureau.assets!.collectGarbage().result();
 

@@ -61,7 +61,7 @@ async function runToLimit(bureau: Bureau) {
     principal: 'alice',
   });
   await waitForCondition(async () => {
-    const session = await bureau.getSession(run.sessionId);
+    const session = await bureau.contexts.get(run.sessionId);
     return session?.metadata['lastRunStatus'] === 'error';
   }, 'the session never recorded how the run ended');
   return run;
@@ -91,7 +91,7 @@ describe.each(EXECUTIONS)('a run that stops at its step limit, %s (COR-1627)', (
 
     const run = await runToLimit(bureau);
 
-    const session = await bureau.getSession(run.sessionId);
+    const session = await bureau.contexts.get(run.sessionId);
     expect(session?.metadata['lastRunStatus']).toBe('error');
     expect(session?.metadata['lastFinishReason']).toBe('maximum-steps');
     expect(session?.metadata['lastError']).toContain('Agent run exceeded maximumSteps (2).');
@@ -312,7 +312,7 @@ describe('a durable run that crashes before its step limit and is recovered (COR
       bureaus.push(recovering);
 
       await waitForCondition(async () => {
-        const session = await recovering.getSession(run.sessionId);
+        const session = await recovering.contexts.get(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'error';
       }, 'the recovered run never settled as an error');
       await waitForCondition(async () => {
@@ -323,7 +323,7 @@ describe('a durable run that crashes before its step limit and is recovered (COR
       const records = (await recovering.internals.auditTrail?.query({ runId: run.id })) ?? [];
       expect(records.filter((record) => record.type === 'run.error')).toHaveLength(1);
       expect(records.filter((record) => record.type === 'run.completed')).toHaveLength(1);
-      const settled = await recovering.getSession(run.sessionId);
+      const settled = await recovering.contexts.get(run.sessionId);
       expect(settled?.metadata['lastFinishReason']).toBe('maximum-steps');
     } finally {
       // The crashed Bureau stays open until the recovering one is done with the file.

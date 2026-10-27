@@ -327,7 +327,7 @@ describe('a session deleted while its claims are being taken', () => {
     });
     expect(await holdersOf(bureau, compactedOut)).toEqual([gone]);
 
-    await bureau.deleteSession('session-1');
+    await bureau.contexts.delete('session-1');
 
     expect(await holdersOf(bureau, compactedOut)).toEqual([]);
     expect(await holdersOf(bureau, kept)).toEqual([]);

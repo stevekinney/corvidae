@@ -112,7 +112,7 @@ describe('a session run of an agent with skills, reattached after its process di
     // refused before it reached an approval, and nothing ran.
     expect(offered).not.toContain('charge-card');
     expect(restarted.reviews.list().filter((review) => review.runId === run.id)).toEqual([]);
-    const session = await restarted.getSession(run.sessionId);
+    const session = await restarted.contexts.get(run.sessionId);
     const refusal = getMessages(session!.conversationHistory).find(
       (message) => message.toolResult?.callId === 'charge-Y',
     )?.toolResult?.error?.code;

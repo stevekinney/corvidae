@@ -46,7 +46,7 @@ describe('the owner of a run and of its session (COR-718)', () => {
 
       expect(bureau.getRun(run.id)?.principal).toBe('api-key:alice');
       expect(bureau.getRun(run.id)?.liveness.owner).toBe('api-key:alice');
-      const session = await bureau.getSession(run.sessionId);
+      const session = await bureau.contexts.get(run.sessionId);
       expect(session?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('api-key:alice');
       expect(session?.metadata['lastRunOwningPrincipals']).toEqual({ [run.id]: 'api-key:alice' });
       expect(await bureau.getOwner({ kind: 'run', id: run.id })).toBe('api-key:alice');
@@ -64,7 +64,7 @@ describe('the owner of a run and of its session (COR-718)', () => {
 
       expect(bureau.getRun(run.id)?.principal).toBe('anonymous:local');
       expect(bureau.getRun(run.id)?.liveness.owner).toBe('anonymous:local');
-      const session = await bureau.getSession(run.sessionId);
+      const session = await bureau.contexts.get(run.sessionId);
       expect(session?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('anonymous:local');
       expect(await bureau.getOwner({ kind: 'run', id: run.id })).toBe('anonymous:local');
     } finally {
@@ -105,7 +105,7 @@ describe('the owner of a run and of its session (COR-718)', () => {
         expect(refusal).toMatchObject({ code: 'NOT_FOUND' });
       }
 
-      const session = await bureau.getSession(first.sessionId);
+      const session = await bureau.contexts.get(first.sessionId);
       expect(session?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('api-key:alice');
       expect(session?.metadata['lastRunOwningPrincipals']).toEqual({ [first.id]: 'api-key:alice' });
     } finally {
@@ -130,7 +130,7 @@ describe('the owner of a run and of its session (COR-718)', () => {
       });
       await settle(bureau, second.id);
 
-      const session = await bureau.getSession(first.sessionId);
+      const session = await bureau.contexts.get(first.sessionId);
       expect(session?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('api-key:alice');
       expect(await bureau.getOwner({ kind: 'run', id: second.id })).toBe('api-key:alice');
     } finally {
@@ -214,7 +214,7 @@ describe('two principals racing to create one new session (COR-718)', () => {
       const losers = outcomes.filter((outcome) => outcome.status === 'rejected');
       expect([winners.length, losers.length]).toEqual([1, 1]);
       expect(losers[0]?.reason).toMatchObject({ code: 'NOT_FOUND' });
-      const session = await bureau.getSession('raced');
+      const session = await bureau.contexts.get('raced');
       const owner = session?.metadata[SESSION_OWNER_METADATA_KEY];
       const transcript = JSON.stringify(session?.conversationHistory);
       const winner = owner === 'api-key:alice' ? 'from alice' : 'from bob';

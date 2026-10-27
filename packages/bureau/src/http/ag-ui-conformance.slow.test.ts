@@ -293,7 +293,7 @@ describe('start', () => {
         EventType.STEP_FINISHED,
         EventType.RUN_FINISHED,
       ]);
-      const session = await harness.bureau.getSession('thread-1');
+      const session = await harness.bureau.contexts.get('thread-1');
       const exported = agUiConversationAdapter.export(session!.conversationHistory);
       const sessionIds = exported.map((message) => message.id).filter((id) => id !== 'user-1');
       expect(result.newMessages.map((message) => message.id)).toEqual(sessionIds);
@@ -326,7 +326,7 @@ describe('tool', () => {
           id: `${nativeRunId}:step:0:result:call-1`,
           toolCallId: 'call-1',
         });
-        const session = await harness.bureau.getSession('thread-1');
+        const session = await harness.bureau.contexts.get('thread-1');
         const rowIds = session!.conversationHistory.ids;
         expect(rowIds).toContain(`${nativeRunId}:step:0:result:call-1`);
         const assistant = result.newMessages.find((message) => message.role === 'assistant');

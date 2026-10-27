@@ -216,7 +216,7 @@ describe('a session run the durable engine resumes after a restart', () => {
     });
     await waitForCondition(
       async () => {
-        const session = await first.bureau.getSession(created.sessionId);
+        const session = await first.bureau.contexts.get(created.sessionId);
         return session?.metadata['lastAgentRevision'] === 2 && first.observed.length > 0;
       },
       'the session run is recorded and calling the model',

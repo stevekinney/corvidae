@@ -9,7 +9,7 @@ import type {
 } from '@lostgradient/operative';
 
 /**
- * AB-199 — the caller-facing admission request for {@link Bureau.submitSteeringCommand}.
+ * AB-199 — the caller-facing admission request for {@link BureauContexts.steer}.
  *
  * AB-67's own decision record (via its own out-of-scope note) leaves this
  * type unowned: it names only the seven-field `SteeringCommand` shape a
@@ -113,7 +113,7 @@ export interface SteeringCommandConflict {
  *   (`reason: 'deadline-passed'`), a stale `expectedRevision` (`reason:
  *   'stale-revision'`, see {@link SteeringCommandRequest.expectedRevision}),
  *   or a `model` the session's agent does not allow (`reason:
- *   'model-not-allowed'`, decided by `Bureau.submitSteeringCommand`).
+ *   'model-not-allowed'`, decided by `Bureau.contexts.steer`).
  *   Distinct from `conflict` (no idempotency-key collision) and from
  *   `unsupported-capability` (the request is well-formed, just invalid on
  *   its own terms).
@@ -126,7 +126,7 @@ export interface SteeringCommandConflict {
  *   'selector-unavailable'`); and for a durably-configured Bureau with no
  *   resolved storage backend (`reason: 'durable-steering-unavailable'`). A
  *   reused `id` with a different identity returns `conflict`, not this. See
- *   `Bureau.submitSteeringCommand`.
+ *   `Bureau.contexts.steer`.
  */
 export type SteeringCommandAdmissionOutcome =
   | { readonly outcome: 'accepted'; readonly command: SteeringCommandSnapshot }
@@ -218,7 +218,7 @@ export interface SteeringAdmissionContext {
 }
 
 /**
- * What a session's steering has settled on, as `Bureau.getSessionSteering` reports it (COR-1559):
+ * What a session's steering has settled on, as `Bureau.contexts.steering` reports it (COR-1559):
  * the latest admitted `model` override, and the `configVersion` a later command's
  * `expectedRevision` is compared against.
  */

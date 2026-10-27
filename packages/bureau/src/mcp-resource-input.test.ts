@@ -90,7 +90,7 @@ describe('a caller-supplied mcp-resource source', () => {
       principal: alice.id,
     });
     const thrown = await thrownBy(() =>
-      bureau.submitSessionInput(run.sessionId, {
+      bureau.contexts.input(run.sessionId, {
         id: 'forged-input',
         principal: alice.id,
         deliveryMode: 'steer',

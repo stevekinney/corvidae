@@ -448,7 +448,7 @@ describe('bureau.contexts.get', () => {
         principal: OWNER.alice,
         message: 'the opening question',
       });
-      const session = await opened.bureau.getSession(run.sessionId);
+      const session = await opened.bureau.contexts.get(run.sessionId);
       const transcript = Object.values(session!.conversationHistory.messages).map((message) =>
         typeof message.content === 'string' ? message.content : '',
       );

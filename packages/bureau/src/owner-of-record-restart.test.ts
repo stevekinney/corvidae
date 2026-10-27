@@ -126,7 +126,7 @@ describe('every kind of resource keeps its owner across a restart (COR-718)', ()
 
       expect(await owner({ kind: 'run', id: run.id })).toBe(ALICE);
       expect(await owner({ kind: 'session', id: run.sessionId })).toBe(ALICE);
-      const session = await second.getSession(run.sessionId);
+      const session = await second.contexts.get(run.sessionId);
       expect(session?.metadata[SESSION_OWNER_METADATA_KEY]).toBe(ALICE);
       expect(await owner({ kind: 'run', id: 'owner-child' })).toBe(ALICE);
       expect(await owner({ kind: 'goal', id: 'g-owned' })).toBe(ALICE);

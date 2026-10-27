@@ -60,7 +60,7 @@ describe('a graceful dispose between a run’s error and its durable commit', ()
 
     const restarted = await harness.restart([]);
     try {
-      const session = await restarted.bureau.getSession('thread-1');
+      const session = await restarted.bureau.contexts.get('thread-1');
       expect(failed.at(-1)!.event.type).toBe(EventType.RUN_ERROR);
       expect(session?.metadata['lastRunStatus']).toBe('error');
       expect(engineDisposedInTheGap).toBe(false);
