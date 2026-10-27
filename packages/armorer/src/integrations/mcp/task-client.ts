@@ -72,8 +72,13 @@ const DEFAULT_POLL_INTERVAL_MS = 1_000;
 
 const defaultDelay = (milliseconds: number, signal?: AbortSignal) =>
   new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, milliseconds);
-    signal?.addEventListener('abort', () => (clearTimeout(timer), resolve()), { once: true });
+    const finish = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', finish);
+      resolve();
+    };
+    const timer = setTimeout(finish, milliseconds);
+    signal?.addEventListener('abort', finish, { once: true });
   });
 
 /**
@@ -207,10 +212,7 @@ export async function fromMcpEndpointTools(options: FromMcpEndpointToolsOptions)
       if (task.status === 'input_required') {
         await answerInput(toolName, taskId, task, capabilities, context, signal);
       }
-      await Promise.race([
-        delay(task.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS, signal),
-        abortion(signal),
-      ]);
+      await raceAbort(delay(task.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS, signal), signal);
       task = await send('tasks/get', { taskId }, capabilities, signal);
     }
   }
@@ -231,14 +233,14 @@ export async function fromMcpEndpointTools(options: FromMcpEndpointToolsOptions)
       throw new MCPInputRequiredUnsupportedError(toolName);
     }
     // Raced against the call's signal so an abort cancels the MCP task instead of waiting for a user.
-    const result = await Promise.race([
+    const result = await raceAbort(
       context.elicit(
         toToolElicitationRequest(
           requested.params as Parameters<typeof toToolElicitationRequest>[0],
         ),
       ),
-      abortion(signal),
-    ]);
+      signal,
+    );
     await send(
       'tasks/update',
       { taskId, inputResponses: { [key]: toElicitResult(result) } },
@@ -248,13 +250,21 @@ export async function fromMcpEndpointTools(options: FromMcpEndpointToolsOptions)
   }
 }
 
-/** Rejects when `signal` aborts; never resolves otherwise. */
-function abortion(signal: AbortSignal | undefined): Promise<never> {
-  return new Promise((_resolve, reject) => {
-    if (!signal) return;
+/**
+ * Settles with `work`, or rejects as soon as `signal` aborts. The abort
+ * listener is removed once `work` settles, so a long-lived signal gathers no
+ * listeners across polls and elicitation rounds.
+ */
+function raceAbort<T>(work: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return work;
+  return new Promise<T>((resolve, reject) => {
     const fail = () => reject(signal.reason ?? new Error('aborted'));
-    if (signal.aborted) fail();
-    else signal.addEventListener('abort', fail, { once: true });
+    if (signal.aborted) {
+      fail();
+      return;
+    }
+    signal.addEventListener('abort', fail, { once: true });
+    work.finally(() => signal.removeEventListener('abort', fail)).then(resolve, reject);
   });
 }
 

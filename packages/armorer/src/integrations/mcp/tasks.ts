@@ -175,6 +175,7 @@ type LiveMcpTask = {
   clientId: string;
   execution: SuspendableExecution;
   abort: (reason: unknown) => void;
+  /** Set when the abort must not be recorded: the record is deleted or left for recovery. */
   expired: boolean;
   abortWrite: Promise<unknown> | undefined;
   /** Orders this MCP task's writes: each waits for the one before it. */
@@ -232,9 +233,16 @@ export function createMcpTaskRuntime(options: {
     void track(work.catch(onError));
   };
   /** Runs a write after every earlier write of the same MCP task, so they apply in call order. */
-  const enqueue = (entry: LiveMcpTask, write: () => Promise<unknown>): Promise<unknown> => {
-    entry.writes = entry.writes.then(write).catch(onError);
-    return track(entry.writes);
+  const enqueue = (entry: LiveMcpTask, write: () => Promise<unknown>): Promise<boolean> => {
+    const result = entry.writes.then(write).then(
+      () => true,
+      (error: unknown) => {
+        onError(error);
+        return false;
+      },
+    );
+    entry.writes = result;
+    return track(result);
   };
   const timestamp = () => new Date(now()).toISOString();
   const keyOf = (taskId: string) => `${MCP_TASK_KEY_PREFIX}${taskId}`;
@@ -401,9 +409,16 @@ export function createMcpTaskRuntime(options: {
         const inputRequests: InputRequests = {
           [`${MCP_ELICITATION_INPUT_KEY}:${entry.round}`]: outcome.pending.inputRequest,
         };
-        await enqueue(entry, () =>
+        const written = await enqueue(entry, () =>
           mutate(taskId, (record) => ({ ...record, status: 'input_required', inputRequests })),
         );
+        if (!written) {
+          // The client can never see this question, so the execution would wait forever. Stop it
+          // and leave the record for the same-instance orphan rule to recover as `failed`.
+          entry.expired = true;
+          request.abort(new Error('The MCP task could not record its input request.'));
+          return;
+        }
       }
     } catch (error) {
       onError(error);

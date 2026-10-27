@@ -511,6 +511,43 @@ describe('input and authorization', () => {
     expect(counter.runs).toBe(1);
   });
 
+  it('fails an MCP task whose input_required write was rejected, and aborts the waiting tool', async () => {
+    const store = createStoreDouble();
+    const reported: unknown[] = [];
+    const counter = { runs: 0 };
+    const harness = await startHarness(
+      {
+        toolbox: [approvalTool(counter)],
+        resources: (server) => {
+          Object.assign(server.server, { onerror: (error: unknown) => reported.push(error) });
+        },
+      },
+      store,
+    );
+    // Batch 1 is the create; batch 2 is the input_required write.
+    store.fault(2, 'reject');
+    const created = expectResult(
+      await rpc(
+        harness.mcp,
+        'tools/call',
+        { name: 'render-report', arguments: { title: 'Q3' } },
+        { ...TASKS_CAPABILITIES, elicitation: {} },
+      ),
+    );
+    const taskId = created['taskId'] as string;
+    for (let attempt = 0; attempt < 200 && reported.length === 0; attempt += 1) {
+      await Bun.sleep(1);
+    }
+    await harness.mcp.executionLifecycle.whenIdle();
+    await Bun.sleep(10);
+
+    const task = expectResult(await getMcpTask(harness.mcp, taskId));
+
+    expect(reported).toHaveLength(1);
+    expect(task).toMatchObject({ status: 'failed', error: { code: INTERNAL_ERROR } });
+    expect(counter.runs).toBe(1);
+  });
+
   it('fences tasks/update to the outstanding round: a stale first answer never answers the second question', async () => {
     const answers: unknown[] = [];
     const twoQuestions = createTool({

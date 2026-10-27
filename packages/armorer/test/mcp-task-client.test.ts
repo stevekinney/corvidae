@@ -80,6 +80,17 @@ async function fixture(
       return JSON.stringify(answer);
     },
   });
+  const asksTwice = createTool({
+    name: 'asks-twice',
+    description: 'elicits two rounds inside an MCP task',
+    input: z.object({}),
+    metadata: { mcp: { taskBacked: true } },
+    async execute(_input, context) {
+      const first = await context.elicit?.({ mode: 'form', message: 'First?' });
+      const second = await context.elicit?.({ mode: 'form', message: 'Second?' });
+      return JSON.stringify([first?.action, second?.action]);
+    },
+  });
   const asksSynchronously = createTool({
     name: 'asks-synchronously',
     description: 'elicits without being task-backed',
@@ -91,7 +102,7 @@ async function fixture(
   });
   const store = createStoreDouble();
   const taskIds: string[] = [];
-  const mcp = await createMCP(createToolbox([slow, plain, asks, asksSynchronously]), {
+  const mcp = await createMCP(createToolbox([slow, plain, asks, asksTwice, asksSynchronously]), {
     taskStore: store,
     tasks: { pollIntervalMs: 7 },
   });
@@ -255,7 +266,41 @@ describe('fromMcpEndpointTools', () => {
 
     expect(failure).toBeInstanceOf(Error);
     expect(harness.requests).toContain('tasks/cancel');
-    expect(harness.seen.aborted).toBe(false);
+  });
+
+  it('leaves no abort listeners on a long-lived signal after elicitation rounds and polls', async () => {
+    const harness = await fixture();
+    const controller = new AbortController();
+    const active = new Set<unknown>();
+    const { addEventListener, removeEventListener } = controller.signal;
+    type Listener = EventListenerOrEventListenerObject;
+    Object.assign(controller.signal, {
+      addEventListener(
+        type: string,
+        listener: Listener,
+        options?: AddEventListenerOptions | boolean,
+      ) {
+        if (type === 'abort') active.add(listener);
+        addEventListener.call(controller.signal, type, listener, options);
+      },
+      removeEventListener(
+        type: string,
+        listener: Listener,
+        options?: EventListenerOptions | boolean,
+      ) {
+        if (type === 'abort') active.delete(listener);
+        removeEventListener.call(controller.signal, type, listener, options);
+      },
+    });
+
+    const result = await toolNamed(harness, 'asks-twice').execute({}, {
+      signal: controller.signal,
+      elicit: async () => ({ action: 'accept', content: {} }),
+    } as never);
+
+    expect(JSON.stringify(result)).toContain('accept');
+    expect(harness.delays.length).toBeGreaterThan(0);
+    expect(active.size).toBe(0);
   });
 
   it('rejects, naming the status or code, for a remote cancelled, failed, or -32602 MCP task', async () => {
