@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { charterRules } from './brief.ts';
+import { charterRules, run as runBrief } from './brief.ts';
 import {
   flagProblemsIn,
   invocationsIn,
@@ -10,6 +10,10 @@ import {
   spellingProblems,
   usageStatements,
 } from './command-spellings.test-support.ts';
+import { run as runLinear } from './linear.ts';
+import { run as runNote } from './note.ts';
+import { run as runReviewThreads } from './review-threads.ts';
+import { parseCommandLine } from './worktree-scope.ts';
 
 const repositoryRoot = join(import.meta.dir, '../..');
 const skillFiles = [
@@ -81,6 +85,57 @@ describe('the spelling checker', () => {
     expect(found.map((invocation) => invocation.script)).toEqual(['review-threads']);
     expect(found[0]?.tokens).toEqual(['classes', '--pr', '<n>']);
     expect(problemWith(found[0]!)).toBeUndefined();
+  });
+});
+
+describe('Usage headers match the parsers of the scripts they document', () => {
+  /** The message of the UsageError an attempt throws, or `undefined` when none is thrown. */
+  async function usageMessage(attempt: () => unknown): Promise<string | undefined> {
+    try {
+      await attempt();
+    } catch (error) {
+      if (error instanceof Error && error.constructor.name === 'UsageError') return error.message;
+    }
+    return undefined;
+  }
+
+  const failingRunner = () => ({ code: 1, stdout: '', stderr: 'offline' });
+  const noNetwork = {
+    environment: { LINEAR_API_KEY: 'lin_api_test_value' },
+    fetch: async () => new Response('{}', { status: 500 }),
+  };
+  const parsers: Record<string, (subcommand: string | undefined, argv: string[]) => unknown> = {
+    'review-threads': (subcommand, argv) =>
+      runReviewThreads([subcommand!, '--pr', '7', '--repository', 'a/b', ...argv], {
+        runner: failingRunner,
+      }),
+    'worktree-scope': (subcommand, argv) => parseCommandLine([subcommand!, ...argv]),
+    note: (subcommand, argv) => runNote([subcommand!, 'note.md', ...argv]),
+    linear: (subcommand, argv) => runLinear([subcommand!, 'COR-1', ...argv], noNetwork),
+    brief: (_subcommand, argv) => runBrief(['COR-1', ...argv], noNetwork),
+  };
+
+  for (const [script, parse] of Object.entries(parsers)) {
+    test(`every option the ${script} header spells is one its parser accepts`, async () => {
+      const unknown: string[] = [];
+      for (const statement of usageStatements(script)) {
+        for (const option of statement.options) {
+          // A value option takes the next argument and a flag does not; whichever the parser
+          // expects, the option must not be reported as unknown.
+          for (const argv of [[option], [option, 'x']]) {
+            const message = await usageMessage(() => parse(statement.subcommand, argv));
+            if (message?.startsWith('Unknown option')) unknown.push(`${script} ${option}`);
+          }
+        }
+      }
+      expect(unknown).toEqual([]);
+    });
+  }
+
+  test('the check notices an option the parser rejects', async () => {
+    expect(
+      await usageMessage(() => parsers['review-threads']!('list', ['--baseline', 'x'])),
+    ).toStartWith('Unknown option');
   });
 });
 
