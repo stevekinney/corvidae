@@ -15,4 +15,4 @@ Rules:
 - Before posting a finding, read linked COR issues and search the COR backlog for the affected behavior; cite a matching ticket instead of duplicating it. If Linear is unavailable, say the check is incomplete and do not block on that alone.
 - This workspace is pre-release: accept breaking changes, check in-repository callers, and do not ask for compatibility layers or deprecation periods. Keep scrutinizing persisted data, wire protocols, and published contracts.
 - Omit naming, style, optional refactoring, speculative hardening, and unsupported edge cases.
-- Check the diff against `.agents/skills/chef/references/defect-classes.md` and start with any class the author marked as applying.
+- Review by defect class: read `.agents/skills/chef/references/defect-classes.md` first, then check the diff against it, starting with any class the author marked as applying. For a wrapper, adapter, or delegation change, enumerate every property the wrapped object carries (approval policy, idempotency, gating, identity, context binding) and check that each survives; the #595 approval bypass is the case this catches.

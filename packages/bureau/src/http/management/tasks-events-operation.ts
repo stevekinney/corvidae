@@ -472,7 +472,8 @@ function followScheduleFire(
 
   const seenEnd = fromCursor !== undefined && (decodeCursor(fromCursor) ?? -1) >= 0;
   const iterable = createReplayAwareClosableIterable<TaskEvent>(
-    (onReplayComplete) => {
+    (replayComplete) => {
+      const onReplayComplete = () => queue.afterDelivered(replayComplete);
       void (async () => {
         if (fromCursor === undefined) {
           queue.push({
@@ -609,6 +610,23 @@ function createQueue<T>() {
   let wake: (() => void) | undefined;
   let ended = false;
   let failure: { readonly error: unknown } | undefined;
+  // Items handed to the reader, and how many of them the reader has come back from: it asks for
+  // the next item only after it has written the previous one, so the count of items it asked
+  // past is the count it has delivered.
+  let taken = 0;
+  let delivered = 0;
+  const boundaries: Array<{ readonly after: number; readonly fire: () => void }> = [];
+  const flushBoundaries = (): void => {
+    for (let index = 0; index < boundaries.length;) {
+      const boundary = boundaries[index]!;
+      if (boundary.after <= delivered) {
+        boundaries.splice(index, 1);
+        boundary.fire();
+      } else {
+        index += 1;
+      }
+    }
+  };
   const notify = (): void => {
     const waiting = wake;
     wake = undefined;
@@ -629,6 +647,14 @@ function createQueue<T>() {
       ended = true;
       notify();
     },
+    /**
+     * Calls `fire` once the reader has delivered everything pushed so far, not merely taken it:
+     * a marker that tells the client its replay is over must reach the wire after the replay.
+     */
+    afterDelivered(fire: () => void): void {
+      boundaries.push({ after: items.length + taken, fire });
+      flushBoundaries();
+    },
     /** Ends the stream with an error the reader sees once it has read what was queued. */
     fail(error: unknown): void {
       failure ??= { error };
@@ -636,9 +662,14 @@ function createQueue<T>() {
       notify();
     },
     async next(): Promise<{ done: true } | { done: false; value: T }> {
+      delivered = taken;
+      flushBoundaries();
       for (;;) {
         const value = items.shift();
-        if (value !== undefined) return { done: false, value };
+        if (value !== undefined) {
+          taken += 1;
+          return { done: false, value };
+        }
         if (failure !== undefined) throw failure.error;
         if (ended) return { done: true };
         await new Promise<void>((resolve) => {
@@ -823,8 +854,10 @@ export const tasksEventsOperation = defineOperation<
     };
 
     const iterable = createReplayAwareClosableIterable<TaskEvent>(
-      (onReplayComplete) => {
-        void pump(onReplayComplete).catch((error: unknown) => queue.fail(error));
+      (replayComplete) => {
+        void pump(() => queue.afterDelivered(replayComplete)).catch((error: unknown) =>
+          queue.fail(error),
+        );
         return {
           async *[Symbol.asyncIterator]() {
             for (;;) {

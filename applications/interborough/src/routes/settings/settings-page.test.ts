@@ -5,6 +5,7 @@
  * (`settings-fixtures.test-support.ts`); the real one is exercised by the Playwright suite.
  */
 import { SETTING_KEYS } from '@lostgradient/bureau';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { HttpClient } from '@lostgradient/weft';
 import { focusManager } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
@@ -18,7 +19,10 @@ import { landAt } from '../chat/pages.test-support.ts';
 import {
   installSettingsBureau,
   servedSettings,
+  settingsSnapshot,
+  settingsStream,
   type SettingsServed,
+  type SettingsStream,
 } from './settings-fixtures.test-support.ts';
 
 let stub: BureauStub | undefined;
@@ -28,8 +32,12 @@ afterEach(() => {
   stub = undefined;
 });
 
-function open(served: SettingsServed) {
-  stub = installSettingsBureau(served);
+function open(
+  served: SettingsServed,
+  stream?: SettingsStream,
+  extra: Record<string, (params: Record<string, unknown>) => unknown> = {},
+) {
+  stub = installSettingsBureau(served, extra, stream);
   landAt('/settings');
   const view = render(RouteOutletHarness, {
     props: {
@@ -370,5 +378,92 @@ describe('a page that follows the Bureau', () => {
     await fireEvent.click(within(form).getByRole('button', { name: SETTINGS_COPY.saveAction }));
     await waitFor(() => expect(updates()).toHaveLength(1));
     expect(updates()[0]?.params['expectedRevision']).toBe(4);
+  });
+});
+
+describe('a page that follows the settings stream', () => {
+  const reads = () => stub?.callsTo('bureau.settings.get').length ?? 0;
+
+  test('reads the settings again on each event, without a focus change', async () => {
+    const served = servedSettings({ revision: 3 });
+    const stream = settingsStream();
+    const { container, findByRole, findByTestId } = open(served, stream);
+    await findByRole('form', { name: SETTINGS_COPY.formLabel });
+    await waitFor(() => expect(stream.opened).toEqual([undefined]));
+    await fireEvent.click(
+      row(container, 'tools.wakeup')?.querySelector('button[role="switch"]') as HTMLElement,
+    );
+
+    served.values = { ...served.values, 'tools.decide': false };
+    served.revision = 4;
+    stream.push(4, ['tools.decide']);
+
+    const prompt = await findByTestId('settings-reload-prompt');
+    expect(prompt.textContent).toContain(SETTINGS_COPY.changedElsewhere.title);
+  });
+
+  test('resumes from the last revision it was given when the Bureau ends the stream', async () => {
+    const stream = settingsStream();
+    const { findByRole } = open(servedSettings({ revision: 3 }), stream);
+    await findByRole('form', { name: SETTINGS_COPY.formLabel });
+    await waitFor(() => expect(stream.opened).toHaveLength(1));
+    stream.push(4, ['tools.decide']);
+    stream.end();
+
+    // The reconnect waits out the shared backoff, or the browser coming back online.
+    await waitFor(() => {
+      window.dispatchEvent(new window.Event('online'));
+      expect(stream.opened).toEqual([undefined, '4']);
+    });
+  });
+
+  test('reads again when an event arrives while the page’s first read is in flight', async () => {
+    const served = servedSettings({ revision: 3 });
+    const stream = settingsStream();
+    let releaseFirstRead: () => void = () => undefined;
+    const firstReadHeld = new Promise<void>((resolve) => {
+      releaseFirstRead = resolve;
+    });
+    let started = 0;
+    const { container, findByRole } = open(served, stream, {
+      'bureau.settings.get': async () => {
+        started += 1;
+        // The view frame's probe is the first read. The page's own first read is the second: it
+        // captures revision 3, then waits, and the Bureau moves on while it is out.
+        const answer = settingsSnapshot(served);
+        if (started === 2) await firstReadHeld;
+        return answer;
+      },
+    });
+    await waitFor(() => expect(stream.opened).toHaveLength(1));
+    await waitFor(() => expect(started).toBe(2));
+
+    served.values = { ...served.values, 'tools.decide': false };
+    served.revision = 4;
+    stream.push(4, ['tools.decide']);
+    // The event reaches the page while the first read is still held.
+    await waitUntil(() => stream.drained());
+    releaseFirstRead();
+
+    await findByRole('form', { name: SETTINGS_COPY.formLabel });
+    await waitFor(() =>
+      expect(
+        row(container, 'tools.decide')
+          ?.querySelector('button[role="switch"]')
+          ?.getAttribute('aria-checked'),
+      ).toBe('false'),
+    );
+    expect(started).toBeGreaterThanOrEqual(3);
+  });
+
+  test('keeps working, reading on focus, when the Bureau refuses the stream', async () => {
+    const served = servedSettings({ revision: 3 });
+    const { findByRole } = open(served);
+    await findByRole('form', { name: SETTINGS_COPY.formLabel });
+    const before = reads();
+    served.revision = 4;
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    await waitFor(() => expect(reads()).toBeGreaterThan(before));
   });
 });

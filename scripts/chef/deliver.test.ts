@@ -3,9 +3,11 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { deliver, renderDeliver, run, type DeliverOptions } from './deliver.ts';
+import type { ControlOptions, ControlResult, ControlRow } from './gate-run.ts';
 import { LinearError, type LinearClient } from './linear.ts';
 import type { MergeGateOptions, MergeGateReport } from './merge-gate.ts';
 import { UsageError, type Runner } from './process-runner.ts';
+import { ReviewThreadsError, type ThreadListing } from './review-threads.ts';
 import { Refusal } from './worktree.ts';
 
 const HEAD = 'a'.repeat(40);
@@ -26,6 +28,35 @@ function passingLog(head: string): string {
     'GATE_RC=0',
     '',
   ].join('\n');
+}
+
+/** Rewrite the configuration with extra fields, such as a `fastCheckCommand`. */
+function configure(extra: Record<string, unknown>): void {
+  writeFileSync(
+    options.configPath,
+    JSON.stringify({
+      repository: 'acme/widgets',
+      defaultBranch: 'main',
+      worktreeRoots: { claude: '/c', codex: '/x' },
+      manifestName: 'widgets',
+      installCommand: 'install-command',
+      gateCommand: 'true',
+      affectedCheckCommand: 'true',
+      mergeMethod: 'squash',
+      ...extra,
+    }),
+  );
+}
+
+/** Give the sandbox the workspaces a fast check can name. */
+function makeWorkspaces(...directories: string[]): void {
+  for (const directory of directories) {
+    mkdirSync(join(sandbox, directory), { recursive: true });
+    writeFileSync(
+      join(sandbox, directory, 'package.json'),
+      JSON.stringify({ name: `@acme/${directory.split('/')[1]}`, scripts: {} }),
+    );
+  }
 }
 
 beforeEach(() => {
@@ -76,6 +107,9 @@ interface World {
   headAfterMerge?: string;
   /** The results of successive fetches; the last repeats, and an unset one succeeds. */
   fetchResults?: { code: number; stderr: string }[];
+  /** Exit code and output of the configured fast check (`fast-check ...`). */
+  fastCheckCode?: number;
+  fastCheckOutput?: string;
 }
 
 function fake(world: World = {}) {
@@ -85,6 +119,12 @@ function fake(world: World = {}) {
   const runner: Runner = (command) => {
     calls.push(command);
     const [program, ...rest] = command;
+    if (program === 'sh' && String(command[2]).startsWith('fast-check'))
+      return {
+        code: world.fastCheckCode ?? 0,
+        stdout: '',
+        stderr: world.fastCheckOutput ?? '',
+      };
     if (program === 'sh')
       return { code: world.installCode ?? 0, stdout: '', stderr: 'install failed' };
     if (program !== 'git') return { code: 0, stdout: '', stderr: '' };
@@ -150,9 +190,15 @@ function seams(
     gateCode?: number;
     refusal?: string;
     usageError?: string;
+    threads?: ThreadListing | Error;
+    /** What the gate writes into its log, such as a failing test's lines. */
+    gateLogText?: string;
+    control?: (options: ControlOptions) => ControlResult;
   } = {},
 ) {
   const record = {
+    threadReads: 0,
+    controls: [] as ControlOptions[],
     gates: [] as string[],
     merges: [] as string[],
     removals: [] as string[],
@@ -196,7 +242,7 @@ function seams(
       gate: async (gateOptions: { log: string }) => {
         record.gates.push(gateOptions.log);
         mkdirSync(dirname(gateOptions.log), { recursive: true });
-        writeFileSync(gateOptions.log, '');
+        writeFileSync(gateOptions.log, overrides.gateLogText ?? '');
         return {
           code: overrides.gateCode ?? 0,
           head: HEAD,
@@ -209,6 +255,17 @@ function seams(
       merge: async (mergeOptions: { gateLog: string }) => {
         record.merges.push(mergeOptions.gateLog);
         return overrides.merge ?? mergedReport();
+      },
+      threads: () => {
+        record.threadReads += 1;
+        const listing = overrides.threads ?? { threads: [], seen: 1, total: 1, unresolved: 0 };
+        if (listing instanceof Error) throw listing;
+        return listing;
+      },
+      control: (controlOptions: ControlOptions) => {
+        record.controls.push(controlOptions);
+        if (overrides.control === undefined) throw new Error('no control run was expected');
+        return overrides.control(controlOptions);
       },
       remove: (removeOptions: { name: string }) => {
         record.removals.push(removeOptions.name);
@@ -781,5 +838,365 @@ describe('run', () => {
     const bad = await run(argv, { ...failing.partial, runner });
     expect(bad.code).toBe(1);
     expect(JSON.parse(bad.output).failedStep).toBe('merge');
+  });
+});
+
+describe('review threads before the gate', () => {
+  const unresolved: ThreadListing = { threads: [], seen: 2, total: 2, unresolved: 1 };
+
+  test('an unresolved thread stops delivery before anything is fetched, merged, pushed or gated', async () => {
+    const { runner, calls } = fake({ contains: false, mergeTreeCode: 0 });
+    const { partial, record } = seams({ threads: unresolved });
+    const report = await deliver(options, { ...partial, runner });
+    expect(report).toMatchObject({ merged: false, failedStep: 'threads', attempts: 1 });
+    expect(report.detail).toContain('1 review thread(s) are unresolved');
+    expect(calls).toEqual([]);
+    expect(record.gates).toEqual([]);
+    expect(record.merges).toEqual([]);
+  });
+
+  test('a listing that is not complete, or cannot be read, also stops at step threads', async () => {
+    const { runner } = fake({ contains: true });
+    const partial = await deliver(options, {
+      ...seams({ threads: { threads: [], seen: 50, total: 61, unresolved: 0 } }).partial,
+      runner,
+    });
+    expect(partial).toMatchObject({ failedStep: 'threads' });
+    expect(partial.detail).toContain('read 50 of 61');
+    const broken = await deliver(options, {
+      ...seams({ threads: new ReviewThreadsError('gh could not list review threads') }).partial,
+      runner,
+    });
+    expect(broken).toMatchObject({ failedStep: 'threads' });
+    expect(broken.detail).toContain('gh could not list');
+  });
+
+  test('resolved threads let the lifecycle through, and the merge gate still checks them itself', async () => {
+    const { runner } = fake({ contains: true });
+    const { partial, record } = seams();
+    const received: MergeGateOptions[] = [];
+    const report = await deliver(options, {
+      ...partial,
+      runner,
+      merge: async (mergeOptions: MergeGateOptions) => {
+        received.push(mergeOptions);
+        return mergedReport();
+      },
+    });
+    expect(report.failedStep).toBeNull();
+    expect(record.threadReads).toBe(1);
+    expect(received).toHaveLength(1);
+  });
+
+  test('no thread reader is a named failure, never a silent skip', async () => {
+    const { runner } = fake({ contains: true });
+    const { threads: _omitted, ...rest } = seams().partial;
+    const report = await deliver(options, { ...rest, runner });
+    expect(report).toMatchObject({ failedStep: 'threads' });
+  });
+});
+
+describe('integration check after merging the default branch in', () => {
+  const moved = {
+    contains: false,
+    mergeTreeCode: 0,
+    pullRequestFiles: ['packages/a/own.ts', 'packages/b/own.ts'],
+    baseFiles: ['packages/a/landed.ts', 'packages/c/landed.ts'],
+  };
+
+  beforeEach(() => {
+    configure({ fastCheckCommand: 'fast-check {filters}' });
+    makeWorkspaces('packages/a', 'packages/b', 'packages/c');
+  });
+
+  test('typechecks and lints only the workspaces both sides touched, after install and before push', async () => {
+    const { runner, calls } = fake(moved);
+    const { partial, record } = seams();
+    const report = await deliver(options, { ...partial, runner });
+    expect(report.failedStep).toBeNull();
+    const text = calls.map((command) => command.join(' '));
+    const install = text.indexOf('sh -c install-command');
+    const check = text.indexOf('sh -c fast-check --filter=./packages/a');
+    const push = text.indexOf('git push origin HEAD');
+    expect(install).toBeGreaterThan(-1);
+    expect(check).toBeGreaterThan(install);
+    expect(push).toBeGreaterThan(check);
+    expect(text.filter((line) => line.startsWith('sh -c fast-check'))).toHaveLength(1);
+    expect(record.gates).toHaveLength(1);
+  });
+
+  test('a failure is step integration: it names the failing files, restores the branch, and stops', async () => {
+    const { runner, calls } = fake({
+      ...moved,
+      fastCheckCode: 1,
+      fastCheckOutput: [
+        '@acme/a:typecheck: src/own.ts(4,2): error TS2339: Property old does not exist.',
+        '@acme/a:lint: scripts/x.ts:3:1 Error',
+      ].join('\n'),
+    });
+    const { partial, record } = seams();
+    const report = await deliver(
+      { ...options, logDirectory: join(sandbox, 'logs') },
+      { ...partial, runner },
+    );
+    expect(report).toMatchObject({ merged: false, failedStep: 'integration' });
+    expect(report.detail).toContain('packages/a/src/own.ts');
+    expect(report.detail).toContain('scripts/x.ts');
+    expect(report.detail).toContain(join(sandbox, 'logs'));
+    expect(report.detail).toContain('restored');
+    expect(calls).toContainEqual(['git', 'reset', '--hard', HEAD]);
+    expect(calls.some((command) => command[1] === 'push')).toBe(false);
+    expect(record.gates).toEqual([]);
+    expect(record.merges).toEqual([]);
+  });
+
+  test('runs nothing when the two sides share no workspace, or when nothing was merged in', async () => {
+    const apart = fake({ ...moved, baseFiles: ['packages/c/landed.ts'] });
+    const first = await deliver(options, { ...seams().partial, runner: apart.runner });
+    expect(first.failedStep).toBeNull();
+    expect(apart.calls.some((command) => String(command[2]).startsWith('fast-check'))).toBe(false);
+    const fresh = fake({ contains: true });
+    const second = await deliver(options, { ...seams().partial, runner: fresh.runner });
+    expect(second.failedStep).toBeNull();
+    expect(fresh.calls.some((command) => String(command[2]).startsWith('fast-check'))).toBe(false);
+  });
+
+  test('--removed-names fails on a file that landed on main still using a removed name', async () => {
+    writeFileSync(
+      join(sandbox, 'packages', 'a', 'landed.ts'),
+      'const f = engine as never;\nf.legacyMode;\n',
+    );
+    const { runner, calls } = fake(moved);
+    const { partial, record } = seams();
+    const report = await deliver(
+      { ...options, removedNames: ['legacyMode'] },
+      { ...partial, runner },
+    );
+    expect(report).toMatchObject({ merged: false, failedStep: 'integration' });
+    expect(report.detail).toContain('packages/a/landed.ts:2 (legacyMode)');
+    expect(calls).toContainEqual(['git', 'reset', '--hard', HEAD]);
+    expect(record.gates).toEqual([]);
+  });
+
+  test('--removed-names passes when the files that landed do not use the name', async () => {
+    writeFileSync(join(sandbox, 'packages', 'a', 'landed.ts'), 'f.current;\n');
+    const { runner } = fake(moved);
+    const report = await deliver(
+      { ...options, removedNames: ['legacyMode'] },
+      { ...seams().partial, runner },
+    );
+    expect(report.failedStep).toBeNull();
+  });
+
+  test('--removed-names works without a fast check command', async () => {
+    configure({});
+    writeFileSync(join(sandbox, 'packages', 'c', 'landed.ts'), "const k = 'legacyMode';\n");
+    const { runner } = fake(moved);
+    const report = await deliver(
+      { ...options, removedNames: ['legacyMode'] },
+      { ...seams().partial, runner },
+    );
+    expect(report).toMatchObject({ failedStep: 'integration' });
+    expect(report.detail).toContain('packages/c/landed.ts:1');
+  });
+
+  test('the --removed-names file is read at the command line, and a missing one is a usage error', async () => {
+    const argv = (...extra: string[]) => [
+      '--config',
+      options.configPath,
+      '--pr',
+      '12',
+      '--worktree',
+      sandbox,
+      '--comment-file',
+      options.commentFile,
+      '--gate-log',
+      options.gateLog as string,
+      ...extra,
+    ];
+    let thrown: unknown;
+    try {
+      await run(argv('--removed-names', join(sandbox, 'missing.txt')));
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(UsageError);
+    writeFileSync(join(sandbox, 'names.txt'), 'legacyMode\nbad name\n');
+    try {
+      await run(argv('--removed-names', join(sandbox, 'names.txt')));
+    } catch (error) {
+      thrown = error;
+    }
+    expect(String(thrown)).toContain('not a single identifier');
+  });
+});
+
+describe('a failed gate is classified, never retried', () => {
+  const failingLog = [
+    'HEAD x LOAD 1',
+    '@acme/a:test: src/x.test.ts:',
+    '@acme/a:test: (fail) x > works [2ms]',
+    ' Failed:    @acme/a#test',
+    'GATE_RC=1',
+    '',
+  ].join('\n');
+  const expectedTests = ['x > works'];
+  const rows = (candidate: number, base: number): ControlResult => {
+    const row = (tree: 'candidate' | 'base', exitCode: number): ControlRow => ({
+      iteration: 1,
+      tree,
+      load: 1,
+      exitCode,
+      failingTests: exitCode === 0 ? [] : expectedTests,
+    });
+    return {
+      rows: [row('candidate', candidate), row('base', base)],
+      iterations: 1,
+      candidateFailures: candidate === 0 ? 0 : 1,
+      baseFailures: base === 0 ? 0 : 1,
+      shared: false,
+    };
+  };
+  const args = (...extra: string[]) => [
+    '--config',
+    options.configPath,
+    '--pr',
+    '12',
+    '--worktree',
+    sandbox,
+    '--comment-file',
+    options.commentFile,
+    '--gate-log',
+    options.gateLog as string,
+    ...extra,
+  ];
+
+  beforeEach(() => {
+    makeWorkspaces('packages/a');
+    mkdirSync(join(sandbox, 'packages', 'a', 'src'), { recursive: true });
+    writeFileSync(join(sandbox, 'packages', 'a', 'src', 'x.test.ts'), '');
+    // A log that does not pass forces the gate to run.
+    writeFileSync(options.gateLog as string, 'HEAD x LOAD 1\nGATE_RC=1\n');
+  });
+
+  async function failed(candidate: number, base: number) {
+    const { runner, calls } = fake({ contains: true });
+    const { partial, record } = seams({
+      gateCode: 1,
+      gateLogText: failingLog,
+      control: () => rows(candidate, base),
+    });
+    const result = await run(args('--json'), { ...partial, runner });
+    return { result, record, calls, report: JSON.parse(result.output) };
+  }
+
+  test('a file that fails on the head and passes on main is the branch: exit 1', async () => {
+    const { result, report, record } = await failed(1, 0);
+    expect(result.code).toBe(1);
+    expect(report).toMatchObject({ failedStep: 'gate', classification: 'branch' });
+    expect(report.controlFiles).toMatchObject([{ file: 'src/x.test.ts', verdict: 'branch' }]);
+    expect(record.gates).toHaveLength(1);
+    expect(record.merges).toEqual([]);
+  });
+
+  test('a file that fails on main too is main: exit 3', async () => {
+    const { result, report } = await failed(1, 1);
+    expect(result.code).toBe(3);
+    expect(report.classification).toBe('main');
+  });
+
+  test('a file that passes alone on both is unreproduced: exit 4', async () => {
+    const { result, report, record } = await failed(0, 0);
+    expect(result.code).toBe(4);
+    expect(report.classification).toBe('unreproduced');
+    // Never an automatic retry of the gate.
+    expect(record.gates).toHaveLength(1);
+    expect(record.controls).toHaveLength(1);
+    expect(record.controls[0]?.iterations).toBe(2);
+  });
+
+  test('the text output names the class, the files and the triage', async () => {
+    const { runner } = fake({ contains: true });
+    const { partial } = seams({
+      gateCode: 1,
+      gateLogText: failingLog,
+      control: () => rows(0, 0),
+    });
+    const result = await run(args(), { ...partial, runner });
+    expect(result.output).toContain('FAILED at gate');
+    expect(result.output).toContain('classification: unreproduced');
+    expect(result.output).toContain('src/x.test.ts (@acme/a): unreproduced');
+    expect(result.output).toContain('@acme/a#test');
+  });
+
+  test('a gate failure with no failing test file keeps exit 1 and runs no control', async () => {
+    const { runner } = fake({ contains: true });
+    const { partial, record } = seams({ gateCode: 1, gateLogText: ' Failed:    @acme/a#lint\n' });
+    const result = await run(args('--json'), { ...partial, runner });
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.output).classification).toBe('unclassified');
+    expect(record.controls).toEqual([]);
+  });
+
+  test('other failed steps keep exit 1 and carry no classification', async () => {
+    const { runner } = fake({ contains: false, mergeTreeCode: 1, mergeCode: 1 });
+    const { partial } = seams();
+    const result = await run(args('--json'), { ...partial, runner });
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.output)).toMatchObject({
+      failedStep: 'conflict',
+      classification: null,
+    });
+  });
+});
+
+describe('waive-main-health', () => {
+  const args = (extra: string[]) => [
+    '--config',
+    options.configPath,
+    '--pr',
+    '12',
+    '--worktree',
+    sandbox,
+    '--comment-file',
+    options.commentFile,
+    '--gate-log',
+    options.gateLog as string,
+    ...extra,
+  ];
+
+  test('--waive-main-health --reason reaches the merge gate as a waiver, not a fix', async () => {
+    const { runner } = fake({ contains: true });
+    const { partial } = seams();
+    const received: MergeGateOptions[] = [];
+    const merge = async (mergeOptions: MergeGateOptions) => {
+      received.push(mergeOptions);
+      return mergedReport();
+    };
+    const result = await run(args(['--waive-main-health', '--reason', 'main is red from #99']), {
+      ...partial,
+      merge,
+      runner,
+    });
+    expect(result.code).toBe(0);
+    expect(received.map((entry) => [entry.fixesMain, entry.mainHealthWaiver])).toEqual([
+      [false, { reason: 'main is red from #99' }],
+    ]);
+  });
+
+  test('rejects a missing reason, a bare reason, and a second kind of waiver', async () => {
+    const usage = async (...argv: string[]) => {
+      try {
+        await run(args(argv), { ...seams().partial, runner: fake({ contains: true }).runner });
+      } catch (error) {
+        return error;
+      }
+      return undefined;
+    };
+    expect(await usage('--waive-main-health')).toBeInstanceOf(UsageError);
+    expect(await usage('--reason', 'x')).toBeInstanceOf(UsageError);
+    expect(await usage('--waive-main-health', '--reason', 'x', '--fixes-main')).toBeInstanceOf(
+      UsageError,
+    );
   });
 });

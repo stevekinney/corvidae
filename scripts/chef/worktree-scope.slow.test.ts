@@ -504,6 +504,27 @@ scenarios.describe('command line contract', () => {
   );
 
   scenarios.scenario(
+    'verify --capture takes the root and allowed paths from the capture file',
+    () => {
+      const configuration = writeConfiguration(['src']);
+      const output = evidencePath();
+      expect(runCli('capture', '--configuration', configuration, '--output', output).exitCode).toBe(
+        0,
+      );
+      const accepted = runCli('verify', '--capture', output);
+      expect(accepted.exitCode).toBe(0);
+      expect(JSON.parse(accepted.stdout).outOfScope).toEqual([]);
+      write('src/app.ts', 'edited in scope');
+      expect(runCli('verify', '--capture', output).exitCode).toBe(0);
+      write('docs/readme.md', 'escaped');
+      const rejected = runCli('verify', '--capture', output);
+      expect(rejected.exitCode).toBe(1);
+      expect(JSON.parse(rejected.stdout).outOfScope).toEqual(['docs/readme.md']);
+      expect(runCli('verify', '--capture', output, '--before', output).exitCode).toBe(2);
+    },
+  );
+
+  scenarios.scenario(
     'failing verification leaves source content byte-identical and never cleans up',
     () => {
       const configuration = writeConfiguration(['src']);
