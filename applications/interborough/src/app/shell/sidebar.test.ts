@@ -73,7 +73,7 @@ function mount(scopes?: readonly AuthorizationScope[], engineStatus?: LiveSource
   });
 }
 
-const PRIMARY = ['Chat', 'Agents', 'Workflows', 'Runs', 'Schedules', 'Reviews'];
+const PRIMARY = ['Chat', 'Agents', 'Workflows', 'Settings', 'Runs', 'Schedules', 'Reviews'];
 const ENGINE = ['Overview', 'Workers', 'Storage', 'System', 'Audit'];
 
 describe('the sidebar', () => {
@@ -117,6 +117,7 @@ describe('the sidebar', () => {
       Storage: '/storage',
       System: '/system',
       Audit: '/audit',
+      Settings: '/settings',
     });
   });
 
@@ -195,7 +196,7 @@ describe('the sidebar', () => {
     landAt('/chat');
     const { getByRole } = mount();
     const titles = Object.fromEntries(
-      ['Chat', 'Agents', 'Reviews', 'Overview', 'Audit'].map((label) => [
+      ['Chat', 'Agents', 'Reviews', 'Overview', 'Audit', 'Settings'].map((label) => [
         label,
         getByRole('link', { name: new RegExp(`^${label}`) }).getAttribute('title'),
       ]),
@@ -206,6 +207,7 @@ describe('the sidebar', () => {
       Reviews: 'Reviews (g v)',
       Overview: 'Overview (g e)',
       Audit: 'Audit (g u)',
+      Settings: 'Settings (g n)',
     });
   });
 });
