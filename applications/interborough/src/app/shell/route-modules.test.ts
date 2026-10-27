@@ -25,4 +25,14 @@ describe('the route outlet harness', () => {
     expect(routeComponents).toHaveLength(routes.length);
     expect(pending).toEqual([]);
   });
+
+  test('hands routes that share a component the one evaluated module', async () => {
+    // Importing a not-yet-evaluated module from several places at once drops the file from Bun's
+    // coverage report (the placeholder area's floor failed on it), so the harness loads in turn.
+    const sharing = routes.filter((route) => route.load === routes[0]?.load);
+    expect(sharing.length).toBeGreaterThan(1);
+    const loaded = await Promise.all(sharing.map((route) => route.load()));
+    expect(new Set(loaded.map((module) => module.default)).size).toBe(1);
+    expect(routeComponents[0]).toBe(loaded[0]?.default);
+  });
 });
