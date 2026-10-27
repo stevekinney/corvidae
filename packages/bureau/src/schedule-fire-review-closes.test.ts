@@ -37,8 +37,6 @@ afterEach(async () => {
   await harness.dispose();
 });
 
-const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
-
 const waitOptions = {
   generate: askingGenerate(),
   stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
