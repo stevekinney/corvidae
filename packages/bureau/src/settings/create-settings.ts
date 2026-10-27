@@ -25,6 +25,7 @@ import {
   settingsSchema,
   type SettingsValues,
 } from './settings-schema.ts';
+import { settingsFailures } from './settings-validation.ts';
 import type {
   BureauSettings,
   SettingKeyState,
@@ -38,10 +39,69 @@ export const SETTINGS_CHANGED_AUDIT_TYPE = 'settings.changed';
 /** The audit trail's resource name for settings records. */
 export const SETTINGS_AUDIT_RESOURCE = 'settings';
 
-/** The stored record as it was read: its parsed form and the exact text a compare-and-swap expects. */
+/**
+ * The stored record as it was read: its parsed form, holding only the values this build applies;
+ * every value as stored, which an update writes back untouched; and the exact text a
+ * compare-and-swap expects.
+ */
 export interface StoredSettings {
   readonly record: SettingsRecord | undefined;
+  /**
+   * The record's `values` as stored, including keys this build does not know or refuses. Another
+   * process on the same store may run a build that reads them, so an update keeps them.
+   */
+  readonly storedValues: Readonly<Record<string, unknown>>;
   readonly raw: string | null;
+}
+
+/** What a stored value is judged against: the code defaults it overrides, and the locked keys. */
+export interface SettingsContext {
+  readonly defaults: SettingsValues;
+  readonly locked: ReadonlySet<SettingKey>;
+}
+
+/** A stored key this build does not apply, and why. */
+export interface DroppedSetting {
+  readonly key: string;
+  readonly message: string;
+}
+
+/**
+ * The stored values this build applies, and the ones it drops: a key the schema does not have, a
+ * value the schema refuses, and a value a consumer refuses given the others in force (Weft's
+ * workflow-claim timing, for one). A check across keys drops only the stored keys it involves, so
+ * one bad value never takes an unrelated one with it and a code default is never dropped.
+ */
+export function admissibleSettings(
+  stored: Readonly<Record<string, unknown>>,
+  context: SettingsContext,
+): { readonly values: SettingsValues; readonly dropped: readonly DroppedSetting[] } {
+  const values: Record<string, unknown> = {};
+  const dropped: DroppedSetting[] = [];
+  for (const [key, value] of Object.entries(stored)) {
+    if (!isSettingKey(key)) {
+      dropped.push({ key, message: 'no such setting' });
+      continue;
+    }
+    const checked = parseValue(key, value);
+    if (checked.ok) values[key] = checked.value;
+    else dropped.push({ key, message: checked.message });
+  }
+  for (;;) {
+    const failures = settingsFailures(effectiveSettings(context.defaults, values, context.locked));
+    const offending = failures.flatMap((failure) =>
+      failure.keys
+        .filter((key) => Object.hasOwn(values, key) && !context.locked.has(key))
+        .map((key) => ({ key, message: failure.message })),
+    );
+    if (offending.length === 0) break;
+    for (const { key, message } of offending) {
+      if (!Object.hasOwn(values, key)) continue;
+      delete values[key];
+      dropped.push({ key, message });
+    }
+  }
+  return { values, dropped };
 }
 
 /** Writes JSON with object keys sorted, so two equal values always compare equal as text. */
@@ -75,28 +135,31 @@ function parseValue(
 }
 
 /**
- * Reads the stored record, keeping only the keys the schema has with values that validate. Every
- * dropped key, and a record that is not a settings record at all, is reported through `diagnose`.
+ * Reads the stored record, keeping only the values this build applies ({@link admissibleSettings}).
+ * Every dropped key, and a record that is not a settings record at all, is reported through
+ * `diagnose`.
  */
 export async function readSettingsRecord(
   store: ConditionalTextValueStore,
+  context: SettingsContext,
   diagnose: (message: string) => void,
 ): Promise<StoredSettings> {
-  return parseSettingsRecord(await store.get(SETTINGS_RECORD_KEY), diagnose);
+  return parseSettingsRecord(await store.get(SETTINGS_RECORD_KEY), context, diagnose);
 }
 
 /** {@link readSettingsRecord}'s parse, over text already read. */
 export function parseSettingsRecord(
   raw: string | null,
+  context: SettingsContext,
   diagnose: (message: string) => void,
 ): StoredSettings {
-  if (raw === null) return { record: undefined, raw };
+  if (raw === null) return { record: undefined, storedValues: {}, raw };
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
     diagnose('[bureau] The stored settings record is not JSON; every key keeps its code default.');
-    return { record: undefined, raw };
+    return { record: undefined, storedValues: {}, raw };
   }
   const candidate = parsed as Partial<SettingsRecord> | null;
   if (
@@ -111,22 +174,15 @@ export function parseSettingsRecord(
     diagnose(
       '[bureau] The stored settings record is not a schemaVersion 1 record; every key keeps its code default.',
     );
-    return { record: undefined, raw };
+    return { record: undefined, storedValues: {}, raw };
   }
-  const values: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(candidate.values)) {
-    if (!isSettingKey(key)) {
-      diagnose(`[bureau] Dropped the stored setting "${key}": no such setting.`);
-      continue;
-    }
-    const checked = parseValue(key, value);
-    if (!checked.ok) {
-      diagnose(`[bureau] Dropped the stored setting "${key}": ${checked.message}`);
-      continue;
-    }
-    values[key] = checked.value;
+  const storedValues = candidate.values as Readonly<Record<string, unknown>>;
+  const { values, dropped } = admissibleSettings(storedValues, context);
+  for (const { key, message } of dropped) {
+    diagnose(`[bureau] Dropped the stored setting "${key}": ${message}`);
   }
   return {
+    storedValues,
     record: {
       schemaVersion: 1,
       revision: candidate.revision,
@@ -192,6 +248,7 @@ export function createSettings(dependencies: SettingsDependencies): SettingsComp
   const store =
     dependencies.store ?? textValueStore(new MemoryStorage(), { disposeUnderlyingStorage: true });
   const { defaults, locked } = dependencies;
+  const context: SettingsContext = { defaults, locked };
   const bootValues = effectiveSettings(defaults, dependencies.boot.record?.values, locked);
   let stored: StoredSettings = dependencies.boot;
   let configured = bootValues;
@@ -317,7 +374,7 @@ export function createSettings(dependencies: SettingsDependencies): SettingsComp
         if (invalid.length > 0) {
           return reject('invalid-value', invalid, messages.join('; '), known);
         }
-        const current = await readSettingsRecord(store, (message) =>
+        const current = await readSettingsRecord(store, context, (message) =>
           dependencies.diagnose(message),
         );
         const currentRevision = revisionOf(current);
@@ -329,10 +386,25 @@ export function createSettings(dependencies: SettingsDependencies): SettingsComp
             currentRevision,
           );
         }
+        // Merged over the values as stored, so a key this build drops (another build's, or one it
+        // refuses) is written back as it was; it is still never applied here.
+        const merged: Record<string, unknown> = { ...current.storedValues, ...values };
+        const refused = admissibleSettings(merged, context).dropped.filter(({ key }) =>
+          keys.includes(key as SettingKey),
+        );
+        if (refused.length > 0) {
+          return reject(
+            'invalid-value',
+            [...new Set(refused.map(({ key }) => key))],
+            refused.map(({ key, message }) => `${key}: ${message}`).join('; '),
+            currentRevision,
+          );
+        }
         const record: SettingsRecord = {
           schemaVersion: 1,
           revision: currentRevision + 1,
-          values: { ...current.record?.values, ...values },
+          // The record's type names the keys this build knows; the text keeps the others too.
+          values: merged,
           updatedAt: dependencies.nowISO(),
         };
         const text = JSON.stringify(record);
@@ -341,7 +413,9 @@ export function createSettings(dependencies: SettingsDependencies): SettingsComp
           [{ type: 'set', key: SETTINGS_RECORD_KEY, value: text }],
         );
         if (!committed) {
-          const now = await readSettingsRecord(store, (message) => dependencies.diagnose(message));
+          const now = await readSettingsRecord(store, context, (message) =>
+            dependencies.diagnose(message),
+          );
           return reject(
             'stale-revision',
             keys,
@@ -349,7 +423,10 @@ export function createSettings(dependencies: SettingsDependencies): SettingsComp
             revisionOf(now),
           );
         }
-        adopt({ record, raw: text }, keys);
+        adopt(
+          parseSettingsRecord(text, context, () => undefined),
+          keys,
+        );
         try {
           await dependencies.audit({
             runId: SETTINGS_AUDIT_RESOURCE,
@@ -391,7 +468,7 @@ export function createSettings(dependencies: SettingsDependencies): SettingsComp
       serialized(async () => {
         const raw = await store.get(SETTINGS_RECORD_KEY);
         if (raw === stored.raw) return;
-        const next = parseSettingsRecord(raw, (message) => dependencies.diagnose(message));
+        const next = parseSettingsRecord(raw, context, (message) => dependencies.diagnose(message));
         const before = configured;
         const after = effectiveSettings(defaults, next.record?.values, locked);
         adopt(

@@ -1,7 +1,8 @@
 /**
  * COR-1710 — `sessionInput.*` are read by admission, not fixed when the Bureau was built. The
- * principal limit is read at every admission; the session limit is fixed by the Weft mailbox for
- * the life of one session incarnation, so it applies to a session started after the change.
+ * principal limit is live at the next admission. The session limit is live from the next session
+ * (owner decision, COR-1710 revision 2026-10-27): a session started after the change admits against
+ * the new limit, and a running session keeps the limit its Weft mailbox was built with.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent } from '@lostgradient/operative';
@@ -70,7 +71,20 @@ describe('sessionInput.principalBacklogLimit', () => {
   });
 });
 
-describe('sessionInput.sessionBacklogLimit', () => {
+describe('sessionInput.sessionBacklogLimit (live: next session)', () => {
+  it('a running session keeps the limit its mailbox was built with', async () => {
+    const bureau = await open();
+    try {
+      const contextId = await runningContext(bureau);
+      await change(bureau, { 'sessionInput.sessionBacklogLimit': 1 });
+      const one = await bureau.contexts.input(contextId, input('one'));
+      const two = await bureau.contexts.input(contextId, input('two'));
+      expect([one.outcome, two.outcome]).toEqual(['admitted', 'admitted']);
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
   it('a session started after the change admits against the new limit', async () => {
     const bureau = await open();
     try {

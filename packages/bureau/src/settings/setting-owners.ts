@@ -10,7 +10,7 @@
  * @module setting-owners
  */
 
-import { ENGINE_PATCH_FIELDS } from './settings-options.ts';
+import { ENGINE_PATCH_FIELDS } from './settings-schema.ts';
 import type { SettingKey } from './settings-schema.ts';
 
 /** One module and the live keys it reads through the settings. */
@@ -61,9 +61,17 @@ export const SETTING_OWNERS: readonly SettingOwner[] = [
     reads: 'literal',
   },
   {
-    name: 'session input',
+    name: 'session input, live at the next admission',
     module: 'create-bureau.ts',
-    keys: ['sessionInput.sessionBacklogLimit', 'sessionInput.principalBacklogLimit'],
+    keys: ['sessionInput.principalBacklogLimit'],
+    reads: 'literal',
+  },
+  {
+    // Owner decision (COR-1710 revision 2026-10-27): read when a session's mailbox is built, so a
+    // running session keeps its limit and Weft's cross-process backlog check stays atomic.
+    name: 'session input, live from the next session',
+    module: 'create-bureau.ts',
+    keys: ['sessionInput.sessionBacklogLimit'],
     reads: 'literal',
   },
   {

@@ -2,8 +2,9 @@
  * COR-1710 — `bureau.settings` on a whole Bureau: a restart key, an ephemeral Bureau, two Bureaus
  * on one store, a locked key, and an agent file that changes a key through `settings-update`.
  */
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent } from '@lostgradient/operative';
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from '../agent-catalog';
@@ -147,6 +148,73 @@ describe('bureau.settings on a Bureau', () => {
       expect(JSON.stringify(records)).not.toContain('VALUE-SENTINEL');
     } finally {
       await harness.dispose();
+    }
+  });
+});
+
+describe('a stored value the engine refuses', () => {
+  it('a Bureau boots over a record whose claim timing Weft refuses, without it, and keeps the rest', async () => {
+    const storage = new MemoryStorage();
+    await textValueStore(storage, { disposeUnderlyingStorage: false }).set(
+      'settings',
+      JSON.stringify({
+        schemaVersion: 1,
+        revision: 3,
+        values: {
+          'engine.workflowClaimTtl': 1_000,
+          'engine.schedulerPollIntervalMs': 1.5,
+          'engine.retentionSweepBatchSize': 25,
+        },
+        updatedAt: '2026-10-27T00:00:00.000Z',
+      }),
+    );
+    const diagnostics: { scope: string; message: string }[] = [];
+    const bureau = await open({
+      storage,
+      durable: true,
+      maintenance: 'manual',
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+    });
+    try {
+      const { values, revision } = await bureau.settings.get();
+      expect(revision).toBe(3);
+      expect(values['engine.workflowClaimTtl']).toBeUndefined();
+      expect(values['engine.schedulerPollIntervalMs']).toBeUndefined();
+      expect(values['engine.retentionSweepBatchSize']).toBe(25);
+      const settingsMessages = diagnostics
+        .filter((diagnostic) => diagnostic.scope === 'settings')
+        .map((diagnostic) => diagnostic.message)
+        .join('\n');
+      expect(settingsMessages).toContain('"engine.workflowClaimTtl"');
+      expect(settingsMessages).toContain('"engine.schedulerPollIntervalMs"');
+      expect(settingsMessages).not.toContain('refused the settings');
+    } finally {
+      await bureau.dispose();
+    }
+  });
+});
+
+describe('retention.audit and the automatic maintenance timer on a key-value-only Bureau', () => {
+  it('a stored audit window starts the timer, live and after a restart', async () => {
+    const storage = new MemoryStorage();
+    const firstRuntime = createManualRuntimeServices();
+    const first = await open({ storage, runtime: firstRuntime });
+    try {
+      expect(firstRuntime.pendingTimers()).toHaveLength(0);
+      await first.settings.update(
+        { 'retention.audit': { olderThan: 60_000 } },
+        { expectedRevision: await revisionOf(first) },
+      );
+      expect(firstRuntime.pendingTimers().length).toBeGreaterThan(0);
+    } finally {
+      await first.dispose();
+    }
+    const secondRuntime = createManualRuntimeServices();
+    const second = await open({ storage, runtime: secondRuntime });
+    try {
+      expect(secondRuntime.pendingTimers().length).toBeGreaterThan(0);
+    } finally {
+      await second.dispose();
     }
   });
 });

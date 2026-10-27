@@ -164,6 +164,11 @@ import {
   sessionRowHolderPrefix,
 } from './assets/row-asset-claims';
 import { humanInputSchemasOf, validateHumanInputOption } from './human-input-option';
+import {
+  validateChildrenOption,
+  validateRetentionOptions,
+  validateSessionInputBacklogLimit,
+} from './option-validators.ts';
 import type { AssetService } from './assets/types';
 import { createAssetClaimReconciler } from './asset-claim-reconciliation';
 import {
@@ -173,7 +178,6 @@ import {
   AUDIT_WORKFLOW_OWNER_PREFIX,
   type AuditTrail,
   auditTrailSessionOwnerId,
-  type CheckpointRetentionOption,
   computeInitialAuditSequence,
   createAuditTrail,
 } from './audit-trail';
@@ -484,7 +488,6 @@ import {
 import type {
   AbortingRun,
   Bureau,
-  BureauChildrenOptions,
   BureauOptions,
   BureauRecoveryReport,
   BureauShutdownOptions,
@@ -512,7 +515,6 @@ import type {
   SessionPendingReview,
   ResolveReviewInput,
   ResolveReviewResult,
-  RetentionWindowOption,
   BureauRetentionOptions,
   ReviewStatus,
   RunSummary,
@@ -1766,57 +1768,6 @@ export async function monitorRecoveredCatalogRun(
 }
 
 /**
- * AB-194 — `BureauOptions.sessionInput`'s `sessionBacklogLimit`/
- * `principalBacklogLimit` must each be a positive integer when supplied.
- * Throws `BureauError('...', 'BAD_REQUEST')` for 0, a negative number, or a
- * non-integer; a `undefined` value (option omitted) passes through untouched.
- */
-function validateSessionInputBacklogLimit(value: number | undefined, optionName: string): void {
-  if (value === undefined) return;
-  if (!Number.isInteger(value) || value <= 0) {
-    toBadRequest(`"options.sessionInput.${optionName}" must be a positive integer`);
-  }
-}
-
-/**
- * AB-388 (Codex review, PR #597, "Reject non-finite and negative retention
- * durations"): `BureauRetentionOptions.audit`'s `{ olderThan }` form feeds
- * `pruneAuditTrail`'s cutoff arithmetic (`now - retention.olderThan`)
- * directly — TypeScript's `number` type permits `NaN`, `Infinity`, and
- * negative values, none of which are safe here. `NaN` makes every
- * `record.timestampMs >= cutoffMs` comparison in `AuditTrail.prune` false,
- * deleting the ENTIRE trail even when a fleet retention floor exists;
- * `-Infinity` (or any negative value large enough) moves the cutoff into
- * the future and can remove records that were just written. Validated here
- * (BAD_REQUEST at construction time), the same boundary
- * `validateSessionInputBacklogLimit` above already uses for a different
- * destructive-if-malformed option.
- */
-function validateAuditRetentionOption(value: { olderThan: number } | 'forever' | undefined): void {
-  if (value === undefined || value === 'forever') return;
-  if (!Number.isFinite(value.olderThan) || value.olderThan < 0) {
-    toBadRequest('"options.retention.audit.olderThan" must be a finite, non-negative number');
-  }
-}
-
-/**
- * COR-1477 — `BureauRetentionOptions.events` and `retention.tasks` feed a cutoff
- * (`now - olderThan`) that decides what maintenance deletes, so they get the
- * same finite, non-negative rule `retention.audit` gets: `NaN` would compare
- * false against every timestamp, and a negative value moves the cutoff into
- * the future.
- */
-function validateRetentionWindowOption(
-  value: RetentionWindowOption | undefined,
-  optionName: string,
-): void {
-  if (value === undefined || value === 'forever') return;
-  if (!Number.isFinite(value.olderThan) || value.olderThan < 0) {
-    toBadRequest(`"options.${optionName}.olderThan" must be a finite, non-negative number`);
-  }
-}
-
-/**
  * COR-1700 — `humanInput` and `wakeup` are on by default for a durable Bureau, so `true` says
  * nothing and is refused: the only forms are `false`, and for `humanInput` an `inputSchemas` object.
  */
@@ -1839,65 +1790,7 @@ function taskRetentionOf(values: SettingsValues) {
   return values['retention.tasks'] ?? { olderThan: DEFAULT_TASK_RETENTION_MS };
 }
 
-/**
- * COR-625 — `BureauRetentionOptions.checkpoints`'s `{ keepLast }` form feeds
- * weft's `Engine.pruneCheckpoints` (COR-11), whose own contract requires a
- * non-negative integer. Bureau narrows that further to a POSITIVE integer:
- * `keepLast: 0` would discard a terminal run's entire checkpoint history,
- * including the newest entry a postmortem needs, which is a destructive
- * default no operator means to configure — an operator who genuinely wants
- * nothing retained is asking to delete the run, not to retain zero of it.
- * `timeoutMilliseconds` bounds the step's own wait and its abort signal, so
- * `NaN` or a negative value would arm a timer that fires immediately (or
- * never), turning every step into a spurious `'timed-out'`. Validated here at
- * construction time, the same boundary `validateAuditRetentionOption` above
- * uses for the other destructive-if-malformed retention option.
- */
-function validateCheckpointRetentionOption(value: CheckpointRetentionOption | undefined): void {
-  if (value === undefined || value === 'keep-all') return;
-  if (!Number.isInteger(value.keepLast) || value.keepLast <= 0) {
-    toBadRequest('"options.retention.checkpoints.keepLast" must be a positive integer');
-  }
-  const timeout = value.timeoutMilliseconds;
-  if (timeout !== undefined && (!Number.isFinite(timeout) || timeout < 0)) {
-    toBadRequest(
-      '"options.retention.checkpoints.timeoutMilliseconds" must be a finite, non-negative number',
-    );
-  }
-}
-
-/**
- * COR-424 — `BureauRetentionOptions.receipts` decides when a run-creation request id may create a
- * second run, so a value that is not a positive integer is a construction-time error, as Weft's
- * mailbox treats its own `terminalRetentionMs`. COR-1701: only `{ olderThan }` exists. A receipt
- * is a deduplication ledger entry, and `'forever'` (or any other non-object) is refused rather
- * than silently reading as the default. The parameter is `unknown` because the type already
- * forbids what this refuses, and an untyped caller can still pass it.
- */
-function validateReceiptRetentionOption(value: unknown): void {
-  if (value === undefined) return;
-  if (typeof value !== 'object' || value === null) {
-    toBadRequest(
-      '"options.retention.receipts" must be { olderThan: number }; run-creation receipts cannot be kept forever',
-    );
-  }
-  const olderThan = (value as { readonly olderThan?: unknown }).olderThan;
-  if (typeof olderThan !== 'number' || !Number.isSafeInteger(olderThan) || olderThan <= 0) {
-    toBadRequest('"options.retention.receipts.olderThan" must be a positive integer');
-  }
-}
-
 /** COR-1701 — validates every window of {@link BureauOptions.retention}, each under its own key. */
-function validateRetentionOptions(retention: BureauRetentionOptions | undefined): void {
-  if (retention !== undefined && (typeof retention !== 'object' || retention === null)) {
-    toBadRequest('"options.retention" must be an object of retention windows');
-  }
-  validateAuditRetentionOption(retention?.audit);
-  validateRetentionWindowOption(retention?.events, 'retention.events');
-  validateRetentionWindowOption(retention?.tasks, 'retention.tasks');
-  validateCheckpointRetentionOption(retention?.checkpoints);
-  validateReceiptRetentionOption(retention?.receipts);
-}
 
 /**
  * COR-1701: `Bureau.id` is the tenant every run's memory is written under, and the generated
@@ -1932,25 +1825,6 @@ function terminalActionTimestamp(
   actions: readonly { readonly type: string; readonly timestamp: number }[],
 ): number | undefined {
   return actions.findLast((action) => TERMINAL_RUN_ACTION_TYPES.has(action.type))?.timestamp;
-}
-
-/**
- * COR-772 — `BureauOptions.children.delegation` signs every child's grant, so
- * an empty secret or a lifetime that expires every grant on issue is a
- * construction-time error rather than a silently unusable topology.
- */
-function validateChildrenOption(value: BureauChildrenOptions | undefined): void {
-  const delegation = value?.delegation;
-  if (delegation === undefined) return;
-  if (typeof delegation.secret !== 'string' || delegation.secret.length === 0) {
-    toBadRequest('"options.children.delegation.secret" must be a non-empty string');
-  }
-  const timeToLive = delegation.defaultTimeToLiveMilliseconds;
-  if (timeToLive !== undefined && !(Number.isFinite(timeToLive) && timeToLive > 0)) {
-    toBadRequest(
-      '"options.children.delegation.defaultTimeToLiveMilliseconds" must be a positive, finite number',
-    );
-  }
 }
 
 /**
@@ -2081,10 +1955,12 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   validateSessionInputBacklogLimit(
     options.sessionInput?.sessionBacklogLimit,
     'sessionBacklogLimit',
+    toBadRequest,
   );
   validateSessionInputBacklogLimit(
     options.sessionInput?.principalBacklogLimit,
     'principalBacklogLimit',
+    toBadRequest,
   );
   // COR-1674: an unacceptable answer schema is a startup error, not a failure on the first park.
   rejectOptInToolOption('humanInput', options.humanInput);
@@ -2092,8 +1968,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   rejectOptInToolOption('decide', options.decide);
   validateDecisionsOptions(options.decisions, toBadRequest);
   validateHumanInputOption(options.humanInput);
-  validateRetentionOptions(options.retention);
-  validateChildrenOption(options.children);
+  validateRetentionOptions(options.retention, toBadRequest);
+  validateChildrenOption(options.children, toBadRequest);
   assertMemoryTenantIsStable(options);
   // COR-1577: `bureau` names the Bureau-wide default agent on the session path, which is told
   // apart from a catalog agent by name alone, so a catalog entry called `bureau` would be
@@ -4926,15 +4802,17 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
    * retention to drive) would never expire an approval it holds, so it keeps a timer of its own
    * for as long as it holds one. A `'manual'` host drives the sweep with `maintain`.
    */
-  const automaticMaintenanceRuns =
-    needsAutomaticMaintenance({
-      durableEngine: Boolean(runtime.durable),
-      memory: runtime.memory !== undefined,
-      keyValueStore: Boolean(runtime.kv),
-      activeAuditRetention: Boolean(
-        options.retention?.audit && options.retention?.audit !== 'forever',
-      ),
-    }) && options.maintenance !== 'manual';
+  function automaticMaintenanceRuns(): boolean {
+    const auditRetention = currentSettings()['retention.audit'];
+    return (
+      needsAutomaticMaintenance({
+        durableEngine: Boolean(runtime.durable),
+        memory: runtime.memory !== undefined,
+        keyValueStore: Boolean(runtime.kv),
+        activeAuditRetention: auditRetention !== undefined && auditRetention !== 'forever',
+      }) && options.maintenance !== 'manual'
+    );
+  }
 
   /**
    * Whether this process holds a tool approval, of a live run or a restored one, counting an
@@ -4975,7 +4853,12 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
    * process is never kept alive by it, and `shutdown` clears it.
    */
   function ensureLazyExpirySweep(): void {
-    if (lazyExpirySweepArmed || automaticMaintenanceRuns) return;
+    if (
+      lazyExpirySweepArmed ||
+      automaticRunOwnershipPruneTimerStarted ||
+      automaticMaintenanceRuns()
+    )
+      return;
     if (options.maintenance === 'manual' || maintenanceAdmissionClosed) return;
     lazyExpirySweepArmed = true;
     lazyExpirySweepTimer = runtimeServices.timers.setInterval(() => {
@@ -12723,7 +12606,17 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   // bureau (`runtime.durable` truthy) still always starts the timer
   // regardless of `retention.audit`, since `pruneStaleRunOwnership()` has
   // real work to do there independent of audit retention.
-  if (automaticMaintenanceRuns) {
+  // COR-1710 — the timer starts at boot when the settings in force need it, and later when a
+  // settings change makes them need it (an audit retention window set on a key-value-only Bureau).
+  if (automaticMaintenanceRuns()) startAutomaticMaintenance();
+  settingsOf().settings.subscribe(() => {
+    if (!automaticRunOwnershipPruneTimerStarted && !maintenanceAdmissionClosed) {
+      if (automaticMaintenanceRuns()) startAutomaticMaintenance();
+    }
+  });
+
+  /** Starts the automatic maintenance timer. */
+  function startAutomaticMaintenance(): void {
     automaticRunOwnershipPruneTimerStarted = true;
     automaticRunOwnershipPruneTimer = runtimeServices.timers.setInterval(() => {
       if (automaticRunOwnershipPruneCurrentPass) return;

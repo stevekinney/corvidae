@@ -30,15 +30,17 @@ async function compose(
   const diagnose = (message: string) => {
     diagnostics.push(message);
   };
+  const defaults = options.defaults ?? { 'tools.wakeup': true, maintenance: 'automatic' };
+  const locked = new Set(options.locked ?? []);
   const boot =
     store === undefined
-      ? { record: undefined, raw: null }
-      : await readSettingsRecord(store, diagnose);
+      ? { record: undefined, storedValues: {}, raw: null }
+      : await readSettingsRecord(store, { defaults, locked }, diagnose);
   const composition = createSettings({
     store,
     persisted: options.persisted ?? store !== undefined,
-    defaults: options.defaults ?? { 'tools.wakeup': true, maintenance: 'automatic' },
-    locked: new Set(options.locked ?? []),
+    defaults,
+    locked,
     boot,
     nowISO: () => '2026-10-27T00:00:00.000Z',
     diagnose,
@@ -277,5 +279,122 @@ describe('bureau.settings storage', () => {
     expect(Object.keys(schema['properties'] as object).toSorted()).toEqual(
       [...SETTING_KEYS].toSorted(),
     );
+  });
+});
+
+/** Writes a settings record holding `values` straight into `storage`, as another build might. */
+async function seed(storage: MemoryStorage, values: Record<string, unknown>): Promise<void> {
+  await textValueStore(storage, { disposeUnderlyingStorage: false }).set(
+    SETTINGS_RECORD_KEY,
+    JSON.stringify({
+      schemaVersion: 1,
+      revision: 1,
+      values,
+      updatedAt: '2026-10-27T00:00:00.000Z',
+    }),
+  );
+}
+
+async function storedValues(storage: MemoryStorage): Promise<Record<string, unknown>> {
+  const raw = await textValueStore(storage, { disposeUnderlyingStorage: false }).get(
+    SETTINGS_RECORD_KEY,
+  );
+  return (JSON.parse(raw ?? '{}') as { values: Record<string, unknown> }).values;
+}
+
+describe('a value its consumer refuses is never accepted or applied', () => {
+  test('a workflow-claim time-to-live Weft refuses under the default ownership is invalid-value', async () => {
+    const { settings } = await compose({ storage: new MemoryStorage() });
+    const result = await settings.update(
+      { 'engine.workflowClaimTtl': 1_000 },
+      { expectedRevision: 0 },
+    );
+    expect(result).toMatchObject({
+      outcome: 'rejected',
+      reason: 'invalid-value',
+      keys: ['engine.workflowClaimTtl'],
+    });
+    const snapshot = await settings.get();
+    expect(snapshot.revision).toBe(0);
+  });
+
+  test('the same time-to-live is accepted where Weft does not check it: ownership none', async () => {
+    const { settings } = await compose({
+      storage: new MemoryStorage(),
+      defaults: { 'durableOwnership.ownership': 'none' },
+    });
+    expect(
+      await settings.update({ 'engine.workflowClaimTtl': 1_000 }, { expectedRevision: 0 }),
+    ).toMatchObject({ outcome: 'applied' });
+  });
+
+  test('a fractional scheduler poll interval is invalid-value', async () => {
+    const { settings, applied } = await compose({ storage: new MemoryStorage() });
+    const before = applied.length;
+    expect(
+      await settings.update({ 'engine.schedulerPollIntervalMs': 1.5 }, { expectedRevision: 0 }),
+    ).toMatchObject({
+      outcome: 'rejected',
+      reason: 'invalid-value',
+      keys: ['engine.schedulerPollIntervalMs'],
+    });
+    expect(applied.length).toBe(before);
+  });
+
+  test('a model-policy user configuration with a malformed field is invalid-value', async () => {
+    const { settings } = await compose({ storage: new MemoryStorage() });
+    expect(
+      await settings.update(
+        { modelPolicy: { policyRevision: 1, users: { alice: { allowedProviders: null } } } },
+        { expectedRevision: 0 },
+      ),
+    ).toMatchObject({ outcome: 'rejected', reason: 'invalid-value', keys: ['modelPolicy'] });
+    expect(
+      await settings.update(
+        { modelPolicy: { policyRevision: 1, users: { alice: { allowedProviders: ['openai'] } } } },
+        { expectedRevision: 0 },
+      ),
+    ).toMatchObject({ outcome: 'applied' });
+  });
+
+  test('a stored record holding an incoherent claim pair loads without it, and keeps the rest', async () => {
+    const storage = new MemoryStorage();
+    await seed(storage, {
+      'engine.workflowClaimTtl': 1_000,
+      'engine.schedulerPollIntervalMs': 1.5,
+      'engine.retentionSweepBatchSize': 25,
+      'tools.wakeup': false,
+    });
+    const { settings, current, diagnostics } = await compose({ storage });
+    const { values } = await settings.get();
+    expect(values['engine.workflowClaimTtl']).toBeUndefined();
+    expect(values['engine.schedulerPollIntervalMs']).toBeUndefined();
+    expect(values['engine.retentionSweepBatchSize']).toBe(25);
+    expect(current()['tools.wakeup']).toBe(false);
+    expect(diagnostics.join('\n')).toContain('"engine.workflowClaimTtl"');
+    expect(diagnostics.join('\n')).toContain('"engine.schedulerPollIntervalMs"');
+  });
+});
+
+describe('an update keeps what this build cannot read', () => {
+  test('an unknown key and a refused value survive an unrelated update, verbatim', async () => {
+    const storage = new MemoryStorage();
+    await seed(storage, {
+      'future.key': { nested: [1, 2] },
+      'decisions.maximumPerTask': 0,
+      'tools.decide': false,
+    });
+    const { settings, current } = await compose({ storage });
+    expect(current()['decisions.maximumPerTask']).toBeUndefined();
+    expect(await settings.update({ 'tools.wakeup': false }, { expectedRevision: 1 })).toMatchObject(
+      { outcome: 'applied', revision: 2 },
+    );
+    expect(await storedValues(storage)).toEqual({
+      'future.key': { nested: [1, 2] },
+      'decisions.maximumPerTask': 0,
+      'tools.decide': false,
+      'tools.wakeup': false,
+    });
+    expect(current()['decisions.maximumPerTask']).toBeUndefined();
   });
 });

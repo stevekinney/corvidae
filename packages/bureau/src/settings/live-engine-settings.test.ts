@@ -4,7 +4,7 @@
  */
 import { describe, expect, it, spyOn } from 'bun:test';
 
-import { ENGINE_PATCH_FIELDS } from './settings-options.ts';
+import { ENGINE_PATCH_FIELDS } from './settings-schema.ts';
 import { withLiveSettingsBureau } from '../testing/live-settings-bureau.test-support.ts';
 
 const NEW_VALUES = {

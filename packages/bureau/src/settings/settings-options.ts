@@ -15,7 +15,12 @@ import type { TaskToolGrant } from '../task-registry.ts';
 import type { BureauModelPolicyOptions } from '../model-policy.ts';
 import type { BureauOptions } from '../types.ts';
 import { effectiveSettings, readSettingsRecord, type StoredSettings } from './create-settings.ts';
-import { isSettingKey, type SettingKey, type SettingsValues } from './settings-schema.ts';
+import {
+  ENGINE_PATCH_FIELDS,
+  isSettingKey,
+  type SettingKey,
+  type SettingsValues,
+} from './settings-schema.ts';
 import { collidingSettingsToolName } from './settings-tools.ts';
 
 /** Drops the `undefined` entries, so a key the options leave out has no default. */
@@ -59,6 +64,22 @@ export function settingsDefaultsOf<D extends AgentDefinitions>(
 }
 
 /**
+ * Each `restart` key and the option it replaces at boot, as a path into `BureauOptions`.
+ * `setting-owners.test.ts` holds this table's keys equal to the `restart` keys, so a key cannot be
+ * declared `restart` without a boot read, and a live key cannot pass as `restart` without one.
+ */
+export const RESTART_OPTION_PATHS = {
+  'engine.checkpointHistory': ['durableGuardrails', 'checkpointHistory'],
+  'engine.maxNestingDepth': ['durableGuardrails', 'maxNestingDepth'],
+  'engine.workflowClaimTtl': ['durableOwnership', 'workflowClaimTtlMs'],
+  'engine.workflowClaimRenewInterval': ['durableOwnership', 'workflowClaimRenewIntervalMs'],
+  'durableOwnership.ownership': ['durableOwnership', 'ownership'],
+  durable: ['durable'],
+  maintenance: ['maintenance'],
+  workflowVersion: ['workflowVersion'],
+} as const satisfies Partial<Record<SettingKey, readonly [string] | readonly [string, string]>>;
+
+/**
  * `options` with the `restart` keys of `values` in place of the matching options, so everything
  * built at construction reads the value the store holds.
  */
@@ -66,43 +87,18 @@ export function withRestartSettings<D extends AgentDefinitions, O extends Bureau
   options: O,
   values: SettingsValues,
 ): O {
-  const guardrails = {
-    ...options.durableGuardrails,
-    ...defined({
-      checkpointHistory: values['engine.checkpointHistory'],
-      maxNestingDepth: values['engine.maxNestingDepth'],
-    }),
-  };
-  const ownership = {
-    ...options.durableOwnership,
-    ...defined({
-      ownership: values['durableOwnership.ownership'],
-      workflowClaimTtlMs: values['engine.workflowClaimTtl'],
-      workflowClaimRenewIntervalMs: values['engine.workflowClaimRenewInterval'],
-    }),
-  };
-  return {
-    ...options,
-    ...defined({
-      durable: values.durable,
-      maintenance: values.maintenance,
-      workflowVersion: values.workflowVersion,
-    }),
-    ...(Object.keys(guardrails).length === 0 ? {} : { durableGuardrails: guardrails }),
-    ...(Object.keys(ownership).length === 0 ? {} : { durableOwnership: ownership }),
-  };
+  const next: Record<string, unknown> = { ...(options as Record<string, unknown>) };
+  for (const [key, path] of Object.entries(RESTART_OPTION_PATHS)) {
+    const value = values[key as SettingKey];
+    if (value === undefined) continue;
+    const [head, field] = path;
+    next[head] =
+      field === undefined
+        ? value
+        : { ...(next[head] as Record<string, unknown> | undefined), [field]: value };
+  }
+  return next as O;
 }
-
-/** Each live engine key and the {@link EnginePatch} field it sets. */
-export const ENGINE_PATCH_FIELDS = {
-  'engine.retention': 'retention',
-  'engine.retentionSweepInterval': 'retentionSweepInterval',
-  'engine.retentionSweepBatchSize': 'retentionSweepBatchSize',
-  'engine.history': 'history',
-  'engine.payloadSize': 'payloadSize',
-  'engine.checkpointSizeWarningThreshold': 'checkpointSizeWarningThreshold',
-  'engine.schedulerPollIntervalMs': 'schedulerPollIntervalMs',
-} as const satisfies Partial<Record<SettingKey, keyof EnginePatch>>;
 
 /** The {@link EnginePatch} that sets the engine keys among `keys` to their value in `values`, if any. */
 export function enginePatchOf(
@@ -204,9 +200,10 @@ export async function bootSettings<D extends AgentDefinitions, O extends BureauO
   const storage: Storage | undefined = ownsStorage ? await resolveStorage(configured) : configured;
   const stored =
     storage === undefined
-      ? { record: undefined, raw: null }
+      ? { record: undefined, storedValues: {}, raw: null }
       : await readSettingsRecord(
           textValueStore(storage, { disposeUnderlyingStorage: false }),
+          { defaults, locked },
           diagnose,
         );
   return {

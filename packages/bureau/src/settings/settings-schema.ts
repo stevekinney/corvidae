@@ -11,10 +11,15 @@
  * @module settings-schema
  */
 
+import type { UserModelConfiguration } from '@lostgradient/operative';
 import { checkHumanInputSchemas } from '@lostgradient/operative';
+import type { EnginePatch } from '@lostgradient/weft';
 import { z } from 'zod';
 
-const positiveInteger = z.number().int().positive();
+/** A positive safe integer: `z.number().int()` alone admits integers past 2^53. */
+const positiveInteger = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
+/** A safe integer, 0 or more: Weft reads 0 as "disabled" for its history and payload caps. */
+const nonNegativeInteger = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const nonNegativeMilliseconds = z.number().finite().nonnegative();
 const positiveMilliseconds = z.number().finite().positive();
 
@@ -41,13 +46,61 @@ const humanInputSetting = z.union([
 
 const olderThanWindow = z.object({ olderThan: nonNegativeMilliseconds }).strict();
 const retentionWindow = z.union([z.literal('forever'), olderThanWindow]);
+/** Operative's `ProviderName`. */
+const providerName = z.enum(['anthropic', 'openai', 'gemini', 'voyage', 'ollama']);
+/** Operative's `Effort`. */
+const effort = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
+const dataPolicy = z.enum(['no-retention', 'zero-day-retention', 'standard']);
+const strings = z.array(z.string()).readonly().optional();
+
+/**
+ * Operative's `UserModelConfiguration`, strictly: the planner reads these fields without checking
+ * them, so a stored `allowedProviders: null` would otherwise reach it. `settings-schema.test-d.ts`
+ * holds this equal to the interface.
+ */
+export const userModelConfigurationSchema = z
+  .object({
+    allowedProviders: z.array(providerName).readonly().optional(),
+    deniedProviders: z.array(providerName).readonly().optional(),
+    allowedModels: strings,
+    deniedModels: strings,
+    allowedRoutes: strings,
+    deniedRoutes: strings,
+    allowedRegions: strings,
+    deniedRegions: strings,
+    dataPolicy: dataPolicy.optional(),
+    defaultEffort: effort.optional(),
+    exactOverride: z
+      .object({
+        provider: providerName.exactOptional(),
+        model: z.string().exactOptional(),
+        route: z.string().exactOptional(),
+        effort: effort.exactOptional(),
+      })
+      .strict()
+      .optional(),
+    costPreference: z.enum(['lowest-cost', 'balanced', 'no-preference']).optional(),
+    latencyPreference: z.enum(['lowest-latency', 'balanced', 'no-preference']).optional(),
+    fallbackOrder: strings,
+    effortFallbackMode: z.enum(['reject', 'degrade']).optional(),
+  })
+  .strict();
+
+/** Holds {@link userModelConfigurationSchema} to operative's interface, in both directions. */
+export type UserModelConfigurationSchemaMatches = [
+  z.infer<typeof userModelConfigurationSchema> extends UserModelConfiguration ? true : never,
+  UserModelConfiguration extends z.infer<typeof userModelConfigurationSchema> ? true : never,
+];
+const userModelConfigurationSchemaMatches: UserModelConfigurationSchemaMatches = [true, true];
+void userModelConfigurationSchemaMatches;
+
 const invariants = z
   .object({
-    deniedProviders: z.array(z.string()).optional(),
+    deniedProviders: z.array(providerName).optional(),
     deniedModels: z.array(z.string()).optional(),
     deniedRoutes: z.array(z.string()).optional(),
     deniedRegions: z.array(z.string()).optional(),
-    requireDataPolicy: z.enum(['no-retention', 'zero-day-retention', 'standard']).optional(),
+    requireDataPolicy: dataPolicy.optional(),
   })
   .strict();
 
@@ -68,7 +121,7 @@ export const settingsSchema = z
       .object({
         deployment: invariants.optional(),
         bureau: invariants.optional(),
-        users: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
+        users: z.record(z.string(), userModelConfigurationSchema).optional(),
         policyRevision: z.number().int().nonnegative(),
       })
       .strict()
@@ -105,7 +158,7 @@ export const settingsSchema = z
       ])
       .describe('How many checkpoints of a durable run are kept.'),
     'sessionInput.sessionBacklogLimit': positiveInteger.describe(
-      'How many undelivered inputs one context may hold, checked at the next admission.',
+      'How many undelivered inputs one context may hold. Live from the next session: a session started after the change admits against the new limit, and a running session keeps the limit its mailbox was built with.',
     ),
     'sessionInput.principalBacklogLimit': positiveInteger.describe(
       'How many undelivered inputs one principal may hold across contexts, checked at the next admission.',
@@ -132,19 +185,19 @@ export const settingsSchema = z
     ),
     'engine.history': z
       .object({
-        maxEvents: positiveInteger.optional(),
-        retentionWindow: positiveInteger.optional(),
+        maxEvents: nonNegativeInteger.optional(),
+        retentionWindow: nonNegativeInteger.optional(),
       })
       .strict()
       .describe("Weft's per-workflow history circuit breaker."),
     'engine.payloadSize': z
-      .object({ maxBytes: positiveInteger.nullable().optional() })
+      .object({ maxBytes: nonNegativeInteger.nullable().optional() })
       .strict()
       .describe('The largest payload Weft accepts, in bytes; `null` removes the cap.'),
     'engine.checkpointSizeWarningThreshold': positiveInteger.describe(
       'The checkpoint size, in bytes, above which Weft warns.',
     ),
-    'engine.schedulerPollIntervalMs': positiveMilliseconds.describe(
+    'engine.schedulerPollIntervalMs': positiveInteger.describe(
       "How often Weft's scheduler polls for due work, in milliseconds.",
     ),
     'engine.checkpointHistory': positiveInteger.describe(
@@ -196,6 +249,8 @@ export const SETTING_APPLY: Readonly<Record<SettingKey, SettingApply>> = {
   'retention.tasks': 'live',
   'retention.receipts': 'live',
   'retention.checkpoints': 'live',
+  // Live from the next session (owner decision, COR-1710 revision 2026-10-27): a running session
+  // keeps the limit its Weft mailbox was built with, which keeps Weft's backlog check atomic.
   'sessionInput.sessionBacklogLimit': 'live',
   'sessionInput.principalBacklogLimit': 'live',
   'children.delegation.defaultTimeToLiveMilliseconds': 'live',
@@ -215,6 +270,17 @@ export const SETTING_APPLY: Readonly<Record<SettingKey, SettingApply>> = {
   'durableOwnership.ownership': 'restart',
   workflowVersion: 'restart',
 };
+
+/** Each live engine key and the {@link EnginePatch} field it sets. */
+export const ENGINE_PATCH_FIELDS = {
+  'engine.retention': 'retention',
+  'engine.retentionSweepInterval': 'retentionSweepInterval',
+  'engine.retentionSweepBatchSize': 'retentionSweepBatchSize',
+  'engine.history': 'history',
+  'engine.payloadSize': 'payloadSize',
+  'engine.checkpointSizeWarningThreshold': 'checkpointSizeWarningThreshold',
+  'engine.schedulerPollIntervalMs': 'schedulerPollIntervalMs',
+} as const satisfies Partial<Record<SettingKey, keyof EnginePatch>>;
 
 /** Every key, in the schema's order. */
 export const SETTING_KEYS: readonly SettingKey[] = Object.keys(

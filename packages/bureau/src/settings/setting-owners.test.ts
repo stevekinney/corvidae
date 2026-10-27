@@ -9,8 +9,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { SETTING_OWNERS } from './setting-owners.ts';
-import { ENGINE_PATCH_FIELDS } from './settings-options.ts';
-import { SETTING_APPLY, SETTING_KEYS } from './settings-schema.ts';
+import { RESTART_OPTION_PATHS, withRestartSettings } from './settings-options.ts';
+import { ENGINE_PATCH_FIELDS, SETTING_APPLY, SETTING_KEYS } from './settings-schema.ts';
 
 const sourceRoot = join(import.meta.dirname, '..');
 
@@ -51,6 +51,24 @@ describe('who reads each setting', () => {
       const source = readFileSync(join(sourceRoot, owner.module), 'utf8');
       const unread = owner.keys.filter((key) => !readsKey(source, key));
       expect(unread).toEqual([]);
+    });
+  }
+
+  it('the restart keys are exactly the keys a boot read replaces an option for', () => {
+    expect(Object.keys(RESTART_OPTION_PATHS).toSorted()).toEqual([...restart].toSorted());
+  });
+
+  for (const [key, path] of Object.entries(RESTART_OPTION_PATHS)) {
+    it(`${key} replaces options.${path.join('.')} at boot`, () => {
+      const sentinel = Symbol(key);
+      const options = withRestartSettings({ agents: {} }, { [key]: sentinel }) as Record<
+        string,
+        unknown
+      >;
+      const [head, field] = path;
+      const read =
+        field === undefined ? options[head] : (options[head] as Record<string, unknown>)[field];
+      expect(read).toBe(sentinel);
     });
   }
 });
