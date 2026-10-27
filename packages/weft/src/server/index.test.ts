@@ -4035,6 +4035,12 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
     const messages = collectMessages(ws);
 
     engine.dispatchEvent(new TokenEvent('wf-overlap', 'third', 'gpt-4'));
+    // The third chunk must be in storage before the replay reads, so that the replay and the buffered
+    // live frame both carry it: that overlap is what this test exists to deduplicate. The ungated
+    // original is read, since the replay's own read is held at the gate.
+    await waitFor(async () => (await originalGetStreamChunks('wf-overlap', 'tokens')).length >= 3, {
+      label: 'third token chunk persisted',
+    });
 
     releaseReplay();
     await waitFor(
