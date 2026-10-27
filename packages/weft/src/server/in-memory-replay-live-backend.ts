@@ -28,7 +28,8 @@ import type {
   SequencedEventEnvelope,
 } from './workflow-event-feed.ts';
 
-const INCARNATION_PATTERN = /^([^:]+):(-1|\d+)$/;
+const INCARNATION_PATTERN =
+  /^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}):(-1|\d+)$/i;
 
 /** How many envelopes an in-memory log retains before dropping its oldest. */
 const DEFAULT_MAX_EVENTS = 10_000;
@@ -68,7 +69,7 @@ export function createInMemoryReplayLiveBackend<TEnvelope extends SequencedEvent
       if (!Number.isSafeInteger(sequence)) return 'invalid';
       return structured[1] === incarnation ? { sequence } : 'gap';
     }
-    return /^\d+$/.test(cursor) ? 'gap' : 'invalid';
+    return 'invalid';
   };
   const retentionGap = (
     replayOptions: { afterSequence: number; requestedCursor?: Cursor },

@@ -145,8 +145,9 @@ describe('the in-memory replay-live backend', () => {
     first.append(envelope(2));
     const currentCursor = first.encodeCursor?.(0) ?? '';
     expect(first.decodeCursor?.(currentCursor)).toEqual({ sequence: 0 });
-    expect(first.decodeCursor?.('0')).toBe('gap');
+    expect(first.decodeCursor?.('0')).toBe('invalid');
     expect(first.decodeCursor?.('bad')).toBe('invalid');
+    expect(first.decodeCursor?.('not-an-incarnation:0')).toBe('invalid');
     expect(first.decodeCursor?.('-1')).toEqual({ sequence: -1 });
     const replayed: ProbeEnvelope[] = [];
     for await (const item of createReplayLiveFeed(first).replay({ fromCursor: currentCursor }))

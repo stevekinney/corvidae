@@ -87,7 +87,7 @@ describe('the frames-dropped marker on the bureau event feed', () => {
     expect(received[0]).toMatchObject({
       kind: FRAMES_DROPPED_KIND,
       sequence: 0,
-      cursor: '0',
+      cursor: expect.stringMatching(/^[0-9a-f-]+:0$/),
       bureauId: 'bureau-1',
       emittedAtMs: 7,
     });
@@ -141,20 +141,21 @@ describe('the frames-dropped marker on the bureau event feed', () => {
 
   it('positions the marker at the cursor the reader started from when it has been sent nothing', async () => {
     const feed = createBureauEventFeed({ bureauId: 'bureau-1', liveBufferSize: 2 });
-    feed.publish(new RunRegisteredEvent('run-0'));
+    const initial = feed.publish(new RunRegisteredEvent('run-0'))!;
     feed.publish(new RunRegisteredEvent('run-1'));
     const { iterator, parked } = await parkInLivePhase(
-      (options) => feed.feed.subscribe({ ...options, fromCursor: '1' }),
-      0,
+      (options) => feed.feed.subscribe({ ...options, fromCursor: initial.cursor }),
+      1,
     );
 
     for (let index = 2; index <= 6; index += 1)
       feed.publish(new RunRegisteredEvent(`run-${index}`));
 
-    expect(await valueOf(parked)).toMatchObject({
-      kind: FRAMES_DROPPED_KIND,
+    const marker = await valueOf(parked);
+    expect(marker).toMatchObject({
       sequence: 1,
-      cursor: '1',
+      cursor: expect.stringMatching(/^[0-9a-f-]+:1$/),
+      kind: FRAMES_DROPPED_KIND,
     });
     await iterator.return?.();
     feed.dispose();
@@ -174,16 +175,17 @@ describe('the frames-dropped marker on the bureau event feed', () => {
 
     const received = [
       await valueOf(parked),
-      ...(await pullUntil(iterator, (events) => events.length >= 3)),
+      ...(await pullUntil(iterator, (events) => events.length >= 4)),
     ];
     expect(received.map((event) => event.kind)).toEqual([
       FRAMES_DROPPED_KIND,
+      'feed.gap',
       'run.registered',
       'run.registered',
       'run.registered',
     ]);
     // Sequences 1-3 were evicted: the reader resumes at the oldest one left.
-    expect(received.slice(1).map((event) => event.sequence)).toEqual([4, 5, 6]);
+    expect(received.slice(2).map((event) => event.sequence)).toEqual([4, 5, 6]);
 
     await iterator.return?.();
     feed.dispose();
@@ -304,7 +306,7 @@ describe('the frames-dropped marker on the run event feed attachment', () => {
       kind: FRAMES_DROPPED_KIND,
       runId: 'run-1',
       sequence: 0,
-      cursor: '0',
+      cursor: expect.stringMatching(/^[0-9a-f-]+:0$/),
       emittedAtMs: 3,
     });
     expect(received.slice(1).map((event) => event.sequence)).toEqual(
