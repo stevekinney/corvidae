@@ -486,26 +486,20 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
     const subscribe = (): void => {
       subscription = new AbortController();
       const current = subscription;
-      bureau.subscribeEventHistory(
-        { kind: 'run', id: taskId },
-        // A removal is pumped too: the pump finds the task gone and cleans up what the removal
-        // listener's own pass did not see.
-        () => trigger(),
-        {
-          signal: current.signal,
-          onClosed: (error) => {
-            if (controller.signal.aborted || current.signal.aborted) return;
-            report(error);
-            // A closed subscription is not the end of the story: look again, then resume it.
-            if (stopped()) return;
-            timers.setTimeout(() => {
-              if (controller.signal.aborted || stopped()) return;
-              subscribe();
-              trigger();
-            }, retryMs);
-          },
+      bureau.tasks.subscribeEvents(taskId, () => trigger(), {
+        signal: current.signal,
+        onClosed: (error) => {
+          if (controller.signal.aborted || current.signal.aborted) return;
+          report(error);
+          // A closed subscription is not the end of the story: look again, then resume it.
+          if (stopped()) return;
+          timers.setTimeout(() => {
+            if (controller.signal.aborted || stopped()) return;
+            subscribe();
+            trigger();
+          }, retryMs);
         },
-      );
+      });
     };
     subscribe();
     trigger();

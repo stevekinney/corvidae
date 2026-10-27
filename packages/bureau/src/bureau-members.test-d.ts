@@ -1,16 +1,22 @@
-// Type-level tripwire (COR-1703, COR-1704, COR-1705, COR-1706): the flat review, schedule, and session methods and the members
+// Type-level tripwire (COR-1703, COR-1704, COR-1705, COR-1706, COR-1707): the flat review, schedule, session, and run methods and the members
 // that moved onto `bureau.internals` must not return to `Bureau`'s top level. If this file stops
-// compiling, a member that belongs behind `reviews`, `schedules`, `contexts`, or `internals` was declared on
+// compiling, a member that belongs behind `reviews`, `schedules`, `contexts`, `tasks`, or `internals` was declared on
 // `Bureau` again.
+
+import { createAgent, createMockGenerate } from '@lostgradient/operative';
+import { z } from 'zod';
 
 import type { BureauMemberPath } from './http/operation-map.ts';
 import type {
   Bureau,
   BureauAudit,
   BureauContexts,
+  BureauTasks,
   BureauInternals,
   BureauReviews,
   BureauSchedules,
+  StartTaskOptions,
+  TaskHandle,
 } from './types.ts';
 
 /** Compiles only when `Value` is `never`, so a member that returned names itself in the error. */
@@ -66,10 +72,28 @@ type MovedToInternals = Extract<
   | 'auditTrail'
   | 'listAbortingRuns'
   | 'whenRunRecorded'
-  | 'tasks'
+>;
+
+// COR-1707: the run members merged into `tasks`.
+type RemovedTaskMembers = Extract<
+  keyof Bureau,
+  | 'getRun'
+  | 'subscribeRunSnapshot'
+  | 'getDurableRun'
+  | 'waitForDurableRun'
+  | 'listDurableRuns'
+  | 'locateRunCreationReceipt'
+  | 'eventHistory'
+  | 'subscribeEventHistory'
+  | 'createRun'
+  | 'listRuns'
+  | 'abortRun'
+  | 'cancelDurableRun'
+  | 'run'
 >;
 
 export type NoFlatReviewMembers = AssertNever<RemovedReviewMembers>;
+export type NoFlatTaskMembers = AssertNever<RemovedTaskMembers>;
 export type NoFlatScheduleMembers = AssertNever<RemovedScheduleMembers>;
 export type NoFlatSessionMembers = AssertNever<RemovedSessionMembers>;
 export type NothingMovedStaysOnBureau = AssertNever<MovedToInternals>;
@@ -80,6 +104,8 @@ export type NoTopLevelAuditTrail = AssertNever<Extract<keyof Bureau, 'auditTrail
 export type ReviewsAreDeclared = Bureau['reviews'] extends BureauReviews ? true : never;
 export type SchedulesAreDeclared = Bureau['schedules'] extends BureauSchedules ? true : never;
 export type ContextsAreDeclared = Bureau['contexts'] extends BureauContexts ? true : never;
+// `tasks` is the task API now; the registry it named before is `internals.taskRegistry`.
+export type TasksAreDeclared = Bureau['tasks'] extends BureauTasks ? true : never;
 export type AuditIsDeclared = Bureau['audit'] extends BureauAudit ? true : never;
 export type InternalsAreDeclared = Bureau['internals'] extends BureauInternals ? true : never;
 
@@ -164,3 +190,51 @@ export const schedulesCreate: BureauMemberPath = 'schedules.create';
 export const contextsGet: BureauMemberPath = 'contexts.get';
 // @ts-expect-error -- the flat session method moved to `contexts`
 export const flatSessionMethod: BureauMemberPath = 'getSession';
+
+// COR-1707: a start has no per-request override of what an agent's definition decides.
+export type NoPerRequestAgentCaps = AssertNever<
+  Extract<keyof StartTaskOptions, 'systemPrompt' | 'maximumSteps' | 'maximumTokens'>
+>;
+
+// `tasks` declares the operations the project document names, `respond` and `inspect` (the
+// handler's operations, moved in-process) among them.
+export type TasksMembers = AssertNever<
+  Exclude<
+    | 'start'
+    | 'detail'
+    | 'get'
+    | 'list'
+    | 'cancel'
+    | 'receipt'
+    | 'workflow'
+    | 'workflows'
+    | 'wait'
+    | 'snapshot'
+    | 'events'
+    | 'subscribeEvents'
+    | 'inspect'
+    | 'respond',
+    keyof BureauTasks
+  >
+>;
+
+// `tasks.start` resolves to a `TaskHandle` typed by the catalog entry's output, and to an untyped
+// one for a name known only at run time.
+type Equals<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
+type AssertEquals<A, B extends A, _Check = Equals<A, B> extends true ? true : never> = _Check;
+
+const researcher = createAgent({
+  generate: createMockGenerate([]),
+  name: 'researcher',
+  output: z.object({ answer: z.string() }),
+});
+declare const typedBureau: Bureau<{ readonly researcher: typeof researcher }>;
+declare const runtimeName: string;
+const typedStart = typedBureau.tasks.start('researcher', 'x');
+export type TypedStartIsATypedHandle = AssertEquals<
+  typeof typedStart,
+  Promise<TaskHandle<{ answer: string }>>
+>;
+const stringStart = typedBureau.tasks.start(runtimeName, 'x');
+export type StringStartIsAnUntypedHandle = AssertEquals<typeof stringStart, Promise<TaskHandle>>;

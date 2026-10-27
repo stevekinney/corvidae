@@ -10,7 +10,7 @@ The binding decision is COR-806: deletion-propagation timing, retention periods,
 | --- | --- | --- |
 | Remember and recall for one trusted process | `createMemory()` | No. Whoever holds the `Memory` can do anything with it. |
 | Share memory across users, agents, tools, or tenants | `createGovernedMemory()` | Yes. |
-| Give the runs Bureau composes governed recall and persistence | `BureauOptions.memory` | Yes, for `createRun`, schedule-fire, and recovered runs. Catalog runs get no memory hooks. |
+| Give the runs Bureau composes governed recall and persistence | `BureauOptions.memory` | Yes, for tasks (`bureau.tasks.start`), schedule-fire, and recovered runs. Catalog runs get no memory hooks. |
 | Let a model store, recall, and forget | `createGovernedMemoryTools()` | Yes, under each call's persisted request authority. |
 | Decide whether a memory architecture change makes agents act better | `bun run --cwd testing/evaluation memory-lifecycle run` | Not applicable: it measures, it does not govern. |
 

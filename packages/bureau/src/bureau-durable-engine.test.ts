@@ -35,8 +35,8 @@ async function bureauWith(options: { readonly durable: boolean }): Promise<Burea
 describe('Bureau.durableEngine', () => {
   it('is the engine that holds the bureau’s runs', async () => {
     const bureau = await bureauWith({ durable: true });
-    const run = await bureau.createRun({ agentName: 'default', message: 'go' });
-    await bureau.waitForDurableRun(run.id);
+    const run = await bureau.tasks.start('default', 'go');
+    await bureau.tasks.wait(run.id);
 
     const engine = bureau.durableEngine();
 

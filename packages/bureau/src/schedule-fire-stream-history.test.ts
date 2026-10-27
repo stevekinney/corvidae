@@ -51,14 +51,10 @@ async function settled(bureau: Bureau, fireId: string): Promise<void> {
 /** The listener each fire-history subscription of `bureau` was opened with. */
 function captureListeners(bureau: Bureau) {
   const listeners: Array<(event: DurableEventEnvelope) => void> = [];
-  const original = bureau.subscribeEventHistory.bind(bureau);
-  (bureau as { subscribeEventHistory: Bureau['subscribeEventHistory'] }).subscribeEventHistory = (
-    owner,
-    listener,
-    options,
-  ) => {
+  const original = bureau.tasks.subscribeEvents.bind(bureau.tasks);
+  bureau.tasks.subscribeEvents = (taskId, listener, options) => {
     listeners.push(listener);
-    return original(owner, listener, options);
+    return original(taskId, listener, options);
   };
   return listeners;
 }

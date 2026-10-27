@@ -70,12 +70,12 @@ describe('an agent step that a restart runs again', () => {
     await second.bureau.waitForRecovery?.();
     for await (const _turn of awakeTurns()) {
       await second.bureau.runDurableMaintenance();
-      const state = await second.bureau.getDurableRun('midstep-run');
+      const state = await second.bureau.tasks.workflow('midstep-run');
       if (state?.status !== 'running' && state?.status !== 'pending') break;
       await Bun.sleep(25);
     }
 
-    const state = await second.bureau.getDurableRun('midstep-run');
+    const state = await second.bureau.tasks.workflow('midstep-run');
     expect(state?.error).toBeUndefined();
     expect(state?.status).toBe('completed');
     const summary = state?.result as { content: string } | undefined;

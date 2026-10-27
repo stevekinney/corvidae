@@ -26,7 +26,7 @@ import { z } from 'zod';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { createBureau } from './create-bureau';
-import { waitForCondition, waitForRunState } from './test';
+import { waitForCondition, waitForTaskState } from './test';
 import { holdFirstTerminalRunCommit } from './test/held-terminal-commit';
 import type { BureauOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';
@@ -76,8 +76,8 @@ async function collectRunFrames(
     const unsubscribe = bureau.subscribeLiveFrames((frame) => {
       if (frame.type === 'run-envelope') frames.push(frame.frame);
     });
-    const summary = await bureau.createRun({ agentName: 'default', message: 'Go.' });
-    const settled = await waitForRunState(bureau, summary.id);
+    const summary = await bureau.tasks.start('default', 'Go.');
+    const settled = await waitForTaskState(bureau, summary.id);
     unsubscribe();
     return { frames, finishReason: settled.finishReason };
   } finally {
@@ -189,7 +189,7 @@ describe.each(failureShapes)(
           durable: true,
           durableOwnership: { ownership: 'none' },
         });
-        const run = await bureauA.createRun({ agentName: 'default', message: 'Go.' });
+        const run = await bureauA.tasks.start('default', 'Go.');
         await crashed.reached;
         replayed = holdFirstTerminalRunCommit(
           await resolveStorage({ type: 'sqlite', path: databasePath }),
@@ -222,7 +222,7 @@ describe.each(failureShapes)(
         await replayed.reached;
         replayed.release();
         await waitForCondition(async () => {
-          const session = await reattached.contexts.get(run.sessionId);
+          const session = await reattached.contexts.get(run.contextId);
           return session?.metadata['lastRunStatus'] !== 'running';
         }, 'the reattached run never settled');
 

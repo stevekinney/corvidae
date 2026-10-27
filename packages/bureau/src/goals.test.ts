@@ -563,7 +563,7 @@ describe('bureau.goals', () => {
           transitionSeq: 1,
         },
       });
-      expect(await bureau.getDurableRun('goal:g1')).toBeNull();
+      expect(await bureau.tasks.workflow('goal:g1')).toBeNull();
       expect(ran).toBe(false);
     });
 
@@ -650,7 +650,7 @@ describe('bureau.goals', () => {
       await reaches(bureau, 'running');
       expect(await workflowStatus(bureau, 'goal-g1-a0')).toBe('running');
 
-      expect(await bureau.cancelDurableRun('goal:g1')).toEqual({ status: 'requested' });
+      await bureau.durableEngine()!.cancel('goal:g1');
 
       const stopped = await pollUntil(
         async () => (await workflowStatus(bureau, 'goal-g1-a0')) === 'cancelled',
@@ -901,7 +901,7 @@ describe('bureau.goals', () => {
       validators: [createCheckValidator()],
     });
     await bureau.goals.create(goalRequest());
-    const run = bureau.run('worker', 'plain');
+    const run = await bureau.tasks.start('worker', 'plain');
 
     const result = await run.result();
     expect(result.content).toBe('done');

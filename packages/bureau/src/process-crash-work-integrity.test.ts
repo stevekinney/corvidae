@@ -52,6 +52,7 @@ import {
 } from './test/hoisted-scenario';
 import type { Bureau } from './types';
 import { unexpectedChildStderr } from './test/child-stderr';
+import { rejectionOf } from './testing/promise-outcome.test-support';
 
 const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
 const runtime = createDefaultRuntimeServices();
@@ -193,7 +194,7 @@ function requireAuditTrail(bureau: Bureau) {
 }
 
 async function recoveredRunCompleted(bureau: Bureau, runId: string): Promise<boolean> {
-  await waitForBureauState([bureau], () => bureau.getRun(runId)?.status === 'completed', {
+  await waitForBureauState([bureau], () => bureau.tasks.detail(runId)?.status === 'completed', {
     runIds: [runId],
   });
   await bureau.waitForRecovery?.();
@@ -349,8 +350,8 @@ async function abortSiblingScenario(backend: Backend, scope: ScenarioScope): Pro
     await waitForBureauState(
       [bureau],
       () =>
-        bureau.getRun(marker.xRunId)?.status === 'running' &&
-        bureau.getRun(marker.yRunId)?.status === 'running' &&
+        bureau.tasks.detail(marker.xRunId)?.status === 'running' &&
+        bureau.tasks.detail(marker.yRunId)?.status === 'running' &&
         deferreds.has('crash harness run X') &&
         deferreds.has('crash harness run Y'),
       {
@@ -367,40 +368,51 @@ async function abortSiblingScenario(backend: Backend, scope: ScenarioScope): Pro
     const xMessage = 'crash harness run X';
     const xCallsBeforeAbort = calls.filter((call) => call.message === xMessage).length;
 
-    expect(bureau.abortRun(marker.xRunId).status).toBe('aborting');
-    await waitForBureauState([bureau], () => bureau.getRun(marker.xRunId)?.status === 'aborted', {
-      runIds: [marker.xRunId],
-    });
-    const durableX = await bureau.getDurableRun(marker.xRunId);
+    expect(await bureau.tasks.cancel(marker.xRunId)).toMatchObject({ receipt: 'cancel-requested' });
+    await waitForBureauState(
+      [bureau],
+      () => bureau.tasks.detail(marker.xRunId)?.status === 'aborted',
+      {
+        runIds: [marker.xRunId],
+      },
+    );
+    const durableX = await bureau.tasks.workflow(marker.xRunId);
     expect(durableX?.status).not.toBe('running');
     expect(durableX?.status).not.toBe('completed');
     await waitForBureauState([bureau], () => bureau.internals.abortingTasks().length === 0, {
       runIds: [marker.xRunId],
     });
 
-    const xEvents = await bureau.eventHistory({ kind: 'run', id: marker.xRunId });
+    const xEvents = await bureau.tasks.events(marker.xRunId);
     if ('outcome' in xEvents) throw new Error(`expected a page, got ${JSON.stringify(xEvents)}`);
     const xKinds = xEvents.events.map((event) => event.kind);
     expect(xKinds.filter((kind) => kind === 'run.aborted')).toHaveLength(1);
     expect(xKinds).not.toContain('run.completed');
 
     // Y is untouched, and nothing re-entered generate for X.
-    expect(bureau.getRun(marker.yRunId)?.status).toBe('running');
+    expect(bureau.tasks.detail(marker.yRunId)?.status).toBe('running');
     expect(calls).toHaveLength(callsBeforeAbort);
 
     deferreds.get('crash harness run Y')?.resolve({ content: 'Y done', toolCalls: [] });
-    await waitForBureauState([bureau], () => bureau.getRun(marker.yRunId)?.status === 'completed', {
-      runIds: [marker.yRunId],
-    });
-    const yEvents = await bureau.eventHistory({ kind: 'run', id: marker.yRunId });
+    await waitForBureauState(
+      [bureau],
+      () => bureau.tasks.detail(marker.yRunId)?.status === 'completed',
+      {
+        runIds: [marker.yRunId],
+      },
+    );
+    const yEvents = await bureau.tasks.events(marker.yRunId);
     if ('outcome' in yEvents) throw new Error(`expected a page, got ${JSON.stringify(yEvents)}`);
     const yKinds = yEvents.events.map((event) => event.kind);
     expect(yKinds.filter((kind) => kind === 'run.completed')).toHaveLength(1);
     expect(yKinds).not.toContain('run.aborted');
 
-    expect(await bureau.cancelDurableRun(marker.xRunId)).toEqual({ status: 'already-terminal' });
-    expect(await bureau.cancelDurableRun('process-crash-unknown-run')).toEqual({
-      status: 'not-found',
+    // X was already aborted: a repeat cancel requests nothing new.
+    expect(await bureau.tasks.cancel(marker.xRunId)).not.toMatchObject({
+      receipt: 'cancel-requested',
+    });
+    expect(await rejectionOf(bureau.tasks.cancel('process-crash-unknown-run'))).toMatchObject({
+      code: 'NOT_FOUND',
     });
 
     // Still true after Y finished: nothing re-entered generate for X.

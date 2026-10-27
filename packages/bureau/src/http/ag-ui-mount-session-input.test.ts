@@ -7,7 +7,7 @@
 import { EventType } from '@ag-ui/core';
 import { describe, expect, it } from 'bun:test';
 
-import { waitForCondition } from '../test';
+import { listHeldTasks, waitForCondition } from '../test';
 import {
   type Harness,
   openHarness,
@@ -75,7 +75,10 @@ describe('a run that delivered session input', () => {
     await withHarness({ script: [say('Done.')] }, async ({ handler, bureau }) => {
       const stream = new FrameReader(await handler(startRequest(runAgentInput())));
       await stream.rest();
-      await waitForCondition(() => bureau.listRuns()[0]?.status === 'completed', 'the run ended');
+      await waitForCondition(
+        () => listHeldTasks(bureau)[0]?.status === 'completed',
+        'the run ended',
+      );
 
       expect(typesOf(stream.received)).not.toContain(EventType.MESSAGES_SNAPSHOT);
     });

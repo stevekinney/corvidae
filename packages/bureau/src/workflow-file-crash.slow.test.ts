@@ -141,11 +141,11 @@ async function parkedScenario(scope: ScenarioScope): Promise<void> {
     const engine = bureau.durableEngine()!;
     await engine.signal('waiter-run', 'go', { resumed: true });
     for (const id of ['sleeper-run', 'waiter-run', 'midstep-run']) {
-      await bureau.waitForDurableRun(id);
+      await bureau.tasks.wait(id);
     }
     await waitForBureauState([bureau], async () => {
       const states = await Promise.all(
-        ['sleeper-run', 'waiter-run', 'midstep-run'].map((id) => bureau!.getDurableRun(id)),
+        ['sleeper-run', 'waiter-run', 'midstep-run'].map((id) => bureau!.tasks.workflow(id)),
       );
       return states.every((state) => state?.status === 'completed');
     });
@@ -219,8 +219,8 @@ async function claimScenario(scope: ScenarioScope): Promise<void> {
     bureau = await openBureau(storagePath, workflows, messages);
     const report = await bureau.waitForRecovery?.();
     expect(report?.perRunFailures).toEqual([]);
-    await bureau.waitForDurableRun('claimed-run');
-    const state = await bureau.getDurableRun('claimed-run');
+    await bureau.tasks.wait('claimed-run');
+    const state = await bureau.tasks.workflow('claimed-run');
     expect(state?.status).toBe('completed');
     const summary = state?.result as { content: string } | undefined;
     expect(summary?.content).toBe('resumed: claimed step');

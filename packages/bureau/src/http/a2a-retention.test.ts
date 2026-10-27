@@ -66,7 +66,7 @@ describe('the A2A record’s lifetime', () => {
       await bureau.runDurableMaintenance();
       await bureau.runDurableMaintenance();
 
-      expect(bureau.getRun(body.result.task.id)).toBeUndefined();
+      expect(bureau.tasks.detail(body.result.task.id)).toBeUndefined();
       expect(await bureau.internals.kv?.get(key)).toBeNull();
     } finally {
       await bureau.dispose();

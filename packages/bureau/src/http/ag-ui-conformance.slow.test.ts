@@ -46,6 +46,7 @@ import {
   parseAgUiFrames,
   type ReceivedFrame,
 } from './ag-ui-stream.test-support.ts';
+import { listHeldTasks } from '../test';
 
 // ---------------------------------------------------------------------------
 // Serving, observing, and driving
@@ -424,7 +425,7 @@ describe('error', () => {
         codes['RUN_CONFLICT'] = codeOf(
           await post({ messages: [{ id: 'user-3', role: 'user', content: 'a changed request' }] }),
         );
-        const createRun = spyOn(harness.bureau, 'createRun').mockRejectedValueOnce(
+        const startTask = spyOn(harness.bureau.tasks, 'start').mockRejectedValueOnce(
           new Error('storage fell over'),
         );
         codes['RUN_FAILED'] = codeOf(
@@ -434,7 +435,7 @@ describe('error', () => {
             messages: [{ id: 'user-9', role: 'user', content: 'will fail to start' }],
           }),
         );
-        createRun.mockRestore();
+        startTask.mockRestore();
 
         expect(codes).toEqual({
           THREAD_NOT_FOUND: 'THREAD_NOT_FOUND',
@@ -461,7 +462,7 @@ describe('attach', () => {
         const starterObserver = observed();
         const starting = agentFor(served, starterObserver).runAgent({ runId: 'run-a' });
         await harness.generate.reached('hold');
-        const nativeRunId = harness.bureau.listRuns()[0]!.id;
+        const nativeRunId = listHeldTasks(harness.bureau)[0]!.id;
 
         const attaching = follow(pipeline(`${served.base}/ag-ui/threads/thread-1/run`));
         await attaching.opened;
@@ -506,7 +507,7 @@ describe('reconnect', () => {
           body: JSON.stringify(runAgentInput()),
         });
         await harness.generate.reached('hold');
-        const nativeRunId = harness.bureau.listRuns()[0]!.id;
+        const nativeRunId = listHeldTasks(harness.bureau)[0]!.id;
 
         await runtime.advance(60_000);
         const closed = parseAgUiFrames(await textOf(first));
@@ -542,12 +543,12 @@ describe('cancel', () => {
           () => undefined,
         );
         await harness.generate.reached('hold');
-        const nativeRunId = harness.bureau.listRuns()[0]!.id;
+        const nativeRunId = listHeldTasks(harness.bureau)[0]!.id;
 
         agent.abortRun();
         await starting;
         await starterObserver.frames();
-        expect(harness.bureau.getRun(nativeRunId)?.status).toBe('running');
+        expect(harness.bureau.tasks.detail(nativeRunId)?.status).toBe('running');
 
         const attaching = follow(pipeline(`${served.base}/ag-ui/runs/${nativeRunId}`));
         await attaching.opened;
@@ -768,7 +769,7 @@ describe('slow consumer', () => {
           }),
         );
         await harness.generate.reached('hold');
-        const runId = harness.bureau.listRuns()[0]!.id;
+        const runId = listHeldTasks(harness.bureau)[0]!.id;
         // Opened in process: a socket's buffers would hide a reader that never reads.
         const stalled = await harness.handler(
           new Request(`http://localhost/ag-ui/runs/${runId}`, {
@@ -833,7 +834,7 @@ describe('cleanup', () => {
         let subscribed = Promise.withResolvers<void>();
         let allGone = Promise.withResolvers<void>();
         const subscribeLiveFrames = harness.bureau.subscribeLiveFrames.bind(harness.bureau);
-        const subscribeRunSnapshot = harness.bureau.subscribeRunSnapshot.bind(harness.bureau);
+        const subscribeRunSnapshot = harness.bureau.tasks.snapshot.bind(harness.bureau.tasks);
         harness.bureau.subscribeLiveFrames = (listener) => {
           frameListeners += 1;
           subscribed.resolve();
@@ -844,7 +845,7 @@ describe('cleanup', () => {
             stop();
           };
         };
-        harness.bureau.subscribeRunSnapshot = (runId, observer, options) => {
+        harness.bureau.tasks.snapshot = (runId, observer, options) => {
           snapshotSubscriptions += 1;
           const subscription = subscribeRunSnapshot(runId, observer, options);
           return {
@@ -876,14 +877,14 @@ describe('cleanup', () => {
         );
         await harness.generate.reached('hold');
         await subscribed.promise;
-        const abandonedRunId = harness.bureau
-          .listRuns()
-          .find((run) => run.sessionId === 'thread-2')!.id;
+        const abandonedRunId = listHeldTasks(harness.bureau).find(
+          (run) => run.sessionId === 'thread-2',
+        )!.id;
         expect(frameListeners).toBe(1);
         abandoned.abortRun();
         await aborted;
         await allGone.promise;
-        expect(harness.bureau.getRun(abandonedRunId)?.status).toBe('running');
+        expect(harness.bureau.tasks.detail(abandonedRunId)?.status).toBe('running');
         harness.generate.release('hold');
         await abandonedObserver.frames();
 

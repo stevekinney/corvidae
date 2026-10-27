@@ -1,14 +1,19 @@
 import type { GenerateFunction } from '@lostgradient/operative';
-import { createOperationHandler, createOperationHandlerAuthenticator } from '@lostgradient/weft';
+import {
+  createOperationHandler,
+  createOperationHandlerAuthenticator,
+  principalFromJwtClaims,
+} from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { waitForCondition } from '../../test';
-import type { ResolveReviewInput } from '../../types.ts';
-import { digestCommandPayload } from '../../command-ledger.ts';
+import type { ResolveReviewInput, TaskRespondResult } from '../../types.ts';
+import { createCommandLedger, digestCommandPayload } from '../../command-ledger.ts';
+import { BureauError } from '../../create-bureau.ts';
+import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { BUREAU_SCOPES } from '../bureau-scopes.ts';
 import {
   BUREAU_HANDLER_OPERATIONS,
-  type BureauHandlerSource,
   buildBureauHandlerHost,
   createBureauHandler,
 } from '../create-bureau-handler.ts';
@@ -21,7 +26,12 @@ import {
   OWNER,
   rpc,
 } from './management-fixtures.test-support.ts';
-import { TASKS_RESPOND_OPERATION_VERSION } from './tasks-respond-operation.ts';
+import { respondToTask } from './tasks-respond-operation.ts';
+import {
+  TASKS_RESPOND_LEDGER_KEY_PREFIX,
+  TASKS_RESPOND_OPERATION_VERSION,
+  type TasksRespondClaim,
+} from '../../tasks/respond-to-task.ts';
 
 async function withBureau<T>(
   options: Parameters<typeof openBureau>[0],
@@ -56,7 +66,7 @@ function parksThenAnswers(signalName = 'human-response'): GenerateFunction {
 }
 
 async function parkedRun(opened: OpenedBureau, principal = OWNER.alice) {
-  const run = await opened.bureau.createRun({ agentName: 'default', message: 'park', principal });
+  const run = await opened.bureau.tasks.start('default', 'park', { principal });
   await waitForCondition(
     () => opened.bureau.reviews.list().some((review) => review.runId === run.id),
     'the run never parked',
@@ -64,29 +74,30 @@ async function parkedRun(opened: OpenedBureau, principal = OWNER.alice) {
   return run;
 }
 
-/** The same Bureau, with every `reviews.resolve` it receives recorded. */
+/**
+ * The same Bureau, with every `reviews.resolve` it receives recorded. `bureau.tasks.respond`
+ * resolves through the Bureau's own `reviews`, so the recorder replaces `resolve` on that object
+ * itself; a partial Bureau handed to the handler would not reach it.
+ */
 function recording(opened: OpenedBureau) {
   const resolved: ResolveReviewInput[] = [];
   /** The resolutions the Bureau accepted: what was delivered to a run. */
   const delivered: ResolveReviewInput[] = [];
-  const source = Object.create(opened.bureau, {
-    reviews: {
-      value: {
-        ...opened.bureau.reviews,
-        resolve: async (input: ResolveReviewInput) => {
-          resolved.push(input);
-          const result = await opened.bureau.reviews.resolve(input);
-          delivered.push(input);
-          return result;
-        },
-      },
-    },
-  }) as BureauHandlerSource;
-  return { resolved, delivered, handler: createBureauHandler(source, { authentication }) };
+  const reviews = opened.bureau.reviews as {
+    resolve: OpenedBureau['bureau']['reviews']['resolve'];
+  };
+  const resolve = reviews.resolve.bind(reviews);
+  reviews.resolve = async (input: ResolveReviewInput) => {
+    resolved.push(input);
+    const result = await resolve(input);
+    delivered.push(input);
+    return result;
+  };
+  return { resolved, delivered, handler: createBureauHandler(opened.bureau, { authentication }) };
 }
 
 async function parkedApproval(opened: OpenedBureau, principal = OWNER.alice) {
-  const run = await opened.bureau.createRun({ agentName: 'default', message: 'charge', principal });
+  const run = await opened.bureau.tasks.start('default', 'charge', { principal });
   await waitForCondition(
     () => opened.bureau.reviews.list().some((review) => review.runId === run.id),
     'the approval never became pending',
@@ -120,7 +131,10 @@ describe('bureau.tasks.respond answering a human wait', () => {
         principal: OWNER.alice,
         payload: 'the human said so',
       });
-      await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'completed', 'finish');
+      await waitForCondition(
+        () => opened.bureau.tasks.detail(run.id)?.status === 'completed',
+        'finish',
+      );
     });
   });
 
@@ -225,7 +239,10 @@ describe('bureau.tasks.respond answering a human wait', () => {
       const params = { taskId: run.id, messageId: 'm1', answer: 'once' };
 
       const first = await rpc(handler, 'bureau.tasks.respond', params, 'alice-key');
-      await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'completed', 'finish');
+      await waitForCondition(
+        () => opened.bureau.tasks.detail(run.id)?.status === 'completed',
+        'finish',
+      );
       const retry = await rpc(handler, 'bureau.tasks.respond', params, 'alice-key');
 
       expect(first.result).toBeDefined();
@@ -278,12 +295,11 @@ describe('bureau.tasks.respond answering a human wait', () => {
 
   it('answers a task that is not awaiting input as a conflict, and claims nothing', async () => {
     await withBureau({}, async (opened) => {
-      const run = await opened.bureau.createRun({
-        agentName: 'default',
-        message: 'busy',
-        principal: OWNER.alice,
-      });
-      await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'running', 'running');
+      const run = await opened.bureau.tasks.start('default', 'busy', { principal: OWNER.alice });
+      await waitForCondition(
+        () => opened.bureau.tasks.detail(run.id)?.status === 'running',
+        'running',
+      );
       const { resolved, handler } = recording(opened);
 
       const body = await rpc(
@@ -532,8 +548,15 @@ describe('bureau.tasks.respond deciding a tool approval', () => {
             additionalScopes: BUREAU_SCOPES,
           }),
         });
-        // The earlier attempt: it claimed the command and resolved the review, then died.
-        await host.respondLedger.claim(
+        // The earlier attempt: it claimed the command and resolved the review, then died. Its
+        // claim is in the Bureau's own ledger, which lives in the Bureau's store.
+        const ledger = createCommandLedger<TasksRespondClaim, TaskRespondResult>({
+          kv: opened.bureau.internals.kv!,
+          keyPrefix: TASKS_RESPOND_LEDGER_KEY_PREFIX,
+          clock: opened.bureau.runtimeServices.clock,
+          nextConflictId: () => opened.bureau.runtimeServices.identifiers.next('respond-conflict'),
+        });
+        await ledger.claim(
           {
             callerId: OWNER.alice,
             target: run.id,
@@ -592,5 +615,154 @@ describe('bureau.tasks.respond deciding a tool approval', () => {
         expect(charges).toEqual([4242]);
       },
     );
+  });
+});
+
+describe('bureau.tasks.respond in-process', () => {
+  it('refuses another principal’s task exactly as a missing one, and resolves nothing', async () => {
+    await withBureau({ generate: parksThenAnswers() }, async (opened) => {
+      const run = await parkedRun(opened);
+      const { resolved } = recording(opened);
+      const request = { taskId: run.id, messageId: 'm1', answer: 'let me in' };
+
+      const stranger = await rejectionOf(
+        opened.bureau.tasks.respond({ ...request, principal: OWNER.bob }),
+      );
+      const missing = await rejectionOf(
+        opened.bureau.tasks.respond({
+          ...request,
+          taskId: 'run-no-such-task',
+          principal: OWNER.bob,
+        }),
+      );
+
+      expect(stranger).toBeInstanceOf(BureauError);
+      expect((stranger as BureauError).code).toBe('NOT_FOUND');
+      expect((stranger as Error).message.replaceAll(run.id, '<id>')).toBe(
+        (missing as Error).message.replaceAll('run-no-such-task', '<id>'),
+      );
+      expect(resolved).toEqual([]);
+      expect(opened.bureau.reviews.list().some((review) => review.runId === run.id)).toBe(true);
+    });
+  });
+
+  it('answers the owner’s command, and returns the original receipt for an exact retry', async () => {
+    await withBureau({ generate: parksThenAnswers() }, async (opened) => {
+      const run = await parkedRun(opened);
+      const { resolved } = recording(opened);
+      const request = {
+        taskId: run.id,
+        messageId: 'm1',
+        answer: 'yes',
+        principal: OWNER.alice,
+      };
+
+      const first = await opened.bureau.tasks.respond(request);
+      const retry = await opened.bureau.tasks.respond(request);
+
+      expect(first).toMatchObject({ taskId: run.id, kind: 'human-wait', receipt: 'applied' });
+      expect(retry).toEqual(first);
+      expect(resolved).toHaveLength(1);
+      expect(resolved[0]).toMatchObject({ principal: OWNER.alice, payload: 'yes' });
+    });
+  });
+
+  it('lets an operator answer another owner’s human wait', async () => {
+    await withBureau({ generate: parksThenAnswers() }, async (opened) => {
+      const run = await parkedRun(opened);
+      const { resolved } = recording(opened);
+
+      const result = await opened.bureau.tasks.respond({
+        taskId: run.id,
+        messageId: 'm1',
+        answer: 'from the operator',
+        principal: OWNER.bob,
+        operator: true,
+      });
+
+      expect(result).toMatchObject({ receipt: 'applied', kind: 'human-wait' });
+      expect(resolved[0]?.principal).toBe(OWNER.bob);
+    });
+  });
+
+  it('answers an operator’s decision on another owner’s approval as a missing task', async () => {
+    const charges: number[] = [];
+    await withBureau(
+      { generate: chargesOnce, toolbox: approvalToolbox(charges), stopAtApproval: true },
+      async (opened) => {
+        const run = await parkedApproval(opened);
+
+        const refused = await rejectionOf(
+          opened.bureau.tasks.respond({
+            taskId: run.id,
+            messageId: 'm1',
+            decision: 'approve',
+            principal: OWNER.bob,
+            operator: true,
+          }),
+        );
+
+        expect((refused as BureauError).code).toBe('NOT_FOUND');
+        expect(charges).toEqual([]);
+        expect(opened.bureau.reviews.list().some((review) => review.runId === run.id)).toBe(true);
+      },
+    );
+  });
+
+  it('refuses a malformed request as BAD_REQUEST before reading the task', async () => {
+    await withBureau({ generate: parksThenAnswers() }, async (opened) => {
+      const run = await parkedRun(opened);
+
+      const blank = await rejectionOf(
+        opened.bureau.tasks.respond({
+          taskId: run.id,
+          messageId: 'm1',
+          answer: 'x',
+          principal: ' ',
+        }),
+      );
+      const both = await rejectionOf(
+        opened.bureau.tasks.respond({
+          taskId: run.id,
+          messageId: 'm1',
+          answer: 'x',
+          decision: 'approve',
+          principal: OWNER.alice,
+        }),
+      );
+
+      expect(blank).toMatchObject({ code: 'BAD_REQUEST', field: 'principal' });
+      expect(both).toMatchObject({ code: 'BAD_REQUEST', field: 'answer' });
+      expect(opened.bureau.reviews.list().some((review) => review.runId === run.id)).toBe(true);
+    });
+  });
+});
+
+describe('bureau.tasks.respond over the wire, for a credential that names no owner', () => {
+  it('refuses it as Forbidden once the task is visible, and as a missing task otherwise', async () => {
+    await withBureau({ generate: parksThenAnswers() }, async (opened) => {
+      const run = await parkedRun(opened);
+      const { resolved } = recording(opened);
+      const host = buildBureauHandlerHost(opened.bureau, []);
+      const writer = principalFromJwtClaims(
+        { sub: 'alice', scope: 'bureau.tasks:write' },
+        { additionalScopes: new Set(BUREAU_SCOPES) },
+      );
+      const stranger = principalFromJwtClaims(
+        { sub: 'alice' },
+        { additionalScopes: new Set(BUREAU_SCOPES) },
+      );
+      const input = { taskId: run.id, messageId: 'm1', answer: 'x' };
+
+      const forbidden = await rejectionOf(respondToTask(host, writer, input));
+      const hidden = await rejectionOf(respondToTask(host, stranger, input));
+
+      expect(forbidden).toMatchObject({
+        code: 'Forbidden',
+        data: { reason: 'unsupported credential' },
+      });
+      expect(hidden).toMatchObject({ code: 'NotFound' });
+      expect(resolved).toEqual([]);
+    });
   });
 });

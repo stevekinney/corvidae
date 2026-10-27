@@ -32,8 +32,8 @@
  * ## Parent cancellation
  *
  * A child never receives its parent's abort signal. When a parent is
- * cancelled — `abortRun`, `cancelDurableRun`, `children.cancel` on a child
- * that is itself a parent, a durable `bureau.run` parent settling aborted
+ * cancelled — `tasks.cancel`, `children.cancel` on a child
+ * that is itself a parent, a parent task settling aborted
  * through its own handle, or recovery finding the parent cancelled or gone —
  * Bureau applies each running child's recorded `parentCancellation` policy
  * explicitly: `'cascade'` cancels the child (and so on down), `'detach'`

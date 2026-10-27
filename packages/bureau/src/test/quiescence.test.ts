@@ -150,7 +150,7 @@ async function harnessWithHungAuditTrail(runtime: ManualRuntimeServices) {
   );
   const storage = faultedAuditStorageFixture(engine);
   const harness = await createBureauTestHarness({
-    agents: { default: createAgent({ generate: mockGenerate() }) },
+    agents: { default: createAgent({ maximumSteps: 1, generate: mockGenerate() }) },
     storage,
     runtime,
   });
@@ -159,7 +159,7 @@ async function harnessWithHungAuditTrail(runtime: ManualRuntimeServices) {
     await harness.bureau.dispose();
     storage.rawStorage[Symbol.dispose]();
   });
-  await harness.startSession({ agentName: 'default', message: 'hello', maximumSteps: 1 });
+  await harness.startTask({ agentName: 'default', input: 'hello' });
   await waitForCondition(() => reached, 'fault engine block on the audit write was never reached');
   return { harness, release };
 }
@@ -243,7 +243,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
   it('resolves quiescent, with every row empty, once a run has completed and nothing else is outstanding', async () => {
     const harness = await harnessWithMemoryStorage();
 
-    const run = harness.startRun('worker', 'hello');
+    const run = await harness.startTask({ agentName: 'worker', input: 'hello' });
     await run.result();
 
     const report = await harness.close();
@@ -266,7 +266,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
 
   it('close() is idempotent: a second call returns the exact same report without shutting down twice', async () => {
     const harness = await harnessWithMemoryStorage();
-    const run = harness.startRun('worker', 'hello');
+    const run = await harness.startTask({ agentName: 'worker', input: 'hello' });
     await run.result();
 
     const first = await harness.close();
@@ -278,7 +278,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
 
   it('close() never calls bureau.dispose() as a substitute for shutdown() — the shutdown report is what resolves the promise', async () => {
     const harness = await harnessWithMemoryStorage();
-    const run = harness.startRun('worker', 'hello');
+    const run = await harness.startTask({ agentName: 'worker', input: 'hello' });
     await run.result();
 
     const report = await harness.close();
@@ -296,7 +296,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
         },
       });
 
-      const parent = harness.startRun('worker', 'parent');
+      const parent = await harness.startTask({ agentName: 'worker', input: 'parent' });
       const child = harness.startChild(parent.snapshot().id, 'stuck', 'child input');
 
       try {
@@ -413,16 +413,16 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
         durable: true,
       });
 
-      const summary = await harness.startSession({
+      const summary = await harness.startTask({
         agentName: 'default',
-        message: 'durable run that never finishes',
+        input: 'durable run that never finishes',
       });
       // Waits for the DURABLE engine's own persisted state (not just
       // Bureau's in-memory `getRun` status, which flips to "running" before
       // the engine commits a first checkpoint) to actually exist and read
       // non-terminal — the fact this negative test is asserting.
       await waitForCondition(async () => {
-        const state = await harness.bureau.getDurableRun(summary.id);
+        const state = await harness.bureau.tasks.workflow(summary.id);
         return state !== null && state !== undefined && state.status === 'running';
       }, 'durable run never reached a persisted "running" state');
       // Registered by runId only — the process-local `AgentRun`/`ActiveRun`
@@ -473,12 +473,12 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
         durable: true,
       });
 
-      const summary = await harness.startSession({
+      const summary = await harness.startTask({
         agentName: 'default',
-        message: 'deliberately detached durable run',
+        input: 'deliberately detached durable run',
       });
       await waitForCondition(async () => {
-        const state = await harness.bureau.getDurableRun(summary.id);
+        const state = await harness.bureau.tasks.workflow(summary.id);
         return state !== null && state !== undefined && state.status === 'running';
       }, 'durable run never reached a persisted "running" state');
       harness.registerDurableRun(summary.id, { detached: true });
@@ -516,7 +516,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
 
   it('COR-84: a detached registration is never reported as detached when no durable engine is composed (getDurableRun resolves undefined)', async () => {
     const harness = await harnessWithMemoryStorage();
-    expect(await harness.bureau.getDurableRun('stale-run')).toBeUndefined();
+    expect(await harness.bureau.tasks.workflow('stale-run')).toBeUndefined();
     harness.registerDurableRun('stale-run', { detached: true });
 
     const report = await assertBureauQuiescent(harness);
@@ -535,7 +535,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
 
   it('COR-84: a detached registration is never reported as detached when the durable engine does not know the run (getDurableRun resolves null)', async () => {
     const harness = await harnessWithMemoryStorage({ durable: true });
-    expect(await harness.bureau.getDurableRun('unknown-run')).toBeNull();
+    expect(await harness.bureau.tasks.workflow('unknown-run')).toBeNull();
     harness.registerDurableRun('unknown-run', { detached: true });
 
     const report = await assertBureauQuiescent(harness);
@@ -582,7 +582,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
       // fires the `AbortController` but does NOT yet call `engine.cancel()`
       // — that call is deferred to whenever `closed()` first runs its
       // `resolveDurableOutcome()`.
-      const run = harness.startRun('worker', 'go');
+      const run = await harness.startTask({ agentName: 'worker', input: 'go' });
       run.abort(
         'AB-339 regression: direct abort, harness closes without an explicit closed() await',
       );
@@ -630,7 +630,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
     // entirely, rather than waiting out `waitForCondition`'s full budget
     // for a timer that will never appear.
     const harness = await harnessWithMemoryStorage();
-    const run = harness.startRun('worker', 'hello');
+    const run = await harness.startTask({ agentName: 'worker', input: 'hello' });
     await run.result();
 
     const report = await harness.close({ timeoutMilliseconds: 50 });
@@ -731,11 +731,10 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
       },
     });
 
-    const runSummary = await harness.bureau.createRun({ agentName: 'default', message: 'hello' });
+    const runSummary = await harness.bureau.tasks.start('default', 'hello');
     const runId = runSummary.id;
     await invoked;
-    harness.bureau.abortRun(runId);
-
+    await harness.bureau.tasks.cancel(runId);
     try {
       await harness.close();
       throw new Error('expected close() to reject');
@@ -792,7 +791,7 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
     const harness = await createBureauTestHarness({
       agents: {
         worker: createAgent({ name: 'worker', generate: mockGenerate('worker done') }),
-        default: createAgent({ generate: mockGenerate() }),
+        default: createAgent({ maximumSteps: 1, generate: mockGenerate() }),
       },
       storage,
       runtime,
@@ -822,7 +821,7 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
     // `createRun`/`createRunFromRequest` path does. `maximumSteps: 1`
     // forces `'run.completed'` on the very first step (`mockGenerate`'s
     // empty `toolCalls` never signals completion on its own).
-    await harness.startSession({ agentName: 'default', message: 'hello', maximumSteps: 1 });
+    await harness.startTask({ agentName: 'default', input: 'hello' });
     await waitForCondition(
       () => onReachedCalled,
       'fault engine block on the evaluation audit write was never reached',
@@ -875,7 +874,7 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
     const harness = await createBureauTestHarness({
       agents: {
         worker: createAgent({ name: 'worker', generate: mockGenerate('worker done') }),
-        default: createAgent({ generate: mockGenerate() }),
+        default: createAgent({ maximumSteps: 1, generate: mockGenerate() }),
       },
       storage,
       runtime,
@@ -892,7 +891,7 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
     // the same distinction). The write is fire-and-forget from the run's
     // own perspective, so there is no need to wait for the session to
     // finish — only for the fault plan to have been reached.
-    await harness.startSession({ agentName: 'default', message: 'hello', maximumSteps: 1 });
+    await harness.startTask({ agentName: 'default', input: 'hello' });
     await waitForCondition(
       () => onReachedCalled,
       'fault engine block on the audit write was never reached',
@@ -965,7 +964,11 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
     const harness = await createBureauTestHarness({
       agents: {
         worker: createAgent({ name: 'worker', generate: mockGenerate('worker done') }),
-        default: createAgent({ generate: mockGenerate(), stopWhen: stopWhen.noToolCalls() }),
+        default: createAgent({
+          maximumSteps: 1,
+          generate: mockGenerate(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
       storage,
       runtime,
@@ -987,13 +990,12 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
     // `auditTrail.query()` itself — polling with `query()` here would walk
     // straight into the SAME `nth: 1` block this test means to trigger
     // deliberately, deadlocking the wait on itself.
-    const summary = await harness.startSession({
+    const summary = await harness.startTask({
       agentName: 'default',
-      message: 'hello',
-      maximumSteps: 1,
+      input: 'hello',
     });
     await waitForCondition(
-      () => harness.bureau.getRun(summary.id)?.status === 'completed',
+      () => harness.bureau.tasks.detail(summary.id)?.status === 'completed',
       'session run never completed',
     );
 

@@ -30,7 +30,7 @@
  * deleted ({@link AgentSnapshotStore.releaseRun}, from `run.removed`), when it has been settled
  * for longer than the task retention window ({@link AgentSnapshotStore.pruneSettledBefore}), or
  * when the maintenance pass finds its run never started. The second path is what releases a
- * `bureau.run()` run, which leaves the run store the moment it settles and is never deleted. A
+ * run that leaves the run store the moment it settles and is never deleted. A
  * run that has not settled keeps its snapshot: it may still be resumed.
  *
  * ## What is not guaranteed

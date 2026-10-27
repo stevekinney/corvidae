@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { startHost, type Host, type HostOptions } from './host.ts';
+import { runTask } from './run-task.test-support.ts';
 
 const FIXTURE_KEY = 'fixture-anthropic-key-7f3a';
 const directories: string[] = [];
@@ -116,7 +117,7 @@ describe('the installed catalog', () => {
     const host = await start({}, { warn: (message) => warnings.push(message) });
 
     expect(host.bureau.models.catalog().descriptors).toEqual([]);
-    const result = await host.bureau.run('assistant', 'Hello').result();
+    const result = await runTask(host.bureau, 'assistant', 'Hello');
     expect(result.content).toBe(
       'Hello from the assistant. This reply is scripted; no model was called.',
     );

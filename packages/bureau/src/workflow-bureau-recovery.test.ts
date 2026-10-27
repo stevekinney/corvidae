@@ -66,7 +66,7 @@ describe('a Bureau started over a store with an instance it cannot register', ()
     expect(report?.perRunFailures).toEqual([]);
 
     await second.bureau.durableEngine()!.signal('healthy-run', 'go', null);
-    const healthy = await second.bureau.waitForDurableRun('healthy-run');
+    const healthy = await second.bureau.tasks.wait('healthy-run');
     expect(healthy?.status).toBe('completed');
     expect(second.calls.map((call) => call.message)).toEqual(['healthy question']);
 

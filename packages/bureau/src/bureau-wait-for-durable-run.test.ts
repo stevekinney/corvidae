@@ -61,21 +61,21 @@ async function durableBureau(
 describe('Bureau.waitForDurableRun', () => {
   it('resolves with the terminal state once this bureau commits the run', async () => {
     const bureau = await durableBureau(async () => ({ content: 'done', toolCalls: [] }));
-    const run = await bureau.createRun({ agentName: 'default', message: 'go' });
+    const run = await bureau.tasks.start('default', 'go');
 
-    const state = await bureau.waitForDurableRun(run.id);
+    const state = await bureau.tasks.wait(run.id);
 
     expect(state?.status).toBe('completed');
-    const durable = await bureau.getDurableRun(run.id);
+    const durable = await bureau.tasks.workflow(run.id);
     expect(durable?.status).toBe('completed');
   });
 
   it('resolves immediately for a run that is already terminal', async () => {
     const bureau = await durableBureau(async () => ({ content: 'done', toolCalls: [] }));
-    const run = await bureau.createRun({ agentName: 'default', message: 'go' });
-    await bureau.waitForDurableRun(run.id);
+    const run = await bureau.tasks.start('default', 'go');
+    await bureau.tasks.wait(run.id);
 
-    const again = await bureau.waitForDurableRun(run.id);
+    const again = await bureau.tasks.wait(run.id);
 
     expect(again?.status).toBe('completed');
   });
@@ -83,7 +83,7 @@ describe('Bureau.waitForDurableRun', () => {
   it('resolves null for a run the durable engine does not know', async () => {
     const bureau = await durableBureau(async () => ({ content: 'done', toolCalls: [] }));
 
-    expect(await bureau.waitForDurableRun('no-such-run')).toBeNull();
+    expect(await bureau.tasks.wait('no-such-run')).toBeNull();
   });
 
   it('resolves undefined when no durable engine is composed', async () => {
@@ -97,7 +97,7 @@ describe('Bureau.waitForDurableRun', () => {
     });
     bureaus.push(bureau);
 
-    expect(await bureau.waitForDurableRun('any-run')).toBeUndefined();
+    expect(await bureau.tasks.wait('any-run')).toBeUndefined();
   });
 
   it('resolves in a bureau that does not own the run, once another bureau over the same store commits it', async () => {
@@ -112,12 +112,12 @@ describe('Bureau.waitForDurableRun', () => {
       },
       { storagePath },
     );
-    const run = await owner.createRun({ agentName: 'default', message: 'go' });
+    const run = await owner.tasks.start('default', 'go');
     const observer = await durableBureau(async () => ({ content: 'unused', toolCalls: [] }), {
       storagePath,
     });
 
-    const waiting = observer.waitForDurableRun(run.id);
+    const waiting = observer.tasks.wait(run.id);
     release.resolve();
     const state = await waiting;
 
@@ -188,9 +188,9 @@ describe('Bureau.waitForDurableRun', () => {
       maintenance: 'manual',
     });
     bureaus.push(bureau);
-    const run = await bureau.createRun({ agentName: 'default', message: 'go' });
+    const run = await bureau.tasks.start('default', 'go');
 
-    const refusal = await bureau.waitForDurableRun(run.id).then(
+    const refusal = await bureau.tasks.wait(run.id).then(
       () => undefined,
       (error: unknown) => error,
     );
@@ -198,10 +198,10 @@ describe('Bureau.waitForDurableRun', () => {
 
     release.resolve();
     await waitForCondition(async () => {
-      const durable = await bureau.getDurableRun(run.id);
+      const durable = await bureau.tasks.workflow(run.id);
       return durable?.status === 'completed';
     }, 'the run never completed');
-    const terminal = await bureau.waitForDurableRun(run.id);
+    const terminal = await bureau.tasks.wait(run.id);
     expect(terminal?.status).toBe('completed');
   });
 });

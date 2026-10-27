@@ -37,12 +37,12 @@ describe('a task’s own message history', () => {
       durable: true,
     });
     try {
-      const session = await bureau.createRun({
-        agentName: 'default',
-        message: 'plan my trip',
+      const session = await bureau.tasks.start('default', 'plan my trip', {
         principal: 'api-key:alice',
       });
-      const catalog = bureau.run('worker', 'summarize this', { principal: 'api-key:alice' });
+      const catalog = await bureau.tasks.start('worker', 'summarize this', {
+        principal: 'api-key:alice',
+      });
       await waitForCondition(async () => {
         return (await bureau.internals.taskRegistry.history(catalog.id)) !== undefined;
       }, 'the catalog run was never recorded as a task');
@@ -78,12 +78,10 @@ describe('a task’s own message history', () => {
       });
     try {
       const first = await open();
-      const run = await first.createRun({
-        agentName: 'default',
-        message: 'before the restart',
+      const run = await first.tasks.start('default', 'before the restart', {
         principal: 'api-key:alice',
       });
-      await waitForCondition(() => first.getRun(run.id)?.status === 'completed', 'finish');
+      await waitForCondition(() => first.tasks.detail(run.id)?.status === 'completed', 'finish');
       await waitForCondition(async () => {
         const task = await first.internals.taskRegistry.get(run.id);
         return task?.status === 'completed';
@@ -120,12 +118,10 @@ describe('a task’s own message history', () => {
       ...SHORT_TASK_RETENTION,
     });
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'short lived',
+      const run = await bureau.tasks.start('default', 'short lived', {
         principal: 'api-key:alice',
       });
-      await waitForCondition(() => bureau.getRun(run.id)?.status === 'completed', 'finish');
+      await waitForCondition(() => bureau.tasks.detail(run.id)?.status === 'completed', 'finish');
 
       await retireSettledTasks(bureau, runtime);
 
@@ -151,12 +147,10 @@ describe('a task’s own message history', () => {
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'short lived',
+      const run = await bureau.tasks.start('default', 'short lived', {
         principal: 'api-key:alice',
       });
-      await waitForCondition(() => bureau.getRun(run.id)?.status === 'completed', 'finish');
+      await waitForCondition(() => bureau.tasks.detail(run.id)?.status === 'completed', 'finish');
       await bureau.internals.kv?.set(
         `${TASK_RECORD_KEY_PREFIX}${encodeStorageKeyComponent(run.id)}`,
         '{not json',
@@ -164,7 +158,7 @@ describe('a task’s own message history', () => {
 
       await retireSettledTasks(bureau, runtime);
 
-      expect(bureau.getRun(run.id)).toBeUndefined();
+      expect(bureau.tasks.detail(run.id)).toBeUndefined();
       expect(diagnostics.some((message) => message.includes('unreadable task record'))).toBe(true);
     } finally {
       await bureau.dispose();
@@ -188,12 +182,8 @@ describe('a task’s own message history', () => {
       });
     try {
       const first = await open();
-      const run = await first.createRun({
-        agentName: 'default',
-        message: 'hold',
-        principal: 'api-key:alice',
-      });
-      await waitForCondition(() => first.getRun(run.id)?.status === 'running', 'running');
+      const run = await first.tasks.start('default', 'hold', { principal: 'api-key:alice' });
+      await waitForCondition(() => first.tasks.detail(run.id)?.status === 'running', 'running');
       await first.shutdown({ policy: 'abort' });
 
       const second = await open();
@@ -245,12 +235,10 @@ describe('a task’s own message history', () => {
       });
     try {
       const first = await open(slowSettlements);
-      const run = await first.createRun({
-        agentName: 'default',
-        message: 'finish at once',
+      const run = await first.tasks.start('default', 'finish at once', {
         principal: 'api-key:alice',
       });
-      await waitForCondition(() => first.getRun(run.id)?.status === 'completed', 'finish');
+      await waitForCondition(() => first.tasks.detail(run.id)?.status === 'completed', 'finish');
       await first.dispose();
 
       // A caller-supplied storage is not closed by dispose, so what shows the write was awaited
@@ -294,7 +282,9 @@ describe('a task’s own message history', () => {
       });
     try {
       const first = await open(true);
-      const run = first.run('asker', 'which environment?', { principal: 'api-key:alice' });
+      const run = await first.tasks.start('asker', 'which environment?', {
+        principal: 'api-key:alice',
+      });
       await waitForCondition(
         () => first.reviews.list().some((review) => review.runId === run.id),
         'the run never parked',

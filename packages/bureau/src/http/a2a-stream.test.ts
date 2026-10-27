@@ -344,7 +344,10 @@ describe('SubscribeToTask', () => {
       );
       const sentBody: Json = await sent.json();
       const task = sentBody.result.task;
-      await waitForCondition(() => opened.bureau.getRun(task.id)?.status === 'running', 'running');
+      await waitForCondition(
+        () => opened.bureau.tasks.detail(task.id)?.status === 'running',
+        'running',
+      );
 
       const stream = serverSentEvents(
         await opened.handler(rpc('SubscribeToTask', { id: task.id })),

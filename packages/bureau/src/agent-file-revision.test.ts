@@ -15,10 +15,8 @@ import {
 } from '@lostgradient/testing/temporary-path';
 import {
   type ConditionalTextValueStore,
-  decode,
   MemoryStorage,
   resolveStorage,
-  type Storage,
   textValueStore,
 } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -26,7 +24,10 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { hashAgentFileBytes } from './agent-file';
 import { AGENT_REVISION_KEY_PREFIX } from './agent-revision-store';
 import { DIRECTORY_POLL_INTERVAL_MILLISECONDS } from './sources/watched-directory';
-import { CATALOG_RUN_RECOVERY_KEY_PREFIX } from './runtime-composition';
+import {
+  SESSION_AGENT_DEFINITION_HASH_METADATA_KEY,
+  SESSION_AGENT_REVISION_METADATA_KEY,
+} from './runtime-composition';
 import {
   type AgentFileFixture,
   agentFileText,
@@ -35,6 +36,7 @@ import {
   validAgentFile,
 } from './testing/agent-file-fixtures.test-support';
 import { startFileBureau } from './testing/agent-file-bureau.test-support';
+import type { Bureau } from './types';
 
 const fixtures: AgentFileFixture[] = [];
 const directories: string[] = [];
@@ -641,11 +643,13 @@ describe('a Bureau restarted after an offline edit', () => {
       maintenance: 'manual' as const,
       onDiagnostic: () => undefined,
     };
-    const recordOf = async (storage: Storage, runId: string) => {
-      const bytes = await storage.get(`${CATALOG_RUN_RECOVERY_KEY_PREFIX}${runId}`);
-      return bytes === null
-        ? undefined
-        : (decode(bytes) as { definitionRevision: number; agentDefinitionHash?: string });
+    // A task's run records its definition on its context.
+    const recordOf = async (bureau: Bureau, task: { readonly contextId: string }) => {
+      const context = await bureau.contexts.get(task.contextId);
+      return {
+        definitionRevision: context?.metadata[SESSION_AGENT_REVISION_METADATA_KEY],
+        agentDefinitionHash: context?.metadata[SESSION_AGENT_DEFINITION_HASH_METADATA_KEY],
+      };
     };
     const text = (instructions: string) => agentFileText({ model: KNOWN_MODEL }, instructions);
 
@@ -656,9 +660,9 @@ describe('a Bureau restarted after an offline edit', () => {
     });
     await first.put('researcher.md', text('Before the restart.\n'));
     await first.bureau.agents.refresh();
-    const before = first.bureau.run('researcher', 'hello');
+    const before = await first.bureau.tasks.start('researcher', 'hello');
     await before.result();
-    const beforeRecord = await recordOf(firstStorage, before.id);
+    const beforeRecord = await recordOf(first.bureau, before);
     await first.dispose();
 
     // Edited while the Bureau is down.
@@ -671,9 +675,9 @@ describe('a Bureau restarted after an offline edit', () => {
     });
     try {
       const listed = second.bureau.agents.list().find((entry) => entry.id === 'researcher');
-      const after = second.bureau.run('researcher', 'hello again');
+      const after = await second.bureau.tasks.start('researcher', 'hello again');
       await after.result();
-      const afterRecord = await recordOf(secondStorage, after.id);
+      const afterRecord = await recordOf(second.bureau, after);
 
       expect(beforeRecord?.definitionRevision).toBe(1);
       expect(listed?.definitionRevision).toBe(2);

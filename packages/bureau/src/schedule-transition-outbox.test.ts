@@ -75,7 +75,7 @@ async function scheduleHistory(
   bureau: Bureau<AgentDefinitions>,
   scheduleId: string,
 ): Promise<readonly DurableEventEnvelope[]> {
-  const page = await bureau.eventHistory({ kind: 'schedule', id: scheduleId });
+  const page = await bureau.schedules.events(scheduleId);
   if (!('events' in page)) throw new Error(`expected a page, got ${JSON.stringify(page)}`);
   return page.events;
 }

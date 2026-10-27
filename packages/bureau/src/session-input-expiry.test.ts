@@ -76,20 +76,16 @@ describe('a queued input’s expiresAt', () => {
       return { content: 'done', toolCalls: [] };
     });
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'Start',
-        principal: 'alice',
-      });
+      const run = await bureau.tasks.start('default', 'Start', { principal: 'alice' });
       await stepZeroStarted.promise;
       const expiresAt = new Date(runtime.clock.now() + 1_000).toISOString();
-      await bureau.contexts.input(run.sessionId, {
+      await bureau.contexts.input(run.contextId, {
         ...queued,
         id: 'input-late',
         payload: 'late',
         expiresAt,
       });
-      await bureau.contexts.input(run.sessionId, {
+      await bureau.contexts.input(run.contextId, {
         ...queued,
         id: 'input-open',
         payload: 'no deadline',
@@ -100,7 +96,7 @@ describe('a queued input’s expiresAt', () => {
       await stepOneStarted.promise;
 
       expect(prompts[1]).toEqual(['Start', 'no deadline']);
-      const replay = await bureau.contexts.input(run.sessionId, {
+      const replay = await bureau.contexts.input(run.contextId, {
         ...queued,
         id: 'input-late',
         payload: 'late',
@@ -131,15 +127,11 @@ describe('a queued input’s expiresAt', () => {
       return { content: 'done', toolCalls: [] };
     }, storage);
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'Start',
-        principal: 'alice',
-      });
+      const run = await bureau.tasks.start('default', 'Start', { principal: 'alice' });
       await stepZeroStarted.promise;
-      const session = await bureau.contexts.get(run.sessionId);
+      const session = await bureau.contexts.get(run.contextId);
       const incarnation = session?.incarnation ?? '';
-      const mailbox = createSessionInputMailbox(storage, run.sessionId, incarnation, 100, () =>
+      const mailbox = createSessionInputMailbox(storage, run.contextId, incarnation, 100, () =>
         runtime.clock.now(),
       );
       const expiresAt = new Date(runtime.clock.now() + 1_000).toISOString();
@@ -148,7 +140,7 @@ describe('a queued input’s expiresAt', () => {
           storage,
           kv: textValueStore(storage, { disposeUnderlyingStorage: false }),
           sessionMailbox: mailbox,
-          sessionId: run.sessionId,
+          sessionId: run.contextId,
           incarnation,
           id: 'input-slow',
           principal: 'alice',
@@ -197,13 +189,9 @@ describe('a queued input’s expiresAt', () => {
       return { content: 'done', toolCalls: [] };
     });
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'Start',
-        principal: 'alice',
-      });
+      const run = await bureau.tasks.start('default', 'Start', { principal: 'alice' });
       await stepZeroStarted.promise;
-      await bureau.contexts.input(run.sessionId, {
+      await bureau.contexts.input(run.contextId, {
         ...queued,
         id: 'input-past',
         payload: 'past',
@@ -230,11 +218,7 @@ describe('a queued input’s expiresAt', () => {
       return { content: 'done', toolCalls: [] };
     });
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'Start',
-        principal: 'alice',
-      });
+      const run = await bureau.tasks.start('default', 'Start', { principal: 'alice' });
       await stepZeroStarted.promise;
       const year = 365 * 86_400_000;
 
@@ -245,7 +229,7 @@ describe('a queued input’s expiresAt', () => {
           new Date(runtime.clock.now() + year + 1).toISOString(),
           '9999-12-31T23:59:59.999Z',
         ].map((expiresAt, index) =>
-          bureau.contexts.input(run.sessionId, {
+          bureau.contexts.input(run.contextId, {
             ...queued,
             id: `input-far-${index}`,
             payload: `far ${index}`,
@@ -278,15 +262,11 @@ describe('a queued input’s expiresAt', () => {
       return { content: 'done', toolCalls: [] };
     });
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'Start',
-        principal: 'alice',
-      });
+      const run = await bureau.tasks.start('default', 'Start', { principal: 'alice' });
       await stepZeroStarted.promise;
 
       const refusal = await bureau.contexts
-        .input(run.sessionId, {
+        .input(run.contextId, {
           ...queued,
           id: 'input-bad',
           payload: 'bad',

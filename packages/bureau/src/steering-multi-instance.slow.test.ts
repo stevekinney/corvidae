@@ -71,26 +71,22 @@ describe('durable steering across two Bureau processes', () => {
     });
     const bureauB = await openBureau(path);
     try {
-      const run = await bureauA.createRun({
-        agentName: 'default',
-        message: 'go',
-        principal: 'alice',
-      });
+      const run = await bureauA.tasks.start('default', 'go', { principal: 'alice' });
       for await (const _turn of awakeTurns()) {
         if (!(generateCalls === 0)) break;
         await Bun.sleep(10);
       }
       // B deletes the session; A learns of it from its poll and aborts the
       // run as its own deletion would, rather than letting it keep working.
-      await bureauB.contexts.delete(run.sessionId);
+      await bureauB.contexts.delete(run.contextId);
       for await (const _turn of awakeTurns()) {
-        if (bureauA.getRun(run.id)?.status !== 'running') break;
+        if (bureauA.tasks.detail(run.id)?.status !== 'running') break;
         await Bun.sleep(10);
       }
-      expect(bureauA.getRun(run.id)?.status).toBe('aborted');
+      expect(bureauA.tasks.detail(run.id)?.status).toBe('aborted');
       expect(generateCalls).toBe(1);
-      await bureauA.waitForDurableRun(run.id).catch(() => {});
-      expect(await bureauB.contexts.get(run.sessionId)).toBeUndefined();
+      await bureauA.tasks.wait(run.id).catch(() => {});
+      expect(await bureauB.contexts.get(run.contextId)).toBeUndefined();
     } finally {
       releaseTool?.();
       await bureauA.dispose();
@@ -136,11 +132,7 @@ describe('durable steering across two Bureau processes', () => {
     });
     const bureauB = await openBureau(path);
     try {
-      const run = await bureauA.createRun({
-        agentName: 'default',
-        message: 'go',
-        principal: 'alice',
-      });
+      const run = await bureauA.tasks.start('default', 'go', { principal: 'alice' });
       for await (const _turn of awakeTurns()) {
         if (!(generateCalls === 0)) break;
         await Bun.sleep(10);
@@ -152,15 +144,15 @@ describe('durable steering across two Bureau processes', () => {
       const kvA = bureauA.internals.kv;
       if (kvA === undefined) throw new Error('expected a durable store');
       const readsByA = spyOn(kvA, 'get');
-      const paused = await bureauB.contexts.steer(run.sessionId, {
+      const paused = await bureauB.contexts.steer(run.contextId, {
         principal: 'alice',
         requestedValue: { target: 'pause' },
       });
       expect(paused.outcome).toBe('accepted');
-      const sessionA = await bureauA.contexts.get(run.sessionId);
+      const sessionA = await bureauA.contexts.get(run.contextId);
       const kvB = bureauB.internals.kv;
       if (sessionA === undefined || kvB === undefined) throw new Error('expected the session');
-      const pauseHead = await readSteeringLogHead(kvB, run.sessionId, sessionA.incarnation);
+      const pauseHead = await readSteeringLogHead(kvB, run.contextId, sessionA.incarnation);
       const pauseSequence = pauseHead.sequence;
       const pauseEntry = `:entry:${String(pauseSequence).padStart(12, '0')}`;
       readsByA.mockClear();
@@ -174,20 +166,20 @@ describe('durable steering across two Bureau processes', () => {
       await Bun.sleep(0);
       releaseTool?.();
       await quietFor(300);
-      expect(bureauA.getRun(run.id)?.status).toBe('running');
+      expect(bureauA.tasks.detail(run.id)?.status).toBe('running');
       expect(generateCalls).toBe(1);
 
       // B resumes it; A's waiting run is released by the next poll.
-      const resumed = await bureauB.contexts.steer(run.sessionId, {
+      const resumed = await bureauB.contexts.steer(run.contextId, {
         principal: 'alice',
         requestedValue: { target: 'resume' },
       });
       expect(resumed.outcome).toBe('accepted');
       for await (const _turn of awakeTurns()) {
-        if (bureauA.getRun(run.id)?.status !== 'running') break;
+        if (bureauA.tasks.detail(run.id)?.status !== 'running') break;
         await Bun.sleep(10);
       }
-      expect(bureauA.getRun(run.id)?.status).toBe('completed');
+      expect(bureauA.tasks.detail(run.id)?.status).toBe('completed');
       expect(generateCalls).toBe(2);
     } finally {
       releaseTool?.();
@@ -240,16 +232,12 @@ describe('durable steering across two Bureau processes', () => {
     });
     const bureauB = await openBureau(path);
     try {
-      const run = await bureauA.createRun({
-        agentName: 'default',
-        message: 'go',
-        principal: 'alice',
-      });
+      const run = await bureauA.tasks.start('default', 'go', { principal: 'alice' });
       for await (const _turn of awakeTurns()) {
         if (!(generateCalls === 0)) break;
         await Bun.sleep(10);
       }
-      const paused = await bureauA.contexts.steer(run.sessionId, {
+      const paused = await bureauA.contexts.steer(run.contextId, {
         principal: 'alice',
         requestedValue: { target: 'pause' },
       });
@@ -257,36 +245,32 @@ describe('durable steering across two Bureau processes', () => {
       // The tool returns; the run stops at step 1's boundary, paused.
       releaseTool?.();
       await quietFor(200);
-      expect(bureauA.getRun(run.id)?.status).toBe('running');
+      expect(bureauA.tasks.detail(run.id)?.status).toBe('running');
       expect(generateCalls).toBe(1);
 
       // B deletes the session. Nothing in B knows A's run; A sees the
       // deletion from the paused run's own watch and releases it.
-      await bureauB.contexts.delete(run.sessionId);
+      await bureauB.contexts.delete(run.contextId);
       for await (const _turn of awakeTurns()) {
-        if (bureauA.getRun(run.id)?.status !== 'running') break;
+        if (bureauA.tasks.detail(run.id)?.status !== 'running') break;
         await Bun.sleep(10);
       }
-      expect(bureauA.getRun(run.id)?.status).toBe('completed');
+      expect(bureauA.tasks.detail(run.id)?.status).toBe('completed');
       expect(generateCalls).toBe(2);
       // Its terminal save is fenced to the deleted incarnation.
-      await bureauA.waitForDurableRun(run.id);
-      expect(await bureauB.contexts.get(run.sessionId)).toBeUndefined();
+      await bureauA.tasks.wait(run.id);
+      expect(await bureauB.contexts.get(run.contextId)).toBeUndefined();
 
       // A paused run that is aborted instead stops its watch with the wait.
       const intervals = spyOn(globalThis, 'setInterval');
       const cleared = spyOn(globalThis, 'clearInterval');
       try {
-        const second = await bureauA.createRun({
-          agentName: 'default',
-          message: 'again',
-          principal: 'alice',
-        });
+        const second = await bureauA.tasks.start('default', 'again', { principal: 'alice' });
         for await (const _turn of awakeTurns()) {
           if (!(generateCalls < 3)) break;
           await Bun.sleep(10);
         }
-        const pausedAgain = await bureauA.contexts.steer(second.sessionId, {
+        const pausedAgain = await bureauA.contexts.steer(second.contextId, {
           principal: 'alice',
           requestedValue: { target: 'pause' },
         });
@@ -299,7 +283,7 @@ describe('durable steering across two Bureau processes', () => {
         const watchIndex = intervals.mock.calls.findIndex(([, delay]) => delay === 2_000);
         expect(watchIndex).toBeGreaterThanOrEqual(0);
         const watch = intervals.mock.results[watchIndex]?.value;
-        bureauA.abortRun(second.id);
+        await bureauA.tasks.cancel(second.id);
         for await (const _turn of awakeTurns()) {
           if (cleared.mock.calls.some(([handle]) => handle === watch)) break;
           await Bun.sleep(10);
