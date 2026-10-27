@@ -12,7 +12,7 @@ Apply AGENTS.md "Review guidelines" to every review, including specialist review
 - Accept breaking changes in this pre-release workspace. Check affected in-repository callers and update them directly; do not demand compatibility wrappers, deprecation periods, or retention of obsolete APIs. Remove deprecated code in the replaced path. Continue scrutinizing persisted data, wire protocols, and published contracts for concrete defects.
 - Report a blocker only with a supported input or reachable interleaving, the wrong result, and its concrete consequence. Review the changed behavior and honor recorded decisions. Omit naming, style, optional refactoring, speculative hardening, and unsupported edge cases. Touching a one-way door or deliberately breaking an old API is not itself a blocker.
 
-Read the worker's defect-class report against [the defect classes](defect-classes.md) first: a class the worker marked as applying is where review starts. An omitted class is a prompt to inspect the changed behavior, not a finding by itself; report only a concrete defect that meets the policy above.
+A reviewer reviews by defect class, reading [the defect classes](defect-classes.md) first, and for any wrapper, adapter, or delegation change enumerates every property the wrapped object carries (approval policy, idempotency, gating, identity, context binding) and checks that each survives. The #595 approval bypass, which Codex found and the primary review missed, was such a change. Read the worker's defect-class report against [the defect classes](defect-classes.md) first: a class the worker marked as applying is where review starts. An omitted class is a prompt to inspect the changed behavior, not a finding by itself; report only a concrete defect that meets the policy above.
 
 Keep review cheaper than the work it checks.
 
@@ -44,6 +44,21 @@ Separate a gate that tells you nothing from one that tells you something false. 
 Start with the script, not by hand: `bun scripts/chef/gate-run.ts triage <log> --base <sha>`, where `<sha>` is the `main` revision before the batch's merges. It maps each failed task to the merged pull requests that touched its workspace, or reports it as pre-existing. Route a mapped failure to that pull request's owner as a fix forward, and merge nothing else into a red `main` except that fix (AGENTS.md "Gate on local checks").
 
 Use `gate-run.ts control` for anything the triage leaves ambiguous: a task that several merged pull requests touched, a failure in a file none of them changed, or a load-sensitive test. When the failing task or test lies outside the workspaces the candidate changed (including their dependents), or inside them but in a file the candidate did not touch, run a short alternating control of that test on the candidate and on the exact base revision under the same load. Candidate fails and base passes: the failure is candidate-caused and goes back to the package owner. Both fail the same way: it is pre-existing; record it, file or deliver the fix under its own issue, and do not route it to the package's corrector. Inconclusive: widen the control before deciding. Never rerun the gate until it passes as a substitute for the control.
+
+## Merge integration
+
+Other sessions keep landing code against the old surface while a pull request that removes or renames members is open, so the collision shows up at merge, not in the branch's own gate. For any such pull request the coordinator writes the removed and renamed identifiers, one per line, to a file and passes `--removed-names <file>` to `deliver.ts`. After it merges `main` in, `deliver.ts` fast-checks at step `integration`: the workspaces both the branch and the newly merged `main` touched, and the files that landed, for those names used as member accesses, quoted keys, or object keys, which is what finds the fixtures `tsc` cannot see (defect class 11). It fails in minutes with the failing files or `path:line (name)` hits, and puts the branch back to its previous head with nothing pushed. The worker fixes the hits, and the coordinator relaunches `deliver.ts`.
+
+## Exit codes and main health
+
+`deliver.ts` stops at step `threads` before it fetches, merges, or gates while a review thread is open, so answer and resolve them first. A gate failure is classified per failing test, by rerunning each failing file alone on the head and on `origin/main`, and never retried. Any test that fails alone on the branch and not on `main` makes the verdict `branch`, ahead of a `main`-reproduced failure in the same gate. Each class has an owner:
+
+- **Exit 1** (a `branch` or `unclassified` failure, or any named step): the failure is the pull request's; it goes back to its worker.
+- **Exit 3** (`main`): no test failed on the branch alone, and a failing file fails the same way on `main` too, so the failure is not this change's. The coordinator owns a fix-forward, or finds the pull request that owns the failing test and routes it there as under "Triaging a failed batch gate", and merges nothing else into the red `main`.
+- **Exit 4** (`unreproduced`): every failing file passes alone on both trees, so load or a flake. The coordinator records the control and redelivers once; a second exit 4 goes to the owner as a load problem, not to a third blind run.
+- `--waive-main-health --reason <owner quote>` merges past a red `main` and records an entry in the health file's `waivers` array (with no `controlHead`), never in `fixes`. It is allowed only on an explicit owner instruction in the current scope, quoted in the reason; it is exclusive with `--fixes-main`, and a worker never uses it.
+
+Batch validate has one owner per host through `<git common dir>/corvidae-batch-validate.lock`, applies no load gate unless `--max-load <n>` is given, and skips when the health record is already green at the current head, so a second coordinator exits 0 instead of starting another.
 
 ## The review lifecycle
 
