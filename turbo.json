@@ -43,6 +43,7 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/scripts/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/scripts/workspace-directories.ts"
@@ -62,6 +63,7 @@
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/scripts/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/workspace-directories.ts"
       ]
     },
@@ -129,6 +131,7 @@
         "$TURBO_ROOT$/documentation/runtime-contracts.md",
         "$TURBO_ROOT$/scripts/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/scripts/workspace-directories.ts"
@@ -143,6 +146,7 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/scripts/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/scripts/workspace-directories.ts"
@@ -194,7 +198,8 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/scripts/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/worker-crash-report.ts"
       ]
     },
     "@lostgradient/evaluation#test:gate": {
@@ -208,7 +213,8 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/scripts/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/worker-crash-report.ts"
       ]
     },
     "@lostgradient/chat#test:gate": {
@@ -230,6 +236,7 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/scripts/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/scripts/workspace-directories.ts"
@@ -246,7 +253,8 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/scripts/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/worker-crash-report.ts"
       ]
     },
     "@lostgradient/terminal#test:gate": {
@@ -291,6 +299,7 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/scripts/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/scripts/workspace-directories.ts"
@@ -306,7 +315,8 @@
         "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts",
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/scripts/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/worker-crash-report.ts"
       ]
     },
     "@lostgradient/ventriloquist#test:gate": {
@@ -323,7 +333,8 @@
         "$TURBO_ROOT$/scripts/browser-fixtures/src/**",
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/scripts/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/worker-crash-report.ts"
       ]
     },
     "@lostgradient/cinder#test:gate": {
@@ -343,6 +354,7 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/scripts/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/scripts/workspace-directories.ts"
