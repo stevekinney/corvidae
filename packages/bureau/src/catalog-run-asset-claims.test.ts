@@ -441,7 +441,7 @@ describe.each([
     );
     const parent = await bureau.tasks.start('default', 'plan the work', { principal: alice.id });
     cleanups.push(async () => {
-      bureau.abortRun(parent.id);
+      await bureau.tasks.cancel(parent.id);
       await waitForTaskState(bureau, parent.id);
       parked.open();
     });
@@ -457,7 +457,7 @@ describe.each([
     await waitForCondition(() => seen.length > 0, 'the child never reached its first step');
     expect(heldByRun(await holdersOf(bureau, assetIdOf(image)), childRunId)).toHaveLength(1);
 
-    bureau.abortRun(parent.id);
+    await bureau.tasks.cancel(parent.id);
     await bureau.children.wait({ parentRunId: parent.id, childRunId });
 
     await releasedHolders(bureau, assetIdOf(image), childRunId);

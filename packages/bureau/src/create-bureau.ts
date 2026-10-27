@@ -9822,25 +9822,6 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     };
   }
 
-  function listRuns(status?: string): RunSummary[] {
-    const state = store.getState();
-    const summaries: RunSummary[] = [];
-
-    for (const [, runState] of state.runs) {
-      if (status && runState.status !== status) {
-        continue;
-      }
-      // COR-1302: a `bureau.run()` run is resolvable by id (`getRun`,
-      // `abortRun`) but not listed; run listing is COR-1304's.
-      if (catalogRunIds.has(runState.id)) continue;
-
-      const sessionId = getRunSessionIdentifier(runState);
-      summaries.push(serializeRunState(runState, sessionId, attributionOf(runState.id)));
-    }
-
-    return summaries;
-  }
-
   /**
    * COR-1588 — the one reader of what a held run is attributed to: its recorded attribution,
    * with a `principal` it lacks filled from the handle's liveness owner. A live `bureau.run()`
@@ -18723,11 +18704,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     get assets(): AssetService | undefined {
       return assetServiceInstance;
     },
-    listRuns,
     getOwner,
-    abortRun,
     durableEngine,
-    cancelDurableRun,
     runDurableMaintenance,
     setRequestAuthorityValidator(validator) {
       requestAuthorityValidator = validator;

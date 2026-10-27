@@ -649,7 +649,7 @@ describe('bureau.goals', () => {
       await reaches(bureau, 'running');
       expect(await workflowStatus(bureau, 'goal-g1-a0')).toBe('running');
 
-      expect(await bureau.cancelDurableRun('goal:g1')).toEqual({ status: 'requested' });
+      await bureau.durableEngine()!.cancel('goal:g1');
 
       const stopped = await pollUntil(
         async () => (await workflowStatus(bureau, 'goal-g1-a0')) === 'cancelled',

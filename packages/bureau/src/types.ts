@@ -321,7 +321,7 @@ export interface BureauRetentionOptions {
    * `BureauError(..., 'BAD_REQUEST')`.
    *
    * On every terminal transition of a durable run — completion, error, abort,
-   * or {@link Bureau.cancelDurableRun} — bureau runs exactly ONE cleanup step
+   * or a durable cancel through {@link BureauTasks.cancel} — bureau runs exactly ONE cleanup step
    * for that run, however many of those triggers fire. The step re-reads the
    * run's durable record first and prunes only once the engine reports a
    * terminal status, so a checkpoint can never be pruned ahead of the
@@ -826,7 +826,7 @@ export type BureauEventType = keyof BureauEventMap & string;
  * - `'rejected'` — resolved via `reviews.resolve` with `decision: 'reject'` (requires a reason).
  * - `'expired'` — a tool-approval review swept by the expiry pass (a schedule fire's, the maintenance pass's) past its binding's `expiresAt`.
  * - `'revoked'` — transitioned by task-retention expiry or `deleteSession` via `revokePendingApprovalsForRun`.
- * - `'canceled'` — transitioned by `abortRun`/`cancelDurableRun` via `revokePendingApprovalsForRun`.
+ * - `'canceled'` — transitioned by `tasks.cancel` via `revokePendingApprovalsForRun`.
  * - `'superseded'` — a tool-approval review whose `resumeApproval` re-gate produced a new `pendingApproval` for the same `callId`.
  */
 export type ReviewStatus =
@@ -1666,7 +1666,7 @@ export interface BureauContexts {
    * under the input's own `id` as its message id, and the promotion commits in
    * the write that saves the turn, whatever that step's outcome. It reads
    * `canceled` when the input was not appended before its run ended, however
-   * it ended (completed, failed, `abortRun`, `cancelDurableRun`, or promoted
+   * it ended (completed, failed, cancelled through `tasks.cancel`, or promoted
    * but never started), so the client resends it; Bureau never starts a run to
    * answer input, and the ending run cancels what it never delivered unless
    * another run of the session is live, whose end does the cancelling. With no
@@ -1917,11 +1917,10 @@ export interface BureauInternals {
   readonly onlineEvalSampler: OnlineEvalSampler | undefined;
 
   /**
-   * AB-369: every run `abortRun` has requested cancellation for but whose
-   * `activeRun.closed()` has not yet settled — the same `abortingRunIds`
-   * bookkeeping `abortRun` itself maintains, read publicly rather than
-   * inferred. `since` is the {@link RuntimeServices.clock} timestamp
-   * `abortRun` recorded when it first requested cancellation for that run.
+   * AB-369: every run whose cancellation `tasks.cancel` or a task handle's `abort` has requested
+   * but whose `activeRun.closed()` has not yet settled, read from the abort bookkeeping rather
+   * than inferred. `since` is the {@link RuntimeServices.clock} timestamp of the first request
+   * for that run.
    * A run still listed here long after its abort should have settled is a
    * genuine leak — {@link BureauQuiescenceReport} (`bureau/test`) surfaces
    * it as a non-quiescent row.
@@ -2059,8 +2058,8 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * signal, and cancel it by its stable identifier — including after a
    * process restart. Every operation names the owning parent; naming an
    * unrelated parent reads as `not-found`. A child never shares its
-   * parent's abort signal: cancelling a parent through `abortRun`,
-   * `cancelDurableRun`, its own `bureau.run` handle, or `children.cancel`
+   * parent's abort signal: cancelling a parent through `tasks.cancel`,
+   * its own `bureau.run` handle, or `children.cancel`
    * applies each child's recorded `parentCancellation` policy instead. See
    * `child-topology.ts`.
    */
@@ -2089,12 +2088,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * validators named in {@link BureauOptions.validators}. See `goal-types.ts`.
    */
   readonly goals: BureauGoals<AgentNames<D>>;
-  /**
-   * The runs `createRun` started that this process still holds. A
-   * `bureau.run()` run is not listed, though `getRun` and `abortRun` accept
-   * its id.
-   */
-  listRuns(status?: string): RunSummary[];
 
   /**
    * The owner of record of a resource (COR-718), or `undefined` when no such
@@ -2120,17 +2113,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   getOwner(resource: OwnedResource): Promise<string | undefined>;
 
   /**
-   * Requests cancellation of a running run and returns its summary with
-   * `status: 'aborting'`. Accepts the ids {@link BureauTasks.detail} accepts. For a
-   * `bureau.run()` run (COR-1302) this works from the moment `bureau.run()`
-   * returns: a run aborted before its agent's run is built is cancelled
-   * through its handle. Once a `bureau.run()` run has settled it is released,
-   * so a later call throws `NOT_FOUND`, where a settled `createRun` run
-   * returns its terminal summary.
-   */
-  abortRun(id: string): RunSummary;
-
-  /**
    * The durable Weft engine this bureau composed, or `undefined` when none is composed. It is the
    * engine that checkpoints and owns this bureau's runs, so a host that serves Weft's own API or
    * console over the same runs hands out this one rather than building a second engine over the
@@ -2145,20 +2127,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * console.
    */
   durableEngine(): RegistryAgnosticEngine | undefined;
-
-  /**
-   * Cancel a durable run that has no live, process-local `ActiveRun` (AB-37,
-   * AB-205) — the boot-recovered fire that makes `abortRun` throw
-   * `NOT_FOUND`. Asynchronous, unlike `abortRun`, and never rejects: every
-   * failure mode resolves as a variant of {@link CancelDurableRunOutcome}
-   * instead. `engine.cancel` alone is not proof a cancellation committed (it
-   * resolves `void` unconditionally, whether it won or lost a race against
-   * the workflow completing on its own), so this always re-reads
-   * `getDurableRun(runId)` after `engine.cancel` resolves and reports
-   * `'requested'` only when that re-read observes `status === 'cancelled'`;
-   * any other terminal status resolves `'already-terminal'`.
-   */
-  cancelDurableRun(runId: string): Promise<CancelDurableRunOutcome>;
 
   /**
    * Run one host-driven durable-engine maintenance cycle. This fires due
@@ -2495,7 +2463,8 @@ export interface RunSummary {
 }
 
 /**
- * Resolution of a {@link Bureau.cancelDurableRun} call (AB-37, AB-205).
+ * Resolution of Bureau's durable cancel of a task no process-local run holds, which
+ * {@link BureauTasks.cancel} takes for such a task (AB-37, AB-205).
  * Never a rejection — every failure mode, including one raised by the engine
  * itself, is represented as a variant here instead.
  */

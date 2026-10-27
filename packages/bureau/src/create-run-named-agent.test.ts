@@ -21,7 +21,7 @@ import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { BureauError, createBureau } from './create-bureau';
-import { waitForTaskState } from './test';
+import { listHeldTasks, waitForTaskState } from './test';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauOptions } from './types';
 import { storageOverTextStore } from './testing/text-store-storage.test-support';
@@ -222,7 +222,7 @@ describe('an agent that is not in the catalog', () => {
 
     expect(refusal).toBeInstanceOf(BureauError);
     expect((refusal as BureauError).code).toBe('NOT_FOUND');
-    expect(bureau.listRuns()).toEqual([]);
+    expect(listHeldTasks(bureau)).toEqual([]);
     expect(await bureau.contexts.list()).toEqual([]);
   });
 
@@ -251,7 +251,7 @@ describe('an agent that is not in the catalog', () => {
     );
 
     expect((refusal as BureauError).code).toBe('NOT_FOUND');
-    expect(bureau.listRuns()).toEqual([]);
+    expect(listHeldTasks(bureau)).toEqual([]);
     expect(await bureau.contexts.get('session-orphan')).toEqual(before);
   });
 });
@@ -273,7 +273,7 @@ describe('a session’s agent', () => {
     );
 
     expect((other as BureauError).code).toBe('BAD_REQUEST');
-    expect(bureau.listRuns().map((run) => run.id)).toEqual([first.id]);
+    expect(listHeldTasks(bureau).map((run) => run.id)).toEqual([first.id]);
   });
 
   it('is never promoted from the default agent to a named one', async () => {
@@ -383,7 +383,7 @@ describe('two runs creating one new session', () => {
     await finish(bureau, (winner as PromiseFulfilledResult<{ id: string }>).value.id);
 
     // Only the winner's run exists, the session is bound to the winner, and the loser never ran.
-    expect(bureau.listRuns()).toHaveLength(1);
+    expect(listHeldTasks(bureau)).toHaveLength(1);
     const stored = await bureau.contexts.get('shared-session');
     expect(stored?.agentName).toBe(winnerName);
     expect(calls[winnerName]).toBe(1);

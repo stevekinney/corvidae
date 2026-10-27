@@ -270,7 +270,7 @@ describe('durable steering across two Bureau processes', () => {
         const watchIndex = intervals.mock.calls.findIndex(([, delay]) => delay === 2_000);
         expect(watchIndex).toBeGreaterThanOrEqual(0);
         const watch = intervals.mock.results[watchIndex]?.value;
-        bureauA.abortRun(second.id);
+        await bureauA.tasks.cancel(second.id);
         for (let attempt = 0; attempt < 200; attempt += 1) {
           if (cleared.mock.calls.some(([handle]) => handle === watch)) break;
           await Bun.sleep(10);

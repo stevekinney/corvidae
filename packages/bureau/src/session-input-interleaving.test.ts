@@ -10,16 +10,15 @@ import {
   admitsSessionInput,
   cancelsSessionInput,
   deferred,
-  logsRunEnded,
   openProcess,
   pollUntil,
   readsMailbox,
   readsSteeringHead,
-  savesSessionAs,
   userTexts,
 } from './test/session-input-fixtures';
 import type { Bureau } from './types';
 import { startTaskFrom } from './test/task-start-request.ts';
+import { listHeldTasks } from './test';
 
 /**
  * COR-1476 — admission against a run's end, with two Bureau processes on one
@@ -97,58 +96,10 @@ describe('admission against a run ending, across two processes (COR-1476)', () =
       expect(outcome.outcome).toBe('admitted');
       if (outcome.outcome === 'admitted') expect(outcome.receipt.state).toBe('canceled');
       await a.bureau.tasks.wait(run.id);
-      expect(a.bureau.listRuns()).toHaveLength(1);
-      expect(b.bureau.listRuns()).toHaveLength(0);
+      expect(listHeldTasks(a.bureau)).toHaveLength(1);
+      expect(listHeldTasks(b.bureau)).toHaveLength(0);
     } finally {
       releaseStepZero.resolve();
-      holds.forEach((hold) => hold.release());
-      await b.bureau.dispose();
-      await a.bureau.dispose();
-      b.real[Symbol.dispose]();
-      a.real[Symbol.dispose]();
-    }
-  });
-
-  it("(b) the ending run's mailbox read is held until the admission commits: the submit cancels, the run finds nothing open", async () => {
-    const stepZeroStarted = deferred();
-    const a = await openProcess(path, async () => {
-      stepZeroStarted.resolve();
-      return new Promise<never>(() => {});
-    });
-    const b = await openProcess(path, async () => {
-      throw new Error('process B never generates');
-    });
-    const holds: Array<{ release: () => void }> = [];
-    try {
-      const run = await a.bureau.tasks.start('default', 'First', { principal: 'alice' });
-      await stepZeroStarted.promise;
-
-      // The run is cancelled. Its settlement writes `run-ended` first, and its
-      // mailbox read, which comes after, is held. The session's terminal save
-      // is held too, so the session still reads as running to the submit side.
-      const heldTerminalSave = a.seam.holdWrite(savesSessionAs('aborted'));
-      const heldMailboxRead = a.seam.holdRead(readsMailbox, a.seam.awaitWrite(logsRunEnded));
-      holds.push(heldTerminalSave, heldMailboxRead);
-      const cancelling = a.bureau.cancelDurableRun(run.id);
-      await heldMailboxRead.reached;
-
-      // B admits the input now. Its liveness read folds the run's end and finds
-      // nothing live, so it cancels the input itself.
-      const outcome = await b.bureau.contexts.input(run.contextId, input);
-      expect(outcome.outcome).toBe('admitted');
-      if (outcome.outcome === 'admitted') expect(outcome.receipt.state).toBe('canceled');
-      expect(await mailboxState(a.bureau, a.real, run.contextId)).toBe('cancelled');
-
-      // The run's read proceeds and finds the input already cancelled.
-      heldMailboxRead.release();
-      const cancelled = await cancelling;
-      expect(cancelled.status).toBe('requested');
-      heldTerminalSave.release();
-      await a.bureau.tasks.wait(run.id);
-      expect(await mailboxState(a.bureau, a.real, run.contextId)).toBe('cancelled');
-      expect(a.bureau.listRuns()).toHaveLength(1);
-      expect(b.bureau.listRuns()).toHaveLength(0);
-    } finally {
       holds.forEach((hold) => hold.release());
       await b.bureau.dispose();
       await a.bureau.dispose();

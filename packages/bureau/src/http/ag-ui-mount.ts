@@ -11,7 +11,7 @@
  * | `GET <p>/threads/<threadId>/run`| none            | A stream attached to the thread's most recent root run, while it is live, parked on a human wait, or settled with a tool approval pending. Otherwise a one-event `RUN_NOT_FOUND` stream. | The thread's run is the session's `lastRunId`, attachable while the session says `running` and its durable run is unsettled, or while the session holds an unexpired approval for it. The peer stream (`ag-ui-peer-stream.ts`): `RUN_STARTED`, `MESSAGES_SNAPSHOT`, a `STATE_SNAPSHOT` with the durable run's status, then the run's outcome after a second `MESSAGES_SNAPSHOT`, or its interrupt. No step, tool, or text-delta event. |
  * | `GET <p>/runs/<runId>`          | none            | The same, for that run by native id, or a child run's stream by its own id. | The same, for a run whose durable record exists and whose session (from the durable run's input) says it is attachable. Its owner of record is the one the session recorded for it. |
  * | `GET <p>/threads/<threadId>/messages` | none      | JSON `{ threadId, messages }`: the thread's conversation as AG-UI messages, whether or not a run is going. A thread the caller may not read is a `NotFound` fault, as a missing one is. | The same: it reads only the session. |
- * | `POST <p>/runs/<runId>/cancel`  | none            | JSON `{ runId, status }`; a `NotFound` fault otherwise. | The cancellation is committed to the durable run (`cancelDurableRun`), which publishes `aborted` to the session once: `aborting` when it commits, the settled run's own `completed`, `aborted` or `error` when it had already ended, and `NotFound` for a run with no durable record. |
+ * | `POST <p>/runs/<runId>/cancel`  | none            | JSON `{ runId, status }`; a `NotFound` fault otherwise. | The cancellation goes through `tasks.cancel`, committed to the durable run, which publishes `aborted` to the session once: `aborting` when it commits, the settled run's own `completed`, `aborted` or `error` when it had already ended, and `NotFound` for a run with no durable record. |
  *
  * Every route is authenticated by the handler before the mount sees it, and
  * decides with the owner predicate every catalog operation decides with
@@ -73,6 +73,7 @@ import { AssetNotFoundError } from '../assets/errors.ts';
 import { BureauLedgerConflictError } from '../command-ledger.ts';
 import { BureauError, isDurableRunUnsettled } from '../create-bureau.ts';
 import type { Bureau, BureauReviews, BureauInternals, BureauTasks } from '../types.ts';
+import type { TaskState } from '../task-registry.ts';
 import { managedAssetIdsOf, rowsAddedBy, snapshotMessages } from './ag-ui-messages.ts';
 import { createAgUiLeases, releaseQuietly } from './ag-ui-lease.ts';
 import { settledOutcomeOf } from './ag-ui-peer-stream.ts';
@@ -131,11 +132,16 @@ export const DEFAULT_AG_UI_MAX_STREAM_DURATION_MS = 900_000;
 export const DEFAULT_AG_UI_LIVE_BUFFER_SIZE = 1000;
 export const DEFAULT_AG_UI_KEEP_ALIVE_INTERVAL_MS = 5000;
 const PROTOCOL_VERSION = '1.0';
+/** The task states a task ends in. */
+const SETTLED_TASK_STATES: ReadonlySet<TaskState> = new Set(['completed', 'failed', 'canceled']);
 
 /** What the mount reads from the Bureau. */
 export type AgUiBureau = AgUiStreamBureau &
-  Pick<Bureau, 'abortRun' | 'cancelDurableRun' | 'listRuns' | 'assets'> & {
-    readonly tasks: Pick<BureauTasks, 'receipt' | 'start'>;
+  Pick<Bureau, 'assets'> & {
+    readonly tasks: Pick<
+      BureauTasks,
+      'cancel' | 'detail' | 'get' | 'receipt' | 'start' | 'workflow'
+    >;
   } & { readonly reviews: Pick<BureauReviews, 'get' | 'resolve'> } & {
     readonly internals: Pick<BureauInternals, 'hasDurableEngine' | 'kv'>;
   };
@@ -249,18 +255,18 @@ export function createAgUiMount(
     threadId: string,
     authorized: OwnedSession,
   ): Promise<string | undefined> {
-    const live = bureau
-      .listRuns()
-      .filter(
-        (run) =>
-          run.sessionId === threadId &&
-          (run.status === 'running' || run.status === 'aborting') &&
-          runIsOwnedBy(run, authorized.owner),
-      );
-    const latest = live.at(-1);
-    if (latest !== undefined) return latest.id;
+    // A session runs one task at a time, and starting it records it as the session's last run.
     const lastRunId = authorized.session.metadata['lastRunId'];
     if (typeof lastRunId !== 'string') return undefined;
+    const held = bureau.tasks.detail(lastRunId);
+    if (
+      held !== undefined &&
+      held.sessionId === threadId &&
+      (held.status === 'running' || held.status === 'aborting') &&
+      runIsOwnedBy(held, authorized.owner)
+    ) {
+      return lastRunId;
+    }
     const pending = bureau.reviews
       .list()
       .some((review) => review.runId === lastRunId && review.kind === 'tool-approval');
@@ -470,16 +476,34 @@ export function createAgUiMount(
     if (owner === undefined || !may(principal, owner, 'bureau.tasks:write')) {
       return notFound('run', runId);
     }
-    try {
-      const summary = bureau.abortRun(runId);
-      return json({ runId, status: summary.status }, 200);
-    } catch (error) {
-      if (!(error instanceof BureauError && error.code === 'NOT_FOUND')) throw error;
+    // A run this process holds and has ended answers its own outcome: `completed`, `aborted` or
+    // `error`.
+    const held = bureau.tasks.detail(runId);
+    if (held !== undefined && held.status !== 'running' && held.status !== 'aborting') {
+      return json({ runId, status: held.status }, 200);
     }
-    // Bureau holds no run for a child, so it is cancelled through the topology
-    // that owns it, by the parent it names.
+    const task = await bureau.tasks.get(runId);
+    if (task === undefined) return cancelChild(runId);
+    if (held !== undefined || !SETTLED_TASK_STATES.has(task.status)) {
+      const outcome = await bureau.tasks.cancel(runId);
+      if (outcome.receipt !== 'rejected') return json({ runId, status: 'aborting' }, 200);
+    }
+    // The task had already ended.
+    const ended = bureau.tasks.detail(runId);
+    if (ended !== undefined) return json({ runId, status: ended.status }, 200);
+    const settled = await bureau.tasks.workflow(runId);
+    const outcome =
+      settled === undefined || settled === null ? undefined : settledOutcomeOf(settled);
+    return json({ runId, status: outcome ?? 'error' }, 200);
+  }
+
+  /**
+   * The task registry holds no task for a child, so a child is cancelled through the topology
+   * that owns it, by the parent it names.
+   */
+  async function cancelChild(runId: string): Promise<Response> {
     const child = await bureau.children.locate(runId).catch(() => undefined);
-    if (child === undefined) return cancelDurably(runId);
+    if (child === undefined) return notFound('run', runId);
     const cancelled = await bureau.children.cancel({
       parentRunId: child.parentRunId,
       childRunId: child.childRunId,
@@ -490,29 +514,6 @@ export function createAgUiMount(
     }
     if (cancelled.outcome === 'not-found') return notFound('run', runId);
     return json({ code: 'Conflict', message: cancelled.reason }, 409);
-  }
-
-  /**
-   * A run no process-local handle holds: another process may, so the cancellation is committed
-   * to its durable run, which every process reads, and Bureau publishes it to the session.
-   */
-  async function cancelDurably(runId: string): Promise<Response> {
-    const outcome = await bureau.cancelDurableRun(runId);
-    switch (outcome.status) {
-      case 'requested':
-        return json({ runId, status: 'aborting' }, 200);
-      case 'already-terminal': {
-        const settled = await bureau.tasks.workflow(runId);
-        const ended =
-          settled === undefined || settled === null ? undefined : settledOutcomeOf(settled);
-        // The settled run's own outcome: `completed`, `aborted` or `error`.
-        return json({ runId, status: ended ?? 'error' }, 200);
-      }
-      case 'failed':
-        throw outcome.error;
-      default:
-        return notFound('run', runId);
-    }
   }
 
   async function startRun(

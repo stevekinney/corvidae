@@ -369,7 +369,7 @@ describe('a message that is not a branch point', () => {
     });
     const run = await holding.tasks.start('agent', 'go', { principal: ALICE });
     await entered.promise;
-    holding.abortRun(run.id);
+    await holding.tasks.cancel(run.id);
     await waitForTaskState(holding, run.id);
     await waitForStoredMessage(holding, run.contextId, `${run.id}:step:0`);
 

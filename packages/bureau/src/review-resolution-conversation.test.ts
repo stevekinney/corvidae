@@ -16,7 +16,7 @@ import {
   waitForCondition,
   createAgent,
 } from '@lostgradient/operative';
-import { waitForTaskState } from './test';
+import { listHeldTasks, waitForTaskState } from './test';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it, spyOn } from 'bun:test';
@@ -467,7 +467,7 @@ describe('tasks.start with { continue: true }', () => {
     try {
       const first = await bureau.tasks.start('default', 'Hi');
       await settle(bureau, first.id);
-      const runsBefore = bureau.listRuns().length;
+      const runsBefore = listHeldTasks(bureau).length;
 
       const error = await bureau.tasks
         .start('default', { continue: true }, { contextId: first.contextId })
@@ -478,7 +478,7 @@ describe('tasks.start with { continue: true }', () => {
 
       expect(error).toBeInstanceOf(BureauError);
       expect((error as BureauError).code).toBe('BAD_REQUEST');
-      expect(bureau.listRuns()).toHaveLength(runsBefore);
+      expect(listHeldTasks(bureau)).toHaveLength(runsBefore);
     } finally {
       await bureau.dispose();
     }

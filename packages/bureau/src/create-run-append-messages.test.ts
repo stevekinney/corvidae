@@ -5,7 +5,7 @@
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent } from '@lostgradient/operative';
-import { waitForTaskState } from './test';
+import { listHeldTasks, waitForTaskState } from './test';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
@@ -101,7 +101,7 @@ describe('tasks.start appendMessages', () => {
       );
 
       expect((error as BureauError).code).toBe('BAD_REQUEST');
-      expect(bureau.listRuns()).toHaveLength(0);
+      expect(listHeldTasks(bureau)).toHaveLength(0);
     } finally {
       await bureau.dispose();
     }

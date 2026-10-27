@@ -326,7 +326,7 @@ describe('durable steering across two Bureau processes', () => {
         release?.();
         reads.mockRestore();
       }
-      bureau.abortRun(run.id);
+      await bureau.tasks.cancel(run.id);
       for (let attempt = 0; attempt < 200 && pollTimers().length > before; attempt += 1) {
         await Bun.sleep(10);
       }
@@ -1349,7 +1349,7 @@ describe('durable steering across two Bureau processes', () => {
         await readSteeringLogHead(kv, sessionId, session.incarnation),
         { type: 'run-ended', runId, now: new Date().toISOString() },
       );
-      bureau.abortRun(runId);
+      await bureau.tasks.cancel(runId);
       for (let attempt = 0; attempt < 200; attempt += 1) {
         if (bureau.tasks.detail(runId)?.status !== 'running') break;
         await Bun.sleep(10);

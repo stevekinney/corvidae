@@ -23,6 +23,7 @@ import {
   startRequest,
 } from './ag-ui-fixtures.test-support.ts';
 import { bureauMetadata, readAgUiStream, typesOf } from './ag-ui-stream.test-support.ts';
+import { listHeldTasks } from '../test';
 
 const LOCAL = 'anonymous:local';
 
@@ -518,7 +519,7 @@ describe('media the model does not take', () => {
         );
         expect(first.at(-1)?.event.type).toBe(EventType.RUN_FINISHED);
         await waitForCondition(
-          () => harness.bureau.listRuns().every((run) => run.status !== 'running'),
+          () => listHeldTasks(harness.bureau).every((run) => run.status !== 'running'),
           'the first turn did not settle',
         );
 

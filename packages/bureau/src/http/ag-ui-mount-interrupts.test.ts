@@ -25,6 +25,7 @@ import {
   readAgUiStream,
   typesOf,
 } from './ag-ui-stream.test-support.ts';
+import { listHeldTasks } from '../test';
 
 const SECRET = 'ag-ui-approval-secret';
 
@@ -419,13 +420,13 @@ describe('a thread that is waiting on an answer', () => {
       },
       async ({ handler, bureau }) => {
         await readAgUiStream(await handler(startRequest(runAgentInput())));
-        const runsBefore = bureau.listRuns().length;
+        const runsBefore = listHeldTasks(bureau).length;
 
         const frames = await readAgUiStream(await startAgain(handler));
 
         expect(frames).toHaveLength(1);
         expect(frames[0]!.event).toMatchObject({ type: EventType.RUN_ERROR, code: 'THREAD_BUSY' });
-        expect(bureau.listRuns()).toHaveLength(runsBefore);
+        expect(listHeldTasks(bureau)).toHaveLength(runsBefore);
       },
     );
   });
@@ -435,13 +436,13 @@ describe('a thread that is waiting on an answer', () => {
       { script: [chargeCard], toolbox: approvalToolbox([]) },
       async ({ handler, bureau }) => {
         await readAgUiStream(await handler(startRequest(runAgentInput())));
-        const runsBefore = bureau.listRuns().length;
+        const runsBefore = listHeldTasks(bureau).length;
 
         const frames = await readAgUiStream(await startAgain(handler));
 
         expect(frames).toHaveLength(1);
         expect(frames[0]!.event).toMatchObject({ type: EventType.RUN_ERROR, code: 'THREAD_BUSY' });
-        expect(bureau.listRuns()).toHaveLength(runsBefore);
+        expect(listHeldTasks(bureau)).toHaveLength(runsBefore);
       },
     );
   });

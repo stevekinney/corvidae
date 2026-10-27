@@ -191,11 +191,8 @@ export type BureauHandlerSource = Pick<
   | 'getOwner'
   | 'lifecycle'
   | 'waitForRecovery'
-  | 'abortRun'
-  | 'listRuns'
   | 'subscribeLiveFrames'
   | 'children'
-  | 'cancelDurableRun'
   | 'models'
   | 'workflows'
   | 'goals'
@@ -207,7 +204,15 @@ export type BureauHandlerSource = Pick<
 > & { readonly tasks: Pick<BureauTasks, 'start'> } & {
   readonly tasks: Pick<
     BureauTasks,
-    'detail' | 'snapshot' | 'workflow' | 'wait' | 'events' | 'subscribeEvents' | 'receipt'
+    | 'cancel'
+    | 'detail'
+    | 'get'
+    | 'snapshot'
+    | 'workflow'
+    | 'wait'
+    | 'events'
+    | 'subscribeEvents'
+    | 'receipt'
   >;
 } & {
   readonly reviews: Pick<BureauReviews, 'list' | 'get' | 'resolve' | 'pendingOf'>;

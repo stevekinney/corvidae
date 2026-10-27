@@ -15,6 +15,7 @@ import {
 } from './testing/goal-fixtures.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { AgentDefinitions } from './agent-catalog';
+import { listHeldTasks } from './test';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 const NOT_TEXT = [
@@ -59,7 +60,7 @@ describe('a principal that is not text (COR-718)', () => {
 
         expect(plain).toMatchObject({ code: 'BAD_REQUEST' });
         expect(withReceipt).toMatchObject({ code: 'BAD_REQUEST' });
-        expect(bureau.listRuns()).toEqual([]);
+        expect(listHeldTasks(bureau)).toEqual([]);
         expect(await bureau.contexts.get('refused')).toBeUndefined();
       } finally {
         await bureau.dispose();
@@ -171,7 +172,7 @@ describe('a principal in a reserved namespace (COR-718)', () => {
         );
 
         expect(refusal).toMatchObject({ code: 'BAD_REQUEST' });
-        expect(bureau.listRuns()).toEqual([]);
+        expect(listHeldTasks(bureau)).toEqual([]);
         expect(await bureau.contexts.get('reserved')).toBeUndefined();
       } finally {
         await bureau.dispose();
@@ -220,7 +221,7 @@ describe('a principal in a reserved namespace (COR-718)', () => {
     });
     try {
       expect(() => bureau.run('worker', 'work', { principal })).toThrow(/reserved/);
-      expect(bureau.listRuns()).toEqual([]);
+      expect(listHeldTasks(bureau)).toEqual([]);
     } finally {
       await bureau.dispose();
     }

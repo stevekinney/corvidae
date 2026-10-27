@@ -733,8 +733,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
     const runSummary = await harness.bureau.tasks.start('default', 'hello');
     const runId = runSummary.id;
     await invoked;
-    harness.bureau.abortRun(runId);
-
+    await harness.bureau.tasks.cancel(runId);
     try {
       await harness.close();
       throw new Error('expected close() to reject');

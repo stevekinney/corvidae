@@ -8,7 +8,7 @@ import { describe, expect, it } from 'bun:test';
 import { BureauError } from '../../create-bureau.ts';
 import { createMemoryStorageFixture } from '../../test/storage-fixtures';
 import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
-import { waitForCondition } from '../../test';
+import { listHeldTasks, waitForCondition } from '../../test';
 import type { ContextDeletionReport } from '../../types.ts';
 import { type BureauHandlerSource, createBureauHandler } from '../create-bureau-handler.ts';
 import {
@@ -182,7 +182,7 @@ describe('bureau.contexts.delete receipts', () => {
         });
         expect(await opened.bureau.contexts.get(run.contextId)).toBeDefined();
       } finally {
-        opened.bureau.abortRun(run.id);
+        await opened.bureau.tasks.cancel(run.id);
         await shutdown;
       }
     });
@@ -473,7 +473,7 @@ describe('the fence around a context being deleted', () => {
 
       expect(refused).toBeInstanceOf(BureauError);
       expect((refused as BureauError).code).toBe('NOT_FOUND');
-      expect(opened.bureau.listRuns()).toEqual([]);
+      expect(listHeldTasks(opened.bureau)).toEqual([]);
       expect(await opened.bureau.contexts.get('overtaken')).toBeUndefined();
       const tasks = await opened.bureau.internals.taskRegistry.enumerate({ limit: 50, offset: 0 });
       expect(tasks.tasks).toEqual([]);
@@ -597,7 +597,7 @@ describe('a context id that is reused while a request for it is in flight', () =
     await withContextReusedAfterTheFirstRead(async ({ opened, contextId, recreate, bobsRun }) => {
       await waitForCondition(async () => {
         const opening = await opened.bureau.internals.taskRegistry.get(
-          opened.bureau.listRuns()[0]!.id,
+          listHeldTasks(opened.bureau)[0]!.id,
         );
         return opening?.status !== 'working';
       }, 'alice’s opening has finished');

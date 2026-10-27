@@ -44,6 +44,7 @@ import {
 import type { Bureau, BureauDiagnostic } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 import { type TaskStartRequest, startTaskFrom } from './test/task-start-request.ts';
+import { listHeldTasks } from './test';
 
 const REQUEST: TaskStartRequest = {
   agentName: 'default',
@@ -402,7 +403,7 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
         receipt: retry.receipt,
       });
       expect(await durableRunIds(bureauB)).toEqual([]);
-      expect(bureauB.listRuns()).toEqual([]);
+      expect(listHeldTasks(bureauB)).toEqual([]);
       expect(generateB.calls()).toBe(0);
       expect(await ledger.read(IDENTITY)).toEqual(pending);
     });
@@ -435,7 +436,7 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
       expect(retry).toMatchObject({ id: runId, receipt });
       expect(bureauB.tasks.detail(runId)?.status).toBe('running');
       expect(await durableRunIds(bureauB)).toEqual([runId]);
-      expect(bureauB.listRuns().map((run) => run.id)).toEqual([runId]);
+      expect(listHeldTasks(bureauB).map((run) => run.id)).toEqual([runId]);
       // The retry recorded the receipt, so it no longer depends on when a
       // retry happens to arrive.
       expect(await ledger.read(IDENTITY)).toMatchObject({
@@ -508,7 +509,7 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
       expect(retry.receipt).toEqual(unacknowledged.receipt);
       expect(retry.receipt).toEqual(completed.result.receipt);
       expect(await durableRunIds(bureauB)).toEqual([unacknowledged.id]);
-      expect(bureauB.listRuns().map((run) => run.id)).toEqual([unacknowledged.id]);
+      expect(listHeldTasks(bureauB).map((run) => run.id)).toEqual([unacknowledged.id]);
       expect(await ledger.read(IDENTITY)).toEqual(completed);
     });
   });
@@ -523,7 +524,7 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
       );
       const bureauA = await boot(crash.storage, heldGenerate().generate);
       const created = await startTaskFrom(bureauA, REQUEST);
-      bureauA.abortRun(created.id);
+      await bureauA.tasks.cancel(created.id);
       expect(
         await pollUntil(
           async () => crash.crashed() && (await durableStatus(bureauA, created.id)) === 'cancelled',

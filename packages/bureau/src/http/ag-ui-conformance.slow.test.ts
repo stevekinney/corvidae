@@ -46,6 +46,7 @@ import {
   parseAgUiFrames,
   type ReceivedFrame,
 } from './ag-ui-stream.test-support.ts';
+import { listHeldTasks } from '../test';
 
 // ---------------------------------------------------------------------------
 // Serving, observing, and driving
@@ -461,7 +462,7 @@ describe('attach', () => {
         const starterObserver = observed();
         const starting = agentFor(served, starterObserver).runAgent({ runId: 'run-a' });
         await harness.generate.reached('hold');
-        const nativeRunId = harness.bureau.listRuns()[0]!.id;
+        const nativeRunId = listHeldTasks(harness.bureau)[0]!.id;
 
         const attaching = follow(pipeline(`${served.base}/ag-ui/threads/thread-1/run`));
         await attaching.opened;
@@ -506,7 +507,7 @@ describe('reconnect', () => {
           body: JSON.stringify(runAgentInput()),
         });
         await harness.generate.reached('hold');
-        const nativeRunId = harness.bureau.listRuns()[0]!.id;
+        const nativeRunId = listHeldTasks(harness.bureau)[0]!.id;
 
         await runtime.advance(60_000);
         const closed = parseAgUiFrames(await textOf(first));
@@ -542,7 +543,7 @@ describe('cancel', () => {
           () => undefined,
         );
         await harness.generate.reached('hold');
-        const nativeRunId = harness.bureau.listRuns()[0]!.id;
+        const nativeRunId = listHeldTasks(harness.bureau)[0]!.id;
 
         agent.abortRun();
         await starting;
@@ -768,7 +769,7 @@ describe('slow consumer', () => {
           }),
         );
         await harness.generate.reached('hold');
-        const runId = harness.bureau.listRuns()[0]!.id;
+        const runId = listHeldTasks(harness.bureau)[0]!.id;
         // Opened in process: a socket's buffers would hide a reader that never reads.
         const stalled = await harness.handler(
           new Request(`http://localhost/ag-ui/runs/${runId}`, {
@@ -876,9 +877,9 @@ describe('cleanup', () => {
         );
         await harness.generate.reached('hold');
         await subscribed.promise;
-        const abandonedRunId = harness.bureau
-          .listRuns()
-          .find((run) => run.sessionId === 'thread-2')!.id;
+        const abandonedRunId = listHeldTasks(harness.bureau).find(
+          (run) => run.sessionId === 'thread-2',
+        )!.id;
         expect(frameListeners).toBe(1);
         abandoned.abortRun();
         await aborted;

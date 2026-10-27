@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { createBureau } from './create-bureau';
 import type { Bureau, BureauOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { listHeldTasks } from './test';
 
 /**
  * COR-1627: a run that stops at its step limit is a failure on every Bureau surface. Its run
@@ -78,8 +79,8 @@ describe.each(EXECUTIONS)('a run that stops at its step limit, %s (COR-1627)', (
     const detail = bureau.tasks.detail(run.id);
     expect(detail?.status).toBe('error');
     expect(detail?.finishReason).toBe('maximum-steps');
-    expect(bureau.listRuns()[0]?.status).toBe('error');
-    expect(bureau.listRuns()[0]?.id).toBe(run.id);
+    expect(listHeldTasks(bureau)[0]?.status).toBe('error');
+    expect(listHeldTasks(bureau)[0]?.id).toBe(run.id);
   });
 
   it('reads error in the session’s last run, with the step-limit error', async () => {

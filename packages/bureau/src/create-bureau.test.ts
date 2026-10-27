@@ -124,7 +124,7 @@ import {
   createRuntimeComposition,
   createWakeupContext,
 } from './runtime-composition';
-import { waitForCondition, waitForRunState, waitForTaskState } from './test';
+import { listHeldTasks, waitForCondition, waitForRunState, waitForTaskState } from './test';
 import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 import { type Bureau, type BureauContexts, type BureauDiagnostic, type ServerFrame } from './types';
 import { advancingTurn, withAdvancingClock } from './testing/advancing-turn.test-support';
@@ -534,6 +534,24 @@ describe('create-bureau helper coverage', () => {
     expect(context.pendingHumanWait).toBe(pendingWait);
   });
 });
+
+/**
+ * Records a task for a run registered on the store by hand, so `tasks.cancel` reaches it as it
+ * reaches a run `tasks.start` began.
+ */
+async function admitHandRegisteredRun(
+  bureau: { readonly internals: Pick<Bureau['internals'], 'taskRegistry'> },
+  runId: string,
+): Promise<void> {
+  await bureau.internals.taskRegistry.recordAdmission({
+    taskId: runId,
+    contextId: `hand-registered:${runId}`,
+    incarnation: '',
+    agentName: null,
+    owner: 'anonymous:local',
+    message: undefined,
+  });
+}
 
 describe('createBureau', () => {
   it('does not defer recovery for terminal sessions with transport authority', () => {
@@ -3526,7 +3544,7 @@ describe('createBureau', () => {
 
       try {
         await pollUntil(() => bureauB.tasks.detail(run.id)?.status === 'running');
-        bureauB.abortRun(run.id);
+        await bureauB.tasks.cancel(run.id);
         await pollUntil(async () => {
           const current = await bureauB.contexts.get(run.contextId);
           return current?.metadata['lastRunStatus'] === 'aborted';
@@ -3761,7 +3779,7 @@ describe('createBureau', () => {
 
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).message).toBe('persistence failed');
-    expect(bureau.listRuns()).toHaveLength(0);
+    expect(listHeldTasks(bureau)).toHaveLength(0);
   });
 
   it('persists error session metadata when runs finish with an error', async () => {
@@ -3880,8 +3898,8 @@ describe('createBureau', () => {
     const run = await bureau.tasks.start('default', 'Hello');
     await waitForRunCompletion(bureau, run.id);
 
-    const allRuns = bureau.listRuns();
-    const completedRuns = bureau.listRuns('completed');
+    const allRuns = listHeldTasks(bureau);
+    const completedRuns = listHeldTasks(bureau, 'completed');
 
     expect(allRuns.length).toBeGreaterThanOrEqual(1);
     expect(Array.isArray(completedRuns)).toBe(true);
@@ -3897,7 +3915,7 @@ describe('createBureau', () => {
     const run = await bureau.tasks.start('default', 'Hello');
     await waitForRunCompletion(bureau, run.id);
 
-    const summary = bureau.listRuns().find((entry) => entry.id === run.id);
+    const summary = listHeldTasks(bureau).find((entry) => entry.id === run.id);
     const detail = bureau.tasks.detail(run.id);
 
     expect(summary?.sessionId).toBe(run.contextId);
@@ -3939,8 +3957,8 @@ describe('createBureau', () => {
 
     const run = await bureau.tasks.start('default', 'Hello');
 
-    const aborted = bureau.abortRun(run.id);
-    expect(aborted.status).toBe('aborting');
+    const aborted = await bureau.tasks.cancel(run.id);
+    expect(aborted.receipt).toBe('cancel-requested');
 
     // `getRun`/`listRuns` deliberately keep reporting the run's real,
     // unmodified status (still `'running'` — the run has not actually
@@ -3948,7 +3966,7 @@ describe('createBureau', () => {
     // widely used "`status !== 'running'` means settled" idiom (e.g.
     // `waitForRunState`) is never falsely satisfied before teardown starts.
     expect(bureau.tasks.detail(run.id)?.status).toBe('running');
-    expect(bureau.listRuns().find((entry) => entry.id === run.id)?.status).toBe('running');
+    expect(listHeldTasks(bureau).find((entry) => entry.id === run.id)?.status).toBe('running');
 
     await pollUntil(() => bureau.tasks.detail(run.id)?.status === 'aborted');
     expect(bureau.tasks.detail(run.id)?.status).toBe('aborted');
@@ -3972,8 +3990,8 @@ describe('createBureau', () => {
     expect(bureau.internals.abortingTasks()).toEqual([]);
 
     const expectedSince = runtime.clock.now();
-    const aborted = bureau.abortRun(run.id);
-    expect(aborted.status).toBe('aborting');
+    const aborted = await bureau.tasks.cancel(run.id);
+    expect(aborted.receipt).toBe('cancel-requested');
 
     const abortingRuns = bureau.internals.abortingTasks();
     expect(abortingRuns).toHaveLength(1);
@@ -4012,8 +4030,7 @@ describe('createBureau', () => {
     });
 
     const run = await bureau.tasks.start('default', 'Hello');
-    bureau.abortRun(run.id);
-
+    await bureau.tasks.cancel(run.id);
     let caughtWindow = false;
     for (let i = 0; i < 200; i++) {
       const status = bureau.tasks.detail(run.id)?.status;
@@ -4031,8 +4048,7 @@ describe('createBureau', () => {
     // The repeat call returns the run's current (already non-running)
     // summary, matching `abortRun`'s existing idempotency contract — but it
     // must leave the still-pending `abortingRunIds` entry alone.
-    const repeat = bureau.abortRun(run.id);
-    expect(repeat.status).not.toBe('aborting');
+    await bureau.tasks.cancel(run.id);
     expect(bureau.internals.abortingTasks().map((entry) => entry.runId)).toContain(run.id);
 
     // It clears only once `closed()` genuinely settles.
@@ -4044,7 +4060,7 @@ describe('createBureau', () => {
     bureau.dispose();
   });
 
-  it('abortRun clears abortingRunIds once the closed() continuation genuinely settles, with no repeat call (AB-369)', async () => {
+  it('tasks.cancel clears abortingRunIds once the closed() continuation genuinely settles, with no repeat call (AB-369)', async () => {
     const { generate } = createBlockingGenerate();
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
@@ -4053,7 +4069,7 @@ describe('createBureau', () => {
     });
 
     const run = await bureau.tasks.start('default', 'Hello');
-    bureau.abortRun(run.id);
+    await bureau.tasks.cancel(run.id);
     expect(bureau.internals.abortingTasks().map((entry) => entry.runId)).toContain(run.id);
 
     await pollUntil(
@@ -4064,7 +4080,7 @@ describe('createBureau', () => {
     bureau.dispose();
   });
 
-  it('abortRun is idempotent: a second call on the same still-running run does not throw and reports aborting or later (AB-205)', async () => {
+  it('tasks.cancel is idempotent: a second call on the same still-running run does not throw and reports aborting or later (AB-205)', async () => {
     const generate: GenerateFunction = () => new Promise(() => {});
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
@@ -4074,18 +4090,18 @@ describe('createBureau', () => {
 
     const run = await bureau.tasks.start('default', 'Hello');
 
-    const first = bureau.abortRun(run.id);
-    const second = bureau.abortRun(run.id);
+    const first = await bureau.tasks.cancel(run.id);
+    const second = await bureau.tasks.cancel(run.id);
 
-    expect(first.status).toBe('aborting');
-    expect(second.status).toBe('aborting');
+    expect(first.receipt).toBe('cancel-requested');
+    expect(second.receipt).not.toBe('rejected');
 
     await pollUntil(() => bureau.tasks.detail(run.id)?.status === 'aborted');
 
     bureau.dispose();
   });
 
-  it('abortRun is idempotent against a terminal run: returns the current summary instead of throwing CONFLICT (AB-205)', async () => {
+  it('tasks.cancel is idempotent against a terminal run: returns the current summary instead of throwing CONFLICT (AB-205)', async () => {
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({
@@ -4103,13 +4119,13 @@ describe('createBureau', () => {
 
     // A repeat call after the run finished on its own no longer throws
     // `CONFLICT` — it returns the run's current (real, terminal) summary.
-    const repeat = bureau.abortRun(run.id);
-    expect(repeat.status).toBe('completed');
+    const repeat = await bureau.tasks.cancel(run.id);
+    expect(repeat.receipt).toBe('rejected');
 
     bureau.dispose();
   });
 
-  it('abortRun is idempotent for a run that was already aborted: a second call after teardown returns the aborted summary (AB-205)', async () => {
+  it('tasks.cancel is idempotent for a run that was already aborted: a second call after teardown returns the aborted summary (AB-205)', async () => {
     const generate: GenerateFunction = () => new Promise(() => {});
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
@@ -4118,16 +4134,16 @@ describe('createBureau', () => {
     });
 
     const run = await bureau.tasks.start('default', 'Hello');
-    bureau.abortRun(run.id);
+    await bureau.tasks.cancel(run.id);
     await pollUntil(() => bureau.tasks.detail(run.id)?.status === 'aborted');
 
-    const repeat = bureau.abortRun(run.id);
-    expect(repeat.status).toBe('aborted');
+    const repeat = await bureau.tasks.cancel(run.id);
+    expect(repeat.receipt).not.toBe('rejected');
 
     bureau.dispose();
   });
 
-  it('abortRun called twice synchronously while still running revokes a pending signed tool-approval review exactly once (AB-353)', async () => {
+  it('tasks.cancel called twice synchronously while still running revokes a pending signed tool-approval review exactly once (AB-353)', async () => {
     // `abortRun`'s `abortingRunIds` admission set exists specifically to
     // guard against re-entering this block (and re-calling
     // `revokePendingApprovalsForRun`) on a same-run repeat call while still
@@ -4160,6 +4176,7 @@ describe('createBureau', () => {
     try {
       const { activeRun, emitter } = createParkedActiveRun();
       const runId = bureau.internals.store.register(activeRun, 'run-abort-double-revoke');
+      await admitHandRegisteredRun(bureau, runId);
       // A run registered by hand has no composed toolbox; this one is the run's own.
       scheduledFireReviewStateOf(bureau).runToolboxesByRunId.set(runId, toolbox);
       const approvalReviewId = `approval:${runId}:call-double-revoke`;
@@ -4238,9 +4255,8 @@ describe('createBureau', () => {
       // `await` between them, so both reach `abortRun`'s guard before
       // either's detached `revokePendingApprovalsForRun` continuation has
       // resolved.
-      bureau.abortRun(runId);
-      bureau.abortRun(runId);
-
+      await bureau.tasks.cancel(runId);
+      await bureau.tasks.cancel(runId);
       await pollUntil(() => bureau.reviews.list().length === 0);
 
       expect(revokeCalls).toBe(1);
@@ -4259,81 +4275,7 @@ describe('createBureau', () => {
     }
   });
 
-  describe('cancelDurableRun (AB-205)', () => {
-    it('resolves unsupported-capability when no durable engine is composed', async () => {
-      const bureau = await createBureau<AgentDefinitions>({
-        agents: {
-          default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
-        },
-      });
-
-      const outcome = await bureau.cancelDurableRun('anything');
-      expect(outcome).toEqual({ status: 'unsupported-capability' });
-
-      bureau.dispose();
-    });
-
-    it('resolves not-found against an unknown runId', async () => {
-      const bureau = await createBureau<AgentDefinitions>({
-        agents: {
-          default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
-        },
-        storage: { type: 'memory' },
-        durable: true,
-      });
-
-      const outcome = await bureau.cancelDurableRun('does-not-exist');
-      expect(outcome).toEqual({ status: 'not-found' });
-
-      bureau.dispose();
-    });
-
-    it('resolves already-terminal against an already-completed durable workflow', async () => {
-      const bureau = await createBureau<AgentDefinitions>({
-        agents: {
-          default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
-        },
-        storage: { type: 'memory' },
-        durable: true,
-      });
-
-      const run = await bureau.tasks.start('default', 'Hello');
-      await pollUntil(async () => {
-        const state = await bureau.tasks.workflow(run.id);
-        return state?.status === 'completed';
-      });
-
-      const outcome = await bureau.cancelDurableRun(run.id);
-      expect(outcome).toEqual({ status: 'already-terminal' });
-
-      bureau.dispose();
-    });
-
-    it('resolves requested against a running durable workflow only after the post-cancel re-read observes cancelled', async () => {
-      const generate: GenerateFunction = () => new Promise(() => {});
-      const bureau = await createBureau<AgentDefinitions>({
-        agents: {
-          default: createAgent({ generate, toolbox: createEmptyToolbox() }),
-        },
-        storage: { type: 'memory' },
-        durable: true,
-      });
-
-      const run = await bureau.tasks.start('default', 'Hello');
-      await pollUntil(async () => {
-        const state = await bureau.tasks.workflow(run.id);
-        return state?.status === 'running';
-      });
-
-      const outcome = await bureau.cancelDurableRun(run.id);
-      expect(outcome).toEqual({ status: 'requested' });
-
-      const state = await bureau.tasks.workflow(run.id);
-      expect(state?.status).toBe('cancelled');
-
-      bureau.dispose();
-    });
-
+  describe('the durable cancel resolution (AB-205)', () => {
     describe('resolveCancelDurableRun (dependency-injected resolution algorithm)', () => {
       it('resolves already-terminal WITHOUT calling cancel when the workflow is already outside the forcibly-terminable statuses', async () => {
         let cancelCalls = 0;
@@ -4483,8 +4425,7 @@ describe('createBureau', () => {
     });
 
     const run = await bureau.tasks.start('default', 'Hello');
-    bureau.abortRun(run.id);
-
+    await bureau.tasks.cancel(run.id);
     // The session write happens after the run.aborted event settles; poll until
     // the status leaves `running`.
     await pollUntil(async () => {
@@ -4545,8 +4486,7 @@ describe('createBureau', () => {
 
       // engine.cancel() terminalizes the workflow; its result rejects and the
       // abort RunResult is reconstructed from the checkpoint, carrying step 0.
-      bureau.abortRun(run.id);
-
+      await bureau.tasks.cancel(run.id);
       await pollUntil(async () => {
         const current = await bureau.contexts.get(run.contextId);
         return current?.metadata['lastRunStatus'] === 'aborted';
@@ -4807,7 +4747,7 @@ describe('createBureau', () => {
       expect(detail?.finishReason).toBe('maximum-steps');
       // COR-1627: a run that stops at its step limit is a failure in its record.
       expect(detail?.status).toBe('error');
-      expect(bureau.listRuns()[0]?.status).toBe('error');
+      expect(listHeldTasks(bureau)[0]?.status).toBe('error');
       expect(detail?.steps).toBe(DEFAULT_MAXIMUM_STEPS);
       // `run.started`/`step.started` carry the live Conversation controller;
       // serializing it put the controller's internals (and its bound methods)
@@ -7546,7 +7486,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       expect(pause.outcome).toBe('accepted');
       releaseTool!();
 
-      bureau.abortRun(run.id);
+      await bureau.tasks.cancel(run.id);
       await waitForRunCompletion(bureau, run.id);
 
       const session = await bureau.contexts.get(run.contextId);
@@ -7950,8 +7890,7 @@ describe('createBureau session signal/update/query with terminal sessions', () =
     });
 
     const run = await bureau.tasks.start('default', 'Abort me');
-    bureau.abortRun(run.id);
-
+    await bureau.tasks.cancel(run.id);
     // Wait for the abort to propagate and the session status to update.
     await pollUntil(async () => {
       const current = await bureau.contexts.get(run.contextId);
@@ -7997,7 +7936,7 @@ describe('createBureau session signal authority revalidation', () => {
         );
       expect(error).toBeInstanceOf(BureauError);
       expect((error as BureauError).code).toBe('CONFLICT');
-      expect(bureau.listRuns()).toHaveLength(0);
+      expect(listHeldTasks(bureau)).toHaveLength(0);
     } finally {
       await bureau.dispose();
     }
@@ -8044,7 +7983,7 @@ describe('createBureau session signal authority revalidation', () => {
       expect(error).toBeInstanceOf(BureauError);
       expect((error as BureauError).code).toBe('CONFLICT');
       expect(flowControlCalls).toBe(0);
-      expect(bureau.listRuns()).toHaveLength(0);
+      expect(listHeldTasks(bureau)).toHaveLength(0);
       expect(await bureau.contexts.get('stale-authority-session')).toBeUndefined();
     } finally {
       await bureau.dispose();
@@ -8089,7 +8028,7 @@ describe('createBureau session signal authority revalidation', () => {
 
     expect(error).toBeInstanceOf(BureauError);
     expect((error as BureauError).code).toBe('CONFLICT');
-    bureau.abortRun(run.id);
+    await bureau.tasks.cancel(run.id);
     bureau.dispose();
   });
 });
@@ -11359,7 +11298,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
     }
   });
 
-  it('abortRun transitions every still-pending review (both kinds) for the run to canceled', async () => {
+  it('tasks.cancel transitions every still-pending review (both kinds) for the run to canceled', async () => {
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
@@ -11370,6 +11309,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
     try {
       const { activeRun, emitter } = createParkedActiveRun();
       const runId = bureau.internals.store.register(activeRun, 'run-abort-both-kinds');
+      await admitHandRegisteredRun(bureau, runId);
       emitter.dispatchEvent(
         new StepCompletedEvent({
           parts: [],
@@ -11431,8 +11371,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
           .toSorted(),
       ).toEqual([approvalReviewId, humanWaitReviewId].toSorted());
 
-      bureau.abortRun(runId);
-
+      await bureau.tasks.cancel(runId);
       await pollUntil(() => bureau.reviews.list().length === 0);
 
       const resolvedApproval = await bureau.reviews.get(approvalReviewId);
@@ -11501,8 +11440,8 @@ describe('createBureau review lifecycle (AB-46)', () => {
       const [review] = bureau.reviews.list();
       expect(review).toBeDefined();
 
-      const outcome = await bureau.cancelDurableRun(run.id);
-      expect(outcome.status).toBe('requested');
+      const outcome = await bureau.tasks.cancel(run.id);
+      expect(outcome.receipt).toBe('cancel-requested');
 
       await pollUntil(() => bureau.reviews.list().length === 0);
 
@@ -11946,7 +11885,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
     }
   });
 
-  it('abortRun dispatches review.canceled attributed to system:run-abort for both kinds — never review.revoked', async () => {
+  it('tasks.cancel dispatches review.canceled attributed to system:run-abort for both kinds — never review.revoked', async () => {
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
@@ -11963,6 +11902,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
 
       const { activeRun, emitter } = createParkedActiveRun();
       const runId = bureau.internals.store.register(activeRun, 'run-abort-events');
+      await admitHandRegisteredRun(bureau, runId);
       emitter.dispatchEvent(
         new StepCompletedEvent({
           parts: [],
@@ -12018,7 +11958,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
         .find((review) => review.kind === 'human-wait')!.id;
       expect(humanWaitReviewId.startsWith(`human-wait:${runId}:human-response:`)).toBe(true);
 
-      bureau.abortRun(runId);
+      await bureau.tasks.cancel(runId);
       await pollUntil(() => bureau.reviews.list().length === 0);
 
       expect(canceled.map((event) => (event as { reviewId: string }).reviewId).toSorted()).toEqual(
@@ -12233,14 +12173,14 @@ describe('createBureau flow control (AB-13)', () => {
     expect((rejected as BureauError).message).toContain('concurrency');
 
     // Settling one run (abort → run.aborted → flowController.settle) frees its slot.
-    bureau.abortRun(first.id);
+    await bureau.tasks.cancel(first.id);
     await waitForTaskState(bureau, first.id);
 
     const third = await bureau.tasks.start('default', 'three-retry');
     expect(third.id).not.toBe(first.id);
 
-    bureau.abortRun(second.id);
-    bureau.abortRun(third.id);
+    await bureau.tasks.cancel(second.id);
+    await bureau.tasks.cancel(third.id);
     await waitForTaskState(bureau, second.id);
     await waitForTaskState(bureau, third.id);
 
@@ -12270,8 +12210,8 @@ describe('createBureau flow control (AB-13)', () => {
     const rejectedB = await rejectionOf(bureau.tasks.start('agent-b', 'b2'));
     expect(rejectedB).toBeInstanceOf(BureauError);
 
-    bureau.abortRun(runA.id);
-    bureau.abortRun(runB.id);
+    await bureau.tasks.cancel(runA.id);
+    await bureau.tasks.cancel(runB.id);
     await waitForTaskState(bureau, runA.id);
     await waitForTaskState(bureau, runB.id);
 
@@ -12333,7 +12273,7 @@ describe('createBureau flow control (AB-13)', () => {
     });
     expect(independent.id).not.toBe(first.id);
 
-    bureau.abortRun(first.id);
+    await bureau.tasks.cancel(first.id);
     await waitForTaskState(bureau, first.id);
 
     // Once the original settles, a fresh trigger with the same key is admitted.
@@ -12342,8 +12282,8 @@ describe('createBureau flow control (AB-13)', () => {
     });
     expect(afterSettle.id).not.toBe(first.id);
 
-    bureau.abortRun(independent.id);
-    bureau.abortRun(afterSettle.id);
+    await bureau.tasks.cancel(independent.id);
+    await bureau.tasks.cancel(afterSettle.id);
     await waitForTaskState(bureau, independent.id);
     await waitForTaskState(bureau, afterSettle.id);
 
@@ -22592,8 +22532,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
     try {
       // `'not-found'` describes a run this call never genuinely terminated;
       // only `'requested'` proves a committed cancellation.
-      const outcome = await bureau.cancelDurableRun('no-such-run');
-      expect(outcome.status).toBe('not-found');
+      await expect(bureau.tasks.cancel('no-such-run')).rejects.toMatchObject({ code: 'NOT_FOUND' });
       expect(pruneSpy).not.toHaveBeenCalled();
       expect(await cleanupRecordsFor(bureau, 'no-such-run')).toHaveLength(0);
     } finally {
@@ -22668,8 +22607,8 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
         'the run never started',
       );
 
-      const outcome = await bureau.cancelDurableRun(run.id);
-      expect(outcome.status).toBe('requested');
+      const outcome = await bureau.tasks.cancel(run.id);
+      expect(outcome.receipt).toBe('cancel-requested');
       // Release the parked generate so the run's OWN terminal listener also
       // fires — the second trigger for the same run id.
       resolve({ content: 'released', toolCalls: [] });
@@ -23299,7 +23238,7 @@ describe('Bureau shutdown quiescence (COR-690)', () => {
 
     expect(rejection).toBeInstanceOf(Error);
     expect((rejection as { code?: string }).code).toBe('CONFLICT');
-    expect(bureau.listRuns()).toEqual([]);
+    expect(listHeldTasks(bureau)).toEqual([]);
     await shutdownPromise;
   });
 
@@ -23342,7 +23281,7 @@ describe('Bureau shutdown quiescence (COR-690)', () => {
 
     const run = await bureau.tasks.start('default', 'abort me mid-tool');
     await toolStarted;
-    bureau.abortRun(run.id);
+    await bureau.tasks.cancel(run.id);
     expect(await pollUntil(() => bureau.tasks.detail(run.id)?.status === 'aborted')).toBe(true);
     // Remove the run's id-keyed entry the way task retention does, so only
     // the tracked-toolbox set can still lead shutdown to the live callback.

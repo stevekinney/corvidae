@@ -154,7 +154,7 @@ describe('bureau.deployment.get', () => {
         expect(before.result?.['state']).toBe('ready');
         expect(during.result?.['state']).toBe('draining');
       } finally {
-        opened.bureau.abortRun(run.id);
+        await opened.bureau.tasks.cancel(run.id);
         await shutdown;
       }
     } finally {

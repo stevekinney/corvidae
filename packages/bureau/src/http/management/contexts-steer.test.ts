@@ -140,7 +140,7 @@ describe('bureau.contexts.steer admission outcomes', () => {
   it('admits a model override on an idle context', async () => {
     await withBureau(async (opened) => {
       const run = await liveSession(opened);
-      opened.bureau.abortRun(run.id);
+      await opened.bureau.tasks.cancel(run.id);
       await waitForCondition(
         () => opened.bureau.tasks.detail(run.id)?.status !== 'running',
         'run stopped',

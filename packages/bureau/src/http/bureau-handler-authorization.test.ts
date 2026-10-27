@@ -22,7 +22,7 @@ import {
   createCheckValidator,
   hangUntilAborted,
 } from '../testing/goal-fixtures.test-support';
-import { waitForCondition } from '../test';
+import { listHeldTasks, waitForCondition } from '../test';
 import type { Bureau } from '../types.ts';
 import {
   attachRunRequest,
@@ -1139,7 +1139,7 @@ describe('the AG-UI routes owner predicate', () => {
 
   it('refuses a start on a thread the caller does not own, creates nothing, and writes no audit entry', async () => {
     await withAgUiOwners(async ({ harness, alice }) => {
-      const runsBefore = harness.bureau.listRuns().length;
+      const runsBefore = listHeldTasks(harness.bureau).length;
 
       const frames = await readAgUiStream(
         await harness.handler(
@@ -1155,7 +1155,7 @@ describe('the AG-UI routes owner predicate', () => {
       );
 
       expect(frames[0]!.event).toMatchObject({ code: 'THREAD_NOT_FOUND' });
-      expect(harness.bureau.listRuns()).toHaveLength(runsBefore);
+      expect(listHeldTasks(harness.bureau)).toHaveLength(runsBefore);
       // The refused start left no trace in the audit trail, whatever the parked runs wrote since.
       const audit = JSON.stringify(await harness.bureau.internals.auditTrail?.query({}));
       expect(audit).not.toContain('hijack');
@@ -1317,7 +1317,7 @@ describe('what bureau.tasks:write grants on the AG-UI routes', () => {
       );
       const finished = started.at(-1)!.event as { outcome: { interrupts: Array<{ id: string }> } };
       const id = finished.outcome.interrupts[0]!.id;
-      const runsBefore = harness.bureau.listRuns().length;
+      const runsBefore = listHeldTasks(harness.bureau).length;
 
       const refused = await maskedStream(
         harness.handler(
@@ -1348,7 +1348,7 @@ describe('what bureau.tasks:write grants on the AG-UI routes', () => {
       expect(refused).toContain('INTERRUPT_NOT_FOUND');
       expect(charges).toEqual([]);
       expect(harness.bureau.reviews.list()).toHaveLength(1);
-      expect(harness.bureau.listRuns()).toHaveLength(runsBefore);
+      expect(listHeldTasks(harness.bureau)).toHaveLength(runsBefore);
     } finally {
       await harness.dispose();
     }
@@ -1363,7 +1363,7 @@ describe('what bureau.tasks:write grants on the AG-UI routes', () => {
       await readAgUiStream(
         await harness.handler(startRequest(runAgentInput(), agUiCredentials('alice-key'))),
       );
-      const runsBefore = harness.bureau.listRuns().length;
+      const runsBefore = listHeldTasks(harness.bureau).length;
       const start = (key: string) =>
         harness.handler(
           startRequest(
@@ -1381,7 +1381,7 @@ describe('what bureau.tasks:write grants on the AG-UI routes', () => {
 
       expect(refused).toBe(stranger);
       expect(refused).toContain('THREAD_NOT_FOUND');
-      expect(harness.bureau.listRuns()).toHaveLength(runsBefore);
+      expect(listHeldTasks(harness.bureau)).toHaveLength(runsBefore);
       // The refused start left no trace in the audit trail, whatever the parked runs wrote since.
       const audit = JSON.stringify(await harness.bureau.internals.auditTrail?.query({}));
       expect(audit).not.toContain('intruder');
@@ -1444,7 +1444,9 @@ describe('what bureau.tasks:write grants on the AG-UI routes', () => {
       );
       await second.until(EventType.STEP_STARTED);
       await harness.generate.reached('hold');
-      const secondRunId = harness.bureau.listRuns().find((run) => run.sessionId === 'thread-2')!.id;
+      const secondRunId = listHeldTasks(harness.bureau).find(
+        (run) => run.sessionId === 'thread-2',
+      )!.id;
       const cancelled = await harness.handler(
         cancelRequest(secondRunId, agUiCredentials('writer-key')),
       );

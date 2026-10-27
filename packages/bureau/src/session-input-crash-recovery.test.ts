@@ -27,6 +27,7 @@ import {
 } from './session-input-durability';
 import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
 import type { AgentDefinitions } from './agent-catalog';
+import { listHeldTasks } from './test';
 
 const CHILD = join(import.meta.dir, 'test', 'session-input-crash-child.ts');
 
@@ -193,7 +194,7 @@ function cancelledScenario(backend: Backend): ReturnType<typeof settleScenario> 
       try {
         await recovering.waitForRecovery?.();
         expect(generations).toBe(0);
-        expect(recovering.listRuns()).toHaveLength(0);
+        expect(listHeldTasks(recovering)).toHaveLength(0);
       } finally {
         await recovering.dispose();
       }

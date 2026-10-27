@@ -32,6 +32,7 @@ import {
   skillCatalogOnDisk,
   skillsRecorded,
 } from './skill-policy-fixtures.test-support';
+import { listHeldTasks } from './test';
 
 const harness = createScheduleFireHarness();
 
@@ -297,7 +298,7 @@ describe('a durable run that refused a call and recovered (COR-1628)', () => {
 
     expect(replayed[0]).toEqual({ outcome: 'error', code: 'SKILL_TOOL_DENIED', content: REFUSAL });
     expect(executions).toEqual([]);
-    expect(recovered.listRuns().some((candidate) => candidate.id === run.id)).toBe(true);
+    expect(listHeldTasks(recovered).some((candidate) => candidate.id === run.id)).toBe(true);
   });
 });
 

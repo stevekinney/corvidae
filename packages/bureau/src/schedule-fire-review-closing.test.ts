@@ -269,8 +269,8 @@ describe('a canceled human wait gets one canceled record, whichever route cancel
       rpc(handlerOf(bureau), 'bureau.tasks.cancel', { taskId: fireId }, 'alice-key').then(
         () => undefined,
       ),
-    'the durable run': (bureau: Bureau, fireId: string) =>
-      bureau.cancelDurableRun(fireId).then(() => undefined),
+    'tasks.cancel in process': (bureau: Bureau, fireId: string) =>
+      bureau.tasks.cancel(fireId).then(() => undefined),
     'the engine': (bureau: Bureau, fireId: string) =>
       bureau.durableEngine()?.cancel(fireId) ?? Promise.resolve(),
   };

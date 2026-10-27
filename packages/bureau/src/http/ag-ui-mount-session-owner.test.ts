@@ -80,9 +80,23 @@ type Scene = {
   readonly alice: { threadId: string; runId: string; reviewId: string };
   readonly bob: { threadId: string; runId: string };
   readonly bobSession: AgentSession;
-  /** What bob's live run on the thread looks like to `listRuns`. */
+  /** What bob's live run on the thread looks like to `tasks.detail`. */
   readonly bobLiveRun: RunSummary;
 };
+
+/** The Bureau's tasks, with bob's run reading as live on alice's thread. */
+function tasksWithBobLive(scene: Scene): Harness['bureau']['tasks'] {
+  const tasks = scene.harness.bureau.tasks;
+  return {
+    ...tasks,
+    detail: (id: string) => {
+      const detail = tasks.detail(id);
+      return id === scene.bobLiveRun.id && detail !== undefined
+        ? { ...detail, ...scene.bobLiveRun }
+        : detail;
+    },
+  };
+}
 
 /** Alice and bob each own a thread, and each thread has a run parked on a human wait. */
 async function withScene<T>(body: (scene: Scene) => Promise<T>): Promise<T> {
@@ -126,7 +140,7 @@ describe('a thread whose session is another owner’s than the one authorized', 
       const handler = aliceHandlerOver({
         ...scene.harness.bureau,
         contexts: { ...scene.harness.bureau.contexts, get: async () => scene.bobSession },
-        listRuns: () => [scene.bobLiveRun],
+        tasks: tasksWithBobLive(scene),
       });
 
       const response = await handler(
@@ -150,7 +164,7 @@ describe('a thread whose session is another owner’s than the one authorized', 
       const handler = aliceHandlerOver({
         ...scene.harness.bureau,
         contexts: { ...scene.harness.bureau.contexts, get: async () => scene.bobSession },
-        listRuns: () => [scene.bobLiveRun],
+        tasks: tasksWithBobLive(scene),
       });
 
       const response = await handler(attachThreadRequest(ALICE_THREAD));
@@ -169,7 +183,7 @@ describe('a thread whose session is another owner’s than the one authorized', 
       const handler = aliceHandlerOver({
         ...scene.harness.bureau,
         contexts: { ...scene.harness.bureau.contexts, get: async () => scene.bobSession },
-        listRuns: () => [scene.bobLiveRun],
+        tasks: tasksWithBobLive(scene),
       });
       // Another start holds the thread: a caller who may not use the thread must not learn that.
       const leases = createAgUiLeases({ kv: scene.harness.bureau.internals.kv!, runtime });
@@ -202,7 +216,7 @@ describe('a thread whose session is another owner’s than the one authorized', 
           ...scene.harness.bureau.contexts,
           get: async () => (reads++ === 0 ? undefined : scene.bobSession),
         },
-        listRuns: () => [scene.bobLiveRun],
+        tasks: tasksWithBobLive(scene),
       });
 
       const response = await handler(
@@ -223,7 +237,7 @@ describe('a thread whose session is another owner’s than the one authorized', 
       const handler = aliceHandlerOver({
         ...scene.harness.bureau,
         contexts: { ...scene.harness.bureau.contexts, get: async () => scene.bobSession },
-        listRuns: () => [scene.bobLiveRun],
+        tasks: tasksWithBobLive(scene),
       });
 
       const response = await handler(
@@ -320,10 +334,19 @@ describe('a run stream over a session or run that is another owner’s than the 
 describe('a live run of another owner on an authorized thread', () => {
   it('is not attached to by thread', async () => {
     await withScene(async (scene) => {
-      // The session is alice's own, and the only live run `listRuns` names on it is bob's.
+      // The session is alice's own, and the live run it last started is bob's.
+      const aliceSession = await scene.harness.bureau.contexts.get(ALICE_THREAD);
+      if (aliceSession === undefined) throw new Error('alice has no session');
       const handler = aliceHandlerOver({
         ...scene.harness.bureau,
-        listRuns: () => [scene.bobLiveRun],
+        contexts: {
+          ...scene.harness.bureau.contexts,
+          get: async () => ({
+            ...aliceSession,
+            metadata: { ...aliceSession.metadata, lastRunId: scene.bob.runId },
+          }),
+        },
+        tasks: tasksWithBobLive(scene),
       });
 
       const response = await handler(attachThreadRequest(ALICE_THREAD));

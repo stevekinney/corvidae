@@ -2,7 +2,7 @@ import { AgentCard, verifyAgentCardSignature } from '@a2a-js/sdk';
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
-import { waitForCondition } from '../test';
+import { listHeldTasks, waitForCondition } from '../test';
 import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   approvalToolbox,
@@ -78,7 +78,7 @@ describe('the A2A Agent Card', () => {
         const unknown = await send(opened, 'nobody', { message: message('hello') });
 
         expect([card.status, sent.status, unknown.status]).toEqual([404, 404, 404]);
-        expect(opened.bureau.listRuns()).toEqual([]);
+        expect(listHeldTasks(opened.bureau)).toEqual([]);
       },
       { publish: ['asker'] },
     );
@@ -207,14 +207,14 @@ describe('SendMessage creating a task', () => {
         { message: message('mine', { contextId: 'ctx-bob' }) },
         { key: 'bob-key' },
       );
-      const runs = opened.bureau.listRuns().length;
+      const runs = listHeldTasks(opened.bureau).length;
 
       const stolen = await send(opened, 'asker', {
         message: message('yours', { contextId: 'ctx-bob' }),
       });
 
       expect(stolen.body.error.code).toBe(-32001);
-      expect(opened.bureau.listRuns()).toHaveLength(runs);
+      expect(listHeldTasks(opened.bureau)).toHaveLength(runs);
     });
   });
 
@@ -226,7 +226,7 @@ describe('SendMessage creating a task', () => {
     await withA2A({ asker: answering('done') }, async (opened) => {
       const refused = await send(opened, 'asker', { message: bad });
       expect(refused.body.error.code).toBe(-32602);
-      expect(opened.bureau.listRuns()).toEqual([]);
+      expect(listHeldTasks(opened.bureau)).toEqual([]);
     });
   });
 
@@ -237,7 +237,7 @@ describe('SendMessage creating a task', () => {
         message: message('x'),
       });
       expect(refused.body.error.code).toBe(-32602);
-      expect(opened.bureau.listRuns()).toEqual([]);
+      expect(listHeldTasks(opened.bureau)).toEqual([]);
     });
   });
 
@@ -257,7 +257,7 @@ describe('SendMessage creating a task', () => {
         configuration: { taskPushNotificationConfig: { url: 'https://example.test/hook' } },
       });
       expect(refused.body.error.code).toBe(-32003);
-      expect(opened.bureau.listRuns()).toEqual([]);
+      expect(listHeldTasks(opened.bureau)).toEqual([]);
     });
   });
 
@@ -298,7 +298,7 @@ describe('A2A send idempotency', () => {
         { version: '1.0.1' },
       );
       expect(patchVersion.id).toBe(first.id);
-      expect(opened.bureau.listRuns()).toHaveLength(1);
+      expect(listHeldTasks(opened.bureau)).toHaveLength(1);
     });
   });
 
@@ -326,7 +326,7 @@ describe('A2A send idempotency', () => {
       });
 
       expect(conflict.body.error.code).toBe(-32602);
-      expect(opened.bureau.listRuns()).toHaveLength(1);
+      expect(listHeldTasks(opened.bureau)).toHaveLength(1);
       const retried = await sendForTask(opened, 'asker', { message: original });
       expect(retried.id).toBe(first.id);
     });
@@ -339,7 +339,7 @@ describe('A2A send idempotency', () => {
       const written = await sendForTask(opened, 'writer', { message: shared });
 
       expect(asked.id).not.toBe(written.id);
-      expect(opened.bureau.listRuns()).toHaveLength(2);
+      expect(listHeldTasks(opened.bureau)).toHaveLength(2);
     });
   });
 });
@@ -922,7 +922,7 @@ describe('two identical sends at once', () => {
       ]);
 
       expect(first.id).toBe(second.id);
-      expect(opened.bureau.listRuns()).toHaveLength(1);
+      expect(listHeldTasks(opened.bureau)).toHaveLength(1);
     });
   });
 });
@@ -984,7 +984,7 @@ describe('the first review pass', () => {
       });
 
       expect(refused.body.error.code).toBe(-32005);
-      expect(opened.bureau.listRuns()).toEqual([]);
+      expect(listHeldTasks(opened.bureau)).toEqual([]);
     });
   });
 
@@ -1009,7 +1009,7 @@ describe('the first review pass', () => {
           }),
         );
         expect(oversized.status).toBe(413);
-        expect(opened.bureau.listRuns()).toEqual([]);
+        expect(listHeldTasks(opened.bureau)).toEqual([]);
       },
       { handlerOptions: { maxRequestBodyBytes: 1024 } },
     );
@@ -1042,7 +1042,7 @@ describe('the second review pass', () => {
       const slash = await post('/a2a/asker/');
 
       expect([extra.status, malformed.status, slash.status]).toEqual([404, 404, 200]);
-      expect(opened.bureau.listRuns()).toHaveLength(1);
+      expect(listHeldTasks(opened.bureau)).toHaveLength(1);
     });
   });
 
@@ -1076,7 +1076,10 @@ describe('the second review pass', () => {
     await withA2A({ asker: parkingUntilAborted }, async (opened) => {
       const same = message('long');
       const blocking = send(opened, 'asker', { message: same });
-      await waitForCondition(() => opened.bureau.listRuns().length === 1, 'the run never started');
+      await waitForCondition(
+        () => listHeldTasks(opened.bureau).length === 1,
+        'the run never started',
+      );
 
       const immediate = await send(opened, 'asker', {
         message: same,

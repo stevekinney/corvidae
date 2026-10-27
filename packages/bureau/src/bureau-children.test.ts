@@ -261,8 +261,7 @@ describe('bureau.children over an ephemeral bureau', () => {
       });
       expect([cascade.outcome, detach.outcome]).toEqual(['started', 'started']);
 
-      bureau.abortRun(parent.id);
-
+      await bureau.tasks.cancel(parent.id);
       expect(
         await bureau.children.wait({ parentRunId: parent.id, childRunId: 'cascade-child' }),
       ).toMatchObject({
@@ -288,11 +287,11 @@ describe('bureau.children over an ephemeral bureau', () => {
     }
   });
 
-  it('refuses a child under a tasks.start parent that abortRun has not finished tearing down', async () => {
+  it('refuses a child under a tasks.start parent that tasks.cancel has not finished tearing down', async () => {
     const { bureau, parent } = await createParentBureau({ worker: hangingWorker() });
 
     try {
-      expect(bureau.abortRun(parent.id)).toMatchObject({ status: 'aborting' });
+      expect(await bureau.tasks.cancel(parent.id)).toMatchObject({ receipt: 'cancel-requested' });
       expect(bureau.tasks.detail(parent.id)).toMatchObject({ status: 'running' });
 
       expect(
@@ -1028,13 +1027,15 @@ describe('bureau.children across a process restart', () => {
     }
   });
 
-  it('cascades a committed cancelDurableRun of the parent to its cascade children', async () => {
+  it('cascades a committed tasks.cancel of a durable parent to its cascade children', async () => {
     const path = databasePath('cancel-durable');
     const childRunId = 'child-cancel-durable';
     try {
       const { bureauA, parentRunId } = await crashWithChild(path, childRunId);
       try {
-        expect(await bureauA.cancelDurableRun(parentRunId)).toEqual({ status: 'requested' });
+        expect(await bureauA.tasks.cancel(parentRunId)).toMatchObject({
+          receipt: 'cancel-requested',
+        });
         expect(await bureauA.children.wait({ parentRunId, childRunId })).toMatchObject({
           child: { status: 'aborted', outcome: { reason: expect.stringContaining(parentRunId) } },
         });

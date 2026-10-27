@@ -29,6 +29,7 @@ import {
   readAgUiStream,
   typesOf,
 } from './ag-ui-stream.test-support.ts';
+import { listHeldTasks } from '../test';
 
 /** Whether two events are the same once each one's own requested id is replaced and the clock reading dropped. */
 function sameOnceSubstituted(
@@ -200,7 +201,7 @@ describe('start', () => {
         const first = await readAgUiStream(await handler(startRequest(runAgentInput())));
         const retry = await readAgUiStream(await handler(startRequest(runAgentInput())));
 
-        expect(bureau.listRuns()).toHaveLength(1);
+        expect(listHeldTasks(bureau)).toHaveLength(1);
         expect(bureauMetadata(retry[0]!.event)['runId']).toBe(
           bureauMetadata(first[0]!.event)['runId'],
         );
@@ -243,7 +244,7 @@ describe('a start that races another on the same thread', () => {
               }),
             ),
           );
-        const runsBefore = bureau.listRuns().length;
+        const runsBefore = listHeldTasks(bureau).length;
 
         const [left, right] = await Promise.all([start('race-a', 'one'), start('race-b', 'two')]);
         const leftReader = new FrameReader(left);
@@ -257,7 +258,7 @@ describe('a start that races another on the same thread', () => {
         expect(first.filter((event) => event.type === EventType.RUN_STARTED)).toHaveLength(1);
         expect(refused).toHaveLength(1);
         expect(refused[0]).toMatchObject({ code: 'THREAD_BUSY' });
-        expect(bureau.listRuns()).toHaveLength(runsBefore + 1);
+        expect(listHeldTasks(bureau)).toHaveLength(runsBefore + 1);
       },
     );
   });
@@ -298,8 +299,8 @@ describe('a start that races another on the same thread in another process', () 
         expect(refused).toHaveLength(1);
         expect(refused[0]!.event).toMatchObject({ type: EventType.RUN_ERROR, code: 'THREAD_BUSY' });
         expect(started.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
-        expect(harness.bureau.listRuns()).toHaveLength(1);
-        expect(peer.bureau.listRuns()).toHaveLength(0);
+        expect(listHeldTasks(harness.bureau)).toHaveLength(1);
+        expect(listHeldTasks(peer.bureau)).toHaveLength(0);
       } finally {
         await peer.dispose();
       }
@@ -341,7 +342,7 @@ describe('a start that races another on the same thread in another process', () 
             type: EventType.RUN_ERROR,
             code: 'THREAD_BUSY',
           });
-          expect(peer.bureau.listRuns()).toHaveLength(0);
+          expect(listHeldTasks(peer.bureau)).toHaveLength(0);
         } finally {
           await peer.dispose();
         }
@@ -386,7 +387,7 @@ describe('a start that races another on the same thread in another process', () 
           );
 
           expect(frames.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
-          expect(peer.bureau.listRuns()).toHaveLength(1);
+          expect(listHeldTasks(peer.bureau)).toHaveLength(1);
         } finally {
           await peer.dispose();
         }
@@ -440,7 +441,8 @@ describe('whether a thread is busy, decided from what the store holds', () => {
     );
   const settled = (harness: Harness) =>
     waitForCondition(
-      () => harness.bureau.tasks.detail(harness.bureau.listRuns()[0]!.id)?.status === 'completed',
+      () =>
+        harness.bureau.tasks.detail(listHeldTasks(harness.bureau)[0]!.id)?.status === 'completed',
       'run did not settle',
     );
 
@@ -460,7 +462,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
             type: EventType.RUN_ERROR,
             code: 'THREAD_BUSY',
           });
-          expect(peer.bureau.listRuns()).toHaveLength(0);
+          expect(listHeldTasks(peer.bureau)).toHaveLength(0);
         } finally {
           await peer.dispose();
         }
@@ -488,7 +490,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
           const frames = await readAgUiStream(await peer.handler(startWithMessage('run-b')));
 
           expect(frames.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
-          expect(peer.bureau.listRuns()).toHaveLength(1);
+          expect(listHeldTasks(peer.bureau)).toHaveLength(1);
         } finally {
           await peer.dispose();
           await restarted.dispose();
@@ -749,7 +751,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
         const second = await readAgUiStream(await harness.handler(startWithMessage('run-b')));
 
         expect(second[0]!.event).toMatchObject({ code: 'THREAD_BUSY' });
-        expect(harness.bureau.listRuns()).toHaveLength(1);
+        expect(listHeldTasks(harness.bureau)).toHaveLength(1);
         await readAgUiStream(first);
       },
     );
@@ -821,7 +823,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
           const b = new FrameReader(await harness.handler(message('r2', ['user-1', 'user-2'])));
           await b.until(EventType.STEP_STARTED);
           await harness.generate.reached('hold');
-          const [runA, runB] = harness.bureau.listRuns().map((run) => run.id);
+          const [runA, runB] = listHeldTasks(harness.bureau).map((run) => run.id);
           save.release();
           await waitForCondition(save.landed, 'run A’s terminal save never landed');
           const afterSave = await harness.bureau.contexts.get('thread-1');
@@ -841,7 +843,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
           );
 
           expect(c[0]!.event).toMatchObject({ code: 'THREAD_BUSY' });
-          expect(harness.bureau.listRuns()).toHaveLength(2);
+          expect(listHeldTasks(harness.bureau)).toHaveLength(2);
           harness.generate.release('hold');
           await b.rest();
         },
@@ -860,7 +862,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
             const b = new FrameReader(await peer.handler(message('r2', ['user-1', 'user-2'])));
             await b.until(EventType.STEP_STARTED);
             await peer.generate.reached('hold');
-            const runB = peer.bureau.listRuns()[0]!.id;
+            const runB = listHeldTasks(peer.bureau)[0]!.id;
             save.release();
             await waitForCondition(save.landed, 'run A’s terminal save never landed');
             const afterSave = await peer.bureau.contexts.get('thread-1');
@@ -872,7 +874,9 @@ describe('whether a thread is busy, decided from what the store holds', () => {
             );
 
             expect(c[0]!.event).toMatchObject({ code: 'THREAD_BUSY' });
-            expect(harness.bureau.listRuns().length + peer.bureau.listRuns().length).toBe(2);
+            expect(listHeldTasks(harness.bureau).length + listHeldTasks(peer.bureau).length).toBe(
+              2,
+            );
             peer.generate.release('hold');
             await b.rest();
           } finally {
@@ -899,7 +903,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
       const refused = await readAgUiStream(await harness.handler(startWithMessage('run-b')));
 
       expect(refused[0]!.event).toMatchObject({ code: 'THREAD_BUSY' });
-      expect(harness.bureau.listRuns()).toHaveLength(1);
+      expect(listHeldTasks(harness.bureau)).toHaveLength(1);
     });
   });
 
@@ -920,7 +924,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
       const refused = await readAgUiStream(await harness.handler(startWithMessage('run-b')));
 
       expect(refused[0]!.event).toMatchObject({ code: 'THREAD_BUSY' });
-      expect(harness.bureau.listRuns()).toHaveLength(1);
+      expect(listHeldTasks(harness.bureau)).toHaveLength(1);
     });
   });
 });
@@ -948,7 +952,7 @@ describe('a start whose lease cannot be released', () => {
       logged.mockRestore();
 
       expect(frames.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
-      expect(harness.bureau.listRuns()).toHaveLength(1);
+      expect(listHeldTasks(harness.bureau)).toHaveLength(1);
       expect(logCount).toBe(1);
     });
   });
@@ -995,7 +999,7 @@ describe('a start whose thread lease was taken over before it created its run', 
           expect(second.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
           expect(refused).toHaveLength(1);
           expect(refused[0]!.event).toMatchObject({ code: 'THREAD_BUSY' });
-          expect(harness.bureau.listRuns()).toHaveLength(0);
+          expect(listHeldTasks(harness.bureau)).toHaveLength(0);
         } finally {
           await peer.dispose();
         }
@@ -1015,7 +1019,7 @@ describe('a start that reuses the runId of another thread’s run', () => {
 
       expect(frames).toHaveLength(1);
       expect(frames[0]!.event).toMatchObject({ type: EventType.RUN_ERROR, code: 'RUN_CONFLICT' });
-      expect(bureau.listRuns()).toHaveLength(1);
+      expect(listHeldTasks(bureau)).toHaveLength(1);
     });
   });
 });
@@ -1208,7 +1212,7 @@ describe('a thread with a run in progress', () => {
         const first = new FrameReader(await handler(startRequest(runAgentInput())));
         await first.until(EventType.STEP_STARTED);
         await generate.reached('hold');
-        const runsBefore = bureau.listRuns().length;
+        const runsBefore = listHeldTasks(bureau).length;
 
         const second = await readAgUiStream(
           await handler(
@@ -1223,7 +1227,7 @@ describe('a thread with a run in progress', () => {
 
         expect(second).toHaveLength(1);
         expect(second[0]!.event).toMatchObject({ type: EventType.RUN_ERROR, code: 'THREAD_BUSY' });
-        expect(bureau.listRuns()).toHaveLength(runsBefore);
+        expect(listHeldTasks(bureau)).toHaveLength(runsBefore);
         generate.release('hold');
         await first.rest();
       },
@@ -1364,7 +1368,7 @@ describe('a client that goes away', () => {
         const starter = new FrameReader(await handler(startRequest(runAgentInput())));
         await starter.until(EventType.STEP_STARTED);
         await generate.reached('hold');
-        const runId = bureau.listRuns()[0]!.id;
+        const runId = listHeldTasks(bureau)[0]!.id;
 
         await starter.cancel();
 

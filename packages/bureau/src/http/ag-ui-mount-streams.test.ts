@@ -20,6 +20,7 @@ import {
   startRequest,
 } from './ag-ui-fixtures.test-support.ts';
 import { FrameReader, parseAgUiFrames, typesOf } from './ag-ui-stream.test-support.ts';
+import { listHeldTasks } from '../test';
 
 async function withHarness<T>(
   options: Parameters<typeof openHarness>[0],
@@ -62,10 +63,10 @@ describe('the maximum stream duration', () => {
           code: 'STREAM_DEADLINE',
           message: 'The stream reached its maximum duration; attach again.',
         });
-        expect(bureau.listRuns()[0]!.status).toBe('running');
+        expect(listHeldTasks(bureau)[0]!.status).toBe('running');
 
         // The client reconnects with an attach and the run goes on.
-        const runId = bureau.listRuns()[0]!.id;
+        const runId = listHeldTasks(bureau)[0]!.id;
         const again = new FrameReader(await handler(attachRunRequest(runId)));
         await again.until(EventType.STATE_SNAPSHOT);
         generate.release('hold');
@@ -88,7 +89,7 @@ describe('a reader that falls behind', () => {
         const fast = new FrameReader(await handler(startRequest(runAgentInput())));
         await fast.until(EventType.STEP_STARTED);
         await generate.reached('hold');
-        const runId = bureau.listRuns()[0]!.id;
+        const runId = listHeldTasks(bureau)[0]!.id;
         // A second stream that is opened and never read from.
         const slow = await handler(attachRunRequest(runId));
 
@@ -195,11 +196,11 @@ describe('the live backlog bound', () => {
         await waitForCondition(
           () =>
             bureau.tasks
-              .detail(bureau.listRuns()[0]?.id ?? '')
+              .detail(listHeldTasks(bureau)[0]?.id ?? '')
               ?.events.some((event) => event.event === 'tools.executing') === true,
           'the calls never started',
         );
-        const runId = bureau.listRuns()[0]!.id;
+        const runId = listHeldTasks(bureau)[0]!.id;
         const stalled = new FrameReader(await handler(attachRunRequest(runId)));
         // Read the whole opening: the snapshots, the step, the message, and each call.
         const opening = 4 + 3 + 3 * calls.length;
@@ -235,7 +236,7 @@ describe('the revision of the state a stream reports', () => {
         const starter = new FrameReader(await handler(startRequest(runAgentInput())));
         await starter.until(EventType.STEP_STARTED);
         await generate.reached('hold');
-        const runId = bureau.listRuns()[0]!.id;
+        const runId = listHeldTasks(bureau)[0]!.id;
         const attached = new FrameReader(await handler(attachRunRequest(runId)));
         await attached.until(EventType.STEP_STARTED);
         const observe = observers.at(-1)!;
@@ -270,7 +271,7 @@ describe('text deltas that arrive while a stream is still opening', () => {
         const starter = new FrameReader(await handler(startRequest(runAgentInput())));
         await starter.until(EventType.STEP_STARTED);
         await generate.reached('hold');
-        const runId = bureau.listRuns()[0]!.id;
+        const runId = listHeldTasks(bureau)[0]!.id;
         // A delta from before the stream's replay was read reaches its listener
         // while it is still buffering.
         const subscribe = bureau.subscribeLiveFrames.bind(bureau);
@@ -317,7 +318,7 @@ describe('the answer an onMaximumSteps handler leaves', () => {
         const stream = new FrameReader(await handler(startRequest(runAgentInput())));
         await stream.until(EventType.STEP_STARTED);
         await generate.reached('hold');
-        const nativeRunId = bureau.listRuns()[0]!.id;
+        const nativeRunId = listHeldTasks(bureau)[0]!.id;
 
         deliver!({
           type: 'event',
@@ -379,7 +380,7 @@ describe('the answer an onMaximumSteps handler leaves, for a client that attache
         const starter = new FrameReader(await handler(startRequest(runAgentInput())));
         await starter.until(EventType.STEP_STARTED);
         await generate.reached('hold');
-        const nativeRunId = bureau.listRuns()[0]!.id;
+        const nativeRunId = listHeldTasks(bureau)[0]!.id;
         // The run has already put its answer in the conversation, under the id the step
         // after its last would have had, as a run does before this stream's completion.
         const tailRow = {

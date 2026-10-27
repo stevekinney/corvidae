@@ -367,7 +367,7 @@ async function abortSiblingScenario(backend: Backend, scope: ScenarioScope): Pro
     const xMessage = 'crash harness run X';
     const xCallsBeforeAbort = calls.filter((call) => call.message === xMessage).length;
 
-    expect(bureau.abortRun(marker.xRunId).status).toBe('aborting');
+    expect(await bureau.tasks.cancel(marker.xRunId)).toMatchObject({ receipt: 'cancel-requested' });
     await waitForBureauState(
       [bureau],
       () => bureau.tasks.detail(marker.xRunId)?.status === 'aborted',
@@ -406,9 +406,12 @@ async function abortSiblingScenario(backend: Backend, scope: ScenarioScope): Pro
     expect(yKinds.filter((kind) => kind === 'run.completed')).toHaveLength(1);
     expect(yKinds).not.toContain('run.aborted');
 
-    expect(await bureau.cancelDurableRun(marker.xRunId)).toEqual({ status: 'already-terminal' });
-    expect(await bureau.cancelDurableRun('process-crash-unknown-run')).toEqual({
-      status: 'not-found',
+    // X was already aborted: a repeat cancel requests nothing new.
+    expect(await bureau.tasks.cancel(marker.xRunId)).not.toMatchObject({
+      receipt: 'cancel-requested',
+    });
+    await expect(bureau.tasks.cancel('process-crash-unknown-run')).rejects.toMatchObject({
+      code: 'NOT_FOUND',
     });
 
     // Still true after Y finished: nothing re-entered generate for X.

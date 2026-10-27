@@ -23,6 +23,7 @@ import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauOptions } from './types';
 import { startTaskFrom } from './test/task-start-request.ts';
+import { listHeldTasks } from './test';
 
 const ORIGIN = '2026-10-13T00:00:00.000Z';
 
@@ -120,7 +121,7 @@ describe('tasks.start with a run-creation request id', () => {
       expect(retry.contextId).toBe(first.contextId);
       expect(retry.receipt).toEqual(first.receipt);
       expect(await durableRunIds(bureau)).toEqual([first.id]);
-      expect(bureau.listRuns().map((run) => run.id)).toEqual([first.id]);
+      expect(listHeldTasks(bureau).map((run) => run.id)).toEqual([first.id]);
     });
   });
 
@@ -151,7 +152,7 @@ describe('tasks.start with a run-creation request id', () => {
         reason: 'payload-mismatch',
         originalReceipt: first.receipt,
       });
-      expect(bureau.listRuns().map((run) => run.id)).toEqual([first.id]);
+      expect(listHeldTasks(bureau).map((run) => run.id)).toEqual([first.id]);
 
       // The original entry is unaffected: an exact retry still replays it.
       const retry = await startTaskFrom(bureau, REQUEST);
@@ -177,7 +178,7 @@ describe('tasks.start with a run-creation request id', () => {
       const bob = await startTaskFrom(bureau, { ...REQUEST, principal: 'bob' });
 
       expect(bob.id).not.toBe(alice.id);
-      expect(bureau.listRuns()).toHaveLength(2);
+      expect(listHeldTasks(bureau)).toHaveLength(2);
     });
   });
 
@@ -220,7 +221,7 @@ describe('tasks.start with a run-creation request id', () => {
         expect(rejection).toBeInstanceOf(BureauError);
         expect((rejection as BureauError).code).toBe('BAD_REQUEST');
       }
-      expect(bureau.listRuns()).toEqual([]);
+      expect(listHeldTasks(bureau)).toEqual([]);
     });
   });
 
@@ -238,7 +239,7 @@ describe('tasks.start with a run-creation request id', () => {
       const rejection = await rejectionOf(startTaskFrom(bureau, REQUEST));
       expect(rejection).toBeInstanceOf(BureauError);
       expect(rejection).toMatchObject({ code: 'NOT_CONFIGURED', subject: 'durable' });
-      expect(bureau.listRuns()).toEqual([]);
+      expect(listHeldTasks(bureau)).toEqual([]);
     } finally {
       await bureau.dispose();
     }
@@ -298,8 +299,7 @@ describe('tasks.start with a run-creation request id', () => {
         expect(retry.id).not.toBe(occupying.id);
         expect(retry.receipt).toMatchObject({ runId: retry.id, requestId: 'request-1' });
         expect(
-          bureau
-            .listRuns()
+          listHeldTasks(bureau)
             .map((run) => run.id)
             .toSorted(),
         ).toEqual([occupying.id, retry.id].toSorted());

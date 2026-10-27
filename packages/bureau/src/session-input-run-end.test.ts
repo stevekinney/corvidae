@@ -43,6 +43,7 @@ import {
 import type { Bureau, BureauDiagnostic, BureauOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 import { startTaskFrom } from './test/task-start-request.ts';
+import { listHeldTasks } from './test';
 
 /**
  * COR-1476 — a run that ends cancels the input it never delivered, whatever
@@ -162,7 +163,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
       await bureau.runDurableMaintenance();
 
       expect(generations).toBe(1);
-      expect(bureau.listRuns()).toHaveLength(1);
+      expect(listHeldTasks(bureau)).toHaveLength(1);
       expect(await markers(storage)).toEqual([]);
     } finally {
       releaseStepZero.resolve();
@@ -196,14 +197,14 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
           (await receiptState(storage, run.contextId, incarnation, 'input-x', 'never seen')) ===
           'canceled',
       );
-      expect(bureau.listRuns()).toHaveLength(1);
+      expect(listHeldTasks(bureau)).toHaveLength(1);
     } finally {
       releaseStepZero.resolve();
       await bureau.dispose();
     }
   });
 
-  it('abortRun on a step that ignores its signal cancels the input it held, starts no run, and leaves no renewal running', async () => {
+  it('tasks.cancel on a step that ignores its signal cancels the input it held, starts no run, and leaves no renewal running', async () => {
     const storage = new MemoryStorage();
     const base = createDefaultRuntimeServices();
     let openIntervals = 0;
@@ -252,7 +253,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
       // never commits, so the turn reaches no checkpoint transcript.
       expect(openIntervals).toBeGreaterThan(baseline);
 
-      await bureau.abortRun(first.id);
+      await bureau.tasks.cancel(first.id);
       await pollUntil(() => openIntervals === baseline);
       await pollUntil(
         async () =>
@@ -261,14 +262,14 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
       );
       await bureau.runDurableMaintenance();
       expect(runs).toBe(1);
-      expect(bureau.listRuns()).toHaveLength(1);
+      expect(listHeldTasks(bureau)).toHaveLength(1);
     } finally {
       releaseStepZero.resolve();
       await bureau.dispose();
     }
   });
 
-  it('cancelDurableRun on a step that ignores its signal cancels the input it held', async () => {
+  it('an engine cancel of a step that ignores its signal cancels the input it held', async () => {
     const storage = new MemoryStorage();
     const stepZeroStarted = deferred();
     const releaseStepZero = deferred();
@@ -290,25 +291,25 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
       releaseStepZero.resolve();
       await stepOneStarted.promise;
 
-      const outcome = await bureau.cancelDurableRun(first.id);
-      expect(outcome.status).toBe('requested');
-      // The cancellation settled the input before returning.
-      expect(await receiptState(storage, first.contextId, incarnation, 'input-a', 'first')).toBe(
-        'canceled',
+      await bureau.durableEngine()!.cancel(first.id);
+      await pollUntil(
+        async () =>
+          (await receiptState(storage, first.contextId, incarnation, 'input-a', 'first')) ===
+          'canceled',
       );
       await pollUntil(async () => {
         const session = await bureau.contexts.get(first.contextId);
         return session?.metadata['lastRunStatus'] === 'aborted';
       });
       await bureau.runDurableMaintenance();
-      expect(bureau.listRuns()).toHaveLength(1);
+      expect(listHeldTasks(bureau)).toHaveLength(1);
     } finally {
       releaseStepZero.resolve();
       await bureau.dispose();
     }
   });
 
-  it.each(['cancelDurableRun', 'abortRun'] as const)(
+  it.each(['an engine cancel', 'tasks.cancel'] as const)(
     '%s on a run whose checkpoint holds a late-drained turn leaves that input promoted',
     async (stop) => {
       const storage = new MemoryStorage();
@@ -342,11 +343,10 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
           'please answer this',
         ]);
 
-        if (stop === 'cancelDurableRun') {
-          const cancelled = await bureau.cancelDurableRun(first.id);
-          expect(cancelled.status).toBe('requested');
+        if (stop === 'an engine cancel') {
+          await bureau.durableEngine()!.cancel(first.id);
         } else {
-          bureau.abortRun(first.id);
+          await bureau.tasks.cancel(first.id);
         }
         await pollUntil(async () => {
           const session = await bureau.contexts.get(first.contextId);
@@ -485,7 +485,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
       expect(
         await receiptState(storage, first.contextId, incarnation, 'input-x', 'for whoever'),
       ).toBe('promoted');
-      expect(bureau.listRuns()).toHaveLength(2);
+      expect(listHeldTasks(bureau)).toHaveLength(2);
     } finally {
       release.forEach((gate) => gate.resolve());
       await bureau.dispose();
@@ -594,7 +594,7 @@ describe('a run whose start fails after its promotion (COR-1476)', () => {
       await ended;
       await shuttingDown;
       expect(generations).toBe(1);
-      expect(bureau.listRuns()).toHaveLength(1);
+      expect(listHeldTasks(bureau)).toHaveLength(1);
     } finally {
       await bureau.dispose();
     }
@@ -803,7 +803,7 @@ describe('what the retry loop must not hold (COR-1476)', () => {
       // Two paths report the end: the cancellation inline, and the terminal
       // listener. One settlement runs: one first-failure diagnostic, and the
       // lease is back with the mailbox while the write is still failing.
-      const cancelling = bureau.cancelDurableRun(run.id);
+      const cancelling = bureau.tasks.cancel(run.id);
       await pollUntil(() => failing.attempts() >= 2);
       await pollUntil(async () => {
         const session = await bureau.contexts.get(run.contextId);
@@ -818,7 +818,7 @@ describe('what the retry loop must not hold (COR-1476)', () => {
       ).toHaveLength(1);
       failing.stop();
       const cancelled = await cancelling;
-      expect(cancelled.status).toBe('requested');
+      expect(cancelled.receipt).toBe('cancel-requested');
     } finally {
       failing.stop();
       releaseStepZero.resolve();
@@ -994,7 +994,7 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
 
       // The cancellation's settlement cannot write `run-ended`; after its first
       // failed attempt the log's head is found corrupt.
-      const cancelling = bureau.cancelDurableRun(run.id);
+      const cancelling = bureau.tasks.cancel(run.id);
       await pollUntil(() => failing.attempts() >= 1);
       const kv = textValueStore(real, { disposeUnderlyingStorage: false });
       const logKeys = await kv.list('steering-log:v1:');
@@ -1002,14 +1002,17 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
       if (head === undefined) throw new Error('the session has no steering log head');
       await kv.set(head, 'not a head');
 
-      // Corruption is not retried: the settlement ends and the caller returns.
+      // Corruption is not retried: the settlement reports it once and ends.
       const cancelled = await cancelling;
-      expect(cancelled.status).toBe('requested');
-      const corrupt = diagnostics.filter(
-        (diagnostic) =>
-          diagnostic.scope === 'session-input' && diagnostic.message.includes('corrupt'),
-      );
-      expect(corrupt).toHaveLength(1);
+      expect(cancelled.receipt).toBe('cancel-requested');
+      const corrupt = () =>
+        diagnostics.filter(
+          (diagnostic) =>
+            diagnostic.scope === 'session-input' && diagnostic.message.includes('corrupt'),
+        );
+      await pollUntil(() => corrupt().length > 0);
+      await bureau.tasks.wait(run.id);
+      expect(corrupt()).toHaveLength(1);
       expect(await receiptState(real, run.contextId, incarnation, 'input-x', 'open')).toBe(
         'accepted',
       );
@@ -1088,7 +1091,7 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
       } finally {
         storage[Symbol.dispose]();
       }
-      expect(second.listRuns()).toHaveLength(0);
+      expect(listHeldTasks(second)).toHaveLength(0);
     } finally {
       await second.dispose();
       await rm(directory, { recursive: true, force: true });
@@ -1153,7 +1156,7 @@ describe('a run promoted but never started (COR-1476)', () => {
       expect(
         await receiptState(storage, 'ghost-session', saved.incarnation, 'input-x', 'hello'),
       ).toBe('canceled');
-      expect(bureau.listRuns()).toHaveLength(0);
+      expect(listHeldTasks(bureau)).toHaveLength(0);
     } finally {
       await bureau.dispose();
     }
@@ -1277,7 +1280,7 @@ describe('shutdown releases open input (COR-1476)', () => {
     });
     try {
       await second.waitForRecovery?.();
-      expect(second.listRuns()).toHaveLength(0);
+      expect(listHeldTasks(second)).toHaveLength(0);
       expect(generations).toBe(0);
     } finally {
       await second.dispose();
