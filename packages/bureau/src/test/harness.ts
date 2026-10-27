@@ -232,7 +232,7 @@ export interface BureauTestHarness<D extends AgentDefinitions = AgentDefinitions
     options?: Omit<DispatchChildRunOptions, 'parentRunId' | 'agentName'>,
   ): ChildRunHandle<unknown, boolean>;
 
-  /** Thin wrapper over `Bureau.createSchedule`. */
+  /** Thin wrapper over `bureau.schedules.create`. */
   createRecurringSchedule(
     definition: DurableScheduleDefinition,
   ): Promise<ScheduleSummary | undefined>;
@@ -469,7 +469,7 @@ export async function createBureauTestHarness<D extends AgentDefinitions = Agent
     },
 
     createRecurringSchedule(definition) {
-      return readyBureau.createSchedule(definition);
+      return readyBureau.schedules.create(definition);
     },
 
     resolveReview(input) {

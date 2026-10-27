@@ -458,6 +458,7 @@ export type {
   BureauRetentionOptions,
   BureauRecoveryReport,
   BureauReviews,
+  BureauSchedules,
   BureauRunOptions,
   BureauShutdownOptions,
   BureauShutdownOwnerReport,

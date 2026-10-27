@@ -112,12 +112,12 @@ describe('bureau.run of a file agent', () => {
     await bureau.agents.refresh();
 
     const refusal = await rejectionOf(
-      bureau.createSchedule({ agentName: 'ghost', input: 'x', spec: '1m' }),
+      bureau.schedules.create({ agentName: 'ghost', input: 'x', spec: '1m' }),
     );
     expect(refusal).toBeInstanceOf(UnknownScheduleAgentError);
     expect((refusal as UnknownScheduleAgentError).agentName).toBe('ghost');
 
-    const created = await bureau.createSchedule({
+    const created = await bureau.schedules.create({
       agentName: 'researcher',
       input: 'x',
       spec: '1m',

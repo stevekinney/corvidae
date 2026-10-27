@@ -61,10 +61,10 @@ describe('the owner of a schedule that is not an agent schedule (COR-718)', () =
           await bureau.getOwner({ kind: 'audit', runId: 'schedule:heartbeat' }),
         ).toBeUndefined();
         // Nor does it run an agent that can be named: only a valid agent schedule does.
-        expect(await bureau.getScheduleAgentName('heartbeat')).toBeUndefined();
-        expect(await bureau.getScheduleAgentName('no-such-schedule')).toBeUndefined();
-        expect(await bureau.getScheduleInputPreview('heartbeat')).toBeUndefined();
-        expect(await bureau.getScheduleInputPreview('no-such-schedule')).toBeUndefined();
+        expect(await bureau.schedules.agentName('heartbeat')).toBeUndefined();
+        expect(await bureau.schedules.agentName('no-such-schedule')).toBeUndefined();
+        expect(await bureau.schedules.inputPreview('heartbeat')).toBeUndefined();
+        expect(await bureau.schedules.inputPreview('no-such-schedule')).toBeUndefined();
         for (const principal of ['anonymous:local', 'api-key:alice']) {
           expect(
             await bureau.eventHistory({ kind: 'schedule', id: 'heartbeat' }, { principal }),
@@ -96,12 +96,12 @@ describe('the start of the text a schedule sends (COR-1654)', () => {
         durableOwnership: { ownership: 'none' },
       });
       try {
-        const short = await bureau.createSchedule({
+        const short = await bureau.schedules.create({
           agentName: 'default',
           input: 'Summarize what happened yesterday.',
           spec: '24h',
         });
-        const parts = await bureau.createSchedule({
+        const parts = await bureau.schedules.create({
           agentName: 'default',
           input: [
             { type: 'text', text: 'Summarize' },
@@ -109,7 +109,7 @@ describe('the start of the text a schedule sends (COR-1654)', () => {
           ],
           spec: '24h',
         });
-        const long = await bureau.createSchedule({
+        const long = await bureau.schedules.create({
           agentName: 'default',
           input: `${'y'.repeat(600)}-TAIL`,
           spec: '24h',
@@ -118,11 +118,11 @@ describe('the start of the text a schedule sends (COR-1654)', () => {
           throw new Error('expected the schedules to be created');
         }
 
-        expect(await bureau.getScheduleInputPreview(short.id)).toBe(
+        expect(await bureau.schedules.inputPreview(short.id)).toBe(
           'Summarize what happened yesterday.',
         );
-        expect(await bureau.getScheduleInputPreview(parts.id)).toBe('Summarize the week.');
-        const preview = await bureau.getScheduleInputPreview(long.id);
+        expect(await bureau.schedules.inputPreview(parts.id)).toBe('Summarize the week.');
+        const preview = await bureau.schedules.inputPreview(long.id);
         expect(preview).toBe(`${'y'.repeat(499)}…`);
         expect(preview).not.toContain('TAIL');
       } finally {

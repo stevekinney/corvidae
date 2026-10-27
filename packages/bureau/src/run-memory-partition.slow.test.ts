@@ -65,7 +65,7 @@ describe('a scheduled fire’s memory (COR-1546)', () => {
           projection: 'bureau',
         });
       try {
-        const schedule = await bureau.createSchedule({
+        const schedule = await bureau.schedules.create({
           agentName: 'default',
           input: 'Write the digest.',
           spec: '1s',
@@ -78,7 +78,7 @@ describe('a scheduled fire’s memory (COR-1546)', () => {
           return listed.length > 0;
         };
         const written = await waitForReal(hasWritten, FIRE_WAIT_MS);
-        await bureau.cancelSchedule(schedule!.id);
+        await bureau.schedules.cancel(schedule!.id);
 
         expect(written).toBe(true);
         const [stored] = await memory.list(as('api-key:alice'), { collection: 'default' });

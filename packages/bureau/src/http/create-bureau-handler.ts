@@ -81,7 +81,7 @@ import { createA2APushProjector } from './a2a-push-projector.ts';
 import { type A2ATaskRecords, createA2ATaskRecords } from './a2a-task-record.ts';
 import { mediaInputModesOf, mediaOutputModesOf } from './a2a-agent-card.ts';
 import { createTaskReader } from './a2a-task-reader.ts';
-import type { Bureau, BureauReviews, BureauInternals } from '../types.ts';
+import type { Bureau, BureauReviews, BureauSchedules, BureauInternals } from '../types.ts';
 import { bureauReviewsOperations } from './bureau-reviews-operations.ts';
 import { bureauRunEventsSubscriptionOperation } from './bureau-run-events-operation.ts';
 import { createAssetsMount } from './assets-mount.ts';
@@ -181,8 +181,6 @@ export type BureauHandlerSource = Pick<
   | 'runtimeServices'
   | 'durableEngine'
   | 'getOwner'
-  | 'getScheduleAgentName'
-  | 'getScheduleInputPreview'
   | 'lifecycle'
   | 'eventHistory'
   | 'subscribeEventHistory'
@@ -206,13 +204,6 @@ export type BureauHandlerSource = Pick<
   | 'cancelDurableRun'
   | 'models'
   | 'workflows'
-  | 'createSchedule'
-  | 'getSchedule'
-  | 'listSchedules'
-  | 'pauseSchedule'
-  | 'resumeSchedule'
-  | 'cancelSchedule'
-  | 'updateSchedule'
   | 'goals'
   | 'memory'
   | 'submitSessionInput'
@@ -221,7 +212,21 @@ export type BureauHandlerSource = Pick<
   | 'surfaces'
   | 'addEventListener'
   | 'removeEventListener'
-> & { readonly reviews: Pick<BureauReviews, 'list' | 'get' | 'resolve' | 'pendingOf'> } & {
+> & {
+  readonly reviews: Pick<BureauReviews, 'list' | 'get' | 'resolve' | 'pendingOf'>;
+  readonly schedules: Pick<
+    BureauSchedules,
+    | 'create'
+    | 'get'
+    | 'list'
+    | 'pause'
+    | 'resume'
+    | 'cancel'
+    | 'update'
+    | 'agentName'
+    | 'inputPreview'
+  >;
+} & {
   readonly internals: Pick<
     BureauInternals,
     | 'hasExplicitId'
@@ -1050,16 +1055,16 @@ export function buildBureauHandlerHost(
     },
     workflows: bureau.workflows,
     schedules: {
-      createSchedule: bureau.createSchedule,
-      getSchedule: bureau.getSchedule,
-      listSchedules: bureau.listSchedules,
-      pauseSchedule: bureau.pauseSchedule,
-      resumeSchedule: bureau.resumeSchedule,
-      cancelSchedule: bureau.cancelSchedule,
-      updateSchedule: bureau.updateSchedule,
+      create: bureau.schedules.create,
+      get: bureau.schedules.get,
+      list: bureau.schedules.list,
+      pause: bureau.schedules.pause,
+      resume: bureau.schedules.resume,
+      cancel: bureau.schedules.cancel,
+      update: bureau.schedules.update,
       owner: (scheduleId) => bureau.getOwner({ kind: 'schedule', id: scheduleId }),
-      agentName: (scheduleId) => bureau.getScheduleAgentName(scheduleId),
-      inputPreview: (scheduleId) => bureau.getScheduleInputPreview(scheduleId),
+      agentName: bureau.schedules.agentName,
+      inputPreview: bureau.schedules.inputPreview,
       hasAgent: (name) => bureau.agents.find(name) !== undefined,
     },
     goals: bureau.goals,

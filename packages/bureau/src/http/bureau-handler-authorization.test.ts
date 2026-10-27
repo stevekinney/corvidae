@@ -319,7 +319,7 @@ async function withTwoOwners<T>(
   try {
     const alice = await parkRun(bureau, 'api-key:alice', `alice ${SENTINEL}`);
     const bob = await parkRun(bureau, 'api-key:bob', `bob ${SENTINEL}`);
-    const schedule = await bureau.createSchedule({
+    const schedule = await bureau.schedules.create({
       agentName: 'support',
       spec: '1h',
       input: 'tick',

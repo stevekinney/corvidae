@@ -101,7 +101,7 @@ describe('every kind of resource keeps its owner across a restart (COR-718)', ()
         }),
       ).toBe(true);
 
-      const schedule = await first.createSchedule({
+      const schedule = await first.schedules.create({
         agentName: 'worker',
         input: 'tick',
         spec: '1h',

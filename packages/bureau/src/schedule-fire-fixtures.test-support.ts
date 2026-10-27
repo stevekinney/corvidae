@@ -198,7 +198,7 @@ export async function fireOnce(
   sessionId?: string,
   agentName = 'default',
 ): Promise<{ readonly scheduleId: string; readonly fireId: string }> {
-  const created = await bureau.createSchedule({
+  const created = await bureau.schedules.create({
     agentName,
     input: 'check in',
     spec: '1m',
@@ -211,7 +211,7 @@ export async function fireOnce(
   }
   await bureau.runDurableMaintenance(occurrence);
   const fireId = await pollUntil(async () => {
-    const schedule = await bureau.getSchedule(created.id);
+    const schedule = await bureau.schedules.get(created.id);
     return schedule?.currentWorkflowId;
   }, 'the tick to launch a fire');
   return { scheduleId: created.id, fireId };

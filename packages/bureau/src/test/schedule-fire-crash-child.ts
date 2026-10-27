@@ -45,7 +45,8 @@ const bureau = await createBureau<AgentDefinitions>({
   agents: {
     default: createAgent({
       generate: async () => {
-        const summary = scheduleId === undefined ? undefined : await bureau.getSchedule(scheduleId);
+        const summary =
+          scheduleId === undefined ? undefined : await bureau.schedules.get(scheduleId);
         if (
           scheduleId === undefined ||
           occurrence === undefined ||
@@ -74,7 +75,7 @@ const bureau = await createBureau<AgentDefinitions>({
   durableOwnership: { ownership: 'none' },
 });
 
-const created = await bureau.createSchedule({
+const created = await bureau.schedules.create({
   agentName: 'default',
   input: 'crash during this fire',
   spec: '1m',
