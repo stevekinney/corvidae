@@ -635,13 +635,10 @@ describe('durable scheduler preemption (suspend/resume)', () => {
       blocking.releaseStep1({ content: 'bg final', toolCalls: [] });
 
       await bgResult;
-      // Give any abandoned driver a chance to (wrongly) re-fire the hook. An
-      // abandoned driver re-fires through the same deferred-macrotask queue, so
-      // draining several macrotask turns is the deterministic equivalent of the
-      // prior fixed sleep — without a wall-clock wait that flakes under load.
-      for (let i = 0; i < 5; i++) {
-        await yieldToPortableEventLoop();
-      }
+      // Give any abandoned driver its chance to (wrongly) re-fire the hook: an abandoned driver
+      // re-fires through the engine's deferred launch queue, so wait for the scheduler to go idle
+      // (no active task, nothing queued) instead of counting macrotask turns.
+      await waitFor(() => scheduler.getState().idle);
 
       // The run's onRunComplete hook did NOT double-fire (preemptable runs are
       // hooks-free, so it fires ZERO times — the documented contract (durable
@@ -762,6 +759,7 @@ describe('durable scheduler preemption (suspend/resume)', () => {
     const checkpointStore = createManualCheckpointStore();
     const failedTaskIds: string[] = [];
     engine.cancel = () => {
+      // load-proof: scripted failure of the cancel double; it only defers its rejection by a turn, and the stop path awaits that rejection however long it takes
       return yieldToPortableEventLoop().then(() => {
         throw new Error('queued stop cancel failed');
       });

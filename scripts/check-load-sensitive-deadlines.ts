@@ -64,7 +64,9 @@
  *     except the three exported one-turn yields (`yieldToEventLoop`, `yieldToPortableEventLoop`,
  *     `yieldEventLoopTurn`): a call to one is resolved through the file's imports (a named import under
  *     any local name, or a member of a namespace import) and read like a same-file yield, so each call
- *     needs a marker or a following step that is not load-dependent. There is no allowlist.
+ *     needs a marker or a following step that is not load-dependent. There is no allowlist. A yield
+ *     that is not awaited but chained (`void yieldToPortableEventLoop().then(() => abort())`) is read
+ *     the same way, because its action races the code under test after one turn.
  *     `yieldToEventLoop` advances a fake clock, so under fake timers it is not read.
  *   - `timer-rejection`: a `setTimeout` whose callback rejects or throws (through any parameter name),
  *     or an `AbortSignal.timeout`, with a delay below the hang guard: the timer half of a race.
@@ -895,6 +897,20 @@ function findSingleTurnSettles(
   const insideHelper = (node: ts.Node) =>
     ts.findAncestor(node, (ancestor) => [...helpers.values()].includes(ancestor as never)) !==
     undefined;
+
+  // A yield that is not awaited but chained: `void yieldToPortableEventLoop().then(() => abort())`.
+  // The action runs after one turn whatever the code under test is doing, which is a race against
+  // it: observe the point the action belongs at (a timer armed, an event, a state) instead.
+  walk(sourceFile, (node) => {
+    if (!ts.isCallExpression(node) || insideHelper(node)) return;
+    const callee = unwrap(node.expression);
+    if (!ts.isPropertyAccessExpression(callee) || callee.name.text !== 'then') return;
+    if (!node.arguments.some((argument) => ts.isFunctionLike(unwrap(argument)))) return;
+    const source = unwrap(callee.expression);
+    if (!isSingleTurnYield(source, context, isUnderFakeTimers(node))) return;
+    if (ts.findAncestor(node, ts.isAwaitExpression) !== undefined) return;
+    report(ts.findAncestor(node, ts.isStatement) ?? node);
+  });
 
   walk(sourceFile, (node) => {
     if (!ts.isAwaitExpression(node) || insideHelper(node)) return;

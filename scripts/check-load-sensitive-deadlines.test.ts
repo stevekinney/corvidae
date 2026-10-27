@@ -848,6 +848,27 @@ describe('an exported one-turn yield helper, resolved through the file imports',
     expect(inspect(source)).toEqual([]);
   });
 
+  test.each([
+    [
+      'a chained action',
+      "import { yieldToPortableEventLoop } from '@lostgradient/weft';\ntest('a', async () => {\n  void yieldToPortableEventLoop().then(() => controller.abort('x'));\n  await run();\n});",
+    ],
+    [
+      'a chained action on a same-file timer promise',
+      "test('a', async () => {\n  void new Promise((r) => setTimeout(r, 0)).then(() => controller.abort('x'));\n  await run();\n});",
+    ],
+  ])('reports %s that is not awaited', (_name, source) => {
+    expect(inspect(source)).toEqual(['single-turn-settle']);
+  });
+
+  test('accepts a marked chained action and a chain on something else', () => {
+    expect(
+      inspect(
+        "import { yieldToPortableEventLoop } from '@lostgradient/weft';\ntest('a', async () => {\n  // load-proof: the action only closes a handle nothing is waiting on\n  void yieldToPortableEventLoop().then(() => handle.close());\n  void other().then(() => handle.close());\n  await run();\n});",
+      ),
+    ).toEqual([]);
+  });
+
   test('a message-port yield is a real turn even under fake timers', () => {
     expect(
       inspect(

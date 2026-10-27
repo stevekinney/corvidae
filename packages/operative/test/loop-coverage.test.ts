@@ -1,5 +1,4 @@
-import { HookRegistry } from '@lostgradient/lifecycle';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
+import { createDefaultRuntimeServices, HookRegistry } from '@lostgradient/lifecycle';
 import { createTestToolbox, createTool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
@@ -15,6 +14,27 @@ const run = (options: Parameters<typeof createActiveRun>[0]) => createActiveRun(
 
 function textResponse(content: string): GenerateResponse {
   return { content, toolCalls: [] };
+}
+
+/**
+ * Default runtime services whose timers abort `controller` as soon as the timer for `delay` is armed.
+ * The abort is queued as a microtask, which runs after the caller has registered its abort listener
+ * (synchronously, right after `setTimeout` returns), so the abort always lands while the delay is
+ * pending, at a point the test observes rather than after a guessed number of event-loop turns.
+ */
+function runtimeAbortingOnTimer(controller: AbortController, delay: number, reason: string) {
+  const base = createDefaultRuntimeServices();
+  return {
+    ...base,
+    timers: {
+      ...base.timers,
+      setTimeout: (callback: () => void, milliseconds: number) => {
+        const handle = base.timers.setTimeout(callback, milliseconds);
+        if (milliseconds === delay) queueMicrotask(() => controller.abort(reason));
+        return handle;
+      },
+    },
+  };
 }
 
 describe('loop helper coverage', () => {
@@ -150,8 +170,6 @@ describe('loop helper coverage', () => {
     const controller = new AbortController();
     let calls = 0;
 
-    void yieldToPortableEventLoop().then(() => controller.abort('cancel default retry'));
-
     const result = await executeLoop({
       generate: async () => {
         calls++;
@@ -160,6 +178,7 @@ describe('loop helper coverage', () => {
       toolbox: createTestToolbox([]),
       conversation: new Conversation(),
       signal: controller.signal,
+      runtime: runtimeAbortingOnTimer(controller, 20, 'cancel default retry'),
       retry: {
         attempts: 3,
         delay: 20,
@@ -196,13 +215,12 @@ describe('loop helper coverage', () => {
   it('covers the default backpressure delay abort path directly', async () => {
     const controller = new AbortController();
 
-    void yieldToPortableEventLoop().then(() => controller.abort('cancel default backpressure'));
-
     const result = await executeLoop({
       generate: async () => textResponse('unused'),
       toolbox: createTestToolbox([]),
       conversation: new Conversation(),
       signal: controller.signal,
+      runtime: runtimeAbortingOnTimer(controller, 20, 'cancel default backpressure'),
       backpressure: {
         beforeStep: () => ({ delay: 20 }),
         onSuccess: () => {},
