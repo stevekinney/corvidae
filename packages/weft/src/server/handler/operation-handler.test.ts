@@ -62,6 +62,7 @@ const websocketSubscriptionOperation = defineOperation({
   transports: { http: false, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
   unknownKeyPolicy: { http: 'reject' as const, jsonRpc: 'reject' as const },
   invoke: async () => ({
+    subscriptionId: 'sub_probe',
     envelope: { subscriptionId: 'sub_probe', cursor: '-1' },
     iterable: (async function* () {
       yield { value: 'event' };
@@ -153,6 +154,49 @@ describe('createOperationHandler', () => {
     expect(upgradeCalls).toBe(1);
   });
 
+  it('rejects disallowed WebSocket origins before authentication and upgrade', async () => {
+    let authenticationCalls = 0;
+    let upgradeCalls = 0;
+    const handler = createOperationHandler({
+      operations: [websocketEchoOperation],
+      host: {},
+      cors: { allowedOrigins: ['https://allowed.example'] },
+      authenticate: async () => {
+        authenticationCalls += 1;
+        return readerContext();
+      },
+    });
+
+    const rejected = await handler.upgrade(
+      new Request('http://localhost/jsonrpc', { headers: { Origin: 'https://evil.example' } }),
+      {
+        upgrade() {
+          upgradeCalls += 1;
+          return true;
+        },
+      },
+    );
+    expect(rejected).toBe(false);
+    expect(authenticationCalls).toBe(0);
+    expect(upgradeCalls).toBe(0);
+
+    for (const origin of ['https://allowed.example', undefined]) {
+      const headers = origin === undefined ? undefined : { Origin: origin };
+      const upgraded = await handler.upgrade(
+        new Request('http://localhost/jsonrpc', headers === undefined ? {} : { headers }),
+        {
+          upgrade() {
+            upgradeCalls += 1;
+            return true;
+          },
+        },
+      );
+      expect(upgraded).toBe(true);
+    }
+    expect(authenticationCalls).toBe(2);
+    expect(upgradeCalls).toBe(2);
+  });
+
   it('starts and delivers a catalog subscription over a real WebSocket', async () => {
     const handler = createOperationHandler({
       operations: [websocketSubscriptionOperation],
@@ -206,6 +250,7 @@ describe('createOperationHandler', () => {
       transports: { http: false, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
       unknownKeyPolicy: { http: 'reject' as const, jsonRpc: 'reject' as const },
       invoke: async () => ({
+        subscriptionId: 'sub_unbounded',
         envelope: { subscriptionId: 'sub_unbounded', cursor: '-1' },
         iterable: (async function* () {
           await new Promise<void>((resolve) => {
@@ -304,6 +349,7 @@ describe('createOperationHandler', () => {
           resolveSetup = resolve;
         });
         return {
+          subscriptionId: 'sub_deferred',
           envelope: { subscriptionId: 'sub_deferred', cursor: '-1' },
           iterable: (async function* () {
             pumpStarted += 1;
@@ -417,6 +463,37 @@ describe('createOperationHandler', () => {
     const served = await jsonOf(await handler(new Request('http://localhost/openrpc.json')));
 
     expect(discovered['result']).toEqual(served);
+  });
+
+  it('answers rpc.discover over a real WebSocket with the configured HTTP document', async () => {
+    const handler = createOperationHandler({
+      operations: [websocketEchoOperation],
+      host: {},
+      discoveryInfo: { description: 'Configured over HTTP and WebSocket' },
+    });
+    websocketServer = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        if (request.headers.get('upgrade')?.toLowerCase() === 'websocket') {
+          if (await handler.upgrade(request, websocketServer!)) return undefined;
+        }
+        return handler(request);
+      },
+      websocket: handler.websocket,
+    });
+
+    const served = await jsonOf(await handler(new Request('http://localhost/openrpc.json')));
+    const socket = new WebSocket(`ws://localhost:${websocketServer.port}/jsonrpc`);
+    const response = new Promise<Record<string, unknown>>((resolve, reject) => {
+      socket.addEventListener('message', (event) => resolve(JSON.parse(String(event.data))));
+      socket.addEventListener('error', () => reject(new Error('WebSocket failed')));
+    });
+    await new Promise<void>((resolve) => socket.addEventListener('open', () => resolve()));
+    socket.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'rpc.discover', params: {} }));
+
+    const websocketResponse = await response;
+    expect(websocketResponse['result']).toEqual(served);
+    socket.close();
   });
 });
 

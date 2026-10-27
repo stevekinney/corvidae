@@ -23,6 +23,7 @@ import { GENERIC_SUBSCRIPTION_ROUTE_PREFIX, JSON_RPC_PATH } from '../route-model
 import {
   buildPreflightResponse,
   decorateResponseWithCors,
+  isOriginAllowed,
   isPreflightRequest,
   resolveCorsPolicy,
   validateCorsOptions,
@@ -289,6 +290,10 @@ export function createOperationHandler<Host>(
   ): Promise<boolean> => {
     const pathname = normalizedPathname(request);
     if (pathname !== JSON_RPC_PATH) return false;
+    const origin = request.headers.get('Origin');
+    if (corsPolicy !== undefined && origin !== null && !isOriginAllowed(corsPolicy, origin)) {
+      return false;
+    }
     let authContext: AuthContext | undefined;
     const isPublic = publicPaths.has(pathname) || mounts.isPublic(pathname);
     if (authenticate !== undefined && !isPublic) {
@@ -311,6 +316,7 @@ export function createOperationHandler<Host>(
         registry,
         host: options.host,
         activeSessions,
+        discoverDocument: documents.openRpc,
       });
     },
     message(ws: ServerWebSocket<WebSocketData>, message: string | Buffer) {

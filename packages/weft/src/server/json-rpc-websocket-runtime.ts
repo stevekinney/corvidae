@@ -79,6 +79,7 @@ export function openGenericJsonRpcWebSocketSession(options: {
   registry: OperationRegistry;
   host: unknown;
   activeSessions: Set<JsonRpcWebSocketSession>;
+  discoverDocument?: () => Record<string, unknown>;
 }): void {
   try {
     const session = createJsonRpcWebSocketSession({
@@ -87,6 +88,9 @@ export function openGenericJsonRpcWebSocketSession(options: {
       principal: options.ws.data.principal ?? anonymousPrincipal(),
       emitter: { send: (message) => options.ws.send(message) },
       transport: 'jsonRpcWebSocket',
+      ...(options.discoverDocument === undefined
+        ? {}
+        : { discoverDocument: options.discoverDocument }),
     });
     options.ws.data.jsonRpcSession = session;
     options.activeSessions.add(session);

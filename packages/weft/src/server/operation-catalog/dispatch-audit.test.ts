@@ -130,6 +130,7 @@ describe('operation dispatch audit — discriminated union compile-time guarante
       transports: { http: false, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
       unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
       invoke: async () => ({
+        subscriptionId: 's',
         envelope: { subscriptionId: 's', cursor: 'c' },
         iterable: emptyAsyncIterable(),
         close: async () => {},
@@ -218,6 +219,7 @@ describe('operation dispatch audit — executeSubscription envelope typing', () 
       transports: { http: false, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
       unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
       invoke: async () => ({
+        subscriptionId: 'sub-1',
         envelope: { subscriptionId: 'sub-1' },
         iterable: (async function* () {
           yield { value: 1 };

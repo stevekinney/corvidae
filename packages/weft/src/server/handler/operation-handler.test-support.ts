@@ -106,6 +106,7 @@ export const eventsOperation = defineOperation<
     host.seenInputs.push(input);
     const controller = new AbortController();
     return {
+      subscriptionId: 'sub_1',
       envelope: { subscriptionId: 'sub_1', cursor: input.fromCursor ?? '0' },
       iterable: host.feed.subscribe(input.fromCursor, controller.signal),
       close: async () => {

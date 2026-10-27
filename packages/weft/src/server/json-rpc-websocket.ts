@@ -17,6 +17,7 @@
 
 import { faultToJsonRpcError } from './fault-to-json-rpc.ts';
 import { dispatchJsonRpc } from './json-rpc-dispatch.ts';
+import { parseJsonRpcRequest } from './json-rpc-parse.ts';
 import { JSON_RPC_ERROR_CODES, JSON_RPC_VERSION, type JsonRpcId } from './json-rpc-protocol.ts';
 import { pumpSubscriptionIterable } from './json-rpc-websocket-subscription-pump.ts';
 import {
@@ -70,6 +71,7 @@ type SessionRequest = {
 
 type SubscriptionExecution = Promise<
   DispatchResult<{
+    subscriptionId: string;
     envelope: unknown;
     iterable: AsyncIterable<unknown>;
     close: () => Promise<void>;
@@ -80,6 +82,26 @@ function isSubscriptionStartEnvelope(value: unknown): value is SubscriptionStart
   if (value === null || typeof value !== 'object') return false;
   if (!('subscriptionId' in value) || !('cursor' in value)) return false;
   return typeof value.subscriptionId === 'string' && typeof value.cursor === 'string';
+}
+
+function subscriptionResponseEnvelope(
+  envelope: unknown,
+  subscriptionId: string,
+  requiresStartEnvelope: boolean,
+): unknown {
+  if (!requiresStartEnvelope) return envelope;
+  return { subscriptionId, cursor: (envelope as SubscriptionStartEnvelope).cursor };
+}
+
+function requiresSubscriptionClose(disposed: boolean, signal: AbortSignal): boolean {
+  return disposed || signal.aborted;
+}
+
+function hasRequiredSubscriptionEnvelope(
+  envelope: unknown,
+  requiresStartEnvelope: boolean,
+): boolean {
+  return !requiresStartEnvelope || isSubscriptionStartEnvelope(envelope);
 }
 
 function isSessionPrimitive(method: unknown): boolean {
@@ -94,7 +116,7 @@ function isSessionPrimitive(method: unknown): boolean {
 export function createJsonRpcWebSocketSession(
   options: JsonRpcWebSocketSessionOptions,
 ): JsonRpcWebSocketSession {
-  const { registry, engine, principal, emitter, feed, fleetFeed } = options;
+  const { registry, engine, principal, emitter, feed, fleetFeed, discoverDocument } = options;
   const maxSubscriptions = options.maxSubscriptions ?? DEFAULT_MAX_SUBSCRIPTIONS;
   const maxFrameBytes = options.maxFrameBytes ?? DEFAULT_MAX_FRAME_BYTES;
   const transport = options.transport ?? 'jsonRpcWebSocket';
@@ -155,24 +177,27 @@ export function createJsonRpcWebSocketSession(
       return;
     }
 
-    await startSubscription(request, () =>
-      executeSubscription(
-        WORKFLOW_EVENTS_OPERATION_NAME,
-        {
-          workflowId: validation.workflowId,
-          selector: validation.selector,
-          ...(validation.fromCursor === undefined ? {} : { fromCursor: validation.fromCursor }),
-        },
-        {
-          principal,
-          host: { feed },
-          // Subscribe is a session primitive, but the transport identity still
-          // needs to reflect the adapter reusing this implementation so
-          // availability checks enforce stdio-only and websocket-only policies.
-          transport,
-          registry,
-        },
-      ),
+    await startSubscription(
+      request,
+      () =>
+        executeSubscription(
+          WORKFLOW_EVENTS_OPERATION_NAME,
+          {
+            workflowId: validation.workflowId,
+            selector: validation.selector,
+            ...(validation.fromCursor === undefined ? {} : { fromCursor: validation.fromCursor }),
+          },
+          {
+            principal,
+            host: { feed },
+            // Subscribe is a session primitive, but the transport identity still
+            // needs to reflect the adapter reusing this implementation so
+            // availability checks enforce stdio-only and websocket-only policies.
+            transport,
+            registry,
+          },
+        ),
+      true,
     );
   }
 
@@ -180,19 +205,23 @@ export function createJsonRpcWebSocketSession(
     request: SessionRequest,
     params: Record<string, unknown> | undefined,
   ): Promise<void> {
-    await startSubscription(request, () =>
-      executeSubscription(FLEET_EVENTS_OPERATION_NAME, params ?? {}, {
-        principal,
-        host: { fleetFeed },
-        transport,
-        registry,
-      }),
+    await startSubscription(
+      request,
+      () =>
+        executeSubscription(FLEET_EVENTS_OPERATION_NAME, params ?? {}, {
+          principal,
+          host: { fleetFeed },
+          transport,
+          registry,
+        }),
+      true,
     );
   }
 
   async function startSubscription(
     request: SessionRequest,
     execute: () => SubscriptionExecution,
+    requiresStartEnvelope = false,
   ): Promise<void> {
     if (subscriptions.size >= maxSubscriptions) {
       emitResponse(request, {
@@ -226,18 +255,18 @@ export function createJsonRpcWebSocketSession(
       return;
     }
 
-    const { envelope, iterable, close: closeSubscription } = result.value;
+    const { subscriptionId, envelope, iterable, close: closeSubscription } = result.value;
     let closeStarted = false;
     const closeOnce = async (): Promise<void> => {
       if (closeStarted) return;
       closeStarted = true;
       await closeSubscription();
     };
-    if (disposed || controller.signal.aborted) {
+    if (requiresSubscriptionClose(disposed, controller.signal)) {
       await closeSubscriptionAfterClose(closeOnce);
       return;
     }
-    if (!isSubscriptionStartEnvelope(envelope)) {
+    if (!hasRequiredSubscriptionEnvelope(envelope, requiresStartEnvelope)) {
       await closeSubscriptionAfterClose(closeOnce);
       emitResponse(request, {
         jsonrpc: JSON_RPC_VERSION,
@@ -246,11 +275,9 @@ export function createJsonRpcWebSocketSession(
       });
       return;
     }
-    const { subscriptionId, cursor } = envelope;
-
     emitResponse(request, {
       jsonrpc: JSON_RPC_VERSION,
-      result: { subscriptionId, cursor },
+      result: subscriptionResponseEnvelope(envelope, subscriptionId, requiresStartEnvelope),
       id: request.id ?? null,
     });
 
@@ -371,13 +398,25 @@ export function createJsonRpcWebSocketSession(
         id: validation.id,
         expectsResponse: validation.hasRequestId,
       };
-      await startSubscription(request, () =>
-        executeSubscription(method, validation.params ?? {}, {
-          principal,
-          host: engine,
-          transport,
-          registry,
-        }),
+      const parsed = parseJsonRpcRequest(validation.parsed);
+      if (parsed.kind === 'invalid-request') {
+        emitResponse(request, {
+          jsonrpc: JSON_RPC_VERSION,
+          error: { code: parsed.code, message: parsed.message },
+          id: parsed.id,
+        });
+        return true;
+      }
+      await startSubscription(
+        request,
+        () =>
+          executeSubscription(method, validation.params ?? {}, {
+            principal,
+            host: engine,
+            transport,
+            registry,
+          }),
+        false,
       );
       return true;
     }
@@ -412,6 +451,7 @@ export function createJsonRpcWebSocketSession(
       host: engine,
       principal,
       transport,
+      ...(discoverDocument === undefined ? {} : { discoverDocument }),
     });
 
     if (result.kind === 'single') {

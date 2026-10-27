@@ -62,6 +62,7 @@ export async function executeSubscription(
   context: DispatchContext,
 ): Promise<
   DispatchResult<{
+    subscriptionId: string;
     envelope: unknown;
     iterable: AsyncIterable<unknown>;
     close: () => Promise<void>;
@@ -97,6 +98,7 @@ export async function executeSubscription(
   return {
     ok: true,
     value: {
+      subscriptionId: invocation.subscriptionId,
       envelope: envelope.value,
       iterable: validateElements(invocation.iterable, eventSchema),
       close: invocation.close,

@@ -17,6 +17,7 @@ export type JsonRpcWebSocketSessionOptions = {
   readonly maxSubscriptions?: number;
   readonly maxFrameBytes?: number;
   readonly transport?: 'jsonRpcHttp' | 'jsonRpcWebSocket' | 'jsonRpcStdio';
+  readonly discoverDocument?: () => Record<string, unknown>;
 };
 
 export type JsonRpcWebSocketSession = {
