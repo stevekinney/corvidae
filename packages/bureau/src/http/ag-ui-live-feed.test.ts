@@ -65,4 +65,32 @@ describe('AG-UI live feed', () => {
     expect(feed.subscribe(() => undefined).opening).toHaveLength(0);
     registry.dispose();
   });
+
+  test('bootstraps a recorded event that was emitted before the first attachment', () => {
+    const listeners = new Set<(value: ServerFrame) => void>();
+    const registry = createAgUiLiveFeedRegistry((listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    }, 4);
+    const feed = registry.forRun('run-1');
+    feed.bootstrap([{ sequence: 7, event: 'step.started', detail: { step: 0 }, timestamp: 1 }]);
+    const opening = feed.subscribe(() => undefined);
+    expect(opening.opening).toHaveLength(1);
+    expect(opening.opening[0]?.frame).toMatchObject({ event: 'step.started', sequence: 7 });
+    expect(opening.opening[0]?.cursor).toMatch(/\.1$/);
+
+    listeners.forEach((listener) =>
+      listener({
+        type: 'event',
+        runId: 'run-1',
+        event: 'step.started',
+        detail: { step: 0 },
+        sequence: 7,
+        timestamp: 1,
+        runSeq: 1,
+      }),
+    );
+    expect(feed.subscribe(() => undefined).opening).toHaveLength(1);
+    registry.dispose();
+  });
 });

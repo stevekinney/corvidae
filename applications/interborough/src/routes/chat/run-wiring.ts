@@ -1004,10 +1004,25 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
       // An attach stream opens with the thread as a snapshot, which is what restores a transcript
       // the page never held.
       const snapshot = await events.next();
-      const opened = [started.value, ...(snapshot.done === true ? [] : [snapshot.value])];
+      const opening = [started.value, ...(snapshot.done === true ? [] : [snapshot.value])];
+      // Pull one more opening frame so the decoder observes the first live
+      // cursor before returning control to the session. This is normally the
+      // recorded STEP_STARTED projection; a valid cursor resume may have no
+      // snapshot and still needs its first frame consumed here.
+      if (snapshot.done !== true) {
+        const firstLive = await events.next();
+        if (firstLive.done !== true) opening.push(firstLive.value);
+      }
+      const opened = opening;
       const messages =
         snapshot.done !== true && isMessagesSnapshot(snapshot.value) ? snapshot.value.messages : [];
-      const restored = mergeAGUIMessages(createConversationHistory({ id: threadId }), messages);
+      // A valid live-cursor resume has no snapshot: preserve the transcript already
+      // on screen. A snapshot is authoritative and therefore starts from an empty
+      // history so no stale row can survive the replacement.
+      const restored =
+        snapshot.done !== true && isMessagesSnapshot(snapshot.value)
+          ? mergeAGUIMessages(createConversationHistory({ id: threadId }), messages)
+          : options.conversation();
       attached = (async function* () {
         yield* opened;
         yield* events;

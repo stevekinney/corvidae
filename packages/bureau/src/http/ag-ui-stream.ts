@@ -390,7 +390,11 @@ export function openRunStream(
     unsubscribeSnapshots = undefined;
     surfaceSource?.stop();
     buffer.length = 0;
-    if (!runIsGoing(bureau, request.nativeRunId) || !sawLiveFrame) liveFeed?.dispose();
+    const detail = bureau.tasks.detail(request.nativeRunId);
+    const startedStep = detail?.events.some((event) => event.event === RECORDED.stepStarted);
+    if (!runIsGoing(bureau, request.nativeRunId) || (!sawLiveFrame && !startedStep)) {
+      liveFeed?.dispose();
+    }
   };
 
   const enqueue = (task: () => Promise<void>): void => {
@@ -669,7 +673,7 @@ export function openRunStream(
   const subscribe = (listener: (frame: ServerFrame, cursor?: string) => void): (() => void) => {
     if (liveFeed === undefined) {
       return bureau.frames((frame) => {
-        if (ended || frame.runId !== request.nativeRunId) return;
+        if (ended || !('runId' in frame) || frame.runId !== request.nativeRunId) return;
         if (frame.type !== 'event' && frame.type !== 'stream:text-delta') return;
         listener(frame);
       });
@@ -682,12 +686,17 @@ export function openRunStream(
     for (const item of subscription.opening) listener(item.frame, item.cursor);
     return subscription.unsubscribe;
   };
-  unsubscribeFrames = subscribe((frame, cursor) => {
+  const receive = (frame: ServerFrame, cursor?: string): void => {
     if (ended) return;
     if (opened) sawLiveFrame = true;
     buffer.push({ frame, cursor: cursor ?? '' });
     if (opened) enqueue(drain);
-  });
+  };
+  // The mount-owned feed is already subscribed to bureau.frames. Defer only this
+  // attachment listener until the recorded detail is available, so bootstrap can
+  // fill the gap for events emitted before the first HTTP attach without creating
+  // a second producer or racing a history read.
+  if (liveFeed === undefined) unsubscribeFrames = subscribe(receive);
 
   /**
    * A child run's stream. Bureau holds no run for a child, only its record, so
@@ -883,6 +892,10 @@ export function openRunStream(
       fail('RUN_NOT_FOUND', `Run "${request.nativeRunId}" was not found`);
       return;
     }
+    if (liveFeed !== undefined) {
+      if (!liveFeed.resumes(request.resumeCursor)) liveFeed.bootstrap(detail?.events ?? []);
+      unsubscribeFrames = subscribe(receive);
+    }
     // A run no process-local state names, held by another process or settled with an approval no
     // process restored, is streamed from its durable state.
     if (detail === undefined && pendingFor(bureau, request.nativeRunId).length === 0) {
@@ -1016,7 +1029,7 @@ export function openRunStream(
     // replay, which the replay's events do not include: the next delta carries
     // the text accumulated so far, so replaying a stale one would only repeat it.
     for (let index = buffer.length - 1; index >= 0; index -= 1) {
-      if (buffer[index]!.type === 'stream:text-delta') buffer.splice(index, 1);
+      if (buffer[index]!.frame.type === 'stream:text-delta') buffer.splice(index, 1);
     }
     opened = true;
     void flushSurfaces();

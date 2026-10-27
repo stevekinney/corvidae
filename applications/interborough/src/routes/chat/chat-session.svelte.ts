@@ -380,11 +380,14 @@ export class ChatSessionState {
     this.#retryFailures += 1;
     this.#retryTimer = setTimeout(() => {
       this.#retryTimer = undefined;
-      if (generation !== this.#retryGeneration || this.#abort.signal.aborted) return;
-      void this.#readAgain().then((reconnected) => {
-        if (reconnected) this.#retryFailures = 0;
-      });
+      void this.#retryAfter(generation);
     }, delay);
+  }
+
+  async #retryAfter(generation: number): Promise<void> {
+    if (generation !== this.#retryGeneration || this.#abort.signal.aborted) return;
+    const reconnected = await this.#readAgain();
+    if (reconnected) this.#retryFailures = 0;
   }
 
   dispose(): void {
