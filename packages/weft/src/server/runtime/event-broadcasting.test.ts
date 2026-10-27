@@ -181,6 +181,47 @@ describe('wireEventBroadcasting', () => {
     });
   });
 
+  it('keeps workflowless catalog events out of workflow watch storage and publication', async () => {
+    const engine = new Engine({ storage: new MemoryStorage() });
+    const fleetEventFeed = createFleetEventFeed(engine.storage);
+    const published: string[] = [];
+    const handle = wireEventBroadcasting(
+      engine,
+      {
+        publish(_channel: string, message: string) {
+          published.push(message);
+        },
+      } as never,
+      { fleetEventFeed },
+    );
+
+    engine.dispatchEvent(new WorkflowRevisionInstalledEvent('checkout', 'r1'));
+
+    await waitFor(
+      async () => {
+        for await (const _envelope of fleetEventFeed.replay()) return true;
+        return false;
+      },
+      { label: 'workflowless catalog event persisted to fleet feed' },
+    );
+    const fleetEvents: FleetEventEnvelope[] = [];
+    for await (const envelope of fleetEventFeed.replay()) fleetEvents.push(envelope);
+    const watchKeys: string[] = [];
+    for await (const [key] of engine.storage.scan('watch-event:')) watchKeys.push(key);
+
+    handle.dispose();
+    engine[Symbol.dispose]();
+
+    expect(fleetEvents).toHaveLength(1);
+    expect(fleetEvents[0]).toMatchObject({
+      kind: WorkflowRevisionInstalledEvent.type,
+      payload: { workflowType: 'checkout', revision: 'r1' },
+    });
+    expect(fleetEvents[0]).not.toHaveProperty('workflowId');
+    expect(watchKeys).toEqual([]);
+    expect(published).toEqual([]);
+  });
+
   it('keeps token stream payloads out of events-read feeds and watch storage', async () => {
     const engine = new Engine({ storage: new MemoryStorage() });
     const fleetEventFeed = createFleetEventFeed(engine.storage);
