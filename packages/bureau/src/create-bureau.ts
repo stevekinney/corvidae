@@ -16761,8 +16761,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     runAdmissionClosed = true;
     sessionInputClosing.resolve();
 
-    const policy: 'abort' | 'drain' = shutdownOptions?.policy ?? 'abort';
+    const policy: 'abort' | 'drain' | 'detach' = shutdownOptions?.policy ?? 'abort';
     const timeoutMilliseconds = shutdownOptions?.timeoutMilliseconds;
+    const detachedRunCount = policy === 'detach' && runtime.durable ? activeRuns.size : 0;
 
     // COR-1527: stop reacting to the workflow files at once, so nothing registers with an engine
     // that is about to be disposed; the chain below waits for the apply in progress first.
@@ -16797,6 +16798,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       return Object.freeze({
         admissionClosed: true,
         policy,
+        detached: detachedRunCount,
         requested: owners.length,
         completed: owners.filter((owner) => owner.outcome === 'completed').length,
         failed: owners.filter((owner) => owner.outcome === 'failed').length,
@@ -16865,7 +16867,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       // COR-1630 — the results of the catalog runs 'abort' aborts: each handle settling is what
       // starts that run's asset release, so the release is known only after it.
       const abortedCatalogRunResults: Array<Promise<void>> = [];
-      if (policy === 'abort') {
+      const abortActiveRuns = policy === 'abort' || (policy === 'detach' && !runtime.durable);
+      const abortCatalogRuns = policy === 'abort' || policy === 'detach';
+      if (abortActiveRuns) {
         // Deliberately NOT awaited here (or anywhere gating the
         // unconditional engine/storage teardown below): a caller-owned
         // `ActiveRun` whose underlying provider call never honors its
@@ -16909,6 +16913,16 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         // already cached at this point, every subsequent shutdown()/dispose()
         // call would return the same rejection forever instead of ever
         // completing cleanup (review round 2, Codex).
+      } else {
+        // 'drain' waits caller-owned runs; 'detach' leaves durable caller-owned runs for recovery.
+        for (const activeRun of activeRuns) {
+          if (policy === 'drain') runTerminals.push(whenActiveRunTerminal(activeRun));
+        }
+        for (const erroredRun of erroredActiveRuns) {
+          runTerminals.push(whenErroredRunEnds(erroredRun));
+        }
+      }
+      if (abortCatalogRuns) {
         const currentCatalogRuns = [...catalogRuns];
         for (const catalogRun of currentCatalogRuns) {
           try {
@@ -16932,15 +16946,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
           }
         }
       } else {
-        // 'drain': let every caller-owned run reach its own natural terminal
-        // result instead of aborting it — only Bureau-owned background work
-        // (above/below) is stopped like 'abort'.
-        for (const activeRun of activeRuns) {
-          runTerminals.push(whenActiveRunTerminal(activeRun));
-        }
-        for (const erroredRun of erroredActiveRuns) {
-          runTerminals.push(whenErroredRunEnds(erroredRun));
-        }
+        // Catalog runs are caller-owned too, but unlike durable ActiveRuns they have no recovery
+        // record, so detach retains the existing abort behavior for them.
         const currentCatalogRuns = [...catalogRuns];
         for (const catalogRun of currentCatalogRuns) {
           runTerminals.push(Promise.allSettled([catalogRun.result()]));
@@ -16949,8 +16956,11 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       const toolboxes = [
         ...new Set([runtime.baseToolbox, ...runToolboxes, ...runToolboxesByRunId.values()]),
       ];
+      const toolboxPolicy = policy === 'detach' ? 'abort' : policy;
       const toolboxShutdownResults = await Promise.allSettled([
-        ...toolboxes.map((toolbox) => toolbox.shutdown({ policy, reason: 'Bureau disposed' })),
+        ...toolboxes.map((toolbox) =>
+          toolbox.shutdown({ policy: toolboxPolicy, reason: 'Bureau disposed' }),
+        ),
         ...runTerminals,
       ]);
       for (const result of toolboxShutdownResults) {

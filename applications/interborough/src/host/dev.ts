@@ -15,6 +15,7 @@ import { dirname, join } from 'node:path';
 import { buildBrowserApplication, stopBrowserBuilds } from './browser-build.ts';
 import { startHost } from './host.ts';
 import { createRebuildScheduler } from './rebuild-scheduler.ts';
+import { installShutdownSignals } from './shutdown-signals.ts';
 
 const packageRoot = join(import.meta.dir, '..', '..');
 const repositoryRoot = join(packageRoot, '..', '..');
@@ -64,5 +65,4 @@ async function shutDown(): Promise<void> {
   process.exit(0);
 }
 
-process.on('SIGINT', () => void shutDown());
-process.on('SIGTERM', () => void shutDown());
+installShutdownSignals(process, shutDown);
