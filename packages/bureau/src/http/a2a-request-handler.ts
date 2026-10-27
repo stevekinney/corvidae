@@ -721,6 +721,16 @@ function refuseWithoutScopes(
 }
 
 /** Whether an error is the handler's own refusal of a send: raised before anything took effect. */
+function isRefusal(error: unknown): boolean {
+  return (
+    error instanceof RequestMalformedError ||
+    error instanceof TaskNotFoundError ||
+    error instanceof ContentTypeNotSupportedError ||
+    error instanceof UnsupportedOperationError ||
+    error instanceof CommandReceiptError
+  );
+}
+
 /** Whether a task's A2A record holds an entry for the message `messageId`. */
 function holdsMessage(record: A2ATaskRecord | undefined, messageId: string): boolean {
   return record?.history.some((held) => held['messageId'] === messageId) === true;
@@ -742,16 +752,6 @@ function staleRevision(
       expectedRevision,
       currentRevision,
     },
-  );
-}
-
-function isRefusal(error: unknown): boolean {
-  return (
-    error instanceof RequestMalformedError ||
-    error instanceof TaskNotFoundError ||
-    error instanceof ContentTypeNotSupportedError ||
-    error instanceof UnsupportedOperationError ||
-    error instanceof CommandReceiptError
   );
 }
 
