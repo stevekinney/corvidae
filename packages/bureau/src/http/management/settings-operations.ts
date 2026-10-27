@@ -336,6 +336,7 @@ export const settingsEventsOperation = defineOperation<
       throw error;
     }
     subscriptionCount += 1;
+    const subscriptionId = `settings-${subscriptionCount}`;
     const iterable = createReplayAwareClosableIterable<SettingsChangeEvent>(
       (onReplayComplete) => {
         // Replay is complete at once with nothing to catch up; otherwise it completes after the
@@ -347,7 +348,8 @@ export const settingsEventsOperation = defineOperation<
       { close: () => controller.abort() },
     );
     return {
-      envelope: { subscriptionId: `settings-${subscriptionCount}` },
+      subscriptionId,
+      envelope: { subscriptionId },
       iterable,
       close: () => iterable.close(),
     };

@@ -300,15 +300,6 @@ const COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer('COVERAGE_ALLOWANCE_OVE
     },
   ],
   [
-    'src/core/engine/queries.ts',
-    {
-      reason:
-        'The remaining query-registry line is a defensive missing-handler branch after registration and teardown behavior is covered.',
-      lines: new Set([17]),
-      requireUncoveredLines: true,
-    },
-  ],
-  [
     'src/core/interceptor/index.ts',
     {
       reason:
@@ -331,10 +322,8 @@ const COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer('COVERAGE_ALLOWANCE_OVE
     'src/server/json-rpc-websocket.ts',
     {
       reason:
-        'Transport disconnect and concurrency exits are behaviorally tested, but Bun does not deterministically attribute these residual paths (the emit() catch-block’s emitterBroken = true, line 126). Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption): corvidae additionally carries a defensive branch upstream does not (lines 235-241) that rejects a subscription-start result whose envelope shape is not isSubscriptionStartEnvelope() and reports an internal error instead of proceeding — every current caller only ever constructs a well-formed envelope, so no test manufactures the malformed shape needed to reach it.',
+        'Transport disconnect and concurrency exits are behaviorally tested, but Bun reports two aggregate function misses for this transport.',
       functions: 2,
-      lines: new Set([126, 235, 236, 237, 238, 239, 240, 241]),
-      requireUncoveredLines: true,
     },
   ],
   [
@@ -2028,6 +2017,8 @@ export function parseLcovFiles(content: string): Map<string, FileCoverageResult>
   let fileLineHit = 0;
   let fileFunctionTotal = 0;
   let fileFunctionHit = 0;
+  let observedAllowanceLines = new Set<number>();
+  let coveredAllowanceLines = new Set<number>();
 
   function finalizeCurrentFile(): void {
     if (!currentFile) {
@@ -2039,6 +2030,21 @@ export function parseLcovFiles(content: string): Map<string, FileCoverageResult>
     }
 
     const allowance = COVERAGE_ALLOWANCES.get(currentFile);
+    if (
+      allowance?.requireUncoveredLines === true &&
+      allowance.lines !== undefined &&
+      coveredAllowanceLines.size === 0
+    ) {
+      const missingLines = [...allowance.lines].filter(
+        (lineNumber) => !observedAllowanceLines.has(lineNumber),
+      );
+      if (missingLines.length > 0) {
+        throw new Error(
+          `Coverage allowance for ${currentFile}:${missingLines.join(', ')} is absent from the LCOV report. ` +
+            'Realign the stale allowance to an instrumented source line.',
+        );
+      }
+    }
     const ignoredFunctions = allowance?.functions ?? 0;
     const adjustedFunctionTotal = Math.max(0, fileFunctionTotal - ignoredFunctions);
     const adjustedFunctionHit = Math.min(fileFunctionHit, adjustedFunctionTotal);
@@ -2066,6 +2072,8 @@ export function parseLcovFiles(content: string): Map<string, FileCoverageResult>
     fileLineHit = 0;
     fileFunctionTotal = 0;
     fileFunctionHit = 0;
+    observedAllowanceLines = new Set();
+    coveredAllowanceLines = new Set();
   }
 
   for (const line of content.split('\n')) {
@@ -2097,6 +2105,10 @@ export function parseLcovFiles(content: string): Map<string, FileCoverageResult>
       const hitCount = parseInt(hitCountText, 10);
       const allowance = COVERAGE_ALLOWANCES.get(currentFile);
       const ignoredLines = allowance?.lines;
+      if (allowance?.requireUncoveredLines === true && ignoredLines?.has(lineNumber)) {
+        observedAllowanceLines.add(lineNumber);
+        if (hitCount > 0) coveredAllowanceLines.add(lineNumber);
+      }
 
       if (allowance !== undefined && ignoredLines?.has(lineNumber)) {
         if (hitCount > 0 && allowance.requireUncoveredLines === true) {

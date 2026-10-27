@@ -25,6 +25,7 @@ const subscription = defineOperation({
     return { allowed: true };
   },
   invoke: async () => ({
+    subscriptionId: 'sub-internal',
     envelope: {},
     iterable: (async function* () {
       yield 'event';
@@ -47,12 +48,14 @@ const iterableResult: Awaited<ReturnType<typeof subscription.invoke>> = (async f
 })();
 // @ts-expect-error Subscription requires close.
 const missingClose: Awaited<ReturnType<typeof subscription.invoke>> = {
+  subscriptionId: 'sub-internal',
   envelope: {},
   iterable: (async function* () {
     yield 'event';
   })(),
 };
 const noncallableClose: Awaited<ReturnType<typeof subscription.invoke>> = {
+  subscriptionId: 'sub-internal',
   envelope: {},
   iterable: (async function* () {
     yield 'event';

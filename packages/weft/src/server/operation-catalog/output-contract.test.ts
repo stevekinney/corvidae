@@ -203,6 +203,7 @@ describe('operation output contract', () => {
         length: value.value.length,
       })),
       async () => ({
+        subscriptionId: 'sub-1',
         envelope: { subscriptionId: 'sub-1' },
         iterable: (async function* () {
           yield { value: 'event' };
