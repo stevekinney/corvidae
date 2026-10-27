@@ -560,6 +560,7 @@ describe('createBureauHandler catalog', () => {
         'bureau.contexts.input',
         'bureau.contexts.list',
         'bureau.contexts.steer',
+        'bureau.decisions.decide',
         'bureau.deployment.get',
         'bureau.goals.cancel',
         'bureau.goals.create',
@@ -866,6 +867,7 @@ describe('the Bureau scope list', () => {
       'bureau.assets:read',
       'bureau.assets:write',
       'bureau.events:observe-all',
+      'bureau.decisions:write',
     ]);
   });
 });

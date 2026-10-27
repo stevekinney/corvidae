@@ -89,6 +89,7 @@ import type {
 import type { BureauEventMap } from './events';
 import type { BureauGoals } from './goal-types';
 import type { BureauModelPolicyOptions } from './model-policy';
+import type { BureauDecisions, DecisionsOptions } from './decisions/types';
 import type { Models, ModelsOptions } from './models/create-models';
 import type { OnlineEvalSampler, OnlineEvalSamplerOptions } from './online-evals';
 import type { ForkSessionRequest, ForkSessionResult } from './session-fork';
@@ -601,6 +602,22 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * throws `DurableCapabilityUnavailableError` instead (AB-41 / AB-43), unchanged by this option.
    */
   wakeup?: false;
+  /**
+   * COR-1709 — whether a durable Bureau offers the `decide` tool to a task: a typed question put
+   * to a model (`boolean`, `choice`, `scale`, or `structured` against a JSON Schema). It is offered
+   * by default, to the run kinds that are offered `requestHumanInput`, and only when something can
+   * answer: {@link BureauOptions.decisions}'s `model` or {@link ModelsOptions.generate}. The tool
+   * acts as the task's principal and is capped per task by {@link DecisionsOptions.maximumPerTask}.
+   * Pass `false` to leave it out. Passing `true` throws `BureauError` `BAD_REQUEST`: the tool is
+   * already the default.
+   */
+  decide?: false;
+  /**
+   * COR-1709 — how `bureau.decisions.decide` and the `decide` tool are answered: a `model` for the
+   * kinds it serves, a `fallbackModel` row of the model catalog for the rest, and a
+   * `maximumPerTask` cap on the tool. See {@link DecisionsOptions}.
+   */
+  decisions?: DecisionsOptions;
   /**
    * Opt into OpenTelemetry spans + metrics for durable runs. `true` enables the
    * default interceptor; pass an {@link ObservabilityOptions} (minus `eventTarget`,
@@ -2059,6 +2076,11 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * not depend on the registered agent set.
    */
   readonly models: Models;
+  /**
+   * COR-1709 — ask a model a typed question: `decide(request, options?)`. See
+   * {@link BureauDecisions}.
+   */
+  readonly decisions: BureauDecisions;
 
   /**
    * The typed agent catalog (AB-15, AB-22) — the immutable, read-only view

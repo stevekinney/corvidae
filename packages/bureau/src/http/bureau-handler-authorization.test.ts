@@ -176,6 +176,8 @@ const CONTEXT_COMMAND_PARAMETERS = {
 function definitionParameters(operation: CatalogOperation) {
   // The one agent operation that names an agent and nothing else (COR-1559).
   if (operation.name === 'bureau.agents.models') return { agentName: 'x' };
+  // COR-1709: a complete request, so the call reaches its own check instead of failing validation.
+  if (operation.name === 'bureau.decisions.decide') return { kind: 'boolean', question: 'Is it?' };
   if (operation.name.startsWith('bureau.assets.')) return ASSET_PARAMETERS;
   if (operation.name.startsWith('bureau.schedules.')) return SCHEDULE_PARAMETERS;
   if (operation.name.startsWith('bureau.goals.')) return GOAL_PARAMETERS;

@@ -102,6 +102,7 @@ import {
   type SkillEventMap,
   type ToolPolicy,
 } from './skills';
+import { createDecideToolbox, type DecideToolWiring } from './decisions/decide-tool';
 import { humanInputEnabled, humanInputSchemasOf } from './human-input-option';
 import { withAddedTools, withToolboxLayer } from './toolbox-additions';
 import {
@@ -268,6 +269,11 @@ export interface WireDurableOptInToolsOptions {
   /** Wires `requestHumanInput` in when true (AB-13/AB-41/AB-43). */
   readonly humanInput?: boolean;
   /**
+   * COR-1709 — wires the `decide` tool in when present. It needs no durable services, but the
+   * callers offer it to exactly the runs that are offered `requestHumanInput`.
+   */
+  readonly decide?: DecideToolWiring | undefined;
+  /**
    * COR-1674 — per-signal answer schemas handed to `requestHumanInput`. Ignored when `humanInput`
    * is falsy. Every wiring site, fresh and recovered, passes the same map.
    */
@@ -342,6 +348,13 @@ export function wireDurableOptInTools(
     toolbox = withAddedTools(toolbox, humanInputToolbox);
   }
 
+  if (options.decide !== undefined) {
+    toolbox = withAddedTools(
+      toolbox,
+      createDecideToolbox({ ...options.decide, taskId: options.runId }),
+    );
+  }
+
   if (options.wakeup) {
     // Unlike `requestHumanInput`, `scheduleWakeup` dispatches no event on
     // park — `ctx.sleep` is itself the durable checkpoint, and recovery
@@ -365,6 +378,18 @@ export function wireDurableOptInTools(
   }
 
   return toolbox;
+}
+
+/**
+ * COR-1709 — the owner of record of a recovered session run: the owner recorded for the run, else
+ * the session's, else none.
+ */
+function recoveredOwnerOf(session: AgentSession, runId: string): string | undefined {
+  const owners = session.metadata['lastRunOwningPrincipals'];
+  const runOwner = isPlainAuthorityRecord(owners) ? owners[runId] : undefined;
+  if (typeof runOwner === 'string') return runOwner;
+  const sessionOwner = session.metadata[SESSION_OWNER_METADATA_KEY];
+  return typeof sessionOwner === 'string' ? sessionOwner : undefined;
 }
 
 const requestAuthorityMetadataKey = 'lastRequestAuthority';
@@ -1599,6 +1624,12 @@ export type RuntimeCompositionDependencies = {
    * composition, and a run resolves it only when it starts.
    */
   contentSourceResolverFor?: (principalId: string | undefined) => ContentSourceResolver | undefined;
+  /**
+   * COR-1709 — what a run owned by `principalId` needs to be offered the `decide` tool, or
+   * `undefined` when the tool is not offered (`decide: false`, or nothing can answer). Late-bound
+   * by `createBureau`: the decisions are built after this composition.
+   */
+  decideToolFor?: (principalId: string | undefined) => DecideToolWiring | undefined;
   /**
    * COR-1524 — the definition a file-backed agent's run started with. A scheduled fire records its
    * binding here as a session run does, so recovering it resolves the agent it started with, not the
@@ -3800,11 +3831,17 @@ async function buildRuntimeComposition(
     const servicesRef: { current?: DurableRunDeps } = {};
     const wantsHumanInput = humanInputEnabled(options.humanInput) && runId !== undefined;
     const wantsWakeup = options.wakeup !== false && runId !== undefined;
-    if (wantsHumanInput || wantsWakeup) {
+    // COR-1709: offered to exactly the runs that are offered `requestHumanInput`.
+    const decide =
+      runId === undefined
+        ? undefined
+        : dependencies.decideToolFor?.(recoveredOwnerOf(session, runId));
+    if (wantsHumanInput || wantsWakeup || decide !== undefined) {
       runToolbox = wireDurableOptInTools(runRuntime.toolbox, servicesRef, {
         humanInput: wantsHumanInput,
         inputSchemas: humanInputSchemasOf(options.humanInput),
         wakeup: wantsWakeup,
+        ...(decide === undefined ? {} : { decide }),
         // `runId` is non-undefined here (both `wantsHumanInput`/`wantsWakeup`
         // require it); `?? ''` only satisfies the type checker.
         runId: runId ?? '',
@@ -4427,20 +4464,32 @@ async function buildRuntimeComposition(
       record.workflowStep === undefined &&
       resolution.recoveredChild !== true;
     const humanInputServices: { current?: DurableRunDeps } = {};
-    const toolbox = offersHumanInput
-      ? wireDurableOptInTools(resolution.options.toolbox, humanInputServices, {
-          humanInput: true,
-          inputSchemas: humanInputSchemasOf(options.humanInput),
-          wakeup: false,
-          runId,
-          humanInputEmitter: {
-            dispatchEvent: (event: Event) => {
-              const target = humanInputServices.current?.emitter;
-              return hasDispatchEvent(target) ? target.dispatchEvent(event) : false;
+    // COR-1709: the `decide` tool is offered on exactly the runs `requestHumanInput` is, but is
+    // independent of the `humanInput` option.
+    const offersDecide =
+      durable !== undefined &&
+      record.goalAttempt === undefined &&
+      record.workflowStep === undefined &&
+      resolution.recoveredChild !== true;
+    const decide = offersDecide
+      ? dependencies.decideToolFor?.(ownerOrLocal(record.principal))
+      : undefined;
+    const toolbox =
+      offersHumanInput || decide !== undefined
+        ? wireDurableOptInTools(resolution.options.toolbox, humanInputServices, {
+            humanInput: offersHumanInput,
+            inputSchemas: humanInputSchemasOf(options.humanInput),
+            wakeup: false,
+            runId,
+            ...(decide === undefined ? {} : { decide }),
+            humanInputEmitter: {
+              dispatchEvent: (event: Event) => {
+                const target = humanInputServices.current?.emitter;
+                return hasDispatchEvent(target) ? target.dispatchEvent(event) : false;
+              },
             },
-          },
-        })
-      : resolution.options.toolbox;
+          })
+        : resolution.options.toolbox;
     const services: DurableRunDeps = {
       options: {
         ...resolution.options,
@@ -4882,13 +4931,16 @@ async function buildRuntimeComposition(
     // object returned below, so that object is captured once it exists, as the recovery of a
     // catalog run captures it.
     const humanInputServices: { current?: DurableRunDeps } = {};
+    // COR-1709: a fire is offered `decide` as it is offered `requestHumanInput`, as its owner.
+    const fireDecide = durable === undefined ? undefined : dependencies.decideToolFor?.(owner);
     const fireToolbox =
-      humanInputEnabled(options.humanInput) && durable !== undefined
+      (humanInputEnabled(options.humanInput) && durable !== undefined) || fireDecide !== undefined
         ? wireDurableOptInTools(runRuntime.toolbox, humanInputServices, {
-            humanInput: true,
+            humanInput: humanInputEnabled(options.humanInput) && durable !== undefined,
             inputSchemas: humanInputSchemasOf(options.humanInput),
             wakeup: false,
             runId,
+            ...(fireDecide === undefined ? {} : { decide: fireDecide }),
             humanInputEmitter: {
               dispatchEvent: (event: Event) => {
                 const target = humanInputServices.current?.emitter;

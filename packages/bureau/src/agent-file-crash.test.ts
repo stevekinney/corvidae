@@ -191,7 +191,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
     expect(calls).toHaveLength(4);
     for (const call of calls) {
       expect(call.model).toBe('claude-opus-5-5');
-      expect(call.tools).toEqual(['lookup-order', 'requestHumanInput']);
+      expect(call.tools).toEqual(['decide', 'lookup-order', 'requestHumanInput']);
     }
 
     // Retention: every one of those runs, a recovered `bureau.run` run included, had its snapshot

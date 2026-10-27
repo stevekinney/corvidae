@@ -1236,6 +1236,199 @@ describe('a thread with a run in progress', () => {
 });
 
 describe('attach', () => {
+  it('resumes after a durable cursor without replaying the snapshot', async () => {
+    await withHarness(
+      {
+        storage: 'sqlite',
+        toolbox: createToolbox(
+          [
+            createTool({
+              name: 'charge-card',
+              version: '1.0.0',
+              description: 'Charge a payment card',
+              input: z.object({ cents: z.number() }),
+              async execute() {
+                return { charged: true };
+              },
+            }),
+          ],
+          {
+            policy: {
+              beforeExecute: () => ({
+                allow: false,
+                status: 'needs_approval',
+                reason: 'Approval required',
+                action: { message: 'Approve' },
+              }),
+            },
+          },
+        ) as unknown as Toolbox,
+        script: [
+          {
+            kind: 'respond',
+            response: {
+              content: 'Charging.',
+              toolCalls: [{ id: 'call-1', name: 'charge-card', arguments: { cents: 500 } }],
+            },
+          },
+        ],
+      },
+      async ({ handler }) => {
+        const starter = new FrameReader(await handler(startRequest(runAgentInput())));
+        await starter.until(EventType.RUN_FINISHED);
+        const nativeRunId = String(bureauMetadata(starter.received[0]!.event)['runId']);
+        const cursor = starter.received.findLast((frame) => frame.id !== undefined)?.id;
+        expect(cursor).toBeString();
+        const starterFinished = starter.received.at(-1)!;
+        expect(starterFinished.id).toBe(cursor);
+        expect(bureauMetadata(starterFinished.event)).toMatchObject({
+          durable: true,
+          cursor,
+        });
+        const opening = await readAgUiStream(
+          await handler(attachRunRequest(nativeRunId, { 'Last-Event-ID': cursor! })),
+        );
+        expect(opening.some((frame) => frame.event.type === EventType.MESSAGES_SNAPSHOT)).toBe(
+          false,
+        );
+        const finished = opening.filter((frame) => frame.event.type === EventType.RUN_FINISHED);
+        expect(finished).toHaveLength(1);
+        expect(finished[0]!.event).toMatchObject({ outcome: { type: 'interrupt' } });
+        expect(finished[0]!.id).toBeUndefined();
+        expect(bureauMetadata(finished[0]!.event)).toMatchObject({ durable: false });
+        expect(bureauMetadata(finished[0]!.event)['cursor']).toBeUndefined();
+      },
+    );
+  });
+
+  it('falls back to the snapshot when retention gaps after cursor discovery', async () => {
+    await withHarness(
+      {
+        storage: 'sqlite',
+        toolbox: createToolbox(
+          [
+            createTool({
+              name: 'charge-card',
+              version: '1.0.0',
+              description: 'Charge a payment card',
+              input: z.object({ cents: z.number() }),
+              async execute() {
+                return { charged: true };
+              },
+            }),
+          ],
+          {
+            policy: {
+              beforeExecute: () => ({
+                allow: false,
+                status: 'needs_approval',
+                reason: 'Approval required',
+                action: { message: 'Approve' },
+              }),
+            },
+          },
+        ) as unknown as Toolbox,
+        script: [
+          {
+            kind: 'respond',
+            response: {
+              content: 'Charging.',
+              toolCalls: [{ id: 'call-1', name: 'charge-card', arguments: { cents: 500 } }],
+            },
+          },
+        ],
+      },
+      async ({ handler, bureau }) => {
+        const starter = new FrameReader(await handler(startRequest(runAgentInput())));
+        await starter.until(EventType.RUN_FINISHED);
+        const nativeRunId = String(bureauMetadata(starter.received[0]!.event)['runId']);
+        const cursor = starter.received.findLast((frame) => frame.id !== undefined)?.id;
+        expect(cursor).toBeString();
+        const events = bureau.tasks.events.bind(bureau.tasks);
+        let calls = 0;
+        spyOn(bureau.tasks, 'events').mockImplementation(async (taskId, options) => {
+          calls += 1;
+          const page = await events(taskId, options);
+          if (calls === 1) {
+            if (!('events' in page)) throw new Error('expected the first history page');
+            return {
+              ...page,
+              hasMore: true,
+              nextCursor: page.events.at(-1)?.cursor,
+            };
+          }
+          return {
+            outcome: 'gap',
+            requestedCursor: options?.since ?? '-1',
+            firstRetainedSequence: 999,
+          };
+        });
+
+        const opening = await readAgUiStream(
+          await handler(attachRunRequest(nativeRunId, { 'Last-Event-ID': cursor! })),
+        );
+        expect(calls).toBeGreaterThanOrEqual(2);
+        expect(opening.some((frame) => frame.event.type === EventType.MESSAGES_SNAPSHOT)).toBe(
+          true,
+        );
+      },
+    );
+  });
+
+  it.each(['999999999', 'not-a-cursor'])(
+    'falls back to the snapshot for an invalid cursor %s',
+    async (cursor) => {
+      await withHarness(
+        {
+          storage: 'sqlite',
+          toolbox: createToolbox(
+            [
+              createTool({
+                name: 'charge-card',
+                version: '1.0.0',
+                description: 'Charge a payment card',
+                input: z.object({ cents: z.number() }),
+                async execute() {
+                  return { charged: true };
+                },
+              }),
+            ],
+            {
+              policy: {
+                beforeExecute: () => ({
+                  allow: false,
+                  status: 'needs_approval',
+                  reason: 'Approval required',
+                  action: { message: 'Approve' },
+                }),
+              },
+            },
+          ) as unknown as Toolbox,
+          script: [
+            {
+              kind: 'respond',
+              response: {
+                content: 'Charging.',
+                toolCalls: [{ id: 'call-1', name: 'charge-card', arguments: { cents: 500 } }],
+              },
+            },
+          ],
+        },
+        async ({ handler }) => {
+          const starter = new FrameReader(await handler(startRequest(runAgentInput())));
+          await starter.until(EventType.RUN_FINISHED);
+          const nativeRunId = String(bureauMetadata(starter.received[0]!.event)['runId']);
+          const opening = await readAgUiStream(
+            await handler(attachRunRequest(nativeRunId, { 'Last-Event-ID': cursor })),
+          );
+          expect(opening.some((frame) => frame.event.type === EventType.MESSAGES_SNAPSHOT)).toBe(
+            true,
+          );
+        },
+      );
+    },
+  );
+
   it('opens with the conversation as a snapshot, the state, and the step in flight, then follows the run', async () => {
     await withHarness(
       { script: [callTool(), { kind: 'block', barrier: 'hold' }, say('Found it.')] },
