@@ -14278,7 +14278,11 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
         throw new Error(`expected deleted-aggregate, got ${JSON.stringify(outcome)}`);
       }
       expect(outcome.owner).toEqual({ kind: 'run', id: run.id });
-      expect(outcome.events.map((event) => event.kind)).toEqual(['run.completed', 'run.removed']);
+      expect(outcome.events.map((event) => event.kind)).toEqual([
+        'run.completed',
+        'run.settled',
+        'run.removed',
+      ]);
 
       await bureau.shutdown();
     } finally {
@@ -14397,6 +14401,7 @@ describe('bureau.eventHistory deleted-aggregate detection is independent of the 
       }
       expect(fullOutcome.events.map((event) => event.kind)).toEqual([
         'run.completed',
+        'run.settled',
         'run.completed',
         'run.completed',
         'run.removed',
@@ -14414,7 +14419,7 @@ describe('bureau.eventHistory deleted-aggregate detection is independent of the 
       expect(outOfWindowOutcome.owner).toEqual({ kind: 'run', id: run.id });
       expect(outOfWindowOutcome.events.map((event) => event.kind)).toEqual([
         'run.completed',
-        'run.completed',
+        'run.settled',
       ]);
       expect(outOfWindowOutcome.events.map((event) => event.kind)).not.toContain('run.removed');
       expect(outOfWindowOutcome.hasMore).toBe(true);
