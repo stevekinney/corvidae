@@ -245,6 +245,8 @@ import type { BureauGoals } from './goal-types';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
 import { composeBureauGoals } from './goals-composition';
 import { leaseEvidenceFromLostHealth } from './liveness-projection';
+import { createDecisions, validateDecisionsOptions } from './decisions/create-decisions';
+import { createLateDecisions } from './decisions/late-decisions';
 import { createModels, validateModelsOptions, type Models } from './models/create-models';
 import { createOnlineEvalSampler, type OnlineEvalSampler } from './online-evals';
 import {
@@ -1809,7 +1811,7 @@ function validateRetentionWindowOption(
  * COR-1700 — `humanInput` and `wakeup` are on by default for a durable Bureau, so `true` says
  * nothing and is refused: the only forms are `false`, and for `humanInput` an `inputSchemas` object.
  */
-function rejectOptInToolOption(name: 'humanInput' | 'wakeup', value: unknown): void {
+function rejectOptInToolOption(name: 'humanInput' | 'wakeup' | 'decide', value: unknown): void {
   if (value === undefined || value === false) return;
   if (name === 'humanInput' && typeof value === 'object' && value !== null) return;
   toBadRequest(
@@ -2085,6 +2087,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   // COR-1674: an unacceptable answer schema is a startup error, not a failure on the first park.
   rejectOptInToolOption('humanInput', options.humanInput);
   rejectOptInToolOption('wakeup', options.wakeup);
+  rejectOptInToolOption('decide', options.decide);
+  validateDecisionsOptions(options.decisions, toBadRequest);
   validateHumanInputOption(options.humanInput);
   validateRetentionOptions(options.retention);
   validateChildrenOption(options.children);
@@ -2229,9 +2233,14 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   // goal store, which exists only after the runtime composition, so it is bound
   // by `composeBureauGoals` below.
   const goalAttemptFenceHost = createGoalAttemptFenceHost();
+  // COR-1709: decisions read the model catalog, which is built after the validators and the
+  // runtime, so both reach them through this holder.
+  const lateDecisions = createLateDecisions(options.decide);
   // Built first: two validators registered under one name and version are a
   // startup error, and it should fail before the durable engine exists.
-  const goalValidatorCatalog = createGoalValidatorCatalog(options.validators);
+  const goalValidatorCatalog = createGoalValidatorCatalog(
+    lateDecisions.bindValidators(options.validators),
+  );
   // COR-1510: a run the durable engine resumes on its own (a claim it reclaimed) before
   // `recoverDurableRuns` starts is still handed to `onRecoveredWorkflow`, ahead of its first step.
   // This hook waits for that function to be bound, which `recoverDurableRuns` does when it starts.
@@ -2291,6 +2300,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     // COR-1546: the resolved identifier, so the memory tenant a run writes under is `Bureau.id`.
     { ...options, id: bureauId, runtime: runtimeServices },
     {
+      decideToolFor: (owner) => lateDecisions.toolWiringFor(true, owner),
       agentRunReferences: {
         reference: async (runId) => fileAgents?.snapshots.reference(runId),
         record: async (binding, runId) => fileAgents?.recordBoundRun(binding, runId),
@@ -2494,6 +2504,24 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       agents: agentsSnapshot,
       modelPolicy: options.modelPolicy,
     });
+    // COR-1709: decisions read the model catalog and write to the audit trail, which is built
+    // later in this function, so the trail is read at each call.
+    lateDecisions.compose(
+      createDecisions({
+        options: options.decisions,
+        models,
+        modelsOptions: options.models,
+        notConfigured: (message, cause) => {
+          const error = new BureauError(message, 'NOT_CONFIGURED', 'generate');
+          if (cause !== undefined) error.cause = cause;
+          return error;
+        },
+        badRequest: toBadRequest,
+        audit: async (entry) => {
+          await auditTrailInstance?.record(entry);
+        },
+      }),
+    );
     // AB-15/AB-22: the typed agent catalog — a plain literal map, fixed for
     // the bureau's lifetime, dispatched by name through `bureau.run`.
     // Independent of `runtime` (bureau-level generate/toolbox/provider
@@ -7530,6 +7558,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       const servicesRef: { current?: DurableRunDeps } = {};
       const wantsHumanInput = humanInputEnabled(options.humanInput) && !!runtime.durable;
       const wantsWakeup = options.wakeup !== false && !!runtime.durable;
+      // COR-1709: offered to exactly the runs that are offered `requestHumanInput`.
+      const decideWiring = lateDecisions.toolWiringFor(!!runtime.durable, owner);
       if (wantsHumanInput) {
         humanInputEmitter = new CompletableEventTarget<CombinedOperativeEventMap>();
       }
@@ -7541,6 +7571,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         inputSchemas: humanInputSchemasOf(options.humanInput),
         wakeup: wantsWakeup,
         runId,
+        decide: decideWiring,
         ...(humanInputEmitter ? { humanInputEmitter } : {}),
       });
       const durableServicesOnServices =
@@ -18350,6 +18381,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       fileAgents,
       // COR-1577 — `requestHumanInput` for a durable `bureau.run()` run.
       humanInput: runtime.durable !== undefined ? options.humanInput : false,
+      decideToolFor: (owner) => lateDecisions.toolWiringFor(runtime.durable !== undefined, owner),
       // COR-772 — a durable `bureau.run` parent aborted through its own handle
       // is a cancelled parent like any other. Once shutdown has begun, dispose
       // — not the policy — ends every live run, and boot recovery applies the
@@ -18797,6 +18829,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     agents: agentCatalog,
     workflows: workflowRuntime?.workflows,
     models,
+    decisions: lateDecisions.decisions,
     // The topology is keyed by plain runtime strings; `D` only narrows which
     // agent names a caller may pass.
     children: childTopology.children as BureauChildren<AgentNames<D>>,

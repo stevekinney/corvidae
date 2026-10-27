@@ -140,6 +140,10 @@ import {
   bureauAssetsOperations,
 } from './management/assets-operations.ts';
 import {
+  type BureauDecisionsOperationHost,
+  bureauDecisionsOperations,
+} from './management/decisions-operations.ts';
+import {
   type BureauGoalsOperationHost,
   bureauGoalsOperations,
 } from './management/goals-operations.ts';
@@ -187,6 +191,7 @@ export type BureauHandlerSource = Pick<
   | 'frames'
   | 'children'
   | 'models'
+  | 'decisions'
   | 'workflows'
   | 'goals'
   | 'memory'
@@ -293,7 +298,8 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauGoalsOperationHost &
   BureauMemoryOperationHost &
   BureauAuditOperationHost &
-  BureauAssetsOperationHost;
+  BureauAssetsOperationHost &
+  BureauDecisionsOperationHost;
 
 export type BureauHandlerOptions = {
   /**
@@ -663,6 +669,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   ...bureauMemoryOperations,
   auditQueryOperation,
   ...bureauAssetsOperations,
+  ...bureauDecisionsOperations,
 ] as const;
 
 /**
@@ -1049,6 +1056,7 @@ export function buildBureauHandlerHost(
       query: bureau.audit.query,
     },
     assets: bureau.assets,
+    decisions: bureau.decisions,
     respond: (request) => bureau.tasks.respond(request),
     deployment: {
       id: bureau.id,

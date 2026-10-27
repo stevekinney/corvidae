@@ -47,6 +47,7 @@ const credentials: Record<string, { subject: string; scopes: readonly Authorizat
   'goals-reader-key': { subject: 'goals-reader', scopes: ['bureau.goals:read'] },
   'goals-writer-key': { subject: 'goals-writer', scopes: ['bureau.goals:write'] },
   'audit-reader-key': { subject: 'audit-reader', scopes: ['bureau.audit:read'] },
+  'decisions-writer-key': { subject: 'decisions-writer', scopes: ['bureau.decisions:write'] },
   'alice-assets-key': {
     subject: 'alice',
     scopes: ['bureau.assets:read', 'bureau.assets:write'],

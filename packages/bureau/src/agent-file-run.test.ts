@@ -76,7 +76,7 @@ describe('tasks.start of a file agent', () => {
     expect(observed).toEqual([
       {
         model: OPUS_5_5,
-        tools: ['lookup-order', 'requestHumanInput', 'scheduleWakeup'],
+        tools: ['decide', 'lookup-order', 'requestHumanInput', 'scheduleWakeup'],
         systemPrompt: 'You are a careful researcher.',
       },
     ]);
@@ -231,7 +231,7 @@ describe('a session run of a file agent', () => {
     const [catalogRun, sessionRun] = observed as [Observation, Observation];
     expect(sessionRun).toEqual(catalogRun);
     expect(sessionRun.systemPrompt).toBe('You are a careful researcher.');
-    expect(sessionRun.tools).toEqual(['lookup-order', 'requestHumanInput']);
+    expect(sessionRun.tools).toEqual(['decide', 'lookup-order', 'requestHumanInput']);
 
     const hash = bureau.agents
       .list()
