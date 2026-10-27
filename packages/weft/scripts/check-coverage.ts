@@ -300,15 +300,6 @@ const COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer('COVERAGE_ALLOWANCE_OVE
     },
   ],
   [
-    'src/core/engine/queries.ts',
-    {
-      reason:
-        'The remaining query-registry line is a defensive missing-handler branch after registration and teardown behavior is covered.',
-      lines: new Set([17]),
-      requireUncoveredLines: true,
-    },
-  ],
-  [
     'src/core/interceptor/index.ts',
     {
       reason:
@@ -331,10 +322,8 @@ const COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer('COVERAGE_ALLOWANCE_OVE
     'src/server/json-rpc-websocket.ts',
     {
       reason:
-        'Transport disconnect and concurrency exits are behaviorally tested, but Bun does not deterministically attribute the emit() catch-block’s emitterBroken = true line (line 157).',
+        'Transport disconnect and concurrency exits are behaviorally tested, but Bun reports two aggregate function misses for this transport.',
       functions: 2,
-      lines: new Set([157]),
-      requireUncoveredLines: true,
     },
   ],
   [
