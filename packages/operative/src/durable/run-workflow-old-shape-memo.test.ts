@@ -4,14 +4,7 @@
  * the write-side assertion in the checkpoint store never executes for an old memo; the workflow
  * itself must refuse one, with the typed error rather than a TypeError from reading its parts.
  */
-import {
-  activity,
-  Engine,
-  MemoryStorage,
-  textValueStore,
-  workflow,
-  yieldToPortableEventLoop,
-} from '@lostgradient/weft';
+import { activity, Engine, MemoryStorage, textValueStore, workflow } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory } from 'conversationalist';
@@ -19,6 +12,7 @@ import { z } from 'zod';
 
 import { appendAgentInput } from '../agent-input';
 import { noToolCalls } from '../conditions/predicates';
+import { drainMicrotasks } from '../testing/drain-microtasks.test-support.ts';
 import { createCheckpointStore } from './checkpoint-store';
 import { createRunWorkflow } from './run-workflow';
 import type { AgentRunWorkflowInput } from './run-workflow-input';
@@ -132,7 +126,7 @@ async function resumeOldHistory(runId: string, memo: ReturnType<typeof oldStepMe
   );
   void handle.result().catch(() => {});
   await parked;
-  await yieldToPortableEventLoop();
+  await drainMicrotasks();
   engineA[Symbol.dispose]();
 
   const currentActivities = createStorageActivities(store);

@@ -11,6 +11,7 @@ import { z } from 'zod';
 
 import { createAgentSession, type AgentSession } from '../agent-session';
 import { SessionForkEvent } from '../events';
+import { drainMicrotasks } from '../testing/drain-microtasks.test-support.ts';
 import type { GenerateFunction } from '../types';
 import { createSessionStore } from './create-session-store';
 import { reconstructRunConversation } from './run-conversation-boundary';
@@ -69,7 +70,7 @@ function createForkSource(sessionId: string): { store: SessionStore; handle: Ses
 
 async function completeRun(handle: SessionHandle, input: string): Promise<void> {
   await handle.run(input).result();
-  await yieldToPortableEventLoop();
+  await drainMicrotasks();
 }
 
 async function loadFork(
@@ -127,7 +128,7 @@ describe('session.fork()', () => {
     });
 
     await h.run('first run').result();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     const forked = await h.fork();
     const forkedSession = await forked.getSession();
@@ -146,7 +147,7 @@ describe('session.fork()', () => {
     });
 
     await h.run('something').result();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     const sourceSession = await store.load('fork-history-source');
     const forked = await h.fork();
@@ -176,9 +177,9 @@ describe('session.fork()', () => {
     });
 
     await h.run('first run').result();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
     await h.run('second run').result();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     // throughRun: 1 is the last run index — no later runs exist, so the full
     // history is correct for this fork point.
@@ -199,9 +200,9 @@ describe('session.fork()', () => {
     });
 
     await h.run('first run').result();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
     await h.run('second run').result();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     // Default fork (no throughRun) always copies full history — no guard needed.
     const forked = await h.fork();
@@ -335,7 +336,7 @@ describe('session.fork({ throughRun }) — historical boundaries', () => {
     await completeRun(laterHandle, 'later');
     releaseEarlier.resolve();
     await earlierRun.result();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     const source = await loadSession(store, 'fork-through-concurrent');
     expect(userContents(source.conversationHistory)).toEqual(['later', 'earlier']);

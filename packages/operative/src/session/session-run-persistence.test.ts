@@ -5,6 +5,7 @@ import { Conversation, createConversationHistory } from 'conversationalist';
 
 import { createAgentSession } from '../agent-session';
 import { GuardrailTripwireError } from '../errors';
+import { drainMicrotasks } from '../testing/drain-microtasks.test-support.ts';
 import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import type { GenerateFunction } from '../types';
 import { createSessionStore } from './create-session-store';
@@ -30,7 +31,7 @@ describe('session.run() — persistence and history', () => {
     const result = await run.result();
 
     // Give the persistence callback a tick to run.
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     const session = await store.load(handle.id);
     expect(session).toBeDefined();
@@ -92,7 +93,7 @@ describe('session.run() — persistence and history', () => {
     const consuming = (async () => {
       for await (const event of run) events.push(event.type);
     })();
-    await yieldToPortableEventLoop();
+    // load-proof: negative window: the run is held at the terminal commit barrier and the events must not yet include run.completed; load can only delay a wrongly early event, never produce one
     await yieldToPortableEventLoop();
     expect(events).not.toContain('run.completed');
     release();
@@ -140,6 +141,7 @@ describe('session.run() — persistence and history', () => {
         for await (const event of run) events.push(event.type);
       })();
       await enteredCommit.promise;
+      // load-proof: negative window: the commit barrier is held open until released and no terminal event may precede it; load can only delay a wrongly early event, never produce one
       await yieldToPortableEventLoop();
       expect(events).not.toContain('run.tripwire');
       expect(events).not.toContain('run.completed');
@@ -162,7 +164,7 @@ describe('session.run() — persistence and history', () => {
     await handle.run('say something').result();
 
     // Give the persistence callback a tick to run.
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     const session = await store.load(handle.id);
     expect(session!.runs[0]!.agentName).toBe('test-agent');
@@ -173,9 +175,9 @@ describe('session.run() — persistence and history', () => {
 
     await handle.run('first').result();
     // Flush persistence callbacks.
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
     await handle.run('second').result();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     const session = await store.load(handle.id);
     expect(session!.runs).toHaveLength(2);
@@ -202,7 +204,7 @@ describe('session.run() — persistence and history', () => {
       firstHandle.run('first concurrent message').result(),
       secondHandle.run('second concurrent message').result(),
     ]);
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     const session = await store.load('concurrent-run-session');
     expect(session).toBeDefined();
@@ -249,7 +251,7 @@ describe('session.run() — persistence and history', () => {
       redactingHandle.run('redact request').result(),
       appendingHandle.run('append request').result(),
     ]);
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     const session = await store.load(sessionId);
     expect(session).toBeDefined();
@@ -265,7 +267,7 @@ describe('session.run() — persistence and history', () => {
     const { handle, store } = createSessionHandleFixture();
 
     await handle.run('hello world').result();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     const session = await store.load(handle.id);
     // The conversation history should contain at least the user message.
@@ -298,11 +300,11 @@ describe('session.run() — persistence and history', () => {
 
     // First run: generate sees only the initial user message.
     await h.run('first message').result();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     // Second run: generate must see the first run's messages PLUS the new one.
     await h.run('second message').result();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     // First call: 1 user message seeded.
     expect(historyLengths[0]).toBeGreaterThanOrEqual(1);

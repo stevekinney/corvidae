@@ -60,11 +60,12 @@
  *     whose body is such a yield (`const settle = () => new Promise((r) => setTimeout(r, 0))`, `flush`,
  *     `flushEffects`...) is read at its DEFINITION, because hundreds of calls would each need a marker
  *     that says the same thing; the marker there states what the helper settles and why it is safe for
- *     every caller. A helper in another file is read where it is defined, not where it is called, so
- *     the calls to the exported one-turn yields (`yieldToEventLoop`, `yieldToPortableEventLoop`,
- *     `yieldEventLoopTurn`) are counted per file against `single-turn-yield-allowlist.json`: the
- *     calls that existed when the rule arrived stay unaudited, the list can only shrink, and a new
- *     call needs a wait on the state or a marker.
+ *     every caller. A helper in another file is read where it is defined, not where it is called,
+ *     except the three exported one-turn yields (`yieldToEventLoop`, `yieldToPortableEventLoop`,
+ *     `yieldEventLoopTurn`): a call to one is resolved through the file's imports (a named import under
+ *     any local name, or a member of a namespace import) and read like a same-file yield, so each call
+ *     needs a marker or a following step that is not load-dependent. There is no allowlist.
+ *     `yieldToEventLoop` advances a fake clock, so under fake timers it is not read.
  *   - `timer-rejection`: a `setTimeout` whose callback rejects or throws (through any parameter name),
  *     or an `AbortSignal.timeout`, with a delay below the hang guard: the timer half of a race.
  *   - `timer-race`: a timer promise raced against work, in `Promise.race`/`Promise.any`: `sleep(n)`,
@@ -805,7 +806,29 @@ function isSingleTurnYield(
   if (ts.isNewExpression(operand) && operand.expression.getText() === 'Promise') {
     return MACROTASK_TURN.test(operand.getText());
   }
-  return ts.isCallExpression(operand) && calleeName(operand) === 'setImmediate';
+  if (!ts.isCallExpression(operand)) return false;
+  if (calleeName(operand) === 'setImmediate') return true;
+  // The exported yields are resolved through the file's imports: the file that calls one cannot see
+  // the yield, so this is the only place it can be read. `yieldToEventLoop` advances a fake clock
+  // under fake timers (a virtual turn); the other two are message-port turns whatever the clock.
+  const exported = exportedSingleTurnYieldOf(operand, context);
+  if (exported === null) return false;
+  return !(exported === 'yieldToEventLoop' && underFakeTimers);
+}
+
+/** The exported one-turn yield a call resolves to through the file's imports, if it is one. */
+function exportedSingleTurnYieldOf(call: ts.CallExpression, context: TimerContext): string | null {
+  const callee = unwrap(call.expression);
+  if (ts.isIdentifier(callee)) return context.importedYields.get(callee.text) ?? null;
+  if (ts.isPropertyAccessExpression(callee)) {
+    const receiver = unwrap(callee.expression);
+    return EXPORTED_SINGLE_TURN_YIELDS.has(callee.name.text) &&
+      ts.isIdentifier(receiver) &&
+      context.namespaceImports.has(receiver.text)
+      ? callee.name.text
+      : null;
+  }
+  return null;
 }
 
 /** The operand a function's whole body awaits or returns, for a body that is one expression. */
@@ -923,7 +946,8 @@ function findSingleTurnSettles(
  * loaded host the action lands first and the follower sees a different order (the fire-review
  * follower flake: a subscription "stayed up for the cap" before the cap's callback had run). The
  * test must wait on the callback having RUN (a count of fired timers, an empty set of pending
- * handles) and says so in `// load-proof: <reason>` above the double. A double that forwards to an
+ * handles) and says so in `// load-proof: <reason>` above the double. A double that takes only the
+ * callback (`(callback) => setTimeout(callback, 0)`) is read the same way. A double that forwards to an
  * injected manual runtime is virtual and is not read.
  */
 function findRealTimerDoubles(
@@ -940,7 +964,7 @@ function findRealTimerDoubles(
       return;
     if (ts.isNewExpression(node.parent) || node.body === undefined) return;
     const callback = node.parameters[0]?.name;
-    if (callback === undefined || !ts.isIdentifier(callback) || node.parameters.length < 2) return;
+    if (callback === undefined || !ts.isIdentifier(callback)) return;
     let found: ts.CallExpression | undefined;
     walk(node.body, (child) => {
       if (!ts.isCallExpression(child)) return;
@@ -1030,8 +1054,9 @@ const SPAWN_CALLEES = new Set([
 /**
  * `direct-bun-spawn`: a test, test-support or fixture module that starts `bun` (`process.execPath`,
  * `'bun'`, `Bun.which('bun')`) with `Bun.spawn`, `Bun.spawnSync` or a `child_process` function
- * instead of `spawnWithHangGuard`/`runWithHangGuard`. The guarded spawns put `--no-install` in front
- * of the child, so a module written outside the workspace cannot install what it imports from the
+ * instead of `spawnWithHangGuard`/`runWithHangGuard`, whether the command is an array, the `cmd`
+ * of an options object, a `const` the file declares, or a Bun Shell template tagged `Bun.$` (or `$`)
+ * that starts with `bun`. The guarded spawns put `--no-install` in front of the child, so a module written outside the workspace cannot install what it imports from the
  * registry; a direct spawn does not. Pass `--no-install` in the call itself, or carry
  * `// load-proof: <reason>` where the child cannot reach the registry (it installs on purpose, or only
  * runs a package-manager command). The hang guard modules that do the injecting are not read.
@@ -1039,22 +1064,60 @@ const SPAWN_CALLEES = new Set([
 function findDirectBunSpawns(sourceFile: ts.SourceFile): DeadlineViolation[] {
   if (basename(sourceFile.fileName) === 'hang-guard.ts') return [];
   const violations: DeadlineViolation[] = [];
+  const constants = collectConstants(sourceFile);
+  const isBun = (head: ts.Node | undefined) =>
+    head !== undefined &&
+    /^(process\.execPath|'bun'|"bun"|`bun`|Bun\.which\(['"]bun['"]\))/.test(head.getText());
+  // The command of a spawn: the array's first element, a `cmd` property's, or either of them behind
+  // a `const` the file declares.
+  const commandHead = (argument: ts.Expression | undefined, depth = 0): ts.Node | undefined => {
+    if (argument === undefined || depth > 3) return undefined;
+    const operand = unwrap(argument);
+    if (ts.isArrayLiteralExpression(operand)) return operand.elements[0];
+    if (ts.isObjectLiteralExpression(operand)) {
+      for (const member of operand.properties) {
+        if (member.name?.getText() !== 'cmd') continue;
+        if (ts.isPropertyAssignment(member)) return commandHead(member.initializer, depth + 1);
+        if (ts.isShorthandPropertyAssignment(member)) return commandHead(member.name, depth + 1);
+      }
+      return undefined;
+    }
+    if (ts.isIdentifier(operand)) {
+      const initializer = constants.get(operand.text);
+      return initializer === undefined ? operand : commandHead(initializer, depth + 1);
+    }
+    return operand;
+  };
   walk(sourceFile, (node) => {
+    // Bun Shell: Bun.$`bun script.ts` or $`${process.execPath} script.ts`.
+    if (ts.isTaggedTemplateExpression(node)) {
+      if (!/^(Bun\.\$|\$)$/.test(unwrap(node.tag).getText())) return;
+      const text = node.template.getText();
+      const startsBun = /^`\s*(bun\b|\$\{\s*process\.execPath\s*\})/.test(text);
+      if (!startsBun || text.includes('--no-install') || isLoadProof(sourceFile, node)) return;
+      violations.push(violation(sourceFile, node, 'direct-bun-spawn'));
+      return;
+    }
     if (!ts.isCallExpression(node)) return;
     const name = calleeName(node);
     if (name === null || !SPAWN_CALLEES.has(name)) return;
     const callee = unwrap(node.expression).getText();
     if (name === 'spawn' && !/^(Bun\.spawn|spawn|cp\.spawn|childProcess\.spawn)$/.test(callee))
       return;
-    const [first] = node.arguments;
-    const head =
-      first !== undefined && ts.isArrayLiteralExpression(unwrap(first))
-        ? (unwrap(first) as ts.ArrayLiteralExpression).elements[0]
-        : first;
-    if (head === undefined) return;
-    const headText = head.getText();
-    if (!/^(process\.execPath|'bun'|"bun"|`bun`|Bun\.which\(['"]bun['"]\))/.test(headText)) return;
-    if (node.getText().includes('--no-install') || isLoadProof(sourceFile, node)) return;
+    if (!isBun(commandHead(node.arguments[0]))) return;
+    // The flag may sit in the call or in the `const` that holds the command.
+    const [argument] = node.arguments;
+    const held =
+      argument !== undefined && ts.isIdentifier(unwrap(argument))
+        ? (constants.get((unwrap(argument) as ts.Identifier).text)?.getText() ?? '')
+        : '';
+    if (
+      node.getText().includes('--no-install') ||
+      held.includes('--no-install') ||
+      isLoadProof(sourceFile, node)
+    ) {
+      return;
+    }
     violations.push(violation(sourceFile, node, 'direct-bun-spawn'));
   });
   return violations;
@@ -1339,6 +1402,10 @@ type TimerContext = {
   aliases: ReadonlySet<string>;
   /** Names destructured from an object (`const { sleep } = runtime`): an injected clock, not a global. */
   injected: ReadonlySet<string>;
+  /** Local names bound by an import to one of the exported one-turn yields (`EXPORTED_SINGLE_TURN_YIELDS`). */
+  importedYields: ReadonlyMap<string, string>;
+  /** Local names of namespace imports (`import * as loop from ...`), whose members may be those yields. */
+  namespaceImports: ReadonlySet<string>;
   constants: ReadonlyMap<string, ts.Expression>;
 };
 
@@ -1348,7 +1415,21 @@ function timerContext(
 ): TimerContext {
   const aliases = new Set<string>();
   const injected = new Set<string>();
+  const importedYields = new Map<string, string>();
+  const namespaceImports = new Set<string>();
   walk(sourceFile, (node) => {
+    if (ts.isImportDeclaration(node)) {
+      const bindings = node.importClause?.namedBindings;
+      if (bindings !== undefined && ts.isNamedImports(bindings)) {
+        for (const element of bindings.elements) {
+          const imported = (element.propertyName ?? element.name).text;
+          if (EXPORTED_SINGLE_TURN_YIELDS.has(imported))
+            importedYields.set(element.name.text, imported);
+        }
+      } else if (bindings !== undefined && ts.isNamespaceImport(bindings)) {
+        namespaceImports.add(bindings.name.text);
+      }
+    }
     if (
       ts.isImportDeclaration(node) &&
       ts.isStringLiteral(node.moduleSpecifier) &&
@@ -1371,7 +1452,7 @@ function timerContext(
       injected.add(node.name.text);
     }
   });
-  return { aliases, injected, constants };
+  return { aliases, injected, importedYields, namespaceImports, constants };
 }
 
 /** The `new Promise` executor that `node` is inside of, when it is the executor's own body. */
@@ -1789,38 +1870,16 @@ export function collectFiles(directory: string, tests: string[], runners: string
   }
 }
 
-// One-turn yields exported by a helper module. A call to one is not read where it is made, because
-// the file that calls it cannot see the yield (`single-turn-settle` reads a same-file helper at its
-// definition). The calls that existed when the rule arrived are counted per file in
-// `single-turn-yield-allowlist.json`, which can only shrink: a new call must wait on the state
-// instead, or carry `// load-proof: <reason>` directly above it.
+// One-turn yields exported by a helper module. The file that calls one cannot see the yield, so
+// `isExportedSingleTurnYieldCall` resolves the call through the file's imports and
+// `single-turn-settle` reads it like a same-file yield: the next step must wait on the state, or the
+// call carries `// load-proof: <reason>` directly above it.
 const EXPORTED_SINGLE_TURN_YIELDS = new Set([
   'yieldToEventLoop',
   'yieldToPortableEventLoop',
   'yieldEventLoopTurn',
 ]);
 const FIXED_COUNT_LOOP_ALLOWLIST = join(import.meta.dir, 'fixed-count-yield-loop-allowlist.json');
-const SINGLE_TURN_YIELD_ALLOWLIST = join(import.meta.dir, 'single-turn-yield-allowlist.json');
-
-/** The calls to an exported one-turn yield helper in `sourceFile` that carry no marker. */
-export function findExportedSingleTurnYieldCalls(sourceFile: ts.SourceFile): DeadlineViolation[] {
-  const violations: DeadlineViolation[] = [];
-  walk(sourceFile, (node) => {
-    if (!ts.isAwaitExpression(node)) return;
-    const operand = unwrap(node.expression);
-    if (!ts.isCallExpression(operand)) return;
-    const name = calleeName(operand);
-    if (name === null || !EXPORTED_SINGLE_TURN_YIELDS.has(name)) return;
-    const nearest = ts.findAncestor(
-      node,
-      (ancestor) => ts.isIterationStatement(ancestor, false) || ts.isFunctionLike(ancestor),
-    );
-    if (nearest !== undefined && ts.isIterationStatement(nearest, false)) return;
-    if (isUnderFakeTimers(node) || isLoadProof(sourceFile, node)) return;
-    violations.push(violation(sourceFile, node, 'single-turn-settle'));
-  });
-  return violations;
-}
 
 /** The same arithmetic for the fixed-count yield loops of one file. */
 export function fixedCountLoopAllowlistFindings(
@@ -1871,25 +1930,6 @@ function baselineAllowlist(path: string): Record<string, number> | null {
   }
 }
 
-/** The allowlist findings for one file: more calls than it allows, or an entry that is now too high. */
-export function singleTurnYieldAllowlistFindings(
-  file: string,
-  counted: number,
-  allowed: number,
-): string[] {
-  if (counted > allowed) {
-    return [
-      `${file} — single-turn-settle — ${counted - allowed} new call(s) to an exported one-turn yield (${[...EXPORTED_SINGLE_TURN_YIELDS].join(', ')}): wait on the state or event instead, or add \`// load-proof: <reason>\` above the call; never raise scripts/single-turn-yield-allowlist.json`,
-    ];
-  }
-  if (counted < allowed) {
-    return [
-      `${file} — single-turn-yield-allowlist — the allowlist says ${allowed} but the file has ${counted}: lower the entry in scripts/single-turn-yield-allowlist.json to ${counted}${counted === 0 ? ' (delete it)' : ''}`,
-    ];
-  }
-  return [];
-}
-
 // Real-browser smoke tests run only when this flag is set; none of `check`, `validate` or the
 // dev container sets it, so their Playwright launch and wait budgets are not blocking deadlines.
 const OPT_IN_BROWSER_GATE = /WEFT_BROWSER_SMOKE/;
@@ -1911,8 +1951,6 @@ async function scan(): Promise<string[]> {
       helperBudgets.set(name, [...new Set([...(helperBudgets.get(name) ?? []), ...positions])]);
     }
   }
-  const allowlist = (await Bun.file(SINGLE_TURN_YIELD_ALLOWLIST).json()) as Record<string, number>;
-  const counted = new Map<string, number>();
   const countedLoops = new Map<string, number>();
   const loopAllowlist = (await Bun.file(FIXED_COUNT_LOOP_ALLOWLIST).json()) as Record<
     string,
@@ -1922,8 +1960,6 @@ async function scan(): Promise<string[]> {
     for (const found of findDeadlineViolations(sourceFile, helperBudgets)) {
       findings.push(`${relative(root, path)}:${found.line} — ${found.rule} — ${found.text}`);
     }
-    const yields = findExportedSingleTurnYieldCalls(sourceFile).length;
-    if (yields > 0) counted.set(relative(root, path), yields);
     const loops = findFixedCountYieldLoops(sourceFile, collectConstants(sourceFile)).length;
     if (loops > 0) countedLoops.set(relative(root, path), loops);
   }
@@ -1940,21 +1976,11 @@ async function scan(): Promise<string[]> {
   }
   findings.push(
     ...allowlistRaises(
-      'single-turn-yield-allowlist',
-      allowlist,
-      baselineAllowlist('scripts/single-turn-yield-allowlist.json'),
-    ),
-    ...allowlistRaises(
       'fixed-count-yield-loop-allowlist',
       loopAllowlist,
       baselineAllowlist('scripts/fixed-count-yield-loop-allowlist.json'),
     ),
   );
-  for (const file of [...new Set([...counted.keys(), ...Object.keys(allowlist)])].toSorted()) {
-    findings.push(
-      ...singleTurnYieldAllowlistFindings(file, counted.get(file) ?? 0, allowlist[file] ?? 0),
-    );
-  }
 
   for (const path of runners.toSorted()) {
     const source = await Bun.file(path).text();

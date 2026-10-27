@@ -1,13 +1,12 @@
 import { describe, expect, test } from 'bun:test';
+import { existsSync } from 'node:fs';
 import ts from 'typescript';
 import {
   allowlistRaises,
   collectPositionalBudgets,
   findDeadlineViolations,
-  findExportedSingleTurnYieldCalls,
   findPackageScriptViolations,
   findTestRunnerSpawnViolations,
-  singleTurnYieldAllowlistFindings,
 } from './check-load-sensitive-deadlines.ts';
 import { HANG_GUARD_MILLISECONDS } from './hang-guard.ts';
 
@@ -776,50 +775,97 @@ describe('a single-turn yield used to let real work finish', () => {
   });
 });
 
-describe('an exported one-turn yield helper', () => {
-  function countCalls(source: string): number {
-    const parsed = ts.createSourceFile('fixture.test.ts', source, ts.ScriptTarget.Latest, true);
-    return findExportedSingleTurnYieldCalls(parsed).length;
-  }
+describe('an exported one-turn yield helper, resolved through the file imports', () => {
+  const IMPORT_EVENT_LOOP = "import { yieldToEventLoop } from './fake-timers.test-support.ts';\n";
 
   test.each([
     [
-      'yieldToEventLoop',
-      "test('a', async () => {\n  start();\n  await yieldToEventLoop();\n  go();\n});",
+      'yieldToEventLoop before a positive assertion',
+      `${IMPORT_EVENT_LOOP}test('a', async () => {\n  start();\n  await yieldToEventLoop();\n  expect(done()).toBe(true);\n});`,
     ],
     [
-      'yieldToPortableEventLoop',
-      "test('a', async () => {\n  await yieldToPortableEventLoop();\n  go();\n});",
+      'yieldToPortableEventLoop before an action',
+      "import { yieldToPortableEventLoop } from '@lostgradient/weft';\ntest('a', async () => {\n  await yieldToPortableEventLoop();\n  go();\n});",
     ],
-    ['yieldEventLoopTurn', "test('a', async () => {\n  await yieldEventLoopTurn();\n  go();\n});"],
-  ])('counts a call to %s', (_name, source) => {
-    expect(countCalls(source)).toBe(1);
+    [
+      'yieldEventLoopTurn before an action',
+      "import { yieldEventLoopTurn } from '@lostgradient/testing/wait-until';\ntest('a', async () => {\n  await yieldEventLoopTurn();\n  go();\n});",
+    ],
+    [
+      'a call under another local name',
+      "import { yieldToEventLoop as turn } from './fake-timers.test-support.ts';\ntest('a', async () => {\n  await turn();\n  expect(done()).toBe(true);\n});",
+    ],
+    [
+      'a member of a namespace import',
+      "import * as loop from './fake-timers.test-support.ts';\ntest('a', async () => {\n  await loop.yieldToEventLoop();\n  expect(done()).toBe(true);\n});",
+    ],
+    [
+      'a call in a before hook',
+      `${IMPORT_EVENT_LOOP}beforeEach(async () => {\n  await yieldToEventLoop();\n  go();\n});`,
+    ],
+    [
+      'a call in a helper another test calls',
+      `${IMPORT_EVENT_LOOP}async function settle() {\n  await yieldToEventLoop();\n  go();\n}`,
+    ],
+  ])('reports %s', (_name, source) => {
+    expect(inspect(source)).toEqual(['single-turn-settle']);
   });
 
   test.each([
     [
       'a marked call',
-      "test('a', async () => {\n  // load-proof: only microtasks are pending after the awaited start\n  await yieldToEventLoop();\n  go();\n});",
+      `${IMPORT_EVENT_LOOP}test('a', async () => {\n  // load-proof: only microtasks are pending after the awaited start\n  await yieldToEventLoop();\n  go();\n});`,
     ],
     [
       'a poll loop',
-      "test('a', async () => {\n  while (!ready()) await yieldToEventLoop();\n  go();\n});",
+      `${IMPORT_EVENT_LOOP}test('a', async () => {\n  while (!ready()) await yieldToEventLoop();\n  go();\n});`,
     ],
     [
       'fake timers',
-      "test('a', async () => {\n  useFakeTimers();\n  await yieldToEventLoop();\n  go();\n});",
+      `${IMPORT_EVENT_LOOP}test('a', async () => {\n  jest.useFakeTimers();\n  await yieldToEventLoop();\n  go();\n});`,
     ],
-    ['another helper', "test('a', async () => {\n  await settleInlineLaunches();\n  go();\n});"],
-  ])('does not count %s', (_name, source) => {
-    expect(countCalls(source)).toBe(0);
+    [
+      'the last statement of a test',
+      `${IMPORT_EVENT_LOOP}test('a', async () => {\n  go();\n  await yieldToEventLoop();\n});`,
+    ],
+    [
+      'a teardown hook',
+      `${IMPORT_EVENT_LOOP}afterEach(async () => {\n  await yieldToEventLoop();\n});`,
+    ],
+    [
+      'another helper',
+      "import { settleInlineLaunches } from './settle.test-support.ts';\ntest('a', async () => {\n  await settleInlineLaunches();\n  go();\n});",
+    ],
+    [
+      'a name the file does not import',
+      "test('a', async () => {\n  await yieldToEventLoop();\n  go();\n});",
+    ],
+    [
+      'a member of an object that is not a namespace import',
+      `test('a', async () => {\n  await engine.yieldToEventLoop();\n  go();\n});`,
+    ],
+  ])('does not report %s', (_name, source) => {
+    expect(inspect(source)).toEqual([]);
   });
 
-  test('a file may not gain calls, and its allowance can only shrink', () => {
-    expect(singleTurnYieldAllowlistFindings('a.test.ts', 3, 3)).toEqual([]);
-    expect(singleTurnYieldAllowlistFindings('a.test.ts', 4, 3)).toHaveLength(1);
-    expect(singleTurnYieldAllowlistFindings('a.test.ts', 1, 0)[0]).toContain('new call');
-    expect(singleTurnYieldAllowlistFindings('a.test.ts', 2, 3)[0]).toContain('lower the entry');
-    expect(singleTurnYieldAllowlistFindings('a.test.ts', 0, 3)[0]).toContain('delete it');
+  test('a message-port yield is a real turn even under fake timers', () => {
+    expect(
+      inspect(
+        "import { yieldToPortableEventLoop } from '@lostgradient/weft';\ntest('a', async () => {\n  jest.useFakeTimers();\n  await yieldToPortableEventLoop();\n  go();\n});",
+      ),
+    ).toEqual(['single-turn-settle']);
+  });
+
+  test('a marker covers only the call directly below it', () => {
+    expect(
+      inspect(
+        `${IMPORT_EVENT_LOOP}test('a', async () => {\n  // load-proof: only microtasks are pending after the awaited start\n  await yieldToEventLoop();\n  await yieldToEventLoop();\n  go();\n});`,
+      ),
+    ).toEqual(['single-turn-settle']);
+  });
+
+  test('the old per-file allowlist is gone', () => {
+    expect(existsSync(new URL('./single-turn-yield-allowlist.json', import.meta.url))).toBe(false);
   });
 });
 
@@ -838,6 +884,14 @@ describe('a timer double that fires on a real zero-delay timer', () => {
     expect(
       inspect(
         'const timers = {\n  setTimeout: (callback: () => void, ms?: number) => {\n    requested.push(ms ?? 0);\n    return setTimeout(callback, 0);\n  },\n};',
+      ),
+    ).toEqual(['real-timer-double']);
+  });
+
+  test('is reported when it takes only the callback', () => {
+    expect(
+      inspect(
+        'const timers = {\n  setTimeout: (callback: () => void) => setTimeout(callback, 0),\n};',
       ),
     ).toEqual(['real-timer-double']);
   });
@@ -872,6 +926,17 @@ describe('a Bun child started outside the hang guard', () => {
       'child_process spawn',
       "import { spawn } from 'node:child_process';\nspawn(process.execPath, ['a.ts']);",
     ],
+    ['an options object with cmd', "Bun.spawn({ cmd: [process.execPath, 'script.ts'] });"],
+    [
+      'a command held in a variable',
+      "const command = [process.execPath, 'script.ts'];\nBun.spawn(command, { stdout: 'pipe' });",
+    ],
+    [
+      'a cmd held in a variable inside options',
+      "const cmd = ['bun', 'script.ts'];\nBun.spawnSync({ cmd });",
+    ],
+    ['Bun Shell', 'await Bun.$`bun script.ts`;'],
+    ['Bun Shell with the executable path', 'await $`${process.execPath} script.ts`;'],
   ])('is reported for %s', (_name, source) => {
     expect(inspect(source)).toEqual(['direct-bun-spawn']);
   });
@@ -883,6 +948,16 @@ describe('a Bun child started outside the hang guard', () => {
     ],
     ['the guarded spawn', "spawnWithHangGuard([process.execPath, 'script.ts']);"],
     ['a command that is not Bun', "Bun.spawn(['git', 'status']);"],
+    [
+      'a variable command that passes --no-install',
+      "const command = [process.execPath, '--no-install', 'script.ts'];\nBun.spawn(command);",
+    ],
+    [
+      'an options object that passes --no-install',
+      "Bun.spawn({ cmd: ['bun', '--no-install', 'a.ts'] });",
+    ],
+    ['Bun Shell that passes --no-install', 'await Bun.$`bun --no-install script.ts`;'],
+    ['Bun Shell that is not Bun', 'await Bun.$`git status`;'],
     [
       'a marked call',
       "// load-proof: only runs the package manager, which installs on purpose\nBun.spawn([process.execPath, 'install']);",

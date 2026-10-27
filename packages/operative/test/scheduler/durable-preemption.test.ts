@@ -19,6 +19,7 @@ import {
   createStepwiseBlockingGenerate,
   spyEngine,
 } from '../../src/test/index';
+import { drainMicrotasks } from '../../src/testing/drain-microtasks.test-support.ts';
 import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 import type { GenerateFunction } from '../../src/types';
 
@@ -370,7 +371,7 @@ describe('durable scheduler preemption (suspend/resume)', () => {
       await waitFor(() => scheduler.getState().activeTask?.id === 'bg-cancel-fails');
       expect(scheduler.cancel('bg-cancel-fails')).toBe(true);
       await bgResult;
-      await yieldToPortableEventLoop();
+      await drainMicrotasks();
 
       expect(failedTaskIds).toContain('bg-cancel-fails');
     } finally {
@@ -418,7 +419,7 @@ describe('durable scheduler preemption (suspend/resume)', () => {
         conversation: new Conversation(),
         maximumSteps: 1,
       }));
-      await yieldToPortableEventLoop();
+      await drainMicrotasks();
       manual.resolveResult();
 
       await immediate;
@@ -481,7 +482,7 @@ describe('durable scheduler preemption (suspend/resume)', () => {
       );
 
       expect(scheduler.cancel('bg-queued-resume-cancel')).toBe(true);
-      await yieldToPortableEventLoop();
+      await drainMicrotasks();
       immediateBlock.releaseStep1({ content: 'immediate done', toolCalls: [] });
       manual.resolveResult();
 
@@ -534,7 +535,7 @@ describe('durable scheduler preemption (suspend/resume)', () => {
         conversation: new Conversation(),
         maximumSteps: 1,
       }));
-      await yieldToPortableEventLoop();
+      await drainMicrotasks();
 
       expect(await bgResult).toBeNull();
       await immediate;
@@ -822,7 +823,7 @@ describe('durable scheduler preemption (suspend/resume)', () => {
     });
 
     scheduler.start();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
     await scheduler.stop();
 
     expect(scheduler.getState().idle).toBe(true);

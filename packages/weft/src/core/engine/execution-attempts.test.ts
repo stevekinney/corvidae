@@ -11,8 +11,8 @@ import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import {
   createDeferred,
+  drainMicrotasks,
   waitForCondition,
-  yieldToEventLoop,
 } from '../../testing/fake-timers.test-support.ts';
 import { workflow, type Checkpoint, type WorkflowContext } from '../types.ts';
 import {
@@ -313,7 +313,7 @@ describe('the execution attempt registry', () => {
     await second[Symbol.asyncDispose]();
     releaseRead.resolve();
     await resuming.catch(() => {});
-    await yieldToEventLoop();
+    await drainMicrotasks();
 
     // A launch that finishes after disposal holds nothing: no checkpoint, and no attempt for a
     // later loss to abandon.
