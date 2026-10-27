@@ -463,6 +463,7 @@ export type {
   AuditQueryPage,
   AuditQueryRecord,
   BureauReviews,
+  BureauContexts,
   BureauSchedules,
   BureauRunOptions,
   BureauShutdownOptions,

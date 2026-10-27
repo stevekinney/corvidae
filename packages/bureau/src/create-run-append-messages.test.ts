@@ -72,7 +72,7 @@ describe('createRun appendMessages', () => {
         { type: 'text', text: 'first part' },
         { type: 'text', text: 'second part' },
       ]);
-      const session = await bureau.getSession(run.sessionId);
+      const session = await bureau.contexts.get(run.sessionId);
       expect(session?.conversationHistory.ids).toContain('client-row-1');
     } finally {
       await bureau.dispose();

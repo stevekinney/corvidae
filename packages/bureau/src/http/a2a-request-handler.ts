@@ -88,7 +88,7 @@ import {
 import { BureauError } from '../create-bureau.ts';
 import { TaskListingTokenError } from '../task-list-snapshots.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
-import type { Bureau, BureauReviews } from '../types.ts';
+import type { Bureau, BureauContexts, BureauReviews } from '../types.ts';
 import { A2UI_EXTENSION_URI, supportedCatalogIdsOf } from '../a2ui/catalogs.ts';
 import { surfaceActionOf } from './a2a-surface-actions.ts';
 import { declaredExtensionsOf } from './a2a-agent-card.ts';
@@ -272,9 +272,7 @@ export type A2ABureau = Pick<
   | 'createRun'
   | 'locateRunCreationReceipt'
   | 'getRun'
-  | 'getSession'
   | 'getOwner'
-  | 'submitSessionInput'
   | 'eventHistory'
   | 'subscribeEventHistory'
   | 'addEventListener'
@@ -282,6 +280,8 @@ export type A2ABureau = Pick<
   | 'assets'
   | 'surfaces'
 > & { readonly reviews: Pick<BureauReviews, 'get'> } & {
+  readonly contexts: Pick<BureauContexts, 'get' | 'input'>;
+} & {
   readonly internals: FormsAuditInternals & {
     readonly taskRegistry: Pick<
       TaskRegistry,
@@ -1233,7 +1233,7 @@ export function createBureauA2ARequestHandler(
     // incarnation does not continue in it, whatever state the task is in.
     const stored = await bureau.internals.taskRegistry.record(view.id);
     if (stored !== undefined && stored.incarnation !== '') {
-      const session = await bureau.getSession(view.contextId);
+      const session = await bureau.contexts.get(view.contextId);
       if ((session?.incarnation ?? '') !== stored.incarnation) {
         throw invalid(
           `Task '${view.id}' belongs to an earlier incarnation of context '${view.contextId}', which was deleted.`,
@@ -1260,7 +1260,7 @@ export function createBureauA2ARequestHandler(
     // The incarnation the continuation was checked against travels with it: a context deleted and
     // created again between the check and the admission is not given this message.
     const stored = await bureau.internals.taskRegistry.record(view.id);
-    const outcome = await bureau.submitSessionInput(view.contextId, {
+    const outcome = await bureau.contexts.input(view.contextId, {
       id: message.messageId,
       principal: owner,
       ...(stored === undefined || stored.incarnation === ''

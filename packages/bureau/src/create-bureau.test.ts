@@ -126,7 +126,7 @@ import {
 } from './runtime-composition';
 import { waitForCondition, waitForRunState } from './test';
 import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
-import { type Bureau, type BureauDiagnostic, type ServerFrame } from './types';
+import { type Bureau, type BureauContexts, type BureauDiagnostic, type ServerFrame } from './types';
 import { advancingTurn, withAdvancingClock } from './testing/advancing-turn.test-support';
 import {
   IMMEDIATE_TASK_RETENTION,
@@ -157,7 +157,7 @@ function createTextStoreProxy(
 }
 
 function persistedApprovalToken(
-  session: Awaited<ReturnType<Bureau['getSession']>>,
+  session: Awaited<ReturnType<BureauContexts['get']>>,
   reviewId: string,
 ): string {
   const overrides = session?.metadata['pendingApprovalOverrides'];
@@ -1006,7 +1006,7 @@ describe('createBureau', () => {
     const run = await bureau.createRun({ message: 'Named dispatch', agentName: 'researcher' });
     await waitForRunCompletion(bureau, run.id);
 
-    const session = await bureau.getSession(run.sessionId);
+    const session = await bureau.contexts.get(run.sessionId);
     expect(session?.agentName).toBe('researcher');
   });
 
@@ -1022,7 +1022,7 @@ describe('createBureau', () => {
     const run = await bureau.createRun({ agentName: 'default', message: 'Named dispatch' });
     await waitForRunCompletion(bureau, run.id);
 
-    const session = await bureau.getSession(run.sessionId);
+    const session = await bureau.contexts.get(run.sessionId);
     expect(session?.agentName).toBe('default');
   });
 
@@ -1047,7 +1047,7 @@ describe('createBureau', () => {
 
     expect(secondRun.sessionId).toBe(firstRun.sessionId);
 
-    const session = await bureau.getSession(firstRun.sessionId);
+    const session = await bureau.contexts.get(firstRun.sessionId);
     expect(session).toBeDefined();
     expect(session?.conversationHistory.ids.length).toBeGreaterThanOrEqual(4);
   });
@@ -1079,7 +1079,7 @@ describe('createBureau', () => {
       waitForRunCompletion(bureau, secondRun.id),
     ]);
 
-    const session = await bureau.getSession(sessionId);
+    const session = await bureau.contexts.get(sessionId);
     expect(session).toBeDefined();
     const contents = session!.conversationHistory.ids.map(
       (id) => session!.conversationHistory.messages[id]!.content,
@@ -1143,7 +1143,7 @@ describe('createBureau', () => {
       waitForRunCompletion(bureau, appendingRun.id),
     ]);
 
-    const session = await bureau.getSession(sessionId);
+    const session = await bureau.contexts.get(sessionId);
     expect(session).toBeDefined();
     const contents = session!.conversationHistory.ids.map(
       (id) => session!.conversationHistory.messages[id]!.content,
@@ -1170,7 +1170,7 @@ describe('createBureau', () => {
     });
     await waitForRunCompletion(bureau, run.id);
 
-    const session = await bureau.getSession(sessionId);
+    const session = await bureau.contexts.get(sessionId);
     expect(session?.id).toBe(sessionId);
     expect(session?.conversationHistory.id).toBe(sessionId);
   });
@@ -1191,7 +1191,7 @@ describe('createBureau', () => {
     const run = await bureau.createRun({ agentName: 'default', message: 'Fast completion' });
     await waitForRunCompletion(bureau, run.id);
 
-    const session = await bureau.getSession(run.sessionId);
+    const session = await bureau.contexts.get(run.sessionId);
     expect(session?.metadata['lastRunId']).toBe(run.id);
     expect(session?.metadata['lastRunStatus']).toBe('completed');
   });
@@ -1215,7 +1215,7 @@ describe('createBureau', () => {
     });
     await waitForRunCompletion(bureau, run.id);
 
-    const session = await bureau.getSession(run.sessionId);
+    const session = await bureau.contexts.get(run.sessionId);
     expect(session?.metadata['lastMaximumTokens']).toBe(128);
   });
 
@@ -1233,7 +1233,7 @@ describe('createBureau', () => {
     const run = await bureau.createRun({ agentName: 'default', message: 'Uncapped run' });
     await waitForRunCompletion(bureau, run.id);
 
-    const session = await bureau.getSession(run.sessionId);
+    const session = await bureau.contexts.get(run.sessionId);
     expect(session?.metadata['lastMaximumTokens']).toBeNull();
   });
 
@@ -1258,7 +1258,7 @@ describe('createBureau', () => {
     });
     await waitForRunCompletion(bureau, run.id);
 
-    const session = await bureau.getSession(run.sessionId);
+    const session = await bureau.contexts.get(run.sessionId);
     expect(session?.metadata['lastMaximumSteps']).toBe(3);
   });
 
@@ -1276,7 +1276,7 @@ describe('createBureau', () => {
     const run = await bureau.createRun({ agentName: 'default', message: 'Uncapped run' });
     await waitForRunCompletion(bureau, run.id);
 
-    const session = await bureau.getSession(run.sessionId);
+    const session = await bureau.contexts.get(run.sessionId);
     expect(session?.metadata['lastMaximumSteps']).toBeNull();
   });
 
@@ -1304,7 +1304,7 @@ describe('createBureau', () => {
     });
     await waitForRunCompletion(bureau, run1.id);
 
-    const sessionAfterRun1 = await bureau.getSession(run1.sessionId);
+    const sessionAfterRun1 = await bureau.contexts.get(run1.sessionId);
     expect(sessionAfterRun1?.metadata['lastMaximumTokens']).toBe(512);
 
     // Run 2: on the same session, no cap — previous cap must NOT be inherited
@@ -1315,7 +1315,7 @@ describe('createBureau', () => {
     });
     await waitForRunCompletion(bureau, run2.id);
 
-    const sessionAfterRun2 = await bureau.getSession(run1.sessionId);
+    const sessionAfterRun2 = await bureau.contexts.get(run1.sessionId);
     // Must be null (explicitly cleared), not 512
     expect(sessionAfterRun2?.metadata['lastMaximumTokens']).toBeNull();
   });
@@ -1338,7 +1338,7 @@ describe('createBureau', () => {
     });
     await waitForRunCompletion(bureau, run1.id);
 
-    const sessionAfterRun1 = await bureau.getSession(run1.sessionId);
+    const sessionAfterRun1 = await bureau.contexts.get(run1.sessionId);
     expect(sessionAfterRun1?.metadata['lastMaximumSteps']).toBe(3);
 
     // Run 2: on the same session, no step cap — previous cap must NOT be inherited
@@ -1349,7 +1349,7 @@ describe('createBureau', () => {
     });
     await waitForRunCompletion(bureau, run2.id);
 
-    const sessionAfterRun2 = await bureau.getSession(run1.sessionId);
+    const sessionAfterRun2 = await bureau.contexts.get(run1.sessionId);
     // Must be null (explicitly cleared), not 3
     expect(sessionAfterRun2?.metadata['lastMaximumSteps']).toBeNull();
   });
@@ -1398,7 +1398,7 @@ describe('createBureau', () => {
     await seedStore.updateMetadata(run1.sessionId, {
       activeSkillRecords: [{ name: 'researcher-skill' }],
     });
-    const seeded = await bureau.getSession(run1.sessionId);
+    const seeded = await bureau.contexts.get(run1.sessionId);
     expect(seeded?.metadata['activeSkillRecords']).toEqual([{ name: 'researcher-skill' }]);
 
     // Run 2: on the SAME session, fails before its first onStep snapshot. The
@@ -1412,7 +1412,7 @@ describe('createBureau', () => {
     });
     await waitForRunCompletion(bureau, run2.id);
 
-    const sessionAfterRun2 = await bureau.getSession(run1.sessionId);
+    const sessionAfterRun2 = await bureau.contexts.get(run1.sessionId);
     // Must be null (explicitly cleared at start-of-run), not the stale
     // ['researcher-skill'] and not overwritten by a snapshot hook that never ran.
     expect(sessionAfterRun2?.metadata['activeSkillRecords']).toBeNull();
@@ -1456,14 +1456,14 @@ describe('createBureau', () => {
     await withAdvancingClock(runtime, waitForRunCompletion(bureau, run.id));
     await waitForCondition(
       async () => {
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'completed';
       },
       'completed session metadata was not persisted after retry',
       { yieldTurn: advancingTurn(runtime) },
     );
 
-    const session = await bureau.getSession(run.sessionId);
+    const session = await bureau.contexts.get(run.sessionId);
     expect(sessionSaveCount).toBe(3);
     expect(session?.metadata['lastRunId']).toBe(run.id);
     expect(session?.metadata['lastRunStatus']).toBe('completed');
@@ -1595,10 +1595,10 @@ describe('createBureau', () => {
         // that write lands — it happens after the resumed run completes, off the
         // boot path.
         await pollUntil(async () => {
-          const current = await bureauB.getSession(run.sessionId);
+          const current = await bureauB.contexts.get(run.sessionId);
           return current?.metadata['lastRunStatus'] !== 'running';
         });
-        const session = await bureauB.getSession(run.sessionId);
+        const session = await bureauB.contexts.get(run.sessionId);
         expect(session?.metadata['lastRunStatus']).toBe('completed');
         // The session conversation must include step 1's content — written by the
         // durable checkpoint on the resumed process, NOT the stale pre-crash history
@@ -1871,11 +1871,11 @@ describe('createBureau', () => {
       // awaited by the listener itself — see `persistSessionUpdate`'s own
       // definition), so it can genuinely land a tick or two later.
       await waitForCondition(async () => {
-        const session = await bureau.getSession(sessionId);
+        const session = await bureau.contexts.get(sessionId);
         return session?.metadata['lastRunStatus'] === 'error';
       }, 'errored session metadata was not persisted after the durable write failure');
 
-      const session = await bureau.getSession(sessionId);
+      const session = await bureau.contexts.get(sessionId);
       expect(session?.metadata['lastRunStatus']).toBe('error');
       expect(session?.metadata['lastRunId']).toBeDefined();
 
@@ -1969,7 +1969,7 @@ describe('createBureau', () => {
       expect(error).toBeInstanceOf(Error);
 
       await waitForCondition(async () => {
-        const session = await bureau.getSession(sessionId);
+        const session = await bureau.contexts.get(sessionId);
         runId = session?.metadata['lastRunId'] as string | undefined;
         return session?.metadata['lastRunStatus'] === 'error' && runId !== undefined;
       }, 'errored session metadata was not persisted after the durable write failure');
@@ -3010,10 +3010,10 @@ describe('createBureau', () => {
         await pollUntil(() => bSteps.includes(1));
         expect(bSteps).toEqual([1]);
         await pollUntil(async () => {
-          const current = await bureauB.getSession(run.sessionId);
+          const current = await bureauB.contexts.get(run.sessionId);
           return current?.metadata['lastRunStatus'] !== 'running';
         });
-        const session = await bureauB.getSession(run.sessionId);
+        const session = await bureauB.contexts.get(run.sessionId);
         expect(session?.metadata['lastRunStatus']).toBe('completed');
       } finally {
         warnSpy.mockRestore();
@@ -3142,7 +3142,7 @@ describe('createBureau', () => {
         });
         expect(completed).toBe(true);
 
-        const session = await bureau.getSession(sessionId);
+        const session = await bureau.contexts.get(sessionId);
         expect(session).not.toBeNull();
         expect(
           getMessages(session!.conversationHistory).some(
@@ -3236,7 +3236,7 @@ describe('createBureau', () => {
         });
         expect(completed).toBe(true);
 
-        const session = await bureau.getSession(sessionId);
+        const session = await bureau.contexts.get(sessionId);
         expect(session).not.toBeNull();
         expect(
           getMessages(session!.conversationHistory).some(
@@ -3356,7 +3356,7 @@ describe('createBureau', () => {
 
         // Wait until the recovered run reaches a terminal session status.
         await pollUntil(async () => {
-          const current = await bureauB.getSession(run.sessionId);
+          const current = await bureauB.contexts.get(run.sessionId);
           return current?.metadata['lastRunStatus'] !== 'running';
         });
 
@@ -3453,7 +3453,7 @@ describe('createBureau', () => {
         // Wait until the recovered run reaches a terminal session status (its
         // resumed steps have run, including the tool execution on step 1).
         await pollUntil(async () => {
-          const current = await bureauB.getSession(run.sessionId);
+          const current = await bureauB.contexts.get(run.sessionId);
           return current?.metadata['lastRunStatus'] !== 'running';
         });
 
@@ -3551,7 +3551,7 @@ describe('createBureau', () => {
 
       try {
         await pollUntil(async () => {
-          const current = await bureauB.getSession(run.sessionId);
+          const current = await bureauB.contexts.get(run.sessionId);
           return current?.metadata['lastRunStatus'] !== 'running';
         });
 
@@ -3660,7 +3660,7 @@ describe('createBureau', () => {
 
       try {
         await pollUntil(async () => {
-          const current = await bureauB.getSession(run.sessionId);
+          const current = await bureauB.contexts.get(run.sessionId);
           return current?.metadata['lastRunStatus'] !== 'running';
         });
 
@@ -3751,11 +3751,11 @@ describe('createBureau', () => {
         await pollUntil(() => bureauB.getRun(run.id)?.status === 'running');
         bureauB.abortRun(run.id);
         await pollUntil(async () => {
-          const current = await bureauB.getSession(run.sessionId);
+          const current = await bureauB.contexts.get(run.sessionId);
           return current?.metadata['lastRunStatus'] === 'aborted';
         });
 
-        const session = await bureauB.getSession(run.sessionId);
+        const session = await bureauB.contexts.get(run.sessionId);
         expect(session?.metadata['lastRunStatus']).toBe('aborted');
         expect(session?.metadata['lastFinishReason']).toBe('aborted');
       } finally {
@@ -3829,11 +3829,11 @@ describe('createBureau', () => {
         // The resolver runs synchronously during boot recovery and reconciles the
         // session. Poll (bounded) until the reconciliation write lands.
         await pollUntil(async () => {
-          const current = await bureauB.getSession(run.sessionId);
+          const current = await bureauB.contexts.get(run.sessionId);
           return current?.metadata['lastRunStatus'] !== 'running';
         });
 
-        const session = await bureauB.getSession(run.sessionId);
+        const session = await bureauB.contexts.get(run.sessionId);
         // Reconciled to `error`, not left stale `running`.
         expect(session?.metadata['lastRunStatus']).toBe('error');
         const lastError = session?.metadata['lastError'];
@@ -3891,7 +3891,7 @@ describe('createBureau', () => {
     expect(detail?.finishReason).toBe('stop-condition');
 
     // run.completed fired → the session was persisted as completed.
-    const session = await bureau.getSession(run.sessionId);
+    const session = await bureau.contexts.get(run.sessionId);
     expect(session?.metadata['lastRunId']).toBe(run.id);
     expect(session?.metadata['lastRunStatus']).toBe('completed');
   });
@@ -3948,7 +3948,7 @@ describe('createBureau', () => {
       expect(detail?.status).toBe('completed');
       expect(detail?.finishReason).toBe('stop-condition');
 
-      const session = await bureau.getSession(run.sessionId);
+      const session = await bureau.contexts.get(run.sessionId);
       expect(session?.metadata['lastRunStatus']).toBe('completed');
 
       await bureau.dispose();
@@ -4006,7 +4006,7 @@ describe('createBureau', () => {
     const run = await bureau.createRun({ agentName: 'default', message: 'Explode' });
     await waitForRunCompletion(bureau, run.id);
 
-    const session = await bureau.getSession(run.sessionId);
+    const session = await bureau.contexts.get(run.sessionId);
     expect(session?.metadata['lastRunId']).toBe(run.id);
     expect(session?.metadata['lastRunStatus']).toBe('error');
     expect(JSON.parse(session?.metadata['lastError'] as string)).toMatchObject({
@@ -4054,7 +4054,7 @@ describe('createBureau', () => {
     const run = await bureau.createRun({ agentName: 'default', message: 'trip me' });
     await waitForRunCompletion(bureau, run.id);
 
-    const session = await bureau.getSession(run.sessionId);
+    const session = await bureau.contexts.get(run.sessionId);
     expect(session?.metadata['lastRunStatus']).toBe('error');
     expect(session?.metadata['lastFinishReason']).toBe('tripwire');
     expect(session?.metadata['lastError']).toBeDefined();
@@ -4714,11 +4714,11 @@ describe('createBureau', () => {
     // The session write happens after the run.aborted event settles; poll until
     // the status leaves `running`.
     await pollUntil(async () => {
-      const current = await bureau.getSession(run.sessionId);
+      const current = await bureau.contexts.get(run.sessionId);
       return current?.metadata['lastRunStatus'] === 'aborted';
     });
 
-    const session = await bureau.getSession(run.sessionId);
+    const session = await bureau.contexts.get(run.sessionId);
     expect(session?.metadata['lastRunStatus']).toBe('aborted');
     expect(session?.metadata['lastFinishReason']).toBe('aborted');
     expect(JSON.parse(session?.metadata['lastError'] as string)).toMatchObject({
@@ -4777,11 +4777,11 @@ describe('createBureau', () => {
       bureau.abortRun(run.id);
 
       await pollUntil(async () => {
-        const current = await bureau.getSession(run.sessionId);
+        const current = await bureau.contexts.get(run.sessionId);
         return current?.metadata['lastRunStatus'] === 'aborted';
       });
 
-      const session = await bureau.getSession(run.sessionId);
+      const session = await bureau.contexts.get(run.sessionId);
       expect(session?.metadata['lastRunStatus']).toBe('aborted');
 
       // The persisted history must include the checkpointed step 0, not just the
@@ -4902,7 +4902,7 @@ describe('createBureau', () => {
     const stillPending = await bureau.internals.sessionStore!.outbox.pending();
     expect(stillPending).toEqual([]);
     expect(deletionPersistenceAttempts).toBe(10);
-    const persistedSession = await bureau.getSession(run.sessionId);
+    const persistedSession = await bureau.contexts.get(run.sessionId);
     expect(persistedSession?.metadata['pendingApprovalOverrides']).toEqual({});
     expect(persistedSession?.metadata['approvalResolutionStartedIds']).toEqual([]);
     bureau.dispose();
@@ -4967,7 +4967,7 @@ describe('createBureau', () => {
     await waitForRunCompletion(bureau, run.id);
     expect(bureau.reviews.list()).toHaveLength(1);
 
-    await bureau.deleteSession(run.sessionId);
+    await bureau.contexts.delete(run.sessionId);
     expect(revocations).toBe(1);
     bureau.dispose();
   });
@@ -4977,7 +4977,7 @@ describe('createBureau', () => {
       agents: {},
     });
 
-    const error = await bureau.listSessions().then(
+    const error = await bureau.contexts.list().then(
       () => undefined,
       (rejection) => rejection,
     );
@@ -4999,15 +4999,15 @@ describe('createBureau', () => {
     const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
     await waitForRunCompletion(bureau, run.id);
 
-    const sessions = await bureau.listSessions();
+    const sessions = await bureau.contexts.list();
     expect(sessions).toHaveLength(1);
     expect(sessions[0]?.id).toBe(run.sessionId);
 
-    const session = await bureau.getSession(run.sessionId);
+    const session = await bureau.contexts.get(run.sessionId);
     expect(session?.id).toBe(run.sessionId);
 
-    await bureau.deleteSession(run.sessionId);
-    const deleted = await bureau.getSession(run.sessionId);
+    await bureau.contexts.delete(run.sessionId);
+    const deleted = await bureau.contexts.get(run.sessionId);
     expect(deleted).toBeUndefined();
   });
 
@@ -5049,7 +5049,7 @@ describe('createBureau', () => {
       // into every event and made each getRun() grow with the conversation.
       expect(JSON.stringify(detail?.events)).not.toContain('[Function');
 
-      const session = await bureau.getSession(run.sessionId);
+      const session = await bureau.contexts.get(run.sessionId);
       expect(session?.metadata['lastRunStatus']).toBe('error');
       expect(session?.metadata['lastFinishReason']).toBe('maximum-steps');
       expect(session?.metadata['lastError']).toContain(
@@ -6558,8 +6558,8 @@ describe('createBureau session signal/update/query without durable engine', () =
       },
     });
 
-    const error = await bureau
-      .signalSession('any-session', 'any-signal')
+    const error = await bureau.contexts
+      .signal('any-session', 'any-signal')
       .then(() => null)
       .catch((e: unknown) => e);
 
@@ -6600,7 +6600,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
       durable: true,
     });
     try {
-      const outcome = await bureau.submitSessionInput('unknown-session', {
+      const outcome = await bureau.contexts.input('unknown-session', {
         principal: 'alice',
         deliveryMode: 'steer',
         payload: 'hello',
@@ -6623,7 +6623,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
       },
     });
     try {
-      const outcome = await bureau.submitSessionInput('any-session', {
+      const outcome = await bureau.contexts.input('any-session', {
         principal: 'alice',
         deliveryMode: 'steer',
         payload: 'hello',
@@ -6652,11 +6652,11 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
         principal: 'alice',
       });
       await pollUntil(async () => {
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'running';
       });
 
-      const outcome = await bureau.submitSessionInput(run.sessionId, {
+      const outcome = await bureau.contexts.input(run.sessionId, {
         principal: 'mallory',
         deliveryMode: 'steer',
         payload: 'hello',
@@ -6687,10 +6687,10 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
       });
       await waitForRunCompletion(bureau, run.id);
 
-      const session = await bureau.getSession(run.sessionId);
+      const session = await bureau.contexts.get(run.sessionId);
       expect(session?.metadata['lastRunStatus']).toBe('completed');
 
-      const outcome = await bureau.submitSessionInput(run.sessionId, {
+      const outcome = await bureau.contexts.input(run.sessionId, {
         principal: 'alice',
         deliveryMode: 'steer',
         payload: 'hello',
@@ -6728,7 +6728,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
       });
       await waitForRunCompletion(bureau, run.id);
 
-      const session = await bureau.getSession(run.sessionId);
+      const session = await bureau.contexts.get(run.sessionId);
       expect(session?.metadata['lastRunStatus']).toBe('completed');
       const authorities = session?.metadata['lastRequestAuthorities'];
       expect(
@@ -6737,7 +6737,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
           : undefined,
       ).toBeUndefined();
 
-      const outcome = await bureau.submitSessionInput(run.sessionId, {
+      const outcome = await bureau.contexts.input(run.sessionId, {
         principal: 'mallory',
         deliveryMode: 'steer',
         payload: 'hello',
@@ -6775,18 +6775,18 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
         principal: 'alice',
       });
       await pollUntil(async () => {
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'running';
       });
 
-      const outcome = await bureau.submitSessionInput(run.sessionId, {
+      const outcome = await bureau.contexts.input(run.sessionId, {
         principal: 'alice',
         deliveryMode: 'steer',
         payload: 'hello',
       });
       expect(outcome.outcome).toBe('admitted');
 
-      const sessionAfter = await bureau.getSession(run.sessionId);
+      const sessionAfter = await bureau.contexts.get(run.sessionId);
       // A SessionInputRecord lives in the mailbox's own durable storage
       // keys, never in the session's own metadata blob — this call still
       // leaves session metadata itself untouched.
@@ -6822,13 +6822,13 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
       durable: true,
     });
     try {
-      const stranger = await bureau.submitSessionInput('session-open', {
+      const stranger = await bureau.contexts.input('session-open', {
         principal: 'anyone-at-all',
         deliveryMode: 'steer',
         payload: 'hello',
       });
       expect(stranger).toEqual({ outcome: 'not-found' });
-      const owner = await bureau.submitSessionInput('session-open', {
+      const owner = await bureau.contexts.input('session-open', {
         principal: 'anonymous:local',
         deliveryMode: 'steer',
         payload: 'hello',
@@ -6883,7 +6883,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
         sessionId: runA.sessionId,
       });
 
-      const gated = await bureau.getSession(runA.sessionId);
+      const gated = await bureau.contexts.get(runA.sessionId);
       expect(gated?.metadata['lastRunId']).toBe(runB.id);
       expect(Object.keys(gated?.metadata['lastRequestAuthorities'] ?? {}).toSorted()).toEqual(
         [runA.id, runB.id].toSorted(),
@@ -6893,7 +6893,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
       await waitForRunSettled(bureau, runB.id);
       expect(
         await pollUntil(async () => {
-          const session = await bureau.getSession(runA.sessionId);
+          const session = await bureau.contexts.get(runA.sessionId);
           const metadata = session?.metadata ?? {};
           const authorities = metadata['lastRequestAuthorities'];
           return (
@@ -6919,7 +6919,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
   it('admits the same principal while its other run on the session is still live (COR-301)', async () => {
     const { bureau, runA, releaseRunB } = await createConcurrentRunSession();
     try {
-      const outcome = await bureau.submitSessionInput(runA.sessionId, {
+      const outcome = await bureau.contexts.input(runA.sessionId, {
         principal: 'alice',
         deliveryMode: 'steer',
         payload: 'hello',
@@ -6934,12 +6934,12 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
   it("authorizes the session's owner, and no one else, while a concurrent run has finished (COR-301, COR-718)", async () => {
     const { bureau, runA, releaseRunB } = await createConcurrentRunSession();
     try {
-      const alice = await bureau.submitSessionInput(runA.sessionId, {
+      const alice = await bureau.contexts.input(runA.sessionId, {
         principal: 'alice',
         deliveryMode: 'steer',
         payload: 'hello',
       });
-      const bob = await bureau.submitSessionInput(runA.sessionId, {
+      const bob = await bureau.contexts.input(runA.sessionId, {
         principal: 'bob',
         deliveryMode: 'steer',
         payload: 'hello',
@@ -6990,7 +6990,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
       });
       expect(
         await pollUntil(async () => {
-          const session = await bureauA.getSession(runA.sessionId);
+          const session = await bureauA.contexts.get(runA.sessionId);
           return session?.metadata['lastRunStatus'] === 'running';
         }),
       ).toBe(true);
@@ -7003,7 +7003,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
       await waitForRunSettled(bureauB, runB.id);
       expect(
         await pollUntil(async () => {
-          const session = await bureauB.getSession(runA.sessionId);
+          const session = await bureauB.contexts.get(runA.sessionId);
           const metadata = session?.metadata ?? {};
           const authorities = metadata['lastRequestAuthorities'];
           return (
@@ -7019,12 +7019,12 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
       ).toBe(true);
       expect(bureauA.getRun(runA.id)?.status).toBe('running');
 
-      const alice = await bureauB.submitSessionInput(runA.sessionId, {
+      const alice = await bureauB.contexts.input(runA.sessionId, {
         principal: 'alice',
         deliveryMode: 'steer',
         payload: 'hello',
       });
-      const bob = await bureauB.submitSessionInput(runA.sessionId, {
+      const bob = await bureauB.contexts.input(runA.sessionId, {
         principal: 'bob',
         deliveryMode: 'steer',
         payload: 'hello',
@@ -7058,7 +7058,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       storage: { type: 'memory' },
     });
     try {
-      const outcome = await bureau.submitSteeringCommand('unknown-session', {
+      const outcome = await bureau.contexts.steer('unknown-session', {
         principal: 'alice',
         requestedValue: { target: 'pause' },
       });
@@ -7085,11 +7085,11 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
         principal: 'alice',
       });
       await pollUntil(async () => {
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'running';
       });
 
-      const outcome = await bureau.submitSteeringCommand(run.sessionId, {
+      const outcome = await bureau.contexts.steer(run.sessionId, {
         principal: 'mallory',
         requestedValue: { target: 'pause' },
       });
@@ -7118,7 +7118,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       });
       await waitForRunCompletion(bureau, run.id);
 
-      const outcome = await bureau.submitSteeringCommand(run.sessionId, {
+      const outcome = await bureau.contexts.steer(run.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'pause' },
       });
@@ -7155,11 +7155,11 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
         principal: 'alice',
       });
       await pollUntil(async () => {
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'running';
       });
 
-      const outcome = await bureau.submitSteeringCommand(run.sessionId, {
+      const outcome = await bureau.contexts.steer(run.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'model', override: 'claude-sonnet-5' },
       });
@@ -7180,7 +7180,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
   });
 
   it('admits every one of the seven steering targets through the public verb (AB-200)', async () => {
-    // Pins the contract `Bureau.submitSteeringCommand`'s doc comment and the
+    // Pins the contract `BureauContexts.steer`'s doc comment and the
     // README state: no target is refused as unsupported. The `satisfies`
     // record makes a new `SteeringRequestedValue` target a compile error
     // here until this test decides how it is admitted.
@@ -7221,13 +7221,13 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
         principal: 'alice',
       });
       await pollUntil(async () => {
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'running';
       });
 
       const outcomes: Record<string, string> = {};
       for (const [target, requestedValue] of Object.entries(requestedValues)) {
-        const outcome = await bureau.submitSteeringCommand(run.sessionId, {
+        const outcome = await bureau.contexts.steer(run.sessionId, {
           principal: 'alice',
           requestedValue,
         });
@@ -7279,11 +7279,11 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
         principal: 'alice',
       });
       await pollUntil(async () => {
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'running';
       });
 
-      const outcome = await bureau.submitSteeringCommand(run.sessionId, {
+      const outcome = await bureau.contexts.steer(run.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'model', policyRef: 'fast-tier' },
       });
@@ -7326,24 +7326,24 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
         principal: 'alice',
       });
       await pollUntil(async () => {
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'running';
       });
 
-      const unknown = await bureau.submitSteeringCommand(run.sessionId, {
+      const unknown = await bureau.contexts.steer(run.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'model', policyRef: 'no-such-policy' },
       });
       expect(unknown.outcome).toBe('rejected');
 
-      const silentOnModel = await bureau.submitSteeringCommand(run.sessionId, {
+      const silentOnModel = await bureau.contexts.steer(run.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'model', policyRef: 'effort-only' },
       });
       expect(silentOnModel.outcome).toBe('rejected');
 
       // The same profile DOES specify an effort, so that target resolves.
-      const effort = await bureau.submitSteeringCommand(run.sessionId, {
+      const effort = await bureau.contexts.steer(run.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'effort', policyRef: 'effort-only' },
       });
@@ -7384,11 +7384,11 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
         principal: 'alice',
       });
       await pollUntil(async () => {
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'running';
       });
 
-      const outcome = await bureau.submitSteeringCommand(run.sessionId, {
+      const outcome = await bureau.contexts.steer(run.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'model', policyRef: 'bad-tier' },
       });
@@ -7426,11 +7426,11 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
         principal: 'alice',
       });
       await pollUntil(async () => {
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'running';
       });
 
-      const outcome = await bureau.submitSteeringCommand(run.sessionId, {
+      const outcome = await bureau.contexts.steer(run.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'model', override: 'not-a-real-model' },
       });
@@ -7469,15 +7469,15 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
         principal: 'alice',
       });
       await pollUntil(async () => {
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'running';
       });
 
-      const first = await bureau.submitSteeringCommand(run.sessionId, {
+      const first = await bureau.contexts.steer(run.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'model', override: 'claude-sonnet-5' },
       });
-      const second = await bureau.submitSteeringCommand(run.sessionId, {
+      const second = await bureau.contexts.steer(run.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'model', override: 'claude-sonnet-5' },
       });
@@ -7512,11 +7512,11 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
         principal: 'alice',
       });
       await pollUntil(async () => {
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'running';
       });
 
-      const outcome = await bureau.submitSteeringCommand(run.sessionId, {
+      const outcome = await bureau.contexts.steer(run.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'agent-identity', override: 'nonexistent-agent' },
       });
@@ -7550,11 +7550,11 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
         principal: 'alice',
       });
       await pollUntil(async () => {
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'running';
       });
 
-      const outcome = await bureau.submitSteeringCommand(run.sessionId, {
+      const outcome = await bureau.contexts.steer(run.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'agent-identity', policyRef: 'fast-tier' },
       });
@@ -7590,11 +7590,11 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
         principal: 'alice',
       });
       await pollUntil(async () => {
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'running';
       });
 
-      const outcome = await bureau.submitSteeringCommand(run.sessionId, {
+      const outcome = await bureau.contexts.steer(run.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'pause' },
       });
@@ -7633,10 +7633,10 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
         principal: 'alice',
       });
       await pollUntil(async () => {
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'running';
       });
-      const outcome = await bureau.submitSteeringCommand(run.sessionId, {
+      const outcome = await bureau.contexts.steer(run.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'pause' },
       });
@@ -7663,18 +7663,18 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
         principal: 'alice',
       });
       await pollUntil(async () => {
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'running';
       });
 
-      const first = await bureau.submitSteeringCommand(run.sessionId, {
+      const first = await bureau.contexts.steer(run.sessionId, {
         id: 'pause-1',
         principal: 'alice',
         requestedValue: { target: 'pause' },
       });
       expect(first.outcome).toBe('accepted');
 
-      const second = await bureau.submitSteeringCommand(run.sessionId, {
+      const second = await bureau.contexts.steer(run.sessionId, {
         id: 'pause-2',
         principal: 'alice',
         requestedValue: { target: 'pause' },
@@ -7685,7 +7685,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
         expect(second.command.configVersion).toBe(first.command.configVersion);
       }
 
-      const replay = await bureau.submitSteeringCommand(run.sessionId, {
+      const replay = await bureau.contexts.steer(run.sessionId, {
         id: 'pause-1',
         principal: 'alice',
         requestedValue: { target: 'pause' },
@@ -7716,16 +7716,16 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
         principal: 'alice',
       });
       await pollUntil(async () => {
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'running';
       });
 
-      await bureau.submitSteeringCommand(run.sessionId, {
+      await bureau.contexts.steer(run.sessionId, {
         id: 'shared-id',
         principal: 'alice',
         requestedValue: { target: 'pause' },
       });
-      const outcome = await bureau.submitSteeringCommand(run.sessionId, {
+      const outcome = await bureau.contexts.steer(run.sessionId, {
         id: 'shared-id',
         principal: 'alice',
         requestedValue: { target: 'resume' },
@@ -7756,11 +7756,11 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
         principal: 'alice',
       });
       await pollUntil(async () => {
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'running';
       });
 
-      const outcome = await bureau.submitSteeringCommand(run.sessionId, {
+      const outcome = await bureau.contexts.steer(run.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'resume' },
       });
@@ -7811,7 +7811,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       // generate and step 1's boundary read.
       await pollUntil(() => generate.callCount === 1);
 
-      const pause = await bureau.submitSteeringCommand(run.sessionId, {
+      const pause = await bureau.contexts.steer(run.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'pause' },
       });
@@ -7827,7 +7827,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       }
       expect(generate.callCount).toBe(1);
 
-      const resume = await bureau.submitSteeringCommand(run.sessionId, {
+      const resume = await bureau.contexts.steer(run.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'resume' },
       });
@@ -7836,7 +7836,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       await waitForRunCompletion(bureau, run.id);
       expect(generate.callCount).toBe(2);
 
-      const session = await bureau.getSession(run.sessionId);
+      const session = await bureau.contexts.get(run.sessionId);
       expect(session?.metadata['lastRunStatus']).toBe('completed');
     } finally {
       await bureau.dispose();
@@ -7890,7 +7890,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       });
       await pollUntil(() => generate.callCount === 1);
 
-      const pause = await bureau.submitSteeringCommand(run.sessionId, {
+      const pause = await bureau.contexts.steer(run.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'pause' },
       });
@@ -7900,7 +7900,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       bureau.abortRun(run.id);
       await waitForRunCompletion(bureau, run.id);
 
-      const session = await bureau.getSession(run.sessionId);
+      const session = await bureau.contexts.get(run.sessionId);
       expect(session?.metadata['lastRunStatus']).toBe('aborted');
     } finally {
       await bureau.dispose();
@@ -7944,7 +7944,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       });
       await pollUntil(() => generate.callCount === 1);
 
-      const pause = await bureau.submitSteeringCommand(run.sessionId, {
+      const pause = await bureau.contexts.steer(run.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'pause' },
       });
@@ -7962,7 +7962,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       // now-deleted session, so this must be the moment the paused run is
       // released, not left blocked on a promise the discarded gate alone
       // held.
-      await bureau.deleteSession(run.sessionId);
+      await bureau.contexts.delete(run.sessionId);
 
       await waitForRunCompletion(bureau, run.id);
       expect(generate.callCount).toBe(2);
@@ -8008,7 +8008,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       });
       await pollUntil(() => generate.callCount === 1);
 
-      const pause = await bureau.submitSteeringCommand(run.sessionId, {
+      const pause = await bureau.contexts.steer(run.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'pause' },
       });
@@ -8019,15 +8019,15 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       }
       expect(generate.callCount).toBe(1);
 
-      await bureau.deleteSession(run.sessionId);
-      expect(await bureau.getSession(run.sessionId)).toBeUndefined();
+      await bureau.contexts.delete(run.sessionId);
+      expect(await bureau.contexts.get(run.sessionId)).toBeUndefined();
 
       // The released run keeps executing to its own natural completion —
       // that part is unchanged — but its terminal `saveSession` call must
       // not resurrect the record `deleteSession` just removed.
       await waitForRunCompletion(bureau, run.id);
       expect(generate.callCount).toBe(2);
-      expect(await bureau.getSession(run.sessionId)).toBeUndefined();
+      expect(await bureau.contexts.get(run.sessionId)).toBeUndefined();
     } finally {
       await bureau.dispose();
     }
@@ -8076,7 +8076,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       });
       await pollUntil(() => generate.callCount === 1);
 
-      const pause = await bureau.submitSteeringCommand(run1.sessionId, {
+      const pause = await bureau.contexts.steer(run1.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'pause' },
       });
@@ -8085,7 +8085,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       for (let i = 0; i < 5; i++) {
         await yieldToPortableEventLoop();
       }
-      const resume = await bureau.submitSteeringCommand(run1.sessionId, {
+      const resume = await bureau.contexts.steer(run1.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'resume' },
       });
@@ -8155,7 +8155,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       });
 
       // No runId: two live runs on this session — ambiguous.
-      const ambiguous = await bureau.submitSteeringCommand(runA.sessionId, {
+      const ambiguous = await bureau.contexts.steer(runA.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'pause' },
       });
@@ -8165,7 +8165,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       });
 
       // Explicit runId: scopes correctly, and does not affect the OTHER run.
-      const scoped = await bureau.submitSteeringCommand(runA.sessionId, {
+      const scoped = await bureau.contexts.steer(runA.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'pause' },
         runId: runA.id,
@@ -8211,7 +8211,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       // B's own terminal transition pruned lastRequestAuthorities[B],
       // leaving lastRunId: B and A's now-uncorrelated entry behind — a
       // command explicitly targeting still-live A must still authorize.
-      const scoped = await bureau.submitSteeringCommand(runA.sessionId, {
+      const scoped = await bureau.contexts.steer(runA.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'pause' },
         runId: runA.id,
@@ -8301,12 +8301,12 @@ describe('createBureau session signal/update/query with terminal sessions', () =
     await waitForRunCompletion(bureau, run.id);
 
     // Verify the session is persisted as completed (the guard condition).
-    const session = await bureau.getSession(run.sessionId);
+    const session = await bureau.contexts.get(run.sessionId);
     expect(session?.metadata['lastRunStatus']).toBe('completed');
     expect(session?.metadata['lastRunId']).toBe(run.id);
 
     // signalSession must throw NOT_FOUND (not route to the terminal engine handle).
-    const error = await bureau.signalSession(run.sessionId, 'any-signal').then(
+    const error = await bureau.contexts.signal(run.sessionId, 'any-signal').then(
       () => undefined,
       (rejection) => rejection,
     );
@@ -8331,11 +8331,11 @@ describe('createBureau session signal/update/query with terminal sessions', () =
 
     // Wait for the abort to propagate and the session status to update.
     await pollUntil(async () => {
-      const current = await bureau.getSession(run.sessionId);
+      const current = await bureau.contexts.get(run.sessionId);
       return current?.metadata['lastRunStatus'] === 'aborted';
     });
 
-    const error = await bureau.signalSession(run.sessionId, 'any-signal').then(
+    const error = await bureau.contexts.signal(run.sessionId, 'any-signal').then(
       () => undefined,
       (rejection) => rejection,
     );
@@ -8426,7 +8426,7 @@ describe('createBureau session signal authority revalidation', () => {
       expect((error as BureauError).code).toBe('CONFLICT');
       expect(flowControlCalls).toBe(0);
       expect(bureau.listRuns()).toHaveLength(0);
-      expect(await bureau.getSession('stale-authority-session')).toBeUndefined();
+      expect(await bureau.contexts.get('stale-authority-session')).toBeUndefined();
     } finally {
       await bureau.dispose();
     }
@@ -8461,11 +8461,11 @@ describe('createBureau session signal authority revalidation', () => {
     });
 
     await pollUntil(async () => {
-      const session = await bureau.getSession(run.sessionId);
+      const session = await bureau.contexts.get(run.sessionId);
       return session?.metadata['lastRunStatus'] === 'running';
     });
     authorityCurrent = false;
-    const error = await bureau.signalSession(run.sessionId, 'human-response').then(
+    const error = await bureau.contexts.signal(run.sessionId, 'human-response').then(
       () => undefined,
       (rejection) => rejection,
     );
@@ -8842,7 +8842,7 @@ describe('createBureau review queue (AB-20)', () => {
         [olderRunId]: 'older-run-agent',
         [newestRunId]: 'newest-run-agent',
       });
-      await bureau.deleteSession(sessionId);
+      await bureau.contexts.delete(sessionId);
       expect(bureau.reviews.list()).toHaveLength(0);
       expect(
         await throwingRejectionOf(
@@ -8905,7 +8905,7 @@ describe('createBureau review queue (AB-20)', () => {
     });
     try {
       expect(bureau.reviews.list()).toHaveLength(0);
-      const session = await bureau.getSession('session-expired-terminal-review');
+      const session = await bureau.contexts.get('session-expired-terminal-review');
       expect(session?.metadata['pendingApprovalOverrides']).not.toHaveProperty(reviewId);
       expect(session?.metadata['lastRequestAuthorities']).not.toHaveProperty(runId);
     } finally {
@@ -8999,7 +8999,7 @@ describe('createBureau review queue (AB-20)', () => {
     expect(review!.approval.toolName).toBe('charge-card');
     expect(review!.approval.arguments).toEqual({ cents: 500 });
     expect(review!.approval.approvalToken).toEqual(expect.any(String));
-    const persistedSession = await bureau.getSession(run.sessionId);
+    const persistedSession = await bureau.contexts.get(run.sessionId);
     expect(persistedSession?.metadata['pendingApprovalOverrides']).toMatchObject({
       [review!.id]: expect.objectContaining({ approvalToken: review!.approval.approvalToken }),
     });
@@ -10197,7 +10197,7 @@ describe('createBureau review queue (AB-20)', () => {
       });
       await pollUntil(() => bureauAReachedStep1);
       const reviewId = `approval:${run.id}:expired-recovery-call`;
-      const beforeRecovery = await bureauA.getSession(run.sessionId);
+      const beforeRecovery = await bureauA.contexts.get(run.sessionId);
       expect(beforeRecovery?.metadata['pendingApprovalOverrides']).toMatchObject({
         [reviewId]: expect.objectContaining({ approvalToken: expect.any(String) }),
       });
@@ -10276,7 +10276,7 @@ describe('createBureau review queue (AB-20)', () => {
           ),
         );
         expect(restoredInvalidApproval).toBe(true);
-        const afterRecovery = await bureauB.getSession(run.sessionId);
+        const afterRecovery = await bureauB.contexts.get(run.sessionId);
         expect(afterRecovery?.metadata['pendingApprovalOverrides']).not.toHaveProperty(reviewId);
         expect(afterRecovery?.metadata['lastRequestAuthorities']).not.toHaveProperty(run.id);
         expect(bureauB.reviews.list()).toHaveLength(0);
@@ -10356,7 +10356,7 @@ describe('createBureau review queue (AB-20)', () => {
     expect(charges).toEqual([425]);
     expect(bureau.reviews.list()).toHaveLength(0);
 
-    const persistedSession = await bureau.getSession(run.sessionId);
+    const persistedSession = await bureau.contexts.get(run.sessionId);
     expect(persistedSession?.metadata['approvalResolutionStartedIds']).toContain(review!.id);
     expect(persistedSession?.metadata['pendingApprovalOverrides']).toHaveProperty(review!.id);
     expect(diagnostics).toEqual([]);
@@ -10443,7 +10443,7 @@ describe('createBureau review queue (AB-20)', () => {
 
       await bureau.reviews.resolve(input);
 
-      const history = (await bureau.getSession(run.sessionId))!.conversationHistory;
+      const history = (await bureau.contexts.get(run.sessionId))!.conversationHistory;
       const row = history.ids
         .map((id) => history.messages[id]!)
         .find((message) => message.toolResult?.callId === 'cleanup-call');
@@ -10580,7 +10580,7 @@ describe('createBureau review queue (AB-20)', () => {
 
     expect(failedApprovalPersistence).toBe(true);
     expect(bureau.reviews.list()).toHaveLength(1);
-    const persistedSession = await bureau.getSession(run.sessionId);
+    const persistedSession = await bureau.contexts.get(run.sessionId);
     expect(persistedSession?.metadata['pendingApprovalOverrides']).toHaveProperty(
       bureau.reviews.list()[0]!.id,
     );
@@ -10635,7 +10635,7 @@ describe('createBureau review queue (AB-20)', () => {
     const stillPending = bureau.reviews.list();
     expect(stillPending).toHaveLength(1);
     expect(stillPending[0]!.id).toBe(review!.id);
-    const persistedSession = await bureau.getSession(run.sessionId);
+    const persistedSession = await bureau.contexts.get(run.sessionId);
     expect(persistedSession?.metadata['pendingApprovalOverrides']).toMatchObject({
       [review!.id]: expect.objectContaining({ approvalToken: expect.any(String) }),
     });
@@ -10678,7 +10678,7 @@ describe('createBureau review queue (AB-20)', () => {
 
     expect(charges).toEqual([]);
     expect(bureau.reviews.list().map(({ id }) => id)).toEqual([review!.id]);
-    const persistedSession = await bureau.getSession(run.sessionId);
+    const persistedSession = await bureau.contexts.get(run.sessionId);
     expect(persistedSession?.metadata['resolvedReviewIds'] ?? []).not.toContain(review!.id);
     expect(persistedSession?.metadata['pendingApprovalOverrides']).toHaveProperty(review!.id);
     expect(persistedSession?.metadata['approvalResolutionStartedIds'] ?? []).not.toContain(
@@ -10748,7 +10748,7 @@ describe('createBureau review queue (AB-20)', () => {
     if (!review || review.kind !== 'tool-approval')
       throw new Error('Expected tool approval review');
     const originalApprovalToken = persistedApprovalToken(
-      await bureau.getSession(run.sessionId),
+      await bureau.contexts.get(run.sessionId),
       review.id,
     );
     originalApprovalTokenForFailure.value = originalApprovalToken;
@@ -10774,7 +10774,7 @@ describe('createBureau review queue (AB-20)', () => {
     }
     expect(stillPendingReview.id).toBe(review.id);
     expect(replacementApprovalToken).not.toBe(originalApprovalToken);
-    expect(persistedApprovalToken(await bureau.getSession(run.sessionId), review.id)).toBe(
+    expect(persistedApprovalToken(await bureau.contexts.get(run.sessionId), review.id)).toBe(
       replacementApprovalToken,
     );
 
@@ -10839,7 +10839,7 @@ describe('createBureau review queue (AB-20)', () => {
     if (typeof originalApprovalToken !== 'string') {
       throw new Error('Expected original approval token');
     }
-    expect(persistedApprovalToken(await bureau.getSession(run.sessionId), review.id)).toBe(
+    expect(persistedApprovalToken(await bureau.contexts.get(run.sessionId), review.id)).toBe(
       originalApprovalToken,
     );
     originalApprovalTokenForFailure.value = originalApprovalToken;
@@ -10869,7 +10869,7 @@ describe('createBureau review queue (AB-20)', () => {
     }
     expect(stillPendingReview.id).toBe(review.id);
     expect(stillPendingReview.approval.approvalToken).not.toBe(originalApprovalToken);
-    expect(persistedApprovalToken(await bureau.getSession(run.sessionId), review.id)).toBe(
+    expect(persistedApprovalToken(await bureau.contexts.get(run.sessionId), review.id)).toBe(
       originalApprovalToken,
     );
 
@@ -10904,11 +10904,11 @@ describe('createBureau review queue (AB-20)', () => {
     // this monorepo yet drives for a `requestHumanInput`-parked run (see the
     // AB-20 PR description). `review.sessionId` is therefore `''` here; what
     // this test verifies is that `reviews.resolve` forwards it — and the
-    // signal name and payload — to `bureau.signalSession` UNCHANGED, which is
+    // signal name and payload — to `bureau.contexts.signal` UNCHANGED, which is
     // the actual resume wiring under test. `mockImplementation` bypasses the
     // real session lookup (already covered by the signalSession tests above)
     // so this test is purely about reviews.resolve's call, not signalSession's.
-    const signalSpy = spyOn(bureau, 'signalSession').mockImplementation(async () => {});
+    const signalSpy = spyOn(bureau.contexts, 'signal').mockImplementation(async () => {});
 
     const { activeRun, emitter } = createParkedActiveRun();
     const runId = bureau.internals.store.register(activeRun, 'run-approve-human-wait');
@@ -10983,17 +10983,17 @@ describe('createBureau review queue (AB-20)', () => {
     expect((denyRecord!.detail as { reason?: string }).reason).toBe('Amount looks fraudulent');
 
     expect(bureau.reviews.list()).toHaveLength(0);
-    const persistedSession = await bureau.getSession(run.sessionId);
+    const persistedSession = await bureau.contexts.get(run.sessionId);
     expect(persistedSession?.metadata['resolvedReviewIds']).toContain(review!.id);
 
-    await bureau.deleteSession(run.sessionId);
+    await bureau.contexts.delete(run.sessionId);
     // Session deletion does not own the in-memory run's resolved-review
     // suppression. Until the run itself is deleted, the resolved approval
     // must not reappear in the review queue.
     expect(bureau.reviews.list()).toHaveLength(0);
     await withAdvancingClock(runtime, retireSettledTasks(bureau, runtime));
     await pollUntil(async () => {
-      const session = await bureau.getSession(run.sessionId);
+      const session = await bureau.contexts.get(run.sessionId);
       const resolved = session?.metadata['resolvedReviewIds'];
       return !Array.isArray(resolved) || !resolved.includes(review!.id);
     });
@@ -11039,14 +11039,14 @@ describe('createBureau review queue (AB-20)', () => {
       ...SHORT_TASK_RETENTION,
     });
     // AB-46: `reviews.resolve` deny on a `human-wait` review now delivers
-    // `{ __abDenied: true, ... }` via the real `bureau.signalSession` (the
+    // `{ __abDenied: true, ... }` via the real `bureau.contexts.signal` (the
     // fix this record ships — a denied human-wait run must not stay parked
     // forever). This run has no real session association (registered
     // directly via `store.register()`, not `bureau.createRun()`), so
     // `signalSession` is stubbed exactly as the "reviews.resolve approve on a
     // human-wait review" test above does — this test is about
     // `resolvedReviewIds` pruning, not signal delivery.
-    const signalSpy = spyOn(bureau, 'signalSession').mockImplementation(async () => {});
+    const signalSpy = spyOn(bureau.contexts, 'signal').mockImplementation(async () => {});
 
     const runId = 'run-prune-resolved-ids';
     const first = createParkedActiveRun();
@@ -11128,13 +11128,13 @@ describe('createBureau review queue (AB-20)', () => {
         reason: 'pruning coverage',
       });
 
-      const sessionBeforeDelete = await bureau.getSession(run.sessionId);
+      const sessionBeforeDelete = await bureau.contexts.get(run.sessionId);
       expect(sessionBeforeDelete?.metadata['resolvedReviewIds']).toContain(review.id);
       expect(sessionBeforeDelete?.metadata['resolvedReviewDecisions']).toHaveProperty(review.id);
 
       await withAdvancingClock(runtime, retireSettledTasks(bureau, runtime));
       await pollUntil(async () => {
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         const decisions = session?.metadata['resolvedReviewDecisions'];
         const hasStaleDecision =
           typeof decisions === 'object' &&
@@ -11144,7 +11144,7 @@ describe('createBureau review queue (AB-20)', () => {
         return !hasStaleDecision;
       });
 
-      const sessionAfterDelete = await bureau.getSession(run.sessionId);
+      const sessionAfterDelete = await bureau.contexts.get(run.sessionId);
       expect(sessionAfterDelete?.metadata['resolvedReviewIds'] ?? []).not.toContain(review.id);
       expect(sessionAfterDelete?.metadata['resolvedReviewDecisions']).not.toHaveProperty(review.id);
     } finally {
@@ -11275,7 +11275,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
     });
 
     try {
-      const signalSpy = spyOn(bureau, 'signalSession').mockImplementation(async () => {});
+      const signalSpy = spyOn(bureau.contexts, 'signal').mockImplementation(async () => {});
       const { activeRun, emitter } = createParkedActiveRun();
       const runId = bureau.internals.store.register(activeRun, 'run-reject-human-wait-validation');
       emitter.dispatchEvent(new HumanWaitParkedEvent('human-response', runId, 'Approve?'));
@@ -11356,7 +11356,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
     });
 
     try {
-      const signalSpy = spyOn(bureau, 'signalSession').mockImplementation(async () => {});
+      const signalSpy = spyOn(bureau.contexts, 'signal').mockImplementation(async () => {});
       const { activeRun, emitter } = createParkedActiveRun();
       const runId = bureau.internals.store.register(activeRun, 'run-reject-human-wait');
       emitter.dispatchEvent(new HumanWaitParkedEvent('human-response', runId, 'Approve?'));
@@ -12114,7 +12114,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
       },
     });
     try {
-      spyOn(bureau, 'signalSession').mockImplementation(async () => {});
+      spyOn(bureau.contexts, 'signal').mockImplementation(async () => {});
       const approved: unknown[] = [];
       const denied: unknown[] = [];
       const rejected: unknown[] = [];
@@ -12348,10 +12348,10 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
       await waitForRunCompletion(bureau, run.id);
       const [review] = bureau.reviews.list();
       expect(review).toBeDefined();
-      const session = await bureau.getSession(run.sessionId);
+      const session = await bureau.contexts.get(run.sessionId);
       expect(session?.metadata['lastRunId']).toBe(run.id);
 
-      await bureau.deleteSession(run.sessionId);
+      await bureau.contexts.delete(run.sessionId);
 
       expect(revoked).toHaveLength(1);
       expect(revoked[0]).toMatchObject({
@@ -12868,7 +12868,7 @@ describe('createBureau human input wiring — real durable park (F3)', () => {
       // (a macrotask) has any chance to run and settle run1. A synchronous
       // admission check immediately after this `await` therefore reliably
       // observes run1's slot as reclaimed.
-      await bureau.signalSession(run1.sessionId, 'human-response', { approved: true });
+      await bureau.contexts.signal(run1.sessionId, 'human-response', { approved: true });
 
       // 6. Reclaim: run2 still holds its slot AND run1 just reclaimed its
       // own — a fourth admission is rejected again, proving `markResumed`
@@ -12993,7 +12993,7 @@ describe('createBureau human input wiring — real durable park (F3)', () => {
       durable: true,
     });
     try {
-      const signalSpy = spyOn(bureau, 'signalSession').mockImplementation(async () => {});
+      const signalSpy = spyOn(bureau.contexts, 'signal').mockImplementation(async () => {});
       bureau.setRequestAuthorityValidator(() => authorityCurrent);
       const run = await bureau.createRun({
         agentName: 'default',
@@ -13199,7 +13199,7 @@ describe('createBureau requestHumanInput availability across durability configur
 // AB-41's decision record: `scheduleWakeup` is opt-in (`options.wakeup`),
 // gated on `runtime.durable`, and forwards onto the run's real `ctx.services`
 // object via the shared `servicesRef`/`onServices` capture. Unlike
-// `requestHumanInput` (a signal wait, resumed via `bureau.signalSession`),
+// `requestHumanInput` (a signal wait, resumed via `bureau.contexts.signal`),
 // `scheduleWakeup` parks via a durable `ctx.sleep` — there is no fake-clock
 // harness anywhere in this repository's Weft-backed tests, so these tests
 // drive the timer deterministically via `bureau.runDurableMaintenance(now)`
@@ -13449,7 +13449,7 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
         expect(completed).toBe(true);
         expect(generateB.callCount).toBe(1);
 
-        const session = await bureauB.getSession(run.sessionId);
+        const session = await bureauB.contexts.get(run.sessionId);
         expect(session?.metadata['lastRunStatus']).toBe('completed');
       } finally {
         await bureauB.dispose();
@@ -14433,7 +14433,7 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
       await waitForRunCompletion(bureau, run.id);
       await runtime.deferred.drain();
 
-      const session = await bureau.getSession(run.sessionId);
+      const session = await bureau.contexts.get(run.sessionId);
       expect(session).toBeDefined();
       const incarnation = session!.incarnation;
       expect(incarnation).not.toBe('');
@@ -14450,7 +14450,7 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
         expect(payload.incarnation).toBe(incarnation);
       }
 
-      await bureau.deleteSession(run.sessionId);
+      await bureau.contexts.delete(run.sessionId);
       await runtime.deferred.drain();
 
       const deletedOutcome = await bureau.eventHistory({ kind: 'session', id: run.sessionId });
@@ -14988,7 +14988,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
         principal: 'alice',
       });
       await pollUntil(async () => {
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'running';
       });
 
@@ -15276,14 +15276,14 @@ describe('bureau.eventHistory deleted-aggregate detection is independent of the 
 });
 
 describe('bureau.eventHistory deleted-aggregate through a real session deletion (AB-372)', () => {
-  it('returns deleted-aggregate for a session deleted through a real bureau.deleteSession call, with no synthetic record injected', async () => {
+  it('returns deleted-aggregate for a session deleted through a real bureau.contexts.delete call, with no synthetic record injected', async () => {
     // AB-313's own "returns deleted-aggregate for a session.deleted owner"
     // test above synthesizes the deletion marker via `bureau.store.recordAction`
     // because nothing wired a real `SessionDeletedEvent` dispatch into THIS
     // durable store — `durable-event-history.ts`'s `createDurableEventProducer`
     // had no listener for it (the audit trail, a separate durable layer, did).
     // AB-372 closes that gap; this proves the real production call site
-    // (`Bureau.deleteSession`) reaches `bureau.eventHistory`'s deleted-aggregate
+    // (`BureauContexts.delete`) reaches `bureau.eventHistory`'s deleted-aggregate
     // detection with no test-only synthesis anywhere in this test.
     const databasePath = createTemporaryPath(
       'bureau-event-history-real-session-deletion',
@@ -15311,7 +15311,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       await waitForRunCompletion(bureau, run.id);
       await runtime.deferred.drain();
 
-      await bureau.deleteSession(run.sessionId);
+      await bureau.contexts.delete(run.sessionId);
       await runtime.deferred.drain();
 
       const outcome = await bureau.eventHistory({ kind: 'session', id: run.sessionId });
@@ -15327,7 +15327,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
     }
   });
 
-  it("coalesces two concurrent bureau.deleteSession calls on the same session into exactly one durable session.deleted record (mirrors the audit trail's own coalescing proof)", async () => {
+  it("coalesces two concurrent bureau.contexts.delete calls on the same session into exactly one durable session.deleted record (mirrors the audit trail's own coalescing proof)", async () => {
     // `deleteSession`'s own single-process coalescing (`create-bureau.ts`)
     // means two concurrent calls for the same id dispatch `SessionDeletedEvent`
     // exactly once already (proved against the audit trail at
@@ -15366,9 +15366,9 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       await runtime.deferred.drain();
 
       await Promise.all([
-        bureau.deleteSession(run.sessionId),
-        bureau.deleteSession(run.sessionId),
-        bureau.deleteSession(run.sessionId),
+        bureau.contexts.delete(run.sessionId),
+        bureau.contexts.delete(run.sessionId),
+        bureau.contexts.delete(run.sessionId),
       ]);
       await runtime.deferred.drain();
 
@@ -15415,7 +15415,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       await waitForRunCompletion(bureau, originalRun.id);
       await runtime.deferred.drain();
 
-      await bureau.deleteSession(sessionId);
+      await bureau.contexts.delete(sessionId);
       await runtime.deferred.drain();
 
       // Confirm the marker is really there before recreating — otherwise
@@ -15433,7 +15433,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       });
       await waitForRunCompletion(bureau, recreatedRun.id);
       await runtime.deferred.drain();
-      expect(await bureau.getSession(sessionId)).toBeDefined();
+      expect(await bureau.contexts.get(sessionId)).toBeDefined();
 
       const liveOutcome = await bureau.eventHistory({ kind: 'session', id: sessionId });
       expect('outcome' in liveOutcome).toBe(false);
@@ -15485,7 +15485,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       await waitForRunCompletion(bureau, originalRun.id);
       await runtime.deferred.drain();
 
-      await bureau.deleteSession(sessionId);
+      await bureau.contexts.delete(sessionId);
       await runtime.deferred.drain();
 
       // Recreate the SAME id, this time owned by a specific principal.
@@ -15497,7 +15497,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       });
       await waitForRunCompletion(bureau, recreatedRun.id);
       await runtime.deferred.drain();
-      expect(await bureau.getSession(sessionId)).toBeDefined();
+      expect(await bureau.contexts.get(sessionId)).toBeDefined();
 
       // A principal never authorized for either incarnation must be denied
       // the SAME not-found-shaped outcome every other unauthorized read
@@ -15558,7 +15558,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       await waitForRunCompletion(bureau, originalRun.id);
       await runtime.deferred.drain();
 
-      await bureau.deleteSession(sessionId);
+      await bureau.contexts.delete(sessionId);
       await runtime.deferred.drain();
 
       // Recreate the SAME id under a principal `mallory` is not authorized
@@ -15633,7 +15633,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       await waitForRunCompletion(bureau, originalRun.id);
       await runtime.deferred.drain();
 
-      await bureau.deleteSession(sessionId);
+      await bureau.contexts.delete(sessionId);
       await runtime.deferred.drain();
 
       // Find the deletion marker's own cursor so the next read can be
@@ -15889,7 +15889,7 @@ describe('two Bureau processes racing deleteSession over one shared persistent s
       // Bureau B shares the same persistent store, so it sees the same
       // session record bureau A just created and persisted.
       await waitForCondition(
-        async () => (await bureauB.getSession(run.sessionId)) !== undefined,
+        async () => (await bureauB.contexts.get(run.sessionId)) !== undefined,
         'expected bureau B to observe the session bureau A persisted',
       );
 
@@ -15901,8 +15901,8 @@ describe('two Bureau processes racing deleteSession over one shared persistent s
       bureauB.addEventListener('session.deleted', onDeleted);
 
       const [deletedByA, deletedByB] = await Promise.all([
-        bureauA.deleteSession(run.sessionId),
-        bureauB.deleteSession(run.sessionId),
+        bureauA.contexts.delete(run.sessionId),
+        bureauB.contexts.delete(run.sessionId),
       ]);
       deletedByA;
       deletedByB;
@@ -16011,7 +16011,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         // The persistence layer itself, not just the end-to-end read: the
         // session's durable envelope carries the owning principal keyed by
         // this run's id.
-        const recoveredSession = await bureauB.getSession(run.sessionId);
+        const recoveredSession = await bureauB.contexts.get(run.sessionId);
         expect(recoveredSession?.metadata['lastRunOwningPrincipals']).toEqual({
           [run.id]: 'alice',
         });
@@ -16177,7 +16177,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
 
         // COR-718: an unattributed run is owned by anonymous:local, and that
         // owner is what the session records.
-        const recoveredSession = await bureauB.getSession(run.sessionId);
+        const recoveredSession = await bureauB.contexts.get(run.sessionId);
         expect(recoveredSession?.metadata['lastRunOwningPrincipals']).toEqual({
           [run.id]: 'anonymous:local',
         });
@@ -16283,7 +16283,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
       });
       await waitForRunCompletion(bureau, runTwo.id);
 
-      const session = await bureau.getSession(sessionId);
+      const session = await bureau.contexts.get(sessionId);
       expect(session?.metadata['lastRunOwningPrincipals']).toEqual({
         [runOne.id]: 'alice',
         [runTwo.id]: 'alice',
@@ -16653,7 +16653,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         });
         await waitForRunCompletion(bureau, runA.id);
 
-        const beforeA = await bureau.getSession(runA.sessionId);
+        const beforeA = await bureau.contexts.get(runA.sessionId);
         expect(beforeA?.metadata['lastRunOwningPrincipals']).toEqual({ [runA.id]: 'alice' });
 
         // Delete run A — the run store no longer holds it once this
@@ -16682,7 +16682,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         });
         await waitForRunCompletion(bureau, runB.id);
 
-        const beforeB = await bureau.getSession(runB.sessionId);
+        const beforeB = await bureau.contexts.get(runB.sessionId);
         expect(beforeB?.metadata['lastRunOwningPrincipals']).toEqual({ [runB.id]: 'bob' });
 
         // Advance the retention floor past every one of run A's durable
@@ -16720,8 +16720,8 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
 
         await bureau.runDurableMaintenance();
 
-        const afterA = await bureau.getSession(runA.sessionId);
-        const afterB = await bureau.getSession(runB.sessionId);
+        const afterA = await bureau.contexts.get(runA.sessionId);
+        const afterB = await bureau.contexts.get(runB.sessionId);
         // No key at all — not a present-but-empty map — matching the
         // "never attributed" shape AB-359's own tests assert on.
         expect(afterA?.metadata['lastRunOwningPrincipals']).toBeUndefined();
@@ -16818,7 +16818,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
 
       await bureau.runDurableMaintenance();
 
-      const parkedSession = await bureau.getSession(parkedRun.sessionId);
+      const parkedSession = await bureau.contexts.get(parkedRun.sessionId);
       expect(parkedSession?.metadata['lastRunOwningPrincipals']).toEqual({
         [parkedRun.id]: 'carol',
       });
@@ -16830,7 +16830,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       // any future point (Codex review, PR #568, "Preserve ownership for
       // a later run removal event"). Its entry survives on that signal
       // alone.
-      const completedSession = await bureau.getSession(completedRun.sessionId);
+      const completedSession = await bureau.contexts.get(completedRun.sessionId);
       expect(completedSession?.metadata['lastRunOwningPrincipals']).toEqual({
         [completedRun.id]: 'alice',
       });
@@ -16874,7 +16874,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       const result = await bureau.runDurableMaintenance();
       expect(result).toBe(true);
 
-      const session = await bureau.getSession(run.sessionId);
+      const session = await bureau.contexts.get(run.sessionId);
       expect(session?.metadata['lastRunOwningPrincipals']).toEqual({ [run.id]: 'alice' });
     } finally {
       await bureau.shutdown();
@@ -16970,7 +16970,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
 
         await bureau.runDurableMaintenance();
 
-        const session = await bureau.getSession(completedRun.sessionId);
+        const session = await bureau.contexts.get(completedRun.sessionId);
         // `completedRun`'s own entry is gone (its own terminal transition
         // already removed it from `lastRequestAuthorities`, it is deleted
         // — so no future removal can protect it via the run store —
@@ -17046,7 +17046,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
 
         await bureau.runDurableMaintenance();
 
-        const session = await bureau.getSession(completedRun.sessionId);
+        const session = await bureau.contexts.get(completedRun.sessionId);
         // The malformed map fails the WHOLE session closed: the
         // otherwise-prunable ownership entry survives rather than being
         // deleted on the strength of a corrupted authority record.
@@ -17124,7 +17124,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           adminStorage[Symbol.dispose]();
         }
 
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         // The run was a candidate per whatever snapshot the pass started
         // with — but a FRESH recheck immediately before the write sees the
         // newly-landed event and correctly treats the run as still
@@ -17195,7 +17195,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
 
         await bureau.runDurableMaintenance();
 
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         // The run's history is below the floor and it has no active write —
         // by every OTHER signal it is a pruning candidate. A malformed
         // `lastRequestAuthorities` must still block the write for this
@@ -17259,7 +17259,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         const removalEvent = deletedOutcome.events.at(-1);
         if (!removalEvent) throw new Error('expected a run.removed durable event');
 
-        const beforeMaintenance = await bureau.getSession(run.sessionId);
+        const beforeMaintenance = await bureau.contexts.get(run.sessionId);
         const updatedAtBeforeMaintenance = beforeMaintenance?.updatedAt;
         if (!updatedAtBeforeMaintenance) throw new Error('expected a session with updatedAt');
 
@@ -17271,7 +17271,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
 
         await bureau.runDurableMaintenance();
 
-        const afterMaintenance = await bureau.getSession(run.sessionId);
+        const afterMaintenance = await bureau.contexts.get(run.sessionId);
         // The ownership entry was actually pruned (same assertion the
         // main pruning test makes) — so this proves the write happened
         // AND did not stamp a fresh updatedAt, not merely that nothing
@@ -17331,7 +17331,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           await adminFeed.retain({ beforeSequence: lastEventBeforeDeletion.sequence + 1 });
           await bureau.runDurableMaintenance();
 
-          const stillInStore = await bureau.getSession(run.sessionId);
+          const stillInStore = await bureau.contexts.get(run.sessionId);
           expect(stillInStore?.metadata['lastRunOwningPrincipals']).toEqual({ [run.id]: 'alice' });
 
           // Retire the run — the run store no longer holds it, and the
@@ -17372,7 +17372,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           adminStorage[Symbol.dispose]();
         }
 
-        const afterDeletionAndRetention = await bureau.getSession(run.sessionId);
+        const afterDeletionAndRetention = await bureau.contexts.get(run.sessionId);
         expect(afterDeletionAndRetention?.metadata['lastRunOwningPrincipals']).toBeUndefined();
       } finally {
         await bureau.shutdown();
@@ -17439,7 +17439,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         await adminFeed.dispose();
         adminStorage[Symbol.dispose]();
 
-        const sessionBeforeAdvance = await bureau.getSession(run.sessionId);
+        const sessionBeforeAdvance = await bureau.contexts.get(run.sessionId);
         expect(sessionBeforeAdvance?.metadata['lastRunOwningPrincipals']).toEqual({
           [run.id]: 'alice',
         });
@@ -17458,11 +17458,11 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         // async-background-work assertion in this file (`waitForCondition`).
         await runtime.advance(300_000);
         await waitForCondition(async () => {
-          const session = await bureau.getSession(run.sessionId);
+          const session = await bureau.contexts.get(run.sessionId);
           return session?.metadata['lastRunOwningPrincipals'] === undefined;
         }, 'expected the automatic pruning timer to drop the ownership entry');
 
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         expect(session?.metadata['lastRunOwningPrincipals']).toBeUndefined();
       } finally {
         await bureau.shutdown();
@@ -17636,7 +17636,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         // Release the first pass; it completes normally.
         releaseFirstPass();
         await waitForCondition(async () => {
-          const session = await bureau.getSession(run.sessionId);
+          const session = await bureau.contexts.get(run.sessionId);
           return session?.metadata['lastRunOwningPrincipals'] === undefined;
         }, 'expected the first pass to finish pruning once released');
 
@@ -17832,14 +17832,14 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         await runtime.advance(600_000);
         await runtime.deferred.drain();
 
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         expect(session?.metadata['lastRunOwningPrincipals']).toEqual({ [run.id]: 'alice' });
 
         // The manual host's own explicit call still prunes, proving the
         // ownership entry really was prunable — the timer's absence, not
         // an unrelated reason, is why it survived above.
         await bureau.runDurableMaintenance();
-        const sessionAfterExplicitMaintenance = await bureau.getSession(run.sessionId);
+        const sessionAfterExplicitMaintenance = await bureau.contexts.get(run.sessionId);
         expect(
           sessionAfterExplicitMaintenance?.metadata['lastRunOwningPrincipals'],
         ).toBeUndefined();
@@ -17936,7 +17936,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
 
           await bureauB.runDurableMaintenance();
 
-          const whileClaimed = await bureauA.getSession(run.sessionId);
+          const whileClaimed = await bureauA.contexts.get(run.sessionId);
           expect(whileClaimed?.metadata['lastRunOwningPrincipals']).toEqual({ [run.id]: 'alice' });
           const claimCall = claimHolderSpy.mock.calls.findIndex(([id]) => id === run.id);
           expect(claimCall).toBeGreaterThanOrEqual(0);
@@ -17954,7 +17954,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
 
           await bureauB.runDurableMaintenance();
 
-          const afterSettled = await bureauA.getSession(run.sessionId);
+          const afterSettled = await bureauA.contexts.get(run.sessionId);
           expect(afterSettled?.metadata['lastRunOwningPrincipals']).toBeUndefined();
         } finally {
           releaseGenerate.resolve();
@@ -18043,7 +18043,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           await withPrunableRun({ ownership: 'workflow-lease' }, async ({ bureau, run }) => {
             await bureau.runDurableMaintenance();
             expect(claimHolderSpy.mock.calls.some(([id]) => id === run.id)).toBe(true);
-            const session = await bureau.getSession(run.sessionId);
+            const session = await bureau.contexts.get(run.sessionId);
             expect(session?.metadata['lastRunOwningPrincipals']).toBeUndefined();
           });
         } finally {
@@ -18060,7 +18060,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           { ownership: 'workflow-lease' },
           async ({ bureau, run, diagnostics }) => {
             await bureau.runDurableMaintenance();
-            const session = await bureau.getSession(run.sessionId);
+            const session = await bureau.contexts.get(run.sessionId);
             expect(session?.metadata['lastRunOwningPrincipals']).toEqual({ [run.id]: 'alice' });
             expect(
               diagnostics.some((message) =>
@@ -18081,7 +18081,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           claimHolderSpy.mockClear();
           await bureau.runDurableMaintenance();
           expect(claimHolderSpy).toHaveBeenCalledTimes(0);
-          const session = await bureau.getSession(run.sessionId);
+          const session = await bureau.contexts.get(run.sessionId);
           expect(session?.metadata['lastRunOwningPrincipals']).toBeUndefined();
         });
       } finally {
@@ -18151,7 +18151,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           await retainThrough(databasePath, await appendFloorMarker(databasePath));
 
           await bureauB.runDurableMaintenance();
-          const pruned = await bureauA.getSession(run.sessionId);
+          const pruned = await bureauA.contexts.get(run.sessionId);
           expect(
             (ownersOf(pruned) as Record<string, unknown> | undefined)?.[run.id],
           ).toBeUndefined();
@@ -18167,7 +18167,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
             updateSpy.mockRestore();
           }
 
-          const restored = await bureauA.getSession(run.sessionId);
+          const restored = await bureauA.contexts.get(run.sessionId);
           expect(ownersOf(restored)).toEqual({ [run.id]: 'alice' });
           expect(restoreOptions).toContainEqual({ refreshActivity: false });
         } finally {
@@ -18227,7 +18227,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
 
           // The pending review's authority entry keeps the run's owner.
           await bureauB.runDurableMaintenance();
-          const beforeDecision = await bureauA.getSession(run.sessionId);
+          const beforeDecision = await bureauA.contexts.get(run.sessionId);
           expect(ownersOf(beforeDecision)).toEqual({ [run.id]: 'alice' });
 
           // B prunes in the window after A's resolution write removes the
@@ -18255,7 +18255,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
               ) {
                 prunedInWindow = true;
                 await bureauB.runDurableMaintenance();
-                viewFromB = await bureauB.getSession(id);
+                viewFromB = await bureauB.contexts.get(id);
               }
               return result;
             },
@@ -18274,7 +18274,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
             (ownersOf(viewFromB) as Record<string, unknown> | undefined)?.[run.id],
           ).toBeUndefined();
 
-          const afterDecision = await bureauA.getSession(run.sessionId);
+          const afterDecision = await bureauA.contexts.get(run.sessionId);
           expect(ownersOf(afterDecision)).toEqual({ [run.id]: 'alice' });
 
           const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
@@ -18361,7 +18361,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           if (!run) throw new Error('expected one run');
           const sessionStore = bureau.internals.sessionStore;
           if (!sessionStore) throw new Error('expected a configured session store');
-          const before = await bureau.getSession(run.sessionId);
+          const before = await bureau.contexts.get(run.sessionId);
           const originalUpdate = sessionStore.update.bind(sessionStore);
           const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
           const adminFeed = createFleetEventFeed(adminStorage);
@@ -18400,7 +18400,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           expect(
             (ownersOf(pruneResult) as Record<string, unknown> | undefined)?.[run.id],
           ).toBeUndefined();
-          const after = await bureau.getSession(run.sessionId);
+          const after = await bureau.contexts.get(run.sessionId);
           expect(ownersOf(after)).toEqual({ [run.id]: 'alice' });
           expect(after?.updatedAt).toBe(before?.updatedAt);
         },
@@ -18468,14 +18468,14 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           await runtime.advance(1500);
 
           await removeRunOwner(bureau, run.sessionId, run.id);
-          const removed = await bureau.getSession(run.sessionId);
+          const removed = await bureau.contexts.get(run.sessionId);
           expect(
             (ownersOf(removed) as Record<string, unknown> | undefined)?.[run.id],
           ).toBeUndefined();
 
           expect(await expireReviews(bureau)).toBe(1);
 
-          const restored = await bureau.getSession(run.sessionId);
+          const restored = await bureau.contexts.get(run.sessionId);
           expect(ownersOf(restored)).toEqual({ [run.id]: 'alice' });
         } finally {
           await bureau.shutdown();
@@ -18507,7 +18507,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           await waitForRunCompletion(bureau, run.id);
           await retireSettledTasks(bureau, runtime);
           await runtime.deferred.drain();
-          const session = await bureau.getSession(run.sessionId);
+          const session = await bureau.contexts.get(run.sessionId);
           expect((ownersOf(session) as Record<string, unknown> | undefined)?.[run.id]).toBe(
             'anonymous:local',
           );
@@ -18559,14 +18559,14 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
             principal: 'alice',
           });
           await waitForRunCompletion(bureau, run.id);
-          const original = await bureau.getSession(run.sessionId);
+          const original = await bureau.contexts.get(run.sessionId);
           const recreatedIncarnation = await recreateSession(bureau, run.sessionId);
           expect(recreatedIncarnation).not.toBe(original?.incarnation);
 
           await retireSettledTasks(bureau, runtime);
           await runtime.deferred.drain();
 
-          const recreated = await bureau.getSession(run.sessionId);
+          const recreated = await bureau.contexts.get(run.sessionId);
           expect(recreated?.incarnation).toBe(recreatedIncarnation);
           expect(
             (ownersOf(recreated) as Record<string, unknown> | undefined)?.[run.id],
@@ -18613,7 +18613,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
             adminStorage[Symbol.dispose]();
           }
 
-          const recreated = await bureau.getSession(run.sessionId);
+          const recreated = await bureau.contexts.get(run.sessionId);
           expect(recreatedIncarnation).toBeDefined();
           expect(recreated?.incarnation).toBe(recreatedIncarnation);
           expect(
@@ -19825,7 +19825,7 @@ describe('deleteSession aborts every run it owns (AB-207)', () => {
     expect(bureau.getRun(secondRun.id)?.status).toBe('running');
 
     let deleteSessionSettled = false;
-    const deletion = bureau.deleteSession(firstRun.sessionId).then(() => {
+    const deletion = bureau.contexts.delete(firstRun.sessionId).then(() => {
       deleteSessionSettled = true;
     });
 
@@ -20238,13 +20238,13 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
     }
   });
 
-  it('durably records session.deleted through a real bureau.deleteSession call, under a session-scoped owner id (Codex P1 review finding, PR #566)', async () => {
+  it('durably records session.deleted through a real bureau.contexts.delete call, under a session-scoped owner id (Codex P1 review finding, PR #566)', async () => {
     // Before this fix, `deleteSession` deleted the session without ever
     // dispatching a `session.deleted` fact of any kind — a repo-wide
     // production search found no emission point at all, so this new
     // allowlist entry only handled synthetic/manual actions like
     // `audit-trail.test.ts`'s unit-level stub dispatch. This proves the
-    // real production call site (`Bureau.deleteSession`) reaches
+    // real production call site (`BureauContexts.delete`) reaches
     // `bureau.auditTrail.query()`, not just that string sitting in
     // `AUDIT_EVENT_TYPES`.
     const bureau = await createBureau<AgentDefinitions>({
@@ -20264,11 +20264,11 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
         message: 'A session about to be deleted',
       });
       await waitForRunCompletion(bureau, run.id);
-      const session = await bureau.getSession(run.sessionId);
+      const session = await bureau.contexts.get(run.sessionId);
       expect(session).toBeDefined();
       const incarnation = session!.incarnation;
 
-      await bureau.deleteSession(run.sessionId);
+      await bureau.contexts.delete(run.sessionId);
 
       const owner = `session:${run.sessionId}`;
       const deletedRecords = await bureau.internals.auditTrail!.query({
@@ -20285,7 +20285,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
 
       // Deleting an id that was never a live session dispatches nothing —
       // there is no genuine deletion fact to record.
-      await bureau.deleteSession('never-existed-session');
+      await bureau.contexts.delete('never-existed-session');
       const nonExistentRecords = await bureau.internals.auditTrail!.query({
         runId: 'session:never-existed-session',
         type: 'session.deleted',
@@ -20325,9 +20325,9 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       bureau.addEventListener('session.deleted', (event) => deleted.push(event.sessionId));
 
       await Promise.all([
-        bureau.deleteSession(run.sessionId),
-        bureau.deleteSession(run.sessionId),
-        bureau.deleteSession(run.sessionId),
+        bureau.contexts.delete(run.sessionId),
+        bureau.contexts.delete(run.sessionId),
+        bureau.contexts.delete(run.sessionId),
       ]);
 
       expect(deleted).toEqual([run.sessionId]);
@@ -20390,7 +20390,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       const sessionId = originalRun.sessionId;
       await pollUntil(() => generate.callCount === 1);
 
-      const pause = await bureau.submitSteeringCommand(sessionId, {
+      const pause = await bureau.contexts.steer(sessionId, {
         principal: 'alice',
         requestedValue: { target: 'pause' },
       });
@@ -20400,8 +20400,8 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       // quickly (nothing here waits on the gated tool), but the returned
       // promise stays pending, awaiting the just-released paused run's own
       // terminal event, which the still-held tool gate blocks.
-      const originalDeletion = bureau.deleteSession(sessionId);
-      await pollUntil(async () => (await bureau.getSession(sessionId)) === undefined);
+      const originalDeletion = bureau.contexts.delete(sessionId);
+      await pollUntil(async () => (await bureau.contexts.get(sessionId)) === undefined);
 
       // A NEW session, reusing the SAME id, created and completed WHILE
       // `originalDeletion` is still pending.
@@ -20411,17 +20411,17 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
         sessionId,
       });
       await waitForRunCompletion(bureau, recreatedRun.id);
-      expect(await bureau.getSession(sessionId)).toBeDefined();
+      expect(await bureau.contexts.get(sessionId)).toBeDefined();
 
       // This must genuinely delete the RECREATED session, not silently
       // resolve against `originalDeletion`'s stale promise.
-      const recreatedDeletion = bureau.deleteSession(sessionId);
+      const recreatedDeletion = bureau.contexts.delete(sessionId);
 
       releaseTool!();
       await Promise.all([originalDeletion, recreatedDeletion]);
       await waitForRunCompletion(bureau, originalRun.id);
 
-      expect(await bureau.getSession(sessionId)).toBeUndefined();
+      expect(await bureau.contexts.get(sessionId)).toBeUndefined();
     } finally {
       await bureau.dispose();
     }
@@ -20504,7 +20504,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       const sessionId = run.sessionId;
       await pollUntil(() => generate.callCount === 1);
 
-      const pause = await bureau.submitSteeringCommand(sessionId, {
+      const pause = await bureau.contexts.steer(sessionId, {
         principal: 'alice',
         requestedValue: { target: 'pause' },
       });
@@ -20514,8 +20514,8 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       // its returned promise stays pending — the tool gate below is still
       // held, so the paused run this deletion releases cannot yet reach
       // its own terminal action.
-      const deletion = bureau.deleteSession(sessionId);
-      await pollUntil(async () => (await bureau.getSession(sessionId)) === undefined);
+      const deletion = bureau.contexts.delete(sessionId);
+      await pollUntil(async () => (await bureau.contexts.get(sessionId)) === undefined);
 
       // The deletion's `session.deleted` record now carries the clock's
       // current reading. Advance before releasing the paused run, so
@@ -20625,7 +20625,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       const sessionId = run.sessionId;
       await pollUntil(() => generate.callCount === 1);
 
-      const pause = await bureau.submitSteeringCommand(sessionId, {
+      const pause = await bureau.contexts.steer(sessionId, {
         principal: 'alice',
         requestedValue: { target: 'pause' },
       });
@@ -20636,7 +20636,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       // operative store and the audit trail both read stays pinned at the
       // exact same value from `createRun` through the released run's own
       // eventual terminal action.
-      await bureau.deleteSession(sessionId);
+      await bureau.contexts.delete(sessionId);
       await waitForRunCompletion(bureau, run.id);
 
       const allRecords = await bureau.internals.auditTrail!.query({ limit: 1000 });
@@ -20869,14 +20869,14 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       const sessionId = run.sessionId;
       await pollUntil(() => generate.callCount === 1);
 
-      const pause = await bureau.submitSteeringCommand(sessionId, {
+      const pause = await bureau.contexts.steer(sessionId, {
         principal: 'alice',
         requestedValue: { target: 'pause' },
       });
       expect(pause.outcome).toBe('accepted');
 
       let deletionSettled = false;
-      const deletionPromise = bureau.deleteSession(sessionId).then(() => {
+      const deletionPromise = bureau.contexts.delete(sessionId).then(() => {
         deletionSettled = true;
       });
 
@@ -21357,7 +21357,7 @@ describe('AB-389 — session commit outbox', () => {
       expect(await sessionStore.outbox.pending()).toHaveLength(0);
 
       failAuditWrites = true;
-      await bureau.deleteSession(session.id);
+      await bureau.contexts.delete(session.id);
       await waitForCondition(
         () =>
           diagnostics.some((message) =>
@@ -21454,10 +21454,10 @@ describe('AB-389 — session commit outbox', () => {
       },
     });
     await pollUntil(async () => {
-      const session = await bureauA.getSession(run.sessionId);
+      const session = await bureauA.contexts.get(run.sessionId);
       return session?.metadata['lastRunStatus'] === 'running';
     });
-    const sessionBeforeRestart = await bureauA.getSession(run.sessionId);
+    const sessionBeforeRestart = await bureauA.contexts.get(run.sessionId);
     expect(sessionBeforeRestart?.metadata['lastRunStatus']).toBe('running');
     expect(sessionBeforeRestart?.metadata['lastRequestAuthorities']).toMatchObject({
       [run.id]: expect.objectContaining({
@@ -22289,7 +22289,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
       // losing call that had actually reached `resumeApproval` and gotten
       // re-gated would have persisted a REPLACEMENT override with a
       // different token instead.
-      const persistedSession = await bureau.getSession(review.sessionId!);
+      const persistedSession = await bureau.contexts.get(review.sessionId!);
       expect(persistedSession?.metadata['approvalResolutionStartedIds'] ?? []).not.toContain(
         review.id,
       );
@@ -22561,7 +22561,7 @@ describe('AB-390 — outbox claim lease', () => {
       // which is exactly the call this test holds open via the blocked
       // audit write below. Awaiting it here would deadlock the test
       // against its own injected delay.
-      const deletionPromise = bureau.deleteSession(session.id);
+      const deletionPromise = bureau.contexts.delete(session.id);
       await waitForCondition(
         () => auditWriteStarted,
         'expected the deletion audit write to start (and block) before proceeding',
@@ -22680,7 +22680,7 @@ describe('AB-390 — outbox claim lease', () => {
       expect(await sessionStore.outbox.pending()).toHaveLength(0);
 
       failOutboxEntryGetOnceAuditWriteBlocks = true;
-      const deletionPromise = bureau.deleteSession(session.id);
+      const deletionPromise = bureau.contexts.delete(session.id);
       await waitForCondition(
         () => auditWriteStarted,
         'expected the deletion audit write to start (and block) before proceeding',

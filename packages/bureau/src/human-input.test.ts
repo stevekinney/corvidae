@@ -392,7 +392,7 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
     const parkedId = bureauA.reviews.list()[0]!.id;
     // The real delivery: the signal reaches the engine, so the resumed run
     // moves on to its next (never-completing) step.
-    await bureauA.signalSession(run.sessionId, 'human-response');
+    await bureauA.contexts.signal(run.sessionId, 'human-response');
     await waitForCondition(() => aCalls === 2, 'expected bureau A to resume past the park');
     await bureauA.internals.sessionStore!.update(run.sessionId, (session) => ({
       ...session!,

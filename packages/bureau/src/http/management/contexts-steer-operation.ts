@@ -1,6 +1,6 @@
 /**
  * `bureau.contexts.steer`: switch a context (a Bureau session) to a model its agent allows,
- * through `Bureau.submitSteeringCommand` (COR-1559).
+ * through `Bureau.contexts.steer` (COR-1559).
  *
  * The override is `{ provider, model }`, a catalog row's own coordinates. Bureau decides it when
  * it is admitted: a model the agent does not allow is refused then, with the reason
@@ -25,7 +25,7 @@ import { z } from 'zod';
 
 import { BureauError, BureauShuttingDownError } from '../../create-bureau.ts';
 import type { SteeringCommandAdmissionOutcome, SteeringCommandSnapshot } from '../../steering.ts';
-import type { Bureau, BureauInternals } from '../../types.ts';
+import type { BureauContexts, BureauInternals } from '../../types.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
 import {
   resourceNotFound,
@@ -35,7 +35,7 @@ import {
 
 /** What `bureau.contexts.steer` reads from the handler's `host`. */
 export type BureauContextsSteerOperationHost = BureauOwnershipHost & {
-  readonly contexts: Pick<Bureau, 'getSession' | 'submitSteeringCommand'> & {
+  readonly contexts: Pick<BureauContexts, 'get' | 'steer'> & {
     readonly internals: Pick<BureauInternals, 'sessionStore'>;
   };
 };
@@ -201,7 +201,7 @@ export const contextsSteerOperation = defineOperation<
     }
     const owner = ownerOfPrincipal(principal);
     // The one session loaded here is the one authorized and the one the command is admitted to.
-    const session = await host.contexts.getSession(contextId);
+    const session = await host.contexts.get(contextId);
     if (
       owner === undefined ||
       session === undefined ||
@@ -215,7 +215,7 @@ export const contextsSteerOperation = defineOperation<
     }
     let outcome: SteeringCommandAdmissionOutcome;
     try {
-      outcome = await host.contexts.submitSteeringCommand(contextId, {
+      outcome = await host.contexts.steer(contextId, {
         id: input.commandId,
         principal: owner,
         requestedValue: {

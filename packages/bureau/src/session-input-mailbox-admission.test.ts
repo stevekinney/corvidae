@@ -15,7 +15,7 @@ import { waitUntil } from '@lostgradient/testing/wait-until';
  *
  * A new sibling file rather than an addition to `create-bureau.test.ts`
  * (already ~21k lines): this slice's tests are self-contained black-box
- * assertions against `Bureau.submitSessionInput`'s public contract and do
+ * assertions against `BureauContexts.input`'s public contract and do
  * not share fixtures with the rest of that file. Keeping them here avoids
  * growing an already-oversized file further while the pre-admission tests
  * for the SAME method (`describe('createBureau submitSessionInput
@@ -57,7 +57,7 @@ async function pollUntil(check: () => boolean | Promise<boolean>): Promise<true>
 async function createRunningBureauSession(bureau: Bureau, principal = 'alice'): Promise<string> {
   const run = await bureau.createRun({ agentName: 'default', message: 'hold open', principal });
   await pollUntil(async () => {
-    const session = await bureau.getSession(run.sessionId);
+    const session = await bureau.contexts.get(run.sessionId);
     return session?.metadata['lastRunStatus'] === 'running';
   });
   return run.sessionId;
@@ -82,7 +82,7 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
   it('admits a steer-mode input, creating a SessionInputRecord and returning an accepted receipt', async () => {
     const { bureau, sessionId } = await createDurableBureauWithRunningSession();
     try {
-      const outcome = await bureau.submitSessionInput(sessionId, {
+      const outcome = await bureau.contexts.input(sessionId, {
         principal: 'alice',
         deliveryMode: 'steer',
         payload: 'hello',
@@ -107,7 +107,7 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
   it('admits a queue-mode input, returning a queued receipt', async () => {
     const { bureau, sessionId } = await createDurableBureauWithRunningSession();
     try {
-      const outcome = await bureau.submitSessionInput(sessionId, {
+      const outcome = await bureau.contexts.input(sessionId, {
         principal: 'alice',
         deliveryMode: 'queue',
         payload: 'hello',
@@ -125,13 +125,13 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
   it('assigns increasing per-session admissionSequence values across distinct admissions', async () => {
     const { bureau, sessionId } = await createDurableBureauWithRunningSession();
     try {
-      const first = await bureau.submitSessionInput(sessionId, {
+      const first = await bureau.contexts.input(sessionId, {
         id: 'input-1',
         principal: 'alice',
         deliveryMode: 'queue',
         payload: 'first',
       });
-      const second = await bureau.submitSessionInput(sessionId, {
+      const second = await bureau.contexts.input(sessionId, {
         id: 'input-2',
         principal: 'alice',
         deliveryMode: 'queue',
@@ -161,13 +161,13 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
         payload: 'identical payload',
       };
 
-      const original = await bureau.submitSessionInput(sessionId, request);
+      const original = await bureau.contexts.input(sessionId, request);
       expect(original.outcome).toBe('admitted');
       const originalReceipt = (
         original as Extract<SessionInputAdmissionOutcome, { outcome: 'admitted' }>
       ).receipt;
 
-      const retry = await bureau.submitSessionInput(sessionId, request);
+      const retry = await bureau.contexts.input(sessionId, request);
       expect(retry.outcome).toBe('replayed');
       const retryReceipt = (retry as Extract<SessionInputAdmissionOutcome, { outcome: 'replayed' }>)
         .receipt;
@@ -183,7 +183,7 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
   it('returns a conflict with reason delivery-mode-mismatch when the retry changes deliveryMode', async () => {
     const { bureau, sessionId } = await createDurableBureauWithRunningSession();
     try {
-      const original = await bureau.submitSessionInput(sessionId, {
+      const original = await bureau.contexts.input(sessionId, {
         id: 'mode-conflict',
         principal: 'alice',
         deliveryMode: 'steer',
@@ -194,7 +194,7 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
         original as Extract<SessionInputAdmissionOutcome, { outcome: 'admitted' }>
       ).receipt;
 
-      const conflicting = await bureau.submitSessionInput(sessionId, {
+      const conflicting = await bureau.contexts.input(sessionId, {
         id: 'mode-conflict',
         principal: 'alice',
         deliveryMode: 'queue',
@@ -216,7 +216,7 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
   it('returns a conflict with reason payload-mismatch when the retry changes the payload', async () => {
     const { bureau, sessionId } = await createDurableBureauWithRunningSession();
     try {
-      const original = await bureau.submitSessionInput(sessionId, {
+      const original = await bureau.contexts.input(sessionId, {
         id: 'payload-conflict',
         principal: 'alice',
         deliveryMode: 'steer',
@@ -224,7 +224,7 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
       });
       expect(original.outcome).toBe('admitted');
 
-      const conflicting = await bureau.submitSessionInput(sessionId, {
+      const conflicting = await bureau.contexts.input(sessionId, {
         id: 'payload-conflict',
         principal: 'alice',
         deliveryMode: 'steer',
@@ -262,10 +262,10 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
         payload: 'same payload',
       };
 
-      const original = await bureau.submitSessionInput(firstSessionId, request);
+      const original = await bureau.contexts.input(firstSessionId, request);
       expect(original.outcome).toBe('admitted');
 
-      const conflicting = await bureau.submitSessionInput(secondSessionId, request);
+      const conflicting = await bureau.contexts.input(secondSessionId, request);
 
       expect(conflicting.outcome).toBe('conflict');
       const { conflict } = conflicting as Extract<
@@ -293,7 +293,7 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
     try {
       const sessionId = await createRunningBureauSession(bureau, 'alice');
 
-      const original = await bureau.submitSessionInput(sessionId, {
+      const original = await bureau.contexts.input(sessionId, {
         id: 'shared-id',
         principal: 'alice',
         deliveryMode: 'steer',
@@ -311,7 +311,7 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
           }),
         ),
       ).toMatchObject({ code: 'NOT_FOUND' });
-      const refused = await bureau.submitSessionInput(sessionId, {
+      const refused = await bureau.contexts.input(sessionId, {
         id: 'shared-id',
         principal: 'bob',
         deliveryMode: 'steer',
@@ -342,8 +342,8 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
       // there is no second write, which a genuinely independent second
       // admission would show as an advanced admissionSequence.
       const [first, second] = await Promise.all([
-        bureau.submitSessionInput(sessionId, request),
-        bureau.submitSessionInput(sessionId, request),
+        bureau.contexts.input(sessionId, request),
+        bureau.contexts.input(sessionId, request),
       ]);
 
       expect(first.outcome).toBe('admitted');
@@ -361,7 +361,7 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
       sessionInput: { sessionBacklogLimit: 1, principalBacklogLimit: 100 },
     });
     try {
-      const first = await bureau.submitSessionInput(sessionId, {
+      const first = await bureau.contexts.input(sessionId, {
         id: 'session-backlog-1',
         principal: 'alice',
         deliveryMode: 'queue',
@@ -369,7 +369,7 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
       });
       expect(first.outcome).toBe('admitted');
 
-      const second = await bureau.submitSessionInput(sessionId, {
+      const second = await bureau.contexts.input(sessionId, {
         id: 'session-backlog-2',
         principal: 'alice',
         deliveryMode: 'queue',
@@ -391,7 +391,7 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
       sessionInput: { sessionBacklogLimit: 100, principalBacklogLimit: 1 },
     });
     try {
-      const first = await bureau.submitSessionInput(sessionId, {
+      const first = await bureau.contexts.input(sessionId, {
         id: 'principal-backlog-1',
         principal: 'alice',
         deliveryMode: 'queue',
@@ -399,7 +399,7 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
       });
       expect(first.outcome).toBe('admitted');
 
-      const second = await bureau.submitSessionInput(sessionId, {
+      const second = await bureau.contexts.input(sessionId, {
         id: 'principal-backlog-2',
         principal: 'alice',
         deliveryMode: 'queue',

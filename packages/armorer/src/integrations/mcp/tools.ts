@@ -12,7 +12,7 @@ import type { z } from 'zod';
 
 import type { JsonObject } from '../../core/serialization/json';
 import { createTool } from '../../create-tool';
-import type { createExecutionLifecycle } from '../../execution-lifecycle';
+import type { createExecutionLifecycle, ExecutionAbortSource } from '../../execution-lifecycle';
 import type {
   Tool,
   ToolContext,
@@ -37,6 +37,7 @@ import {
   type MCPRequestExecutionContext,
 } from './request-context';
 import { resolveInboundMcpSchema, resolveOutboundMcpSchema } from './schema';
+import { clientDeclaresMcpTasks, type MCPCreateTaskResult, type McpTaskRuntime } from './tasks';
 
 export type ToolboxLike = {
   tools: () => readonly Tool[];
@@ -60,6 +61,14 @@ export type MCPToolConfiguration = {
   schema?: unknown;
   annotations?: ToolAnnotations;
   meta?: Record<string, unknown>;
+  /**
+   * Opts the tool into MCP tasks (`io.modelcontextprotocol/tasks`). A client
+   * that declares the extension gets a task handle from `tools/call` and polls
+   * `tasks/get`; every other client gets the synchronous result. Needs the
+   * `taskStore` option of `createMCP`. `toMcpTools` never serves MCP tasks, so
+   * it ignores the flag.
+   */
+  taskBacked?: boolean;
 };
 
 export type MCPToolLike = {
@@ -121,6 +130,12 @@ export type ToMCPToolsOptions = {
    * leaves `context.elicit` undefined.
    */
   inputRounds?: InputRoundRegistry;
+  /**
+   * Runs task-backed tools as MCP tasks for clients that declare the Tasks
+   * extension. `createMCP` supplies one when a tool opts in; `toMcpTools`
+   * never does, so it runs every tool synchronously.
+   */
+  mcpTasks?: McpTaskRuntime;
   /** Internal server-owned lifecycle used by createMCP. */
   executionLifecycle?: ReturnType<typeof createExecutionLifecycle>;
 };
@@ -128,7 +143,10 @@ export type ToMCPToolsOptions = {
 export type FromMCPToolsOptions = {
   callTool?: (
     request: { name: string; arguments?: Record<string, unknown> },
-    options?: Pick<CallToolRequestOptions, 'signal' | 'onprogress'>,
+    options?: Pick<CallToolRequestOptions, 'signal' | 'onprogress'> & {
+      /** The calling tool's context, for a `callTool` that elicits or reports progress itself. */
+      context?: ToolContext;
+    },
   ) => Promise<CallToolResult>;
   formatResult?: (result: CallToolResult, tool: MCPToolSource) => unknown;
   /**
@@ -246,7 +264,16 @@ export function buildMcpToolDefinition(
     name: tool.name,
     description: shape.description,
     inputSchema: shape.inputSchema,
-    handler: (args, context) => handleToolCall(tool, args ?? {}, context, options),
+    // Only `createMCP` supplies a task runtime, and it registers the handler with the
+    // SDK, which accepts a task handle; a `toMcpTools` caller can never receive one.
+    handler: (args, context) =>
+      handleToolCall(
+        tool,
+        args ?? {},
+        context,
+        options,
+        configuration.taskBacked === true,
+      ) as Promise<MCPToolHandlerResult>,
   };
   if (shape.title !== undefined) mcpTool.title = shape.title;
   if (shape.annotations !== undefined) mcpTool.annotations = shape.annotations;
@@ -267,7 +294,8 @@ async function handleToolCall(
   params: unknown,
   context: ServerContext | undefined,
   options: ToMCPToolsOptions,
-): Promise<MCPToolHandlerResult> {
+  taskBacked: boolean,
+): Promise<MCPToolHandlerResult | MCPCreateTaskResult> {
   const facts = readRequestFacts(context, options.clientSession);
   const inputRounds = facts.context.era === 'modern' ? options.inputRounds : undefined;
   const state = inputRounds && context ? context.mcpReq.requestState() : undefined;
@@ -316,6 +344,44 @@ async function handleToolCall(
       inputRounds?.forget(control.id);
     }
   };
+
+  const mcpTasks = taskBacked ? options.mcpTasks : undefined;
+  if (
+    mcpTasks &&
+    context &&
+    facts.context.era === 'modern' &&
+    clientDeclaresMcpTasks(facts.context.clientCapabilities)
+  ) {
+    // The execution outlives this request, so it is never linked to the
+    // request's signal (`runRound` does that): `control.signal` alone owns it.
+    suspendable = createSuspendableExecution({
+      id: control.id,
+      toolName: tool.name,
+      signal: control.signal,
+      abort: control.abort,
+      completion: run,
+    });
+    try {
+      return await mcpTasks.begin({
+        context,
+        toolName: tool.name,
+        clientId: context.http?.authInfo?.clientId ?? '',
+        execution: suspendable,
+        signal: control.signal,
+        abort: control.abort,
+        abortSource: control.abortSource,
+        subscribeProgress: (listener) =>
+          subscribeToExecutionProgress(tool, control.id, (update) => {
+            if (update.message !== undefined) listener(update.message);
+          }),
+      });
+    } catch (error) {
+      unsubscribe();
+      control.abort(error);
+      control.settle({ content: toTextContent(toError(error).message), isError: true });
+      throw error;
+    }
+  }
 
   if (!(context && elicit && inputRounds && facts.context.era === 'modern')) {
     return runRound(context, facts, forwarder, control.abort, run);
@@ -412,6 +478,7 @@ type ExecutionControl = {
   id: string;
   signal: AbortSignal;
   abort: (reason: unknown) => void;
+  abortSource: () => ExecutionAbortSource | undefined;
   settle: (result: CallToolResult) => void;
 };
 
@@ -428,6 +495,7 @@ function beginExecution(
       id: handle.id,
       signal: handle.signal,
       abort: (reason) => handle.abort('caller', reason),
+      abortSource: () => handle.snapshot().abortSource,
       settle: (result) => handle.settle(result),
     };
   }
@@ -436,6 +504,7 @@ function beginExecution(
     id: globalThis.crypto.randomUUID(),
     signal: controller.signal,
     abort: (reason) => controller.abort(reason),
+    abortSource: () => (controller.signal.aborted ? 'caller' : undefined),
     settle: () => undefined,
   };
 }
@@ -520,7 +589,11 @@ async function executeMcpTool(
       : (update: Progress) => context.progress(toArmorerProgress(update));
   return options.callTool(
     { name: tool.name, arguments: isRecord(params) ? params : {} },
-    { ...(signal ? { signal } : {}), ...(onprogress ? { onprogress } : {}) },
+    {
+      ...(signal ? { signal } : {}),
+      ...(onprogress ? { onprogress } : {}),
+      ...(context ? { context } : {}),
+    },
   );
 }
 
@@ -583,6 +656,7 @@ export function toolConfigurationFromMetadata(tool: Tool): MCPToolConfiguration 
   }
   if (annotations) resolved.annotations = annotations;
   if (configuration.meta !== undefined) resolved.meta = configuration.meta;
+  if (configuration.taskBacked !== undefined) resolved.taskBacked = configuration.taskBacked;
   return resolved;
 }
 

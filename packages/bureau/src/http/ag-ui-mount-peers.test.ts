@@ -238,7 +238,7 @@ async function durableStatus(harness: Harness, runId: string): Promise<string | 
 }
 
 async function sessionMetadata(harness: Harness) {
-  const session = await harness.bureau.getSession(THREAD);
+  const session = await harness.bureau.contexts.get(THREAD);
   return session?.metadata;
 }
 
@@ -427,7 +427,7 @@ describe('attach and stream on a peer', () => {
           // terminal session save that never comes.
           const graceDue = clock.monotonic.now() + PEER_SESSION_SETTLE_GRACE_MS;
           await pollUntil(() => clock.pendingTimers().some((timer) => timer.dueAt === graceDue));
-          const session = await peer.bureau.getSession(THREAD);
+          const session = await peer.bureau.contexts.get(THREAD);
           expect(session?.metadata['lastRunStatus']).toBe('running');
           expect(more).toBe(false);
 
@@ -609,7 +609,7 @@ describe('cancel on a peer', () => {
           async (peer) => {
             const started = await startOn(harness.handler);
             await harness.generate.reached('a-generating');
-            const holding = await harness.bureau.getSession(THREAD);
+            const holding = await harness.bureau.contexts.get(THREAD);
             const before = holding!.conversationHistory.ids;
             let holderWroteAborted = false;
             const abortsThisRun = savesSessionAs('aborted');
@@ -639,7 +639,7 @@ describe('cancel on a peer', () => {
             expect(body).toEqual({ runId: started.nativeRunId, status: 'aborting' });
             expect(await durableStatus(harness, started.nativeRunId)).toBe('cancelled');
             expect(await durableStatus(peer, started.nativeRunId)).toBe('cancelled');
-            const session = await peer.bureau.getSession(THREAD);
+            const session = await peer.bureau.contexts.get(THREAD);
             expect(session?.metadata).toMatchObject({
               lastRunId: started.nativeRunId,
               lastRunStatus: 'aborted',
@@ -763,7 +763,7 @@ describe('cancel on a peer', () => {
           const response = await cancelling;
 
           expect(response.status).toBe(200);
-          const session = await peer.bureau.getSession(THREAD);
+          const session = await peer.bureau.contexts.get(THREAD);
           expect(session?.metadata['lastRunId']).toBe(newer.nativeRunId);
           expect(session?.metadata['lastRunStatus']).toBe(settled);
           expect(settled).not.toBe('aborted');
@@ -924,7 +924,7 @@ describe('recalled memory in a peer’s snapshots (COR-1546)', () => {
           // The first turn recalls and finishes, so the thread holds its recall row when the second starts.
           const first = await startOn(harness.handler, {}, 'client-run-1', 'hello');
           await first.reader.rest();
-          const session = await harness.bureau.getSession(THREAD);
+          const session = await harness.bureau.contexts.get(THREAD);
           const stored = session?.conversationHistory;
           expect(
             Object.values(stored?.messages ?? {}).some(
@@ -984,7 +984,7 @@ describe('a peer stream of a run that parks after it opened (COR-1615)', () => {
             await pollUntil(() =>
               clock.pendingTimers().some((timer) => timer.dueAt === recheckDue),
             );
-            const session = await peer.bureau.getSession(THREAD);
+            const session = await peer.bureau.contexts.get(THREAD);
             expect(session?.metadata['lastRunStatus']).toBe('running');
             expect(more).toBe(false);
 

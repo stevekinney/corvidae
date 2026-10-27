@@ -179,7 +179,7 @@ describe('a tool-returned image through an approved review', () => {
     expect(review?.kind).toBe('tool-approval');
     await bureau.reviews.resolve({ id: review!.id, decision: 'approve', principal: alice.id });
 
-    const session = await bureau.getSession(run.sessionId);
+    const session = await bureau.contexts.get(run.sessionId);
     const history = session!.conversationHistory;
     const row = history.ids
       .map((id) => history.messages[id]!)

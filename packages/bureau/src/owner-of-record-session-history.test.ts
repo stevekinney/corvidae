@@ -76,7 +76,7 @@ describe('the history of a deleted session (COR-718)', () => {
     const { bureau, directory } = await openBureau();
     try {
       await settled(bureau, ALICE, 'deleted');
-      await bureau.deleteSession('deleted');
+      await bureau.contexts.delete('deleted');
 
       expect(await read(bureau, 'deleted', { principal: BOB })).toEqual({ outcome: 'not-found' });
       // Not even the session's former owner: the owner is not stored beyond the session.
@@ -96,7 +96,7 @@ describe('the history of a deleted session (COR-718)', () => {
     const { bureau, directory } = await openBureau();
     try {
       await settled(bureau, ALICE, 'reused');
-      await bureau.deleteSession('reused');
+      await bureau.contexts.delete('reused');
       const former = eventsOf(await read(bureau, 'reused'));
       const lastFormerSequence = Math.max(...sequences(former));
       const firstFormerCursor = former[0]!.cursor;
@@ -125,7 +125,7 @@ describe('the history of a deleted session (COR-718)', () => {
     const { bureau, directory } = await openBureau();
     try {
       await settled(bureau, ALICE, 'paged');
-      await bureau.deleteSession('paged');
+      await bureau.contexts.delete('paged');
       const lastFormerSequence = Math.max(...sequences(eventsOf(await read(bureau, 'paged'))));
       await settled(bureau, BOB, 'paged');
       const wanted = eventsOf(await read(bureau, 'paged', { principal: BOB }));
@@ -155,7 +155,7 @@ describe('the history of a deleted session (COR-718)', () => {
     const { bureau, directory } = await openBureau();
     try {
       await settled(bureau, ALICE, 'followed');
-      await bureau.deleteSession('followed');
+      await bureau.contexts.delete('followed');
       const lastFormerSequence = Math.max(...sequences(eventsOf(await read(bureau, 'followed'))));
       await settled(bureau, BOB, 'followed');
       const wanted = eventsOf(await read(bureau, 'followed', { principal: BOB }));
@@ -192,7 +192,7 @@ describe('the history of a deleted session (COR-718)', () => {
     const { bureau, directory } = await openBureau();
     try {
       await settled(bureau, ALICE, 'gone');
-      await bureau.deleteSession('gone');
+      await bureau.contexts.delete('gone');
       const former = eventsOf(await read(bureau, 'gone'));
       const lastFormerSequence = Math.max(...sequences(former));
 
@@ -234,7 +234,7 @@ describe('the history of a deleted session (COR-718)', () => {
     const { bureau, directory } = await openBureau();
     try {
       await settled(bureau, ALICE, 'retained');
-      await bureau.deleteSession('retained');
+      await bureau.contexts.delete('retained');
       const former = eventsOf(await read(bureau, 'retained'));
       const adminStorage = await resolveStorage({
         type: 'sqlite',
@@ -344,7 +344,7 @@ describe('the history of a deleted session (COR-718)', () => {
       );
       try {
         await reached.promise;
-        await bureau.deleteSession('raced');
+        await bureau.contexts.delete('raced');
         await settled(bureau, BOB, 'raced');
         const ownEvents = eventsOf(await read(bureau, 'raced', { principal: BOB }));
         release.resolve();
@@ -391,7 +391,7 @@ describe('the history of a deleted session (COR-718)', () => {
         return originalClaim(...args);
       };
 
-      const deletion = bureau.deleteSession('pending');
+      const deletion = bureau.contexts.delete('pending');
       await claimReached.promise;
       expect(await store.load('pending')).toBeUndefined();
       const run = await bureau.createRun({
@@ -482,7 +482,7 @@ describe('the history of a deleted session (COR-718)', () => {
 
       const pending = read(bureau, 'swapped', { principal: BOB });
       await reachedPostLoad.promise;
-      await bureau.deleteSession('swapped');
+      await bureau.contexts.delete('swapped');
       await settled(bureau, BOB, 'swapped');
       release.resolve();
 

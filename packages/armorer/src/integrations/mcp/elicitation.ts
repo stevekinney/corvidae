@@ -122,7 +122,7 @@ function toRequestedSchema(
 }
 
 /** Translates an MCP `ElicitRequest`'s params into our transport-agnostic shape. */
-function toToolElicitationRequest(params: ElicitRequest['params']): ToolElicitationRequest {
+export function toToolElicitationRequest(params: ElicitRequest['params']): ToolElicitationRequest {
   if (params.mode === 'url') {
     return { message: params.message, mode: 'url', url: params.url };
   }
@@ -139,7 +139,7 @@ function toToolElicitationRequest(params: ElicitRequest['params']): ToolElicitat
  * the SDK's transform only fills in `{}` for genuinely `undefined` input, not
  * a missing key, so we always send the field explicitly.
  */
-function toElicitResult(result: ToolElicitationResult): ElicitResult {
+export function toElicitResult(result: ToolElicitationResult): ElicitResult {
   return {
     action: result.action,
     content: (result.action === 'accept' ? (result.content ?? {}) : {}) as ElicitResult['content'],

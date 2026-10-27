@@ -60,7 +60,7 @@ export class SessionForkRefusedError extends Error {
   }
 }
 
-/** What {@link Bureau.forkSession} takes. */
+/** What {@link BureauContexts.fork} takes. */
 export interface ForkSessionRequest {
   /** The owner of the new session: the caller's owner of record. Authorization is the caller's. */
   readonly owner: string;
@@ -70,7 +70,7 @@ export interface ForkSessionRequest {
   readonly throughMessageId: string;
 }
 
-/** What {@link Bureau.forkSession} answers, and what the ledger keeps for a retry. */
+/** What {@link BureauContexts.fork} answers, and what the ledger keeps for a retry. */
 export interface ForkSessionResult {
   /** The new session. */
   readonly contextId: string;

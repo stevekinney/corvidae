@@ -55,7 +55,7 @@ describe('the owner of a deleted session’s audit entry (COR-718)', () => {
     const bureau = await openBureau();
     try {
       await createdSession(bureau, 'api-key:alice', 'deleted-session');
-      await bureau.deleteSession('deleted-session');
+      await bureau.contexts.delete('deleted-session');
       await bureau.runDurableMaintenance();
 
       const [entry] = await deletionEntries(bureau, 'deleted-session', 1);
@@ -79,7 +79,7 @@ describe('the owner of a deleted session’s audit entry (COR-718)', () => {
     const bureau = await openBureau();
     try {
       await createdSession(bureau, 'api-key:alice', 'recreated-session');
-      await bureau.deleteSession('recreated-session');
+      await bureau.contexts.delete('recreated-session');
       await bureau.runDurableMaintenance();
       const [entry] = await deletionEntries(bureau, 'recreated-session', 1);
 
@@ -104,7 +104,7 @@ describe('the owner of a deleted session’s audit entry (COR-718)', () => {
     const bureau = await openBureau();
     try {
       await createdSession(bureau, 'api-key:alice', 'tidy-session');
-      await bureau.deleteSession('tidy-session');
+      await bureau.contexts.delete('tidy-session');
       await bureau.runDurableMaintenance();
       await deletionEntries(bureau, 'tidy-session', 1);
 
@@ -128,9 +128,9 @@ describe('the owner of a deleted session’s audit entry (COR-718)', () => {
         return originalSet(key, value);
       };
 
-      const refusal = await rejectionOf(bureau.deleteSession('retained-session'));
+      const refusal = await rejectionOf(bureau.contexts.delete('retained-session'));
       expect(String(refusal)).toContain('injected');
-      expect(await bureau.getSession('retained-session')).toBeDefined();
+      expect(await bureau.contexts.get('retained-session')).toBeDefined();
       const pending = await bureau.internals.sessionStore!.outbox.pending();
       expect(pending.filter((entry) => entry.kind === 'session.deleted')).toEqual([]);
       expect(
@@ -138,7 +138,7 @@ describe('the owner of a deleted session’s audit entry (COR-718)', () => {
       ).toEqual([]);
 
       kv.set = originalSet;
-      await bureau.deleteSession('retained-session');
+      await bureau.contexts.delete('retained-session');
       await bureau.runDurableMaintenance();
       const [entry] = await deletionEntries(bureau, 'retained-session', 1);
       expect(entry?.detail).toMatchObject({ owner: 'api-key:alice' });

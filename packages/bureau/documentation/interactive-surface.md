@@ -52,7 +52,7 @@ An action continues the surface's own task, and nothing else. Its `intent` is on
 | Intent | Continuation | Continued by |
 | --- | --- | --- |
 | `approve`, `deny` | `{ type: 'review', reviewId, round? }` | `bureau.reviews.resolve` |
-| `answer`, `submit` | `{ type: 'signal', sessionId, signalName }` | `bureau.signalSession` |
+| `answer`, `submit` | `{ type: 'signal', sessionId, signalName }` | `bureau.contexts.signal` |
 | `answer`, `submit` | `{ type: 'review', reviewId }` for a held `human-wait:` review | `bureau.reviews.resolve` (`approve`, with the value as `payload`) |
 
 A tool approval that is re-gated keeps its id and advances its round, so a decision may carry the `round` its surface shows. The adapter that continues an admitted decision refuses it when that round is no longer the review's current one. A run with no session, such as a `bureau.run()` catalog run, is answered through its held `human-wait` review rather than a session signal.
@@ -356,5 +356,5 @@ The contract is a one-way door, so how it changes is part of it.
 - **The payload cap** is a constant, `INTERACTIVE_SURFACE_MAX_PAYLOAD_BYTES`, equal to the handler's default `maxRequestBodyBytes` (1 MiB), with a `maxPayloadBytes` option on `createInteractiveSurfaces` rather than a new `BureauOptions` field, until a deployment needs another value.
 - **`ajv` is a dependency of Bureau now.** `input-form` is the native kind, and admitting its answer means validating the value against its schema; a shape check alone would admit any value.
 - **A2UI is validated against vendored catalogs.** The store checks an `a2ui` representation's shape; COR-837's adapter then validates every component, property, function, and binding against the vendored basic catalog or Cinder's catalog (`src/a2ui/basic-catalog.schema.json` and `cinder-catalog.schema.json`, with their provenance), and the messages against the vendored `server_to_client.json`.
-- **Admitted actions are dispatched by the caller.** Admission returns a typed receipt naming the continuation (`bureau.reviews.resolve` for a review, `signalSession` for a signal), and the adapter that received the action runs it, rather than Bureau dispatching it inside admission. The receipt is the wire contract either way; a later version can dispatch inside Bureau without changing it, and each catalog entry already names its continuation's type.
+- **Admitted actions are dispatched by the caller.** Admission returns a typed receipt naming the continuation (`bureau.reviews.resolve` for a review, `bureau.contexts.signal` for a signal), and the adapter that received the action runs it, rather than Bureau dispatching it inside admission. The receipt is the wire contract either way; a later version can dispatch inside Bureau without changing it, and each catalog entry already names its continuation's type.
 - **Names.** Surface fields follow the existing taxonomy row (`revision`, `baseRevision`, `owner`, `audience`). The event kinds are `surface.*`, recorded under the task's `run` owner, the precedent reviews set: a surface is not a durable-history owner kind of its own.

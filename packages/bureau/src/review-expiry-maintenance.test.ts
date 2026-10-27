@@ -117,7 +117,7 @@ describe('expired review state under the automatic maintenance profile', () => {
           : undefined,
       'the fire’s approval state to be released',
     );
-    const session = await bureau.getSession('maintenance-session');
+    const session = await bureau.contexts.get('maintenance-session');
     expect(Object.keys((session?.metadata['pendingApprovalOverrides'] as object) ?? {})).toEqual(
       [],
     );

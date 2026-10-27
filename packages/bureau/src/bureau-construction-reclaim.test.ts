@@ -262,11 +262,11 @@ describe('a named-agent session run reclaimed while the Bureau scans its agent f
     const built = await successor;
 
     const completed = await pollUntil(async () => {
-      const session = await built.getSession(run.sessionId);
+      const session = await built.contexts.get(run.sessionId);
       return session?.metadata['lastRunStatus'] === 'completed';
     });
     expect(completed).toBe(true);
-    const session = await built.getSession(run.sessionId);
+    const session = await built.contexts.get(run.sessionId);
     const replies = (session === undefined ? [] : getMessages(session.conversationHistory))
       .filter((message) => message.role === 'assistant')
       .map((message) => (typeof message.content === 'string' ? message.content : ''));

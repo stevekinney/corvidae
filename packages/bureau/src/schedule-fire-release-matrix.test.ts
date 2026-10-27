@@ -80,7 +80,7 @@ async function fireWithApproval(kind: 'stopped' | 'continuing') {
 }
 
 async function sessionKeys(bureau: Bureau) {
-  const session = await bureau.getSession(SESSION);
+  const session = await bureau.contexts.get(SESSION);
   const metadata = session?.metadata ?? {};
   return {
     overrides: keysOf(metadata['pendingApprovalOverrides']),

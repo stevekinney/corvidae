@@ -14,7 +14,7 @@ import type { GenerateFunction } from '@lostgradient/operative';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
-import { type Bureau, createBureau, type RunSummary } from './index';
+import { type BureauContexts, createBureau, type RunSummary } from './index';
 import { createAgent } from '@lostgradient/operative';
 import type { AgentDefinitions } from './agent-catalog';
 
@@ -48,11 +48,11 @@ const answerWithoutTools: GenerateFunction = async () => ({
  * is separate from the README's wait, so these tests step around it.
  */
 async function terminalSessionSaved(
-  bureau: Pick<Bureau, 'getSession'>,
+  bureau: { readonly contexts: Pick<BureauContexts, 'get'> },
   run: Pick<RunSummary, 'id' | 'sessionId'>,
 ): Promise<void> {
   for (;;) {
-    const session = await bureau.getSession(run.sessionId);
+    const session = await bureau.contexts.get(run.sessionId);
     const metadata = session?.metadata;
     if (metadata?.['lastRunId'] === run.id && metadata['lastRunStatus'] !== 'running') return;
     await Bun.sleep(5);

@@ -240,7 +240,7 @@ async function settledApproval(charges: Charges) {
   });
   await setup.bureau.waitForDurableRun(run.id);
   await pollUntil(async () => {
-    const session = await setup.bureau.getSession(run.sessionId);
+    const session = await setup.bureau.contexts.get(run.sessionId);
     return session?.metadata['lastRunStatus'] !== 'running';
   });
   await listed(setup.bureau, run.id);

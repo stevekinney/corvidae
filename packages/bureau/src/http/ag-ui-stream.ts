@@ -31,6 +31,7 @@ import type {
   PendingReview,
   RunDetail,
   ServerFrame,
+  BureauContexts,
   BureauReviews,
   BureauInternals,
 } from '../types.ts';
@@ -58,7 +59,6 @@ import { type AgUiErrorCode, type EventStamp, stamp } from './ag-ui-vocabulary.t
 export type AgUiStreamBureau = Pick<
   Bureau,
   | 'getRun'
-  | 'getSession'
   | 'subscribeLiveFrames'
   | 'subscribeRunSnapshot'
   | 'eventHistory'
@@ -66,9 +66,10 @@ export type AgUiStreamBureau = Pick<
   | 'waitForDurableRun'
   | 'children'
   | 'getDurableRun'
-  | 'sessionInputsDeliveredBy'
   | 'surfaces'
 > & { readonly reviews: Pick<BureauReviews, 'list' | 'pendingOf'> } & {
+  readonly contexts: Pick<BureauContexts, 'get' | 'inputsDeliveredBy' | 'subscribeEvents'>;
+} & {
   readonly internals: Pick<BureauInternals, 'whenTaskRecorded'>;
 };
 
@@ -459,7 +460,7 @@ export function openRunStream(
    * streams as an event of its own, so the snapshot is how a client that holds the input's row
    * (under the id it sent the input with) learns the run delivered it, and where in the thread the
    * run put it. Which inputs a run delivered is the durable delivery record's answer
-   * (`Bureau.sessionInputsDeliveredBy`), and the thread is read once the session has recorded the
+   * (`Bureau.contexts.inputsDeliveredBy`), and the thread is read once the session has recorded the
    * run's end (`Bureau.internals.whenTaskRecorded`), however long that takes: no count of turns decides
    * whether the snapshot is sent.
    *
@@ -471,7 +472,7 @@ export function openRunStream(
    */
   const writeDeliveredInputs = async (): Promise<boolean> => {
     try {
-      const delivered = await bureau.sessionInputsDeliveredBy(
+      const delivered = await bureau.contexts.inputsDeliveredBy(
         request.nativeRunId,
         request.threadId,
       );

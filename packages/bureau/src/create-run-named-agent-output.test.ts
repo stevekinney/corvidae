@@ -148,7 +148,7 @@ describe('a named agent’s structured output after a restart', () => {
     });
     bureaus.push(restarted);
     await pollUntil(async () => {
-      const session = await restarted.getSession(run.sessionId);
+      const session = await restarted.contexts.get(run.sessionId);
       return session?.metadata['lastRunStatus'] === 'completed';
     });
 

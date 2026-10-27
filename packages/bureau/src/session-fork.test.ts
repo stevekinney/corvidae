@@ -1,5 +1,5 @@
 /**
- * COR-1560 — `Bureau.forkSession` branches a session after a completed agent reply: the new session
+ * COR-1560 — `BureauContexts.fork` branches a session after a completed agent reply: the new session
  * shares the history through that reply, is owned by the caller, records where it came from, and
  * keeps the parent's model choice. A `commandId` makes it idempotent across restarts, and a crash
  * between its steps never forks twice.
@@ -24,7 +24,7 @@ import { approvalToolbox } from './http/management/management-fixtures.test-supp
 import { noopTool, OPUS_5, OPUS_5_5 } from './testing/model-override.test-support';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { startFileBureau } from './testing/agent-file-bureau.test-support';
-import type { Bureau } from './types';
+import type { Bureau, BureauContexts } from './types';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -86,7 +86,7 @@ async function waitForStoredMessage(
   messageId: string,
 ) {
   await waitForCondition(async () => {
-    const stored = await bureau.getSession(sessionId);
+    const stored = await bureau.contexts.get(sessionId);
     return stored?.conversationHistory.ids.includes(messageId) === true;
   }, `message ${messageId} stored`);
 }
@@ -111,12 +111,12 @@ async function completedSession(
 const finalAssistantOf = (runId: string) => `${runId}:step:1`;
 
 const fork = (
-  bureau: Pick<Bureau, 'forkSession'>,
+  bureau: { readonly contexts: Pick<BureauContexts, 'fork'> },
   sessionId: string,
   throughMessageId: string,
   commandId = 'fork-1',
   owner = ALICE,
-) => bureau.forkSession(sessionId, { owner, commandId, throughMessageId });
+) => bureau.contexts.fork(sessionId, { owner, commandId, throughMessageId });
 
 async function refusalOf(pending: Promise<unknown>): Promise<string> {
   const error = await pending.then(
@@ -151,7 +151,7 @@ async function claimFork(
 }
 
 async function sessionCount(bureau: Bureau<AgentDefinitions>): Promise<number> {
-  const sessions = await bureau.listSessions({ limit: 100 });
+  const sessions = await bureau.contexts.list({ limit: 100 });
   return sessions.length;
 }
 
@@ -159,13 +159,13 @@ describe('a fork after a completed reply', () => {
   it('shares the history through that reply, leaves the parent alone, and is owned by the caller', async () => {
     const bureau = await openBureau();
     const run = await completedSession(bureau);
-    const parentBefore = await bureau.getSession(run.sessionId);
+    const parentBefore = await bureau.contexts.get(run.sessionId);
 
     const result = await fork(bureau, run.sessionId, finalAssistantOf(run.id));
 
     expect(result.carriedOverride).toBeNull();
-    const child = await bureau.getSession(result.contextId);
-    const parent = await bureau.getSession(run.sessionId);
+    const child = await bureau.contexts.get(result.contextId);
+    const parent = await bureau.contexts.get(run.sessionId);
     expect(child?.conversationHistory.ids).toEqual(parentBefore?.conversationHistory.ids);
     expect(parent?.conversationHistory).toEqual(parentBefore?.conversationHistory);
     expect(parent?.metadata).toEqual(parentBefore?.metadata);
@@ -178,7 +178,7 @@ describe('a fork after a completed reply', () => {
 
     const result = await fork(bureau, run.sessionId, finalAssistantOf(run.id));
 
-    const rows = await bureau.listSessions({ owner: ALICE });
+    const rows = await bureau.contexts.list({ owner: ALICE });
     expect(rows.find((row) => row.id === result.contextId)).toMatchObject({
       parentContextId: run.sessionId,
       forkedFromMessageId: finalAssistantOf(run.id),
@@ -193,11 +193,11 @@ describe('a fork after a completed reply', () => {
 
     const result = await fork(bureau, first.sessionId, finalAssistantOf(first.id));
 
-    const child = await bureau.getSession(result.contextId);
+    const child = await bureau.contexts.get(result.contextId);
     const ids = child?.conversationHistory.ids ?? [];
     expect(ids.at(-1)).toBe(finalAssistantOf(first.id));
     expect(ids.some((id) => id.startsWith(second.id))).toBe(false);
-    const parent = await bureau.getSession(first.sessionId);
+    const parent = await bureau.contexts.get(first.sessionId);
     expect(parent?.conversationHistory.ids.some((id) => id.startsWith(second.id))).toBe(true);
   });
 
@@ -208,9 +208,9 @@ describe('a fork after a completed reply', () => {
 
     const next = await completedSession(bureau, result.contextId, 'a different follow-up');
 
-    const child = await bureau.getSession(result.contextId);
+    const child = await bureau.contexts.get(result.contextId);
     expect(child?.conversationHistory.ids.at(-1)).toBe(finalAssistantOf(next.id));
-    const parent = await bureau.getSession(run.sessionId);
+    const parent = await bureau.contexts.get(run.sessionId);
     expect(parent?.conversationHistory.ids).not.toContain(finalAssistantOf(next.id));
   });
 });
@@ -268,7 +268,7 @@ describe('a parent deleted while it is being branched', () => {
     // deletion lands exactly between the two.
     store.load = async (id: string) => {
       loads += 1;
-      if (id === run.sessionId && loads === 2) await bureau.deleteSession(run.sessionId);
+      if (id === run.sessionId && loads === 2) await bureau.contexts.delete(run.sessionId);
       return load(id);
     };
 
@@ -277,7 +277,7 @@ describe('a parent deleted while it is being branched', () => {
 
     expect(first).toBe('message-not-found');
     expect(retry).toBe('message-not-found');
-    expect(await bureau.getSession(run.sessionId)).toBeUndefined();
+    expect(await bureau.contexts.get(run.sessionId)).toBeUndefined();
     expect(await sessionCount(bureau)).toBe(0);
   });
 });
@@ -301,7 +301,7 @@ describe('a message that is not a branch point', () => {
   it('refuses a message that is not an assistant step: a user message, a result row, an earlier step', async () => {
     const bureau = await openBureau();
     const run = await completedSession(bureau);
-    const session = await bureau.getSession(run.sessionId);
+    const session = await bureau.contexts.get(run.sessionId);
     const ids = session!.conversationHistory.ids;
     const count = await sessionCount(bureau);
 
@@ -334,7 +334,7 @@ describe('a message that is not a branch point', () => {
     const run = await completedSession(bureau);
     const stranger = await completedSession(bureau);
     // A row that names the other session's run sits in this session's history.
-    const session = (await bureau.getSession(run.sessionId))!;
+    const session = (await bureau.contexts.get(run.sessionId))!;
     const conversation = new Conversation(session.conversationHistory);
     conversation.appendMessages({
       role: 'assistant',
@@ -441,7 +441,7 @@ describe('a message that is not a branch point', () => {
         runs: [],
       }),
     );
-    const saved = (await bureau.getSession('crafted'))!;
+    const saved = (await bureau.contexts.get('crafted'))!;
     await bureau.internals.taskRegistry.recordAdmission({
       taskId: runId,
       contextId: 'crafted',
@@ -526,18 +526,18 @@ describe('a message that is not a branch point', () => {
 
     const result = await fork(bureau, 'crafted', `${R}:step:1`);
 
-    const child = await bureau.getSession(result.contextId);
+    const child = await bureau.contexts.get(result.contextId);
     expect(child?.conversationHistory.ids.at(-1)).toBe(`${R}:step:1`);
   });
 });
 
 describe('the parent’s model choice', () => {
   const steer = (
-    bureau: Pick<Bureau, 'submitSteeringCommand'>,
+    bureau: { readonly contexts: Pick<BureauContexts, 'steer'> },
     sessionId: string,
     choice: { provider: string; model: string },
   ) =>
-    bureau.submitSteeringCommand(sessionId, {
+    bureau.contexts.steer(sessionId, {
       id: 'switch',
       principal: ALICE,
       requestedValue: {
@@ -559,12 +559,12 @@ describe('the parent’s model choice', () => {
       outcome: 'accepted',
       command: { id: 'fork-9:model', sessionId: result.contextId },
     });
-    expect(await bureau.getSessionSteering(result.contextId)).toEqual({
+    expect(await bureau.contexts.steering(result.contextId)).toEqual({
       model: { provider: 'anthropic', model: 'claude-opus-5' },
       configVersion: 1,
     });
     // The parent keeps its own, and an exact retry returns the same pair.
-    const parentSteering = await bureau.getSessionSteering(run.sessionId);
+    const parentSteering = await bureau.contexts.steering(run.sessionId);
     expect(parentSteering?.model).toEqual({
       provider: 'anthropic',
       model: 'claude-opus-5',
@@ -579,7 +579,7 @@ describe('the parent’s model choice', () => {
     const result = await fork(bureau, run.sessionId, finalAssistantOf(run.id));
 
     expect(result.carriedOverride).toBeNull();
-    const forkSteering = await bureau.getSessionSteering(result.contextId);
+    const forkSteering = await bureau.contexts.steering(result.contextId);
     expect(forkSteering?.model).toBeNull();
   });
 
@@ -609,7 +609,7 @@ describe('the parent’s model choice', () => {
 
     expect(result.contextId).toBe('planned-fork');
     expect(await sessionCount(bureau)).toBe(2);
-    const planned = await bureau.getSessionSteering('planned-fork');
+    const planned = await bureau.contexts.steering('planned-fork');
     expect(planned?.model?.model).toBe('claude-opus-5');
   });
 
@@ -645,7 +645,7 @@ describe('the parent’s model choice', () => {
 
     expect(result.contextId).toBe('planned-fork');
     expect(await sessionCount(bureau)).toBe(count);
-    const planned = await bureau.getSessionSteering('planned-fork');
+    const planned = await bureau.contexts.steering('planned-fork');
     expect(planned?.model?.model).toBe('claude-opus-5');
     expect(await fork(bureau, run.sessionId, finalAssistantOf(run.id), 'crash-2')).toEqual(result);
   });
@@ -688,7 +688,7 @@ describe('a parent whose model a policy profile chose', () => {
     ['an in-process Bureau', false],
   ])('carries the model onto the fork of %s, and the fork runs on it', async (_name, durable) => {
     const { bureau, run, observed } = await openOpaque(durable);
-    const chosen = await bureau.submitSteeringCommand(run.sessionId, {
+    const chosen = await bureau.contexts.steer(run.sessionId, {
       id: 'by-policy',
       principal: ALICE,
       requestedValue: { target: 'model', policyRef: 'fast-tier' },
@@ -698,7 +698,7 @@ describe('a parent whose model a policy profile chose', () => {
     const result = await fork(bureau, run.sessionId, throughOf(run));
 
     expect(result.carriedOverride).toMatchObject({ outcome: 'accepted' });
-    const steering = await bureau.getSessionSteering(result.contextId);
+    const steering = await bureau.contexts.steering(result.contextId);
     expect(steering?.model?.model).toBe('claude-opus-5');
     const next = await completedSession(bureau, result.contextId, 'again', 0);
     expect(next.sessionId).toBe(result.contextId);
@@ -733,7 +733,7 @@ describe('a parent whose model a policy profile chose', () => {
       outcome: 'rejected',
       failure: { reason: 'policy-denied' },
     });
-    const created = await bureau.getSession(result.contextId);
+    const created = await bureau.contexts.get(result.contextId);
     expect(created?.id).toBe('planned-fork');
   });
 
@@ -754,16 +754,16 @@ describe('a parent whose model a policy profile chose', () => {
     });
     cleanups.push(() => bureau.dispose());
     const first = await completedSession(bureau, undefined, 'go', 0);
-    const byPolicy = await bureau.submitSteeringCommand(first.sessionId, {
+    const byPolicy = await bureau.contexts.steer(first.sessionId, {
       id: 'm1',
       principal: ALICE,
       requestedValue: { target: 'model', policyRef: 'fast-tier' },
     });
     expect(byPolicy.outcome).toBe('accepted');
-    await bureau.deleteSession(first.sessionId);
+    await bureau.contexts.delete(first.sessionId);
 
     const second = await completedSession(bureau, undefined, 'go', 0);
-    const explicit = await bureau.submitSteeringCommand(second.sessionId, {
+    const explicit = await bureau.contexts.steer(second.sessionId, {
       id: 'm1',
       principal: ALICE,
       requestedValue: { target: 'model', override: OPUS_5_5.model, provider: OPUS_5_5.provider },
@@ -772,7 +772,7 @@ describe('a parent whose model a policy profile chose', () => {
 
     const result = await fork(bureau, second.sessionId, throughOf(second));
 
-    const child = await bureau.getSessionSteering(result.contextId);
+    const child = await bureau.contexts.steering(result.contextId);
     expect(child?.model?.model).toBe(OPUS_5_5.model);
   });
 
@@ -790,7 +790,7 @@ describe('a parent whose model a policy profile chose', () => {
       outcome: 'rejected',
       failure: { reason: 'model-not-allowed' },
     });
-    const created = await bureau.getSession(result.contextId);
+    const created = await bureau.contexts.get(result.contextId);
     expect(created?.id).toBe('planned-fork');
   });
 });
@@ -817,7 +817,7 @@ describe('a file agent’s fork', () => {
     harness: Awaited<ReturnType<typeof startPicker>>['harness'],
     sessionId: string,
   ) =>
-    harness.bureau.submitSteeringCommand(sessionId, {
+    harness.bureau.contexts.steer(sessionId, {
       id: 'switch',
       principal: ALICE,
       requestedValue: {
@@ -832,14 +832,14 @@ describe('a file agent’s fork', () => {
     const switched = await switchTo(harness, run.sessionId);
     expect(switched.outcome).toBe('accepted');
 
-    const result = await harness.bureau.forkSession(run.sessionId, {
+    const result = await harness.bureau.contexts.fork(run.sessionId, {
       owner: ALICE,
       commandId: 'file-fork',
       throughMessageId: `${run.id}:step:0`,
     });
 
     expect(result.carriedOverride).toMatchObject({ outcome: 'accepted' });
-    const carried = await harness.bureau.getSessionSteering(result.contextId);
+    const carried = await harness.bureau.contexts.steering(result.contextId);
     expect(carried?.model).toEqual({
       provider: 'anthropic',
       model: 'claude-opus-5',
@@ -858,14 +858,14 @@ describe('a file agent’s fork', () => {
       throughMessageId: `${run.id}:step:0`,
     };
 
-    const result = await harness.bureau.forkSession(run.sessionId, args);
+    const result = await harness.bureau.contexts.fork(run.sessionId, args);
 
     expect(result.carriedOverride).toMatchObject({
       outcome: 'rejected',
       failure: { reason: 'model-not-allowed' },
     });
-    const afterRefusal = await harness.bureau.getSessionSteering(result.contextId);
+    const afterRefusal = await harness.bureau.contexts.steering(result.contextId);
     expect(afterRefusal?.model).toBeNull();
-    expect(await harness.bureau.forkSession(run.sessionId, args)).toEqual(result);
+    expect(await harness.bureau.contexts.fork(run.sessionId, args)).toEqual(result);
   });
 });

@@ -142,7 +142,7 @@ describe('D6 scheduled-fire path (#109)', () => {
 
       // The durable proof: the session itself accumulated both fires' user turns,
       // and the systemPrompt was seeded ONCE (not re-appended on the second fire).
-      const session = await bureau.getSession(sessionId);
+      const session = await bureau.contexts.get(sessionId);
       expect(session).not.toBeNull();
       const messages = getMessages(session!.conversationHistory);
       const userTurns = messages.filter((message) => message.role === 'user');

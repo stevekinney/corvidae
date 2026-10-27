@@ -101,7 +101,7 @@ describe('a run of a file agent', () => {
     const created = await bureau.createRun({ message: 'hello', agentName: 'researcher' });
     await waitForRunState(bureau, created.id);
 
-    const session = await bureau.getSession(created.sessionId);
+    const session = await bureau.contexts.get(created.sessionId);
     expect(session?.metadata['lastAgentRevision']).toBe(2);
   });
 });

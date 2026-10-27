@@ -143,7 +143,7 @@ describe('the host’s agent directory', () => {
     const created = await host.bureau.createRun({ message: 'Hello', agentName: 'researcher' });
     const outcome = await host.bureau.waitForDurableRun(created.id);
     expect(outcome).toBeDefined();
-    const session = await host.bureau.getSession(created.sessionId);
+    const session = await host.bureau.contexts.get(created.sessionId);
     expect(session?.agentName).toBe('researcher');
     expect(handed.at(-1)).toMatchObject({ provider: 'anthropic', model: 'claude-sonnet-5' });
   });

@@ -51,7 +51,7 @@ async function sessionMetadata(
   bureau: Bureau,
   sessionId: string,
 ): Promise<Record<string, unknown>> {
-  const session = await bureau.getSession(sessionId);
+  const session = await bureau.contexts.get(sessionId);
   return session?.metadata ?? {};
 }
 
@@ -801,7 +801,7 @@ describe('a fire still going when its process restarts', () => {
     await reviewOf(first, fireId);
     // The approval is committed once its step has: wait for the checkpoint to hold it.
     await pollUntil(async () => {
-      const session = await first.getSession('mid-flight-session');
+      const session = await first.contexts.get('mid-flight-session');
       return JSON.stringify(session?.metadata ?? {}).includes('charge-X') ? true : undefined;
     }, 'the approval to reach the session');
     for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));

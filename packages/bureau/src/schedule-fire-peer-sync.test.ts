@@ -316,7 +316,7 @@ describe('a decision on a stale round', () => {
     expect(refusal).toBeInstanceOf(BureauError);
     expect((refusal as BureauError).code).toBe('CONFLICT');
     expect(holderCharges).toEqual([]);
-    const session = await peer.getSession('peer-sync-stale-round');
+    const session = await peer.contexts.get('peer-sync-stale-round');
     expect(session?.metadata['pendingApprovalRounds']).toEqual({ [review.id]: 1 });
     expect(Object.keys(session?.metadata['pendingApprovalOverrides'] as object)).toEqual([
       review.id,
@@ -485,7 +485,7 @@ describe('a decision whose round advances while its claim is being made', () => 
 
     expect((refusal as BureauError).code).toBe('CONFLICT');
     expect(holderCharges).toEqual([]);
-    const session = await peer.getSession('peer-sync-claim-race');
+    const session = await peer.contexts.get('peer-sync-claim-race');
     expect(session?.metadata['pendingApprovalRounds']).toEqual({ [review.id]: 1 });
     expect(Object.keys(session?.metadata['pendingApprovalOverrides'] as object)).toEqual([
       review.id,
@@ -646,7 +646,7 @@ describe('a fire read again when its events cannot be trusted', () => {
     );
     // The holder hears nothing of the deletion: it reads durable state, as a gap makes it do.
     fireReviewFollowerOf(holder).unfollow(fireId);
-    await peer.deleteSession('peer-sync-missing-session');
+    await peer.contexts.delete('peer-sync-missing-session');
     expect(reviewsOf(holder, fireId)).toHaveLength(1);
 
     await fireReviewFollowerOf(holder).reread(fireId);

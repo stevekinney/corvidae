@@ -356,7 +356,7 @@ describe('a restored fire approval whose snapshot names another fire', () => {
       return id !== undefined && id !== fireId ? id : undefined;
     }, 'the newer fire');
     await pollForTime(async () => {
-      const session = await first.getSession(SESSION);
+      const session = await first.contexts.get(SESSION);
       return session?.metadata['lastScheduledFireRunId'] === newer ? true : undefined;
     }, 'the newer fire to take the session');
     const charges: number[] = [];
@@ -607,7 +607,7 @@ describe('a restored approval of a run that never activated a skill', () => {
       return id !== undefined && id !== fireId ? id : undefined;
     }, 'the newer fire');
     await pollForTime(async () => {
-      const session = await first.getSession(SESSION);
+      const session = await first.contexts.get(SESSION);
       return session?.metadata['lastScheduledFireRunId'] === newer ? true : undefined;
     }, 'the newer fire to take the session');
     const charges: number[] = [];

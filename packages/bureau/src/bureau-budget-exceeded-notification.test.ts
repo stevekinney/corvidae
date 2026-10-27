@@ -222,7 +222,7 @@ describe.each(failureShapes)(
         await replayed.reached;
         replayed.release();
         await waitForCondition(async () => {
-          const session = await reattached.getSession(run.sessionId);
+          const session = await reattached.contexts.get(run.sessionId);
           return session?.metadata['lastRunStatus'] !== 'running';
         }, 'the reattached run never settled');
 

@@ -59,13 +59,13 @@ describe('submitSessionInput with no run to deliver the input (COR-1476)', () =>
   it('cancels its own input and returns the re-read receipt', async () => {
     const { seam, bureau, run, held } = await finishedRunWithHeldTerminalWrite();
     try {
-      const outcome = await bureau.submitSessionInput(run.sessionId, input);
+      const outcome = await bureau.contexts.input(run.sessionId, input);
 
       expect(outcome.outcome).toBe('admitted');
       if (outcome.outcome !== 'admitted') throw new Error('expected admitted');
       expect(outcome.receipt.state).toBe('canceled');
       expect(outcome.receipt.id).toBe('input-x');
-      const session = await bureau.getSession(run.sessionId);
+      const session = await bureau.contexts.get(run.sessionId);
       const mailbox = createSessionInputMailbox(
         seam.storage,
         run.sessionId,
@@ -77,7 +77,7 @@ describe('submitSessionInput with no run to deliver the input (COR-1476)', () =>
       expect(receipt?.cancellationReason).toBe('the run ended before the input was delivered');
 
       // A retry reads the same terminal receipt.
-      const retry = await bureau.submitSessionInput(run.sessionId, input);
+      const retry = await bureau.contexts.input(run.sessionId, input);
       expect(retry.outcome).toBe('replayed');
       if (retry.outcome === 'replayed') expect(retry.receipt.state).toBe('canceled');
     } finally {
@@ -95,7 +95,7 @@ describe('submitSessionInput with no run to deliver the input (COR-1476)', () =>
       seam.awaitWrite(admitsSessionInput),
     );
     try {
-      const outcome = await bureau.submitSessionInput(run.sessionId, input);
+      const outcome = await bureau.contexts.input(run.sessionId, input);
 
       expect(outcome.outcome).toBe('admitted');
       if (outcome.outcome !== 'admitted') throw new Error('expected admitted');
@@ -148,7 +148,7 @@ describe('submitSessionInput marks the session again once its admission commits 
       const kv = textValueStore(real, { disposeUnderlyingStorage: false });
       const admission = seam.holdWrite(admitsSessionInput);
       holds.push(admission);
-      const submitting = bureau.submitSessionInput(run.sessionId, input);
+      const submitting = bureau.contexts.input(run.sessionId, input);
       await admission.reached;
       // The first marker is written; a remover deletes it in this window.
       const before = await kv.list('session-input-open:v2:');
@@ -200,7 +200,7 @@ describe('submitSessionInput while the bureau shuts down (COR-1476)', () => {
       const held = seam.holdRead(readsWorkflows, seam.awaitWrite(admitsSessionInput));
       holds.push(held);
       const events: string[] = [];
-      const inFlight = bureau.submitSessionInput(run.sessionId, input).then((outcome) => {
+      const inFlight = bureau.contexts.input(run.sessionId, input).then((outcome) => {
         events.push(`in-flight settled: ${outcome.outcome}`);
         return outcome;
       });
@@ -212,7 +212,7 @@ describe('submitSessionInput while the bureau shuts down (COR-1476)', () => {
       // A submit that begins after shutdown started is refused outright.
       let refusal: unknown;
       try {
-        await bureau.submitSessionInput(run.sessionId, { ...input, id: 'input-y' });
+        await bureau.contexts.input(run.sessionId, { ...input, id: 'input-y' });
       } catch (error) {
         refusal = error;
       }
@@ -268,7 +268,7 @@ describe('submitSessionInput with a live run (COR-1476)', () => {
         principal: 'alice',
       });
       await started.promise;
-      const outcome = await bureau.submitSessionInput(run.sessionId, input);
+      const outcome = await bureau.contexts.input(run.sessionId, input);
       expect(outcome.outcome).toBe('admitted');
       if (outcome.outcome === 'admitted') expect(outcome.receipt.state).toBe('accepted');
     } finally {
@@ -311,16 +311,16 @@ describe('an input id reused after the session is recreated (COR-1476)', () => {
     const SESSION = 'session-reused';
     try {
       await startRun({ message: 'A', sessionId: SESSION });
-      const original = await bureau.submitSessionInput(SESSION, input);
+      const original = await bureau.contexts.input(SESSION, input);
       expect(original.outcome).toBe('admitted');
-      await bureau.deleteSession(SESSION);
+      await bureau.contexts.delete(SESSION);
       await startRun({ message: 'B', sessionId: SESSION });
 
-      const reused = await bureau.submitSessionInput(SESSION, input);
+      const reused = await bureau.contexts.input(SESSION, input);
       expect(reused.outcome).toBe('admitted');
       if (reused.outcome === 'admitted') expect(reused.receipt.state).toBe('accepted');
       // And the new incarnation replays its own record, not the deleted one's.
-      const replay = await bureau.submitSessionInput(SESSION, input);
+      const replay = await bureau.contexts.input(SESSION, input);
       expect(replay.outcome).toBe('replayed');
       if (replay.outcome === 'replayed') expect(replay.receipt.state).toBe('accepted');
     } finally {
@@ -336,9 +336,9 @@ describe('concurrent submissions of one id (COR-1476)', () => {
       const runA = await startRun({ message: 'A' });
       const runB = await startRun({ message: 'B' });
       const [first, second, elsewhere] = await Promise.all([
-        bureau.submitSessionInput(runA.sessionId, { ...input, payload: 'one' }),
-        bureau.submitSessionInput(runA.sessionId, { ...input, payload: 'two' }),
-        bureau.submitSessionInput(runB.sessionId, { ...input, payload: 'one' }),
+        bureau.contexts.input(runA.sessionId, { ...input, payload: 'one' }),
+        bureau.contexts.input(runA.sessionId, { ...input, payload: 'two' }),
+        bureau.contexts.input(runB.sessionId, { ...input, payload: 'one' }),
       ]);
       expect(first.outcome).toBe('admitted');
       expect(second.outcome).toBe('conflict');
@@ -348,7 +348,7 @@ describe('concurrent submissions of one id (COR-1476)', () => {
         expect(elsewhere.conflict.reason).toBe('session-mismatch');
       }
       // Session B's mailbox holds nothing for the id.
-      const sessionB = await bureau.getSession(runB.sessionId);
+      const sessionB = await bureau.contexts.get(runB.sessionId);
       expect(sessionB).toBeDefined();
     } finally {
       await bureau.dispose();

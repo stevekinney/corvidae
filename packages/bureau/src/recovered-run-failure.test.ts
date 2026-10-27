@@ -91,11 +91,11 @@ describe('a run Bureau recovers after the engine failed it', () => {
     try {
       await bureau.waitForRecovery?.();
       await waitForCondition(async () => {
-        const session = await bureau.getSession(sessionId);
+        const session = await bureau.contexts.get(sessionId);
         return session?.metadata['lastRunStatus'] !== 'running';
       }, 'the recovered run never settled its session');
 
-      const session = await bureau.getSession(sessionId);
+      const session = await bureau.contexts.get(sessionId);
       expect(session?.metadata['lastRunStatus']).toBe('error');
       expect(bureau.listRuns().find((run) => run.id === runId)?.status).toBe('error');
     } finally {

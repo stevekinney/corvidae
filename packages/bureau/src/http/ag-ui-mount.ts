@@ -243,7 +243,7 @@ export function createAgUiMount(
     principal: Principal,
     operatorScope: 'bureau.tasks:read' | 'bureau.tasks:write',
   ): Promise<OwnedSession | undefined> {
-    const loaded = ownedSession(await bureau.getSession(threadId));
+    const loaded = ownedSession(await bureau.contexts.get(threadId));
     return loaded !== undefined && may(principal, loaded.owner, operatorScope) ? loaded : undefined;
   }
 
@@ -352,7 +352,7 @@ export function createAgUiMount(
     if (durable === undefined || durable === null) return undefined;
     const sessionId = await sessionOfRun(runId);
     if (sessionId === undefined) return undefined;
-    const session = await bureau.getSession(sessionId).catch(() => undefined);
+    const session = await bureau.contexts.get(sessionId).catch(() => undefined);
     if (session === undefined) return undefined;
     return (await attachableFromRecord(session, runId)) ? sessionId : undefined;
   }
@@ -561,7 +561,7 @@ export function createAgUiMount(
       // eager; only the decision is deferred. The predicate runs when the resume asks, after it
       // has decided on the interrupts, and resolves to the owner of the session it decided on,
       // which is the owner the stream reads the thread as.
-      const thread = bureau.getSession(input.threadId).then(ownedSession, () => undefined);
+      const thread = bureau.contexts.get(input.threadId).then(ownedSession, () => undefined);
       const readableAs = async (): Promise<string | undefined> => {
         const loaded = await thread;
         return loaded !== undefined && may(principal, loaded.owner, 'bureau.tasks:read')
@@ -586,7 +586,7 @@ export function createAgUiMount(
     // Only the thread's owner starts a run on a thread that exists: a start adds to
     // the conversation, which a write scope alone does not grant. The refusal is the
     // one a missing thread gets, and comes before anything else is learned about it.
-    const existing = await bureau.getSession(input.threadId);
+    const existing = await bureau.contexts.get(input.threadId);
     if (existing !== undefined && !ownsSession(existing, owner)) {
       return refuse('THREAD_NOT_FOUND', `Thread "${input.threadId}" was not found`);
     }
@@ -608,7 +608,7 @@ export function createAgUiMount(
         // thread since the check above, and the same refusal answers it.
         let session: AgentSession | undefined;
         try {
-          session = await bureau.getSession(input.threadId);
+          session = await bureau.contexts.get(input.threadId);
         } catch {
           // The busy decision below is made from this record, and a start admitted on a guess
           // forks the thread: a read that fails is a thread that is busy.

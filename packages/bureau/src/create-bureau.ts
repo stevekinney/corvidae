@@ -504,6 +504,7 @@ import {
 } from './types';
 import { isSettlingRunAction, settledActionTimestamp } from './run-settlement';
 import { createAudit } from './audit/create-audit';
+import { createContexts } from './contexts/create-contexts';
 import { createReviews } from './reviews/create-reviews';
 import { createSchedules } from './schedules/create-schedules';
 import { createWebhookNotifier, type WebhookNotifier } from './webhook-notifier';
@@ -13233,9 +13234,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   /**
    * COR-1579 — the delivery id the next `signalSession` call delivers under, set only by
    * {@link deliverHumanWaitDecision} for the synchronous start of that call. `resolveReview`
-   * delivers a human-wait decision through the public `bureau.signalSession` (one seam, which a
+   * delivers a human-wait decision through the public `bureau.contexts.signal` (one seam, which a
    * host or test can observe), whose signature has no delivery id; the call reads and clears this
-   * before its first `await`, so no other call can see it. A wrapper around `bureau.signalSession`
+   * before its first `await`, so no other call can see it. A wrapper around `bureau.contexts.signal`
    * must therefore call through before it awaits anything, or the delivery goes out unkeyed.
    */
   let keyedSessionDelivery: string | undefined;
@@ -13251,7 +13252,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   ): Promise<void> {
     keyedSessionDelivery = humanWaitDeliveryId(review.id);
     try {
-      return bureau.signalSession(review.sessionId, review.signalName, payload);
+      return bureau.contexts.signal(review.sessionId, review.signalName, payload);
     } finally {
       keyedSessionDelivery = undefined;
     }
@@ -15852,7 +15853,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         // stays `running` forever. Approve delivers the caller's payload,
         // deny and reject their sentinels, all on the same channel. The
         // authority was checked before the claim; the delivery goes through
-        // the public `bureau.signalSession` (one seam, not two ways to do the
+        // the public `bureau.contexts.signal` (one seam, not two ways to do the
         // same thing), keyed by the review id (COR-1579), so a same-decision
         // re-drive delivers once and nothing is left buffered for the next park.
         actionStarted = true;
@@ -18434,6 +18435,24 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       bureau.subscribeEventHistory(owner, listener, subscribeOptions),
   });
 
+  // COR-1706: the context operations stay private implementations that share the session store,
+  // the live runs, the steering gates, and the durable mailbox; `events` reads the `session` owner of
+  // the history the Bureau already serves.
+  const contexts = createContexts({
+    list: listSessions,
+    get: getSession,
+    delete: deleteSession,
+    signal: signalSession,
+    input: submitSessionInput,
+    inputsDeliveredBy: sessionInputsDeliveredBy,
+    steer: submitSteeringCommand,
+    steering: getSessionSteering,
+    fork: forkSession,
+    eventHistory: (owner, eventHistoryOptions) => bureau.eventHistory(owner, eventHistoryOptions),
+    subscribeEventHistory: (owner, listener, subscribeOptions) =>
+      bureau.subscribeEventHistory(owner, listener, subscribeOptions),
+  });
+
   const audit = createAudit({
     trail: () => auditTrailInstance,
     ownerOf: ({ runId, detail }) => getOwner({ kind: 'audit', runId, detail }),
@@ -18444,6 +18463,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     id: bureauId,
     reviews,
     schedules,
+    contexts,
     audit,
     internals: {
       hasExplicitId: options.id !== undefined,
@@ -18544,15 +18564,6 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     cancelDurableRun,
     listDurableRuns,
     runDurableMaintenance,
-    listSessions,
-    getSession,
-    deleteSession,
-    signalSession,
-    submitSessionInput,
-    sessionInputsDeliveredBy,
-    submitSteeringCommand,
-    getSessionSteering,
-    forkSession,
     setRequestAuthorityValidator(validator) {
       requestAuthorityValidator = validator;
       runtime.setRequestAuthorityValidator(validator);
