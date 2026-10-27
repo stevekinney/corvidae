@@ -216,6 +216,42 @@ describe('createJsonRpcWebSocketSession — frame dispatch', () => {
     await session.close();
   });
 
+  it('closes and reports an invalid subscription envelope from a catalog operation', async () => {
+    let closeCalls = 0;
+    const invalidSubscription = makeOp({
+      name: 'weft.audit.invalidenvelope',
+      kind: 'subscription',
+      inputSchema: z.object({}),
+      outputSchema: z.unknown(),
+      eventSchema: z.object({ value: z.string() }),
+      invoke: async () => ({
+        envelope: { malformed: true },
+        iterable: (async function* () {
+          yield { value: 'never delivered' };
+        })(),
+        close: async () => {
+          closeCalls += 1;
+        },
+      }),
+    });
+    const emitter = makeEmitter();
+    const session = createJsonRpcWebSocketSession({
+      registry: createOperationRegistry([invalidSubscription]),
+      engine: fakeEngine,
+      principal: anonymousPrincipal(),
+      emitter,
+    });
+
+    await session.handleMessage(
+      JSON.stringify({ jsonrpc: '2.0', method: 'weft.audit.invalidenvelope', params: {}, id: 1 }),
+    );
+
+    const response = JSON.parse(emitter.sent[0]!);
+    expect(response.error.code).toBe(-32603);
+    expect(closeCalls).toBe(1);
+    await session.close();
+  });
+
   it('dispatches a single request and emits the response as a JSON frame', async () => {
     const registry = createOperationRegistry([
       makeOp({

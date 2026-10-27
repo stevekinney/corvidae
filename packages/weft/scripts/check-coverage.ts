@@ -331,9 +331,9 @@ const COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer('COVERAGE_ALLOWANCE_OVE
     'src/server/json-rpc-websocket.ts',
     {
       reason:
-        'Transport disconnect and concurrency exits are behaviorally tested, but Bun does not deterministically attribute the emit() catch-block’s emitterBroken = true line (line 117). The malformed SubscriptionStartEnvelope fallback is a defensive branch: every current caller constructs a well-formed envelope, so no test manufactures the malformed shape needed to reach it. Realigned for corvidae from a fresh coverage/lcov.info: the fallback now closes the subscription and emits the internal error at lines 238-240, with the response helper body at lines 280-283.',
+        'Transport disconnect and concurrency exits are behaviorally tested, but Bun does not deterministically attribute the emit() catch-block’s emitterBroken = true line (line 117).',
       functions: 2,
-      lines: new Set([117, 238, 239, 240, 280, 281, 282, 283]),
+      lines: new Set([117]),
       requireUncoveredLines: true,
     },
   ],
