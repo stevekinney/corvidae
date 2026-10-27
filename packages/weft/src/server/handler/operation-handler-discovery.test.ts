@@ -52,11 +52,16 @@ describe('the discovery documents createOperationHandler serves', () => {
     expect(JSON.stringify(asyncApi)).not.toContain('probe.socket');
   });
 
-  it('declares only http in OpenRPC, with no MCP metadata and no websocket-only method', async () => {
+  it('declares HTTP and WebSocket in OpenRPC, with no MCP metadata', async () => {
     const { openRpc } = await documents(build());
 
     const methods = (openRpc['methods'] as { name: string }[]).map((method) => method.name);
-    expect(methods.toSorted()).toEqual(['probe.scoped', 'rpc.discover']);
+    expect(methods.toSorted()).toEqual([
+      'probe.events',
+      'probe.scoped',
+      'probe.socket',
+      'rpc.discover',
+    ]);
     expect(openRpc['x-weft-mcp']).toBeUndefined();
   });
 

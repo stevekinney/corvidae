@@ -130,6 +130,7 @@ describe('operation dispatch audit — discriminated union compile-time guarante
       transports: { http: false, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
       unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
       invoke: async () => ({
+        subscriptionId: 's',
         envelope: { subscriptionId: 's', cursor: 'c' },
         iterable: emptyAsyncIterable(),
         close: async () => {},
@@ -153,6 +154,42 @@ describe('operation dispatch audit — discriminated union compile-time guarante
 });
 
 describe('operation dispatch audit — long-lived kind guards', () => {
+  it('rejects a subscription producer without a string lifecycle id', async () => {
+    const operation = defineOperation({
+      name: 'weft.audit.malformedsubscription',
+      mcpExposable: false,
+      destructive: false,
+      kind: 'subscription',
+      summary: 'fixture',
+      inputSchema: z.object({}),
+      outputSchema: z.object({ subscriptionId: z.string(), cursor: z.string() }),
+      eventSchema: z.unknown(),
+      access: { kind: 'public' },
+      transports: { http: false, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
+      unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
+      invoke: async () =>
+        ({
+          subscriptionId: 42,
+          envelope: { subscriptionId: 'public', cursor: 'c' },
+          iterable: emptyAsyncIterable(),
+          close: async () => {},
+        }) as never,
+    });
+    const result = await executeSubscription(
+      'weft.audit.malformedsubscription',
+      {},
+      {
+        principal: anonymousPrincipal(),
+        host: {},
+        transport: 'jsonRpcWebSocket',
+        registry: createOperationRegistry([operation]),
+      },
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.fault.code).toBe('EngineFailure');
+  });
+
   it('executeStream against a unary operation records only `looked-up` then fails Unprocessable', async () => {
     // The kind check sits between lookupOperation and prepareAuthorizedInput;
     // if a future refactor pushed it past transport/access, this trace would
@@ -218,6 +255,7 @@ describe('operation dispatch audit — executeSubscription envelope typing', () 
       transports: { http: false, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
       unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
       invoke: async () => ({
+        subscriptionId: 'sub-1',
         envelope: { subscriptionId: 'sub-1' },
         iterable: (async function* () {
           yield { value: 1 };
