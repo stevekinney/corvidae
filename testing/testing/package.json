@@ -13,7 +13,7 @@
     "types": "tsc -b tsconfig.source.json",
     "typecheck": "tsc --noEmit -p ./tsconfig.json",
     "test": "TZ=UTC LANG=en_US.UTF-8 bun ../../scripts/bun-test-junit.ts --path-ignore-patterns='**/*.slow.test.ts' src",
-    "test:slow": "TZ=UTC LANG=en_US.UTF-8 bun test .slow.test.ts",
+    "test:slow": "TZ=UTC LANG=en_US.UTF-8 bun ../../scripts/bun-test-selected.ts .slow.test.ts",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src"
   },
   "dependencies": {
