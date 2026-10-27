@@ -143,7 +143,10 @@ export type ToMCPToolsOptions = {
 export type FromMCPToolsOptions = {
   callTool?: (
     request: { name: string; arguments?: Record<string, unknown> },
-    options?: Pick<CallToolRequestOptions, 'signal' | 'onprogress'>,
+    options?: Pick<CallToolRequestOptions, 'signal' | 'onprogress'> & {
+      /** The calling tool's context, for a `callTool` that elicits or reports progress itself. */
+      context?: ToolContext;
+    },
   ) => Promise<CallToolResult>;
   formatResult?: (result: CallToolResult, tool: MCPToolSource) => unknown;
   /**
@@ -586,7 +589,11 @@ async function executeMcpTool(
       : (update: Progress) => context.progress(toArmorerProgress(update));
   return options.callTool(
     { name: tool.name, arguments: isRecord(params) ? params : {} },
-    { ...(signal ? { signal } : {}), ...(onprogress ? { onprogress } : {}) },
+    {
+      ...(signal ? { signal } : {}),
+      ...(onprogress ? { onprogress } : {}),
+      ...(context ? { context } : {}),
+    },
   );
 }
 

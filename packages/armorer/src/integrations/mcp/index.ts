@@ -21,6 +21,12 @@ export {
   type MCPServer,
 } from './server';
 export {
+  MCPInputRequiredUnsupportedError,
+  MCPTaskClientError,
+  fromMcpEndpointTools,
+  type FromMcpEndpointToolsOptions,
+} from './task-client';
+export {
   DEFAULT_MCP_TASK_POLL_INTERVAL_MS,
   DEFAULT_MCP_TASK_TTL_MS,
   MCPTaskRecordVersionError,
