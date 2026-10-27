@@ -18,6 +18,7 @@ import {
 } from '@lostgradient/chat';
 import { describe, expect, test } from 'bun:test';
 
+import { RESUME_ROUND_CHANGED_MESSAGE } from '@lostgradient/bureau';
 import { quietFor, waitUntil, yieldEventLoopTurn } from '@lostgradient/testing/wait-until';
 import type { Fetcher } from '../../lib/bureau-client.ts';
 import { AG_UI_PATH, createChatRunWiring, openingTurn } from './run-wiring.ts';
@@ -1482,6 +1483,67 @@ describe('a resume the mount refused', () => {
     expect(inputOf(sent[3]).resume).toEqual([
       { interruptId: INTERRUPT.id, status: 'resolved', payload: { decision: 'approve' } },
     ]);
+  });
+
+  describe('on a round the approval has moved past (COR-1714)', () => {
+    const atRound = (round: number) => ({
+      ...INTERRUPT,
+      metadata: { '@lostgradient/bureau': { kind: 'tool-approval', round } },
+    });
+    const onRound = (round: number) => ({
+      interruptId: INTERRUPT.id,
+      status: 'resolved',
+      payload: { decision: 'approve' },
+      metadata: { '@lostgradient/bureau': { round } },
+    });
+
+    test('sends the round the approval was shown at, and decides the next round afresh', async () => {
+      const conversation = appendUserMessage(empty(), 'Refund it');
+      const stubbed = mount([
+        stream([started(), finished({ type: 'interrupt', interrupts: [atRound(0)] })]),
+        refusal('REVIEW_ROUND_CHANGED', RESUME_ROUND_CHANGED_MESSAGE),
+        parkedOn(atRound(1)),
+        stream([started('run-2'), finished(undefined, 'run-2')]),
+      ]);
+      const wiring = createChatRunWiring({
+        agentName: () => 'tool-runner',
+        fetch: stubbed.fetch,
+        conversation: () => conversation,
+      });
+      await frames(wiring, conversation);
+      await wiring.resolveToolApproval('call-refund', { decision: 'approve', remember: false });
+
+      await frames(wiring, conversation);
+      expect(wiring.takeRefusal()).toEqual({
+        code: 'REVIEW_ROUND_CHANGED',
+        message: RESUME_ROUND_CHANGED_MESSAGE,
+        resume: true,
+        busy: false,
+      });
+      // The thread is read again: the approval is at round 1, so the decision on round 0 is gone
+      // and nothing is owed until the person decides the request they have not seen.
+      await wiring.attach(THREAD);
+      expect(wiring.owesResume()).toBe(true);
+      await frames(wiring, conversation);
+      expect(wiring.owesResume()).toBe(false);
+      await wiring.resolveToolApproval('call-refund', { decision: 'approve', remember: false });
+      await frames(wiring, conversation);
+
+      expect(inputOf(stubbed.sent[1]).resume).toEqual([onRound(0)]);
+      expect(inputOf(stubbed.sent[3]).resume).toEqual([onRound(1)]);
+    });
+
+    test('sends no round for an approval whose interrupt shows none', async () => {
+      const { wiring, sent, conversation } = await approved([
+        stream([started('run-2'), finished(undefined, 'run-2')]),
+      ]);
+
+      await frames(wiring, conversation);
+
+      expect(inputOf(sent[1]).resume).toEqual([
+        { interruptId: INTERRUPT.id, status: 'resolved', payload: { decision: 'approve' } },
+      ]);
+    });
   });
 
   test('keeps the decision when the request is refused as a refusal and nothing re-reads it', async () => {

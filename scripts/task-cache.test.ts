@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, posix } from 'node:path';
 
 import { spawnWithHangGuard } from './hang-guard.ts';
 import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
@@ -567,20 +568,128 @@ test("the validate gate runs each package's suite once, through its coverage run
   }
 });
 
-test("the check gate enforces the affected workspaces' coverage floors through test:gate (COR-1693)", async () => {
+test('the check gate keeps the coverage floor of every workspace it selects whole (COR-1693)', async () => {
   // `check` once ran the plain `test` and so merged a coverage regression that only `validate`
-  // would have caught. Its affected run names `test:gate`, which runs each suite once, through the
-  // coverage run where the workspace has a floor; naming `test` or `test:coverage` beside it would
-  // run a suite twice.
+  // would have caught. Tests now run through the selector, which runs a workspace selected whole
+  // through `test:gate` (its coverage run where the workspace has a floor) and one selected in part
+  // through a narrowed `test`, where a floor cannot be judged on a partial file set. Naming `test`
+  // beside `test:gate`, or `test:coverage` at all, would run a suite twice.
   const { scripts } = await Bun.file(join(root, 'package.json')).json();
-  const affected = (scripts.check as string)
-    .match(/turbo run [^&']+/g)
-    ?.filter((invocation) => invocation.includes('--affected'))
-    .map((invocation) => invocation.split(/\s+/).slice(2));
-  expect(affected?.some((names) => names.includes('test:gate'))).toBe(true);
-  for (const names of affected ?? []) {
+  expect(scripts.check as string).toContain('bun scripts/affected-tests.ts run');
+  for (const invocation of (scripts.check as string).match(/turbo run [^&']+/g) ?? []) {
+    const names = invocation.split(/\s+/).slice(2);
     expect(names).not.toContain('test');
+    expect(names).not.toContain('test:gate');
     expect(names).not.toContain('test:coverage');
+  }
+
+  const { discoverWorkspaces, planInvocations } = await import('./affected-tests.ts');
+  const { selectTests } = await import('./affected-tests-selection.ts');
+  const workspaces = discoverWorkspaces(root);
+  const selection = selectTests({
+    changed: ['turbo.json'],
+    tree: { paths: new Set(['package.json', 'turbo.json']), read: () => undefined },
+    workspaces,
+  });
+  expect(selection.repositoryRule).not.toBeNull();
+  for (const step of planInvocations(selection)) {
+    expect(step.tasks).not.toContain('test:coverage');
+    if (step.tasks.includes('test') || step.tasks.includes('test:gate')) {
+      // A whole-workspace step is the one that must reach the floor.
+      expect(step.tasks).toEqual([step.narrowed ? 'test' : 'test:gate']);
+    }
+  }
+});
+
+test('the tasks the selector narrows declare the selection variable, so no result is replayed across selections', async () => {
+  // Strict environment mode passes a task only the variables it declares, and hashes them. A
+  // narrowed lane without the variable would run everything, or replay a result cached for another
+  // selection. Every task the selector runs narrowed, and each package-specific override of one,
+  // names it; the whole-workspace lanes (`test:gate`, `test:coverage`) never read it.
+  const { SELECTION_VARIABLE } = await import('./affected-tests-manifest.ts');
+  const configuration = await Bun.file(join(root, 'turbo.json')).json();
+  const tasks: Record<string, { env?: string[] }> = configuration.tasks;
+  for (const [name, definition] of Object.entries(tasks)) {
+    const task = name.slice(name.lastIndexOf('#') + 1);
+    const narrowed = ['test', 'test:slow', 'test:self', 'test:self:slow', 'test:browser-fixtures'];
+    if (narrowed.includes(task) && !name.endsWith('#test:host')) {
+      expect(definition.env ?? [], name).toContain(SELECTION_VARIABLE);
+    }
+    if (task === 'test:gate' || task === 'test:coverage') {
+      expect(definition.env ?? [], name).not.toContain(SELECTION_VARIABLE);
+    }
+  }
+});
+
+test('a package task keys on every root script it runs and every root script those import', async () => {
+  // A task that runs `bun ../../scripts/x.ts` replays a cached result unless x.ts, and what x.ts
+  // imports, are among its inputs: the package's own files do not change when a root script does.
+  // This covers the class for every script of every workspace, not one runner at a time.
+  const { discoverWorkspaces, listTree } = await import('./affected-tests.ts');
+  const { analyzeSource, resolveSpecifier } = await import('./affected-tests-graph.ts');
+  const configuration = await Bun.file(join(root, 'turbo.json')).json();
+  const tasks: Record<string, { inputs?: string[] }> = configuration.tasks;
+  const workspaces = discoverWorkspaces(root);
+  const { paths } = listTree(root);
+  const isRootScript = (path: string) => /^scripts\/(?!browser-fixtures\/).+\.ts$/.test(path);
+  const isScript = (path: string) =>
+    /(?:^|\/)scripts\/.+\.ts$/.test(path) && !/\.test\./.test(path);
+
+  // Every script file a script file imports, through `scripts/` directories only: library source
+  // an entrypoint imports is hashed as the package's own files.
+  const closure = (entrypoint: string): string[] => {
+    const seen = new Set<string>();
+    const pending = [entrypoint];
+    for (let current = pending.pop(); current !== undefined; current = pending.pop()) {
+      if (seen.has(current)) continue;
+      seen.add(current);
+      const source = readFileSync(join(root, current), 'utf8');
+      for (const specifier of analyzeSource(current, source).specifiers) {
+        const target = resolveSpecifier(current, specifier, paths, workspaces);
+        if (target !== null && isScript(target)) pending.push(target);
+      }
+    }
+    return [...seen].filter(isRootScript);
+  };
+
+  const missing: string[] = [];
+  for (const workspace of workspaces) {
+    if (workspace.directory === '') continue;
+    const manifest = await Bun.file(join(root, workspace.directory, 'package.json')).json();
+    for (const [script, command] of Object.entries<string>(manifest.scripts ?? {})) {
+      const task = tasks[`${manifest.name}#${script}`] ?? tasks[script];
+      if (task === undefined) continue;
+      for (const token of command.split(/[\s&|;'"]+/)) {
+        const resolved = posix.normalize(posix.join(workspace.directory, token));
+        if (!isScript(resolved) || !paths.has(resolved)) continue;
+        for (const file of closure(resolved)) {
+          const covered = (task.inputs ?? []).some(
+            (input) =>
+              input === `$TURBO_ROOT$/${file}` || new Bun.Glob(input).match(`$TURBO_ROOT$/${file}`),
+          );
+          if (!covered)
+            missing.push(`${manifest.name}#${script} runs ${resolved}: add $TURBO_ROOT$/${file}`);
+        }
+      }
+    }
+  }
+  expect(missing.toSorted()).toEqual([]);
+});
+
+test('every test lane that bypasses the JUnit wrapper goes through a runner that honours the selection', async () => {
+  // `test:slow` scripts used to call `bun test` directly, which would ignore the selection and run
+  // every slow file in a workspace the selector narrowed.
+  const { discoverWorkspaces } = await import('./affected-tests.ts');
+  for (const workspace of discoverWorkspaces(root)) {
+    const manifest = await Bun.file(join(root, workspace.directory, 'package.json')).json();
+    for (const lane of ['test', 'test:slow', 'test:self', 'test:self:slow']) {
+      const script: string | undefined = manifest.scripts?.[lane];
+      if (script === undefined) continue;
+      for (const command of script.split('&&')) {
+        if (!/\bbun test\b/.test(command)) continue;
+        expect(command, `${workspace.name} ${lane}`).toMatch(/bun-test-(?:junit|selected)\.ts/);
+      }
+    }
   }
 });
 

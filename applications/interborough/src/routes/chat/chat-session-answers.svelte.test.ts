@@ -9,6 +9,7 @@
 import {
   RESUME_ATTEMPT_FAILED_MESSAGES,
   RESUME_ATTEMPT_STILL_GOING_MESSAGES,
+  RESUME_ROUND_CHANGED_MESSAGE,
 } from '@lostgradient/bureau';
 import { afterEach, describe, expect, test } from 'bun:test';
 
@@ -338,6 +339,23 @@ describe('a RUN_FAILED refusal of a resume', () => {
       expect(session.failure).toBe(message);
     },
   );
+
+  test('is told that an approval changed while it was read and was not decided (COR-1714)', async () => {
+    const mounted = mount(
+      [parkedStart([environment]), refusal('REVIEW_ROUND_CHANGED', RESUME_ROUND_CHANGED_MESSAGE)],
+      [stillParkedOn(environment)],
+    );
+    const session = open(mounted.fetch);
+    await session.adapter.sendMessage({ role: 'user', content: 'Ship it' }, []);
+    await session.adapter
+      .sendMessage({ role: 'user', content: 'staging' }, [])
+      .catch(() => undefined);
+    await afterReread(session, mounted.requests);
+
+    expect(session.failure).toBe(RESUME_ROUND_CHANGED_MESSAGE);
+    expect(session.failure).toContain('changed while you read it');
+    expect(session.failure).toContain('not decided');
+  });
 
   test.each(Object.values(RESUME_ATTEMPT_STILL_GOING_MESSAGES))(
     'is not told while an earlier attempt is still applying it: %s',

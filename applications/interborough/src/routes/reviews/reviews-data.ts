@@ -110,6 +110,8 @@ export interface ResolveBureauReviewVariables {
   readonly id: string;
   readonly decision: ReviewDecision;
   readonly reason?: string;
+  /** The round of the tool approval the row showed, so a review gated again since is not decided. */
+  readonly round?: number;
 }
 
 /** What a decision came to: the Bureau's answer, or that it took effect and its outcome was not written. */

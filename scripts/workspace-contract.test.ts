@@ -205,14 +205,15 @@ describe('internal workspace architecture', () => {
     expect(scripts['test']).toBe(
       "bun scripts/run-exclusively.ts 'turbo run test:self test test:browser-fixtures'",
     );
-    // The development loop: only the workspaces a change can affect, judged against the default
-    // branch. The root-owned browser-fixture task runs outside `--affected`, which filters by
-    // package and would skip it for a change confined to `scripts/browser-fixtures`; its key follows
-    // that workspace through `transit`, so it replays from cache when nothing there changed.
+    // The development loop. Lint and the type-checks run for the workspaces a change can affect,
+    // judged against the default branch (`--affected`). Tests run through `affected-tests.ts`,
+    // which selects test files by import graph instead of by package and drives the same Turborepo
+    // lanes (`test:gate` for a workspace selected whole, a narrowed `test` for one selected in part,
+    // the root self-tests, the browser fixtures, then the serial slow lanes).
     // `validate` stays the full gate. `check` is the per-pull-request gate, so it runs `--shared`:
     // parallel sessions run it side by side instead of queueing it behind a full validate.
     expect(scripts['check']).toBe(
-      "bun scripts/run-exclusively.ts --shared 'bun run format:check && bun run lint:root && bun run typecheck:root && turbo run lint typecheck test:self test:gate --affected && turbo run test:browser-fixtures && turbo run test:slow test:self:slow --affected --concurrency=1'",
+      "bun scripts/run-exclusively.ts --shared 'bun run format:check && bun run lint:root && bun run typecheck:root && turbo run lint typecheck --affected && bun scripts/affected-tests.ts run'",
     );
     // Enumerated rather than recursive on purpose: `./scripts/**/*.test.ts` also matches
     // `scripts/browser-fixtures`, whose suites need `prepare-manifest.ts` first and run under
@@ -223,7 +224,9 @@ describe('internal workspace architecture', () => {
     expect(scripts['test:self']).toBe(
       "bun scripts/bun-test-junit.ts --report-name=self --parallel=4 --path-ignore-patterns='**/*.slow.test.ts' ./scripts/*.test.ts ./scripts/terminal/*.test.ts ./scripts/chef/*.test.ts",
     );
-    expect(scripts['test:self:slow']).toBe('bun scripts/bun-test.ts ./scripts/chef/*.slow.test.ts');
+    expect(scripts['test:self:slow']).toBe(
+      'bun scripts/bun-test-selected.ts ./scripts/chef/*.slow.test.ts',
+    );
     expect(scripts['test:slow']).toBe(
       "bun scripts/run-exclusively.ts 'turbo run test:slow test:self:slow --concurrency=1'",
     );
