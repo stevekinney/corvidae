@@ -13,6 +13,12 @@ import { createExecutionLifecycle, type ExecutionCleanupReport } from '../../exe
 import type { Tool } from '../../is-tool';
 import { createInputRoundRegistry, type InputRoundRegistryOptions } from './input-required';
 import {
+  createMcpTaskRuntime,
+  MCP_TASKS_EXTENSION,
+  type MCPTaskOptions,
+  type MCPTaskStore,
+} from './tasks';
+import {
   buildMcpToolDefinition,
   resolveToolConfiguration,
   type MCPToolDefinition,
@@ -42,6 +48,14 @@ export type CreateMCPOptions = Omit<ServerOptions, 'requestState'> & {
   prompts?: MCPPromptRegistrar | MCPPromptRegistrar[];
   /** Lifetime of a 2026-07-28 input round a client has not answered yet. */
   inputRounds?: InputRoundRegistryOptions;
+  /**
+   * The durable store behind MCP tasks. Required when any tool opts in with
+   * `taskBacked`; there is no in-memory default. One live `createMCP`
+   * instance may own a store.
+   */
+  taskStore?: MCPTaskStore;
+  /** Lifetime, poll interval, and clock of MCP tasks. */
+  tasks?: MCPTaskOptions;
   /** Options for the HTTP entry, except `legacy`, which is always `'stateless'`. */
   http?: Omit<CreateMcpHandlerOptions, 'legacy'>;
 };
@@ -98,6 +112,8 @@ export async function createMCP(
     resources,
     prompts,
     inputRounds: inputRoundOptions,
+    taskStore,
+    tasks: taskOptions,
     http,
     ...serverOptions
   } = options;
@@ -114,15 +130,55 @@ export async function createMCP(
       configuration: resolveToolConfiguration(tool, toolConfiguration),
     });
   }
+  const taskBackedTools = [...toolEntries.values()].filter(
+    ({ configuration }) => configuration.taskBacked === true,
+  );
+  if (taskBackedTools.length > 0 && !taskStore) {
+    throw new TypeError(
+      `createMCP() requires a taskStore because ${taskBackedTools
+        .map(({ tool }) => `"${tool.name}"`)
+        .join(', ')} opt${taskBackedTools.length === 1 ? 's' : ''} into MCP tasks.`,
+    );
+  }
   const executionLifecycle = createExecutionLifecycle('mcp-server');
+  // A settle-write failure has no request to answer; it goes to the `onerror` of the
+  // most recently built SDK server instance, or to the console when none is set.
+  let latestServer: McpServer | undefined;
+  const reportTaskError = (error: unknown) => {
+    const failure = error instanceof Error ? error : new Error(String(error));
+    if (latestServer?.server.onerror) latestServer.server.onerror(failure);
+    else console.error(failure);
+  };
+  const mcpTasks =
+    taskStore && taskBackedTools.length > 0
+      ? createMcpTaskRuntime({
+          store: taskStore,
+          ...taskOptions,
+          onError: reportTaskError,
+        })
+      : undefined;
   const inputRounds = createInputRoundRegistry(inputRoundOptions);
   const executeTool = createToolboxExecutor(toolbox);
 
   const buildServer = (context: McpRequestContext): McpServer => {
+    const advertiseTasks = mcpTasks !== undefined && context.era === 'modern';
     const server = new McpServer(serverInfo ?? DEFAULT_SERVER_INFO, {
       ...serverOptions,
+      ...(advertiseTasks
+        ? {
+            capabilities: {
+              ...serverOptions.capabilities,
+              extensions: {
+                ...serverOptions.capabilities?.extensions,
+                [MCP_TASKS_EXTENSION]:
+                  serverOptions.capabilities?.extensions?.[MCP_TASKS_EXTENSION] ?? {},
+              },
+            },
+          }
+        : {}),
       requestState: { verify: inputRounds.verify },
     });
+    latestServer = server;
     const toolOptions: ToMCPToolsOptions = {
       ...(toolConfiguration !== undefined ? { toolConfiguration } : {}),
       ...(formatResult !== undefined ? { formatResult } : {}),
@@ -133,12 +189,20 @@ export async function createMCP(
         protocolVersion: () => server.server.getNegotiatedProtocolVersion(),
       },
       inputRounds,
+      ...(mcpTasks ? { mcpTasks } : {}),
       executionLifecycle,
     };
     for (const { tool, configuration } of toolEntries.values()) {
       const definition = buildMcpToolDefinition(tool, configuration, toolOptions);
-      server.registerTool(tool.name, toRegisteredToolConfiguration(definition), definition.handler);
+      server.registerTool(
+        tool.name,
+        toRegisteredToolConfiguration(definition),
+        // A task handle is the Tasks extension's alternative `tools/call` result; the
+        // SDK types callbacks as `CallToolResult` only.
+        definition.handler as never,
+      );
     }
+    if (advertiseTasks) mcpTasks.registerHandlers(server);
     applyRegistrars(server, context, resources);
     applyRegistrars(server, context, prompts);
     return server;
@@ -153,7 +217,12 @@ export async function createMCP(
   const shutdown = () => {
     shutdownPromise ??= (async () => {
       inputRounds.clear(new Error('MCP server shut down'));
-      return executionLifecycle.shutdown({ policy: 'abort', reason: 'MCP server shut down' });
+      const report = await executionLifecycle.shutdown({
+        policy: 'abort',
+        reason: 'MCP server shut down',
+      });
+      await mcpTasks?.whenIdle();
+      return report;
     })();
     return shutdownPromise;
   };

@@ -21,6 +21,22 @@ export {
   type MCPServer,
 } from './server';
 export {
+  DEFAULT_MCP_TASK_POLL_INTERVAL_MS,
+  DEFAULT_MCP_TASK_TTL_MS,
+  MCPTaskRecordVersionError,
+  MCP_TASKS_EXTENSION,
+  MCP_TASK_KEY_PREFIX,
+  MCP_TASK_RECORD_VERSION,
+  type MCPCreateTaskResult,
+  type MCPTaskError,
+  type MCPTaskOptions,
+  type MCPTaskRecord,
+  type MCPTaskStatus,
+  type MCPTaskStore,
+  type MCPTaskStoreCondition,
+  type MCPTaskStoreOperation,
+} from './tasks';
+export {
   fromMcpTools,
   toMcpTools,
   toolConfigurationFromMetadata,
