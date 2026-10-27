@@ -1415,7 +1415,7 @@ export function createBureauA2ARequestHandler(
     if (updated !== undefined) return holds(updated);
     if (expectedLength !== 0) return false;
     // A task another transport started has no record until its first continuation over A2A.
-    const stored = await bureau.tasks.record(view.id);
+    const stored = await bureau.internals.taskRegistry.record(view.id);
     const created = await records.create({
       recordVersion: 1,
       taskId: view.id,

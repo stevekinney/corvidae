@@ -282,7 +282,7 @@ describe('two continuations that name the same revision', () => {
         metadata: { [COMMAND_RECEIPTS_EXTENSION_URI]: { expectedRevision: revision } },
       });
       // An attempt of this message that reserved its slot in another form, then died unclaimed.
-      const records = createA2ATaskRecords(opened.bureau.kv!);
+      const records = createA2ATaskRecords(opened.bureau.internals.kv!);
       await records.update(started.id, (current) => ({
         ...current,
         history: [...current.history, { ...sent, parts: [{ text: 'an abandoned form' }] }],
