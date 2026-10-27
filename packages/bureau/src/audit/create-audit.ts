@@ -117,19 +117,28 @@ export function createAudit(dependencies: AuditDependencies): BureauAudit {
     if (trail === undefined) {
       throw dependencies.refusal('This Bureau keeps no audit trail', 'UNSUPPORTED_CAPABILITY');
     }
-    const limit = filter.limit ?? DEFAULT_AUDIT_PAGE_LIMIT;
-    if (!Number.isInteger(limit) || limit < 1 || limit > MAXIMUM_AUDIT_PAGE_LIMIT) {
-      throw dependencies.refusal(
-        `limit must be an integer from 1 to ${MAXIMUM_AUDIT_PAGE_LIMIT}`,
-        'BAD_REQUEST',
-      );
-    }
-    let after = filter.cursor === undefined ? undefined : decodeAuditCursor(filter.cursor);
-    if (filter.cursor !== undefined && after === undefined) {
-      throw dependencies.refusal('Invalid cursor', 'BAD_REQUEST');
-    }
-
+    // The caller owns `filter` and `options`; read them once, before the first await.
+    const { runId, type, since, cursor, limit = DEFAULT_AUDIT_PAGE_LIMIT } = filter;
     const { owner } = options;
+    const refuse = (message: string): Error => dependencies.refusal(message, 'BAD_REQUEST');
+    if (!Number.isInteger(limit) || limit < 1 || limit > MAXIMUM_AUDIT_PAGE_LIMIT) {
+      throw refuse(`limit must be an integer from 1 to ${MAXIMUM_AUDIT_PAGE_LIMIT}`);
+    }
+    if (since !== undefined && (!Number.isInteger(since) || since < 0)) {
+      throw refuse('since must be a non-negative integer of epoch milliseconds');
+    }
+    if (
+      runId !== undefined &&
+      (typeof runId !== 'string' || runId.length < 1 || runId.length > 512)
+    ) {
+      throw refuse('runId must be a string of 1 to 512 characters');
+    }
+    if (type !== undefined && (typeof type !== 'string' || type.length < 1 || type.length > 128)) {
+      throw refuse('type must be a string of 1 to 128 characters');
+    }
+    let after = cursor === undefined ? undefined : decodeAuditCursor(cursor);
+    if (cursor !== undefined && after === undefined) throw refuse('Invalid cursor');
+
     const owners = new Map<string, string | undefined>();
     const mayRead = async (record: AuditRecord): Promise<boolean> => {
       if (owner === undefined) return true;
@@ -144,9 +153,9 @@ export function createAudit(dependencies: AuditDependencies): BureauAudit {
     const page: AuditRecord[] = [];
     for (;;) {
       const chunk = await trail.query({
-        ...(filter.runId === undefined ? {} : { runId: filter.runId }),
-        ...(filter.type === undefined ? {} : { type: filter.type }),
-        ...(filter.since === undefined ? {} : { since: filter.since }),
+        ...(runId === undefined ? {} : { runId }),
+        ...(type === undefined ? {} : { type }),
+        ...(since === undefined ? {} : { since }),
         ...(after === undefined ? {} : { after }),
         limit: SCAN_CHUNK,
       });

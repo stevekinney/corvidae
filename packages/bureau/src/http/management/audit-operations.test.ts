@@ -371,11 +371,18 @@ describe('bureau.audit.query in process (COR-1705)', () => {
     expect(host.records.map((record) => record.resource)).toContain('run-that-is-gone');
   });
 
-  it('refuses a cursor it did not issue and a limit outside 1 to 100 as BAD_REQUEST', async () => {
+  it('refuses a cursor it did not issue and a filter outside the operation’s bounds as BAD_REQUEST', async () => {
     const opened = await openBureau();
     cleanups.push(() => opened.dispose());
 
-    for (const filter of [{ cursor: 'nonsense' }, { limit: 0 }, { limit: 101 }]) {
+    for (const filter of [
+      { cursor: 'nonsense' },
+      { limit: 0 },
+      { limit: 101 },
+      { since: -1 },
+      { runId: '' },
+      { type: '' },
+    ]) {
       const refusal = await opened.bureau.audit.query(filter).catch((error: unknown) => error);
       expect([filter, (refusal as { code?: string }).code]).toEqual([filter, 'BAD_REQUEST']);
     }
