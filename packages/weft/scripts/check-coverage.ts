@@ -1011,7 +1011,7 @@ const CURRENT_BRANCH_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
         reason:
           'The remaining local-tail lines are listener teardown after terminal settlement, covered behaviorally but not mapped by Bun to the closing callback.',
         functions: 2,
-        lines: new Set([168, 169]),
+        lines: new Set([173, 174]),
         requireUncoveredLines: true,
       },
     ],
