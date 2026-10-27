@@ -1,10 +1,16 @@
-// Type-level tripwire (COR-1703, COR-1704): the flat review and schedule methods and the members
+// Type-level tripwire (COR-1703, COR-1704, COR-1705): the flat review and schedule methods and the members
 // that moved onto `bureau.internals` must not return to `Bureau`'s top level. If this file stops
 // compiling, a member that belongs behind `reviews`, `schedules`, or `internals` was declared on
 // `Bureau` again.
 
 import type { BureauMemberPath } from './http/operation-map.ts';
-import type { Bureau, BureauInternals, BureauReviews, BureauSchedules } from './types.ts';
+import type {
+  Bureau,
+  BureauAudit,
+  BureauInternals,
+  BureauReviews,
+  BureauSchedules,
+} from './types.ts';
 
 /** Compiles only when `Value` is `never`, so a member that returned names itself in the error. */
 type AssertNever<Value extends never> = Value;
@@ -51,10 +57,13 @@ type MovedToInternals = Extract<
 export type NoFlatReviewMembers = AssertNever<RemovedReviewMembers>;
 export type NoFlatScheduleMembers = AssertNever<RemovedScheduleMembers>;
 export type NothingMovedStaysOnBureau = AssertNever<MovedToInternals>;
+// `auditTrail` is reachable only as `internals.auditTrail`; `bureau.audit.query` reads it redacted.
+export type NoTopLevelAuditTrail = AssertNever<Extract<keyof Bureau, 'auditTrail'>>;
 
 // The replacements are declared, at the types the project document names.
 export type ReviewsAreDeclared = Bureau['reviews'] extends BureauReviews ? true : never;
 export type SchedulesAreDeclared = Bureau['schedules'] extends BureauSchedules ? true : never;
+export type AuditIsDeclared = Bureau['audit'] extends BureauAudit ? true : never;
 export type InternalsAreDeclared = Bureau['internals'] extends BureauInternals ? true : never;
 
 // `internals` carries every moved member under its new name.
@@ -101,10 +110,14 @@ export type SchedulesMembers = AssertNever<
   >
 >;
 
+// `audit` has exactly the one operation.
+export type AuditMembers = AssertNever<Exclude<keyof BureauAudit, 'query'>>;
+
 // A member path in the operation map names a member a Bureau has, through optional members and
 // into `internals`, and refuses one it does not.
 export const reviewsResolve: BureauMemberPath = 'reviews.resolve';
 export const registryList: BureauMemberPath = 'internals.taskRegistry.list';
+export const auditQuery: BureauMemberPath = 'audit.query';
 export const optionalWorkflows: BureauMemberPath = 'workflows.listRuns';
 // @ts-expect-error -- `reviews` has no `nonexistent` member
 export const missingReviewsMember: BureauMemberPath = 'reviews.nonexistent';

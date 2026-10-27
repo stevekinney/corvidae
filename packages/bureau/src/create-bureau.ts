@@ -503,6 +503,7 @@ import {
   DEFAULT_SESSION_INPUT_BACKLOG_LIMIT,
 } from './types';
 import { isSettlingRunAction, settledActionTimestamp } from './run-settlement';
+import { createAudit } from './audit/create-audit';
 import { createReviews } from './reviews/create-reviews';
 import { createSchedules } from './schedules/create-schedules';
 import { createWebhookNotifier, type WebhookNotifier } from './webhook-notifier';
@@ -18433,10 +18434,17 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       bureau.subscribeEventHistory(owner, listener, subscribeOptions),
   });
 
+  const audit = createAudit({
+    trail: () => auditTrailInstance,
+    ownerOf: ({ runId, detail }) => getOwner({ kind: 'audit', runId, detail }),
+    refusal: (message, code) => new BureauError(message, code),
+  });
+
   const bureau: Bureau<D> = {
     id: bureauId,
     reviews,
     schedules,
+    audit,
     internals: {
       hasExplicitId: options.id !== undefined,
       taskRetention: taskRetentionOf(options),

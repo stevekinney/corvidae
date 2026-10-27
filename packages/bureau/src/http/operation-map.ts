@@ -120,7 +120,7 @@ export const OPERATION_MAP = {
   'bureau.assets.uploads.append': { member: 'assets.appendUpload' },
   'bureau.assets.uploads.complete': { member: 'assets.admit' },
 
-  'bureau.audit.query': { member: 'internals.auditTrail.query' },
+  'bureau.audit.query': { member: 'audit.query' },
 
   'bureau.agents.list': { member: 'agents.list' },
   // Describes one catalog agent against the models catalog; no member does that yet, so the row
