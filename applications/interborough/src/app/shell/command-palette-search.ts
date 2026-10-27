@@ -76,6 +76,7 @@ const CHATS_SEARCHED = 100;
 const CONSOLE_PAGES: readonly ConsolePage[] = (
   [
     ['reviews', '/reviews', 'command'],
+    ['settings', '/settings', 'command'],
     ['workers', '/workers', 'engine'],
     ['storage', '/storage', 'engine'],
     ['system', '/system', 'engine'],

@@ -98,6 +98,11 @@ export const queryKeys = {
     /** The first page of the whole trail, read for the types the Type select offers. */
     types: () => ['audit', 'types'] as const,
   },
+  /** The Bureau's runtime settings: their values (`bureau.settings.get`) and their schema (`bureau.settings.schema`). */
+  settings: {
+    snapshot: () => ['settings', 'snapshot'] as const,
+    schema: () => ['settings', 'schema'] as const,
+  },
   workflows: {
     list: (filter: WorkflowListQuery) => ['workflows', 'list', filter] as const,
     detail: (id: string) => ['workflows', 'detail', id] as const,

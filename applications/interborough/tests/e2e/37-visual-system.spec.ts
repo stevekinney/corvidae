@@ -49,6 +49,7 @@ const PAGES = [
   '/storage',
   '/system',
   '/audit',
+  '/settings',
   '/goals',
   '/engine',
 ] as const;
