@@ -14,6 +14,7 @@ import {
   openBureau,
   type OpenedBureau,
   readFrames,
+  readWireBlocks,
   rpc,
   subscribeRequest,
 } from './management-fixtures.test-support.ts';
@@ -293,5 +294,39 @@ describe('bureau.settings operations', () => {
     const live = await second;
     expect(live.value).toMatchObject({ revision: 6, keys: ['tools.decide'] });
     await subscription.close();
+  });
+
+  describe('replay completion marker on the wire', () => {
+    it('sends the catch-up event before the replayComplete ping when resuming from an older revision', async () => {
+      const opened = await open();
+      await update(opened, { patch: { 'tools.wakeup': false }, expectedRevision: 0 });
+      const resumed = await opened.handler(
+        subscribeRequest('bureau.settings.events', {}, 'settings-reader-key', encodeCursor(0)),
+      );
+      const blocks = await readWireBlocks(resumed, (seen) =>
+        seen.some((block) => block.event === 'ping' && block.data.replayComplete === true),
+      );
+      expect(blocks.map((block) => block.event)).toEqual(['settings.changed', 'ping']);
+      expect(blocks[0]?.data).toMatchObject({ revision: 1, keys: [] });
+      expect(blocks[1]?.data).toMatchObject({ replayComplete: true });
+    });
+
+    it('marks replay complete at once when no catch-up event is needed', async () => {
+      const opened = await open();
+      const live = await opened.handler(
+        subscribeRequest('bureau.settings.events', {}, 'settings-reader-key'),
+      );
+      const blocks = await readWireBlocks(live, (seen) => seen.length >= 1);
+      expect(blocks.map((block) => block.event)).toEqual(['ping']);
+      expect(blocks[0]?.data).toMatchObject({ replayComplete: true });
+
+      await update(opened, { patch: { 'tools.wakeup': false }, expectedRevision: 0 });
+      const current = await opened.handler(
+        subscribeRequest('bureau.settings.events', {}, 'settings-reader-key', encodeCursor(1)),
+      );
+      const atCurrent = await readWireBlocks(current, (seen) => seen.length >= 1);
+      expect(atCurrent.map((block) => block.event)).toEqual(['ping']);
+      expect(atCurrent[0]?.data).toMatchObject({ replayComplete: true });
+    });
   });
 });

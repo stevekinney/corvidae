@@ -226,6 +226,7 @@ function changesOf(
   signal: AbortSignal,
   clock: Pick<RuntimeServices['clock'], 'now'>,
   catchUp: () => SettingsChangeEvent | undefined,
+  onReplayComplete: () => void,
 ): AsyncIterable<SettingsChangeEvent> {
   const pending: SettingsChange[] = [];
   let wake: (() => void) | undefined;
@@ -248,6 +249,8 @@ function changesOf(
           delivered = first.revision;
           yield first;
         }
+        // The one recorded event, when there is one, has been delivered: the marker follows it.
+        onReplayComplete();
         while (!signal.aborted) {
           const next = pending.shift();
           if (next !== undefined) {
@@ -303,9 +306,17 @@ export const settingsEventsOperation = defineOperation<
     const clock = (host.runtime ?? createDefaultRuntimeServices()).clock;
     const controller = new AbortController();
     let catchUp: SettingsChangeEvent | undefined;
+    // The marker is bound once the iterable exists, which is after the source below is created.
+    let markReplayComplete = () => {};
     // Listen first, then read the current revision: a change made in between is buffered, and the
     // generator drops it when the catch-up event already carries its revision.
-    const source = changesOf(host.settings, controller.signal, clock, () => catchUp);
+    const source = changesOf(
+      host.settings,
+      controller.signal,
+      clock,
+      () => catchUp,
+      () => markReplayComplete(),
+    );
     try {
       if (input.fromCursor !== undefined) {
         const resumed = decodeCursor(input.fromCursor) ?? -1;
@@ -327,7 +338,10 @@ export const settingsEventsOperation = defineOperation<
     subscriptionCount += 1;
     const iterable = createReplayAwareClosableIterable<SettingsChangeEvent>(
       (onReplayComplete) => {
-        onReplayComplete();
+        // Replay is complete at once with nothing to catch up; otherwise it completes after the
+        // catch-up event is delivered, so the marker never precedes a recorded event on the wire.
+        markReplayComplete = onReplayComplete;
+        if (catchUp === undefined) onReplayComplete();
         return source;
       },
       { close: () => controller.abort() },
