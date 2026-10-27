@@ -433,6 +433,21 @@ weft_dpmo_operations_total 0
 # HELP weft_task_backlog Number of queued tasks waiting for workers
 # TYPE weft_task_backlog gauge
 weft_task_backlog 0
+# HELP weft_connection_fleet_sse Number of active fleet Server-Sent Event subscribers
+# TYPE weft_connection_fleet_sse gauge
+weft_connection_fleet_sse 0
+# HELP weft_connection_fleet_websocket Number of active fleet WebSocket subscribers
+# TYPE weft_connection_fleet_websocket gauge
+weft_connection_fleet_websocket 0
+# HELP weft_connection_workflow_sse Number of active workflow Server-Sent Event subscribers
+# TYPE weft_connection_workflow_sse gauge
+weft_connection_workflow_sse 0
+# HELP weft_connection_workflow_websocket Number of active workflow WebSocket subscribers
+# TYPE weft_connection_workflow_websocket gauge
+weft_connection_workflow_websocket 0
+# HELP weft_connection_workers Number of registered worker WebSocket connections
+# TYPE weft_connection_workers gauge
+weft_connection_workers 0
 # HELP weft_task_queue_latency Time tasks spend queued before dispatch in milliseconds
 # TYPE weft_task_queue_latency histogram
 weft_task_queue_latency_count 0
