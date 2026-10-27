@@ -59,7 +59,7 @@ describe('the Interborough host', () => {
     const runsBefore = await first.bureau.listDurableRuns();
     const runIds = runsBefore?.items.map((item) => item.id) ?? [];
     expect(runIds.length).toBeGreaterThan(0);
-    const schedulesBefore = await first.bureau.listSchedules();
+    const schedulesBefore = await first.bureau.schedules.list();
     const scheduleIds = schedulesBefore?.items.map((schedule) => schedule.id) ?? [];
     expect(scheduleIds).toHaveLength(1);
     await stop(first);
@@ -73,7 +73,7 @@ describe('the Interborough host', () => {
       const state = await second.bureau.getDurableRun(id);
       expect(state?.status, id).toBe('completed');
     }
-    const schedulesAfter = await second.bureau.listSchedules();
+    const schedulesAfter = await second.bureau.schedules.list();
     expect(schedulesAfter?.items.map((schedule) => schedule.id)).toEqual(scheduleIds);
   });
 

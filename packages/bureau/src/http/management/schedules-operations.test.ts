@@ -236,10 +236,13 @@ describe('the agent a schedule runs', () => {
     const reads: string[] = [];
     const watched = new Proxy(opened.bureau, {
       get(target, key) {
-        if (key !== 'getScheduleInputPreview') return Reflect.get(target, key, target) as unknown;
-        return async (scheduleId: string) => {
-          reads.push(scheduleId);
-          throw new Error('a create must not read the stored input back');
+        if (key !== 'schedules') return Reflect.get(target, key, target) as unknown;
+        return {
+          ...target.schedules,
+          inputPreview: async (scheduleId: string) => {
+            reads.push(scheduleId);
+            throw new Error('a create must not read the stored input back');
+          },
         };
       },
     });
@@ -254,7 +257,7 @@ describe('the agent a schedule runs', () => {
 
   it('has no preview for a schedule whose input is media alone', async () => {
     const opened = await serve();
-    const summary = await opened.bureau.createSchedule({
+    const summary = await opened.bureau.schedules.create({
       agentName: 'writer',
       spec: '1h',
       input: [{ type: 'image', source: { kind: 'managed-asset', assetId: 'asset-media-only' } }],
@@ -523,7 +526,7 @@ describe('a workflow file’s schedule', () => {
       );
       expect([method, status(refused)]).toEqual([method, 404]);
     }
-    const awaited4 = await served.bureau.getSchedule(id);
+    const awaited4 = await served.bureau.schedules.get(id);
     expect(awaited4?.status).toBe('active');
   });
 });
@@ -533,10 +536,13 @@ describe('a schedule whose creation lost its locator', () => {
     const opened = await serve();
     const losing = new Proxy(opened.bureau, {
       get(target, key) {
-        if (key !== 'createSchedule') return Reflect.get(target, key, target) as unknown;
-        return async (definition: Parameters<typeof target.createSchedule>[0]) => {
-          const summary = await target.createSchedule(definition);
-          throw new ScheduleLocatorUnavailableError(summary!.id);
+        if (key !== 'schedules') return Reflect.get(target, key, target) as unknown;
+        return {
+          ...target.schedules,
+          create: async (definition: Parameters<typeof target.schedules.create>[0]) => {
+            const summary = await target.schedules.create(definition);
+            throw new ScheduleLocatorUnavailableError(summary!.id);
+          },
         };
       },
     });

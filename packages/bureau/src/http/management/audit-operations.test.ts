@@ -250,13 +250,13 @@ describe('filters and paging', () => {
     const opened = await openBureau();
     cleanups.push(() => opened.dispose());
     const trail = opened.bureau.internals.auditTrail!;
-    const alice = await opened.bureau.createSchedule({
+    const alice = await opened.bureau.schedules.create({
       agentName: 'default',
       spec: '1h',
       input: 'tick',
       principal: OWNER.alice,
     });
-    const bob = await opened.bureau.createSchedule({
+    const bob = await opened.bureau.schedules.create({
       agentName: 'default',
       spec: '1h',
       input: 'tick',

@@ -387,7 +387,7 @@ export class ReviewSupersededEvent extends ReviewLifecycleEvent {
  * bureau-level facts with no owning per-run surface (scheduled fires are
  * headless; see `runtime-composition.ts`'s `buildScheduledRunServices`).
  * `schedule.created` reaches this emitter differently from the other five:
- * `Bureau.createSchedule` passes this bureau's own `emitter` into
+ * `bureau.schedules.create` passes this bureau's own `emitter` into
  * `createAgentScheduler`, so `createAgentSchedule` (AB-298) dispatches
  * directly onto it, rather than `create-bureau.ts` dispatching a second copy
  * itself the way `pauseSchedule`/`resumeSchedule`/`cancelSchedule` do.

@@ -279,7 +279,7 @@ function reportedDiagnostics() {
  * the history's reads held, cannot finish its retention step until they are released.
  */
 async function startFire(bureau: Bureau, sessionId: string): Promise<string> {
-  const created = await bureau.createSchedule({
+  const created = await bureau.schedules.create({
     agentName: 'default',
     input: 'check in',
     spec: '1m',
@@ -292,7 +292,7 @@ async function startFire(bureau: Bureau, sessionId: string): Promise<string> {
   }
   void bureau.runDurableMaintenance(occurrence).catch(() => undefined);
   return pollUntil(async () => {
-    const schedule = await bureau.getSchedule(created.id);
+    const schedule = await bureau.schedules.get(created.id);
     return schedule?.currentWorkflowId;
   }, 'the tick to launch a fire');
 }

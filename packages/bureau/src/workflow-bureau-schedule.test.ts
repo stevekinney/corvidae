@@ -34,12 +34,12 @@ async function start(
 const HOURLY = { trigger: { kind: 'schedule', spec: '1h' } };
 
 async function statusOf(harness: WorkflowBureauHarness, id: string): Promise<string | undefined> {
-  const summary = await harness.bureau.getSchedule(id);
+  const summary = await harness.bureau.schedules.get(id);
   return summary?.status;
 }
 
 async function liveIds(harness: WorkflowBureauHarness): Promise<string[] | undefined> {
-  const page = await harness.bureau.listSchedules({ status: ['active', 'paused'] });
+  const page = await harness.bureau.schedules.list({ status: ['active', 'paused'] });
   return page?.items.map((entry) => entry.id);
 }
 
@@ -49,7 +49,7 @@ describe('bureau.schedules on a workflow’s schedule', () => {
     await harness.putWorkflow('digest', HOURLY);
     const id = 'bureau-workflow-schedule:digest:1';
 
-    const all = await harness.bureau.listSchedules();
+    const all = await harness.bureau.schedules.list();
     expect(await statusOf(harness, id)).toBe('active');
     expect(all?.items.map((entry) => entry.id)).toEqual([id]);
     expect(await harness.bureau.getOwner({ kind: 'schedule', id })).toBe('anonymous:local');
@@ -63,9 +63,9 @@ describe('bureau.schedules on a workflow’s schedule', () => {
     await harness.putWorkflow('digest', HOURLY);
     const id = 'bureau-workflow-schedule:digest:1';
     for (const write of [
-      () => harness.bureau.pauseSchedule(id),
-      () => harness.bureau.resumeSchedule(id),
-      () => harness.bureau.cancelSchedule(id),
+      () => harness.bureau.schedules.pause(id),
+      () => harness.bureau.schedules.resume(id),
+      () => harness.bureau.schedules.cancel(id),
     ]) {
       const error = await write().catch((thrown: unknown) => thrown);
       expect(error).toBeInstanceOf(BureauError);
@@ -82,14 +82,14 @@ describe('bureau.schedules on a workflow’s schedule', () => {
         },
       },
     });
-    const summary = await harness.bureau.createSchedule({
+    const summary = await harness.bureau.schedules.create({
       agentName: 'default',
       input: 'tick',
       spec: '1h',
     });
-    expect(await harness.bureau.pauseSchedule(summary!.id)).toBe(true);
-    expect(await harness.bureau.resumeSchedule(summary!.id)).toBe(true);
-    expect(await harness.bureau.cancelSchedule(summary!.id)).toBe(true);
+    expect(await harness.bureau.schedules.pause(summary!.id)).toBe(true);
+    expect(await harness.bureau.schedules.resume(summary!.id)).toBe(true);
+    expect(await harness.bureau.schedules.cancel(summary!.id)).toBe(true);
   });
 
   it('is changed only by the workflow’s own operations, and a direct cancel through the engine is put back at the next change to the files', async () => {
@@ -145,8 +145,8 @@ describe('restarting a Bureau over workflow files', () => {
 
     for (const restart of [1, 2]) {
       const bureau = await startWorkflowBureau({ directory: workflows, overrides });
-      const all = await bureau.bureau.listSchedules();
-      const live = await bureau.bureau.listSchedules({ status: ['active', 'paused'] });
+      const all = await bureau.bureau.schedules.list();
+      const live = await bureau.bureau.schedules.list({ status: ['active', 'paused'] });
       expect(
         all?.items.map((entry) => entry.id),
         `restart ${restart}`,

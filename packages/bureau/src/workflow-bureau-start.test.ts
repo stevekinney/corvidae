@@ -104,7 +104,7 @@ describe('a Bureau over a workflow directory', () => {
       'invalid',
     );
     // The schedule exists for the ready file only.
-    const schedules = await harness.bureau.listSchedules();
+    const schedules = await harness.bureau.schedules.list();
     expect(schedules?.items.map((schedule) => schedule.id)).toEqual([
       'bureau-workflow-schedule:digest:1',
     ]);

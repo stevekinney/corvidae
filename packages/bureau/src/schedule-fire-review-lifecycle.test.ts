@@ -634,7 +634,7 @@ describe('a fire’s task stream ends when its last review closes', () => {
         }),
       },
     });
-    const created = await bureau.createSchedule({
+    const created = await bureau.schedules.create({
       agentName: 'default',
       input: 'check in',
       spec: '1m',
@@ -643,7 +643,7 @@ describe('a fire’s task stream ends when its last review closes', () => {
     await bureau.runDurableMaintenance(created?.nextFireAt ?? 0);
     await entered.promise;
     const fireId = await pollUntil(async () => {
-      const schedule = await bureau.getSchedule(created?.id ?? '');
+      const schedule = await bureau.schedules.get(created?.id ?? '');
       return schedule?.currentWorkflowId ?? undefined;
     }, 'the fire to start');
     const follow = async () =>
@@ -724,7 +724,7 @@ describe('a fire’s task stream ends when its last review closes', () => {
         }),
       },
     });
-    const created = await bureau.createSchedule({
+    const created = await bureau.schedules.create({
       agentName: 'default',
       input: 'check in',
       spec: '1m',
@@ -733,7 +733,7 @@ describe('a fire’s task stream ends when its last review closes', () => {
     await bureau.runDurableMaintenance(created?.nextFireAt ?? 0);
     await entered.promise;
     const fireId = await pollUntil(async () => {
-      const schedule = await bureau.getSchedule(created?.id ?? '');
+      const schedule = await bureau.schedules.get(created?.id ?? '');
       return schedule?.currentWorkflowId ?? undefined;
     }, 'the fire to start');
     const reading = readFrames(

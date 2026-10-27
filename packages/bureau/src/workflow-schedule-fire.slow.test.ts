@@ -65,7 +65,7 @@ async function scheduleStatus(
   harness: WorkflowBureauHarness,
   id: string,
 ): Promise<string | undefined> {
-  const summary = await harness.bureau.getSchedule(id);
+  const summary = await harness.bureau.schedules.get(id);
   return summary?.status;
 }
 

@@ -72,12 +72,12 @@ describe('a principal that is not text (COR-718)', () => {
   );
 
   it.each(NOT_TEXT)(
-    'is refused by createSchedule, which registers nothing (%s)',
+    'is refused by schedules.create, which registers nothing (%s)',
     async (_label, principal) => {
       const bureau = await openDurableBureau();
       try {
         const refusal = await rejectionOf(
-          bureau.createSchedule({
+          bureau.schedules.create({
             agentName: 'worker',
             input: 'tick',
             spec: '1h',
@@ -86,7 +86,7 @@ describe('a principal that is not text (COR-718)', () => {
         );
 
         expect(refusal).toMatchObject({ code: 'BAD_REQUEST' });
-        const listed = await bureau.listSchedules();
+        const listed = await bureau.schedules.list();
         expect(listed?.items ?? []).toHaveLength(0);
       } finally {
         await bureau.dispose();
@@ -189,16 +189,16 @@ describe('a principal in a reserved namespace (COR-718)', () => {
   );
 
   it.each(RESERVED)(
-    'is refused by createSchedule, which registers nothing (%s)',
+    'is refused by schedules.create, which registers nothing (%s)',
     async (_label, principal) => {
       const bureau = await openDurableBureau();
       try {
         const refusal = await rejectionOf(
-          bureau.createSchedule({ agentName: 'worker', input: 'tick', spec: '1h', principal }),
+          bureau.schedules.create({ agentName: 'worker', input: 'tick', spec: '1h', principal }),
         );
 
         expect(refusal).toMatchObject({ code: 'BAD_REQUEST' });
-        const listed = await bureau.listSchedules();
+        const listed = await bureau.schedules.list();
         expect(listed?.items ?? []).toHaveLength(0);
       } finally {
         await bureau.dispose();

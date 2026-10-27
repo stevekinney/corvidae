@@ -163,7 +163,7 @@ async function parkedScenario(scope: ScenarioScope): Promise<void> {
       sleeper?.workflowVersion,
     );
     // The deleted workflow keeps nothing scheduled.
-    const live = await bureau.listSchedules({ status: ['active', 'paused'] });
+    const live = await bureau.schedules.list({ status: ['active', 'paused'] });
     expect(live?.items.map((schedule) => schedule.id).toSorted()).toEqual([
       'bureau-workflow-schedule:midstep:1',
       'bureau-workflow-schedule:sleeper:1',
