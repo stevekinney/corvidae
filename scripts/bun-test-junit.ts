@@ -16,7 +16,13 @@
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
+import {
+  currentWorkspaceDirectory,
+  narrowBunTestArguments,
+  selectedFilesFor,
+} from './affected-tests-manifest.ts';
 import { budgetFailures, readAllowlist } from './check-test-durations.ts';
+import { rootScriptEnvironment } from './environment-configuration.ts';
 
 export const JUNIT_DIRECTORY = join('test-output', 'junit');
 
@@ -58,10 +64,24 @@ export function finishRun(
 }
 
 async function main(): Promise<number> {
-  const { reportName, bunTestArguments } = parseWrapperArguments(Bun.argv.slice(2));
+  const parsed = parseWrapperArguments(Bun.argv.slice(2));
+  const { reportName } = parsed;
   mkdirSync(JUNIT_DIRECTORY, { recursive: true });
   const reportPath = join(JUNIT_DIRECTORY, `${reportName}.xml`);
   rmSync(reportPath, { force: true });
+  // `bun scripts/affected-tests.ts run` narrows this lane to the test files a change can reach.
+  const selected = selectedFilesFor(rootScriptEnvironment(), currentWorkspaceDirectory());
+  const narrowed =
+    selected === null
+      ? parsed.bunTestArguments
+      : narrowBunTestArguments(parsed.bunTestArguments, selected, process.cwd());
+  if (narrowed === null) {
+    process.stdout.write(
+      `bun-test-junit: no test file in this lane is reachable from the change; nothing to run.\n`,
+    );
+    return 0;
+  }
+  const bunTestArguments = narrowed;
   const child = Bun.spawn(
     ['bun', 'test', ...bunTestArguments, '--reporter=junit', `--reporter-outfile=${reportPath}`],
     { stdout: 'inherit', stderr: 'inherit', stdin: 'inherit' },

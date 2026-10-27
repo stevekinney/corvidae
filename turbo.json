@@ -35,18 +35,30 @@
     "test": {
       "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit"],
-      "env": ["CODEX_CI", "NODE_ENV"],
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
         "$TURBO_ROOT$/scripts/check-test-durations.ts",
-        "$TURBO_ROOT$/scripts/test-duration-allowlist.json"
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
+        "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts",
+        "$TURBO_ROOT$/scripts/workspace-directories.ts"
       ]
     },
     "test:slow": {
       "outputs": [],
       "dependsOn": ["transit"],
-      "env": ["CODEX_CI", "NODE_ENV"]
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
+        "$TURBO_ROOT$/scripts/bun-test-junit.ts",
+        "$TURBO_ROOT$/scripts/bun-test-selected.ts",
+        "$TURBO_ROOT$/scripts/check-test-durations.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts",
+        "$TURBO_ROOT$/scripts/workspace-directories.ts"
+      ]
     },
     "test:gate": {
       "dependsOn": ["transit", "test"]
@@ -62,7 +74,7 @@
       "dependsOn": ["^transit"]
     },
     "//#test:self": {
-      "env": ["CODEX_CI", "NODE_ENV"],
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
       "outputs": ["test-output/junit/self.xml"],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -73,13 +85,13 @@
       ]
     },
     "//#test:self:slow": {
-      "env": ["CODEX_CI", "NODE_ENV"],
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
       "outputs": [],
       "inputs": ["$TURBO_DEFAULT$"]
     },
     "//#test:browser-fixtures": {
       "dependsOn": ["@lostgradient/browser-fixtures#transit"],
-      "env": ["CODEX_CI", "TMPDIR"],
+      "env": ["CODEX_CI", "TMPDIR", "CORVIDAE_TEST_SELECTION"],
       "outputs": [
         "scripts/browser-fixtures/.playwright/manifest.json",
         "scripts/browser-fixtures/.playwright/fixture-modules.ts",
@@ -103,13 +115,16 @@
     "@lostgradient/bureau#test": {
       "dependsOn": ["transit"],
       "outputs": ["test-output/junit/**"],
-      "env": ["CODEX_CI", "NODE_ENV"],
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
         "$TURBO_ROOT$/scripts/check-test-durations.ts",
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
-        "$TURBO_ROOT$/documentation/runtime-contracts.md"
+        "$TURBO_ROOT$/documentation/runtime-contracts.md",
+        "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts",
+        "$TURBO_ROOT$/scripts/workspace-directories.ts"
       ]
     },
     "@lostgradient/weft#test": {
@@ -118,7 +133,10 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
         "$TURBO_ROOT$/scripts/check-test-durations.ts",
-        "$TURBO_ROOT$/scripts/test-duration-allowlist.json"
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
+        "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts",
+        "$TURBO_ROOT$/scripts/workspace-directories.ts"
       ],
       "dependsOn": ["transit"],
       "env": [
@@ -134,7 +152,8 @@
         "WEFT_COVERAGE_MODE",
         "NODE_V8_COVERAGE",
         "WEFT_KEEP_DURABILITY_FIXTURES",
-        "WEFT_TEST_POSTGRES_URL"
+        "WEFT_TEST_POSTGRES_URL",
+        "CORVIDAE_TEST_SELECTION"
       ]
     },
     "@lostgradient/weft#test:coverage": {
@@ -187,7 +206,10 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
         "$TURBO_ROOT$/scripts/check-test-durations.ts",
-        "$TURBO_ROOT$/scripts/test-duration-allowlist.json"
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
+        "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts",
+        "$TURBO_ROOT$/scripts/workspace-directories.ts"
       ]
     },
     "@lostgradient/interborough#test:gate": {
@@ -229,7 +251,7 @@
     "@lostgradient/ventriloquist#test": {
       "outputs": ["test-results/**", "test-output/junit/**"],
       "dependsOn": ["transit"],
-      "env": ["CODEX_CI", "NODE_ENV"],
+      "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
@@ -237,7 +259,10 @@
         "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
         "$TURBO_ROOT$/scripts/check-test-durations.ts",
-        "$TURBO_ROOT$/scripts/test-duration-allowlist.json"
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
+        "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts",
+        "$TURBO_ROOT$/scripts/workspace-directories.ts"
       ]
     },
     "@lostgradient/ventriloquist#test:coverage": {
@@ -270,7 +295,7 @@
     "@lostgradient/cinder#test": {
       "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit"],
-      "env": ["CODEX_CI", "NODE_ENV", "CINDER_SVG_DATA_URI_ROOTS"],
+      "env": ["CODEX_CI", "NODE_ENV", "CINDER_SVG_DATA_URI_ROOTS", "CORVIDAE_TEST_SELECTION"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/components/chat/src/**",
@@ -278,7 +303,10 @@
         "$TURBO_ROOT$/scripts/browser-fixtures/src/**",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
         "$TURBO_ROOT$/scripts/check-test-durations.ts",
-        "$TURBO_ROOT$/scripts/test-duration-allowlist.json"
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
+        "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts",
+        "$TURBO_ROOT$/scripts/workspace-directories.ts"
       ]
     }
   },
