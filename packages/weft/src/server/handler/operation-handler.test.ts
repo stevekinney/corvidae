@@ -113,6 +113,25 @@ describe('createOperationHandler', () => {
     socket.close();
   });
 
+  it('refuses a WebSocket upgrade when authentication returns a response', async () => {
+    let upgradeCalls = 0;
+    const handler = createOperationHandler({
+      operations: [websocketEchoOperation],
+      host: {},
+      authenticate: async () => new Response('unauthorized', { status: 401 }),
+    });
+
+    const upgraded = await handler.upgrade(new Request('http://localhost/jsonrpc'), {
+      upgrade() {
+        upgradeCalls += 1;
+        return true;
+      },
+    });
+
+    expect(upgraded).toBe(false);
+    expect(upgradeCalls).toBe(0);
+  });
+
   it('starts and delivers a catalog subscription over a real WebSocket', async () => {
     const handler = createOperationHandler({
       operations: [websocketSubscriptionOperation],
