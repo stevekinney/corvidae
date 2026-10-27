@@ -227,9 +227,19 @@ describe('createOperationHandler', () => {
     let resolveSetup: (() => void) | undefined;
     let setupEntered: (() => void) | undefined;
     let closed = 0;
+    let pumpStarted = 0;
+    let resolveCloseCompleted: (() => void) | undefined;
+    const closeCompleted = new Promise<void>((resolve) => {
+      resolveCloseCompleted = resolve;
+    });
     const entered = new Promise<void>((resolve) => {
       setupEntered = resolve;
     });
+    let resolveCloseObserved: (() => void) | undefined;
+    const closeObserved = new Promise<void>((resolve) => {
+      resolveCloseObserved = resolve;
+    });
+    const frames: Array<Record<string, unknown>> = [];
     const operation = defineOperation({
       name: 'probe.websocket.deferred',
       mcpExposable: false,
@@ -249,9 +259,13 @@ describe('createOperationHandler', () => {
         });
         return {
           envelope: { subscriptionId: 'sub_deferred', cursor: '-1' },
-          iterable: (async function* () {})(),
+          iterable: (async function* () {
+            pumpStarted += 1;
+            yield { value: 'late' };
+          })(),
           close: async () => {
             closed += 1;
+            resolveCloseCompleted?.();
           },
         };
       },
@@ -265,18 +279,30 @@ describe('createOperationHandler', () => {
         }
         return handler(request);
       },
-      websocket: handler.websocket,
+      websocket: {
+        ...handler.websocket,
+        close(ws) {
+          handler.websocket.close(ws);
+          resolveCloseObserved?.();
+        },
+      },
     });
     const socket = new WebSocket(`ws://localhost:${websocketServer.port}/jsonrpc`);
+    socket.addEventListener('message', (event) => {
+      frames.push(JSON.parse(String(event.data)) as Record<string, unknown>);
+    });
     await new Promise<void>((resolve) => socket.addEventListener('open', () => resolve()));
     socket.send(
       JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'probe.websocket.deferred', params: {} }),
     );
     await entered;
     socket.close();
+    await closeObserved;
     resolveSetup?.();
-    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    await closeCompleted;
     expect(closed).toBe(1);
+    expect(pumpStarted).toBe(0);
+    expect(frames).toEqual([]);
   });
 
   it('is exported from the package entry point', () => {
