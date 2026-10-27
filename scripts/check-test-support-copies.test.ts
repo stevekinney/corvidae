@@ -26,7 +26,7 @@ function matchingFiles(): Record<string, string> {
 }
 
 describe('copies of @lostgradient/testing modules', () => {
-  test('are the hang guard and the wait helpers, for Weft and for the root, and the temporary-path helper, for Bureau', () => {
+  test('are the hang guard and the wait helpers, for Weft, the root, and Armorer, and the temporary-path helper, for Bureau', () => {
     expect(TEST_SUPPORT_COPIES).toEqual([
       {
         source: 'testing/testing/src/hang-guard.ts',
@@ -38,6 +38,14 @@ describe('copies of @lostgradient/testing modules', () => {
         copy: 'packages/weft/scripts/lib/wait-until.ts',
       },
       { source: 'testing/testing/src/wait-until.ts', copy: 'scripts/wait-until.ts' },
+      {
+        source: 'testing/testing/src/hang-guard.ts',
+        copy: 'packages/armorer/test/fixtures/hang-guard.ts',
+      },
+      {
+        source: 'testing/testing/src/wait-until.ts',
+        copy: 'packages/armorer/test/fixtures/wait-until.ts',
+      },
       {
         source: 'testing/testing/src/temporary-path.ts',
         copy: 'packages/bureau/src/test/temporary-path.ts',

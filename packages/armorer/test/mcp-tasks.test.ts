@@ -25,6 +25,7 @@ import {
   type StoreDouble,
   type WireResponse,
 } from './fixtures/mcp-task-harness';
+import { awakeTurns, quietFor, waitUntil } from './fixtures/wait-until';
 
 /**
  * The 2026-07-28 Tasks extension (`io.modelcontextprotocol/tasks`) served by
@@ -122,10 +123,9 @@ async function getMcpTask(mcp: MCPServer, taskId: string, init: Parameters<typeo
 }
 
 async function settled(mcp: MCPServer, taskId: string): Promise<Record<string, unknown>> {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
+  for await (const _turn of awakeTurns()) {
     const task = expectResult(await getMcpTask(mcp, taskId));
     if (task['status'] !== 'working' && task['status'] !== 'input_required') return task;
-    await Bun.sleep(1);
   }
   throw new Error(`MCP task ${taskId} never reached a terminal status`);
 }
@@ -217,7 +217,8 @@ describe('creating and completing an MCP task', () => {
       resolved = true;
       return response;
     });
-    await Bun.sleep(20);
+    // Nothing answers while the create is held, and load can only delay an answer further.
+    await quietFor(20);
     expect(resolved).toBe(false);
     expect(harness.started()).toBe(0);
 
@@ -288,10 +289,7 @@ describe('creating and completing an MCP task', () => {
     });
     const harness = await startHarness({ toolbox: [progressing] }, store);
     const taskId = await createMcpTask(harness);
-    for (let attempt = 0; attempt < 100; attempt += 1) {
-      if (storedRecord(store, taskId)?.statusMessage === 'halfway') break;
-      await Bun.sleep(1);
-    }
+    await waitUntil(() => storedRecord(store, taskId)?.statusMessage === 'halfway');
 
     expect(expectResult(await getMcpTask(harness.mcp, taskId))['statusMessage']).toBe('halfway');
 
@@ -322,13 +320,12 @@ describe('creating and completing an MCP task', () => {
     const harness = await startHarness({ toolbox: [chatty] }, store);
     const taskId = await createMcpTask(harness);
 
-    await Bun.sleep(30);
+    // Both progress messages are issued by now; the first write is the one held.
+    await waitUntil(() => store.batchCount >= 2);
     latch.resolve();
-    for (let attempt = 0; attempt < 200; attempt += 1) {
-      if (storedRecord(store, taskId)?.statusMessage === 'second') break;
-      await Bun.sleep(1);
-    }
-    await Bun.sleep(20);
+    await waitUntil(() => storedRecord(store, taskId)?.statusMessage === 'second');
+    // A write issued out of order would land after this point and replace 'second'.
+    await quietFor(20);
 
     expect(storedRecord(store, taskId)?.statusMessage).toBe('second');
     gate.resolve('');
@@ -436,11 +433,11 @@ describe('cancellation, expiry and shutdown', () => {
 
     jest.advanceTimersByTime(5_001);
     jest.useRealTimers();
-    await Bun.sleep(10);
+    await waitUntil(
+      async () => (await getMcpTask(harness.mcp, taskId)).error?.code === INVALID_PARAMS,
+    );
 
     expect(harness.signals[0]?.aborted).toBe(true);
-    const lookup = await getMcpTask(harness.mcp, taskId);
-    expect(lookup.error?.code).toBe(INVALID_PARAMS);
     await harness.mcp.executionLifecycle.whenIdle();
     await harness.mcp.shutdown();
     expect(harness.store.values.has(`${MCP_TASK_KEY_PREFIX}${taskId}`)).toBe(false);
@@ -485,10 +482,10 @@ describe('input and authorization', () => {
     const taskId = created['taskId'] as string;
 
     let task = expectResult(await getMcpTask(harness.mcp, taskId));
-    for (let attempt = 0; attempt < 100 && task['status'] === 'working'; attempt += 1) {
-      await Bun.sleep(1);
+    await waitUntil(async () => {
       task = expectResult(await getMcpTask(harness.mcp, taskId));
-    }
+      return task['status'] !== 'working';
+    });
     expect(task['status']).toBe('input_required');
     const requests = task['inputRequests'] as Record<string, { method: string }>;
     const key = Object.keys(requests)[0]!;
@@ -535,11 +532,8 @@ describe('input and authorization', () => {
       ),
     );
     const taskId = created['taskId'] as string;
-    for (let attempt = 0; attempt < 200 && reported.length === 0; attempt += 1) {
-      await Bun.sleep(1);
-    }
+    await waitUntil(() => reported.length > 0);
     await harness.mcp.executionLifecycle.whenIdle();
-    await Bun.sleep(10);
 
     const task = expectResult(await getMcpTask(harness.mcp, taskId));
 
@@ -584,13 +578,12 @@ describe('input and authorization', () => {
     );
     const taskId = created['taskId'] as string;
     const outstanding = async (previous?: string): Promise<string> => {
-      for (let attempt = 0; attempt < 200; attempt += 1) {
+      for await (const _turn of awakeTurns()) {
         const task = expectResult(await getMcpTask(harness.mcp, taskId));
         const key = Object.keys((task['inputRequests'] as object | undefined) ?? {})[0];
         if (task['status'] === 'input_required' && key !== undefined && key !== previous) {
           return key;
         }
-        await Bun.sleep(1);
       }
       throw new Error('no outstanding input request');
     };
@@ -701,7 +694,8 @@ describe('durability', () => {
     // The first instance was never shut down: its tool settles after the recovery.
     first.release('!');
     await first.mcp.executionLifecycle.whenIdle();
-    await Bun.sleep(20);
+    // The first instance must write nothing more; load can only delay a write, never bring it forward.
+    await quietFor(20);
 
     expect(storedRecord(store, taskId)).toMatchObject({
       status: 'failed',
@@ -728,11 +722,8 @@ describe('durability', () => {
     // Batch 1 was the create; the completion write is batch 2 and is rejected once.
     store.fault(store.batchCount + 1, 'reject');
     harness.release('!');
-    for (let attempt = 0; attempt < 200 && reported.length === 0; attempt += 1) {
-      await Bun.sleep(1);
-    }
+    await waitUntil(() => reported.length > 0);
     await harness.mcp.executionLifecycle.whenIdle();
-    await Bun.sleep(10);
 
     const task = expectResult(await getMcpTask(harness.mcp, taskId));
 
