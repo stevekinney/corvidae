@@ -5,6 +5,7 @@ import {
   closeJsonRpcSessionsForShutdown,
   closeJsonRpcWebSocketSession,
   handleJsonRpcWebSocketMessage,
+  openGenericJsonRpcWebSocketSession,
   openJsonRpcWebSocketSession,
   type WebSocketData,
 } from './json-rpc-websocket-runtime.ts';
@@ -153,6 +154,39 @@ describe('json-rpc websocket runtime helpers', () => {
       expect(activeSessions.size).toBe(0);
       expect(errorSpy).toHaveBeenCalledWith(
         '[weft] /jsonrpc WS session construction failed',
+        expect.any(Error),
+      );
+    } finally {
+      createJsonRpcWebSocketSessionSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('logs and closes a generic socket when session construction throws', async () => {
+    const { ws, closeCalls } = createWebSocket();
+    const activeSessions = new Set<JsonRpcWebSocketSession>();
+    const errorSpy = spyOn(console, 'error').mockImplementation(() => {});
+    const jsonRpcModule = await import('./json-rpc-websocket.ts');
+    const createJsonRpcWebSocketSessionSpy = spyOn(
+      jsonRpcModule,
+      'createJsonRpcWebSocketSession',
+    ).mockImplementation(() => {
+      throw new Error('generic session construction failed');
+    });
+
+    try {
+      openGenericJsonRpcWebSocketSession({
+        ws,
+        registry: {} as never,
+        host: {},
+        activeSessions,
+      });
+
+      expect(closeCalls).toEqual([{ code: 1011, reason: 'session construction failed' }]);
+      expect(ws.data.jsonRpcSession).toBeUndefined();
+      expect(activeSessions.size).toBe(0);
+      expect(errorSpy).toHaveBeenCalledWith(
+        '[weft] generic JSON-RPC WS session construction failed',
         expect.any(Error),
       );
     } finally {

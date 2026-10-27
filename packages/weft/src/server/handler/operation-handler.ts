@@ -1,8 +1,15 @@
+import type { ServerWebSocket } from 'bun';
 import { z } from 'zod';
 
 import type { AuthContext } from '../authentication.ts';
 import type { DiscoveryInfo } from '../discovery-info.ts';
 import { handleJsonRpcHttpRequest } from '../json-rpc-http.ts';
+import {
+  closeJsonRpcWebSocketSession,
+  handleJsonRpcWebSocketMessage,
+  openGenericJsonRpcWebSocketSession,
+  type WebSocketData,
+} from '../json-rpc-websocket-runtime.ts';
 import {
   createOperationRegistry,
   executeOperation,
@@ -16,6 +23,7 @@ import { GENERIC_SUBSCRIPTION_ROUTE_PREFIX, JSON_RPC_PATH } from '../route-model
 import {
   buildPreflightResponse,
   decorateResponseWithCors,
+  isOriginAllowed,
   isPreflightRequest,
   resolveCorsPolicy,
   validateCorsOptions,
@@ -108,7 +116,21 @@ export type OperationHandlerOptions<Host> = {
 };
 
 /** A fetch handler over a caller-supplied operation registry. */
-export type OperationHandler = (request: Request) => Promise<Response>;
+export type OperationHandlerUpgradeServer = {
+  upgrade(request: Request, options: { data: WebSocketData }): boolean;
+};
+
+export type OperationHandlerWebSocket = {
+  open(ws: ServerWebSocket<WebSocketData>): void;
+  message(ws: ServerWebSocket<WebSocketData>, message: string | Buffer): void;
+  close(ws: ServerWebSocket<WebSocketData>): void;
+};
+
+/** A callable catalog handler with an optional Bun WebSocket entry point. */
+export type OperationHandler = ((request: Request) => Promise<Response>) & {
+  upgrade(request: Request, server: OperationHandlerUpgradeServer): Promise<boolean>;
+  websocket: OperationHandlerWebSocket;
+};
 
 const HEALTH_PATH = '/v1/health';
 
@@ -166,8 +188,10 @@ function normalizedPathname(request: Request): string {
  *
  * It does not serve the engine's `/mcp` (its workflow tools and resources),
  * `/.well-known/*`, `/v1/metrics`, the workflow WebSocket streams, or any
- * remote-worker route; those need an `Engine` and stay behind `serve()`. A
- * catalog's own `mcpExposable` operations can be served as MCP tools by
+ * remote-worker route; those need an `Engine` and stay behind `serve()`. Its
+ * `upgrade` and `websocket` properties do serve catalog JSON-RPC WebSocket
+ * operations that declare `transports.jsonRpcWebSocket`. A catalog's own
+ * `mcpExposable` operations can be served as MCP tools by
  * mounting `createOperationMcpMount` from `@lostgradient/weft`. Rate limiting stays there too, since its key falls back
  * to the client address a fetch handler cannot see; put a limiter in front.
  *
@@ -222,6 +246,7 @@ export function createOperationHandler<Host>(
     authenticates: authenticate !== undefined,
     publicPaths,
   });
+  const activeSessions = new Set<import('../json-rpc-websocket.ts').JsonRpcWebSocketSession>();
 
   const handle = async (request: Request): Promise<Response> => {
     const pathname = normalizedPathname(request);
@@ -241,7 +266,7 @@ export function createOperationHandler<Host>(
     return routeCatalog({ request, pathname, principal, registry, documents, options });
   };
 
-  return async (request) => {
+  const handler = async (request: Request): Promise<Response> => {
     if (corsPolicy !== undefined && isPreflightRequest(request)) {
       return buildPreflightResponse(corsPolicy, request);
     }
@@ -258,6 +283,50 @@ export function createOperationHandler<Host>(
     }
     return corsPolicy === undefined ? response : decorate(corsPolicy, request, response);
   };
+
+  handler.upgrade = async (
+    request: Request,
+    server: OperationHandlerUpgradeServer,
+  ): Promise<boolean> => {
+    const pathname = normalizedPathname(request);
+    if (pathname !== JSON_RPC_PATH) return false;
+    const origin = request.headers.get('Origin');
+    if (corsPolicy !== undefined && origin !== null && !isOriginAllowed(corsPolicy, origin)) {
+      return false;
+    }
+    let authContext: AuthContext | undefined;
+    const isPublic = publicPaths.has(pathname) || mounts.isPublic(pathname);
+    if (authenticate !== undefined && !isPublic) {
+      const outcome = await authenticate(request);
+      if (outcome instanceof Response) return false;
+      authContext = outcome;
+    }
+    return server.upgrade(request, {
+      data: {
+        pathname,
+        connectionType: 'jsonrpc',
+        principal: authContextToPrincipal(authContext),
+      },
+    });
+  };
+  handler.websocket = {
+    open(ws: ServerWebSocket<WebSocketData>) {
+      openGenericJsonRpcWebSocketSession({
+        ws,
+        registry,
+        host: options.host,
+        activeSessions,
+        discoverDocument: documents.openRpc,
+      });
+    },
+    message(ws: ServerWebSocket<WebSocketData>, message: string | Buffer) {
+      handleJsonRpcWebSocketMessage(ws, message);
+    },
+    close(ws: ServerWebSocket<WebSocketData>) {
+      closeJsonRpcWebSocketSession({ session: ws.data.jsonRpcSession, activeSessions });
+    },
+  };
+  return handler;
 }
 
 /**

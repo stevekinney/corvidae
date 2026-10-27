@@ -170,6 +170,22 @@ describe('parseLcov', () => {
     );
   });
 
+  it('rejects a strict allowance line absent from the LCOV file', () => {
+    expect(() =>
+      parseLcov(
+        [
+          'SF:src/core/context/parallel-operations.ts',
+          'FNF:0',
+          'FNH:0',
+          'DA:20,0',
+          'end_of_record',
+        ].join('\n'),
+      ),
+    ).toThrow(
+      'Coverage allowance for src/core/context/parallel-operations.ts:19, 21, 31, 37, 38, 39 is absent from the LCOV report',
+    );
+  });
+
   it('applies the strict parallel-operation allowance only to its current uncovered lines', () => {
     const coverage = parseLcov(
       [

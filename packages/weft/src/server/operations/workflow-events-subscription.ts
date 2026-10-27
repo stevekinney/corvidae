@@ -119,8 +119,10 @@ export const workflowEventsSubscriptionOperation = defineOperation({
       { close: () => controller.abort() },
     );
 
+    const subscriptionId = `sub_${crypto.randomUUID()}`;
     return {
-      envelope: { subscriptionId: `sub_${crypto.randomUUID()}`, cursor: startingCursor },
+      subscriptionId,
+      envelope: { subscriptionId, cursor: startingCursor },
       iterable,
       close: () => iterable.close(),
     };

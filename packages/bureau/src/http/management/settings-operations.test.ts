@@ -187,6 +187,7 @@ describe('bureau.settings operations', () => {
       input: {},
       host: { settings: opened.bureau.settings },
     } as never);
+    expect(subscription.subscriptionId).toBe(subscription.envelope.subscriptionId);
     const iterator = subscription.iterable[Symbol.asyncIterator]();
     const next = iterator.next();
     await opened.bureau.settings.update({ 'tools.wakeup': false }, { expectedRevision: 0 });

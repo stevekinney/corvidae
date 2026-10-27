@@ -243,6 +243,7 @@ describe('GET /v1/subscriptions/:operationName', () => {
       name: 'probe.malformed',
       eventSchema: z.object({ value: z.string() }),
       invoke: async () => ({
+        subscriptionId: 'sub_1',
         envelope: { subscriptionId: 'sub_1', cursor: '0' },
         iterable: (async function* () {
           yield { value: 'no cursor' };
@@ -279,6 +280,7 @@ describe('GET /v1/subscriptions/:operationName', () => {
         ...eventsOperation,
         name,
         invoke: async () => ({
+          subscriptionId: 'sub_1',
           envelope: { subscriptionId: 'sub_1', cursor: '0' },
           iterable: (async function* () {
             yield { ...element, emittedAtMs: 1, payload: {} };
@@ -351,6 +353,7 @@ describe('GET /v1/subscriptions/:operationName', () => {
           { close: () => controller.abort() },
         );
         return {
+          subscriptionId: 'sub_1',
           envelope: { subscriptionId: 'sub_1', cursor: '0' },
           iterable,
           close: () => iterable.close(),
@@ -448,6 +451,7 @@ describe('maxStreamDurationMs', () => {
       ...eventsOperation,
       name: 'probe.stalled',
       invoke: async ({ input }) => ({
+        subscriptionId: 'sub_1',
         envelope: { subscriptionId: 'sub_1', cursor: '0' },
         iterable: host.feed.subscribe(input.fromCursor, new AbortController().signal),
         close: () => new Promise<void>(() => undefined),

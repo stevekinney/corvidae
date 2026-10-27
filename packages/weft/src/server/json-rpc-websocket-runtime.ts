@@ -84,6 +84,32 @@ export function openJsonRpcWebSocketSession(options: {
   }
 }
 
+export function openGenericJsonRpcWebSocketSession(options: {
+  ws: Pick<ServerWebSocket<WebSocketData>, 'data' | 'send' | 'close'>;
+  registry: OperationRegistry;
+  host: unknown;
+  activeSessions: Set<JsonRpcWebSocketSession>;
+  discoverDocument?: () => Record<string, unknown>;
+}): void {
+  try {
+    const session = createJsonRpcWebSocketSession({
+      registry: options.registry,
+      engine: options.host,
+      principal: options.ws.data.principal ?? anonymousPrincipal(),
+      emitter: { send: (message) => options.ws.send(message) },
+      transport: 'jsonRpcWebSocket',
+      ...(options.discoverDocument === undefined
+        ? {}
+        : { discoverDocument: options.discoverDocument }),
+    });
+    options.ws.data.jsonRpcSession = session;
+    options.activeSessions.add(session);
+  } catch (error) {
+    console.error('[weft] generic JSON-RPC WS session construction failed', error);
+    options.ws.close(1011, 'session construction failed');
+  }
+}
+
 export function closeJsonRpcWebSocketSession(options: {
   session: JsonRpcWebSocketSession | undefined;
   activeSessions: Set<JsonRpcWebSocketSession>;

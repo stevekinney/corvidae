@@ -120,6 +120,7 @@ describe('dispatchJsonRpc — single request', () => {
         invoke: async () => {
           invoked = true;
           return {
+            subscriptionId: 'sub_test',
             envelope: { subscriptionId: 'sub_test' },
             iterable: (async function* events() {
               yield { value: 'leaked' };
