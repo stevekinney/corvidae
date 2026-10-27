@@ -59,6 +59,41 @@ class CountingConditionalBatchStorage extends MemoryStorage {
   }
 }
 
+class CommitGateStorage extends MemoryStorage {
+  readonly entered = Promise.withResolvers<void>();
+  readonly released = Promise.withResolvers<void>();
+  committed = false;
+  conditionalCalls = 0;
+
+  override async batch(operations: BatchOperation[]): Promise<void> {
+    this.entered.resolve();
+    await this.released.promise;
+    await super.batch(operations);
+    this.committed = true;
+  }
+
+  override async conditionalBatch(
+    conditions: ConditionalBatchCondition[],
+    operations: BatchOperation[],
+  ): Promise<boolean> {
+    this.conditionalCalls++;
+    this.entered.resolve();
+    await this.released.promise;
+    const committed = await super.conditionalBatch(conditions, operations);
+    this.committed = committed;
+    return committed;
+  }
+}
+
+class RefusingConditionalBatchStorage extends MemoryStorage {
+  override async conditionalBatch(
+    _conditions: ConditionalBatchCondition[],
+    _operations: BatchOperation[],
+  ): Promise<boolean> {
+    return false;
+  }
+}
+
 const checkpointOperation: ContextOperationRequest = {
   type: 'sleep',
   operationId: 'sleep-operation',
@@ -593,17 +628,74 @@ describe('checkpoint commit compare-and-swap guard', () => {
     );
   });
 
-  it('dispatches activity completion only after the checkpoint batch commits', async () => {
-    const storage = new MemoryStorage();
-    const checkpoint = createCheckpoint('checkpoint-activity-commit', '1', 1_000, 'run-a');
+  it.each([false, true])(
+    'dispatches activity completion only after a %s checkpoint batch commits',
+    async (conditional) => {
+      const storage = new CommitGateStorage();
+      const checkpoint = createCheckpoint('checkpoint-activity-commit', '1', 1_000, 'run-a');
+      const internals = createCheckpointInternals(storage, checkpoint);
+      internals.durableInlineOperations = new Map([
+        [
+          'checkpoint-activity-commit',
+          { operationId: 'activity-1', type: 'activity', workflowExecutionToken: 'run-a' },
+        ],
+      ]) as never;
+      internals.pendingTimelineEntries.set('checkpoint-activity-commit', {
+        startedAt: 900,
+        entry: {
+          step: 1,
+          operationType: 'activity',
+          operationLabel: 'send-email',
+          inputSummary: 'input',
+          timestamp: 900,
+          status: 'completed',
+          duration: 42,
+        },
+      });
+      const observed: Array<{ event: Event; committed: boolean }> = [];
+      if (conditional) rememberRecoveredCheckpoint(internals, checkpoint);
+      const callbacks = {
+        ...createPersistCallbacks(),
+        dispatchEvent: (event: Event) => {
+          observed.push({
+            event,
+            committed: storage.committed,
+          });
+        },
+      };
+      await seedCheckpoint(storage, checkpoint);
+
+      const persist = persistCheckpoint(
+        internals,
+        checkpoint.workflowId,
+        checkpointOperation,
+        serializeCheckpointBuffer({ ...checkpoint, step: 1, workflowExecutionToken: 'run-a' }),
+        callbacks,
+      );
+      await storage.entered.promise;
+      expect(observed).toHaveLength(0);
+      storage.released.resolve();
+      await persist;
+
+      expect(observed).toHaveLength(1);
+      expect(observed[0]?.event).toBeInstanceOf(ActivityCompletedEvent);
+      expect(observed[0]?.committed).toBe(true);
+      if (conditional) expect(storage.conditionalCalls).toBeGreaterThan(0);
+    },
+  );
+
+  it('does not dispatch an activity completion receipt when a stale checkpoint CAS refuses', async () => {
+    const storage = new RefusingConditionalBatchStorage();
+    const checkpoint = createCheckpoint('checkpoint-stale-activity', '1', 1_000, 'run-a');
     const internals = createCheckpointInternals(storage, checkpoint);
+    rememberRecoveredCheckpoint(internals, checkpoint);
     internals.durableInlineOperations = new Map([
       [
-        'checkpoint-activity-commit',
-        { operationId: 'activity-1', type: 'activity', workflowExecutionToken: 'run-a' },
+        'checkpoint-stale-activity',
+        { operationId: 'activity-stale', type: 'activity', workflowExecutionToken: 'run-a' },
       ],
     ]) as never;
-    internals.pendingTimelineEntries.set('checkpoint-activity-commit', {
+    internals.pendingTimelineEntries.set('checkpoint-stale-activity', {
       startedAt: 900,
       entry: {
         step: 1,
@@ -615,28 +707,24 @@ describe('checkpoint commit compare-and-swap guard', () => {
         duration: 42,
       },
     });
-    const observed: Array<{ event: Event; committed: boolean }> = [];
+    await seedCheckpoint(storage, checkpoint);
+    const dispatched: Event[] = [];
     const callbacks = {
       ...createPersistCallbacks(),
-      dispatchEvent: (event: Event) => {
-        observed.push({
-          event,
-          committed: internals.checkpoints.has('checkpoint-activity-commit'),
-        });
-      },
+      dispatchEvent: (event: Event) => dispatched.push(event),
     };
-    await seedCheckpoint(storage, checkpoint);
 
-    await persistCheckpoint(
-      internals,
-      checkpoint.workflowId,
-      checkpointOperation,
-      serializeCheckpointBuffer({ ...checkpoint, step: 1, workflowExecutionToken: 'run-a' }),
-      callbacks,
-    );
-
-    expect(observed).toHaveLength(1);
-    expect(observed[0]?.event).toBeInstanceOf(ActivityCompletedEvent);
-    expect(observed[0]?.committed).toBe(true);
+    expect(
+      await throwingRejectionOf(
+        persistCheckpoint(
+          internals,
+          checkpoint.workflowId,
+          checkpointOperation,
+          serializeCheckpointBuffer({ ...checkpoint, step: 1, workflowExecutionToken: 'run-a' }),
+          callbacks,
+        ),
+      ),
+    ).toThrow();
+    expect(dispatched.filter((event) => event instanceof ActivityCompletedEvent)).toHaveLength(0);
   });
 });
