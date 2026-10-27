@@ -682,6 +682,7 @@ describe('applying file changes to the engine', () => {
     const release = failingUntilReleased(engine, 'pauseSchedule');
     const hash = runtime.workflows.list()[0]?.hash ?? '';
     await caught(runtime.workflows.pause('digest', { expectedHash: hash }));
+    release();
     await runtime.workflows.refresh();
 
     const paused = runtime.workflows.list()[0]?.hash ?? '';
