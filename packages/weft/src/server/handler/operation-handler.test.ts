@@ -465,7 +465,7 @@ describe('createOperationHandler', () => {
     expect(discovered['result']).toEqual(served);
   });
 
-  it('answers rpc.discover over a real WebSocket with the configured HTTP document', async () => {
+  it('answers rpc.discover over a real WebSocket with the configured HTTP and WebSocket document', async () => {
     const handler = createOperationHandler({
       operations: [websocketEchoOperation],
       host: {},
@@ -493,6 +493,11 @@ describe('createOperationHandler', () => {
 
     const websocketResponse = await response;
     expect(websocketResponse['result']).toEqual(served);
+    expect(
+      (served['methods'] as Array<{ name: string }>).some(
+        (method) => method.name === websocketEchoOperation.name,
+      ),
+    ).toBe(true);
     socket.close();
   });
 });
