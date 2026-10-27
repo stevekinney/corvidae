@@ -1,3 +1,4 @@
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -26,19 +27,17 @@ async function start(home: string): Promise<Host> {
 }
 
 async function waitForReview(host: Host, runId: string) {
-  for (let attempt = 0; attempt < 400; attempt += 1) {
+  for await (const _turn of awakeTurns()) {
     const review = host.bureau.reviews.list().find((candidate) => candidate.runId === runId);
     if (review !== undefined) return review;
-    await Bun.sleep(5);
   }
   throw new Error(`Run "${runId}" did not raise a review.`);
 }
 
 async function waitForCompleted(host: Host, runId: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt += 1) {
+  for await (const _turn of awakeTurns()) {
     const run = await host.bureau.getDurableRun(runId);
     if (run?.status === 'completed') return;
-    await Bun.sleep(5);
   }
   throw new Error(`Run "${runId}" did not complete.`);
 }
