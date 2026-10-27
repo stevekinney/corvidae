@@ -57,7 +57,7 @@ Delivery: the worker does not merge; after acceptance the coordinator launches `
 Parallel-run limits (AGENTS.md "Parallel runs"): at most three sessions or workers on the host; at most one full validate queued per session, and only for an exception.
 Repository packet: `<main checkout>/tmp/chef/packets/<area>.md` (path; `packet.ts status <area>` exits 0, so it is fresh). Read it instead of rediscovering the code; read source only for the lines you will change.
 Session start: one fresh session for this issue, started from its brief (`bun scripts/chef/brief.ts <ID>` writes `tmp/chef/briefs/<ID>.md`), Sonnet by default; the session ends when its pull request merges.
-Main health: `merge-gate.ts` refuses to merge while `main`'s last batch validate failed, unless this pull request is the fix and the merge command carries `--fixes-main`.
+Main health: `merge-gate.ts` refuses to merge while `main`'s last batch validate failed, unless this pull request is the fix and the merge command carries `--fixes-main`, or the failure is a load flake and the merge command carries `--waive-load-flake <reason> --control-head <sha>`.
 Review rounds (AGENTS.md "Review guidelines"): answer every thread before merge; at most three rounds; round one fixes every real finding; rounds two and three fix only regressions, one-way-door defects, and real defects in changed lines; after round three, open items go to one follow-up issue; push once per round, because Codex reviews every push automatically, so batch a round's fixes into one push; do not re-answer a re-reported comment.
 Delivery artifact and review boundary:
 

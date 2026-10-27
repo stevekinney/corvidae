@@ -2,11 +2,17 @@
 // Chef main health: the record of each batch validate's result, so a coordinator cannot merge into
 // a red `main` by forgetting that the last batch failed. `gate-run.ts run` writes an entry when its
 // command is the configured batch command; `merge-gate.ts` reads it and refuses to merge while
-// `main`'s last batch validate failed, unless the pull request is declared the fix.
+// `main`'s last batch validate failed, unless the pull request is declared the fix or the failure
+// is waived as a load flake.
 //
 // The record is `<main checkout>/tmp/chef/main-health.json` (gitignored; the main checkout's `tmp/`
 // outlives any worktree):
-//   { "runs": [{ "head", "exitCode", "time", "command" }], "fixes": [{ "pr", "time", "blockedHead" }] }
+//   { "runs": [{ "head", "exitCode", "time", "command" }],
+//     "fixes": [{ "pr", "time", "blockedHead" }],
+//     "waivers": [{ "pr", "time", "blockedHead", "reason", "controlHead" }] }
+// A fix is a pull request that repairs `main` (`--fixes-main`). A waiver is a pull request merged
+// past a red `main` whose failure is a load flake (`--waive-load-flake`): the reason says which test
+// failed and why it is load, and `controlHead` is the commit on `main` where the control passed.
 // `runs` keeps the newest 50 entries. "Last" means the entry whose head is nearest the tip of
 // `origin/<default>`'s first-parent history: a validate at a head that never reached `main` (a
 // branch gate, a rewritten history) is ignored, and a green validate at a later head clears a red
@@ -45,13 +51,23 @@ export interface HealthFix {
   blockedHead: string;
 }
 
+export interface HealthWaiver {
+  pr: number;
+  time: string;
+  blockedHead: string;
+  reason: string;
+  controlHead: string;
+}
+
 export interface HealthFile {
   runs: HealthRun[];
   fixes: HealthFix[];
+  waivers: HealthWaiver[];
 }
 
 const keptRuns = 50;
 const keptFixes = 50;
+const keptWaivers = 50;
 const historyLimit = 5000;
 
 /** `<main checkout>/tmp/chef/main-health.json`. */
@@ -92,17 +108,28 @@ function isFix(value: unknown): value is HealthFix {
   );
 }
 
+function isWaiver(value: unknown): value is HealthWaiver {
+  const record = value as Record<string, unknown> | null;
+  return (
+    isFix(value) &&
+    record !== null &&
+    typeof record['reason'] === 'string' &&
+    typeof record['controlHead'] === 'string'
+  );
+}
+
 /** Read the file; a missing, unreadable or malformed file is an empty record, with bad entries dropped. */
 export function readHealth(path: string): HealthFile {
-  if (!existsSync(path)) return { runs: [], fixes: [] };
+  if (!existsSync(path)) return { runs: [], fixes: [], waivers: [] };
   try {
     const parsed = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
     return {
       runs: Array.isArray(parsed['runs']) ? parsed['runs'].filter(isRun) : [],
       fixes: Array.isArray(parsed['fixes']) ? parsed['fixes'].filter(isFix) : [],
+      waivers: Array.isArray(parsed['waivers']) ? parsed['waivers'].filter(isWaiver) : [],
     };
   } catch {
-    return { runs: [], fixes: [] };
+    return { runs: [], fixes: [], waivers: [] };
   }
 }
 
@@ -124,6 +151,13 @@ export function recordBatchRun(path: string, entry: HealthRun): void {
 export function recordFix(path: string, fix: HealthFix): void {
   const health = readHealth(path);
   health.fixes = [...health.fixes, fix].slice(-keptFixes);
+  writeHealth(path, health);
+}
+
+/** Append the use of `--waive-load-flake` by a pull request. */
+export function recordWaiver(path: string, waiver: HealthWaiver): void {
+  const health = readHealth(path);
+  health.waivers = [...health.waivers, waiver].slice(-keptWaivers);
   writeHealth(path, health);
 }
 
