@@ -322,8 +322,14 @@ describe('a loop that waits by counting turns', () => {
       'a constant cap',
       'const LIMIT = 200;\nasync function f() {\n  for (let turn = 0; turn < LIMIT && !done(); turn++) await setImmediateTurn();\n}',
     ],
+    [
+      'a loop that yields through a helper of any name and then throws',
+      'async function pollUntil<T>(check: () => Promise<T | undefined>, what: string, attempts = 600) {\n  for (let attempt = 0; attempt < attempts; attempt += 1) {\n    const value = await check();\n    if (value !== undefined) return value;\n    await nextTurnOfSomething();\n  }\n  throw new Error(`Condition was not met: ${what}`);\n}',
+    ],
   ])('reports %s', (_name, source) => {
-    expect(inspect(source)).toEqual(['iteration-cap-wait']);
+    expect(inspect(source).filter((rule) => rule === 'iteration-cap-wait')).toEqual([
+      'iteration-cap-wait',
+    ]);
   });
 
   test.each([

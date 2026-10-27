@@ -570,7 +570,7 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer(
       {
         reason:
           'The remaining fake-timer line is the defensive error for a timer identifier not created by this test harness.',
-        lines: new Set([232]),
+        lines: new Set([242]),
         requireUncoveredLines: true,
       },
     ],
@@ -579,7 +579,7 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer(
       {
         reason:
           'Driver and runtime-specific behavior cannot be attributed in the default Bun LCOV process; fresh coverage confirms only these residual misses.',
-        lines: new Set([71, 72, 73]),
+        lines: new Set([72, 73, 74]),
         requireUncoveredLines: true,
       },
     ],
@@ -770,7 +770,7 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
         reason:
           'Transport disconnect and concurrency exits are behaviorally tested, but Bun does not deterministically attribute these residual paths.',
         functions: 2,
-        lines: new Set([96, 97, 111, 115, 126, 134, 139, 144, 149]),
+        lines: new Set([97, 98, 112, 116, 127, 135, 140, 145, 150]),
         requireUncoveredLines: true,
       },
     ],
@@ -1117,7 +1117,7 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       {
         reason:
           'The shared conformance check sequence (COR-1365 moved it here from `src/cli/conformance.ts`, which carried this allowance at lines 91/158/239). Only the three defensive dispatch/cancel/shutdown failure throws remain uncovered: a sandbox server that refuses a dispatch, refuses to record a cancellation it was just handed, or loses the worker it just registered is not something any conformance fixture can produce.',
-        lines: new Set([131, 220, 301]),
+        lines: new Set([137, 227, 312]),
         requireUncoveredLines: true,
       },
     ],

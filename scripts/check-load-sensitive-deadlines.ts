@@ -746,7 +746,10 @@ function findIterationCapWaits(
     if (!ts.isForStatement(node) && !ts.isWhileStatement(node) && !ts.isDoStatement(node)) return;
     const condition = ts.isForStatement(node) ? node.condition : node.expression;
     const body = node.statement;
-    if (!containsYieldingAwait(body)) return;
+    // A loop whose failure is a `throw` after it ("gave up after N tries") is a poll whatever it
+    // awaits: the helper that yields may have any name (`settle`, `nextTurn`), so the shape decides.
+    const givesUp = nextStatementThrows(node);
+    if (!containsYieldingAwait(body) && !(givesUp && awaitsMoreThanMicrotasks(body))) return;
     const capInCondition = condition !== undefined && capsAtNumber(condition, constants);
     // `while (!done() && attempt < 50)` or `for (...; attempt < 50 && !done(); ...)`.
     const conditionalCondition =
@@ -778,6 +781,33 @@ function findIterationCapWaits(
     }
   });
   return violations;
+}
+
+/** Whether the statement right after `loop` in its block is a `throw`. */
+function nextStatementThrows(loop: ts.Node): boolean {
+  const parent = loop.parent;
+  if (!ts.isBlock(parent) && !ts.isSourceFile(parent)) return false;
+  const siblings = parent.statements;
+  const next = siblings[siblings.indexOf(loop as ts.Statement) + 1];
+  return next !== undefined && ts.isThrowStatement(next);
+}
+
+const MICROTASK_ONLY = /^(resolve|tick|flushSync|flushMicrotasks?|\w*[Mm]icrotasks?\w*)$/;
+
+/** Whether `node` awaits anything but a microtask turn (outside nested functions). */
+function awaitsMoreThanMicrotasks(node: ts.Node): boolean {
+  let found = false;
+  const visit = (child: ts.Node): void => {
+    if (ts.isFunctionLike(child)) return;
+    if (ts.isAwaitExpression(child)) {
+      const operand = unwrap(child.expression);
+      const name = ts.isCallExpression(operand) ? calleeName(operand) : null;
+      if (name === null || !MICROTASK_ONLY.test(name)) found = true;
+    }
+    child.forEachChild(visit);
+  };
+  node.forEachChild(visit);
+  return found;
 }
 
 /** Whether `expression` reads a clock: `Date.now()`, `performance.now()`. */
