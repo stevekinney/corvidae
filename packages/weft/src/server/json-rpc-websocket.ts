@@ -218,7 +218,12 @@ export function createJsonRpcWebSocketSession(
     const result = await execute();
     pendingSubscriptions.delete(pending);
     if (!result.ok) {
-      emitSubscriptionFault(request, result.fault);
+      const error = faultToJsonRpcError(result.fault);
+      emitResponse(request, {
+        jsonrpc: JSON_RPC_VERSION,
+        error: { code: error.code, message: error.message, data: error.data },
+        id: request.id ?? null,
+      });
       return;
     }
 
@@ -236,7 +241,11 @@ export function createJsonRpcWebSocketSession(
     }
     if (!isSubscriptionStartEnvelope(envelope)) {
       await closeSubscriptionAfterClose(closeOnce);
-      emitInvalidSubscription(request);
+      emitResponse(request, {
+        jsonrpc: JSON_RPC_VERSION,
+        error: { code: JSON_RPC_ERROR_CODES.INTERNAL_ERROR, message: 'internal error' },
+        id: request.id ?? null,
+      });
       return;
     }
     const { subscriptionId, cursor } = envelope;
@@ -261,26 +270,6 @@ export function createJsonRpcWebSocketSession(
       controller,
       pump,
       isTerminating: false,
-    });
-  }
-
-  function emitSubscriptionFault(
-    request: SessionRequest,
-    fault: Parameters<typeof faultToJsonRpcError>[0],
-  ): void {
-    const error = faultToJsonRpcError(fault);
-    emitResponse(request, {
-      jsonrpc: JSON_RPC_VERSION,
-      error: { code: error.code, message: error.message, data: error.data },
-      id: request.id ?? null,
-    });
-  }
-
-  function emitInvalidSubscription(request: SessionRequest): void {
-    emitResponse(request, {
-      jsonrpc: JSON_RPC_VERSION,
-      error: { code: JSON_RPC_ERROR_CODES.INTERNAL_ERROR, message: 'internal error' },
-      id: request.id ?? null,
     });
   }
 
