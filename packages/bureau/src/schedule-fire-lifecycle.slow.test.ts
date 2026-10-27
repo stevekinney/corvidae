@@ -108,7 +108,7 @@ describe('the event stream of a schedule fire', () => {
   it('follows a fire that is not yet bound to its session to its end, and then ends', async () => {
     const opened = await serve(parkingUntilAborted);
     const task = await firstFire(opened);
-    const unbound = await opened.bureau.tasks.record(task.id);
+    const unbound = await opened.bureau.internals.taskRegistry.record(task.id);
     expect(unbound?.incarnation).toBe('');
 
     const live: SseFrame[] = [];

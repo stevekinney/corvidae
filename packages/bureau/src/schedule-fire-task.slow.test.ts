@@ -84,7 +84,7 @@ describe('a schedule fire is a task of the schedule’s owner', () => {
       actor: 'system:scheduler',
       agentName: 'writer',
     });
-    const awaited6 = await opened.bureau.tasks.record(task.id);
+    const awaited6 = await opened.bureau.internals.taskRegistry.record(task.id);
     expect(awaited6?.actor).toBe('system:scheduler');
     expect(await opened.bureau.getOwner({ kind: 'run', id: task.id })).toBe(OWNER.alice);
 
@@ -145,7 +145,7 @@ describe('a schedule fire is a task of the schedule’s owner', () => {
     }, 'the fire to be found by its context');
     expect(tasksOf(filtered).map((task) => task.id)).toContain(done.id);
     const session = await opened.bureau.getSession(done.contextId);
-    const awaited7 = await opened.bureau.tasks.record(done.id);
+    const awaited7 = await opened.bureau.internals.taskRegistry.record(done.id);
     expect(awaited7?.incarnation).toBe(session?.incarnation);
     expect(session?.incarnation).toBeTruthy();
     expect(
@@ -155,7 +155,7 @@ describe('a schedule fire is a task of the schedule’s owner', () => {
     ).toEqual([]);
 
     // The scheduler is the actor on the fire's audit entry, as on its task.
-    const fired = await opened.bureau.auditTrail?.query({
+    const fired = await opened.bureau.internals.auditTrail?.query({
       runId: done.id,
       type: 'schedule.fired',
     });
