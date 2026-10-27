@@ -1,3 +1,4 @@
+import { rejectionOf } from '@lostgradient/testing';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, expect, jest, spyOn, test } from 'bun:test';
 import type { Fetcher } from '../../lib/bureau-client.ts';
@@ -205,3 +206,85 @@ test('disposal fences a late opening reader as well as its timers', async () => 
   expect(await attaching).toBe(false);
   expect(session.conversation.ids).toEqual([]);
 });
+
+for (const recovery of ['suffix', 'snapshot', 'other-run'] as const) {
+  test(`asset announcements survive rollback only for same-run suffix recovery: ${recovery}`, async () => {
+    jest.useFakeTimers();
+    const native = (runId: string, wireId: string) => ({
+      ...started,
+      runId: wireId,
+      metadata: { '@lostgradient/bureau': { runId } },
+    });
+    const response = (events: Array<{ event: unknown; id?: string }>) =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            for (const { event, id } of events) controller.enqueue(encoded(event, id));
+            controller.close();
+          },
+        }),
+      );
+    let calls = 0;
+    const cursors: Array<string | null> = [];
+    const session = open(async (_input, init) => {
+      calls += 1;
+      cursors.push(new Headers(init?.headers).get('Last-Event-ID'));
+      if (calls === 1)
+        return response([
+          { event: native('native-1', 'wire-1') },
+          { event: { type: 'TEXT_MESSAGE_START', role: 'assistant', messageId: 'reply' } },
+          { event: { type: 'TEXT_MESSAGE_CONTENT', messageId: 'reply', delta: 'Here.' } },
+          {
+            event: {
+              type: 'CUSTOM',
+              name: 'bureau.asset-part',
+              value: { messageId: 'reply', index: 0, assetId: 'asset-a', mediaType: 'image/png' },
+            },
+            id: 'asset-cursor',
+          },
+        ]);
+      const opening =
+        recovery === 'snapshot'
+          ? [
+              {
+                event: {
+                  type: 'MESSAGES_SNAPSHOT',
+                  messages: [{ id: 'reply', role: 'assistant', content: 'Here.' }],
+                },
+              },
+            ]
+          : [{ event: state }];
+      const text =
+        recovery === 'other-run'
+          ? [
+              { event: { type: 'TEXT_MESSAGE_START', role: 'assistant', messageId: 'reply' } },
+              { event: { type: 'TEXT_MESSAGE_CONTENT', messageId: 'reply', delta: 'New.' } },
+            ]
+          : [];
+      return response([
+        { event: native(recovery === 'other-run' ? 'native-2' : 'native-1', 'wire-2') },
+        ...opening,
+        ...text,
+        ...(recovery === 'snapshot'
+          ? []
+          : [{ event: { type: 'TEXT_MESSAGE_END', messageId: 'reply' } }]),
+        { event: { type: 'RUN_FINISHED', threadId: 'thread', runId: 'wire-2' } },
+      ]);
+    });
+    expect(
+      await rejectionOf(session.adapter.sendMessage({ role: 'user', content: 'Draw it' }, [])),
+    ).toBeInstanceOf(Error);
+    expect(session.conversation.messages['reply']).toBeUndefined();
+    expect(await session.reconnect()).toBe(true);
+    await waitUntil(() => !session.streaming, { message: 'resumed terminal' });
+    expect(cursors[1]).toBe('asset-cursor');
+    expect(session.failure).toBeUndefined();
+    const row = session.conversation.messages['reply'];
+    expect(row?.content).toBe(recovery === 'other-run' ? 'New.' : 'Here.');
+    expect(row?.metadata?.['bureau:assetParts']).toEqual(
+      recovery === 'suffix'
+        ? [{ index: 0, assetId: 'asset-a', mediaType: 'image/png' }]
+        : undefined,
+    );
+  });
+}

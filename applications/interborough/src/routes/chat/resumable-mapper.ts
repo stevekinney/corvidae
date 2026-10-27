@@ -57,6 +57,16 @@ export class ResumableMapper {
     events: AsyncIterable<unknown>,
     conversation: ConversationHistory,
   ): AsyncGenerator<ChatStreamEvent> {
+    let sequence = 0;
+    for await (const frame of this.segments(events, conversation)) {
+      yield { ...frame, sequence: sequence++ };
+    }
+  }
+
+  private async *segments(
+    events: AsyncIterable<unknown>,
+    conversation: ConversationHistory,
+  ): AsyncGenerator<ChatStreamEvent> {
     const iterator = events[Symbol.asyncIterator]();
     try {
       const first = await iterator.next();

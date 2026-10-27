@@ -398,6 +398,7 @@ async function* parkApprovals(
   interrupts: () => readonly Interrupt[],
   answerRowIds: ReadonlySet<string>,
   announced: AssetAnnouncement[],
+  stamped: () => void,
 ): AsyncGenerator<ChatStreamEvent> {
   for await (const frame of frames) {
     if (frame.type !== 'run.completed') {
@@ -407,6 +408,7 @@ async function* parkApprovals(
     const parked = withAssetParts(withApprovalRows(frame.conversation, interrupts()), announced);
     // Stamped, so nothing is left for the end of the turn to put on a row a second time.
     announced.splice(0);
+    stamped();
     yield {
       ...frame,
       conversation: [...answerRowIds].reduce(
@@ -488,6 +490,15 @@ function announcementOf(event: unknown): AssetAnnouncement | undefined {
     assetId: value['assetId'],
     mediaType: value['mediaType'],
   };
+}
+
+/** One asset part per row and index, even if an announcement is replayed. */
+function rememberAsset(announcements: AssetAnnouncement[], announcement: AssetAnnouncement): void {
+  const index = announcements.findIndex(
+    (entry) => entry.messageId === announcement.messageId && entry.index === announcement.index,
+  );
+  if (index < 0) announcements.push(announcement);
+  else announcements[index] = announcement;
 }
 
 /**
@@ -622,6 +633,9 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
   let detached = false;
   /** The assets the turn on screen announced that no terminal frame has put on a row. */
   let unstamped: AssetAnnouncement[] = [];
+  /** Recovery survives an unsuccessful turn draining its UI handoff after rollback. */
+  let assetRun: { readonly id: string; readonly announcements: AssetAnnouncement[] } | undefined;
+  let transportGeneration = 0;
   /** What the last turn was refused with, until it is taken. */
   let refusal: Refusal | undefined;
   /** Whether a resume was refused and what it carried is still held, to be sent again. */
@@ -718,11 +732,13 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     started: boolean,
     announced: AssetAnnouncement[],
     gate: FirstEventGate | undefined,
+    generation: number,
   ): AsyncGenerator<unknown> {
     let nativeRunId: string | undefined;
     let held: ReadonlySet<string> | undefined;
     try {
       for await (const event of events) {
+        if (generation !== transportGeneration) return;
         gate?.arrived();
         nativeRunId ??= nativeRunIdOf(event);
         // A Stop before this event is acted on here, now that the run it began has a name: the
@@ -732,6 +748,12 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         // after it starts, and the calls this stream streams itself arrive after, never before.
         held ??= heldCalls(options.conversation());
         if (isRecord(event) && event['type'] === 'RUN_STARTED') {
+          const identity =
+            nativeRunId ?? (typeof event['runId'] === 'string' ? event['runId'] : undefined);
+          if (identity !== undefined) {
+            if (assetRun?.id !== identity) assetRun = { id: identity, announcements: [] };
+            announced.push(...assetRun.announcements);
+          }
           if (started) options.onRunStarted?.();
           // A run that has begun is waiting on nobody.
           options.onHumanRequests?.([]);
@@ -745,8 +767,15 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         }
         if (isRecord(event) && (event['type'] === 'RUN_FINISHED' || event['type'] === 'RUN_ERROR'))
           options.onTerminal?.();
+        if (isRecord(event) && event['type'] === 'MESSAGES_SNAPSHOT') {
+          announced.splice(0);
+          assetRun?.announcements.splice(0);
+        }
         const announcement = announcementOf(event);
-        if (announcement !== undefined) announced.push(announcement);
+        if (announcement !== undefined) {
+          rememberAsset(announced, announcement);
+          if (assetRun !== undefined) rememberAsset(assetRun.announcements, announcement);
+        }
         const ended = interruptsOf(event);
         if (ended !== undefined) setInterrupts(ended);
         // A run that follows an approval shows the call it was waiting on again, for a client that
@@ -974,12 +1003,20 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     } else {
       opened = { events: attachedStream, answerRowIds: new Set() };
     }
+    const generation = ++transportGeneration;
     const announced: AssetAnnouncement[] = [];
     unstamped = announced;
     // An attach reads a thread the page may know nothing of yet: its first rows come from the
     // snapshot, and the row the controller appended to start the turn is not one of them.
     const frames = mapper.map(
-      observe(opened.events, request.signal, attachedStream === undefined, announced, gate),
+      observe(
+        opened.events,
+        request.signal,
+        attachedStream === undefined,
+        announced,
+        gate,
+        generation,
+      ),
       withoutHiddenRows(request.conversation),
     );
     return parkApprovals(
@@ -988,6 +1025,9 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
       () => interrupts.filter((interrupt) => !decisions.has(interrupt.id)),
       opened.answerRowIds,
       announced,
+      () => {
+        if (generation === transportGeneration) assetRun = undefined;
+      },
     );
   };
 

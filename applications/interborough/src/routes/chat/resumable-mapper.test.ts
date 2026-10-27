@@ -1,6 +1,7 @@
 import {
   appendMessages,
   createConversationHistory,
+  guardChatStreamEvents,
   type ChatStreamEvent,
 } from '@lostgradient/chat';
 import { rejectionOf } from '@lostgradient/testing';
@@ -160,4 +161,34 @@ test('a disconnect immediately after TEXT_MESSAGE_START resumes with content, no
     { content: 'First content', accumulated: 'First content' },
   ]);
   expect(frames.at(-1)).toMatchObject({ type: 'run.completed', content: 'First content' });
+});
+
+test('the actual Chat guard accepts text followed by an authoritative snapshot and terminal', async () => {
+  const mapper = new ResumableMapper(() => undefined);
+  const frames = await Array.fromAsync(
+    guardChatStreamEvents(
+      mapper.map(
+        source([
+          started,
+          { type: 'TEXT_MESSAGE_START', role: 'assistant', messageId: 'message' },
+          { type: 'TEXT_MESSAGE_CONTENT', messageId: 'message', delta: 'Hello' },
+          { type: 'TEXT_MESSAGE_END', messageId: 'message' },
+          {
+            type: 'MESSAGES_SNAPSHOT',
+            messages: [
+              { id: 'message', role: 'assistant', content: 'Hello' },
+              { id: 'input', role: 'user', content: 'Follow-up' },
+            ],
+          },
+          finished,
+        ]),
+        empty(),
+      ),
+    ),
+  );
+  expect(frames.map((frame) => frame.sequence)).toEqual(frames.map((_frame, index) => index));
+  const terminal = frames.at(-1);
+  expect(terminal).toMatchObject({ type: 'run.completed' });
+  if (terminal?.type !== 'run.completed') throw new Error('Missing completion');
+  expect(terminal.conversation.ids).toEqual(['message', 'input']);
 });
