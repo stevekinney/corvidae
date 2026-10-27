@@ -50,7 +50,7 @@
   // and once the Bureau accepts the subscription, so none is missed in between.
   onMount(() => {
     const follower = new SettingsFollower({ onChange: () => void snapshot.refetch() });
-    follower.start();
+    void follower.start();
     return () => follower.dispose();
   });
 

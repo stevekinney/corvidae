@@ -50,7 +50,7 @@ describe('SettingsFollower', () => {
       },
     });
     followers.push(follower);
-    follower.start();
+    void follower.start();
 
     await until(() => lastEventIds.length >= 2);
     expect(lastEventIds.slice(0, 2)).toEqual([null, '3']);
@@ -70,11 +70,9 @@ describe('SettingsFollower', () => {
       sleep: () => Promise.resolve(),
     });
     followers.push(follower);
-    follower.start();
+    // The promise settles only when the following has stopped.
+    await follower.start();
 
-    await until(() => opened >= 1);
-    // Give a retry the chance to happen; none is waiting.
-    for (let turn = 0; turn < 20; turn += 1) await new Promise((resolve) => setTimeout(resolve, 0));
     expect(opened).toBe(1);
   });
 });

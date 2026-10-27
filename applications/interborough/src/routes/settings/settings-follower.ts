@@ -55,11 +55,14 @@ export class SettingsFollower {
     this.#options = options;
   }
 
-  /** Opens the stream, and keeps it open until the follower is disposed. */
-  start(): void {
-    if (this.#started) return;
+  /**
+   * Opens the stream, and keeps it open until the follower is disposed. The promise settles when
+   * the following has stopped: on dispose, or on a refusal retrying cannot change.
+   */
+  start(): Promise<void> {
+    if (this.#started) return Promise.resolve();
     this.#started = true;
-    void this.#run();
+    return this.#run();
   }
 
   /** Stops following, closes the stream, and stops any reconnect that is waiting. */
