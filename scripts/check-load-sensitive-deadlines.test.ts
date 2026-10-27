@@ -174,6 +174,25 @@ describe('a wait helper whose own test proves it gives up', () => {
   });
 });
 
+describe('a wait helper spelled with hangGuardMilliseconds', () => {
+  const reason =
+    '// hang-guard-self-test: the workflow never reaches the status, so no load can end the wait';
+
+  test('is exempt under the marker, whatever the helper is called', () => {
+    expect(
+      inspect(
+        `${reason}\nawait waitForStatus(engine, 'id', 'done', { hangGuardMilliseconds: 20 });`,
+      ),
+    ).toEqual([]);
+  });
+
+  test('is reported without the marker', () => {
+    expect(
+      inspect("await waitForStatus(engine, 'id', 'done', { hangGuardMilliseconds: 20 });"),
+    ).toEqual(['wait-budget']);
+  });
+});
+
 describe('a wait budget under fake timers is virtual time', () => {
   test.each([
     [

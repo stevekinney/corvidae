@@ -346,6 +346,17 @@ function isLoadProof(sourceFile: ts.SourceFile, node: ts.Node): boolean {
   return reason !== null && reason.length >= MINIMUM_SELF_TEST_REASON;
 }
 
+/** Whether a call passes an option object with a `hangGuardMilliseconds` property. */
+function spellsHangGuard(call: ts.CallExpression): boolean {
+  return call.arguments.some((argument) => {
+    const unwrapped = unwrap(argument);
+    return (
+      ts.isObjectLiteralExpression(unwrapped) &&
+      propertyNamed(unwrapped, new Set(['hangGuardMilliseconds'])) !== undefined
+    );
+  });
+}
+
 function violation(
   sourceFile: ts.SourceFile,
   node: ts.Node,
@@ -581,7 +592,10 @@ export function findDeadlineViolations(sourceFile: ts.SourceFile): DeadlineViola
     const exempt = (): boolean => {
       // A wait for something that must not happen, whatever the callee.
       if (isLoadProof(sourceFile, node)) return true;
-      if (!HANG_GUARD_CALLEES.has(name)) return false;
+      // The self-test marker covers the hang guards and the wait helpers named in HANG_GUARD_CALLEES, and
+      // any wait helper whose budget is spelled `hangGuardMilliseconds`: the option exists to be shortened
+      // by a test that proves the helper gives up.
+      if (!HANG_GUARD_CALLEES.has(name) && !spellsHangGuard(node)) return false;
       const reason = selfTestReason(sourceFile, node);
       return reason !== null && reason.length >= MINIMUM_SELF_TEST_REASON;
     };

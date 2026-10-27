@@ -220,8 +220,9 @@ export async function waitForWorkflowStatus(
   engine: Engine,
   workflowId: string,
   status: WorkflowStatus,
+  options: { hangGuardMilliseconds?: number } = {},
 ): Promise<void> {
-  for await (const _turn of awakeTurns()) {
+  for await (const _turn of awakeTurns(options)) {
     const state = await engine.get(workflowId);
     if (state?.status === status) {
       return;

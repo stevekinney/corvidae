@@ -73,6 +73,12 @@ export type RunConformanceReportOptions = {
   command: readonly string[];
   /** Upper bound, in milliseconds, for each individual wait in the sequence. */
   timeoutMs: number;
+  /**
+   * Upper bound, in milliseconds, for the wait for the reconnect check's replacement worker to
+   * register. Defaults to `timeoutMs`. A caller proving what happens when the replacement never
+   * registers shortens only this wait, so the checks that must succeed keep their long one.
+   */
+  replacementTimeoutMs?: number;
   serve: ConformanceServe;
 };
 
@@ -137,6 +143,7 @@ async function runConformanceChecks(
   command: readonly string[],
   timeoutMs: number,
   serve: ConformanceServe,
+  replacementTimeoutMs: number = timeoutMs,
 ): Promise<ConformanceCheck[]> {
   const storage = new MemoryStorage();
   const engine = new Engine({ storage });
@@ -251,7 +258,11 @@ async function runConformanceChecks(
     );
 
     replacementWorker = startWorker(command, server);
-    const replacementWorkerId = await waitForReplacementWorker(server, workerId, timeoutMs);
+    const replacementWorkerId = await waitForReplacementWorker(
+      server,
+      workerId,
+      replacementTimeoutMs,
+    );
     await waitForWorkerHeartbeat(server, replacementWorkerId, timeoutMs);
     await stopWorker(worker);
     worker = replacementWorker;
@@ -337,7 +348,12 @@ export async function runConformanceReport(
 ): Promise<ConformanceReport> {
   try {
     return createConformanceReport(
-      await runConformanceChecks(options.command, options.timeoutMs, options.serve),
+      await runConformanceChecks(
+        options.command,
+        options.timeoutMs,
+        options.serve,
+        options.replacementTimeoutMs,
+      ),
     );
   } catch (error) {
     return createConformanceReport([

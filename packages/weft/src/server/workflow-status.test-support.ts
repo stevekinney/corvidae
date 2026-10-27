@@ -26,8 +26,9 @@ export async function waitForStatus(
   engine: Engine,
   workflowId: string,
   status: WaitableWorkflowStatus,
+  options: { hangGuardMilliseconds?: number } = {},
 ): Promise<void> {
-  for await (const _turn of awakeTurns()) {
+  for await (const _turn of awakeTurns(options)) {
     const state = await engine.get(workflowId);
     if (state?.status === status) {
       return;

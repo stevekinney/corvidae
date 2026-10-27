@@ -20,7 +20,11 @@ import { join } from 'node:path';
 import { HANG_GUARD_MILLISECONDS } from '../../../scripts/lib/hang-guard.ts';
 import { executeConformance } from '../../cli/conformance.ts';
 import { createWeftClient } from '../../client/generated/operation-client.generated.ts';
-import { createConformanceTargetRunner } from '../../conformance/targets.ts';
+import { runConformanceReport } from '../../conformance/run-conformance.ts';
+import {
+  createConformanceTargetRunner,
+  type ConformanceTargetRunner,
+} from '../../conformance/targets.ts';
 import { Engine } from '../../core/engine.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { createConformanceTargets } from '../../testing/conformance-targets.ts';
@@ -197,15 +201,20 @@ const replacementCleanup = await outcomeOf(async () => {
   const stateDirectory = await mkdtemp(join(tmpdir(), 'weft-conformance-replacement-'));
   const pidFile = join(stateDirectory, 'replacement.pid');
   try {
-    const result = await runReport(
-      'hanging',
-      runnerFor({
-        hanging: {
+    // The checks that must succeed keep the long wait; only the wait for the replacement that
+    // never registers is short, because nothing a loaded host does can make it register.
+    const hangingRunner: ConformanceTargetRunner = {
+      list: () => [{ name: 'hanging', timeoutMs: PASSING_RUN_TIMEOUT_MS }],
+      run: (name) =>
+        runConformanceReport({
           command: [...hangingReplacementWorker, stateDirectory],
           timeoutMs: PASSING_RUN_TIMEOUT_MS,
-        },
-      }),
-    );
+          // load-proof: the replacement worker never registers, so no load can end the wait early
+          replacementTimeoutMs: 500,
+          serve,
+        }).then((report) => ({ target: name, startedAt: 0, completedAt: 0, ...report })),
+    };
+    const result = await runReport('hanging', hangingRunner);
 
     if (!result.ok) throw new Error(`expected a report, got ${result.fault.message}`);
     const report = result.value as RunConformanceReportOutput;
