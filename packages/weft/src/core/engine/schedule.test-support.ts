@@ -1,6 +1,6 @@
 import type { Storage } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { yieldToEventLoop } from '../../testing/fake-timers.test-support.ts';
+import { settleInlineLaunches } from '../../testing/inline-launch-settle.test-support.ts';
 import { Engine } from '../engine.ts';
 import {
   workflow as defineWorkflow,
@@ -30,11 +30,10 @@ export function registerWorkflow<TInput, TOutput>(
   (engine.register as (workflow: typeof definition) => unknown)(definition);
 }
 
-// Yield to the event loop twice so a tick's synchronous launch and its follow-on
-// microtasks both settle before the test asserts.
+// Let a tick's queued inline launch run its first turn (the engine defers it behind a message
+// port), then drain the microtasks it leaves, before the test asserts.
 export async function drainEngine(): Promise<void> {
-  await yieldToEventLoop();
-  await yieldToEventLoop();
+  await settleInlineLaunches();
 }
 
 export function requireNextFireAt(summary: ScheduleSummary): number {

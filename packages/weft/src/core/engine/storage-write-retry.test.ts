@@ -172,6 +172,7 @@ describe('a refused failure write', () => {
 
     await engine.signal('deposed-failure', 'go', 'x');
     await run.refusing.whenAttempts(1, putsWorkflowStatus('deposed-failure', 'failed'));
+    // load-proof: negative window: asserts the deposed engine makes no second failed-status write; load can only delay a write, never create one
     await yieldToPortableEventLoop();
 
     expect(

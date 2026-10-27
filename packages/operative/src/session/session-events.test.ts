@@ -14,6 +14,7 @@ import {
   SessionUpdateEvent,
   type OperativeEventMap,
 } from '../events';
+import { drainMicrotasks } from '../testing/drain-microtasks.test-support.ts';
 import { createSessionStore } from './create-session-store';
 import { createSessionEngine } from './session-engine-test-fixture';
 import { createSessionHandle } from './session-handle';
@@ -82,7 +83,7 @@ describe('session verb event dispatch (C3 completeness rule)', () => {
     });
     // COR-816: throughRun 0 must name a terminal run, so complete one first.
     await h.run('first run').result();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     const events = collectEvents(emitter, 'session.fork');
     const forked = await h.fork({ throughRun: 0 });

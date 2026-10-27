@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { createAgentSession } from '../agent-session';
 import { createCheckpointStore } from '../durable/checkpoint-store';
 import { ToolStartedBubbleEvent } from '../events';
+import { drainMicrotasks } from '../testing/drain-microtasks.test-support.ts';
 import type { GenerateFunction } from '../types';
 import { createSessionStore } from './create-session-store';
 import { createSessionHandle } from './session-handle';
@@ -153,7 +154,7 @@ describe('regression: recover() persists terminal state after recovered run sett
       await settleParkedRun(engine2, runId);
       await reattached!.result();
       // Give the async settle handler a tick to complete the store.save.
-      await yieldToPortableEventLoop();
+      await drainMicrotasks();
 
       // The persisted RunRef must have transitioned to a terminal status.
       const storedSession = await secondStore.load(sessionId);

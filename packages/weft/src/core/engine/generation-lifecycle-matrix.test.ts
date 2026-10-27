@@ -28,6 +28,7 @@ import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import {
   createDeferred,
+  drainMicrotasks,
   waitForCondition,
   yieldToEventLoop,
 } from '../../testing/fake-timers.test-support.ts';
@@ -365,7 +366,7 @@ async function observe(scene: Scene, act: () => Promise<string>): Promise<Observ
   scene.writes.length = 0;
   try {
     const outcome = await act();
-    await yieldToEventLoop();
+    await drainMicrotasks();
     return {
       outcome,
       warnings: warning.warnings.filter((warned) => warned.workflowId === scene.id).length,
