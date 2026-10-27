@@ -358,15 +358,11 @@ describe('COR-1716 shutdown readiness baseline', () => {
       durable: true,
     });
     bureaus.push(bureau);
-    const run = await bureau.createRun({ agentName: 'default', message: 'abort the tool' });
+    await bureau.createRun({ agentName: 'default', message: 'abort the tool' });
     await started.promise;
 
     const shutdown = bureau.shutdown({ policy: 'detach' });
     await aborted.promise;
-    for await (const _turn of awakeTurns()) {
-      if (bureau.getRun(run.id)?.status !== 'running') break;
-      await yieldToPortableEventLoop();
-    }
     const report = await shutdown;
 
     expect(report.policy).toBe('detach');
