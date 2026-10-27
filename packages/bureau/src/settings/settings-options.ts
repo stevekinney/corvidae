@@ -12,6 +12,7 @@ import { isStorageConfiguration } from '../runtime-composition.ts';
 
 import type { AgentDefinitions } from '../agent-catalog.ts';
 import type { TaskToolGrant } from '../task-registry.ts';
+import type { BureauModelPolicyOptions } from '../model-policy.ts';
 import type { BureauOptions } from '../types.ts';
 import { effectiveSettings, readSettingsRecord, type StoredSettings } from './create-settings.ts';
 import { isSettingKey, type SettingKey, type SettingsValues } from './settings-schema.ts';
@@ -149,6 +150,14 @@ export function validateSettingsOptions<D extends AgentDefinitions>(
     }
   }
   return new Set(locked as SettingKey[]);
+}
+
+/**
+ * The stored `modelPolicy` as the policy the selector composes against. The schema checks its
+ * shape and revision; the per-user configurations are checked by the selector when it composes.
+ */
+export function modelPolicyOf(values: SettingsValues): BureauModelPolicyOptions | undefined {
+  return values.modelPolicy as BureauModelPolicyOptions | undefined;
 }
 
 /** The tools a task starting now is granted: `tools.*` of `values`. */

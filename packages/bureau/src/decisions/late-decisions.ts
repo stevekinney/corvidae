@@ -56,7 +56,7 @@ export function createLateDecisions(): LateDecisions {
     },
     toolWiringFor: (durable, owner, offered) =>
       durable && offered && composition?.configured === true
-        ? { decisions: source, maximumPerTask: composition.maximumPerTask, principal: owner }
+        ? { decisions: source, maximumPerTask: composition.maximumPerTask(), principal: owner }
         : undefined,
   };
 }
