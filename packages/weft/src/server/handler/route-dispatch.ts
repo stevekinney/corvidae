@@ -29,6 +29,7 @@ import {
   createLiveRestBindings,
   type UnknownRestBinding,
 } from '../rest-bindings.ts';
+import type { ConnectionLease } from '../runtime/context.ts';
 import type { TaskQueue } from '../task-queue.ts';
 import type { WorkflowEventFeed } from '../workflow-event-feed.ts';
 import {
@@ -128,6 +129,10 @@ export interface HandlerOptions {
   fleetEventFeed?: Pick<FleetEventFeed, 'subscribe'>;
   /** Shared per-workflow long-lived stream connection limiter. */
   acquireWorkflowStreamConnection?: WorkflowStreamConnectionAcquirer;
+  /** Internal server-owned lease for one fleet SSE subscriber. */
+  acquireFleetEventSubscriber?: () => ConnectionLease;
+  /** Internal server-owned lease for one workflow SSE subscriber. */
+  acquireWorkflowEventSubscriber?: () => ConnectionLease;
   /**
    * Optional pipeline-trace observer. **Internal test seam** used by the
    * dispatch-audit suite to prove every transport drives the full
