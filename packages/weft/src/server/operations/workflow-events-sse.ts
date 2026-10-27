@@ -5,6 +5,7 @@ import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import { isAuthenticated } from '../principal.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { ConnectionLease } from '../runtime/context.ts';
 import type { WorkflowStreamConnectionLease } from '../runtime/websocket-stream.ts';
 import {
   decodeCursor,
@@ -38,6 +39,7 @@ export type WorkflowStreamConnectionAcquirer = (
 export type EventStreamOperationContext = {
   readonly workflowEventFeed?: WorkflowEventFeed;
   readonly acquireWorkflowStreamConnection?: WorkflowStreamConnectionAcquirer;
+  readonly acquireWorkflowEventSubscriber?: () => ConnectionLease;
 };
 
 type WorkflowEventsSseOutput = AsyncIterable<EventEnvelope>;
@@ -145,6 +147,7 @@ function createWorkflowEventsIterable(
 
   const fromCursor = input.lastEventId ?? input.fromCursor ?? INITIAL_CURSOR;
   const controller = new AbortController();
+  const subscriberLease = context.acquireWorkflowEventSubscriber?.();
   return createReplayAwareClosableIterable(
     (onReplayComplete) => {
       const subscribeOptions: {
@@ -167,6 +170,7 @@ function createWorkflowEventsIterable(
     {
       close: () => {
         controller.abort();
+        subscriberLease?.release();
         lease?.release();
       },
     },

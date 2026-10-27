@@ -45,6 +45,15 @@ import type { SchedulingPolicy } from './task-queue-types.ts';
 import { TaskQueue } from './task-queue.ts';
 import type { WorkerAdmissionPolicy } from './worker-admission-policy.ts';
 
+/** Point-in-time counts of active server transport subscribers and workers. */
+export type WeftServerConnections = {
+  readonly fleetSse: number;
+  readonly fleetWebSocket: number;
+  readonly workflowSse: number;
+  readonly workflowWebSocket: number;
+  readonly workers: number;
+};
+
 export {
   wireEventBroadcasting,
   type EventBroadcastingHandle,
@@ -547,6 +556,8 @@ export interface WeftServer extends AsyncDisposable {
    * want to observe readiness without dispatching a probe task.
    */
   readonly ready: Promise<void>;
+  /** Return a point-in-time snapshot of active transport subscribers/connections. */
+  connections(): WeftServerConnections;
   /**
    * Drain connected remote workers, then stop the underlying Bun server.
    *
@@ -742,6 +753,7 @@ export function serve(options: ServeOptions): WeftServer {
     registry: context.registry,
     taskQueue: context.taskQueue,
     ready: context.taskLedgerRecovery.ready,
+    connections: () => ({ ...context.connectionCounts }),
     async stop() {
       await stack[Symbol.asyncDispose]();
     },
