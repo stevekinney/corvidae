@@ -147,6 +147,14 @@ A write whose revision or hash is no longer current is refused and nothing is wr
 
 The Playwright suite runs a second host (`E2E_BUREAU_PORT`, `tests/e2e/e2e-server.ts`) whose console is the Bureau's own engine, because the main host's console is the fixtures' engine and cannot see a schedule the Bureau holds. The schedules specs for an agent run and a workflow file's schedule open it, and the specs for an engine schedule open the main host.
 
+## Settings
+
+`/settings` is the Bureau's runtime settings (`bureau.settings.get`, `schema`, and `update`), drawn from the schema the Bureau publishes, so a key it adds appears with no change here. Which control a key gets is read from the shape of its schema node (`src/routes/settings/settings-controls.ts`): a Cinder switch for a boolean, a select for an enum, an input for a string, a number input for a number; a select between the literals and a number input for each number of a union such as the retention windows; a switch and a JSON editor for `tools.humanInput`; and a JSON editor for any other object (`modelPolicy`, `engine.retention`, `engine.history`, `engine.payloadSize`). A shape nothing reads falls to the JSON editor, so no key is unsupported. Keys are grouped by their first segment, with `durable`, `maintenance`, `durableOwnership.ownership`, and `workflowVersion` under Durability. Each key says whether it applies live or needs a restart, and whether a stored value waits for one; a key the deployment locked (`HostOptions.settings.locked`; a person's host locks none) is shown and disabled.
+
+Save sends the keys that changed in one `bureau.settings.update` with the `expectedRevision` the page read; the Bureau applies all of them or none. A `StaleRevision` fault, or a read that finds the revision moved while there are unsaved edits, shows a prompt to reload, and a reload discards the edits. The page reads the settings again every five seconds and when the window regains focus, because `bureau.settings.events` is served only over a WebSocket, which the Bureau's handler and this host do not serve to a browser. Below the form the host's own paths (`/host/paths`) are shown read-only: they are the host's and not settings. Nothing about the page is persisted by the page; the Bureau keeps the record.
+
+The Playwright suite locks `workflowVersion` on the main host to show a locked key against the real Bureau, and turns `tools.humanInput` off and on to show that a chat with `request-human-input` then asks nothing, and asks again (`tests/e2e/38-settings.spec.ts`).
+
 ## The journey
 
 `tests/e2e/90-journey.spec.ts` is one Playwright journey through the application as the single local principal, with no sign-in. It is serial, with one `test()` per stage, and it runs last because of its number. Each stage builds on the ones before it:
@@ -186,7 +194,7 @@ A decision whose outcome the Bureau could not write into the conversation (`APPR
 
 ## The shell
 
-The sidebar is Cinder's `SideNavigationGroup` twice: a Primary group (Chat, Agents, Workflows, Runs, Schedules, Reviews) and an Engine group (Workers, Storage, System, Audit). Chat is the home screen, sessions live at `/chat/:sessionId`, and runs live at `/runs` and `/runs/:id` (see "Runs"). `/workflows` is the catalog of workflow definitions (see "The Workflows area" above), and `/audit` is the audit trail (see "Schedules, goals, and the audit trail").
+The sidebar is Cinder's `SideNavigationGroup` twice: a Primary group (Chat, Agents, Workflows, Runs, Schedules, Reviews) and an Engine group (Workers, Storage, System, Audit, Settings). Chat is the home screen, sessions live at `/chat/:sessionId`, and runs live at `/runs` and `/runs/:id` (see "Runs"). `/workflows` is the catalog of workflow definitions (see "The Workflows area" above), and `/audit` is the audit trail (see "Schedules, goals, and the audit trail").
 
 Every view renders in a frame (`src/app/view-frame.svelte`) that is loading, empty, failing (Cinder's `ErrorState`, with a retry), forbidden, not found (for a view that opens one item by its address), or showing its content, and says which in `data-state` beside a `data-view` naming the view. Its words are in `src/app/copy.ts`, and its one request is in `src/app/view-probes.ts`. A probe whose empty answer is about to change by itself sets `recheckMs`, and the frame asks again that often while the view is empty and stops when it has something to show; the runs of a workflow type do, so a page opened before the first run shows it without a reload.
 

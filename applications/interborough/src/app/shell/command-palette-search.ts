@@ -80,6 +80,7 @@ const CONSOLE_PAGES: readonly ConsolePage[] = (
     ['storage', '/storage', 'engine'],
     ['system', '/system', 'engine'],
     ['audit', '/audit', 'engine'],
+    ['settings', '/settings', 'engine'],
   ] as const
 ).map(([view, path, group]) => ({ view, label: VIEW_COPY[view].label, path, group }));
 

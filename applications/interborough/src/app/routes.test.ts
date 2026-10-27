@@ -188,6 +188,7 @@ describe('the route table', () => {
       '/storage',
       '/system',
       '/audit',
+      '/settings',
       '/engine',
     ]) {
       expect(patterns).toContain(path);
@@ -302,6 +303,11 @@ describe('the routes for schedules and goals', () => {
 
   test('read /audit as the audit trail, not a placeholder', () => {
     expect(componentPathOf('/audit')).toBe(sourcePath('../routes/audit/index.svelte'));
+  });
+
+  test('read /settings as the settings page, in its own view', () => {
+    expect(componentPathOf('/settings')).toBe(sourcePath('../routes/settings/index.svelte'));
+    expect(routes.find((candidate) => candidate.pattern === '/settings')?.view).toBe('settings');
   });
 });
 
