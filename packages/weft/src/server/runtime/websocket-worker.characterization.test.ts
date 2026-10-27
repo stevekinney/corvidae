@@ -1945,13 +1945,9 @@ describe('handleWorkerWebSocketMessage', () => {
       const context = minimalServerContext();
       const options = minimalServeOptions();
 
-      // Faithfully model the real close-handler state: the OLD socket is still in
-      // `workerSockets` (it is not removed until the grace timer fires or the new
-      // socket overwrites it), AND a pending requeue entry exists. With a stale
-      // entry present, the duplicate-active guard's `existingSocket !== ws` branch
-      // is true — so the ONLY thing letting this registration through is the
-      // `isGracePeriodReconnect` bypass. (Without the stale entry the test would
-      // still pass even if the bypass were removed, so it would not pin it.)
+      // Model a stale map entry defensively. The real close handler removes the
+      // closed socket immediately now, but admission must remain safe if a
+      // caller has retained the old entry while the grace proof is pending.
       const staleSocket = createFakeWs();
       context.workerSockets.set('w-reconnect', staleSocket as never);
       const timerHandle = setTimeout(() => {}, 60_000);

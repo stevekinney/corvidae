@@ -9,10 +9,13 @@
 // outlives any worktree):
 //   { "runs": [{ "head", "exitCode", "time", "command" }],
 //     "fixes": [{ "pr", "time", "blockedHead" }],
-//     "waivers": [{ "pr", "time", "blockedHead", "reason", "controlHead" }] }
+//     "waivers": [{ "pr", "time", "blockedHead", "reason", "controlHead"? }] }
 // A fix is a pull request that repairs `main` (`--fixes-main`). A waiver is a pull request merged
-// past a red `main` whose failure is a load flake (`--waive-load-flake`): the reason says which test
-// failed and why it is load, and `controlHead` is the commit on `main` where the control passed.
+// past a red `main` that it does not repair. There are two kinds, told apart by `controlHead`:
+// a load-flake waiver (`--waive-load-flake`) names the test that failed and why it is load in
+// `reason`, and its `controlHead` is the commit on `main` where the control passed; an owner-level
+// waiver (`--waive-main-health --reason <text>`) carries only the `reason` and no `controlHead`.
+// Waivers never appear in `fixes`, so `fixes` lists only pull requests that repaired `main`.
 // `runs` keeps the newest 50 entries. "Last" means the entry whose head is nearest the tip of
 // `origin/<default>`'s first-parent history: a validate at a head that never reached `main` (a
 // branch gate, a rewritten history) is ignored, and a green validate at a later head clears a red
@@ -21,7 +24,8 @@
 // Usage:
 //   bun scripts/chef/main-health.ts [--config <json>] [--health-file <path>] [--json]
 //
-// prints main's health. Exit codes: 0 healthy or no batch validate recorded, 1 the last batch
+// prints main's health, then (when any are recorded against the failing head) the fixes and waivers
+// merged past it, each on a line of its own; `--json` adds them as `fixes` and `waivers`. Exit codes: 0 healthy or no batch validate recorded, 1 the last batch
 // validate on `main` failed, 2 invalid CLI usage.
 
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
@@ -56,7 +60,8 @@ export interface HealthWaiver {
   time: string;
   blockedHead: string;
   reason: string;
-  controlHead: string;
+  /** Present for a load-flake waiver; absent for `--waive-main-health`. */
+  controlHead?: string;
 }
 
 export interface HealthFile {
@@ -114,7 +119,7 @@ function isWaiver(value: unknown): value is HealthWaiver {
     isFix(value) &&
     record !== null &&
     typeof record['reason'] === 'string' &&
-    typeof record['controlHead'] === 'string'
+    (record['controlHead'] === undefined || typeof record['controlHead'] === 'string')
   );
 }
 
@@ -154,7 +159,7 @@ export function recordFix(path: string, fix: HealthFix): void {
   writeHealth(path, health);
 }
 
-/** Append the use of `--waive-load-flake` by a pull request. */
+/** Append the use of `--waive-load-flake` or `--waive-main-health` by a pull request. */
 export function recordWaiver(path: string, waiver: HealthWaiver): void {
   const health = readHealth(path);
   health.waivers = [...health.waivers, waiver].slice(-keptWaivers);
@@ -194,6 +199,10 @@ export interface MainHealth {
   /** True when the last batch validate on `main` failed. */
   red: boolean;
   run: HealthRun | undefined;
+  /** Pull requests merged as the declared fix for `run`'s head. */
+  fixes: HealthFix[];
+  /** Pull requests merged past `run`'s head under a waiver, of either kind. */
+  waivers: HealthWaiver[];
   /** Why the state is unknown, when Git could not list `main`'s history. */
   problem?: string;
 }
@@ -205,23 +214,39 @@ export function mainHealth(
   defaultBranch: string,
   healthFile: string,
 ): MainHealth {
-  const runs = readHealth(healthFile).runs;
-  if (runs.length === 0) return { red: false, run: undefined };
+  const { runs, fixes, waivers } = readHealth(healthFile);
+  if (runs.length === 0) return { red: false, run: undefined, fixes: [], waivers: [] };
   const history = firstParentHistory(runner, cwd, defaultBranch);
   if (history === undefined)
     return {
       red: false,
       run: undefined,
+      fixes: [],
+      waivers: [],
       problem: `could not list origin/${defaultBranch}'s first-parent history`,
     };
   const last = lastRunOnMain(runs, history);
-  return { red: last !== undefined && last.exitCode !== 0, run: last };
+  return {
+    red: last !== undefined && last.exitCode !== 0,
+    run: last,
+    fixes: last === undefined ? [] : fixes.filter((fix) => fix.blockedHead === last.head),
+    waivers: last === undefined ? [] : waivers.filter((waiver) => waiver.blockedHead === last.head),
+  };
 }
 
 export function renderMainHealth(health: MainHealth, defaultBranch: string): string {
   if (health.problem !== undefined) return `main health unknown: ${health.problem}.`;
   if (health.run === undefined) return `No batch validate on ${defaultBranch} is recorded.`;
-  return `${defaultBranch} batch validate at ${health.run.head.slice(0, 12)}: exit ${health.run.exitCode} at ${health.run.time} (${health.red ? 'RED' : 'green'}).`;
+  const lines = [
+    `${defaultBranch} batch validate at ${health.run.head.slice(0, 12)}: exit ${health.run.exitCode} at ${health.run.time} (${health.red ? 'RED' : 'green'}).`,
+  ];
+  if (health.fixes.length > 0)
+    lines.push(`fixes: ${health.fixes.map((fix) => `PR #${fix.pr}`).join(', ')}`);
+  if (health.waivers.length > 0)
+    lines.push(
+      `waivers: ${health.waivers.map((waiver) => `PR #${waiver.pr} (${waiver.reason})`).join(', ')}`,
+    );
+  return lines.join('\n');
 }
 
 export function run(

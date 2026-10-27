@@ -375,6 +375,56 @@ describe('mergeGate', () => {
       ).toBeUndefined();
     });
 
+    describe('--waive-main-health', () => {
+      const waiveReason = 'main is red from a fixture this change does not touch';
+
+      test('merges past a red main and records the waiver apart from the fixes', () => {
+        writeHealth(1);
+        options.mainHealthWaiver = { reason: waiveReason };
+        const { runner } = withHistory();
+        const report = mergeGate(options, { runner, now: () => new Date('2026-10-23T00:00:00Z') });
+        expect(report.failedStep).toBeNull();
+        expect(report.fixesMain).toBeUndefined();
+        expect(report.waiver).toBeUndefined();
+        expect(report.mainHealthWaiver).toEqual({ reason: waiveReason, blockedHead: redHead });
+        expect(renderMergeGate(report, false)).toContain(
+          `main health: red at ${redHead.slice(0, 12)}; merged under --waive-main-health: ${waiveReason}`,
+        );
+        const health = JSON.parse(readFileSync(options.healthFile as string, 'utf8'));
+        expect(health.fixes).toEqual([]);
+        expect(health.waivers).toEqual([
+          { pr: 12, time: '2026-10-23T00:00:00.000Z', blockedHead: redHead, reason: waiveReason },
+        ]);
+      });
+
+      test('the refusal names the flag, and a green main records nothing', () => {
+        writeHealth(1);
+        expect(mergeGate(options, { runner: withHistory().runner }).detail).toContain(
+          '--waive-main-health --reason <text>',
+        );
+        writeHealth(0);
+        options.mainHealthWaiver = { reason: waiveReason };
+        const report = mergeGate(options, { runner: withHistory().runner });
+        expect(report.failedStep).toBeNull();
+        expect(report.mainHealthWaiver).toBeUndefined();
+        expect(
+          JSON.parse(readFileSync(options.healthFile as string, 'utf8')).waivers,
+        ).toBeUndefined();
+      });
+
+      test('a dry run reports the waiver without recording it', () => {
+        writeHealth(1);
+        options.mainHealthWaiver = { reason: waiveReason };
+        options.dryRun = true;
+        const report = mergeGate(options, { runner: withHistory().runner });
+        expect(report.failedStep).toBeNull();
+        expect(report.mainHealthWaiver?.blockedHead).toBe(redHead);
+        expect(
+          JSON.parse(readFileSync(options.healthFile as string, 'utf8')).waivers,
+        ).toBeUndefined();
+      });
+    });
+
     test('a failure at a head that is not on main does not block', () => {
       writeHealth(1);
       const report = mergeGate(options, { runner: withHistory([BASE]).runner });
@@ -814,6 +864,33 @@ describe('run', () => {
     expect(() =>
       run(
         [...argv(), '--fixes-main', '--waive-load-flake', 'a load flake', '--control-head', BASE],
+        { runner },
+      ),
+    ).toThrow('are exclusive');
+    expect(() => run([...argv(), '--waive-main-health'], { runner })).toThrow('needs a --reason');
+    expect(() => run([...argv(), '--waive-main-health', '--reason', '  '], { runner })).toThrow(
+      'needs a --reason',
+    );
+    expect(() => run([...argv(), '--reason', 'main is red'], { runner })).toThrow(
+      'applies only with --waive-main-health',
+    );
+    expect(() =>
+      run([...argv(), '--fixes-main', '--waive-main-health', '--reason', 'main is red'], {
+        runner,
+      }),
+    ).toThrow('are exclusive');
+    expect(() =>
+      run(
+        [
+          ...argv(),
+          '--waive-main-health',
+          '--reason',
+          'main is red',
+          '--waive-load-flake',
+          'a load flake',
+          '--control-head',
+          BASE,
+        ],
         { runner },
       ),
     ).toThrow('are exclusive');

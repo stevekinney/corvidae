@@ -15,7 +15,13 @@ import {
 } from '../json-rpc-websocket-runtime.ts';
 import type { OpenApiSecuritySchemeName } from '../openapi.ts';
 import { API_PREFIX, JSON_RPC_PATH, MCP_STREAMABLE_HTTP_PATH } from '../route-model.ts';
-import type { ServerContext } from './context.ts';
+import {
+  acquireFleetSseConnection,
+  acquireFleetWebSocketConnection,
+  acquireWorkflowSseConnection,
+  acquireWorkflowWebSocketConnection,
+  type ServerContext,
+} from './context.ts';
 import { buildPreflightResponse, decorateResponseWithCors, isPreflightRequest } from './cors.ts';
 import { gateRequest } from './request-gate.ts';
 import { handleTaskHeartbeatRequest, handleTaskPollRequest } from './task-polling.ts';
@@ -298,6 +304,8 @@ function buildHandlerOptions(
     fleetEventFeed: context.fleetEventFeed,
     acquireWorkflowStreamConnection: (workflowId) =>
       acquireWorkflowStreamConnection(context, workflowId),
+    acquireFleetEventSubscriber: () => acquireFleetSseConnection(context),
+    acquireWorkflowEventSubscriber: () => acquireWorkflowSseConnection(context),
     supportedAuthenticationSchemes: context.supportedAuthenticationSchemes,
   };
 }
@@ -318,6 +326,7 @@ export function createServerWebSocketHandlers(
         return;
       }
       if (connectionType === 'watch' && workflowId) {
+        ws.data.workflowWebSocketConnectionLease = acquireWorkflowWebSocketConnection(context);
         ws.data.watchReplayInProgress = true;
         ws.data.pendingWatchMessages = [];
         void replayWatchEvents(context, options.engine as Engine, ws, workflowId); // see ServerFetchOptions.engine's JSDoc / #708
@@ -343,6 +352,7 @@ export function createServerWebSocketHandlers(
         if (!addStreamSocket(context, workflowId, ws)) {
           return;
         }
+        ws.data.workflowWebSocketConnectionLease = acquireWorkflowWebSocketConnection(context);
         void replayTokenStream(context, options.engine as Engine, ws, workflowId); // see ServerFetchOptions.engine's JSDoc / #708
       }
 
@@ -353,6 +363,8 @@ export function createServerWebSocketHandlers(
           engine: options.engine,
           feed: context.workflowEventFeed,
           fleetFeed: context.fleetEventFeed,
+          acquireWorkflowSubscription: () => acquireWorkflowWebSocketConnection(context),
+          acquireFleetSubscription: () => acquireFleetWebSocketConnection(context),
           activeSessions: context.activeJsonRpcSessions,
         });
         return;
@@ -396,6 +408,9 @@ export function createServerWebSocketHandlers(
         removeWatchSocket(context, ws);
         removeWorkflowStreamConnection(context, ws);
       }
+
+      ws.data.workflowWebSocketConnectionLease?.release();
+      delete ws.data.workflowWebSocketConnectionLease;
 
       const workerId = ws.data.workerId;
       if (workerId) {
@@ -444,12 +459,20 @@ export function createServerWebSocketHandlers(
         const existing = context.pendingWorkerRequeues.get(workerId);
         if (existing !== undefined) clearTimeout(existing.timer);
 
+        // A closed socket is no longer a live worker connection even while its
+        // registry entry remains available for reconnect proof. Remove the
+        // transport from the live-socket map now; the pending entry and
+        // registry identity preserve the grace-period reconnect semantics.
+        context.workerSockets.delete(workerId);
+        context.connectionCounts.workers = context.workerSockets.size;
+        context.refreshConnectionMetrics();
+
         const timer = setTimeout(() => {
           context.pendingWorkerRequeues.delete(workerId);
           // Re-verify: another register may have completed during the grace
-          // period. If so, the fresh socket replaces `workerSockets[workerId]`
-          // and the timer becomes a no-op.
-          if (context.workerSockets.get(workerId) !== ws) return;
+          // period. If so, the fresh socket is back in `workerSockets` and the
+          // timer becomes a no-op.
+          if (context.workerSockets.has(workerId)) return;
           void runWorkerDisconnectRequeue(context, options, workerId, cleanupWorkflowIndex);
         }, context.workerReconnectGracePeriodMs);
         context.pendingWorkerRequeues.set(workerId, {

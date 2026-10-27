@@ -133,6 +133,27 @@ describe('charter rules', () => {
   });
 });
 
+describe('report rule', () => {
+  const rule = charterRules.find((candidate) => candidate.startsWith('**Report:**'));
+
+  test('makes the final message the report and keeps files out of it', () => {
+    expect(rule).toBeDefined();
+    expect(rule).toContain('final message is the report');
+    expect(rule).toContain('at most 15 lines');
+    expect(rule).toContain('do not create a `report.md`');
+    expect(rule).toContain('tmp/chef/<package>/round-<n>/');
+  });
+
+  test('no charter rule requires writing a report file', () => {
+    expect(charterRules.join('\n')).not.toMatch(/write (?:the )?(?:full )?report/i);
+  });
+
+  test('the brief a worker receives carries the report rule', () => {
+    const text = renderBrief(issue(description), { paths: [], verify: [], model: 'Sonnet' });
+    expect(text).toContain(rule!);
+  });
+});
+
 describe('run', () => {
   const fetchIssue: FetchLike = async () =>
     new Response(JSON.stringify({ data: { issue: issue(description) } }), { status: 200 });

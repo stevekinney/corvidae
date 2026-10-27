@@ -40,6 +40,7 @@ import {
   deriveSupportedOpenApiSecuritySchemes,
   handleServerFetchRequest,
 } from './runtime/authentication-bridge.ts';
+import { createConnectionMetrics } from './runtime/connection-metrics.ts';
 import type {
   LongPollWorkerSession,
   PendingWorkerRequeue,
@@ -352,6 +353,8 @@ export function buildServerContext(
   // literal, can read the same maps the transports write.
   const longPollWorkerSessions = new Map<string, LongPollWorkerSession>();
   const pendingWorkerRequeues = new Map<string, PendingWorkerRequeue>();
+  const { connectionCounts, refreshConnectionMetrics } =
+    createConnectionMetrics(serverMetricsCollector);
   const workerSessionTiming = createWorkerSessionTiming({
     longPollWorkerSessions,
     pendingWorkerRequeues,
@@ -392,6 +395,8 @@ export function buildServerContext(
     // browser clients can preflight successfully. `null` means no CORS.
     corsPolicy: options.cors ? resolveCorsPolicy(options.cors, options.auth !== undefined) : null,
     metricsCollector: serverMetricsCollector,
+    connectionCounts,
+    refreshConnectionMetrics,
     eventFeedBackend,
     workflowEventFeed: createWorkflowEventFeed(eventFeedBackend),
     fleetEventFeed: createFleetEventFeed(options.engine.storage),
@@ -416,6 +421,8 @@ export function buildServerContext(
     taskLedgerRecovery: { ready: taskLedgerRecoveryReady },
     stopping: false,
   };
+
+  refreshConnectionMetrics();
 
   void runTaskLedgerRecovery(context, options).then(
     resolveTaskLedgerRecovery,
