@@ -11,13 +11,6 @@ type Deferred<T> = {
 const DEFAULT_MICROTASK_TURNS = 3;
 
 /**
- * How many promise turns `drainMicrotasks` awaits. The turns are a property of the code under
- * test's promise chains, never of host load: microtasks run to completion before the event loop
- * takes any other task, so a chain that needs more hops than this fails the same way on every host.
- */
-const DRAIN_MICROTASK_TURNS = 100;
-
-/**
  * Enable Bun fake timers for the current test.
  *
  * Tests that exercise production timers should call this before constructing
@@ -45,17 +38,6 @@ export async function flushMicrotasks(turns = DEFAULT_MICROTASK_TURNS): Promise<
   for (let i = 0; i < turns; i++) {
     await Promise.resolve();
   }
-}
-
-/**
- * Let every promise continuation already queued, and every one those continuations queue, run.
- * Use it where the next step depends only on microtask work: an in-memory storage, a scripted
- * activity, a manual clock. It never yields to a timer, a message port or an I/O callback, so it
- * cannot be too short on a loaded host. A step that needs one of those must wait on that state
- * instead (`waitForCondition`, `settleInlineLaunches`, a promise the code under test resolves).
- */
-export function drainMicrotasks(): Promise<void> {
-  return flushMicrotasks(DRAIN_MICROTASK_TURNS);
 }
 
 /**
@@ -315,4 +297,22 @@ export async function expectPromisePending(promise: Promise<unknown>): Promise<v
 
   await flushMicrotasks();
   expect(settled).toBe(false);
+}
+
+/**
+ * How many promise turns `drainMicrotasks` awaits. The turns are a property of the code under
+ * test's promise chains, never of host load: microtasks run to completion before the event loop
+ * takes any other task, so a chain that needs more hops than this fails the same way on every host.
+ */
+const DRAIN_MICROTASK_TURNS = 100;
+
+/**
+ * Let every promise continuation already queued, and every one those continuations queue, run.
+ * Use it where the next step depends only on microtask work: an in-memory storage, a scripted
+ * activity, a manual clock. It never yields to a timer, a message port or an I/O callback, so it
+ * cannot be too short on a loaded host. A step that needs one of those must wait on that state
+ * instead (`waitForCondition`, `settleInlineLaunches`, a promise the code under test resolves).
+ */
+export function drainMicrotasks(): Promise<void> {
+  return flushMicrotasks(DRAIN_MICROTASK_TURNS);
 }
