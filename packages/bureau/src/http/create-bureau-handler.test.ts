@@ -772,6 +772,63 @@ describe('createBureauHandler under Bun.serve', () => {
   });
 });
 
+describe('createBureauHandler WebSocket transport', () => {
+  it('refuses a bad API key before calling server.upgrade', async () => {
+    await withBureau({ id: 'websocket-auth-bureau' }, async (bureau) => {
+      const handler = createBureauHandler(bureau, { authentication: allScopes });
+      let upgrades = 0;
+      const upgraded = await handler.upgrade(
+        new Request('http://localhost/jsonrpc', { headers: { 'X-API-Key': 'wrong-key' } }),
+        { upgrade: () => ((upgrades += 1), true) },
+      );
+      expect(upgraded).toBe(false);
+      expect(upgrades).toBe(0);
+    });
+  });
+
+  it('serves bureau.events over a real authenticated WebSocket', async () => {
+    await withBureau({ id: 'websocket-bureau' }, async (bureau) => {
+      bureau.internals.eventFeed.publish(new RunRegisteredEvent('run-1'));
+      const handler = createBureauHandler(bureau, { authentication: allScopes });
+      const server = Bun.serve({
+        port: 0,
+        fetch: async (request) => {
+          if (request.headers.get('upgrade')?.toLowerCase() === 'websocket') {
+            if (await handler.upgrade(request, server)) return undefined;
+          }
+          return handler(request);
+        },
+        websocket: handler.websocket,
+      });
+      try {
+        const socket = new WebSocket(`ws://localhost:${server.port}/jsonrpc`, {
+          headers: credentials,
+        } as never);
+        const frame = new Promise<Record<string, unknown>>((resolve, reject) => {
+          socket.addEventListener('message', (event) => resolve(JSON.parse(String(event.data))));
+          socket.addEventListener('error', () => reject(new Error('WebSocket failed')));
+        });
+        await new Promise<void>((resolve) => socket.addEventListener('open', () => resolve()));
+        socket.send(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'bureau.events',
+            params: { bureauId: bureau.id },
+          }),
+        );
+        expect(await frame).toMatchObject({
+          id: 1,
+          result: { subscriptionId: expect.any(String) },
+        });
+        socket.close();
+      } finally {
+        server.stop(true);
+      }
+    });
+  });
+});
+
 describe('the Bureau scope list', () => {
   it('registers the operator scopes, and not the delivery scopes', () => {
     expect([...BUREAU_SCOPES]).toEqual([

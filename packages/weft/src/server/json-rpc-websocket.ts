@@ -329,26 +329,18 @@ export function createJsonRpcWebSocketSession(
     }
   }
 
-  async function handleMessage(frame: string): Promise<void> {
-    if (disposed || emitterBroken) return;
-
-    const validation = validateMessageFrame(frame, maxFrameBytes);
-    if (!validation.ok) {
-      emit({
-        jsonrpc: JSON_RPC_VERSION,
-        error: validation.error,
-        id: validation.id,
-      });
-      return;
-    }
-
+  async function handleCatalogMethod(
+    validation: ReturnType<typeof validateMessageFrame> & { ok: true },
+  ): Promise<boolean> {
     if (isSessionPrimitive(validation.method)) {
-      if (feed === undefined) {
-        await dispatchStandard(validation);
-        return;
+      const feedDependentPrimitive =
+        validation.method === SESSION_METHODS.SUBSCRIBE ||
+        validation.method === WORKFLOW_EVENTS_OPERATION_NAME;
+      if (feed === undefined && feedDependentPrimitive) {
+        return false;
       }
       await handleSessionPrimitive(validation);
-      return;
+      return true;
     }
 
     const method = validation.method;
@@ -365,8 +357,25 @@ export function createJsonRpcWebSocketSession(
           registry,
         }),
       );
+      return true;
+    }
+    return false;
+  }
+
+  async function handleMessage(frame: string): Promise<void> {
+    if (disposed || emitterBroken) return;
+
+    const validation = validateMessageFrame(frame, maxFrameBytes);
+    if (!validation.ok) {
+      emit({
+        jsonrpc: JSON_RPC_VERSION,
+        error: validation.error,
+        id: validation.id,
+      });
       return;
     }
+
+    if (await handleCatalogMethod(validation)) return;
 
     await dispatchStandard(validation);
   }

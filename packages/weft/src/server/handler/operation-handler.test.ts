@@ -150,6 +150,79 @@ describe('createOperationHandler', () => {
     socket.close();
   });
 
+  it('cancels an unbounded catalog subscription with the session primitive', async () => {
+    let closed = 0;
+    let release: (() => void) | undefined;
+    const operation = defineOperation({
+      name: 'probe.websocket.unbounded',
+      mcpExposable: false,
+      kind: 'subscription',
+      summary: 'unbounded websocket events',
+      destructive: false,
+      inputSchema: z.object({}),
+      outputSchema: z.object({ subscriptionId: z.string(), cursor: z.string() }),
+      eventSchema: z.object({ value: z.string() }),
+      access: { kind: 'public' as const },
+      transports: { http: false, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
+      unknownKeyPolicy: { http: 'reject' as const, jsonRpc: 'reject' as const },
+      invoke: async () => ({
+        envelope: { subscriptionId: 'sub_unbounded', cursor: '-1' },
+        iterable: (async function* () {
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          yield { value: 'late' };
+        })(),
+        close: async () => {
+          closed += 1;
+          release?.();
+        },
+      }),
+    });
+    const handler = createOperationHandler({ operations: [operation], host: {} });
+    websocketServer = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        if (request.headers.get('upgrade')?.toLowerCase() === 'websocket') {
+          if (await handler.upgrade(request, websocketServer!)) return undefined;
+        }
+        return handler(request);
+      },
+      websocket: handler.websocket,
+    });
+    const socket = new WebSocket(`ws://localhost:${websocketServer.port}/jsonrpc`);
+    const frames: Array<Record<string, unknown>> = [];
+    const received = new Promise<void>((resolve, reject) => {
+      socket.addEventListener('message', (event) => {
+        frames.push(JSON.parse(String(event.data)) as Record<string, unknown>);
+        if (frames.length === 3) resolve();
+      });
+      socket.addEventListener('error', () => reject(new Error('WebSocket failed')));
+    });
+    await new Promise<void>((resolve) => socket.addEventListener('open', () => resolve()));
+    socket.send(
+      JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'probe.websocket.unbounded', params: {} }),
+    );
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+    socket.send(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'weft.workflows.unsubscribe',
+        params: { subscriptionId: 'sub_unbounded' },
+      }),
+    );
+    await received;
+    expect(frames[0]).toMatchObject({ id: 1, result: { subscriptionId: 'sub_unbounded' } });
+    expect(frames[1]).toMatchObject({ id: 2, result: {} });
+    expect(frames[2]).toMatchObject({
+      method: 'weft.events.terminated',
+      params: { subscriptionId: 'sub_unbounded', reason: 'client-unsubscribed' },
+    });
+    expect(closed).toBe(1);
+    socket.close();
+  });
+
   it('is exported from the package entry point', () => {
     expect(weft.createOperationHandler).toBe(createOperationHandler);
     expect(weft.createOperationHandlerAuthenticator).toBe(createOperationHandlerAuthenticator);
