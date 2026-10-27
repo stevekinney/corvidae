@@ -29,6 +29,7 @@ export const AG_UI_ERROR_CODES = [
   'STREAM_OVERFLOW',
   'RUN_FAILED',
   'CONTINUATION_UNAVAILABLE',
+  'REVIEW_ROUND_CHANGED',
 ] as const;
 
 export type AgUiErrorCode = (typeof AG_UI_ERROR_CODES)[number];

@@ -21,3 +21,11 @@ export const RESUME_ATTEMPT_FAILED_MESSAGES = {
   continuationNotStarted:
     'The approvals were applied, but the run that continues from them could not be started; send a new message to continue the thread',
 } as const;
+
+/**
+ * The words of a `REVIEW_ROUND_CHANGED` refusal: an approval was gated again after the client
+ * showed it, so the round its entry names is not the one pending, and nothing was decided. It does
+ * not say "try again", which the Interborough chat client reads as an attempt still going (COR-1714).
+ */
+export const RESUME_ROUND_CHANGED_MESSAGE =
+  'This approval changed while you read it, so it was not decided; read it again before deciding';

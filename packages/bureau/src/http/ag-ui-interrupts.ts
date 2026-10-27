@@ -10,7 +10,7 @@
  * @module ag-ui-interrupts
  */
 
-import type { Interrupt } from '@ag-ui/core';
+import type { Interrupt, ResumeEntry } from '@ag-ui/core';
 
 import type { PendingReview } from '../types.ts';
 import { projectReview } from './bureau-reviews-operations.ts';
@@ -50,6 +50,22 @@ export type AgUiResumePayload = {
   arguments?: unknown;
   answer?: unknown;
 };
+
+/**
+ * The round of the tool approval a resume entry answers: the `round` the client read from the
+ * interrupt's metadata, sent back under the same key in the entry's own `metadata` (COR-1714). A
+ * re-gated approval keeps its id and advances its round, so the round is what says which request
+ * the answer was made on. `undefined` when the entry names none, and its answer is not fenced;
+ * `null` when what it names is not a round.
+ */
+export function roundOfEntry(entry: ResumeEntry): number | null | undefined {
+  const fields: unknown = entry.metadata?.[BUREAU_METADATA_KEY];
+  if (fields === undefined) return undefined;
+  if (typeof fields !== 'object' || fields === null || Array.isArray(fields)) return null;
+  const round: unknown = (fields as Record<string, unknown>)['round'];
+  if (round === undefined) return undefined;
+  return typeof round === 'number' && Number.isSafeInteger(round) && round >= 0 ? round : null;
+}
 
 /** One pending review as the interrupt that asks for its answer. */
 export function toInterrupt(review: PendingReview): Interrupt {

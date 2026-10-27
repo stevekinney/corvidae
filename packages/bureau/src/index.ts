@@ -553,6 +553,7 @@ export { BUREAU_SCOPES, type BureauScope } from './http/bureau-scopes';
 export {
   RESUME_ATTEMPT_FAILED_MESSAGES,
   RESUME_ATTEMPT_STILL_GOING_MESSAGES,
+  RESUME_ROUND_CHANGED_MESSAGE,
 } from './http/ag-ui-resume-messages';
 export type {
   AbortInteractiveSurfacesCommand,

@@ -47,7 +47,7 @@ import {
   digestCommandPayload,
 } from '../command-ledger.ts';
 import type { CommandLedger, CommandLedgerIdentity } from '../command-ledger.ts';
-import { ApprovalOutcomeNotWrittenError } from '../create-bureau.ts';
+import { ApprovalOutcomeNotWrittenError, ReviewRoundChangedError } from '../create-bureau.ts';
 import { humanWaitAnswerRowIdentifier, humanWaitDenialPayload } from '../human-wait-signal.ts';
 import type {
   Bureau,
@@ -56,10 +56,11 @@ import type {
   BureauReviews,
   BureauInternals,
 } from '../types.ts';
-import { type AgUiResumePayload, interruptKey } from './ag-ui-interrupts.ts';
+import { type AgUiResumePayload, interruptKey, roundOfEntry } from './ag-ui-interrupts.ts';
 import {
   RESUME_ATTEMPT_FAILED_MESSAGES,
   RESUME_ATTEMPT_STILL_GOING_MESSAGES,
+  RESUME_ROUND_CHANGED_MESSAGE,
 } from './ag-ui-resume-messages.ts';
 import { type AgUiLeases, releaseQuietly } from './ag-ui-lease.ts';
 import type { AnswerRow } from './ag-ui-messages.ts';
@@ -73,7 +74,7 @@ import {
   runIsGoing,
   type AgUiStreamEnvironment,
 } from './ag-ui-stream.ts';
-import { type AgUiErrorCode, stamp } from './ag-ui-vocabulary.ts';
+import { type AgUiErrorCode, BUREAU_METADATA_KEY, stamp } from './ag-ui-vocabulary.ts';
 import type { OwnerAccessPredicate } from './owner-predicate.ts';
 
 /** The version of the resume command's contract the ledger keys on. */
@@ -156,17 +157,28 @@ function isPayload(value: unknown): value is AgUiResumePayload {
   return true;
 }
 
-/** How one entry is resolved: the call `reviews.resolve` takes, or nothing for a no-op. */
+/**
+ * How one entry is resolved: the call `reviews.resolve` takes. A tool approval's entry that names the
+ * round it was made on is fenced on it, so a review gated again since is not decided (COR-1714).
+ */
 function resolutionFor(
   entry: ResumeEntry,
   review: PendingReview,
   owner: string,
 ): ResolveReviewInput {
+  const round = review.kind === 'tool-approval' ? roundOfEntry(entry) : undefined;
+  const fence = typeof round === 'number' ? { round } : {};
   if (entry.status === 'cancelled') {
-    return { id: review.id, decision: 'deny', principal: owner, reason: CANCELLED_REASON };
+    return {
+      id: review.id,
+      decision: 'deny',
+      principal: owner,
+      reason: CANCELLED_REASON,
+      ...fence,
+    };
   }
   const payload = entry.payload as AgUiResumePayload;
-  const base = { id: review.id, decision: payload.decision, principal: owner } as const;
+  const base = { id: review.id, decision: payload.decision, principal: owner, ...fence } as const;
   if (payload.decision === 'approve') {
     if (review.kind === 'tool-approval') {
       return Object.prototype.hasOwnProperty.call(payload, 'arguments')
@@ -309,6 +321,12 @@ export function createResume(context: ResumeContext) {
           'A resolved entry needs a payload with a decision (and a reason, to reject)',
         );
       }
+      if (roundOfEntry(entry) === null) {
+        return context.refuse(
+          'INVALID_INPUT',
+          `The round an entry names in its metadata ("${BUREAU_METADATA_KEY}") must be a non-negative integer`,
+        );
+      }
     }
     const reviews = new Map<string, PendingReview>();
     const sessionAgentNames = new Map<string, Promise<string | undefined>>();
@@ -363,6 +381,13 @@ export function createResume(context: ResumeContext) {
           'INTERRUPT_NOT_FOUND',
           `Interrupt "${entry.interruptId}" was not found`,
         );
+      }
+      // An approval gated again since the client showed it keeps its id and advances its round,
+      // so an entry made on the round before is not an answer to it. Asked only once the caller
+      // may answer the review, so the refusal says nothing to a caller who may not (COR-1714).
+      const round = roundOfEntry(entry);
+      if (review.kind === 'tool-approval' && round !== undefined && round !== review.round) {
+        return context.refuse('REVIEW_ROUND_CHANGED', RESUME_ROUND_CHANGED_MESSAGE);
       }
       reviews.set(entry.interruptId, review);
     }
@@ -760,6 +785,7 @@ export function createResume(context: ResumeContext) {
     let failures = 0;
     let leaseLost = false;
     let notWritten: ApprovalOutcomeNotWrittenError | undefined;
+    let roundChanged = false;
     for (const entry of entries) {
       const review = reviews.get(entry.interruptId)!;
       if (!pendingIds.has(entry.interruptId)) {
@@ -784,6 +810,8 @@ export function createResume(context: ResumeContext) {
         // Another resolver won, or the review changed: the pending set decides what the stream shows.
         failures += 1;
         if (error instanceof ApprovalOutcomeNotWrittenError) notWritten = error;
+        // Gated again between the read above and this decision: the fence refused it.
+        if (error instanceof ReviewRoundChangedError) roundChanged = true;
         outcomes.push({
           interruptId: entry.interruptId,
           outcome: error instanceof Error ? error.name : 'failed',
@@ -812,7 +840,9 @@ export function createResume(context: ResumeContext) {
       );
       if (stranded) {
         if (!appliedAny) {
-          return refuse('RUN_FAILED', RESUME_ATTEMPT_FAILED_MESSAGES.answersNotApplied);
+          return roundChanged
+            ? refuse('REVIEW_ROUND_CHANGED', RESUME_ROUND_CHANGED_MESSAGE)
+            : refuse('RUN_FAILED', RESUME_ATTEMPT_FAILED_MESSAGES.answersNotApplied);
         }
         return {
           code: 'RUN_FAILED',

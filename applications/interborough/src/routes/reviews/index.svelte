@@ -10,7 +10,12 @@
   import { Alert, Badge } from '@lostgradient/cinder';
 
   import { REVIEWS_COPY } from '../../app/copy.ts';
-  import type { BureauHumanWait, BureauReview, ReviewDecision } from '../../lib/bureau-reviews.ts';
+  import {
+    isReviewRoundChanged,
+    type BureauHumanWait,
+    type BureauReview,
+    type ReviewDecision,
+  } from '../../lib/bureau-reviews.ts';
   import { getClient } from '../../lib/client.ts';
   import { faultTreatment } from '../../lib/faults.ts';
   import { createPendingCommandKey } from '../../lib/pending-command-key.ts';
@@ -77,7 +82,13 @@
     outcome = undefined;
     notWritten = false;
     resolveMutation.mutate(
-      { id: review.id, decision, ...(reason === undefined ? {} : { reason }) },
+      {
+        id: review.id,
+        decision,
+        ...(reason === undefined ? {} : { reason }),
+        // The round the row showed: a review gated again since is refused, not decided.
+        ...(review.kind === 'tool-approval' ? { round: review.round } : {}),
+      },
       {
         onSuccess: (resolution) => {
           if (resolution.outcomeNotWritten === true) {
@@ -96,12 +107,19 @@
           }
         },
         onError: (error) => {
-          outcome = {
-            reviewId: review.id,
-            tone: 'danger',
-            title: REVIEWS_COPY.decisionFailed,
-            message: faultTreatment(error).message,
-          };
+          outcome = isReviewRoundChanged(error)
+            ? {
+                reviewId: review.id,
+                tone: 'warning',
+                title: REVIEWS_COPY.roundChanged.title,
+                message: REVIEWS_COPY.roundChanged.message,
+              }
+            : {
+                reviewId: review.id,
+                tone: 'danger',
+                title: REVIEWS_COPY.decisionFailed,
+                message: faultTreatment(error).message,
+              };
         },
       },
     );
