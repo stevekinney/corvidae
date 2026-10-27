@@ -203,10 +203,9 @@ describe('cancelling a task that is waiting on the decide tool', () => {
       maximumPerTask: 20,
     });
 
-    await toolbox.getTool('decide')!.execute(
-      { kind: 'boolean', question: 'Q?' } as never,
-      { signal: controller.signal } as never,
-    );
+    await toolbox
+      .getTool('decide')!
+      .execute({ kind: 'boolean', question: 'Q?' }, { signal: controller.signal });
 
     expect(seen).toEqual([controller.signal]);
   });
