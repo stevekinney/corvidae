@@ -99,7 +99,7 @@ describe('D6 scheduled-fire path (#109)', () => {
       try {
         // A bare duration shorthand ('1s') is registered as an interval
         // ({ every: '1s' }), not cron — see toScheduleSpec.
-        const summary = await bureau.createSchedule({
+        const summary = await bureau.schedules.create({
           agentName: 'default',
           input: 'stateless tick prompt',
           spec: '1s',
@@ -108,7 +108,7 @@ describe('D6 scheduled-fire path (#109)', () => {
 
         const fired = await waitForReal(() => calls.length >= 1, FIRE_TIMEOUT_MS);
         // Stop further fires before asserting so the count is stable.
-        await bureau.cancelSchedule(summary!.id);
+        await bureau.schedules.cancel(summary!.id);
 
         expect(fired).toBe(true);
         // The agent body actually ran with the scheduled prompt.
@@ -147,7 +147,7 @@ describe('D6 scheduled-fire path (#109)', () => {
       });
 
       try {
-        const summary = await bureau.createSchedule({
+        const summary = await bureau.schedules.create({
           agentName: 'default',
           input: 'digest prompt',
           spec: '1s',
@@ -157,7 +157,7 @@ describe('D6 scheduled-fire path (#109)', () => {
 
         const recurringCalls = () => calls.filter((call) => call.conversationId === sessionId);
         const firedTwice = await waitForReal(() => recurringCalls().length >= 2, FIRE_TIMEOUT_MS);
-        await bureau.cancelSchedule(summary!.id);
+        await bureau.schedules.cancel(summary!.id);
 
         expect(firedTwice).toBe(true);
 
@@ -187,7 +187,7 @@ describe('D6 scheduled-fire path (#109)', () => {
 
 describe('AB-223: schedule definition and fire-terminal lifecycle events', () => {
   it(
-    'dispatches SchedulePausedEvent/ScheduleResumedEvent/ScheduleCancelledEvent from Bureau.pauseSchedule/resumeSchedule/cancelSchedule',
+    'dispatches SchedulePausedEvent/ScheduleResumedEvent/ScheduleCancelledEvent from bureau.schedules.pause/resume/cancel',
     async () => {
       const bureau = await createBureau<AgentDefinitions>({
         agents: {
@@ -208,16 +208,16 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
         bureau.addEventListener(ScheduleResumedEvent.type, (event) => resumed.push(event));
         bureau.addEventListener(ScheduleCancelledEvent.type, (event) => cancelled.push(event));
 
-        const summary = await bureau.createSchedule({
+        const summary = await bureau.schedules.create({
           agentName: 'default',
           input: 'paused forever',
           spec: '1h',
         });
         expect(summary).toBeDefined();
 
-        await bureau.pauseSchedule(summary!.id);
-        await bureau.resumeSchedule(summary!.id);
-        await bureau.cancelSchedule(summary!.id);
+        await bureau.schedules.pause(summary!.id);
+        await bureau.schedules.resume(summary!.id);
+        await bureau.schedules.cancel(summary!.id);
 
         expect(paused.map((event) => event.scheduleId)).toEqual([summary!.id]);
         expect(resumed.map((event) => event.scheduleId)).toEqual([summary!.id]);
@@ -230,7 +230,7 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
   );
 
   it(
-    'dispatches AgentScheduledEvent (schedule.created) exactly once from Bureau.createSchedule, carrying scheduleId and the definition summary (AB-298)',
+    'dispatches AgentScheduledEvent (schedule.created) exactly once from bureau.schedules.create, carrying scheduleId and the definition summary (AB-298)',
     async () => {
       const bureau = await createBureau<AgentDefinitions>({
         agents: {
@@ -247,7 +247,7 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
         const created: AgentScheduledEvent[] = [];
         bureau.addEventListener(AgentScheduledEvent.type, (event) => created.push(event));
 
-        const summary = await bureau.createSchedule({
+        const summary = await bureau.schedules.create({
           agentName: 'default',
           input: 'daily digest',
           spec: '1h',

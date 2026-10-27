@@ -130,8 +130,8 @@ describe('an id an ordinary caller chooses', () => {
   it.each(RESERVED)('may not be the session id %s of a schedule', async (sessionId) => {
     const bureau = await boot();
 
-    const error = await bureau
-      .createSchedule({ agentName: 'worker', input: 'x', spec: '1h', sessionId })
+    const error = await bureau.schedules
+      .create({ agentName: 'worker', input: 'x', spec: '1h', sessionId })
       .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(BureauError);

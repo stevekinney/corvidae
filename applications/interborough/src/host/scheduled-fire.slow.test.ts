@@ -40,7 +40,7 @@ test('a schedule fire runs once and ends normally, not at the step limit', async
     seed: false,
   });
   hosts.push(host);
-  await host.bureau.createSchedule({
+  await host.bureau.schedules.create({
     description: 'Fires every second',
     agentName: 'assistant',
     input: 'Summarize.',

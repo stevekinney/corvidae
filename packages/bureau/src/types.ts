@@ -1207,6 +1207,120 @@ export interface BureauReviews {
 }
 
 /**
+ * The durable schedules of a Bureau: registering, reading, and changing recurring schedules, and
+ * the history of their definitions. Every operation that needs the durable engine resolves
+ * `undefined` when none is composed. `bureau.schedules.*` operations served by
+ * `createBureauHandler` delegate to these members.
+ */
+export interface BureauSchedules {
+  /**
+   * Register a durable recurring schedule via `engine.schedule(...)`.
+   * Throws `ScheduleLocatorUnavailableError` when the schedule was created
+   * but its summary could not be immediately retrieved — the schedule IS
+   * registered in that case, only its locator failed. Returns `undefined`
+   * when no durable engine is composed.
+   */
+  create(definition: DurableScheduleDefinition): Promise<ScheduleSummary | undefined>;
+
+  /**
+   * Retrieve a durable schedule by id. Returns `null` when the schedule does not
+   * exist, `undefined` when no durable engine is composed.
+   */
+  get(scheduleId: string): Promise<ScheduleSummary | null | undefined>;
+
+  /**
+   * List durable schedules, optionally filtered. Returns `undefined` when no
+   * durable engine is composed.
+   */
+  list(filter?: ScheduleFilter): Promise<PaginatedResult<ScheduleSummary> | undefined>;
+
+  /**
+   * Pause a durable schedule. Returns `true` on success, `undefined` when no
+   * durable engine is composed. With `guard.expectedRevision`, the pause applies only if the
+   * schedule's `revision` is still that value, and a mismatch throws Weft's
+   * `ScheduleStaleRevisionError` having written nothing; Weft compares it inside its serialized
+   * write, so Bureau never compares it itself.
+   */
+  pause(scheduleId: string, guard?: ScheduleRevisionGuard): Promise<true | undefined>;
+
+  /**
+   * Resume a paused durable schedule. Returns `true` on success, `undefined` when no durable
+   * engine is composed. `guard` as for {@link BureauSchedules.pause}.
+   */
+  resume(scheduleId: string, guard?: ScheduleRevisionGuard): Promise<true | undefined>;
+
+  /**
+   * Cancel and permanently delete a durable schedule. Returns `true` on success,
+   * `undefined` when no durable engine is composed. `guard` as for {@link BureauSchedules.pause}.
+   */
+  cancel(scheduleId: string, guard?: ScheduleRevisionGuard): Promise<true | undefined>;
+
+  /**
+   * Change a durable schedule's cadence, description, and overlap policy (COR-1482), by wrapping
+   * Weft's `updateSchedule`. Weft replaces the cadence wholesale, so `update.spec` is required, in
+   * the same grammar as {@link DurableScheduleDefinition.spec}. The schedule's input, agent, owner
+   * and session are not changed. Resolves `true`, or `undefined` when no durable engine is
+   * composed. A schedule that does not exist, and a workflow file's schedule (which belongs to its
+   * file), reject with `NOT_FOUND`; an overlap Bureau does not offer, or `'allow'` on a schedule
+   * with a recurring session, rejects with `BAD_REQUEST`. `guard` as for
+   * {@link BureauSchedules.pause}.
+   */
+  update(
+    scheduleId: string,
+    update: DurableScheduleUpdate,
+    guard?: ScheduleRevisionGuard,
+  ): Promise<true | undefined>;
+
+  /**
+   * The name of the catalog agent an agent schedule runs, or `undefined` when there is no such
+   * schedule, when it is a workflow file's schedule (which runs no agent of its own), or when no
+   * durable engine is composed. It is read from the schedule's stored input and is the only part
+   * of that input this returns: never its text or its session. It does not check who may see the
+   * schedule, so a caller answers to {@link Bureau.getOwner} first.
+   */
+  agentName(scheduleId: string): Promise<string | undefined>;
+
+  /**
+   * The start of the text an agent schedule sends each fire: at most 500 characters, ending in `…`
+   * when it was cut, so a schedule can be told by what it says. `undefined` when there is no such
+   * schedule, when it is a workflow file's, when its input holds no text, or when no durable engine
+   * is composed. It reads the stored input beside {@link BureauSchedules.agentName}, never its
+   * session, and does not check who may see the schedule, so a caller answers to
+   * {@link Bureau.getOwner} first.
+   */
+  inputPreview(scheduleId: string): Promise<string | undefined>;
+
+  /**
+   * One page of the schedule definition's durable event history (`schedule.created`, paused,
+   * resumed, and cancelled), from the exclusive `options.since` cursor. It is
+   * {@link Bureau.eventHistory} for the `schedule` owner: the outcomes, `options.principal`
+   * authorization, and paging are that method's, so see it for the full contract.
+   */
+  events(
+    scheduleId: string,
+    options?: DurableEventHistoryPageOptions,
+  ): Promise<
+    | DurableEventPage
+    | DurableEventGap
+    | EventHistoryUnsupportedOutcome
+    | EventHistoryNotFoundOutcome
+    | EventHistoryDeletedAggregateOutcome
+  >;
+
+  /**
+   * Replays the schedule definition's durable event history from the exclusive `options.since`
+   * cursor, then delivers live events with no gap and no duplicate at the handoff. It is
+   * {@link Bureau.subscribeEventHistory} for the `schedule` owner, so an ephemeral bureau returns
+   * an already-closed subscription and `options.principal` applies as it does there.
+   */
+  subscribeEvents(
+    scheduleId: string,
+    listener: (event: DurableEventEnvelope) => void,
+    options?: DurableEventHistorySubscribeOptions,
+  ): Subscription;
+}
+
+/**
  * The seam between a Bureau and the code that serves or tests it: `createBureauHandler` reads
  * these members to serve the operations, and the test harness reads them to inspect what the
  * Bureau holds. An application builds on the other members of {@link Bureau}; none of these
@@ -1355,6 +1469,12 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * `pendingOf`). See {@link BureauReviews}.
    */
   readonly reviews: BureauReviews;
+  /**
+   * The durable schedules: `create`, `get`, `list`, `pause`, `resume`, `cancel`, `update`, the
+   * `agentName` and `inputPreview` of an agent schedule, and the schedule definition's event
+   * history (`events`, `subscribeEvents`). See {@link BureauSchedules}.
+   */
+  readonly schedules: BureauSchedules;
   /**
    * The seam the handler and the test harness read: stores, event feeds, and the task registry.
    * It is not part of the surface an application builds on. See {@link BureauInternals}.
@@ -1534,25 +1654,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    *   without one, such as a deletion that bypassed Bureau, has no owner.
    */
   getOwner(resource: OwnedResource): Promise<string | undefined>;
-
-  /**
-   * The name of the catalog agent an agent schedule runs, or `undefined` when there is no such
-   * schedule, when it is a workflow file's schedule (which runs no agent of its own), or when no
-   * durable engine is composed. It is read from the schedule's stored input and is the only part
-   * of that input this returns: never its text or its session. It does not check who may see the
-   * schedule, so a caller answers to {@link Bureau.getOwner} first.
-   */
-  getScheduleAgentName(scheduleId: string): Promise<string | undefined>;
-
-  /**
-   * The start of the text an agent schedule sends each fire: at most 500 characters, ending in `…`
-   * when it was cut, so a schedule can be told by what it says. `undefined` when there is no such
-   * schedule, when it is a workflow file's, when its input holds no text, or when no durable engine
-   * is composed. It reads the stored input beside {@link Bureau.getScheduleAgentName}, never its
-   * session, and does not check who may see the schedule, so a caller answers to
-   * {@link Bureau.getOwner} first.
-   */
-  getScheduleInputPreview(scheduleId: string): Promise<string | undefined>;
 
   /**
    * Subscribes to live liveness updates for a run (AB-88/AB-214),
@@ -1921,64 +2022,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    *   finishes.
    */
   waitForRecovery?(): Promise<BureauRecoveryReport>;
-
-  /**
-   * Register a durable recurring schedule via `engine.schedule(...)`.
-   * Throws `ScheduleLocatorUnavailableError` when the schedule was created
-   * but its summary could not be immediately retrieved — the schedule IS
-   * registered in that case, only its locator failed. Returns `undefined`
-   * when no durable engine is composed.
-   */
-  createSchedule(definition: DurableScheduleDefinition): Promise<ScheduleSummary | undefined>;
-
-  /**
-   * Retrieve a durable schedule by id. Returns `null` when the schedule does not
-   * exist, `undefined` when no durable engine is composed.
-   */
-  getSchedule(scheduleId: string): Promise<ScheduleSummary | null | undefined>;
-
-  /**
-   * List durable schedules, optionally filtered. Returns `undefined` when no
-   * durable engine is composed.
-   */
-  listSchedules(filter?: ScheduleFilter): Promise<PaginatedResult<ScheduleSummary> | undefined>;
-
-  /**
-   * Pause a durable schedule. Returns `true` on success, `undefined` when no
-   * durable engine is composed. With `guard.expectedRevision`, the pause applies only if the
-   * schedule's `revision` is still that value, and a mismatch throws Weft's
-   * `ScheduleStaleRevisionError` having written nothing; Weft compares it inside its serialized
-   * write, so Bureau never compares it itself.
-   */
-  pauseSchedule(scheduleId: string, guard?: ScheduleRevisionGuard): Promise<true | undefined>;
-
-  /**
-   * Resume a paused durable schedule. Returns `true` on success, `undefined` when no durable
-   * engine is composed. `guard` as for {@link Bureau.pauseSchedule}.
-   */
-  resumeSchedule(scheduleId: string, guard?: ScheduleRevisionGuard): Promise<true | undefined>;
-
-  /**
-   * Cancel and permanently delete a durable schedule. Returns `true` on success,
-   * `undefined` when no durable engine is composed. `guard` as for {@link Bureau.pauseSchedule}.
-   */
-  cancelSchedule(scheduleId: string, guard?: ScheduleRevisionGuard): Promise<true | undefined>;
-
-  /**
-   * Change a durable schedule's cadence, description, and overlap policy (COR-1482), by wrapping
-   * Weft's `updateSchedule`. Weft replaces the cadence wholesale, so `update.spec` is required, in
-   * the same grammar as {@link DurableScheduleDefinition.spec}. The schedule's input, agent, owner
-   * and session are not changed. Resolves `true`, or `undefined` when no durable engine is
-   * composed. A schedule that does not exist, and a workflow file's schedule (which belongs to its
-   * file), reject with `NOT_FOUND`; an overlap Bureau does not offer, or `'allow'` on a schedule
-   * with a recurring session, rejects with `BAD_REQUEST`. `guard` as for
-   * {@link Bureau.pauseSchedule}.
-   */
-  updateSchedule(
-    scheduleId: string,
-    update: DurableScheduleUpdate,
-    guard?: ScheduleRevisionGuard,
-  ): Promise<true | undefined>;
 
   /**
    * Subscribe to every live frame. The FIRST subscriber is also replayed, in
@@ -2559,7 +2602,7 @@ export type ServerFrame =
 
 /**
  * Parameters for registering a durable bureau schedule via
- * {@link Bureau.createSchedule}. The schedule fires the named `agentName`
+ * {@link BureauSchedules.create}. The schedule fires the named `agentName`
  * on the given `spec`; each fire is either a fresh session (no `sessionId`)
  * or appended to the same persistent session (`sessionId` given).
  */
@@ -2571,7 +2614,7 @@ export interface ScheduleRevisionGuard {
   readonly expectedRevision?: number | undefined;
 }
 
-/** What {@link Bureau.updateSchedule} changes. Omitted `description` and `overlap` keep their values. */
+/** What {@link BureauSchedules.update} changes. Omitted `description` and `overlap` keep their values. */
 export interface DurableScheduleUpdate {
   /** The schedule's new cadence: a cron expression or a Weft duration shorthand, as at creation. */
   readonly spec: string;

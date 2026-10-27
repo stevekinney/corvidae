@@ -318,7 +318,7 @@ describe('a restored fire approval whose snapshot names another fire', () => {
         }),
       },
     });
-    const created = await first.createSchedule({
+    const created = await first.schedules.create({
       agentName: 'default',
       input: 'check in',
       spec: '1m',
@@ -330,7 +330,7 @@ describe('a restored fire approval whose snapshot names another fire', () => {
     }
     await first.runDurableMaintenance(created.nextFireAt);
     const fireId = await pollUntil(async () => {
-      const current = await first.getSchedule(created.id);
+      const current = await first.schedules.get(created.id);
       return current?.currentWorkflowId;
     }, 'the first fire');
     await reviewOf(first, fireId);
@@ -345,13 +345,13 @@ describe('a restored fire approval whose snapshot names another fire', () => {
     );
     // The schedule's next occurrence is a newer fire, in the same session.
     phase.first = false;
-    const schedule = await first.getSchedule(created.id);
+    const schedule = await first.schedules.get(created.id);
     if (schedule?.nextFireAt === null || schedule?.nextFireAt === undefined) {
       throw new Error('The schedule has no second occurrence.');
     }
     await first.runDurableMaintenance(schedule.nextFireAt);
     const newer = await pollUntil(async () => {
-      const current = await first.getSchedule(created.id);
+      const current = await first.schedules.get(created.id);
       const id = current?.currentWorkflowId;
       return id !== undefined && id !== fireId ? id : undefined;
     }, 'the newer fire');
@@ -575,7 +575,7 @@ describe('a restored approval of a run that never activated a skill', () => {
         }),
       },
     });
-    const created = await first.createSchedule({
+    const created = await first.schedules.create({
       agentName: 'default',
       input: 'check in',
       spec: '1m',
@@ -587,7 +587,7 @@ describe('a restored approval of a run that never activated a skill', () => {
     }
     await first.runDurableMaintenance(created.nextFireAt);
     const fireId = await pollUntil(async () => {
-      const current = await first.getSchedule(created.id);
+      const current = await first.schedules.get(created.id);
       return current?.currentWorkflowId;
     }, 'the first fire');
     await reviewOf(first, fireId);
@@ -596,13 +596,13 @@ describe('a restored approval of a run that never activated a skill', () => {
       'the first fire to settle',
     );
     phase.first = false;
-    const schedule = await first.getSchedule(created.id);
+    const schedule = await first.schedules.get(created.id);
     if (schedule?.nextFireAt === null || schedule?.nextFireAt === undefined) {
       throw new Error('The schedule has no second occurrence.');
     }
     await first.runDurableMaintenance(schedule.nextFireAt);
     const newer = await pollUntil(async () => {
-      const current = await first.getSchedule(created.id);
+      const current = await first.schedules.get(created.id);
       const id = current?.currentWorkflowId;
       return id !== undefined && id !== fireId ? id : undefined;
     }, 'the newer fire');

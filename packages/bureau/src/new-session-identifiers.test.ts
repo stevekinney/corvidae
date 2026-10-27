@@ -1,7 +1,7 @@
 /**
  * COR-1590 — `.` and `..` may not name a session that does not exist yet. A browser resolves them
  * out of the address a client would open the session at, so a session created under one could
- * never be opened again. `createRun` and `createSchedule` refuse them as `BAD_REQUEST` with a
+ * never be opened again. `createRun` and `schedules.create` refuse them as `BAD_REQUEST` with a
  * message beginning `unopenable-session-identifier:`; the AG-UI mount refuses a start that would
  * create one as `INVALID_INPUT` (`http/ag-ui-mount-routes.test.ts`).
  */
@@ -72,8 +72,8 @@ describe('a session id a browser would resolve away', () => {
   it.each(UNOPENABLE)('may not be the new session %s of a schedule', async (sessionId) => {
     const bureau = await boot();
 
-    const error = await bureau
-      .createSchedule({ agentName: 'worker', input: 'x', spec: '1h', sessionId })
+    const error = await bureau.schedules
+      .create({ agentName: 'worker', input: 'x', spec: '1h', sessionId })
       .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(BureauError);
@@ -157,7 +157,7 @@ describe('a session that already holds an id a browser would resolve away', () =
         message: 'hello again',
         sessionId,
       });
-      const schedule = await bureau.createSchedule({
+      const schedule = await bureau.schedules.create({
         agentName: 'worker',
         input: 'x',
         spec: '1h',
@@ -176,7 +176,7 @@ describe('a schedule', () => {
     const bureau = await bootOver(counted.storage);
     const before = counted.reads();
 
-    await bureau.createSchedule({
+    await bureau.schedules.create({
       agentName: 'worker',
       input: 'x',
       spec: '1h',
@@ -191,8 +191,8 @@ describe('a schedule', () => {
     const bureau = await bootOver(counted.storage);
     const before = counted.reads();
 
-    await bureau
-      .createSchedule({ agentName: 'worker', input: 'x', spec: '1h', sessionId: '.' })
+    await bureau.schedules
+      .create({ agentName: 'worker', input: 'x', spec: '1h', sessionId: '.' })
       .catch(() => undefined);
 
     expect(counted.reads()).toBeGreaterThan(before);

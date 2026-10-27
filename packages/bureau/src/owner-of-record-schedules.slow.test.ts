@@ -50,13 +50,13 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
   it('reads a schedule created with a principal as owned by it, and one without as anonymous:local', async () => {
     const bureau = await openBureau();
     try {
-      const owned = await bureau.createSchedule({
+      const owned = await bureau.schedules.create({
         agentName: 'default',
         input: 'owned',
         spec: '1h',
         principal: 'api-key:alice',
       });
-      const unowned = await bureau.createSchedule({
+      const unowned = await bureau.schedules.create({
         agentName: 'default',
         input: 'unowned',
         spec: '1h',
@@ -67,8 +67,8 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       expect(await bureau.getOwner({ kind: 'audit', runId: `schedule:${owned!.id}` })).toBe(
         'api-key:alice',
       );
-      await bureau.cancelSchedule(owned!.id);
-      await bureau.cancelSchedule(unowned!.id);
+      await bureau.schedules.cancel(owned!.id);
+      await bureau.schedules.cancel(unowned!.id);
     } finally {
       await bureau.dispose();
     }
@@ -79,7 +79,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
     try {
       const completed: ScheduleCompletedEvent[] = [];
       bureau.addEventListener(ScheduleCompletedEvent.type, (event) => completed.push(event));
-      const summary = await bureau.createSchedule({
+      const summary = await bureau.schedules.create({
         agentName: 'default',
         input: 'tick',
         spec: '1s',
@@ -87,7 +87,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       });
 
       expect(await waitForReal(() => completed.length >= 1)).toBe(true);
-      await bureau.cancelSchedule(summary!.id);
+      await bureau.schedules.cancel(summary!.id);
       const fire = completed[0]!;
 
       expect(await bureau.getOwner({ kind: 'run', id: fire.runId })).toBe('api-key:alice');
@@ -116,14 +116,14 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
     try {
       const completed: ScheduleCompletedEvent[] = [];
       bureau.addEventListener(ScheduleCompletedEvent.type, (event) => completed.push(event));
-      const summary = await bureau.createSchedule({
+      const summary = await bureau.schedules.create({
         agentName: 'default',
         input: 'tick',
         spec: '1s',
       });
 
       expect(await waitForReal(() => completed.length >= 1)).toBe(true);
-      await bureau.cancelSchedule(summary!.id);
+      await bureau.schedules.cancel(summary!.id);
 
       expect(await bureau.getOwner({ kind: 'run', id: completed[0]!.runId })).toBe(
         'anonymous:local',
@@ -144,7 +144,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       await waitForReal(() => bureau.getRun(run.id)?.status !== 'running');
       const failed: string[] = [];
       bureau.addEventListener('schedule.failed', (event) => failed.push(event.runId));
-      const summary = await bureau.createSchedule({
+      const summary = await bureau.schedules.create({
         agentName: 'default',
         input: 'tick',
         spec: '1s',
@@ -153,7 +153,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       });
 
       expect(await waitForReal(() => failed.length >= 1)).toBe(true);
-      await bureau.cancelSchedule(summary!.id);
+      await bureau.schedules.cancel(summary!.id);
       const session = await bureau.getSession(run.sessionId);
       expect(session?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('api-key:bob');
       expect(JSON.stringify(session?.conversationHistory)).not.toContain('tick');
@@ -197,14 +197,14 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
     try {
       const completed: ScheduleCompletedEvent[] = [];
       first.addEventListener(ScheduleCompletedEvent.type, (event) => completed.push(event));
-      const summary = await first.createSchedule({
+      const summary = await first.schedules.create({
         agentName: 'default',
         input: 'tick',
         spec: '1s',
         principal: 'api-key:alice',
       });
       expect(await waitForReal(() => completed.length >= 1)).toBe(true);
-      await first.cancelSchedule(summary!.id);
+      await first.schedules.cancel(summary!.id);
       const fireRunId = completed[0]!.runId;
       await first.dispose();
 
@@ -244,7 +244,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
     try {
       const failed: string[] = [];
       bureau.addEventListener('schedule.failed', (event) => failed.push(event.runId));
-      const summary = await bureau.createSchedule({
+      const summary = await bureau.schedules.create({
         agentName: 'default',
         input: 'racing tick',
         spec: '1s',
@@ -253,7 +253,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       });
       // The fire has built its services and is waiting in generate, and the session does not exist.
       await entered.promise;
-      await bureau.cancelSchedule(summary!.id);
+      await bureau.schedules.cancel(summary!.id);
       const created = await bureau.createRun({
         agentName: 'default',
         message: 'bob got there first',
@@ -291,7 +291,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       );
       const failed: string[] = [];
       bureau.addEventListener('schedule.failed', (event) => failed.push(event.runId));
-      const summary = await bureau.createSchedule({
+      const summary = await bureau.schedules.create({
         agentName: 'default',
         input: 'tick',
         spec: '1s',
@@ -300,7 +300,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       });
 
       expect(await waitForReal(() => failed.length >= 1)).toBe(true);
-      await bureau.cancelSchedule(summary!.id);
+      await bureau.schedules.cancel(summary!.id);
 
       const refusedRunId = failed[0]!;
       const fired = await bureau.internals.auditTrail?.query({

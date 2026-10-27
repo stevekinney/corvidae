@@ -307,18 +307,18 @@ describe('durable history follows the owner of record (COR-718)', () => {
   it('lets only a schedule’s owner read its history, including after it is cancelled', async () => {
     const { bureau, directory } = await openDurableBureau();
     try {
-      const owned = await bureau.createSchedule({
+      const owned = await bureau.schedules.create({
         agentName: 'default',
         input: 'tick',
         spec: '1h',
         principal: 'api-key:alice',
       });
-      const unowned = await bureau.createSchedule({
+      const unowned = await bureau.schedules.create({
         agentName: 'default',
         input: 'tick',
         spec: '1h',
       });
-      await bureau.cancelSchedule(owned!.id);
+      await bureau.schedules.cancel(owned!.id);
       const read = async (id: string, principal: string) =>
         verdict(await bureau.eventHistory({ kind: 'schedule', id }, { principal }));
 

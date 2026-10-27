@@ -413,7 +413,7 @@ describe('results', () => {
     expect(deleted.error).toBeUndefined();
     const gone = await ownerRpc(served.owner, 'bureau.workflows.get', { id: 'digest' });
     expect(gone.error?.data?.httpStatus).toBe(404);
-    const schedule = await served.bureau.getSchedule('bureau-workflow-schedule:digest:1');
+    const schedule = await served.bureau.schedules.get('bureau-workflow-schedule:digest:1');
     expect(schedule?.status).toBe('cancelled');
     // The revisions that ran are still there.
     const kept = await ownerRpc(served.owner, 'bureau.workflows.revisions', { id: 'digest' });

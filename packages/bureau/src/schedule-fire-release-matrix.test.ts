@@ -202,7 +202,7 @@ describe('every ending of a fire’s approval leaves nothing of it behind', () =
   it('keeps the approval when only the schedule is canceled, which ends no fire', async () => {
     const context = await fireWithApproval('stopped');
 
-    expect(await context.bureau.cancelSchedule(context.scheduleId)).toBe(true);
+    expect(await context.bureau.schedules.cancel(context.scheduleId)).toBe(true);
 
     expect(reviewsOf(context.bureau, context.fireId)).toHaveLength(1);
     expect(await sessionKeys(context.bureau)).toMatchObject({

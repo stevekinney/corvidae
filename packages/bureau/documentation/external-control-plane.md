@@ -544,7 +544,7 @@ Every current `Bureau` member (`packages/bureau/src/types.ts:1102-1836`) maps to
 | `forkSession` | `bureau.contexts.fork` |
 | `children.*` | Internal; parent task status detail |
 | `goals.*` | `bureau.goals.*` |
-| `createSchedule`, `getSchedule`, `listSchedules`, `pauseSchedule`, `resumeSchedule`, `cancelSchedule` | `bureau.schedules.*` |
+| `schedules.create`, `schedules.get`, `schedules.list`, `schedules.pause`, `schedules.resume`, `schedules.cancel`, `schedules.update` | `bureau.schedules.*` |
 | `reviews.list`, `reviews.get`, `reviews.resolve` | `bureau.reviews.*`; `INPUT_REQUIRED` on the task |
 | `issueGrant`, `revokeGrant`, `listGrants` | Internal |
 | `webhookNotifier` | `bureau.deliveries.*`; push notification configs |
