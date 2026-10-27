@@ -1,4 +1,11 @@
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import {
+  AgentScheduledEvent,
+  ScheduleAttemptedEvent,
+  ScheduleSkippedEvent,
+  SessionCreatedEvent,
+  SteeringAcceptedEvent,
+} from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import {
@@ -11,10 +18,17 @@ import {
 import {
   ActionEvent,
   BureauDisposedEvent,
+  RunAbortSettledEvent,
   RecoveryRejectedEvent,
   ReviewApprovedEvent,
   RunRegisteredEvent,
 } from './events.ts';
+import {
+  SkillActivatedEvent,
+  SkillFailedEvent,
+  SkillLoadedEvent,
+  SkillRejectedEvent,
+} from './skills/events.ts';
 
 const CANARY = 'CallerSuppliedDetailCanary';
 
@@ -169,6 +183,56 @@ describe('bureau event projection coverage', () => {
     expect(projectBureauEvent(new Event('bureau.nonexistent'))).toBeUndefined();
     expect(projectBureauEvent(undefined)).toBeUndefined();
     expect(projectBureauEvent({ type: 'run.registered' })).toBeUndefined();
+  });
+
+  it('projects the newly published event families through identifier-only payloads', () => {
+    const events = [
+      new SessionCreatedEvent('session-1', 'agent', 'incarnation-1', 3, 100),
+      new AgentScheduledEvent({
+        agentName: 'agent',
+        scheduleId: 'schedule-1',
+        spec: { cron: '* * * * *' },
+      }),
+      new ScheduleAttemptedEvent('schedule-1', 200),
+      new ScheduleSkippedEvent('schedule-1', 'skip', 200, 'run-1'),
+      new SkillLoadedEvent('skill', {
+        runId: 'run-1',
+        sessionId: 'session-1',
+        artifactDigest: 'sha',
+      }),
+      new SkillActivatedEvent('skill', { runId: 'run-1' }),
+      new SkillRejectedEvent('skill', 'guardrail-blocked', { sessionId: 'session-1' }),
+      new SkillFailedEvent('skill', { runId: 'run-1' }),
+      new SteeringAcceptedEvent('session-1', 'command-1', 4),
+      new RunAbortSettledEvent('run-1'),
+    ];
+    const allowed = new Set([
+      'agentName',
+      'scheduleId',
+      'sessionId',
+      'occurrence',
+      'blockingRunId',
+      'policy',
+      'skillName',
+      'runId',
+      'traceId',
+      'sourceId',
+      'artifactDigest',
+      'agentName',
+      'status',
+      'reason',
+      'rule',
+      'commandId',
+      'configVersion',
+      'incarnation',
+      'ordinal',
+      'committedAtMs',
+    ]);
+    for (const event of events) {
+      const projection = projectBureauEvent(event);
+      expect(projection).toBeDefined();
+      expect(Object.keys(projection?.payload ?? []).every((key) => allowed.has(key))).toBe(true);
+    }
   });
 });
 

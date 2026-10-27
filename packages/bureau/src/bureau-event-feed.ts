@@ -30,6 +30,7 @@ import { FRAMES_DROPPED_KIND, withFramesDroppedMarker } from './frames-dropped.t
 import {
   ActionEvent,
   BureauDisposedEvent,
+  RunAbortSettledEvent,
   RecoveryAttemptedEvent,
   RecoveryLeaseReleasedEvent,
   RecoveryRejectedEvent,
@@ -44,6 +45,28 @@ import {
   RunRegisteredEvent,
   RunRemovedEvent,
 } from './events.ts';
+import {
+  AgentScheduledEvent,
+  ScheduleAttemptedEvent,
+  ScheduleCancelledEvent,
+  ScheduleCompletedEvent,
+  ScheduleFailedEvent,
+  SchedulePausedEvent,
+  ScheduleResumedEvent,
+  ScheduleSkippedEvent,
+  SessionCreatedEvent,
+  SessionDeletedEvent,
+  SessionSavedEvent,
+  SteeringAcceptedEvent,
+} from '@lostgradient/operative';
+import {
+  SkillActivatedEvent,
+  SkillDeactivatedEvent,
+  SkillFailedEvent,
+  SkillLoadedEvent,
+  SkillRejectedEvent,
+} from './skills/events.ts';
+import type { BureauEventMap } from './events.ts';
 
 export type BureauEventEnvelope = SequencedEventEnvelope & {
   readonly bureauId: string;
@@ -92,22 +115,53 @@ function projectReview(event: {
   };
 }
 
-/**
- * The events this feed publishes, and the only ones it publishes.
- *
- * Every field is named explicitly, for the reason `run-event-feed.ts`
- * documents at length: a generic projection ships whatever an event happens
- * to carry.
- *
- * THE SUPERVISOR EVENTS ARE ABSENT ON PURPOSE. `task.routed`,
- * `task.completed`, `task.failed`, `synthesis.started`, and
- * `synthesis.completed` carry the task text, a whole `RunResult`, a raw
- * `unknown` error, and the synthesized output — the model's inputs and
- * outputs, not a supervisor's lifecycle. A subscriber authorized to watch a
- * bureau is not thereby authorized to read what it was asked to do. Adding
- * them is a deliberate decision with an access-policy question attached, not
- * an oversight.
- */
+export type DeclaredKeys<T> = keyof {
+  [K in keyof T as string extends K ? never : number extends K ? never : K]: T[K];
+};
+
+/** Classifies every declared Bureau event as publishable or explicitly denied. */
+export const BUREAU_EVENT_CLASSIFICATION = {
+  action: 'published',
+  'run.registered': 'published',
+  'run.removed': 'published',
+  'run.abort-settled': 'published',
+  'bureau.disposed': 'published',
+  'recovery.attempted': 'published',
+  'recovery.rejected': 'published',
+  'recovery.lease-released': 'published',
+  'schedule.created': 'published',
+  'schedule.paused': 'published',
+  'schedule.resumed': 'published',
+  'schedule.cancelled': 'published',
+  'schedule.failed': 'published',
+  'schedule.completed': 'published',
+  'schedule.attempted': 'published',
+  'schedule.skipped': 'published',
+  'skill.loaded': 'published',
+  'skill.activated': 'published',
+  'skill.deactivated': 'published',
+  'skill.rejected': 'published',
+  'skill.failed': 'published',
+  'session.created': 'published',
+  'session.saved': 'published',
+  'session.deleted': 'published',
+  'review.requested': 'published',
+  'review.approved': 'published',
+  'review.denied': 'published',
+  'review.rejected': 'published',
+  'review.expired': 'published',
+  'review.revoked': 'published',
+  'review.canceled': 'published',
+  'review.superseded': 'published',
+  'steering.accepted': 'published',
+} as const satisfies Record<DeclaredKeys<BureauEventMap>, 'published' | { denied: string }>;
+
+export type PublishedBureauEventKind = {
+  [K in DeclaredKeys<BureauEventMap>]: (typeof BUREAU_EVENT_CLASSIFICATION)[K] extends 'published'
+    ? K
+    : never;
+}[DeclaredKeys<BureauEventMap>];
+
 const PROJECTIONS: readonly BureauEventProjection[] = [
   projection(ActionEvent.type, isInstance(ActionEvent), (event) => ({
     // `detail` is `unknown` and caller-supplied, so the log's shape crosses
@@ -137,6 +191,127 @@ const PROJECTIONS: readonly BureauEventProjection[] = [
     // not reshaped here; a subscriber that needs it reads the run.
     runId: event.runId,
   })),
+  projection(RunAbortSettledEvent.type, isInstance(RunAbortSettledEvent), (event) => ({
+    runId: event.runId,
+  })),
+  projection(AgentScheduledEvent.type, isInstance(AgentScheduledEvent), (event) => ({
+    agentName: event.agentName,
+    scheduleId: event.scheduleId,
+    sessionId: event.sessionId,
+  })),
+  projection(SchedulePausedEvent.type, isInstance(SchedulePausedEvent), (event) => ({
+    scheduleId: event.scheduleId,
+    dedupeKey: event.dedupeKey,
+    committedAtMs: event.committedAtMs,
+  })),
+  projection(ScheduleResumedEvent.type, isInstance(ScheduleResumedEvent), (event) => ({
+    scheduleId: event.scheduleId,
+    dedupeKey: event.dedupeKey,
+    committedAtMs: event.committedAtMs,
+  })),
+  projection(ScheduleCancelledEvent.type, isInstance(ScheduleCancelledEvent), (event) => ({
+    scheduleId: event.scheduleId,
+    dedupeKey: event.dedupeKey,
+    committedAtMs: event.committedAtMs,
+  })),
+  projection(ScheduleFailedEvent.type, isInstance(ScheduleFailedEvent), (event) => ({
+    scheduleId: event.scheduleId,
+    runId: event.runId,
+    status: 'failed',
+  })),
+  projection(ScheduleCompletedEvent.type, isInstance(ScheduleCompletedEvent), (event) => ({
+    scheduleId: event.scheduleId,
+    runId: event.runId,
+    status: 'completed',
+  })),
+  projection(ScheduleAttemptedEvent.type, isInstance(ScheduleAttemptedEvent), (event) => ({
+    scheduleId: event.scheduleId,
+    occurrence: event.occurrence,
+  })),
+  projection(ScheduleSkippedEvent.type, isInstance(ScheduleSkippedEvent), (event) => ({
+    scheduleId: event.scheduleId,
+    occurrence: event.occurrence,
+    blockingRunId: event.blockingRunId,
+    policy: event.policy,
+  })),
+  projection(SkillLoadedEvent.type, isInstance(SkillLoadedEvent), (event) => ({
+    skillName: event.skillName,
+    runId: event.correlation.runId,
+    sessionId: event.correlation.sessionId,
+    traceId: event.correlation.traceId,
+    agentName: event.correlation.agentName,
+    sourceId: event.correlation.sourceId,
+    artifactDigest: event.correlation.artifactDigest,
+    status: 'loaded',
+  })),
+  projection(SkillActivatedEvent.type, isInstance(SkillActivatedEvent), (event) => ({
+    skillName: event.skillName,
+    runId: event.correlation.runId,
+    sessionId: event.correlation.sessionId,
+    traceId: event.correlation.traceId,
+    agentName: event.correlation.agentName,
+    sourceId: event.correlation.sourceId,
+    artifactDigest: event.correlation.artifactDigest,
+    status: 'activated',
+  })),
+  projection(SkillDeactivatedEvent.type, isInstance(SkillDeactivatedEvent), (event) => ({
+    skillName: event.skillName,
+    runId: event.correlation.runId,
+    sessionId: event.correlation.sessionId,
+    traceId: event.correlation.traceId,
+    agentName: event.correlation.agentName,
+    sourceId: event.correlation.sourceId,
+    artifactDigest: event.correlation.artifactDigest,
+    status: 'deactivated',
+  })),
+  projection(SkillRejectedEvent.type, isInstance(SkillRejectedEvent), (event) => ({
+    skillName: event.skillName,
+    reason: event.reason,
+    rule: event.rule,
+    runId: event.correlation.runId,
+    sessionId: event.correlation.sessionId,
+    traceId: event.correlation.traceId,
+    agentName: event.correlation.agentName,
+    sourceId: event.correlation.sourceId,
+    artifactDigest: event.correlation.artifactDigest,
+    status: 'rejected',
+  })),
+  projection(SkillFailedEvent.type, isInstance(SkillFailedEvent), (event) => ({
+    skillName: event.skillName,
+    runId: event.correlation.runId,
+    sessionId: event.correlation.sessionId,
+    traceId: event.correlation.traceId,
+    agentName: event.correlation.agentName,
+    sourceId: event.correlation.sourceId,
+    artifactDigest: event.correlation.artifactDigest,
+    status: 'failed',
+  })),
+  projection(SessionCreatedEvent.type, isInstance(SessionCreatedEvent), (event) => ({
+    sessionId: event.sessionId,
+    agentName: event.agentName,
+    incarnation: event.incarnation,
+    ordinal: event.ordinal,
+    committedAtMs: event.committedAtMs,
+  })),
+  projection(SessionSavedEvent.type, isInstance(SessionSavedEvent), (event) => ({
+    sessionId: event.sessionId,
+    agentName: event.agentName,
+    incarnation: event.incarnation,
+    ordinal: event.ordinal,
+    committedAtMs: event.committedAtMs,
+  })),
+  projection(SessionDeletedEvent.type, isInstance(SessionDeletedEvent), (event) => ({
+    sessionId: event.sessionId,
+    incarnation: event.incarnation,
+    ordinal: event.ordinal,
+    committedAtMs: event.committedAtMs,
+  })),
+  projection(SteeringAcceptedEvent.type, isInstance(SteeringAcceptedEvent), (event) => ({
+    sessionId: event.sessionId,
+    commandId: event.commandId,
+    configVersion: event.configVersion,
+    status: 'accepted',
+  })),
   projection(ReviewRequestedEvent.type, isInstance(ReviewRequestedEvent), projectReview),
   projection(ReviewApprovedEvent.type, isInstance(ReviewApprovedEvent), projectReview),
   projection(ReviewDeniedEvent.type, isInstance(ReviewDeniedEvent), projectReview),
@@ -147,32 +322,13 @@ const PROJECTIONS: readonly BureauEventProjection[] = [
   projection(ReviewSupersededEvent.type, isInstance(ReviewSupersededEvent), projectReview),
 ];
 
-/**
- * Every event kind this feed publishes, as a literal tuple.
- *
- * Spelled out so a subscriber filtering by kind gets literal types rather
- * than `string`; `bureau-event-feed.test.ts` asserts it agrees with the
- * registry above.
- */
-export const PUBLISHED_BUREAU_EVENT_KINDS = [
-  ActionEvent.type,
-  RunRegisteredEvent.type,
-  RunRemovedEvent.type,
-  BureauDisposedEvent.type,
-  RecoveryAttemptedEvent.type,
-  RecoveryRejectedEvent.type,
-  RecoveryLeaseReleasedEvent.type,
-  ReviewRequestedEvent.type,
-  ReviewApprovedEvent.type,
-  ReviewDeniedEvent.type,
-  ReviewRejectedEvent.type,
-  ReviewExpiredEvent.type,
-  ReviewRevokedEvent.type,
-  ReviewCanceledEvent.type,
-  ReviewSupersededEvent.type,
-] as const;
-
-export type PublishedBureauEventKind = (typeof PUBLISHED_BUREAU_EVENT_KINDS)[number];
+/** Every event kind this feed publishes, derived from the exhaustive classification. */
+export const PUBLISHED_BUREAU_EVENT_KINDS = Object.entries(BUREAU_EVENT_CLASSIFICATION)
+  .filter(([, classification]) => classification === 'published')
+  .map(([kind]) => kind) as unknown as readonly [
+  PublishedBureauEventKind,
+  ...PublishedBureauEventKind[],
+];
 
 /** Every event kind this feed knows how to publish, as declared by the registry. */
 export const publishedBureauEventKinds: readonly string[] = PROJECTIONS.map((entry) => entry.kind);
