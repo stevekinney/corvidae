@@ -302,3 +302,116 @@ test('a failed terminal session save cannot discard recovery state or block the 
     await h.dispose();
   }
 });
+
+for (const persistence of ['held', 'failed', 'committed'] as const) {
+  test(`multiple completed steps survive an evicted suffix and ${persistence} abort persistence`, async () => {
+    const diagnostics: string[] = [];
+    const h = await openHarness({
+      script: [
+        { kind: 'block', barrier: 'initial' },
+        { kind: 'respond', response: { content: 'First.', toolCalls: [] } },
+        { kind: 'respond', response: { content: 'Second.', toolCalls: [] } },
+        { kind: 'block', barrier: 'active' },
+      ],
+      stopWhen: () => false,
+      maximumSteps: 5,
+      agUi: { liveBufferSize: 2 },
+      storage: 'sqlite',
+      seamStorage: true,
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
+    });
+    const opening = Promise.withResolvers<void>();
+    const held = persistence === 'held' ? h.seam!.holdWrite(savesSessionAs('aborted')) : undefined;
+    const failed =
+      persistence === 'failed'
+        ? h.seam!.failWrites(savesSessionAs('aborted'), new Error('terminal save unavailable'))
+        : undefined;
+    const listeners = new Set<(frame: ServerFrame) => void>();
+    const frames = h.bureau.frames.bind(h.bureau);
+    h.bureau.frames = (listener) => {
+      listeners.add(listener);
+      const stop = frames(listener);
+      return () => {
+        listeners.delete(listener);
+        stop();
+      };
+    };
+    try {
+      const starter = new FrameReader(await h.handler(startRequest(runAgentInput())));
+      await starter.until(EventType.STEP_STARTED);
+      await h.generate.reached('initial');
+      await starter.cancel();
+      h.generate.release('initial');
+      await h.generate.reached('active');
+      const runId = String(bureauMetadata(starter.received[0]!.event)['runId']);
+      for (const listener of listeners)
+        listener({
+          type: 'stream:text-delta',
+          runId,
+          content: 'Partial.',
+          accumulated: 'Partial.',
+          runSeq: 999,
+        });
+      const entered = Promise.withResolvers<void>();
+      const events = h.bureau.tasks.events.bind(h.bureau.tasks);
+      let first = true;
+      h.bureau.tasks.events = async (...arguments_) => {
+        if (first) {
+          first = false;
+          entered.resolve();
+          await opening.promise;
+        }
+        return events(...arguments_);
+      };
+      const reader = new FrameReader(await h.handler(attach(runId, 'agui-live-v1.foreign')));
+      await entered.promise;
+      void h.bureau.tasks.cancel(runId);
+      if (held !== undefined) await held.reached;
+      else await h.bureau.internals.whenTaskRecorded(runId);
+      const history = await events(runId, {});
+      expect(
+        'events' in history && history.events.some((event) => event.kind === 'run.aborted'),
+      ).toBe(true);
+      const detail = h.bureau.tasks.detail(runId);
+      expect(JSON.stringify(detail?.events)).toContain('First.');
+      expect(JSON.stringify(detail?.events)).toContain('Second.');
+      expect(JSON.stringify(detail?.transcript)).toContain('First.');
+      expect(JSON.stringify(detail?.transcript)).toContain('Second.');
+      expect(JSON.stringify(history)).not.toContain('First.');
+      expect(JSON.stringify(history)).not.toContain('Second.');
+      const session = await h.bureau.contexts.get('thread-1');
+      expect(JSON.stringify(session?.conversationHistory).includes('First.')).toBe(
+        persistence === 'committed',
+      );
+      if (failed !== undefined) {
+        expect(failed.attempts()).toBe(3);
+        expect(
+          diagnostics.some((message) =>
+            message.includes('Failed to persist aborted session state'),
+          ),
+        ).toBe(true);
+      }
+      opening.resolve();
+      await reader.rest();
+      const text = reader.received.flatMap(({ event }) =>
+        event.type === EventType.TEXT_MESSAGE_CONTENT
+          ? [event.delta]
+          : event.type === EventType.MESSAGES_SNAPSHOT
+            ? event.messages.flatMap((row) =>
+                row.role === 'assistant' && typeof row.content === 'string' ? [row.content] : [],
+              )
+            : [],
+      );
+      expect(reader.received.at(-1)?.event).toMatchObject({
+        type: EventType.RUN_FINISHED,
+        outcome: { type: 'cancelled' },
+      });
+      expect(text).toEqual(['First.', 'Second.', 'Partial.']);
+    } finally {
+      held?.release();
+      failed?.stop();
+      opening.resolve();
+      await h.dispose();
+    }
+  });
+}
