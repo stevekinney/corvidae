@@ -9,23 +9,29 @@ import type { Principal } from '@lostgradient/weft';
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
-import { BureauError } from '../../create-bureau.ts';
+import { BureauError, TaskRespondError } from '../../create-bureau.ts';
 import {
   type CommandLedgerIdentity,
   createCommandLedger,
   digestCommandPayload,
 } from '../../command-ledger.ts';
 import { apiKeyOwner } from '../../owner-of-record.ts';
-import type { PendingReview, ReviewStatus } from '../../types.ts';
-import { mayAccessOwnedResource } from '../owner-predicate.ts';
 import {
-  type BureauTasksRespondOperationHost,
+  createTaskResponder,
+  type TaskResponderDependencies,
   type TasksRespondClaim,
   TASKS_RESPOND_LEDGER_KEY_PREFIX,
   TASKS_RESPOND_OPERATION_VERSION,
-  type TasksRespondResult,
+} from '../../tasks/respond-to-task.ts';
+import type { PendingReview, ReviewStatus, TaskRespondResult } from '../../types.ts';
+import { mayAccessOwnedResource } from '../owner-predicate.ts';
+import {
+  type BureauTasksRespondOperationHost,
   tasksRespondOperation,
 } from './tasks-respond-operation.ts';
+
+type TasksRespondResult = TaskRespondResult;
+type ReviewsOf = TaskResponderDependencies['reviews'];
 
 const owner = apiKeyOwner('alice');
 const reviewId = 'human-wait:run-1:human-response:0';
@@ -75,8 +81,8 @@ function hostOver(
   ledger: ReturnType<typeof newLedger>,
   options: {
     openWaits: readonly (typeof openWait | typeof approvalWait)[];
-    getReview: BureauTasksRespondOperationHost['reviews']['get'];
-    resolveReview?: BureauTasksRespondOperationHost['reviews']['resolve'];
+    getReview: ReviewsOf['get'];
+    resolveReview?: ReviewsOf['resolve'];
     /** The task has no record any more, as after task retention. */
     taskGone?: boolean;
   },
@@ -96,11 +102,11 @@ function hostOver(
     cleanup: null,
     openWaits: options.openWaits,
   };
-  return {
-    ownership: { runOwner: async () => owner, mayAccess: mayAccessOwnedResource },
-    tasks: options.taskGone
-      ? { get: async () => undefined, ownerOf: async () => undefined }
-      : { get: async () => task, ownerOf: async () => owner },
+  const tasks = options.taskGone
+    ? { get: async () => undefined, ownerOf: async () => undefined }
+    : { get: async () => task, ownerOf: async () => owner };
+  const responder = createTaskResponder({
+    registry: tasks,
     reviews: {
       get: options.getReview,
       resolve:
@@ -109,8 +115,14 @@ function hostOver(
           throw new Error('resolveReview must not be reached');
         }),
     },
-    respondLedger: ledger,
-    respondInFlight: new Map(),
+    ledger,
+    refusal: (refusal) => new TaskRespondError(refusal),
+    isRefusal: (error): error is BureauError => error instanceof BureauError,
+  });
+  return {
+    ownership: { runOwner: async () => owner, mayAccess: mayAccessOwnedResource },
+    tasks,
+    respond: responder.respond,
   };
 }
 

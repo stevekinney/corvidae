@@ -290,6 +290,58 @@ describe('bureau.tasks.start of a catalog agent', () => {
     }
   });
 
+  it('runs the task’s generate calls under the start’s trace context', async () => {
+    const bureau = await createBureau({
+      agents: { echo: createAgent({ generate: mockGenerate('traced') }) },
+    });
+    try {
+      const parent = { span: 'parent-span' };
+      const parents: unknown[] = [];
+      const run = await bureau.tasks.start('echo', 'hi', {
+        traceContext: parent,
+        withTraceContext: (traceParent, fn) => {
+          parents.push(traceParent);
+          return fn();
+        },
+      });
+      const result = await run.result();
+      expect(result.content).toBe('traced');
+      expect(parents.length).toBeGreaterThan(0);
+      expect(parents.every((traceParent) => traceParent === parent)).toBe(true);
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('removes its abort listener from the start signal once the task settles', async () => {
+    const bureau = await createBureau({
+      agents: { echo: createAgent({ generate: mockGenerate('done') }) },
+    });
+    try {
+      const controller = new AbortController();
+      const listening = new Set<unknown>();
+      const signal = controller.signal;
+      const add = signal.addEventListener.bind(signal);
+      const remove = signal.removeEventListener.bind(signal);
+      signal.addEventListener = (type: string, listener: unknown, options?: unknown) => {
+        if (type === 'abort') listening.add(listener);
+        add(type, listener as EventListener, options as AddEventListenerOptions);
+      };
+      signal.removeEventListener = (type: string, listener: unknown, options?: unknown) => {
+        if (type === 'abort') listening.delete(listener);
+        remove(type, listener as EventListener, options as EventListenerOptions);
+      };
+
+      const run = await bureau.tasks.start('echo', 'hi', { signal });
+      expect(listening.size).toBe(1);
+      await run.result();
+
+      expect(listening.size).toBe(0);
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
   it('ends the task, generating nothing, when its start signal is already aborted', async () => {
     let generateCalls = 0;
     const bureau = await createBureau({

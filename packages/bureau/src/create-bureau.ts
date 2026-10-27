@@ -193,7 +193,9 @@ import {
 } from './child-topology';
 import { createChildTopologyStore } from './child-topology-store';
 import {
+  type CommandLedger,
   type CreatedRunSummary,
+  createPrunedCommandLedger,
   createRunCreationLedger,
   BureauLedgerConflictError,
   digestCommandPayload,
@@ -485,6 +487,7 @@ import type {
   StartTaskOptions,
   TaskHandle,
   TaskInput,
+  TaskRespondResult,
   OwnedResource,
   DiagnosticSink,
   DurableScheduleDefinition,
@@ -512,6 +515,11 @@ import { isSettlingRunAction, settledActionTimestamp } from './run-settlement';
 import { createAudit } from './audit/create-audit';
 import { createContexts } from './contexts/create-contexts';
 import { createTaskHandle, createTasks, seedsConversation } from './tasks/create-tasks';
+import {
+  TASKS_RESPOND_LEDGER_KEY_PREFIX,
+  type TaskRespondRefusal,
+  type TasksRespondClaim,
+} from './tasks/respond-to-task';
 import { createReviews } from './reviews/create-reviews';
 import { createSchedules } from './schedules/create-schedules';
 import { createWebhookNotifier, type WebhookNotifier } from './webhook-notifier';
@@ -996,11 +1004,30 @@ class BureauShuttingDownError extends BureauError {
   }
 }
 
+/**
+ * A refusal of {@link BureauTasks.respond}, made before anything took effect. It is a
+ * `BureauError` (`NOT_FOUND`, `CONFLICT`, or `BAD_REQUEST`) that also says which request `field`
+ * a `BAD_REQUEST` is about, or the short `reason` an addressed wait cannot take the answer, so the
+ * management plane answers it as `InvalidParams` or `Unprocessable` without reading the message.
+ */
+class TaskRespondError extends BureauError {
+  readonly field: string | undefined;
+  readonly reason: string | undefined;
+
+  constructor(refusal: TaskRespondRefusal) {
+    super(refusal.message, refusal.code);
+    this.name = 'TaskRespondError';
+    this.field = refusal.field;
+    this.reason = refusal.reason;
+  }
+}
+
 export {
   ApprovalOutcomeNotWrittenError,
   BureauError,
   BureauShuttingDownError,
   ReviewRoundChangedError,
+  TaskRespondError,
 };
 
 /**
@@ -1188,6 +1215,11 @@ type SessionTaskFields = {
   readonly taskInput?: TaskInput | undefined;
   readonly inputParts?: Exclude<SessionInputPayload, string> | undefined;
   readonly onActiveRun?: ((activeRun: ActiveRun) => void) | undefined;
+  /** The caller's trace context: the run's `parentContext`, the parent of its spans. */
+  readonly traceContext?: unknown;
+  /** The caller's tracer binding, which runs the run's generate and tool calls under the parent. */
+  readonly withTraceContext?:
+    (<T>(parent: unknown, fn: () => Promise<T>) => Promise<T>) | undefined;
 };
 
 /** The run-creation fields a task input becomes: a message, its parts, or rows to append. */
@@ -1324,6 +1356,22 @@ function validateAgentRunInput(input: unknown): asserts input is AgentInput {
   }
   toBadRequest(
     '"input" must be a string, a non-empty array of text and media parts, or an object with a valid "conversation" ConversationHistory',
+  );
+}
+
+/**
+ * The ledger {@link BureauTasks.respond} records its receipts in, in the Bureau's store. An
+ * ephemeral Bureau keeps it in memory: a receipt then lives as long as the process does.
+ */
+function createTasksRespondLedger(
+  kv: ConditionalTextValueStore | undefined,
+  runtime: RuntimeServices,
+): CommandLedger<TasksRespondClaim, TaskRespondResult> {
+  return createPrunedCommandLedger<TasksRespondClaim, TaskRespondResult>(
+    kv ?? textValueStore(new MemoryStorage()),
+    TASKS_RESPOND_LEDGER_KEY_PREFIX,
+    'respond-conflict',
+    runtime,
   );
 }
 
@@ -7052,6 +7100,12 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       ...(startOptions.requestContext === undefined
         ? {}
         : { requestContext: startOptions.requestContext }),
+      ...(startOptions.traceContext === undefined
+        ? {}
+        : { traceContext: startOptions.traceContext }),
+      ...(startOptions.withTraceContext === undefined
+        ? {}
+        : { withTraceContext: startOptions.withTraceContext }),
       taskInput: input,
       onActiveRun(activeRun) {
         const run = createAgentRun<unknown, true>(activeRun, {
@@ -7076,7 +7130,14 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     if (signal !== undefined) {
       const onAbort = () => abortTask(created.id, 'Aborted by the start signal');
       if (signal.aborted) onAbort();
-      else signal.addEventListener('abort', onAbort, { once: true });
+      else if (live !== undefined) {
+        // Only a run this process holds can be aborted from here, and once it settles the signal
+        // has nothing left to abort: the listener goes with it, so a long-lived caller signal does
+        // not collect one per task.
+        signal.addEventListener('abort', onAbort, { once: true });
+        const removeListener = () => signal.removeEventListener('abort', onAbort);
+        void live.run.result().then(removeListener, removeListener);
+      }
     }
     return createTaskHandle<unknown>({
       id: created.id,
@@ -7662,6 +7723,11 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
             // carry an empty agentName while the session says 'bureau'.
             agentName,
             runId,
+            // The start's trace context parents this run's spans, as a catalog dispatch's does.
+            ...(request.traceContext === undefined ? {} : { parentContext: request.traceContext }),
+            ...(request.withTraceContext === undefined
+              ? {}
+              : { withTraceContext: request.withTraceContext }),
           },
           // Route through the durable engine when one was composed (durable
           // + storage). The conversation already carries the seeded user/system
@@ -18650,6 +18716,12 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     eventHistory: readEventHistory,
     subscribeEventHistory: subscribeToEventHistory,
     notFound: (message) => new BureauError(message, 'NOT_FOUND'),
+    responder: {
+      reviews,
+      ledger: createTasksRespondLedger(runtime.kv, runtimeServices),
+      refusal: (refusal) => new TaskRespondError(refusal),
+      isRefusal: (error): error is BureauError => error instanceof BureauError,
+    },
   }) as Bureau<D>['tasks'];
 
   const audit = createAudit({

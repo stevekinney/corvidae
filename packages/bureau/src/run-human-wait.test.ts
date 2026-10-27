@@ -260,6 +260,31 @@ describe('a bureau.run() park', () => {
     expect(cancel.receipt).toBe('cancel-requested');
   });
 
+  it('answers a resolve after the wait’s signal arrived outside it, while the run goes on, as main’s session path did', async () => {
+    // The review is listed on the park event, before the engine records the wait, and a signal
+    // sent in that window is buffered for it: the engine's `waitingForSignals` cannot tell this
+    // case from that one, so the resolve is not refused. `main`'s session path (`createRun`), which
+    // every `tasks.start` task now runs on, answered it the same way.
+    const seen = newSeen(true);
+    const bureau = await start({ asker: askingAgent(seen) });
+    const run = await bureau.tasks.start('asker', 'deploy');
+    const review = await nextReview(bureau, run.id);
+    if (review.kind !== 'human-wait') throw new Error('Expected a human wait.');
+
+    await bureau.durableEngine()!.signal(run.id, review.signalName, 'from outside');
+    const resolved = await bureau.reviews.resolve({
+      id: review.id,
+      decision: 'approve',
+      principal: 'operator',
+    });
+    seen.release();
+    await run.result();
+
+    expect(resolved).toMatchObject({ id: review.id, kind: 'human-wait', decision: 'approve' });
+    const workflow = await bureau.tasks.workflow(run.id);
+    expect(workflow?.status).toBe('completed');
+  });
+
   it('lets exactly one of two concurrent resolves through', async () => {
     const seen = newSeen(true);
     const bureau = await start({ asker: askingAgent(seen) });

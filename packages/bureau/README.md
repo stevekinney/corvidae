@@ -252,7 +252,7 @@ The most commonly used members:
 | Member | Returns | Purpose |
 | --- | --- | --- |
 | `agents` | `BureauAgentCatalog<D>` | The typed, read-only agent catalog. See [`AgentDefinitions` and the Agent Catalog](#agentdefinitions-and-the-agent-catalog). |
-| `tasks` | `BureauTasks<D>` | Starts a task and reads, waits on, watches, and cancels it: `start(agentName, input, options?)`, `detail(id)`, `get(id)`, `list(query)`, `cancel(id, options?)`, `receipt(query)`, `workflow(id)`, `workflows(filter?, options?)`, `wait(id)`, `snapshot(id, observer, options?)`, `events(id, options?)`, `subscribeEvents(id, listener, options?)`, and `inspect(id)`. The `bureau.tasks.*` operations of `createBureauHandler` delegate to these members. See [Tasks](#tasks-bureautasks). |
+| `tasks` | `BureauTasks<D>` | Starts a task and reads, waits on, watches, and cancels it: `start(agentName, input, options?)`, `detail(id)`, `get(id)`, `list(query)`, `cancel(id, options?)`, `receipt(query)`, `workflow(id)`, `workflows(filter?, options?)`, `wait(id)`, `snapshot(id, observer, options?)`, `events(id, options?)`, `subscribeEvents(id, listener, options?)`, `inspect(id)`, and `respond(request)`. The `bureau.tasks.*` operations of `createBureauHandler` delegate to these members. See [Tasks](#tasks-bureautasks). |
 | `models` | `Models` | The model namespace, present regardless of `D`: `catalog()` returns the frozen `ModelCatalog` (the same object until `replace(rows)` commits; `revision` is 1 at boot and Bureau increments it on every `replace`, `stale` is always `false`, `generatedAt` is the runtime clock's time at the commit), `replace(rows)` swaps every row and validates agent files again, `generate(row)` is the host's `models.generate` (`NOT_CONFIGURED` when none was supplied), and `plan(request)` builds a `SelectionPlan`. |
 | `memory` | `GovernedMemory \| undefined` | COR-41—the governed memory passed as `BureauOptions.memory`, for host-side reads, legal holds, and deletions under the host's own authority. The maintenance pass runs the retention sweep and deletion propagation itself. See [Governed memory](#governed-memory-cor-41). |
 | `children` | `BureauChildren` | COR-772—dispatch a catalog agent as the child of a run this bureau knows, then `list`/`get`/`wait`/`signal`/`cancel` it by its stable identifier, including after a restart. See [Parent-child topology](#parent-child-topology-cor-772). |
@@ -301,6 +301,23 @@ The handle iterates the task's run events (once), `result()` settles with the ru
 `options.commandId` is the caller's idempotency key. It needs a `principal` (`BAD_REQUEST` otherwise) and a durable engine (`NOT_CONFIGURED` otherwise), and it goes through the durable command ledger described under [Run-creation receipts](#run-creation-receipts-cor-424): an exact retry returns the original task, and the same key with a different agent, input, context, or request context is refused with `BureauLedgerConflictError`. A handle a retry replays for a task this process does not run iterates nothing (a task this process runs iterates its live tail), and its `result()` settles from `bureau.tasks.wait`, the durable workflow's recorded result. `bureau.tasks.receipt({ commandId, principal, agentName? , contextId? })` reports where a key stands: `recorded`, `pending`, `expired`, or `not-found`.
 
 The remaining members read a task: `detail(id)` is the run this process holds, with its steps, events, transcript, and liveness; `get(id)` and `list(query)` read the task registry (the records `bureau.tasks.get` and `list` serve); `workflow(id)` and `workflows(filter?, options?)` are the durable engine's view; `wait(id)` resolves once the durable workflow is terminal; `snapshot(id, observer)` delivers the task's liveness on every change; `events(id)` and `subscribeEvents(id, listener)` read its durable event history; and `inspect(id)` reads its record, liveness, and children for the run inspector. `cancel(id, { waitMilliseconds? })` cancels a task whether this process holds it or only the durable store does, and reports where its cleanup stands. None of these authorizes the caller beyond the principal a start or a receipt names; `createBureauHandler` authorizes before it calls them.
+
+`respond(request)` answers a task's open wait: answer text or structured `data` for a human-input wait, or a `decision` on an approval or a human wait, under a caller-supplied `messageId` that makes it idempotent (an exact retry returns the original receipt, even after the task's record is gone; the same `messageId` with another command is `CONFLICT`). It is the one task member that authorizes: only the task's owner, `request.principal`, may answer, and another owner's task is `NOT_FOUND`, exactly as a missing one. With `operator: true` the caller may answer another owner's human-input waits, and its decision on another owner's approval is still `NOT_FOUND`; `bureau.tasks.respond` sets it for a caller holding `bureau.tasks:write`, after parsing the request, and delegates.
+
+```ts
+import { createBureau } from '@lostgradient/bureau';
+
+declare const bureau: Awaited<ReturnType<typeof createBureau>>;
+declare const taskId: string;
+
+const answered = await bureau.tasks.respond({
+  taskId,
+  messageId: 'answer-1',
+  answer: 'staging',
+  principal: 'api-key:alice',
+});
+console.log(answered.receipt); // 'applied'
+```
 
 ### Reviews (`bureau.reviews`)
 

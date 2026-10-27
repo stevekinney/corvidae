@@ -20,7 +20,6 @@
  * @module create-bureau-handler
  */
 
-import type { RuntimeServices } from '@lostgradient/lifecycle';
 import {
   type AuthConfig,
   AUTHORIZATION_SCOPES,
@@ -63,8 +62,7 @@ import { readFileAgentBinding } from '../agent-file-catalog.ts';
 import { describeAgentModels } from '../agent-models.ts';
 import {
   COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS,
-  type CommandLedger,
-  createCommandLedger,
+  createPrunedCommandLedger,
 } from '../command-ledger.ts';
 import { isReservedOwnerSubject } from '../owner-of-record.ts';
 import { type AgUiOptions, createAgUiMount } from './ag-ui-mount.ts';
@@ -171,11 +169,7 @@ import {
 import {
   type BureauTasksRespondOperationHost,
   respondToTask,
-  TASKS_RESPOND_LEDGER_KEY_PREFIX,
   tasksRespondOperation,
-  type TasksRespondClaim,
-  type TasksRespondLedger,
-  type TasksRespondResult,
 } from './management/tasks-respond-operation.ts';
 
 /**
@@ -213,6 +207,8 @@ export type BureauHandlerSource = Pick<
     | 'events'
     | 'subscribeEvents'
     | 'receipt'
+    | 'inspect'
+    | 'respond'
   >;
 } & {
   readonly reviews: Pick<BureauReviews, 'list' | 'get' | 'resolve' | 'pendingOf'>;
@@ -884,7 +880,7 @@ function createA2AMount(
     // tasks' history.
     void records.clearContext(event.sessionId, event.incarnation).catch(() => undefined);
   });
-  const ledger: A2ASendLedger = createPrunedLedger<A2ASendClaim, A2ASendResult>(
+  const ledger: A2ASendLedger = createPrunedCommandLedger<A2ASendClaim, A2ASendResult>(
     kv,
     A2A_SEND_LEDGER_KEY_PREFIX,
     'a2a-send-conflict',
@@ -976,48 +972,8 @@ function createPushSupport(
   return { delivery, checkpoints, projector, ready };
 }
 
-/** How often the respond ledger drops its expired bindings, at most. */
-const RESPOND_LEDGER_PRUNE_INTERVAL_MS = 3_600_000;
-
 /** How many of a withdrawn agent's tasks one tombstone check reads at a time. */
 const TOMBSTONE_SCAN_PAGE = 50;
-
-function createRespondLedger(bureau: BureauHandlerSource): TasksRespondLedger {
-  return createPrunedLedger<TasksRespondClaim, TasksRespondResult>(
-    // An ephemeral Bureau keeps the ledger in memory: a receipt then lives as long as the process does.
-    bureau.internals.kv ?? textValueStore(new MemoryStorage()),
-    TASKS_RESPOND_LEDGER_KEY_PREFIX,
-    'respond-conflict',
-    bureau.runtimeServices,
-  );
-}
-
-/** A command ledger that drops its expired bindings at most once an hour, on a claim. */
-function createPrunedLedger<Claim, Result>(
-  kv: ConditionalTextValueStore,
-  keyPrefix: string,
-  conflictIdPrefix: string,
-  runtime: RuntimeServices,
-): CommandLedger<Claim, Result> {
-  const ledger = createCommandLedger<Claim, Result>({
-    kv,
-    keyPrefix,
-    clock: runtime.clock,
-    nextConflictId: () => runtime.identifiers.next(conflictIdPrefix),
-  });
-  let prunedAt = runtime.clock.now();
-  return {
-    ...ledger,
-    async claim(identity, digest, claim) {
-      const now = runtime.clock.now();
-      if (now - prunedAt >= RESPOND_LEDGER_PRUNE_INTERVAL_MS) {
-        prunedAt = now;
-        await ledger.prune().catch(() => undefined);
-      }
-      return ledger.claim(identity, digest, claim);
-    },
-  };
-}
 
 /**
  * The `host` every served operation reads. Exported so a test can serve the same
@@ -1046,10 +1002,7 @@ export function buildBureauHandlerHost(
       mayAccess: mayAccessOwnedResource,
     },
     tasks: bureau.internals.taskRegistry,
-    inspection: {
-      liveness: (runId) => bureau.tasks.detail(runId)?.liveness,
-      children: (runId) => bureau.children.list(runId),
-    },
+    inspect: (id) => bureau.tasks.inspect(id),
     taskHistory: bureau.tasks,
     contexts: {
       list: (listOptions) => bureau.contexts.list(listOptions),
@@ -1101,8 +1054,7 @@ export function buildBureauHandlerHost(
       query: bureau.audit.query,
     },
     assets: bureau.assets,
-    respondLedger: createRespondLedger(bureau),
-    respondInFlight: new Map(),
+    respond: (request) => bureau.tasks.respond(request),
     deployment: {
       id: bureau.id,
       state: () => bureau.lifecycle,

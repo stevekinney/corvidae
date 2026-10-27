@@ -30,6 +30,8 @@
 import { defineOperation, type OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
+import { reviewReceiptOf } from '../tasks/respond-to-task.ts';
+
 import {
   ApprovalOutcomeNotWrittenError,
   BureauError,
@@ -450,25 +452,6 @@ const reviewsResolveOutput = z.object({
   feedback: z.string().optional(),
 });
 
-/**
- * The receipt for a resolution that reached the Bureau. A landed `reject` is
- * `applied`, not `rejected`: `rejected` means the command was refused and nothing
- * took effect, and a refusal is a fault in v1.
- */
-export function receiptFor(result: unknown): z.infer<typeof reviewReceiptSchema> {
-  // `resumeApproval` re-ran the tool's policy and gated it again: the tool did
-  // not run and the review remains pending under a replacement approval.
-  if (
-    typeof result === 'object' &&
-    result !== null &&
-    'outcome' in result &&
-    result.outcome === 'action_required'
-  ) {
-    return 'superseded';
-  }
-  return 'applied';
-}
-
 export const reviewsResolveOperation = defineOperation<
   typeof reviewsResolveInput,
   typeof reviewsResolveOutput,
@@ -524,7 +507,7 @@ export const reviewsResolveOperation = defineOperation<
         id: result.id,
         kind: result.kind,
         decision: result.decision,
-        receipt: receiptFor(result.result),
+        receipt: reviewReceiptOf(result.result),
         ...(result.feedback === undefined ? {} : { feedback: result.feedback }),
       };
     } catch (error) {

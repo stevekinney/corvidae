@@ -196,8 +196,8 @@ export type NoPerRequestAgentCaps = AssertNever<
   Extract<keyof StartTaskOptions, 'systemPrompt' | 'maximumSteps' | 'maximumTokens'>
 >;
 
-// `tasks` declares the operations the project document names (`respond` joins them with the
-// in-process `respond`).
+// `tasks` declares the operations the project document names, `respond` and `inspect` (the
+// handler's operations, moved in-process) among them.
 export type TasksMembers = AssertNever<
   Exclude<
     | 'start'
@@ -212,7 +212,8 @@ export type TasksMembers = AssertNever<
     | 'snapshot'
     | 'events'
     | 'subscribeEvents'
-    | 'inspect',
+    | 'inspect'
+    | 'respond',
     keyof BureauTasks
   >
 >;

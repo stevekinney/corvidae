@@ -78,7 +78,7 @@
  * or whose run no longer exists, is measured from its own latest timestamp.
  */
 import { sha256HexSync } from '@lostgradient/cryptography';
-import type { RuntimeClock, RuntimeIdentifiers } from '@lostgradient/lifecycle';
+import type { RuntimeClock, RuntimeIdentifiers, RuntimeServices } from '@lostgradient/lifecycle';
 import {
   type ConditionalTextValueStore,
   encodeStorageKeyComponent,
@@ -1412,6 +1412,39 @@ export function createRunCreationLedger(
           }
         },
       };
+    },
+  };
+}
+
+/** How often a {@link createPrunedCommandLedger} drops its expired bindings, at most. */
+const PRUNED_LEDGER_INTERVAL_MS = 3_600_000;
+
+/**
+ * A command ledger over `kv` under `keyPrefix` that drops its expired bindings at most once an
+ * hour, on a claim. A failed prune is ignored: the next one an hour later tries again.
+ */
+export function createPrunedCommandLedger<Claim, Result>(
+  kv: ConditionalTextValueStore,
+  keyPrefix: string,
+  conflictIdPrefix: string,
+  runtime: Pick<RuntimeServices, 'clock' | 'identifiers'>,
+): CommandLedger<Claim, Result> {
+  const ledger = createCommandLedger<Claim, Result>({
+    kv,
+    keyPrefix,
+    clock: runtime.clock,
+    nextConflictId: () => runtime.identifiers.next(conflictIdPrefix),
+  });
+  let prunedAt = runtime.clock.now();
+  return {
+    ...ledger,
+    async claim(identity, digest, claim) {
+      const now = runtime.clock.now();
+      if (now - prunedAt >= PRUNED_LEDGER_INTERVAL_MS) {
+        prunedAt = now;
+        await ledger.prune().catch(() => undefined);
+      }
+      return ledger.claim(identity, digest, claim);
     },
   };
 }

@@ -113,7 +113,7 @@ import {
   isTerminal,
   type ProjectionShape,
 } from './a2a-task-projection.ts';
-import { type TasksRespondInput, tasksRespondInput } from './management/tasks-respond-operation.ts';
+import { type TasksRespondInput, tasksRespondInput } from '../tasks/respond-to-task.ts';
 import {
   COMMAND_RECEIPTS_EXTENSION_URI,
   CommandReceiptError,

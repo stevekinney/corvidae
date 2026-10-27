@@ -3,6 +3,7 @@ import type { AgentRun, RunEvent, RunResult } from '@lostgradient/operative';
 import type { BureauChildren } from '../child-topology.ts';
 import type { RunCreationReceipt } from '../command-ledger.ts';
 import type { TaskRegistry } from '../task-registry.ts';
+import { createTaskResponder, type TaskResponderDependencies } from './respond-to-task.ts';
 import type {
   BureauTasks,
   DurableEventHistoryRead,
@@ -43,16 +44,20 @@ export type TasksDependencies = {
   readonly subscribeEventHistory: DurableEventHistorySubscribe;
   /** The error a missing task is refused with. */
   readonly notFound: (message: string) => Error;
+  /** The reviews, ledger, and refusals {@link BureauTasks.respond} answers with, over `registry`. */
+  readonly responder: Omit<TaskResponderDependencies, 'registry'>;
 };
 
 /**
  * Build `bureau.tasks`. `start`, `detail`, `receipt`, the durable reads, and `snapshot` are the
  * Bureau's own; `get`, `list`, and `cancel` are the task registry's; `events` and
  * `subscribeEvents` read the durable event history for the `run` owner of the id; `inspect`
- * composes the registry's record, the run's liveness, and the task's children.
+ * composes the registry's record, the run's liveness, and the task's children; `respond` answers
+ * a task's open wait over the registry and the reviews, recording its receipts in its ledger.
  */
 export function createTasks(dependencies: TasksDependencies): BureauTasks {
   const { registry } = dependencies;
+  const responder = createTaskResponder({ ...dependencies.responder, registry });
   return {
     start: dependencies.start,
     detail: dependencies.detail,
@@ -88,6 +93,7 @@ export function createTasks(dependencies: TasksDependencies): BureauTasks {
         })),
       };
     },
+    respond: (request) => responder.respond(request),
   };
 }
 

@@ -1363,6 +1363,54 @@ export interface TaskInspection {
   }[];
 }
 
+/**
+ * One answer to a task's open wait, for {@link BureauTasks.respond}. Send exactly one of `answer`,
+ * `data`, and `decision`.
+ */
+export interface TaskRespondRequest {
+  /** The task whose wait is answered. */
+  readonly taskId: string;
+  /** The caller's idempotency key for this command, at most 200 characters. */
+  readonly messageId: string;
+  /** Answer text for a human-input wait; a list of parts is joined with a newline. */
+  readonly answer?: string | readonly string[] | undefined;
+  /** The answer of a human wait that carries an input schema, validated against it. */
+  readonly data?: Readonly<Record<string, unknown>> | undefined;
+  /** The decision on an approval or a human wait. */
+  readonly decision?: 'approve' | 'deny' | 'reject' | undefined;
+  /** Required, and non-blank, for `reject`. */
+  readonly reason?: string | undefined;
+  /** Addresses the human wait with this signal. */
+  readonly signalName?: string | undefined;
+  /** Addresses the tool approval for this call. */
+  readonly callId?: string | undefined;
+  /**
+   * Who answers: the owner string (`api-key:<subject>` or `anonymous:local`) the answer is
+   * recorded as resolved by, and the caller the receipt belongs to.
+   */
+  readonly principal: string;
+  /**
+   * Answer as an operator: another owner's human-input waits may be answered, and an approval of
+   * a task `principal` does not own is answered as a missing task. Omitted, only the task's owner
+   * may answer. `createBureauHandler` sets it for a caller holding `bureau.tasks:write`.
+   */
+  readonly operator?: boolean | undefined;
+}
+
+/** What {@link BureauTasks.respond} answered, and the receipt an exact retry returns. */
+export interface TaskRespondResult {
+  readonly taskId: string;
+  readonly messageId: string;
+  /** The review the command resolved. */
+  readonly reviewId: string;
+  readonly kind: 'tool-approval' | 'human-wait';
+  readonly decision: 'approve' | 'deny' | 'reject';
+  /** `applied`, or `superseded` when the approval was gated again and the tool did not run. */
+  readonly receipt: 'applied' | 'rejected' | 'superseded';
+  /** A `tool-approval` reject only: the reason, for the next run to splice in. */
+  readonly feedback?: string | undefined;
+}
+
 /** The output a task of the catalog agent `TName` settles with: its schema's, else `unknown`. */
 export type TaskOutputOf<
   D extends AgentDefinitions,
@@ -1461,6 +1509,17 @@ export interface BureauTasks<D extends AgentDefinitions = AgentDefinitions> {
    * `undefined` for a task the registry does not hold.
    */
   inspect(id: string): Promise<TaskInspection | undefined>;
+  /**
+   * Answers one open wait of a task as `request.principal`: answer text or structured `data` for
+   * a human-input wait, or a `decision` on an approval or a human wait. `signalName` or `callId`
+   * says which wait when several are open; with neither, exactly one must be. Only the task's
+   * owner may answer, unless `request.operator` is set (see {@link TaskRespondRequest.operator});
+   * another owner's task, and a task the registry does not hold, are `NOT_FOUND`. An exact retry
+   * of a `messageId` returns the original receipt, even after the task's record is gone; the same
+   * `messageId` with another command is `CONFLICT`, as are a task with no open wait and a review
+   * already resolved. A malformed request, or an answer the wait cannot take, is `BAD_REQUEST`.
+   */
+  respond(request: TaskRespondRequest): Promise<TaskRespondResult>;
 }
 
 /**

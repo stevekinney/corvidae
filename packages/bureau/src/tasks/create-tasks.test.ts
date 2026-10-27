@@ -144,6 +144,28 @@ describe('bureau.tasks.start contexts', () => {
     expect((refusal as BureauError).code).toBe('BAD_REQUEST');
   });
 
+  it('seeds a new context with a conversation, whose task runs on that history', async () => {
+    const { bureau } = await open({ released: true });
+    const first = await bureau.tasks.start('default', 'one');
+    await first.result();
+    const conversation = (await bureau.contexts.get(first.contextId))!.conversationHistory;
+
+    const seeded = await bureau.tasks.start('default', { conversation });
+    const result = await seeded.result();
+
+    expect(result.content).toBe('done');
+    expect(seeded.contextId).not.toBe(first.contextId);
+    const listed = await bureau.contexts.list();
+    expect(listed.map((context) => context.id)).toContain(seeded.contextId);
+    const history = (await bureau.contexts.get(seeded.contextId))!.conversationHistory;
+    const texts = history.ids.map((id) => history.messages[id]?.content);
+    // The seeded history, then the seeded task's own answer.
+    expect(texts.slice(0, conversation.ids.length)).toEqual(
+      conversation.ids.map((id) => conversation.messages[id]?.content),
+    );
+    expect(texts.length).toBeGreaterThan(conversation.ids.length);
+  });
+
   it('gives a parked task’s review the context the task created', async () => {
     const { bureau } = await open();
     const task = await bureau.tasks.start('asker', 'deploy it');

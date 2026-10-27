@@ -70,7 +70,7 @@ export const OPERATION_MAP = {
   'bureau.tasks.cancel': { member: 'tasks.cancel' },
   'bureau.tasks.inspect': { member: 'tasks.inspect' },
   'bureau.tasks.events': { member: 'tasks.events' },
-  'bureau.tasks.respond': { member: 'reviews.resolve' },
+  'bureau.tasks.respond': { member: 'tasks.respond' },
 
   'bureau.contexts.list': { member: 'contexts.list' },
   'bureau.contexts.get': { member: 'contexts.get' },

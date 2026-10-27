@@ -236,6 +236,7 @@ export {
   createBureau,
   ReviewRoundChangedError,
   ScheduleLocatorUnavailableError,
+  TaskRespondError,
   UnknownScheduleAgentError,
 } from './create-bureau';
 export {
@@ -472,6 +473,8 @@ export type {
   TaskInspection,
   TaskOutputOf,
   TaskReceiptQuery,
+  TaskRespondRequest,
+  TaskRespondResult,
   BureauSchedules,
   BureauRunOptions,
   BureauShutdownOptions,
