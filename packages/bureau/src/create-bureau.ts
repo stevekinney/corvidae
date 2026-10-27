@@ -503,6 +503,8 @@ import {
   DEFAULT_SESSION_INPUT_BACKLOG_LIMIT,
 } from './types';
 import { isSettlingRunAction, settledActionTimestamp } from './run-settlement';
+import { createReviews } from './reviews/create-reviews';
+import { createSchedules } from './schedules/create-schedules';
 import { createWebhookNotifier, type WebhookNotifier } from './webhook-notifier';
 import { scheduleInputPreview } from './schedule-input-preview';
 import { streamEventToFrame } from './websocket-frames';
@@ -1043,7 +1045,7 @@ class TerminalSessionRecordAbandonedError extends Error {
 }
 
 /**
- * Thrown by `createSchedule` when a schedule registers successfully against
+ * Thrown by `schedules.create` when a schedule registers successfully against
  * the engine but its {@link import('@lostgradient/weft').ScheduleSummary}
  * cannot be retrieved immediately afterward (`AgentScheduleHandle.describe()`
  * rejects). Mirrors `DurableCapabilityUnavailableError`'s shape discipline
@@ -1062,7 +1064,7 @@ export class ScheduleLocatorUnavailableError extends Error {
   constructor(scheduleId: string, options?: { cause?: unknown }) {
     super(
       `Schedule ${scheduleId} was registered, but its summary could not be retrieved. ` +
-        `The schedule is registered; retry describing it (e.g. bureau.getSchedule('${scheduleId}')) later.`,
+        `The schedule is registered; retry describing it (e.g. bureau.schedules.get('${scheduleId}')) later.`,
       options,
     );
     this.name = 'ScheduleLocatorUnavailableError';
@@ -1071,7 +1073,7 @@ export class ScheduleLocatorUnavailableError extends Error {
 }
 
 /**
- * Thrown by `createSchedule` (COR-1667) when `agentName` is not in the agent catalog, instead of
+ * Thrown by `schedules.create` (COR-1667) when `agentName` is not in the agent catalog, instead of
  * registering a schedule whose every fire would be refused with `missing-agent`. A `NOT_FOUND`
  * {@link BureauError}, so the management plane answers it as a client error; the name is on
  * `agentName`.
@@ -18403,19 +18405,62 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     eventHistory: eventHistoryInstance,
   });
 
+  // COR-1577: a `bureau.run()` run's park joins the session reviews in the public list, and
+  // resolves through the engine by run id. Every other review resolves exactly as before.
+  const reviews = createReviews({
+    listSessionReviews: listPendingReviews,
+    listRunHumanWaits: () => runHumanWaits.list(),
+    get: getReview,
+    pendingOf: pendingHumanWaitsOfRun,
+    resolve: resolveAnyReview,
+  });
+
+  // COR-1704: the schedule operations stay private implementations that share the durable engine,
+  // the emitter, and the transition outbox; `events` reads the `schedule` owner of the history the
+  // Bureau already serves.
+  const schedules = createSchedules({
+    create: createSchedule,
+    get: getSchedule,
+    list: listSchedules,
+    pause: pauseSchedule,
+    resume: resumeSchedule,
+    cancel: cancelSchedule,
+    update: updateSchedule,
+    agentName: getScheduleAgentName,
+    inputPreview: getScheduleInputPreview,
+    eventHistory: (owner, eventHistoryOptions) => bureau.eventHistory(owner, eventHistoryOptions),
+    subscribeEventHistory: (owner, listener, subscribeOptions) =>
+      bureau.subscribeEventHistory(owner, listener, subscribeOptions),
+  });
+
   const bureau: Bureau<D> = {
     id: bureauId,
-    hasExplicitId: options.id !== undefined,
+    reviews,
+    schedules,
+    internals: {
+      hasExplicitId: options.id !== undefined,
+      taskRetention: taskRetentionOf(options),
+      hasDurableEngine: runCreationLedger !== undefined,
+      eventFeed,
+      runEventFeeds,
+      store,
+      sessionStore: runtime.sessionStore,
+      kv: runtime.kv,
+      get auditTrail(): AuditTrail | undefined {
+        return auditTrailInstance;
+      },
+      get webhookNotifier(): WebhookNotifier | undefined {
+        return webhookNotifierInstance;
+      },
+      get onlineEvalSampler(): OnlineEvalSampler | undefined {
+        return onlineEvalSamplerInstance;
+      },
+      abortingTasks: listAbortingRuns,
+      whenTaskRecorded: whenRunRecorded,
+      taskRegistry: tasks,
+    },
     runtimeServices,
-    taskRetention: taskRetentionOf(options),
-    hasDurableEngine: runCreationLedger !== undefined,
-    eventFeed,
-    runEventFeeds,
-    store,
     memory: runtime.memory,
-    sessionStore: runtime.sessionStore,
-    kv: runtime.kv,
-    tasks,
     surfaces,
     get lifecycle() {
       return bureau.completed ? 'stopped' : runAdmissionClosed ? 'draining' : 'ready';
@@ -18436,9 +18481,6 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     children: childTopology.children as BureauChildren<AgentNames<D>>,
     peerCalls,
     goals: goalsComposition.goals as BureauGoals<AgentNames<D>>,
-    get auditTrail(): AuditTrail | undefined {
-      return auditTrailInstance;
-    },
     eventHistory(
       owner: DurableEventOwner,
       eventHistoryOptions?: DurableEventHistoryPageOptions,
@@ -18478,12 +18520,6 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         ? eventHistoryInstance.subscribeEventHistory(owner, listener, subscribeOptions)
         : subscribeAuthorized(eventHistoryInstance, owner, listener, principal, subscribeOptions);
     },
-    get webhookNotifier(): WebhookNotifier | undefined {
-      return webhookNotifierInstance;
-    },
-    get onlineEvalSampler(): OnlineEvalSampler | undefined {
-      return onlineEvalSamplerInstance;
-    },
     get assets(): AssetService | undefined {
       return assetServiceInstance;
     },
@@ -18492,11 +18528,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     listRuns,
     getRun,
     getOwner,
-    getScheduleAgentName,
-    getScheduleInputPreview,
     subscribeRunSnapshot,
     abortRun,
-    listAbortingRuns,
     getDurableRun,
     durableEngine,
     waitForDurableRun,
@@ -18508,19 +18541,10 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     deleteSession,
     signalSession,
     submitSessionInput,
-    whenRunRecorded,
     sessionInputsDeliveredBy,
     submitSteeringCommand,
     getSessionSteering,
     forkSession,
-    // COR-1577: a `bureau.run()` run's park joins the session reviews in the public list, and
-    // resolves through the engine by run id. Every other review resolves exactly as before.
-    listPendingReviews: (): PendingReview[] => [...listPendingReviews(), ...runHumanWaits.list()],
-    getReview,
-    // COR-1579: a park this process does not hold is derived from durable state and resolved
-    // here all the same, fenced by the durable decision record.
-    resolveReview: resolveAnyReview,
-    pendingHumanWaitsOfRun,
     setRequestAuthorityValidator(validator) {
       requestAuthorityValidator = validator;
       runtime.setRequestAuthorityValidator(validator);
@@ -18560,13 +18584,6 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     waitForRecovery() {
       return durableRecoveryBarrier;
     },
-    createSchedule,
-    getSchedule,
-    listSchedules,
-    pauseSchedule,
-    resumeSchedule,
-    cancelSchedule,
-    updateSchedule,
     subscribeLiveFrames(listener) {
       let active = true;
       const unsubscribe = () => {

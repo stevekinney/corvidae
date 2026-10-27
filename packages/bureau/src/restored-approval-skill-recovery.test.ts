@@ -48,7 +48,7 @@ const encoder = new TextEncoder();
 const SESSION = 'skill-recovery-session';
 
 const approve = (bureau: Bureau, id: string) =>
-  bureau.resolveReview({ id, decision: 'approve', principal: OWNER.alice });
+  bureau.reviews.resolve({ id, decision: 'approve', principal: OWNER.alice });
 
 async function refusalOf(bureau: Bureau, id: string): Promise<BureauError> {
   return (await rejectionOf(approve(bureau, id))) as BureauError;
@@ -169,7 +169,7 @@ describe('a run’s approval after a later run starts in its session', () => {
       principal: OWNER.alice,
     });
     const review = await pollUntil(
-      () => first.listPendingReviews().find((candidate) => candidate.runId === run.id),
+      () => first.reviews.list().find((candidate) => candidate.runId === run.id),
       'the session run’s approval',
     );
     await pollForTime(
@@ -190,7 +190,7 @@ describe('a run’s approval after a later run starts in its session', () => {
       },
     });
     const restored = await pollUntil(
-      () => restarted.listPendingReviews().find((candidate) => candidate.id === review.id),
+      () => restarted.reviews.list().find((candidate) => candidate.id === review.id),
       'the restored approval',
     );
     return { restarted, restored, run, charges };
@@ -290,7 +290,7 @@ describe('a run’s approval after a later run starts in its session', () => {
       principal: OWNER.alice,
     });
     const review = await pollUntil(
-      () => first.listPendingReviews().find((candidate) => candidate.runId === run.id),
+      () => first.reviews.list().find((candidate) => candidate.runId === run.id),
       'the session run’s approval',
     );
     const charges: number[] = [];
@@ -305,7 +305,7 @@ describe('a run’s approval after a later run starts in its session', () => {
       },
     });
     await pollUntil(
-      () => restarted.listPendingReviews().find((candidate) => candidate.id === review.id),
+      () => restarted.reviews.list().find((candidate) => candidate.id === review.id),
       'the restored approval',
     );
     await restarted.createRun({
@@ -390,7 +390,7 @@ describe('a fire replayed after its process died in a step', () => {
     expect(offered).toEqual([]);
     expect(charges).toEqual([]);
     // The call is refused before it reaches an approval, because the policy is unverified.
-    expect(restarted.listPendingReviews().filter((review) => review.runId === fireId)).toEqual([]);
+    expect(restarted.reviews.list().filter((review) => review.runId === fireId)).toEqual([]);
     expect(await recordedResultCode(restarted, SESSION, 'charge-Y')).toBe('SKILL_TOOL_DENIED');
     expect(charges).toEqual([]);
     const held = await snapshotOnDisk(path);
@@ -413,7 +413,7 @@ describe('a fire replayed after its process died in a step', () => {
     expect(offered).toEqual([]);
     expect(charges).toEqual([]);
     // The call is refused before it reaches an approval, because the policy is unverified.
-    expect(restarted.listPendingReviews().filter((review) => review.runId === fireId)).toEqual([]);
+    expect(restarted.reviews.list().filter((review) => review.runId === fireId)).toEqual([]);
     expect(await recordedResultCode(restarted, SESSION, 'charge-Y')).toBe('SKILL_TOOL_DENIED');
     expect(charges).toEqual([]);
     const held = await snapshotOnDisk(path);
@@ -466,7 +466,7 @@ describe('a fire replayed after its process died in a step', () => {
     );
 
     // The call is refused before it reaches an approval: this Bureau cannot enforce the skills.
-    expect(restarted.listPendingReviews().filter((review) => review.runId === fireId)).toEqual([]);
+    expect(restarted.reviews.list().filter((review) => review.runId === fireId)).toEqual([]);
     expect(await recordedResultCode(restarted, SESSION, 'charge-Y')).toBe('SKILL_TOOL_DENIED');
     expect(offered).toEqual([]);
     expect(charges).toEqual([]);
@@ -542,7 +542,7 @@ describe('a session run reattached after its process died in a step', () => {
     expect(offered).toEqual([]);
     expect(charges).toEqual([]);
     // The call is refused before it reaches an approval, because the policy is unverified.
-    expect(restarted.listPendingReviews().filter((review) => review.runId === run.id)).toEqual([]);
+    expect(restarted.reviews.list().filter((review) => review.runId === run.id)).toEqual([]);
     expect(await recordedResultCode(restarted, run.sessionId, 'charge-Y')).toBe(
       'SKILL_TOOL_DENIED',
     );
@@ -587,7 +587,7 @@ describe('a session run reattached after its process died in a step', () => {
     expect(offered).toEqual([]);
     expect(charges).toEqual([]);
     // The call is refused before it reaches an approval, because the policy is unverified.
-    expect(restarted.listPendingReviews().filter((review) => review.runId === run.id)).toEqual([]);
+    expect(restarted.reviews.list().filter((review) => review.runId === run.id)).toEqual([]);
     expect(await recordedResultCode(restarted, run.sessionId, 'charge-Y')).toBe(
       'SKILL_TOOL_DENIED',
     );

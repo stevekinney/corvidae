@@ -231,16 +231,18 @@ describe('the audit trail beside an advancing floor', () => {
         at(3 * DAY_MS);
         const recent = await settledRun(bureau, 'recent');
         await runtime.deferred.drain();
-        const oldBefore = await bureau.auditTrail?.query({ runId: old.id });
-        const recentBefore = await bureau.auditTrail?.query({ runId: recent.id });
+        const oldBefore = await bureau.internals.auditTrail?.query({ runId: old.id });
+        const recentBefore = await bureau.internals.auditTrail?.query({ runId: recent.id });
         expect(oldBefore?.length).toBeGreaterThan(0);
 
         // The event window (2 days) advances the floor past the old run's
         // events; the audit window (1 day) then reaches its audit records.
         await bureau.runDurableMaintenance();
 
-        expect(await bureau.auditTrail?.query({ runId: old.id })).toEqual([]);
-        expect(await bureau.auditTrail?.query({ runId: recent.id })).toEqual(recentBefore);
+        expect(await bureau.internals.auditTrail?.query({ runId: old.id })).toEqual([]);
+        expect(await bureau.internals.auditTrail?.query({ runId: recent.id })).toEqual(
+          recentBefore,
+        );
       },
       { retention: { events: { olderThan: 2 * DAY_MS }, audit: { olderThan: DAY_MS } } },
     );
@@ -251,14 +253,14 @@ describe('the audit trail beside an advancing floor', () => {
       async ({ bureau, runtime, at, retentionFloor }) => {
         const run = await settledRun(bureau);
         await runtime.deferred.drain();
-        const before = await bureau.auditTrail?.query({ runId: run.id });
+        const before = await bureau.internals.auditTrail?.query({ runId: run.id });
         at(2 * DAY_MS);
 
         await bureau.runDurableMaintenance();
 
         // The floor passed the run's events, but the audit window (5 days) has not.
         expect(await retentionFloor()).toBeGreaterThan(0);
-        expect(await bureau.auditTrail?.query({ runId: run.id })).toEqual(before);
+        expect(await bureau.internals.auditTrail?.query({ runId: run.id })).toEqual(before);
       },
       { retention: { events: { olderThan: DAY_MS }, audit: { olderThan: 5 * DAY_MS } } },
     );
@@ -269,14 +271,14 @@ describe('the audit trail beside an advancing floor', () => {
       async ({ bureau, runtime, at, retentionFloor }) => {
         const run = await settledRun(bureau);
         await runtime.deferred.drain();
-        const before = await bureau.auditTrail?.query({ runId: run.id });
+        const before = await bureau.internals.auditTrail?.query({ runId: run.id });
         at(30 * DAY_MS);
 
         await bureau.runDurableMaintenance();
 
         // `'forever'` events: the floor stays put, so the clamp protects the record.
         expect(await retentionFloor()).toBe(0);
-        expect(await bureau.auditTrail?.query({ runId: run.id })).toEqual(before);
+        expect(await bureau.internals.auditTrail?.query({ runId: run.id })).toEqual(before);
       },
       { retention: { events: 'forever', audit: { olderThan: DAY_MS } } },
     );
@@ -287,14 +289,14 @@ describe('the audit trail beside an advancing floor', () => {
       async ({ bureau, runtime, at, retentionFloor }) => {
         const run = await settledRun(bureau);
         await runtime.deferred.drain();
-        const before = await bureau.auditTrail?.query({ runId: run.id });
+        const before = await bureau.internals.auditTrail?.query({ runId: run.id });
         at(100 * DAY_MS);
 
         await bureau.runDurableMaintenance();
 
         expect(await retentionFloor()).toBeGreaterThan(0);
-        expect(await bureau.auditTrail?.query({ runId: run.id })).toEqual(before);
-        expect(await bureau.auditTrail?.query({ type: 'audit.pruned' })).toEqual([]);
+        expect(await bureau.internals.auditTrail?.query({ runId: run.id })).toEqual(before);
+        expect(await bureau.internals.auditTrail?.query({ type: 'audit.pruned' })).toEqual([]);
       },
       { retention: { events: { olderThan: DAY_MS }, audit: 'forever' } },
     );

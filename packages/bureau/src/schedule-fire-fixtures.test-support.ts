@@ -199,7 +199,7 @@ export async function fireOnce(
   sessionId?: string,
   agentName = 'default',
 ): Promise<{ readonly scheduleId: string; readonly fireId: string }> {
-  const created = await bureau.createSchedule({
+  const created = await bureau.schedules.create({
     agentName,
     input: 'check in',
     spec: '1m',
@@ -212,7 +212,7 @@ export async function fireOnce(
   }
   await bureau.runDurableMaintenance(occurrence);
   const fireId = await pollUntil(async () => {
-    const schedule = await bureau.getSchedule(created.id);
+    const schedule = await bureau.schedules.get(created.id);
     return schedule?.currentWorkflowId;
   }, 'the tick to launch a fire');
   return { scheduleId: created.id, fireId };
@@ -227,7 +227,7 @@ export async function followedBy(bureau: Bureau, fireId: string): Promise<void> 
 }
 
 export const reviewsOf = (bureau: Bureau, runId: string): PendingReview[] =>
-  bureau.listPendingReviews().filter((review) => review.runId === runId);
+  bureau.reviews.list().filter((review) => review.runId === runId);
 
 export async function reviewOf(bureau: Bureau, runId: string): Promise<PendingReview> {
   return pollUntil(() => reviewsOf(bureau, runId)[0], `a pending review of run ${runId}`);
@@ -423,7 +423,7 @@ export async function auditRecordsOf(
   type: string,
   reviewId?: string,
 ) {
-  const records = (await bureau.auditTrail?.query({ runId, type })) ?? [];
+  const records = (await bureau.internals.auditTrail?.query({ runId, type })) ?? [];
   return records.filter((record) => {
     if (reviewId === undefined) return true;
     const detail = record.detail as { review?: { id?: string } } | undefined;

@@ -43,7 +43,7 @@ const statusesOf = (frames: readonly { data?: unknown }[]) =>
 
 async function settled(bureau: Bureau, fireId: string): Promise<void> {
   await pollUntil(async () => {
-    const view = await bureau.tasks.get(fireId);
+    const view = await bureau.internals.taskRegistry.get(fireId);
     return view?.status === 'completed' ? true : undefined;
   }, 'the settlement to be readable');
 }

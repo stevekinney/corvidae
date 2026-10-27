@@ -28,7 +28,7 @@ import {
   type TaskCleanupState,
   type TaskRegistry,
 } from '../../task-registry.ts';
-import type { Bureau } from '../../types.ts';
+import type { Bureau, BureauInternals } from '../../types.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
 import {
   DEFAULT_PAGE_LIMIT,
@@ -52,7 +52,7 @@ export type BureauContextsOperationHost = BureauOwnershipHost & {
     | 'listSessions'
     | 'getSessionSteering'
   > & {
-    readonly sessionStore: Bureau['sessionStore'];
+    readonly internals: Pick<BureauInternals, 'sessionStore'>;
   };
   readonly tasks: Pick<TaskRegistry, 'settleCleanup' | 'activityOf'>;
 };
@@ -125,7 +125,7 @@ export const contextsDeleteOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     const { contextId } = input;
-    if (host.contexts.sessionStore === undefined) {
+    if (host.contexts.internals.sessionStore === undefined) {
       throw {
         code: 'UnsupportedCapability',
         message: 'This Bureau keeps no sessions, so it has no contexts to delete',
@@ -276,7 +276,7 @@ export const contextsListOperation = defineOperation<
   transports,
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
-    if (host.contexts.sessionStore === undefined) throw noSessions();
+    if (host.contexts.internals.sessionStore === undefined) throw noSessions();
     const everyOwner = input.allOwners === true;
     if (everyOwner && !holdsScope(principal, 'bureau.contexts:read')) {
       throw {
@@ -333,7 +333,7 @@ export const contextsGetOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     const { contextId } = input;
-    if (host.contexts.sessionStore === undefined) throw noSessions();
+    if (host.contexts.internals.sessionStore === undefined) throw noSessions();
     const session = await host.contexts.getSession(contextId);
     if (
       session === undefined ||

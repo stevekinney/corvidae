@@ -104,7 +104,7 @@ describe('a Bureau over a workflow directory', () => {
       'invalid',
     );
     // The schedule exists for the ready file only.
-    const schedules = await harness.bureau.listSchedules();
+    const schedules = await harness.bureau.schedules.list();
     expect(schedules?.items.map((schedule) => schedule.id)).toEqual([
       'bureau-workflow-schedule:digest:1',
     ]);
@@ -222,9 +222,9 @@ describe('an agent step', () => {
     expect(stepRunId.startsWith('workflow-agent-')).toBe(true);
     expect(await harness.bureau.getOwner({ kind: 'run', id: stepRunId })).toBe('anonymous:local');
     // Not a task, and no context was created for it.
-    const page = await harness.bureau.tasks.enumerate({ limit: 100, offset: 0 });
+    const page = await harness.bureau.internals.taskRegistry.enumerate({ limit: 100, offset: 0 });
     expect(page.tasks.map((task) => task.id)).not.toContain(stepRunId);
-    expect(await harness.bureau.tasks.record(stepRunId)).toBeUndefined();
+    expect(await harness.bureau.internals.taskRegistry.record(stepRunId)).toBeUndefined();
     expect(await harness.bureau.getSession(stepRunId)).toBeUndefined();
   });
 });
@@ -274,7 +274,7 @@ describe('an agent step that names a file agent', () => {
     expect(revisions).toHaveLength(1);
     // Still not a task, though the agent behind it is a file.
     const stepRuns = await bureau.durableEngine()!.list({ type: 'agentRun' });
-    expect(await bureau.tasks.record(stepRuns.items[0]!.id)).toBeUndefined();
+    expect(await bureau.internals.taskRegistry.record(stepRuns.items[0]!.id)).toBeUndefined();
   });
 
   it('fails the step as a missing agent when the file agent is invalid', async () => {

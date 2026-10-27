@@ -139,7 +139,7 @@ describe('createBureau delivers admitted session input at the next step boundary
       // A promotion rides the session outbox; it must not stop the drain from
       // reaching the session's later facts.
       await bureau.runDurableMaintenance();
-      expect(await bureau.sessionStore?.outbox.pending()).toEqual([]);
+      expect(await bureau.internals.sessionStore?.outbox.pending()).toEqual([]);
 
       releaseStepTwo.resolve();
       await pollUntil(async () => {

@@ -112,7 +112,7 @@ describe('D6 scheduled-fire path (#109)', () => {
         durable: true,
       });
 
-      const schedule = await bureauA.createSchedule({
+      const schedule = await bureauA.schedules.create({
         agentName: 'default',
         input: 'recover this scheduled fire',
         spec: '1s',
@@ -163,7 +163,7 @@ describe('D6 scheduled-fire path (#109)', () => {
       });
 
       try {
-        await bureauB.cancelSchedule(schedule!.id);
+        await bureauB.schedules.cancel(schedule!.id);
 
         const bureauBRecoveredFire = await waitForReal(() => bureauBCall !== undefined);
         expect(bureauBRecoveredFire).toBe(true);
@@ -236,7 +236,7 @@ describe('D6 scheduled-fire path (#109)', () => {
     });
 
     try {
-      const summary = await bureau.createSchedule({
+      const summary = await bureau.schedules.create({
         agentName: 'default',
         input: 'maxsteps prompt',
         spec: '1s',
@@ -248,7 +248,7 @@ describe('D6 scheduled-fire path (#109)', () => {
       const fired = await waitForReal(() =>
         calls.some((call) => call.conversationId === sessionId),
       );
-      await bureau.cancelSchedule(summary!.id);
+      await bureau.schedules.cancel(summary!.id);
       expect(fired).toBe(true);
 
       // Despite the fire ending on maximum-steps (no final step), its transcript
@@ -286,7 +286,7 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
       bureau.addEventListener(ScheduleCompletedEvent.type, (event) => completed.push(event));
       bureau.addEventListener(ScheduleFailedEvent.type, (event) => failed.push(event));
 
-      const summary = await bureau.createSchedule({
+      const summary = await bureau.schedules.create({
         agentName: 'default',
         input: 'completes successfully',
         spec: '1s',
@@ -294,7 +294,7 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
       expect(summary).toBeDefined();
 
       const fired = await waitForReal(() => completed.length >= 1);
-      await bureau.cancelSchedule(summary!.id);
+      await bureau.schedules.cancel(summary!.id);
 
       expect(fired).toBe(true);
       expect(completed[0]!.scheduleId).toBe(summary!.id);
@@ -329,7 +329,7 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
       bureau.addEventListener(ScheduleCompletedEvent.type, (event) => completed.push(event));
       bureau.addEventListener(ScheduleFailedEvent.type, (event) => failed.push(event));
 
-      const summary = await bureau.createSchedule({
+      const summary = await bureau.schedules.create({
         agentName: 'default',
         input: 'always fails',
         spec: '1s',
@@ -337,7 +337,7 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
       expect(summary).toBeDefined();
 
       const fired = await waitForReal(() => failed.length >= 1);
-      await bureau.cancelSchedule(summary!.id);
+      await bureau.schedules.cancel(summary!.id);
 
       expect(fired).toBe(true);
       expect(failed[0]!.scheduleId).toBe(summary!.id);

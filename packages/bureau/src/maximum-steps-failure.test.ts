@@ -106,23 +106,23 @@ describe.each(EXECUTIONS)('a run that stops at its step limit, %s (COR-1627)', (
       principal: 'alice',
     });
     await waitForCondition(async () => {
-      const task = await bureau.tasks.get(run.id);
+      const task = await bureau.internals.taskRegistry.get(run.id);
       return task?.status === 'failed';
     }, 'the task never settled as failed');
     await waitForCondition(async () => {
-      const records = (await bureau.auditTrail?.query({ runId: run.id })) ?? [];
+      const records = (await bureau.internals.auditTrail?.query({ runId: run.id })) ?? [];
       return records.some((record) => record.type === 'run.completed');
     }, 'the audit trail never recorded the run’s completion');
 
-    const records = (await bureau.auditTrail?.query({ runId: run.id })) ?? [];
+    const records = (await bureau.internals.auditTrail?.query({ runId: run.id })) ?? [];
     expect(records.filter((record) => record.type === 'run.error')).toHaveLength(1);
     expect(records.filter((record) => record.type === 'run.completed')).toHaveLength(1);
     // The task reads the step-limit error. That it was settled once, and announced once, is
     // asserted by the settlement tests below.
-    const task = await bureau.tasks.get(run.id);
+    const task = await bureau.internals.taskRegistry.get(run.id);
     expect(task?.status).toBe('failed');
     expect(task?.statusMessage).toContain('Agent run exceeded maximumSteps (2).');
-    const listed = await bureau.tasks.list({
+    const listed = await bureau.internals.taskRegistry.list({
       principal: 'alice',
       contextId: run.sessionId,
       limit: 10,
@@ -240,11 +240,11 @@ describe.each(SETTLING_EXECUTIONS)('a failing run’s task, %s (COR-1627)', (_na
         principal: 'alice',
       });
       const announced: string[] = [];
-      bureau.tasks.onSettled(run.id, (view) => announced.push(view.status));
+      bureau.internals.taskRegistry.onSettled(run.id, (view) => announced.push(view.status));
       release();
 
       await waitForCondition(async () => {
-        const records = (await bureau.auditTrail?.query({ runId: run.id })) ?? [];
+        const records = (await bureau.internals.auditTrail?.query({ runId: run.id })) ?? [];
         return records.some((record) => record.type === 'run.completed');
       }, 'the audit trail never recorded the run’s completion');
       await waitForCondition(
@@ -317,11 +317,11 @@ describe('a durable run that crashes before its step limit and is recovered (COR
         return session?.metadata['lastRunStatus'] === 'error';
       }, 'the recovered run never settled as an error');
       await waitForCondition(async () => {
-        const records = (await recovering.auditTrail?.query({ runId: run.id })) ?? [];
+        const records = (await recovering.internals.auditTrail?.query({ runId: run.id })) ?? [];
         return records.some((record) => record.type === 'run.completed');
       }, 'the audit trail never recorded the recovered run’s completion');
 
-      const records = (await recovering.auditTrail?.query({ runId: run.id })) ?? [];
+      const records = (await recovering.internals.auditTrail?.query({ runId: run.id })) ?? [];
       expect(records.filter((record) => record.type === 'run.error')).toHaveLength(1);
       expect(records.filter((record) => record.type === 'run.completed')).toHaveLength(1);
       const settled = await recovering.getSession(run.sessionId);

@@ -139,7 +139,7 @@ async function createWorld(
       },
     };
     // Recovery starts by listing the checkpoints; holding that holds it before any task's fence.
-    const kv = harness.bureau.kv;
+    const kv = harness.bureau.internals.kv;
     if (held !== undefined && kv !== undefined) {
       const list = kv.list.bind(kv);
       kv.list = async (prefix, ...rest) => {
@@ -327,7 +327,9 @@ describe('a task that ends around a Create on a withdrawn agent’s mount', () =
     const listed = await served.call('ListTaskPushNotificationConfigs', { taskId });
     expect(listed.result.configs ?? []).toEqual([]);
     // Nothing durable either: a refused Create leaves no checkpoint, pending or confirmed.
-    const checkpoints = await served.harness.bureau.kv?.list(A2A_PUSH_CHECKPOINT_KEY_PREFIX);
+    const checkpoints = await served.harness.bureau.internals.kv?.list(
+      A2A_PUSH_CHECKPOINT_KEY_PREFIX,
+    );
     expect(checkpoints ?? []).toEqual([]);
     expect(world.receiver.requests).toEqual([]);
   });

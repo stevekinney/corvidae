@@ -27,7 +27,7 @@ import { createToolbox } from 'armorer';
 
 import type { AgentDefinitions } from '../agent-catalog';
 import { createBureau } from '../create-bureau';
-import type { Bureau, BureauOptions } from '../types';
+import type { Bureau, BureauOptions, BureauInternals } from '../types';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 
 export function deferred<T = void>() {
@@ -447,11 +447,11 @@ export async function bufferedSignals(storage: Storage, runId: string): Promise<
 
 /** The `review.*` audit entries recorded for one review id. */
 export async function reviewAuditEntries(
-  bureau: Pick<Bureau<AgentDefinitions>, 'auditTrail'>,
+  bureau: { readonly internals: Pick<BureauInternals, 'auditTrail'> },
   runId: string,
   reviewId: string,
 ): Promise<Array<{ readonly type: string; readonly principal?: string | undefined }>> {
-  const records = (await bureau.auditTrail?.query({ runId })) ?? [];
+  const records = (await bureau.internals.auditTrail?.query({ runId })) ?? [];
   return records.filter((record) => {
     if (!record.type.startsWith('review.')) return false;
     const detail = record.detail as { review?: { id?: unknown } } | null | undefined;

@@ -17,7 +17,7 @@ describe('the previous form lookup on a long audit trail', () => {
       const task = await fixture.start();
       await fixture.send(userMessage('m-first', task.id, { data: { environment: 'staging' } }));
       await waitForCondition(async () => {
-        const view = await fixture.bureau.tasks.get(task.id);
+        const view = await fixture.bureau.internals.taskRegistry.get(task.id);
         return (
           view?.status === 'input-required' &&
           view.openWaits.some((wait) => wait.kind === 'human-wait' && wait.signalName === 'region')
@@ -25,7 +25,7 @@ describe('the previous form lookup on a long audit trail', () => {
       }, 'the task never parked on the second signal');
 
       // Older than every record the run wrote, so an oldest-first read of 10,000 never reaches the form.
-      const trail = fixture.bureau.auditTrail!;
+      const trail = fixture.bureau.internals.auditTrail!;
       for (let start = 0; start < 10_001; start += 500) {
         await Promise.all(
           Array.from({ length: 500 }, (_, offset) =>
@@ -59,7 +59,7 @@ describe('the previous form lookup on a long audit trail', () => {
     const fixture = await open(deploySchema, ['deploy', ...plain, 'region'], ['deploy', 'region']);
     const parkedOn = (task: Task, signalName: string) =>
       waitForCondition(async () => {
-        const view = await fixture.bureau.tasks.get(task.id);
+        const view = await fixture.bureau.internals.taskRegistry.get(task.id);
         return (
           view?.status === 'input-required' &&
           view.openWaits.some(

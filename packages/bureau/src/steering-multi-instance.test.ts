@@ -311,7 +311,7 @@ describe('durable steering across two Bureau processes', () => {
 
       // A poll still waiting on a slow store is not joined by another on the
       // next tick: the reads of one poll are all that happen.
-      const kv = bureau.kv;
+      const kv = bureau.internals.kv;
       if (kv === undefined) throw new Error('expected a durable store');
       const read = kv.get.bind(kv);
       let release: (() => void) | undefined;
@@ -649,7 +649,7 @@ describe('durable steering across two Bureau processes', () => {
     try {
       const sessionId = await startRunningSession(bureau);
       const session = await bureau.getSession(sessionId);
-      const kv = bureau.kv;
+      const kv = bureau.internals.kv;
       if (kv === undefined || session === undefined) throw new Error('expected a durable session');
       const logKeys = await kv.list(`steering-log:v1:${encodeStorageKeyComponent(sessionId)}:`);
       const [headKey] = logKeys.filter((key) => key.endsWith(':head'));
@@ -732,7 +732,7 @@ describe('durable steering across two Bureau processes', () => {
     try {
       const sessionId = await startRunningSession(bureauA);
       const session = await bureauA.getSession(sessionId);
-      const kv = bureauA.kv;
+      const kv = bureauA.internals.kv;
       if (session === undefined || kv === undefined) throw new Error('expected a durable session');
 
       // Two runs promoted concurrently by other processes, neither of whose
@@ -801,7 +801,7 @@ describe('durable steering across two Bureau processes', () => {
       // An older run's terminal save made the session terminal, while five
       // newer runs were promoted elsewhere and have no workflow yet. Alice owns
       // the session, and so every run on it.
-      const kv = writer.kv;
+      const kv = writer.internals.kv;
       if (kv === undefined) throw new Error('expected a durable store');
       const sessionId = 'session-starting-terminal';
       const starting = ['starting-1', 'starting-2', 'starting-3', 'starting-4', 'starting-5'];
@@ -1158,7 +1158,7 @@ describe('durable steering across two Bureau processes', () => {
     const path = join(directory, 'bureau.sqlite');
     const bureau = await openBureau(path);
     try {
-      const kv = bureau.kv;
+      const kv = bureau.internals.kv;
       if (kv === undefined) throw new Error('expected a durable store');
       const store = createSessionStore(kv);
       const handSessionToBob = (sessionId: string) =>
@@ -1296,7 +1296,7 @@ describe('durable steering across two Bureau processes', () => {
     try {
       const sessionId = await startRunningSession(writer);
       const session = await writer.getSession(sessionId);
-      const kv = writer.kv;
+      const kv = writer.internals.kv;
       if (session === undefined || kv === undefined) throw new Error('expected a durable session');
       await appendSteeringLogEvent(
         kv,
@@ -1335,7 +1335,7 @@ describe('durable steering across two Bureau processes', () => {
     try {
       const sessionId = await startRunningSession(writer);
       const session = await writer.getSession(sessionId);
-      const kv = writer.kv;
+      const kv = writer.internals.kv;
       if (session === undefined || kv === undefined) throw new Error('expected a durable session');
       await appendSteeringLogEvent(
         kv,
@@ -1381,7 +1381,7 @@ describe('durable steering across two Bureau processes', () => {
     try {
       const sessionId = await startRunningSession(bureau);
       const session = await bureau.getSession(sessionId);
-      const kv = bureau.kv;
+      const kv = bureau.internals.kv;
       if (session === undefined || kv === undefined) throw new Error('expected a durable session');
       const runId = session.metadata['lastRunId'] as string;
       // Another process (one that adopted the run, say) ends it first.
@@ -1404,7 +1404,7 @@ describe('durable steering across two Bureau processes', () => {
       expect(diagnostics.filter((diagnostic) => diagnostic.scope === 'steering')).toEqual([]);
       // The log, read afresh, records the end once.
       reader = await openBureau(path);
-      const log = reader.kv;
+      const log = reader.internals.kv;
       if (log === undefined) throw new Error('expected a durable store');
       const head = await readSteeringLogHead(log, sessionId, session.incarnation);
       const entries = await readSteeringLogEntries(
@@ -1433,7 +1433,7 @@ describe('durable steering across two Bureau processes', () => {
       const plant = async (event: Parameters<typeof appendSteeringLogEvent>[4]) => {
         const sessionId = await startRunningSession(writer);
         const session = await writer.getSession(sessionId);
-        const kv = writer.kv;
+        const kv = writer.internals.kv;
         if (session === undefined || kv === undefined) throw new Error('expected a session');
         await appendSteeringLogEvent(
           kv,
@@ -1468,7 +1468,7 @@ describe('durable steering across two Bureau processes', () => {
       const firstDecision = await writer.submitSteeringCommand(twice, model('k-twice'));
       expect(firstDecision.outcome).toBe('accepted');
       const session = await writer.getSession(twice);
-      const kv = writer.kv;
+      const kv = writer.internals.kv;
       if (session === undefined || kv === undefined) throw new Error('expected a session');
       const binding = await readSteeringKeyBinding(kv, 'alice', 'k-twice');
       if (binding === undefined) throw new Error('expected k-twice bound');
@@ -1510,7 +1510,7 @@ describe('durable steering across two Bureau processes', () => {
     const writer = await openBureau(path);
     const readers: TestBureau[] = [];
     try {
-      const kv = writer.kv;
+      const kv = writer.internals.kv;
       if (kv === undefined) throw new Error('expected a durable store');
       const lastRunIdOf = async (id: string) => {
         const session = await writer.getSession(id);
@@ -1848,7 +1848,7 @@ describe('durable steering across two Bureau processes', () => {
     });
     try {
       const sessionId = await startRunningSession(bureau);
-      const kv = bureau.kv;
+      const kv = bureau.internals.kv;
       if (kv === undefined) throw new Error('expected a durable store');
       // Only the steering log's listing fails: the task records' listing is not what this tests.
       const listTasks = kv.list.bind(kv);
@@ -1887,7 +1887,7 @@ describe('durable steering across two Bureau processes', () => {
       const decided = await writer.submitSteeringCommand(sessionId, model);
       expect(decided.outcome).toBe('accepted');
       const session = await writer.getSession(sessionId);
-      const kv = writer.kv;
+      const kv = writer.internals.kv;
       if (session === undefined || kv === undefined) throw new Error('expected a session');
       // The log can no longer be folded, and alice no longer owns the session.
       await appendSteeringLogEvent(
@@ -1953,7 +1953,7 @@ describe('durable steering across two Bureau processes', () => {
         versionOf(await bureau.submitSteeringCommand(sessionId, model('s2', 'claude-opus-4-8'))),
       ).toBe(2);
       const session = await bureau.getSession(sessionId);
-      const kv = bureau.kv;
+      const kv = bureau.internals.kv;
       if (session === undefined || kv === undefined) throw new Error('expected a session');
       // The head now claims fewer entries than this process already folded.
       const logKeys = await kv.list('steering-log:v1:');
@@ -1989,7 +1989,7 @@ describe('durable steering across two Bureau processes', () => {
       ).toBe(2);
 
       // Point k1's binding at k2's admission (sequence 3: promoted, k1, k2).
-      const kv = bureau.kv;
+      const kv = bureau.internals.kv;
       if (kv === undefined) throw new Error('expected a durable store');
       const bindingKeys = await kv.list('steering-key:v1:');
       const k1Binding = bindingKeys.find((key) => key.endsWith(':k1'));

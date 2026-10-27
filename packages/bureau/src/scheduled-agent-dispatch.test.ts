@@ -72,7 +72,7 @@ describe('a schedule’s fire', () => {
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
-      const created = await first.createSchedule({
+      const created = await first.schedules.create({
         agentName: 'worker',
         input: 'check in',
         spec: '1m',
@@ -114,7 +114,7 @@ describe('a schedule’s fire', () => {
     } satisfies BureauOptions<AgentDefinitions>;
     try {
       const first = await createBureau<AgentDefinitions>(options);
-      const created = await first.createSchedule({
+      const created = await first.schedules.create({
         agentName: 'worker',
         input: 'check in',
         spec: '1m',
@@ -171,7 +171,7 @@ describe('a fire into a session another agent began', () => {
       return run?.status === 'completed' ? true : undefined;
     }, 'the first run to finish');
 
-    const created = await bureau.createSchedule({
+    const created = await bureau.schedules.create({
       agentName: 'worker',
       input: 'check in',
       spec: '1m',
@@ -190,7 +190,7 @@ describe('a fire into a session another agent began', () => {
 
 describe('the origin of a session a fire creates (COR-1645)', () => {
   async function settledFire(bureau: Awaited<ReturnType<typeof harness.open>>, scheduleId: string) {
-    const schedule = await bureau.getSchedule(scheduleId);
+    const schedule = await bureau.schedules.get(scheduleId);
     await bureau.runDurableMaintenance(schedule!.nextFireAt!);
     await pollUntil(async () => {
       const page = await bureau.listDurableRuns();
@@ -203,7 +203,7 @@ describe('the origin of a session a fire creates (COR-1645)', () => {
     const bureau = await harness.open({
       agents: { worker: createAgent({ generate: worker.generate }) },
     });
-    const created = await bureau.createSchedule({
+    const created = await bureau.schedules.create({
       agentName: 'worker',
       input: 'check in',
       spec: '1m',
@@ -233,7 +233,7 @@ describe('the origin of a session a fire creates (COR-1645)', () => {
       const run = await bureau.getRun(begun.id);
       return run?.status === 'completed' ? true : undefined;
     }, 'the first run to finish');
-    const created = await bureau.createSchedule({
+    const created = await bureau.schedules.create({
       agentName: 'worker',
       input: 'check in',
       spec: '1m',
@@ -241,11 +241,11 @@ describe('the origin of a session a fire creates (COR-1645)', () => {
       sessionId: 'shared-chat',
     });
 
-    const schedule = await bureau.getSchedule(created!.id);
+    const schedule = await bureau.schedules.get(created!.id);
     await bureau.runDurableMaintenance(schedule!.nextFireAt!);
     // The fire did run in the chat, and the chat is still a chat.
     await pollUntil(async () => {
-      const chat = await bureau.sessionStore!.load('shared-chat');
+      const chat = await bureau.internals.sessionStore!.load('shared-chat');
       return chat?.metadata['lastScheduledFireRunId'] === undefined ? undefined : true;
     }, 'the fire to run in the chat');
 
@@ -263,7 +263,7 @@ describe('a session or recovered run stored under the implicit "bureau" agent', 
       storage: { type: 'memory' },
     });
     bureaus.push(bureau);
-    await bureau.sessionStore!.save(
+    await bureau.internals.sessionStore!.save(
       createAgentSession({
         id: 'legacy-session',
         agentName: 'bureau',

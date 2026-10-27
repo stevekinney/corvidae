@@ -144,7 +144,7 @@ describe('the seeded agents', () => {
     // A catalog run has no session; the run id addresses its review.
     expect(review.sessionId).toBeUndefined();
 
-    await host.bureau.resolveReview({
+    await host.bureau.reviews.resolve({
       id: review.id,
       decision: 'approve',
       principal: 'anonymous:local',
@@ -152,7 +152,7 @@ describe('the seeded agents', () => {
     });
     const result = await run.result();
     expect(result.content).toBe('Thanks, the release will go to the environment you named.');
-    expect(host.bureau.listPendingReviews()).toEqual([]);
+    expect(host.bureau.reviews.list()).toEqual([]);
   });
 
   test('tool-runner looks the order up, then stops on a refund waiting for approval', async () => {
@@ -176,7 +176,7 @@ describe('the seeded schedule and goal', () => {
   test('are one schedule and one goal, created once and kept across restarts', async () => {
     const home = await createHome();
     const first = await start(home);
-    const schedules = await first.bureau.listSchedules();
+    const schedules = await first.bureau.schedules.list();
     expect(schedules?.items.map((schedule) => schedule.description)).toEqual([
       SEEDED_SCHEDULE_DESCRIPTION,
     ]);
@@ -186,7 +186,7 @@ describe('the seeded schedule and goal', () => {
     hosts.splice(hosts.indexOf(first), 1);
 
     const second = await start(home);
-    const again = await second.bureau.listSchedules();
+    const again = await second.bureau.schedules.list();
     expect(again?.items.map((schedule) => schedule.id)).toEqual(
       schedules?.items.map((schedule) => schedule.id) ?? [],
     );
@@ -197,7 +197,7 @@ describe('the seeded schedule and goal', () => {
   test('an edited seeded schedule is still the seeded one after a restart', async () => {
     const home = await createHome();
     const first = await start(home);
-    const listing = await first.bureau.listSchedules();
+    const listing = await first.bureau.schedules.list();
     const [original] = listing?.items ?? [];
     if (original === undefined) throw new Error('Expected the seeded schedule.');
     const response = await fetch(new URL('/jsonrpc', first.url), {
@@ -219,7 +219,7 @@ describe('the seeded schedule and goal', () => {
     hosts.splice(hosts.indexOf(first), 1);
 
     const second = await start(home);
-    const afterListing = await second.bureau.listSchedules();
+    const afterListing = await second.bureau.schedules.list();
     const after = afterListing?.items ?? [];
     expect(after.map((schedule) => [schedule.id, schedule.description])).toEqual([
       [original.id, 'Morning summary'],
@@ -229,15 +229,15 @@ describe('the seeded schedule and goal', () => {
   test('a seeded schedule an operator deleted stays deleted', async () => {
     const home = await createHome();
     const first = await start(home);
-    const listing = await first.bureau.listSchedules();
+    const listing = await first.bureau.schedules.list();
     const [original] = listing?.items ?? [];
     if (original === undefined) throw new Error('Expected the seeded schedule.');
-    await first.bureau.cancelSchedule(original.id);
+    await first.bureau.schedules.cancel(original.id);
     await first.close();
     hosts.splice(hosts.indexOf(first), 1);
 
     const second = await start(home);
-    const afterListing = await second.bureau.listSchedules();
+    const afterListing = await second.bureau.schedules.list();
     const after = afterListing?.items ?? [];
     expect(after.filter((schedule) => schedule.status !== 'cancelled')).toEqual([]);
   });
@@ -294,7 +294,7 @@ describe('the seeded schedule and goal', () => {
       seed: false,
     });
     hosts.push(host);
-    const schedules = await host.bureau.listSchedules();
+    const schedules = await host.bureau.schedules.list();
     expect(schedules?.items).toEqual([]);
     expect(await host.bureau.goals.list()).toEqual([]);
     expect(host.bureau.agents.has('assistant')).toBe(true);
@@ -303,7 +303,7 @@ describe('the seeded schedule and goal', () => {
 
 async function waitForReview(host: Host, runId: string) {
   for await (const _ of awakeTurns()) {
-    const review = host.bureau.listPendingReviews().find((candidate) => candidate.runId === runId);
+    const review = host.bureau.reviews.list().find((candidate) => candidate.runId === runId);
     if (review !== undefined) return review;
     await Bun.sleep(5);
   }
@@ -328,7 +328,7 @@ describe('the seeded agents through session runs', () => {
       prompt: HUMAN_INPUT_PROMPT,
     });
 
-    await host.bureau.resolveReview({
+    await host.bureau.reviews.resolve({
       id: review.id,
       decision: 'approve',
       principal: 'anonymous:local',
@@ -336,7 +336,7 @@ describe('the seeded agents through session runs', () => {
     });
     const finished = await host.bureau.waitForDurableRun(run.id);
     expect(finished?.status).toBe('completed');
-    expect(host.bureau.listPendingReviews()).toEqual([]);
+    expect(host.bureau.reviews.list()).toEqual([]);
   });
 
   test('tool-runner raises its refund approval under the session run, and approving runs it', async () => {
@@ -354,13 +354,13 @@ describe('the seeded agents through session runs', () => {
     if (review.kind !== 'tool-approval') throw new Error('unreachable');
     expect(review.approval.toolName).toBe('issue-refund');
 
-    const resolved = await host.bureau.resolveReview({
+    const resolved = await host.bureau.reviews.resolve({
       id: review.id,
       decision: 'approve',
       principal: 'anonymous:local',
     });
     expect(resolved).toMatchObject({ id: review.id, kind: 'tool-approval', decision: 'approve' });
-    expect(host.bureau.listPendingReviews()).toEqual([]);
+    expect(host.bureau.reviews.list()).toEqual([]);
   });
 
   test('a second session run starts from the first response again', async () => {

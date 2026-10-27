@@ -1,6 +1,6 @@
 // COR-121 — a recovered run whose FIRST park is reached during post-recovery
 // replay (weft resumes from cached results, so the `requestHumanInput` tool
-// never re-executes) must still surface to `listPendingReviews()` and move
+// never re-executes) must still surface to `reviews.list()` and move
 // `getRun(runId).liveness` to `'waiting'`.
 //
 // The crash shape is reproduced in-process with no timers and no subprocess:
@@ -117,7 +117,7 @@ function parkedEventCount(bureau: Bureau, runId: string): number {
 }
 
 function reviewsFor(bureau: Bureau, runId: string) {
-  return bureau.listPendingReviews().filter((review) => review.runId === runId);
+  return bureau.reviews.list().filter((review) => review.runId === runId);
 }
 
 async function waitForCompleted(bureau: Bureau, runId: string): Promise<void> {
@@ -232,7 +232,7 @@ describe('a reattached run whose first park happens after boot-time reconstructi
       const durableRunAfter = await bureauB.getDurableRun(runId);
       expect(durableRunAfter?.status).toBe('running');
 
-      const result = await bureauB.resolveReview({
+      const result = await bureauB.reviews.resolve({
         id: review.id,
         decision: 'approve',
         principal: 'test-operator',
@@ -295,7 +295,7 @@ describe('a reattached run whose first park happens after boot-time reconstructi
       );
       const [review] = reviewsFor(bureauA, runId);
       if (review === undefined) throw new Error('expected a review');
-      await bureauA.resolveReview({ id: review.id, decision: 'approve', principal: 'test' });
+      await bureauA.reviews.resolve({ id: review.id, decision: 'approve', principal: 'test' });
       await waitForCondition(
         () => aCalls === 3,
         'expected bureau A to commit the next step and hang on the third generate',
@@ -321,7 +321,7 @@ describe('a reattached run whose first park happens after boot-time reconstructi
 
       expect(bCalls).toBe(1);
       expect(parkedEventCount(bureauB, runId)).toBe(0);
-      expect(bureauB.listPendingReviews()).toHaveLength(0);
+      expect(bureauB.reviews.list()).toHaveLength(0);
       expect(bureauB.getRun(runId)?.liveness.declaredWait).toBeUndefined();
     } finally {
       await bureauB?.dispose();
@@ -356,10 +356,10 @@ describe('bounded duplicate park events (COR-121)', () => {
         () => reviewsFor(bureau, run.id).length === 1,
         'expected the fresh run to park',
       );
-      expect(bureau.listPendingReviews()).toHaveLength(1);
+      expect(bureau.reviews.list()).toHaveLength(1);
       const [review] = reviewsFor(bureau, run.id);
       if (review === undefined) throw new Error('expected a review');
-      await bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'test' });
+      await bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'test' });
       await waitForCompleted(bureau, run.id);
       expect(parkedEventCount(bureau, run.id)).toBe(1);
     } finally {
@@ -410,10 +410,10 @@ describe('bounded duplicate park events (COR-121)', () => {
         () => reviewsFor(bureauB!, run.id).length === 1,
         'expected bureau B to surface the park',
       );
-      expect(bureauB.listPendingReviews()).toHaveLength(1);
+      expect(bureauB.reviews.list()).toHaveLength(1);
       const [review] = reviewsFor(bureauB, run.id);
       if (review === undefined) throw new Error('expected a review');
-      await bureauB.resolveReview({ id: review.id, decision: 'approve', principal: 'test' });
+      await bureauB.reviews.resolve({ id: review.id, decision: 'approve', principal: 'test' });
       await waitForCompleted(bureauB, run.id);
       expect(bCalls).toBe(1);
       const count = parkedEventCount(bureauB, run.id);
@@ -483,7 +483,7 @@ describe('flow-control slot accounting under dual dispatch (COR-121 guard)', () 
       await waitForCompleted(bureau, runOne.id);
       expect(bureau.getRun(runOne.id)?.status).toBe('completed');
       expect(parkedEventCount(bureau, runOne.id)).toBe(1);
-      expect(bureau.listPendingReviews()).toHaveLength(0);
+      expect(bureau.reviews.list()).toHaveLength(0);
       expect(bureau.getRun(runOne.id)?.liveness.declaredWait).toBeUndefined();
     } finally {
       intercept.release();

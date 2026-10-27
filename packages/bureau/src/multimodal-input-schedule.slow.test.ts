@@ -59,7 +59,7 @@ describe('a scheduled fire with a media input (COR-716)', () => {
         { type: 'image', source: admission.source },
       ] as const;
 
-      const summary = await bureau.createSchedule({
+      const summary = await bureau.schedules.create({
         agentName: 'default',
         input,
         spec: '1s',
@@ -68,7 +68,7 @@ describe('a scheduled fire with a media input (COR-716)', () => {
       expect(summary).toBeDefined();
 
       const fired = await waitForReal(() => seen.length >= 1);
-      await bureau.cancelSchedule(summary!.id);
+      await bureau.schedules.cancel(summary!.id);
 
       expect(fired).toBe(true);
       const context = seen[0]!;
@@ -103,7 +103,7 @@ describe('a scheduled fire with a media input (COR-716)', () => {
     try {
       let thrown: unknown;
       try {
-        await bureau.createSchedule({
+        await bureau.schedules.create({
           agentName: 'default',
           input: [] as never,
           spec: '1s',

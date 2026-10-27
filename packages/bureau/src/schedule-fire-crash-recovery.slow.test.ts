@@ -108,13 +108,13 @@ async function scheduleFireCrashScenario(backend: Backend, scope: ScenarioScope)
       expect(report?.outcome).toBe('clean');
 
       // (1) The definition survived intact.
-      const survived = await bureau.getSchedule(marker.scheduleId);
+      const survived = await bureau.schedules.get(marker.scheduleId);
       expect(survived?.id).toBe(marker.scheduleId);
       expect(survived?.status).toBe('active');
       expect(survived?.intervalMs).toBe(INTERVAL_MS);
       expect(survived?.lastFireAt).toBe(marker.occurrence);
       expect(survived?.nextFireAt).toBe(marker.occurrence + INTERVAL_MS);
-      const listed = await bureau.listSchedules();
+      const listed = await bureau.schedules.list();
       expect(listed?.items.map((item) => item.id)).toEqual([marker.scheduleId]);
 
       // (2) The interrupted fire is on record, and recovery drove it to a terminal state.
@@ -128,7 +128,7 @@ async function scheduleFireCrashScenario(backend: Backend, scope: ScenarioScope)
       // (3) The recovered process fires nothing more for the instant that was already fired.
       await bureau.runDurableMaintenance(marker.occurrence);
       await bureau.runDurableMaintenance(marker.occurrence + INTERVAL_MS - 1);
-      const unchanged = await bureau.getSchedule(marker.scheduleId);
+      const unchanged = await bureau.schedules.get(marker.scheduleId);
       expect(unchanged?.lastFireAt).toBe(marker.occurrence);
       expect(unchanged?.nextFireAt).toBe(marker.occurrence + INTERVAL_MS);
       expect(unchanged?.currentWorkflowId).toBeUndefined();
@@ -138,7 +138,7 @@ async function scheduleFireCrashScenario(backend: Backend, scope: ScenarioScope)
       // Control: the same drive does fire the next instant, so the checks above
       // were not passing because the tick was inert.
       await bureau.runDurableMaintenance(marker.occurrence + INTERVAL_MS);
-      const next = await bureau.getSchedule(marker.scheduleId);
+      const next = await bureau.schedules.get(marker.scheduleId);
       expect(next?.lastFireAt).toBe(marker.occurrence + INTERVAL_MS);
     } finally {
       await bureau.shutdown();

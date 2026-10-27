@@ -60,18 +60,18 @@ describe('a catalog task across a boot', () => {
     const run = first.run('answerer', 'EXPIRED-QUESTION', { principal: 'api-key:alice' });
     await run.result();
     await waitForCondition(async () => {
-      const task = await first.tasks.get(run.id);
+      const task = await first.internals.taskRegistry.get(run.id);
       return task?.status === 'completed';
     }, 'settled');
-    await first.tasks.remove(run.id);
+    await first.internals.taskRegistry.remove(run.id);
     await first.dispose();
     bureaus.splice(bureaus.indexOf(first), 1);
 
     const second = await open(fixture);
     await second.waitForRecovery?.();
 
-    expect(await second.tasks.record(run.id)).toBeUndefined();
-    expect(await second.tasks.history(run.id)).toBeUndefined();
+    expect(await second.internals.taskRegistry.record(run.id)).toBeUndefined();
+    expect(await second.internals.taskRegistry.history(run.id)).toBeUndefined();
   });
 
   it('gets exactly one record, dated from the durable run, when it is in flight and was never recorded', async () => {
@@ -79,25 +79,25 @@ describe('a catalog task across a boot', () => {
     const crashed = await open(fixture);
     const run = crashed.run('asker', 'which environment?', { principal: 'api-key:alice' });
     await waitForCondition(
-      () => crashed.listPendingReviews().some((review) => review.runId === run.id),
+      () => crashed.reviews.list().some((review) => review.runId === run.id),
       'the run never parked',
     );
     await waitForCondition(
-      async () => (await crashed.tasks.record(run.id)) !== undefined,
+      async () => (await crashed.internals.taskRegistry.record(run.id)) !== undefined,
       'recorded',
     );
     // The admission write is lost: the record is gone while the durable run goes on.
-    await crashed.tasks.remove(run.id);
+    await crashed.internals.taskRegistry.remove(run.id);
     // This Bureau is not disposed: a graceful shutdown would cancel the parked run.
 
     const restarted = await open(fixture);
     await restarted.waitForRecovery?.();
 
-    const record = await restarted.tasks.record(run.id);
+    const record = await restarted.internals.taskRegistry.record(run.id);
     const durable = await restarted.getDurableRun(run.id);
     expect(record).toMatchObject({ taskId: run.id, owner: 'api-key:alice', agentName: 'asker' });
     expect(record?.createdAt).toBe(new Date(durable!.createdAt).toISOString());
-    const listed = await restarted.tasks.enumerate({ limit: 50, offset: 0 });
+    const listed = await restarted.internals.taskRegistry.enumerate({ limit: 50, offset: 0 });
     expect(listed.tasks.filter((task) => task.id === run.id)).toHaveLength(1);
   });
 
@@ -106,20 +106,18 @@ describe('a catalog task across a boot', () => {
     const crashed = await open(fixture);
     const run = crashed.run('asker', 'which environment?', { principal: 'api-key:alice' });
     await waitForCondition(
-      () => crashed.listPendingReviews().some((review) => review.runId === run.id),
+      () => crashed.reviews.list().some((review) => review.runId === run.id),
       'the run never parked',
     );
     const restarted = await open(fixture);
     await restarted.waitForRecovery?.();
     await waitForCondition(
-      () => restarted.listPendingReviews().some((review) => review.runId === run.id),
+      () => restarted.reviews.list().some((review) => review.runId === run.id),
       'the recovered run never parked again',
     );
-    const [review] = restarted
-      .listPendingReviews()
-      .filter((candidate) => candidate.runId === run.id);
+    const [review] = restarted.reviews.list().filter((candidate) => candidate.runId === run.id);
 
-    await restarted.resolveReview({
+    await restarted.reviews.resolve({
       id: review!.id,
       decision: 'approve',
       principal: 'api-key:alice',
@@ -128,10 +126,10 @@ describe('a catalog task across a boot', () => {
     await restarted.waitForDurableRun(run.id);
 
     await waitForCondition(async () => {
-      const task = await restarted.tasks.get(run.id);
+      const task = await restarted.internals.taskRegistry.get(run.id);
       return task?.status === 'completed';
     }, 'the task never settled');
-    const record = await restarted.tasks.record(run.id);
+    const record = await restarted.internals.taskRegistry.record(run.id);
     expect(record?.settled).toMatchObject({ status: 'completed' });
     expect(record?.settled?.answer?.text).toBe('thanks');
   });

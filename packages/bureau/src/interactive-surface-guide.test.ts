@@ -138,7 +138,7 @@ async function propose(
   baseRevision?: number,
 ): Promise<void> {
   const surfaces = harness.bureau.surfaces;
-  const record = await harness.bureau.tasks.record(taskId);
+  const record = await harness.bureau.internals.taskRegistry.record(taskId);
   if (surfaces === undefined || record === undefined) throw new Error('a persistent Bureau run');
   const messages =
     baseRevision === undefined
@@ -235,7 +235,7 @@ describe('reconnecting to a run and reconstructing its surface', () => {
           baseRevision: 2,
           reason: 'dismissed',
         },
-        { principal: (await harness.bureau.tasks.record(taskId))!.owner },
+        { principal: (await harness.bureau.internals.taskRegistry.record(taskId))!.owner },
       );
       expect(closed.outcome).toBe('accepted');
       await foldNext(optedIn, live);

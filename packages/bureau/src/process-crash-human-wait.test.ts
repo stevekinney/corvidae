@@ -119,7 +119,7 @@ async function humanWaitScenario(
     expect(report.outcome).toBe('clean');
     expect(report.perRunFailures).toEqual([]);
 
-    const reviewsFor = () => bureau.listPendingReviews().filter((review) => review.runId === runId);
+    const reviewsFor = () => bureau.reviews.list().filter((review) => review.runId === runId);
     await waitForBureauState([bureau], () => reviewsFor().length > 0, { runIds: [runId] });
     await waitForBureauState([bureau], () => bureau.getRun(runId)?.liveness.status === 'waiting', {
       runIds: [runId],
@@ -135,7 +135,7 @@ async function humanWaitScenario(
     expect(review.id).toBe(`human-wait:${runId}:${expectedSignal}:0`);
     if (twoCalls) {
       // The refused request left no park and no review behind.
-      const parkedSignals = (bureau.store.getRun(runId)?.actions ?? [])
+      const parkedSignals = (bureau.internals.store.getRun(runId)?.actions ?? [])
         .filter((action) => action.type === HumanWaitParkedEvent.type)
         .map((action) => (action.detail as { signalName: string }).signalName);
       expect(parkedSignals).not.toContain(otherSignal);
@@ -149,7 +149,7 @@ async function humanWaitScenario(
     // The recovered run is parked, not looping: nothing generated before approval.
     expect(generateCalls).toBe(0);
 
-    await bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'operator' });
+    await bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'operator' });
 
     await waitForBureauState([bureau], () => bureau.getRun(runId)?.status === 'completed', {
       runIds: [runId],

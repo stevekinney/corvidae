@@ -413,7 +413,7 @@ describe('results', () => {
     expect(deleted.error).toBeUndefined();
     const gone = await ownerRpc(served.owner, 'bureau.workflows.get', { id: 'digest' });
     expect(gone.error?.data?.httpStatus).toBe(404);
-    const schedule = await served.bureau.getSchedule('bureau-workflow-schedule:digest:1');
+    const schedule = await served.bureau.schedules.get('bureau-workflow-schedule:digest:1');
     expect(schedule?.status).toBe('cancelled');
     // The revisions that ran are still there.
     const kept = await ownerRpc(served.owner, 'bureau.workflows.revisions', { id: 'digest' });
@@ -613,7 +613,7 @@ describe('faults', () => {
     ).toBeGreaterThanOrEqual(1);
     failing = false;
     // The file changed, so the write is in the audit trail even though its apply failed.
-    const audited = await served.bureau.auditTrail?.query({ runId: 'workflow:digest' });
+    const audited = await served.bureau.internals.auditTrail?.query({ runId: 'workflow:digest' });
     expect(audited?.map((entry) => entry.type)).toEqual(['workflow.created', 'workflow.paused']);
     await served.bureau.workflows?.refresh();
     const got = await ownerRpc(served.owner, 'bureau.workflows.get', { id: 'digest' });

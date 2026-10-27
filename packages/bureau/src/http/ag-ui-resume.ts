@@ -49,7 +49,13 @@ import {
 import type { CommandLedger, CommandLedgerIdentity } from '../command-ledger.ts';
 import { ApprovalOutcomeNotWrittenError, ReviewRoundChangedError } from '../create-bureau.ts';
 import { humanWaitAnswerRowIdentifier, humanWaitDenialPayload } from '../human-wait-signal.ts';
-import type { Bureau, PendingReview, ResolveReviewInput } from '../types.ts';
+import type {
+  Bureau,
+  PendingReview,
+  ResolveReviewInput,
+  BureauReviews,
+  BureauInternals,
+} from '../types.ts';
 import { type AgUiResumePayload, interruptKey, roundOfEntry } from './ag-ui-interrupts.ts';
 import {
   RESUME_ATTEMPT_FAILED_MESSAGES,
@@ -97,16 +103,10 @@ type Refusal = { readonly code: AgUiErrorCode; readonly message: string };
 
 export type ResumeBureau = Pick<
   Bureau,
-  | 'getRun'
-  | 'createRun'
-  | 'getReview'
-  | 'getSession'
-  | 'listPendingReviews'
-  | 'locateRunCreationReceipt'
-  | 'pendingHumanWaitsOfRun'
-  | 'resolveReview'
-  | 'kv'
->;
+  'getRun' | 'createRun' | 'getSession' | 'locateRunCreationReceipt'
+> & { readonly reviews: Pick<BureauReviews, 'get' | 'list' | 'pendingOf' | 'resolve'> } & {
+  readonly internals: Pick<BureauInternals, 'kv'>;
+};
 
 export type ResumeContext = {
   readonly bureau: ResumeBureau;
@@ -158,7 +158,7 @@ function isPayload(value: unknown): value is AgUiResumePayload {
 }
 
 /**
- * How one entry is resolved: the call `resolveReview` takes. A tool approval's entry that names the
+ * How one entry is resolved: the call `reviews.resolve` takes. A tool approval's entry that names the
  * round it was made on is fenced on it, so a review gated again since is not decided (COR-1714).
  */
 function resolutionFor(
@@ -193,7 +193,7 @@ function resolutionFor(
 export function createResume(context: ResumeContext) {
   const { bureau, environment, runtime } = context;
   const ledger: CommandLedger<ResumeClaim, ResumeResult> = createCommandLedger({
-    kv: bureau.kv!,
+    kv: bureau.internals.kv!,
     keyPrefix: 'command-ledger:ag-ui-resume:v1',
     clock: runtime.clock,
     nextConflictId: () => runtime.identifiers.next('ag-ui-resume-conflict'),
@@ -268,7 +268,7 @@ export function createResume(context: ResumeContext) {
   async function interruptibleReviewsOf(runId: string): Promise<PendingReview[]> {
     const local = interruptibleReviews(bureau, runId);
     if (local.length > 0 || bureau.getRun(runId) !== undefined) return local;
-    return bureau.pendingHumanWaitsOfRun(runId);
+    return bureau.reviews.pendingOf(runId);
   }
 
   /**
@@ -345,7 +345,7 @@ export function createResume(context: ResumeContext) {
       return agentName;
     };
     for (const entry of entries) {
-      const review = await bureau.getReview(entry.interruptId);
+      const review = await bureau.reviews.get(entry.interruptId);
       const reviewOwner =
         review === undefined ? undefined : await context.ownerOfReview(entry.interruptId);
       // A tool approval is the owner's alone: it authorizes a tool to run, so a write
@@ -619,7 +619,7 @@ export function createResume(context: ResumeContext) {
     const answered = [...reviews.values()];
     const interruptible = await interruptibleReviewsOf(answered[0]!.runId);
     const stillPending = new Set(interruptible.map((review) => review.id));
-    for (const review of bureau.listPendingReviews()) stillPending.add(review.id);
+    for (const review of bureau.reviews.list()) stillPending.add(review.id);
     if (answered.some((review) => stillPending.has(review.id))) {
       const released = await ledger.release(entry);
       const retaken = released
@@ -798,7 +798,7 @@ export function createResume(context: ResumeContext) {
         break;
       }
       try {
-        const resolved = await bureau.resolveReview(resolutionFor(entry, review, request.owner));
+        const resolved = await bureau.reviews.resolve(resolutionFor(entry, review, request.owner));
         outcomes.push({
           interruptId: entry.interruptId,
           outcome: resolved.superseded === true ? 'superseded' : 'applied',
@@ -835,10 +835,9 @@ export function createResume(context: ResumeContext) {
       // the command can start over; a part applied means the entry stays, and
       // the retry that takes it over applies the rest.
       const addressed = new Set(entries.map((entry) => entry.interruptId));
-      const stranded = [
-        ...bureau.listPendingReviews(),
-        ...(await interruptibleReviewsOf(runId!)),
-      ].some((review) => review.runId === runId && addressed.has(review.id));
+      const stranded = [...bureau.reviews.list(), ...(await interruptibleReviewsOf(runId!))].some(
+        (review) => review.runId === runId && addressed.has(review.id),
+      );
       if (stranded) {
         if (!appliedAny) {
           return roundChanged

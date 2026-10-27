@@ -79,7 +79,9 @@ async function withBureau(
         createBureauHandler(
           kv === undefined
             ? bureau
-            : (Object.create(bureau, { kv: { value: kv } }) as typeof bureau),
+            : (Object.create(bureau, {
+                internals: { value: { ...bureau.internals, kv } },
+              }) as typeof bureau),
           { authentication, publish: ['asker'], publicUrl: 'http://localhost' },
         ),
     });
@@ -120,7 +122,9 @@ describe('a task’s A2A record, when removing it fails', () => {
   it('is deleted by the next removal that succeeds', async () => {
     await withBureau(async ({ bureau, handle, runtime }) => {
       const faults = { failures: 0 };
-      const handler = handle(flakyDeletes(bureau.kv as ConditionalTextValueStore, faults));
+      const handler = handle(
+        flakyDeletes(bureau.internals.kv as ConditionalTextValueStore, faults),
+      );
       const first = await sendOn(handler, 'one');
       const second = await sendOn(handler, 'two');
       const keyOf = (id: string) => `${A2A_TASK_RECORD_KEY_PREFIX}${encodeURIComponent(id)}`;
@@ -132,8 +136,8 @@ describe('a task’s A2A record, when removing it fails', () => {
       await bureau.runDurableMaintenance();
       await waitForCondition(
         async () =>
-          (await bureau.kv?.get(keyOf(first.id))) === null &&
-          (await bureau.kv?.get(keyOf(second.id))) === null,
+          (await bureau.internals.kv?.get(keyOf(first.id))) === null &&
+          (await bureau.internals.kv?.get(keyOf(second.id))) === null,
         'an A2A record outlived its task',
       );
     });
@@ -141,7 +145,7 @@ describe('a task’s A2A record, when removing it fails', () => {
 
   it('is swept at start-up when its task is gone', async () => {
     await withBureau(async ({ bureau, handle }) => {
-      const kv = bureau.kv as ConditionalTextValueStore;
+      const kv = bureau.internals.kv as ConditionalTextValueStore;
       await createA2ATaskRecords(kv).create({
         recordVersion: 1,
         taskId: 'long-gone',
@@ -173,8 +177,8 @@ describe('a deadline-expired task, which no run backs', () => {
 
       // The task's own record keeps the message, and a read creates no side record either.
       expect(expired.id).toStartWith('agent-run-expired-');
-      expect(await bureau.kv?.list(A2A_TASK_RECORD_KEY_PREFIX)).toEqual([]);
-      expect(await bureau.kv?.list(A2A_CONTEXT_INDEX_KEY_PREFIX)).toEqual([]);
+      expect(await bureau.internals.kv?.list(A2A_TASK_RECORD_KEY_PREFIX)).toEqual([]);
+      expect(await bureau.internals.kv?.list(A2A_CONTEXT_INDEX_KEY_PREFIX)).toEqual([]);
     });
   });
 });
@@ -184,7 +188,7 @@ describe('retention removing a task whose run the Bureau no longer holds', () =>
     await withBureau(async ({ bureau, handle, runtime }) => {
       handle();
       // A task a restart left runless: its record is the registry's alone, and so is the A2A record.
-      await bureau.tasks.recordAdmission({
+      await bureau.internals.taskRegistry.recordAdmission({
         taskId: 'runless-task',
         contextId: 'runless-context',
         incarnation: '',
@@ -192,13 +196,13 @@ describe('retention removing a task whose run the Bureau no longer holds', () =>
         owner: 'api-key:alice',
         message: 'private words',
       });
-      await bureau.tasks.recordSettled('runless-task', {
+      await bureau.internals.taskRegistry.recordSettled('runless-task', {
         at: runtime.clock.nowISO(),
         status: 'failed',
         finishReason: 'deadline-exceeded',
         message: 'ended',
       });
-      const records = createA2ATaskRecords(bureau.kv as ConditionalTextValueStore);
+      const records = createA2ATaskRecords(bureau.internals.kv as ConditionalTextValueStore);
       await records.create({
         recordVersion: 1,
         taskId: 'runless-task',
@@ -211,7 +215,7 @@ describe('retention removing a task whose run the Bureau no longer holds', () =>
       runtime.setTime(Date.parse(ORIGIN) + 3 * DAY_MS);
       await bureau.runDurableMaintenance();
 
-      expect(await bureau.tasks.record('runless-task')).toBeUndefined();
+      expect(await bureau.internals.taskRegistry.record('runless-task')).toBeUndefined();
       await waitForCondition(
         async () => (await records.read('runless-task')) === undefined,
         'the A2A record outlived its task',
@@ -224,7 +228,7 @@ describe('the start-up sweep', () => {
   it('keeps the record of a task the store still holds', async () => {
     await withBureau(async ({ bureau, handle }) => {
       const live = await sendOn(handle(), 'still here');
-      const records = createA2ATaskRecords(bureau.kv as ConditionalTextValueStore);
+      const records = createA2ATaskRecords(bureau.internals.kv as ConditionalTextValueStore);
       // Sweeps list records in key order, so once this later key is gone the live one was examined.
       await records.create({
         recordVersion: 1,
@@ -254,7 +258,7 @@ describe('clearing a deleted context', () => {
       const before = await sendOn(handler, 'first life');
       await bureau.deleteSession(before.contextId);
       const reborn = await sendOn(handler, 'second life', { contextId: before.contextId });
-      const records = createA2ATaskRecords(bureau.kv as ConditionalTextValueStore);
+      const records = createA2ATaskRecords(bureau.internals.kv as ConditionalTextValueStore);
       const born = await records.read(reborn.id);
       const earlier = await records.read(before.id);
       // Two real, different incarnations of one context id.

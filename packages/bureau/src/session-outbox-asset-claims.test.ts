@@ -154,7 +154,7 @@ async function saveDirectly(
       content: row.content as MessageInput['content'],
     })),
   );
-  await bureau.sessionStore!.save(
+  await bureau.internals.sessionStore!.save(
     createAgentSession({
       id: sessionId,
       agentName: 'echo',
@@ -167,7 +167,7 @@ async function saveDirectly(
 }
 
 async function pending(bureau: Bureau): Promise<number> {
-  const entries = await bureau.sessionStore!.outbox.pending();
+  const entries = await bureau.internals.sessionStore!.outbox.pending();
   return entries.length;
 }
 
@@ -368,7 +368,7 @@ describe('a Bureau without an asset service', () => {
     const environment = createEnvironment();
     const bureau = await openBureau(environment, assets ? {} : { assets: false });
     const saved = savedSessions(bureau);
-    const load = spyOn(bureau.sessionStore!, 'load').mockRejectedValue(
+    const load = spyOn(bureau.internals.sessionStore!, 'load').mockRejectedValue(
       new Error('the session store cannot be read'),
     );
 

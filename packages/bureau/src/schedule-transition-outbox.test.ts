@@ -62,7 +62,7 @@ async function close(bureau: Bureau<AgentDefinitions>): Promise<void> {
 }
 
 async function createSchedule(bureau: Bureau<AgentDefinitions>): Promise<string> {
-  const summary = await bureau.createSchedule({
+  const summary = await bureau.schedules.create({
     agentName: 'researcher',
     input: 'hourly digest',
     spec: '1h',
@@ -89,7 +89,7 @@ async function transitionKinds(
 }
 
 async function auditTypes(bureau: Bureau<AgentDefinitions>, scheduleId: string): Promise<string[]> {
-  const records = await bureau.auditTrail!.query({ runId: `schedule:${scheduleId}` });
+  const records = await bureau.internals.auditTrail!.query({ runId: `schedule:${scheduleId}` });
   return records.map((record) => record.type).filter((type) => type !== 'schedule.created');
 }
 
@@ -138,9 +138,9 @@ describe('schedule transitions through the outbox (COR-194)', () => {
     const bureau = await open(fixture);
     const scheduleId = await createSchedule(bureau);
 
-    await bureau.pauseSchedule(scheduleId);
-    await bureau.resumeSchedule(scheduleId);
-    await bureau.cancelSchedule(scheduleId);
+    await bureau.schedules.pause(scheduleId);
+    await bureau.schedules.resume(scheduleId);
+    await bureau.schedules.cancel(scheduleId);
 
     const expected = ['schedule.paused', 'schedule.resumed', 'schedule.cancelled'];
     expect(await transitionKinds(bureau, scheduleId)).toEqual(expected);
@@ -156,11 +156,11 @@ describe('schedule transitions through the outbox (COR-194)', () => {
     const paused: SchedulePausedEvent[] = [];
     bureau.addEventListener(SchedulePausedEvent.type, (event) => paused.push(event));
 
-    await bureau.resumeSchedule(scheduleId);
-    await bureau.pauseSchedule(scheduleId);
-    expect(await bureau.pauseSchedule(scheduleId)).toBe(true);
-    await bureau.cancelSchedule(scheduleId);
-    await bureau.cancelSchedule(scheduleId);
+    await bureau.schedules.resume(scheduleId);
+    await bureau.schedules.pause(scheduleId);
+    expect(await bureau.schedules.pause(scheduleId)).toBe(true);
+    await bureau.schedules.cancel(scheduleId);
+    await bureau.schedules.cancel(scheduleId);
 
     expect(paused).toHaveLength(1);
     expect(paused[0]!.dedupeKey).toStartWith(SCHEDULE_TRANSITION_KEY_PREFIX);
@@ -176,7 +176,7 @@ describe('schedule transitions through the outbox (COR-194)', () => {
       const fixture = newFixture();
       const first = await open(fixture);
       const scheduleId = await createSchedule(first);
-      if (kind === 'schedule.resumed') await first.pauseSchedule(scheduleId);
+      if (kind === 'schedule.resumed') await first.schedules.pause(scheduleId);
       const before = await transitionKinds(first, scheduleId);
       await close(first);
 
@@ -282,7 +282,7 @@ describe('schedule transitions through the outbox (COR-194)', () => {
     bureau.addEventListener('schedule.resumed', (event) => resumed.push(event.scheduleId));
     await commitWithoutRecording(fixture, 'schedule.paused', scheduleId);
 
-    await bureau.resumeSchedule(scheduleId);
+    await bureau.schedules.resume(scheduleId);
 
     expect(await transitionKinds(bureau, scheduleId)).toEqual([
       'schedule.paused',
@@ -303,7 +303,7 @@ describe('schedule transitions through the outbox (COR-194)', () => {
     }
     await commitWithoutRecording(fixture, 'schedule.paused', scheduleId);
 
-    await Promise.all([bureau.runDurableMaintenance(), bureau.resumeSchedule(scheduleId)]);
+    await Promise.all([bureau.runDurableMaintenance(), bureau.schedules.resume(scheduleId)]);
 
     expect(await transitionKinds(bureau, scheduleId)).toEqual([
       'schedule.paused',

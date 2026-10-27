@@ -172,7 +172,7 @@ describe('a durable Bureau offers the tools by default', () => {
       child: recordingAgent(childOffered),
     });
     const parent = bureau.run('parent', 'go');
-    await pollUntil(() => bureau.listPendingReviews().some((review) => review.runId === parent.id));
+    await pollUntil(() => bureau.reviews.list().some((review) => review.runId === parent.id));
 
     const dispatched = await bureau.children.dispatch({
       parentRunId: parent.id,

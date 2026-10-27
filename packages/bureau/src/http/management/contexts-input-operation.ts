@@ -33,7 +33,7 @@ import { defineOperation, type OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import { BureauError } from '../../create-bureau.ts';
-import type { Bureau } from '../../types.ts';
+import type { Bureau, BureauInternals } from '../../types.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
 import {
   resourceNotFound,
@@ -43,7 +43,9 @@ import {
 
 /** What `bureau.contexts.input` reads from the handler's `host`. */
 export type BureauContextsInputOperationHost = BureauOwnershipHost & {
-  readonly contexts: Pick<Bureau, 'getSession' | 'submitSessionInput' | 'sessionStore'>;
+  readonly contexts: Pick<Bureau, 'getSession' | 'submitSessionInput'> & {
+    readonly internals: Pick<BureauInternals, 'sessionStore'>;
+  };
 };
 
 /**
@@ -151,7 +153,7 @@ export const contextsInputOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     const { contextId } = input;
-    if (host.contexts.sessionStore === undefined) {
+    if (host.contexts.internals.sessionStore === undefined) {
       throw {
         code: 'UnsupportedCapability',
         message: 'This Bureau keeps no sessions, so it has no contexts to send input to',

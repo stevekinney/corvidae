@@ -104,12 +104,12 @@ describe('BureauOptions.humanInput with inputSchemas', () => {
           },
     );
     await waitForCondition(
-      () => restarted.listPendingReviews().some((review) => review.runId === run.id),
+      () => restarted.reviews.list().some((review) => review.runId === run.id),
       'the recovered run never parked',
     );
 
-    const review = restarted.listPendingReviews().find((candidate) => candidate.runId === run.id);
-    const detail = review === undefined ? undefined : await restarted.getReview(review.id);
+    const review = restarted.reviews.list().find((candidate) => candidate.runId === run.id);
+    const detail = review === undefined ? undefined : await restarted.reviews.get(review.id);
     expect(detail?.kind).toBe('human-wait');
     expect(detail?.kind === 'human-wait' ? detail.inputSchema : undefined).toEqual(deploySchema);
   });

@@ -161,8 +161,8 @@ async function errorOf(reply: ReturnType<typeof rpc>): Promise<unknown> {
 }
 
 function openSignals(opened: OpenedBureau, runId: string): string[] {
-  return opened.bureau
-    .listPendingReviews()
+  return opened.bureau.reviews
+    .list()
     .flatMap((review) =>
       review.runId === runId && review.kind === 'human-wait' ? [review.signalName] : [],
     );
@@ -191,7 +191,7 @@ describe('bureau.tasks.respond when the run parks again before the answer is rec
         async () => (await countOf(opened, run.id, 'review.requested')) === 1,
         'the run never parked on its first wait',
       );
-      const [first] = opened.bureau.listPendingReviews();
+      const [first] = opened.bureau.reviews.list();
       expect(first?.kind === 'human-wait' ? first.signalName : undefined).toBe('first');
       const reviewId = first!.id;
 

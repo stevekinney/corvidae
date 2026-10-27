@@ -99,7 +99,7 @@ async function startParentWithChild(): Promise<void> {
   if (dispatched.outcome !== 'started') {
     throw new Error(`the child was not started: ${JSON.stringify(dispatched)}`);
   }
-  const kv = bureau.kv;
+  const kv = bureau.internals.kv;
   if (kv === undefined) throw new Error('the bureau has no durable key-value store');
   const checkpoints = createCheckpointStore(kv);
   await pollUntil('the parent to park on its wakeup', async () => {

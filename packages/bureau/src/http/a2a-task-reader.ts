@@ -10,9 +10,9 @@ import { Message, type Task } from '@a2a-js/sdk';
 
 import type { InteractiveSurface } from '../interactive-surface/types.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
-import type { Bureau } from '../types.ts';
+import type { Bureau, BureauReviews } from '../types.ts';
 import { A2UI_EXTENSION_URI } from '../a2ui/catalogs.ts';
-import { formsOf, withPreviousForms } from './a2a-input-forms.ts';
+import { type FormsAuditInternals, formsOf, withPreviousForms } from './a2a-input-forms.ts';
 import {
   type A2ATaskRecord,
   type A2ATaskRecords,
@@ -34,9 +34,9 @@ import { replyPartsOf } from './a2a-reply-parts.ts';
 /** The part of a Bureau the reader needs. */
 export type A2ATaskReaderBureau = Pick<
   Bureau,
-  'getRun' | 'eventHistory' | 'getReview' | 'assets' | 'surfaces'
-> & {
-  readonly tasks: Pick<TaskRegistry, 'record'>;
+  'getRun' | 'eventHistory' | 'assets' | 'surfaces'
+> & { readonly reviews: Pick<BureauReviews, 'get'> } & {
+  readonly internals: FormsAuditInternals & { readonly taskRegistry: Pick<TaskRegistry, 'record'> };
 };
 
 /** A task as one response shows it, with the record it was read from. */
@@ -128,7 +128,7 @@ export function createTaskReader(options: {
     }
     // The registry's bounded answer text is a last resort: it cannot say whether the run produced
     // media, so a reply read from it is shown but never recorded as the task's reply.
-    const stored = await bureau.tasks.record(view.id);
+    const stored = await bureau.internals.taskRegistry.record(view.id);
     if (stored?.settled?.answer !== undefined) {
       return { parts: textOf(stored.settled.answer.text), textOnlyFallback: true };
     }
@@ -180,7 +180,7 @@ export function createTaskReader(options: {
   }
 
   async function read(view: TaskView, shape: ProjectionShape): Promise<A2ATaskReading> {
-    const stored = await bureau.tasks.record(view.id);
+    const stored = await bureau.internals.taskRegistry.record(view.id);
     let record = await records.read(view.id);
     // A deleted context empties its tasks' own history, and the A2A history goes with it, even on
     // an instance that did not see the deletion happen.

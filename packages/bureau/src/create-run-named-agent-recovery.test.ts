@@ -201,8 +201,8 @@ describe('requestHumanInput on a named session run', () => {
     bureaus.push(bureau);
 
     const run = await bureau.createRun({ message: 'deploy', agentName: 'asker' });
-    await pollUntil(() => bureau.listPendingReviews().some((review) => review.runId === run.id));
-    const [review] = bureau.listPendingReviews();
+    await pollUntil(() => bureau.reviews.list().some((review) => review.runId === run.id));
+    const [review] = bureau.reviews.list();
     if (review === undefined || review.kind !== 'human-wait') throw new Error('Expected a park.');
     expect(review).toMatchObject({
       runId: run.id,
@@ -211,7 +211,7 @@ describe('requestHumanInput on a named session run', () => {
       prompt: 'Which environment?',
     });
 
-    await bureau.resolveReview({
+    await bureau.reviews.resolve({
       id: review.id,
       decision: 'approve',
       principal: 'operator',
@@ -223,6 +223,6 @@ describe('requestHumanInput on a named session run', () => {
       const replies = await assistantReplies(bureau, run.sessionId);
       return replies.includes('thanks, deploying');
     });
-    expect(bureau.listPendingReviews()).toEqual([]);
+    expect(bureau.reviews.list()).toEqual([]);
   });
 });

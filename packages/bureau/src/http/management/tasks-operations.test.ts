@@ -70,7 +70,7 @@ function createTaskRecords(opened: OpenedBureau) {
   return {
     async admit(taskId: string, owner: string): Promise<void> {
       at += 1;
-      await opened.bureau.tasks.recordAdmission({
+      await opened.bureau.internals.taskRegistry.recordAdmission({
         taskId,
         contextId: `context-${taskId}`,
         incarnation: '',
@@ -171,7 +171,7 @@ describe('bureau.tasks.list', () => {
         // order they started in.
         const updatedAt = new Map<string, number>();
         for (const id of ids) {
-          const view = await opened.bureau.tasks.get(id);
+          const view = await opened.bureau.internals.taskRegistry.get(id);
           updatedAt.set(id, Date.parse(view?.updatedAt ?? ''));
         }
         expect([...tasksOf(firstPage), ...tasksOf(secondPage)].map((task) => task.id)).toEqual(
@@ -400,7 +400,7 @@ describe('bureau.tasks.get', () => {
       expect(JSON.stringify(body)).not.toContain('SECRET-ORIGINATING-TEXT');
       expect(JSON.stringify(list)).not.toContain('SECRET-ORIGINATING-TEXT');
       // The history is the task's own and is read through the registry, for a later A2A GetTask.
-      const history = await opened.bureau.tasks.history(run.id);
+      const history = await opened.bureau.internals.taskRegistry.history(run.id);
       expect(history?.map((message) => message.text)).toEqual(['SECRET-ORIGINATING-TEXT']);
     });
   });
@@ -616,7 +616,7 @@ describe('bureau.tasks.cancel receipts that depend on the cleanup acknowledgemen
         diagnose: () => undefined,
       });
       const source = Object.create(opened.bureau, {
-        tasks: { value: registry },
+        internals: { value: { ...opened.bureau.internals, taskRegistry: registry } },
       }) as BureauHandlerSource;
       const handler = createBureauHandler(source, { authentication });
       let sequence = 0;

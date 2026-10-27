@@ -99,7 +99,7 @@ function gatedAfterFirstStep(gate: Promise<void>): GenerateFunction {
 
 async function waitForBound(opened: OpenedBureau, taskId: string): Promise<void> {
   await waitForReal(async () => {
-    const record = await opened.bureau.tasks.record(taskId);
+    const record = await opened.bureau.internals.taskRegistry.record(taskId);
     return record !== undefined && record.incarnation !== '' ? true : undefined;
   }, 'the fire to be bound to its session');
 }
@@ -272,7 +272,7 @@ describe('a task registry that cannot write', () => {
     cleanups.push(() => bureau.dispose());
     bureau.addEventListener('schedule.completed', (event) => completed.push(event.runId));
 
-    const schedule = await bureau.createSchedule({
+    const schedule = await bureau.schedules.create({
       agentName: 'default',
       spec: '1s',
       input: 'tick',
@@ -280,7 +280,7 @@ describe('a task registry that cannot write', () => {
       sessionId: 'recurring',
     });
     await waitForReal(async () => (completed.length > 0 ? true : undefined), 'the fire to end');
-    await bureau.cancelSchedule(schedule!.id);
+    await bureau.schedules.cancel(schedule!.id);
 
     expect(completed.length).toBeGreaterThan(0);
     expect(diagnostics.some((message) => message.includes('Could not bind the task'))).toBe(true);

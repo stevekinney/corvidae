@@ -228,7 +228,7 @@ const answer = (interruptId: string, value: string): ResumeEntry => ({
 
 /** How many human waits `bureau` reads the run as parked on. */
 async function waitsOn(harness: Harness, runId: string): Promise<number> {
-  const waits = await harness.bureau.pendingHumanWaitsOfRun(runId);
+  const waits = await harness.bureau.reviews.pendingOf(runId);
   return waits.length;
 }
 
@@ -338,7 +338,7 @@ describe('attach and stream on a peer', () => {
       await withPeer(harness, async (peer) => {
         const started = await startOn(harness.handler);
         await started.reader.rest();
-        const [parked] = harness.bureau.listPendingReviews();
+        const [parked] = harness.bureau.reviews.list();
         await pollUntil(async () => (await waitsOn(peer, started.nativeRunId)) > 0);
 
         const frames = await readAgUiStream(await peer.handler(attachThreadRequest(THREAD)));
@@ -358,8 +358,8 @@ describe('attach and stream on a peer', () => {
       await withPeer(harness, async (peer) => {
         const started = await startOn(harness.handler);
         await started.reader.rest();
-        const [approval] = harness.bureau.listPendingReviews();
-        expect(peer.bureau.listPendingReviews()).toEqual([]);
+        const [approval] = harness.bureau.reviews.list();
+        expect(peer.bureau.reviews.list()).toEqual([]);
 
         const frames = await readAgUiStream(await peer.handler(attachThreadRequest(THREAD)));
 
@@ -520,7 +520,7 @@ describe('a peer stream of a run that settled before it opened', () => {
           // A process that crashed before its terminal save leaves the session saying `running`
           // for a run whose durable record has settled, and no durable state tells that apart
           // from a holder whose save is still on its way.
-          await restarted.bureau.sessionStore!.update(THREAD, (session) =>
+          await restarted.bureau.internals.sessionStore!.update(THREAD, (session) =>
             session === undefined
               ? undefined
               : { ...session, metadata: { ...session.metadata, lastRunStatus: 'running' } },
@@ -778,7 +778,7 @@ describe('resume on a peer', () => {
   async function parkedInA(harness: Harness, peer: Harness) {
     const started = await startOn(harness.handler);
     await started.reader.rest();
-    const [review] = harness.bureau.listPendingReviews();
+    const [review] = harness.bureau.reviews.list();
     await pollUntil(async () => (await waitsOn(peer, started.nativeRunId)) > 0);
     return { nativeRunId: started.nativeRunId, reviewId: review!.id };
   }
@@ -813,7 +813,7 @@ describe('resume on a peer', () => {
           expect(frames.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
           expect(harness.generate.calls).toHaveLength(2);
           expect(lastRequestText(harness)).toContain('staging');
-          expect(harness.bureau.listPendingReviews()).toEqual([]);
+          expect(harness.bureau.reviews.list()).toEqual([]);
           // One answer was delivered, and the run took it: nothing is left buffered.
           expect(await bufferedSignals(harness.seam!.storage, parked.nativeRunId)).toEqual([]);
         });
@@ -827,8 +827,8 @@ describe('resume on a peer', () => {
         const parked = await parkedInA(harness, peer);
         const reached = deferred();
         const held = deferred();
-        const real = harness.bureau.resolveReview.bind(harness.bureau);
-        spyOn(harness.bureau, 'resolveReview').mockImplementationOnce(async (input) => {
+        const real = harness.bureau.reviews.resolve.bind(harness.bureau);
+        spyOn(harness.bureau.reviews, 'resolve').mockImplementationOnce(async (input) => {
           reached.resolve();
           await held.promise;
           return real(input);
@@ -976,7 +976,7 @@ describe('a peer stream of a run that parks after it opened (COR-1615)', () => {
 
             harness.generate.release('a-generating');
             await started.reader.rest();
-            const [parked] = harness.bureau.listPendingReviews();
+            const [parked] = harness.bureau.reviews.list();
             await pollUntil(async () => (await waitsOn(peer, started.nativeRunId)) > 0);
             // The park saved no session and recorded nothing in the run's history, so the stream is
             // still open, waiting on its next re-check of the run on the mount's clock.

@@ -160,7 +160,7 @@ describe('a fire review a peer closes, with no stream open', () => {
     );
     expect(reviewsOf(holder, fireId)).toHaveLength(1);
 
-    await peer.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
+    await peer.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice });
 
     await eventually(
       () => (reviewsOf(holder, fireId).length === 0 ? true : undefined),
@@ -191,7 +191,7 @@ describe('a fire review a peer closes, with no stream open', () => {
     );
     peerGate.revision = 2;
 
-    const outcome = await peer.resolveReview({
+    const outcome = await peer.reviews.resolve({
       id: review.id,
       decision: 'approve',
       principal: OWNER.alice,
@@ -221,7 +221,7 @@ describe('the fires a Bureau follows', () => {
     expect(fireReviewFollowerOf(holder).followed()).toEqual([fireId]);
     expect(fireReviewFollowerOf(peer).followed()).toEqual([fireId]);
 
-    await peer.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
+    await peer.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice });
 
     // The peer released its last review itself; the holder dropped its copy when it heard.
     expect(fireReviewFollowerOf(peer).followed()).toEqual([]);
@@ -238,7 +238,7 @@ describe('the fires a Bureau follows', () => {
     );
     // The holder stops following, as if its subscription had been closed before the decision.
     fireReviewFollowerOf(holder).unfollow(fireId);
-    await peer.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
+    await peer.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice });
     await quietFor(300);
     expect(reviewsOf(holder, fireId)).toHaveLength(1);
 
@@ -258,7 +258,7 @@ describe('a fire read again from durable state', () => {
       'peer-sync-reread-decided',
     );
     fireReviewFollowerOf(holder).unfollow(fireId);
-    await peer.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
+    await peer.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice });
     expect(reviewsOf(holder, fireId)).toHaveLength(1);
 
     await fireReviewFollowerOf(holder).reread(fireId);
@@ -274,7 +274,7 @@ describe('a fire read again from durable state', () => {
     );
     fireReviewFollowerOf(holder).unfollow(fireId);
     peerGate.revision = 2;
-    await peer.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
+    await peer.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice });
     expect((reviewsOf(holder, fireId) as PendingToolApprovalReview[])[0]?.round).toBe(0);
 
     await fireReviewFollowerOf(holder).reread(fireId);
@@ -299,7 +299,7 @@ describe('a decision on a stale round', () => {
     // The test does not depend on the holder's subscription: it never hears the re-gate.
     fireReviewFollowerOf(holder).unfollow(fireId);
     peerGate.revision = 2;
-    const outcome = await peer.resolveReview({
+    const outcome = await peer.reviews.resolve({
       id: review.id,
       decision: 'approve',
       principal: OWNER.alice,
@@ -310,7 +310,7 @@ describe('a decision on a stale round', () => {
     expect(before?.round).toBe(0);
 
     const refusal = await rejectionOf(
-      holder.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice }),
+      holder.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice }),
     );
 
     expect(refusal).toBeInstanceOf(BureauError);
@@ -373,8 +373,8 @@ describe('a canceled fire review recorded by two Bureaus at once', () => {
     // The engine records the cancel once. The holder closes the review as the fire ends; the peer
     // reads the cancel from the engine when it is asked to decide the review.
     void holder.durableEngine()?.cancel(fireId);
-    void peer
-      .resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice })
+    void peer.reviews
+      .resolve({ id: review.id, decision: 'approve', principal: OWNER.alice })
       .catch(() => undefined);
     await Promise.all([holdHolder.reached, holdPeer.reached]);
     expect(holdHolder.held).toBe(true);
@@ -424,7 +424,7 @@ describe('a canceled review an earlier build recorded without the deduplication 
     const { fireId } = await fireOnce(bureau, OWNER.alice, 'peer-sync-unkeyed');
     const review = (await reviewOf(bureau, fireId)) as PendingToolApprovalReview;
     // What a build before the key wrote: the round's canceled record, with no `dedupeKey`.
-    await bureau.auditTrail?.record({
+    await bureau.internals.auditTrail?.record({
       runId: fireId,
       type: 'review.tool-approval.canceled',
       detail: { review: { ...review, status: 'canceled' }, status: 'canceled' },
@@ -467,14 +467,14 @@ describe('a decision whose round advances while its claim is being made', () => 
     fireReviewFollowerOf(holder).unfollow(fireId);
     hold.arm();
     const deciding = rejectionOf(
-      holder.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice }),
+      holder.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice }),
     );
     await hold.reached;
     expect(hold.held).toBe(true);
 
     // The peer re-gates the approval and gives up its claim of round 0 while the holder waits.
     peerGate.revision = 2;
-    const outcome = await peer.resolveReview({
+    const outcome = await peer.reviews.resolve({
       id: review.id,
       decision: 'approve',
       principal: OWNER.alice,
@@ -520,7 +520,7 @@ describe('the binding of a re-gated round', () => {
       await restore(approval);
     };
     peerGate.revision = 2;
-    await peer.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
+    await peer.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice });
 
     const failure = await rejectionOf(fireReviewFollowerOf(holder).reread(fireId));
     expect((failure as Error).message).toContain('unavailable');
@@ -564,7 +564,7 @@ describe('a fire read again with one review that cannot be restored', () => {
     fireReviewFollowerOf(holder).unfollow(fireId);
     peerGate.revision = 2;
     for (const review of reviewsOf(peer, fireId)) {
-      const outcome = await peer.resolveReview({
+      const outcome = await peer.reviews.resolve({
         id: review.id,
         decision: 'approve',
         principal: OWNER.alice,
@@ -766,7 +766,7 @@ describe('a task stream whose notification fails after the review is dropped', (
     });
 
     failing.armed = true;
-    await peer.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
+    await peer.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice });
     await eventually(() => (failing.failures > 0 ? true : undefined), 'the notification to fail');
     await eventually(() => (ended ? true : undefined), 'the task stream to end');
 
@@ -841,7 +841,7 @@ describe('the human wait of a fire', () => {
     expect(fireReviewFollowerOf(holder).followed()).toEqual([fireId]);
     const peer = await harness.open({ ...waitOptions, storage: await harness.sqliteStorage(path) });
 
-    await peer.resolveReview({
+    await peer.reviews.resolve({
       id: review.id,
       decision: 'approve',
       principal: OWNER.alice,
@@ -926,7 +926,7 @@ describe('a close the holder cannot read durable state for', () => {
     });
 
     failing.armed = true;
-    await peer.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
+    await peer.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice });
     await eventually(() => (failing.failures > 0 ? true : undefined), 'the holder’s read to fail');
     await eventually(
       () => (reviewsOf(holder, fireId).length === 0 ? true : undefined),

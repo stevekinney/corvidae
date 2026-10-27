@@ -393,7 +393,7 @@ export type SeedRecord = {
  */
 export async function seedBureau(bureau: Bureau<SeededAgents>, record: SeedRecord): Promise<void> {
   if (record.read(SEEDED_SCHEDULE_RECORD_KEY) === undefined) {
-    const created = await bureau.createSchedule({
+    const created = await bureau.schedules.create({
       description: SEEDED_SCHEDULE_DESCRIPTION,
       agentName: 'assistant',
       input: 'Summarize what happened yesterday.',

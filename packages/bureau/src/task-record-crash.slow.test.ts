@@ -29,7 +29,7 @@ import { createBureau } from './create-bureau';
 import { unexpectedChildStderr } from './test/child-stderr';
 import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
 import { createAskingAgent, finishes } from './test/task-record-crash-agent';
-import type { Bureau } from './types';
+import type { Bureau, BureauReviews, BureauInternals } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 
@@ -59,7 +59,9 @@ async function crashScenario(
   mode: 'settlement' | 'admission',
   scope: ScenarioScope,
   verify: (
-    bureau: Pick<Bureau, 'tasks' | 'listPendingReviews' | 'resolveReview' | 'waitForDurableRun'>,
+    bureau: Pick<Bureau, 'waitForDurableRun'> & {
+      readonly reviews: Pick<BureauReviews, 'list' | 'resolve'>;
+    } & { readonly internals: Pick<BureauInternals, 'taskRegistry'> },
     runId: string,
   ) => Promise<void>,
 ): Promise<void> {
@@ -95,8 +97,11 @@ async function crashScenario(
 /** The task states of a run that is not over. */
 const OPEN_STATES: ReadonlySet<string | undefined> = new Set(['working', 'input-required']);
 
-async function taskStatusOf(bureau: Pick<Bureau, 'tasks'>, runId: string) {
-  const task = await bureau.tasks.get(runId);
+async function taskStatusOf(
+  bureau: { readonly internals: Pick<BureauInternals, 'taskRegistry'> },
+  runId: string,
+) {
+  const task = await bureau.internals.taskRegistry.get(runId);
   return task?.status;
 }
 
@@ -130,7 +135,7 @@ async function disposedScenario(scope: ScenarioScope): Promise<void> {
       const durable = await third.getDurableRun(runId);
       expect(durable?.status).toBe('running');
       expect(OPEN_STATES.has(await taskStatusOf(third, runId))).toBe(true);
-      await third.tasks.cancel(runId, 0);
+      await third.internals.taskRegistry.cancel(runId, 0);
       for await (const _turn of awakeTurns()) {
         if ((await taskStatusOf(third, runId)) === 'canceled') break;
         await new Promise((resolve) => setTimeout(resolve, 10));
@@ -148,7 +153,7 @@ const outcomes = {
   settlement: await settleScenario(
     (scope) =>
       crashScenario('settlement', scope, async (bureau, runId) => {
-        const task = await bureau.tasks.get(runId);
+        const task = await bureau.internals.taskRegistry.get(runId);
         expect(task).toMatchObject({ id: runId, owner: 'api-key:alice', status: 'completed' });
       }),
     HANG_GUARD_MILLISECONDS,
@@ -156,7 +161,7 @@ const outcomes = {
   admission: await settleScenario(
     (scope) =>
       crashScenario('admission', scope, async (bureau, runId) => {
-        const task = await bureau.tasks.get(runId);
+        const task = await bureau.internals.taskRegistry.get(runId);
         // The context the dispatch named, not the run's own id.
         expect(task).toMatchObject({
           id: runId,
@@ -164,23 +169,23 @@ const outcomes = {
           agentName: 'asker',
           contextId: 'crash-context',
         });
-        const inContext = await bureau.tasks.enumerate({
+        const inContext = await bureau.internals.taskRegistry.enumerate({
           contextId: 'crash-context',
           limit: 10,
           offset: 0,
         });
         expect(inContext.tasks.map((listed) => listed.id)).toEqual([runId]);
-        const history = await bureau.tasks.history(runId);
+        const history = await bureau.internals.taskRegistry.history(runId);
         expect(history?.map((message) => message.text)).toEqual(['which environment?']);
         // The run was in flight across the crash, and it ends in this process: its task settles.
-        let review = bureau.listPendingReviews().find((candidate) => candidate.runId === runId);
+        let review = bureau.reviews.list().find((candidate) => candidate.runId === runId);
         for await (const _turn of awakeTurns()) {
           if (!(review === undefined)) break;
           await new Promise((resolve) => setTimeout(resolve, 10));
-          review = bureau.listPendingReviews().find((candidate) => candidate.runId === runId);
+          review = bureau.reviews.list().find((candidate) => candidate.runId === runId);
         }
         expect(review).toBeDefined();
-        await bureau.resolveReview({
+        await bureau.reviews.resolve({
           id: review!.id,
           decision: 'approve',
           principal: 'api-key:alice',
@@ -188,11 +193,11 @@ const outcomes = {
         });
         await bureau.waitForDurableRun(runId);
         for await (const _turn of awakeTurns()) {
-          const current = await bureau.tasks.get(runId);
+          const current = await bureau.internals.taskRegistry.get(runId);
           if (current?.status === 'completed') break;
           await new Promise((resolve) => setTimeout(resolve, 10));
         }
-        const settled = await bureau.tasks.get(runId);
+        const settled = await bureau.internals.taskRegistry.get(runId);
         expect(settled?.status).toBe('completed');
       }),
     HANG_GUARD_MILLISECONDS,

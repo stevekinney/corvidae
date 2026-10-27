@@ -366,8 +366,8 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
           fetch: (async () => new Response(null, { status: 200 })) as unknown as typeof fetch,
         },
       });
-      expect(harness.bureau.webhookNotifier).toBeDefined();
-      expect(harness.bureau.kv).toBeDefined();
+      expect(harness.bureau.internals.webhookNotifier).toBeDefined();
+      expect(harness.bureau.internals.kv).toBeDefined();
 
       // A delivery record left `pending` in the durable KV store with no
       // live in-memory tracked delivery behind it — exactly the "restart
@@ -377,7 +377,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
       // is actively tracking) never touches it. Written through the same
       // PUBLIC `bureau.kv` surface `webhookNotifier.listDeliveries()` itself
       // reads back from — never a private Map.
-      await harness.bureau.kv!.set(
+      await harness.bureau.internals.kv!.set(
         'webhook-delivery:v1:leaked-delivery-1',
         JSON.stringify({
           id: 'leaked-delivery-1',
@@ -1000,7 +1000,7 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
     // documents `auditTrail` as public Bureau surface) lists the prefix,
     // then `kv.get()`s each key — the second step is what the fault plan
     // above blocks.
-    const queryPromise = harness.bureau.auditTrail?.query();
+    const queryPromise = harness.bureau.internals.auditTrail?.query();
     await waitForCondition(
       () => onReachedCalled,
       'fault engine block on the storage get was never reached',

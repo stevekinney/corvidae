@@ -23,7 +23,7 @@ async function withManualBureau(
   body: (context: {
     runtime: ReturnType<typeof createManualRuntimeServices>;
     handler: (request: Request) => Promise<Response>;
-    kv: NonNullable<Awaited<ReturnType<typeof createBureau>>['kv']>;
+    kv: NonNullable<Awaited<ReturnType<typeof createBureau>>['internals']['kv']>;
   }) => Promise<void>,
 ): Promise<void> {
   const runtime = createManualRuntimeServices({ origin: ORIGIN });
@@ -49,7 +49,11 @@ async function withManualBureau(
       publish: ['asker'],
       publicUrl: 'http://localhost',
     });
-    await body({ runtime, handler, kv: bureau.kv as NonNullable<typeof bureau.kv> });
+    await body({
+      runtime,
+      handler,
+      kv: bureau.internals.kv as NonNullable<typeof bureau.internals.kv>,
+    });
   } finally {
     await bureau.dispose();
     await fixture.dispose();

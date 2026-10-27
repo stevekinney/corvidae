@@ -99,16 +99,19 @@ describe('an INPUT_REQUIRED update on a stream', () => {
     const taskId = sentBody.result.task.id;
     // A Bureau whose registry read lags the durable event: it lists no open wait yet.
     const lagging = Object.create(opened.bureau, {
-      tasks: {
-        value: new Proxy(opened.bureau.tasks, {
-          get(target, property) {
-            if (property !== 'get') return Reflect.get(target, property, target);
-            return async (id: string) => {
-              const view = await target.get(id);
-              return view === undefined ? undefined : { ...view, openWaits: [] };
-            };
-          },
-        }),
+      internals: {
+        value: {
+          ...opened.bureau.internals,
+          taskRegistry: new Proxy(opened.bureau.internals.taskRegistry, {
+            get(target, property) {
+              if (property !== 'get') return Reflect.get(target, property, target);
+              return async (id: string) => {
+                const view = await target.get(id);
+                return view === undefined ? undefined : { ...view, openWaits: [] };
+              };
+            },
+          }),
+        },
       },
     });
     const handler = createBureauHandler(lagging, {

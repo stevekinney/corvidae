@@ -44,7 +44,7 @@ import {
   UnknownScheduleAgentError,
 } from '../../create-bureau.ts';
 import { scheduleInputPreview } from '../../schedule-input-preview.ts';
-import type { Bureau } from '../../types.ts';
+import type { BureauSchedules } from '../../types.ts';
 import type { BureauScope } from '../bureau-scopes.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
 import {
@@ -58,21 +58,19 @@ import {
 /** What the schedule operations read from the handler's `host`. */
 export type BureauSchedulesOperationHost = BureauOwnershipHost & {
   readonly schedules: Pick<
-    Bureau,
-    | 'createSchedule'
-    | 'getSchedule'
-    | 'listSchedules'
-    | 'pauseSchedule'
-    | 'resumeSchedule'
-    | 'cancelSchedule'
-    | 'updateSchedule'
+    BureauSchedules,
+    | 'create'
+    | 'get'
+    | 'list'
+    | 'pause'
+    | 'resume'
+    | 'cancel'
+    | 'update'
+    | 'agentName'
+    | 'inputPreview'
   > & {
     /** The owner of record of a schedule, or `undefined` when it is not a Bureau schedule. */
     readonly owner: (scheduleId: string) => Promise<string | undefined>;
-    /** The agent an agent schedule runs, or `undefined` for one that runs none, a workflow file's. */
-    readonly agentName: (scheduleId: string) => Promise<string | undefined>;
-    /** The start of the text an agent schedule sends each fire, or `undefined` when it has none. */
-    readonly inputPreview: (scheduleId: string) => Promise<string | undefined>;
     /** Whether the Bureau's agent catalog holds an agent named `name`. */
     readonly hasAgent: (name: string) => boolean;
   };
@@ -242,7 +240,7 @@ async function receiptOf(
   host: BureauSchedulesOperationHost,
   scheduleId: string,
 ): Promise<z.infer<typeof receiptSchema>> {
-  const summary = await host.schedules.getSchedule(scheduleId);
+  const summary = await host.schedules.get(scheduleId);
   if (summary === null || summary === undefined) throw resourceNotFound('schedule', scheduleId);
   return { id: summary.id, status: summary.status, revision: summary.revision };
 }
@@ -282,7 +280,7 @@ export const schedulesListOperation = defineOperation<
     if (!everyOwner && caller === undefined) return { schedules: [], nextOffset: null };
     const visible: z.infer<typeof scheduleViewSchema>[] = [];
     for (let offset = 0; ; offset += SCAN_PAGE_SIZE) {
-      const page = await host.schedules.listSchedules({
+      const page = await host.schedules.list({
         ...(input.status === undefined ? {} : { status: input.status }),
         limit: SCAN_PAGE_SIZE,
         offset,
@@ -335,7 +333,7 @@ export const schedulesGetOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     const owner = await ownerFor(host, principal, input.scheduleId, 'bureau.schedules:read');
-    const summary = await host.schedules.getSchedule(input.scheduleId);
+    const summary = await host.schedules.get(input.scheduleId);
     if (summary === null || summary === undefined) {
       throw resourceNotFound('schedule', input.scheduleId);
     }
@@ -396,7 +394,7 @@ export const schedulesCreateOperation = defineOperation<
     }
     if (!host.schedules.hasAgent(input.agentName)) throw resourceNotFound('agent', input.agentName);
     try {
-      const summary = await host.schedules.createSchedule({
+      const summary = await host.schedules.create({
         agentName: input.agentName,
         spec: input.spec,
         input: input.input,
@@ -471,21 +469,21 @@ export const schedulesPauseOperation = defineGuardedWrite(
   'bureau.schedules.pause',
   'Pause a schedule',
   `Pauses an active schedule: it starts no new fire until it is resumed, and fires already running finish. Pausing a paused schedule changes nothing. ${STALE_NOTE}`,
-  (schedules, id, guard) => schedules.pauseSchedule(id, guard),
+  (schedules, id, guard) => schedules.pause(id, guard),
 );
 
 export const schedulesResumeOperation = defineGuardedWrite(
   'bureau.schedules.resume',
   'Resume a schedule',
   `Resumes a paused schedule. Resuming an active schedule changes nothing, and a cancelled schedule is a \`Conflict\`. ${STALE_NOTE}`,
-  (schedules, id, guard) => schedules.resumeSchedule(id, guard),
+  (schedules, id, guard) => schedules.resume(id, guard),
 );
 
 export const schedulesCancelOperation = defineGuardedWrite(
   'bureau.schedules.cancel',
   'Cancel a schedule',
   `Cancels a schedule for good: its record stays, as \`cancelled\`, and it starts no new fire. Cancelling a cancelled schedule changes nothing. ${STALE_NOTE}`,
-  (schedules, id, guard) => schedules.cancelSchedule(id, guard),
+  (schedules, id, guard) => schedules.cancel(id, guard),
 );
 
 const updateInput = z.object({
@@ -518,7 +516,7 @@ export const schedulesUpdateOperation = defineOperation<
   invoke: async ({ input, host, principal }) => {
     await ownerFor(host, principal, input.scheduleId, 'bureau.schedules:write');
     try {
-      const done = await host.schedules.updateSchedule(
+      const done = await host.schedules.update(
         input.scheduleId,
         {
           spec: input.spec,

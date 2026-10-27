@@ -457,7 +457,7 @@ describe('the push projection of a task a configuration outlives', () => {
       ...webhook(fixture),
     });
     const checkpoints = createA2APushCheckpoints(
-      fixture.opened.bureau.kv as NonNullable<typeof fixture.opened.bureau.kv>,
+      fixture.opened.bureau.internals.kv as NonNullable<typeof fixture.opened.bureau.internals.kv>,
     );
     expect(await checkpoints.read(taskId, 'hook-1')).toBeDefined();
 
@@ -470,7 +470,7 @@ describe('the push projection of a task a configuration outlives', () => {
     const fixture = await fixtureOf(answering('done'));
     const taskId = await startTask(fixture);
     const checkpoints = createA2APushCheckpoints(
-      fixture.opened.bureau.kv as NonNullable<typeof fixture.opened.bureau.kv>,
+      fixture.opened.bureau.internals.kv as NonNullable<typeof fixture.opened.bureau.internals.kv>,
     );
 
     for (const id of ['race-1', 'race-2', 'race-3']) {

@@ -126,7 +126,7 @@ describe('/host/paths', () => {
 describe('a cross-site request', () => {
   test('a form post changes nothing', async () => {
     const host = await start();
-    const listing = await host.bureau.listSchedules();
+    const listing = await host.bureau.schedules.list();
     const [schedule] = listing?.items ?? [];
     if (schedule === undefined) throw new Error('Expected the seeded schedule.');
     const response = await fetch(new URL(`/api/v1/schedules/${schedule.id}/pause`, host.url), {
@@ -138,7 +138,7 @@ describe('a cross-site request', () => {
       body: '',
     });
     expect(response.status).toBe(403);
-    const unchanged = await host.bureau.getSchedule(schedule.id);
+    const unchanged = await host.bureau.schedules.get(schedule.id);
     expect(unchanged?.status).toBe('active');
   });
 

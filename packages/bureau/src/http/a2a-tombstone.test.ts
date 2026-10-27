@@ -226,7 +226,7 @@ describe('a withdrawn agent with tasks', () => {
       message: 'quick',
     });
     await waitForCondition(async () => {
-      const view = await served.harness.bureau.tasks.get(run.id);
+      const view = await served.harness.bureau.internals.taskRegistry.get(run.id);
       return view?.status === 'completed';
     }, 'the run never completed');
     await withdraw(served);

@@ -151,7 +151,9 @@ describe('the owner predicate, with several principals', () => {
           'alpha',
           'researcher',
         ]);
-        expect(await served.bureau.auditTrail?.query({ runId: 'agent:researcher' })).toEqual([]);
+        expect(
+          await served.bureau.internals.auditTrail?.query({ runId: 'agent:researcher' }),
+        ).toEqual([]);
       });
 
       it(`is served to the operator scope for ${call.scope}, and not to the other scope`, async () => {
@@ -384,7 +386,9 @@ describe('results', () => {
     });
     expect(same.result?.['hash']).toBe(hash);
     expect(await readFile(ownerPath(served), 'utf8')).toBe(before);
-    expect(await served.bureau.auditTrail?.query({ runId: 'agent:researcher' })).toEqual([]);
+    expect(await served.bureau.internals.auditTrail?.query({ runId: 'agent:researcher' })).toEqual(
+      [],
+    );
   });
 
   it('lists the revisions that have run, newest first, each with the definition it ran', async () => {
@@ -479,7 +483,7 @@ describe('publication', () => {
     });
     expect(again.result?.['hash']).toBe(published.result?.['hash']);
     // One real write (the publish) was audited; the two no-ops were not.
-    const entries = await served.bureau.auditTrail?.query({ runId: 'agent:researcher' });
+    const entries = await served.bureau.internals.auditTrail?.query({ runId: 'agent:researcher' });
     expect(entries?.map((entry) => entry.type)).toEqual(['agent.published']);
   });
 
@@ -657,7 +661,9 @@ describe('faults', () => {
       );
     }
     expect(await readFile(ownerPath(served), 'utf8')).toBe(edited);
-    expect(await served.bureau.auditTrail?.query({ runId: 'agent:researcher' })).toEqual([]);
+    expect(await served.bureau.internals.auditTrail?.query({ runId: 'agent:researcher' })).toEqual(
+      [],
+    );
   });
 
   it('Unprocessable for a definition that would not load, with the problem, and writes nothing', async () => {
@@ -777,7 +783,7 @@ describe('the audit trail', () => {
       expectedHash: withdrawnHash,
     });
 
-    const entries = await served.bureau.auditTrail?.query({ runId: 'agent:researcher' });
+    const entries = await served.bureau.internals.auditTrail?.query({ runId: 'agent:researcher' });
     expect(entries?.map((entry) => [entry.type, entry.principal, entry.detail])).toEqual([
       ['agent.created', 'anonymous:local', { id: 'researcher', hash: createdHash }],
       [
@@ -812,9 +818,9 @@ describe('the audit trail', () => {
 
   it('writes none, and does not fail the write, on a Bureau that keeps no audit trail', async () => {
     const served = await serve();
-    expect(served.bureau.auditTrail).toBeDefined();
+    expect(served.bureau.internals.auditTrail).toBeDefined();
     const source = Object.create(served.bureau, {
-      auditTrail: { value: undefined },
+      internals: { value: { ...served.bureau.internals, auditTrail: undefined } },
     }) as Parameters<typeof createBureauHandler>[0];
     const handler = createBureauHandler(source, { unauthenticatedAccess: 'allow' });
     const created = await callAs(handler, 'bureau.agents.definitions.create', {

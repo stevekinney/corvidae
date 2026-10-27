@@ -26,7 +26,14 @@ import { type Event, EventType, type Interrupt, type RunFinishedOutcome } from '
 import { type ConversationHistory, type Message, toAGUIToolMessage } from 'conversationalist';
 
 import type { BureauChildRecord } from '../child-topology-store.ts';
-import type { Bureau, PendingReview, RunDetail, ServerFrame } from '../types.ts';
+import type {
+  Bureau,
+  PendingReview,
+  RunDetail,
+  ServerFrame,
+  BureauReviews,
+  BureauInternals,
+} from '../types.ts';
 import { toInterrupt } from './ag-ui-interrupts.ts';
 import { type AnswerRow, snapshotMessages, snapshotMessagesWithAnswers } from './ag-ui-messages.ts';
 import { openPeerStream } from './ag-ui-peer-stream.ts';
@@ -54,17 +61,16 @@ export type AgUiStreamBureau = Pick<
   | 'getSession'
   | 'subscribeLiveFrames'
   | 'subscribeRunSnapshot'
-  | 'listPendingReviews'
-  | 'pendingHumanWaitsOfRun'
   | 'eventHistory'
   | 'subscribeEventHistory'
   | 'waitForDurableRun'
   | 'children'
   | 'getDurableRun'
-  | 'whenRunRecorded'
   | 'sessionInputsDeliveredBy'
   | 'surfaces'
->;
+> & { readonly reviews: Pick<BureauReviews, 'list' | 'pendingOf'> } & {
+  readonly internals: Pick<BureauInternals, 'whenTaskRecorded'>;
+};
 
 export type AgUiStreamEnvironment = {
   readonly bureau: AgUiStreamBureau;
@@ -197,7 +203,7 @@ async function readRunHistory(bureau: AgUiStreamBureau, nativeRunId: string): Pr
 }
 
 function pendingFor(bureau: AgUiStreamBureau, nativeRunId: string): PendingReview[] {
-  return bureau.listPendingReviews().filter((review) => review.runId === nativeRunId);
+  return bureau.reviews.list().filter((review) => review.runId === nativeRunId);
 }
 
 const TERMINAL_EVENTS: ReadonlySet<string> = new Set([
@@ -222,10 +228,10 @@ export function runIsGoing(bureau: Pick<Bureau, 'getRun'>, nativeRunId: string):
  * only a human wait the run is parked on is.
  */
 export function interruptibleReviews(
-  bureau: Pick<Bureau, 'getRun' | 'listPendingReviews'>,
+  bureau: Pick<Bureau, 'getRun'> & { readonly reviews: Pick<BureauReviews, 'list'> },
   nativeRunId: string,
 ): PendingReview[] {
-  const pending = bureau.listPendingReviews().filter((review) => review.runId === nativeRunId);
+  const pending = bureau.reviews.list().filter((review) => review.runId === nativeRunId);
   return runIsGoing(bureau, nativeRunId)
     ? pending.filter((review) => review.kind === 'human-wait')
     : pending;
@@ -454,7 +460,7 @@ export function openRunStream(
    * (under the id it sent the input with) learns the run delivered it, and where in the thread the
    * run put it. Which inputs a run delivered is the durable delivery record's answer
    * (`Bureau.sessionInputsDeliveredBy`), and the thread is read once the session has recorded the
-   * run's end (`Bureau.whenRunRecorded`), however long that takes: no count of turns decides
+   * run's end (`Bureau.internals.whenTaskRecorded`), however long that takes: no count of turns decides
    * whether the snapshot is sent.
    *
    * Resolves `false` when the run delivered input and the snapshot could not be produced, because
@@ -470,7 +476,7 @@ export function openRunStream(
         request.threadId,
       );
       if (delivered.length === 0) return true;
-      await bureau.whenRunRecorded(request.nativeRunId);
+      await bureau.internals.whenTaskRecorded(request.nativeRunId);
       const session = await readSessionOwnedBy(bureau, request.threadId, request.owner);
       const history = session?.conversationHistory;
       if (history === undefined || !delivered.every((id) => history.ids.includes(id))) {

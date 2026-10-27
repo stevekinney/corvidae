@@ -3,7 +3,7 @@
  * (COR-1596), kept apart from `createBureau`'s closure so each rule is a function a test can
  * call with plain maps.
  *
- * A fire has no `ActiveRun` on the run store, so the store scan in `listPendingReviews` never
+ * A fire has no `ActiveRun` on the run store, so the store scan in `reviews.list` never
  * sees its approval. The approval is registered here as its step records it, and listed by the
  * terminal-run loop at the end of that function, which reads `terminalReviewSessions`. The set
  * `scheduledFireApprovalRuns` is not that loop's gate: it marks the runs whose per-run state is a

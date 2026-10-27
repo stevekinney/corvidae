@@ -188,8 +188,8 @@ function createNextTool() {
 }
 
 function requireAuditTrail(bureau: Bureau) {
-  if (bureau.auditTrail === undefined) throw new Error('the bureau has no audit trail');
-  return bureau.auditTrail;
+  if (bureau.internals.auditTrail === undefined) throw new Error('the bureau has no audit trail');
+  return bureau.internals.auditTrail;
 }
 
 async function recoveredRunCompleted(bureau: Bureau, runId: string): Promise<boolean> {
@@ -374,7 +374,7 @@ async function abortSiblingScenario(backend: Backend, scope: ScenarioScope): Pro
     const durableX = await bureau.getDurableRun(marker.xRunId);
     expect(durableX?.status).not.toBe('running');
     expect(durableX?.status).not.toBe('completed');
-    await waitForBureauState([bureau], () => bureau.listAbortingRuns().length === 0, {
+    await waitForBureauState([bureau], () => bureau.internals.abortingTasks().length === 0, {
       runIds: [marker.xRunId],
     });
 

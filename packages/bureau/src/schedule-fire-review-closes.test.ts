@@ -280,7 +280,7 @@ function reportedDiagnostics() {
  * the history's reads held, cannot finish its retention step until they are released.
  */
 async function startFire(bureau: Bureau, sessionId: string): Promise<string> {
-  const created = await bureau.createSchedule({
+  const created = await bureau.schedules.create({
     agentName: 'default',
     input: 'check in',
     spec: '1m',
@@ -293,13 +293,13 @@ async function startFire(bureau: Bureau, sessionId: string): Promise<string> {
   }
   void bureau.runDurableMaintenance(occurrence).catch(() => undefined);
   return pollUntil(async () => {
-    const schedule = await bureau.getSchedule(created.id);
+    const schedule = await bureau.schedules.get(created.id);
     return schedule?.currentWorkflowId;
   }, 'the tick to launch a fire');
 }
 
 async function taskStatus(bureau: Bureau, fireId: string): Promise<string | undefined> {
-  const task = await bureau.tasks.get(fireId);
+  const task = await bureau.internals.taskRegistry.get(fireId);
   return task?.status;
 }
 
@@ -315,7 +315,7 @@ describe('a close that waits for the seed read', () => {
     expect(hold.held).toBe(true);
 
     // The wait is answered while the fire's seed read, which the request waits on, is under way.
-    const resolving = bureau.resolveReview({
+    const resolving = bureau.reviews.resolve({
       id: review.id,
       decision: 'approve',
       principal: OWNER.alice,
@@ -380,8 +380,8 @@ describe('a tool approval’s decision that waits for the seed read', () => {
     expect(hold.held).toBeGreaterThan(0);
 
     let decided = false;
-    const deciding = bureau
-      .resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice })
+    const deciding = bureau.reviews
+      .resolve({ id: review.id, decision: 'approve', principal: OWNER.alice })
       .then(() => {
         decided = true;
       });
@@ -537,7 +537,7 @@ describe('a canceled fire’s closes, retried at boot', () => {
     // The first wait is answered outside the review path, so no audit record says so.
     await first.durableEngine()?.signal(fireId, 'first', 'go');
     const waiting = await pollUntil(
-      () => first.listPendingReviews().find((listed) => listed.id !== answered.id),
+      () => first.reviews.list().find((listed) => listed.id !== answered.id),
       'the second wait',
     );
     hold.arm();
@@ -601,7 +601,7 @@ function expectRecordOf(record: { readonly detail: unknown }, live: PendingRevie
 
 /** Whether the review projects for `bureau.reviews.get`, as a record read back must. */
 async function projects(bureau: Bureau, reviewId: string): Promise<string> {
-  const fetched = await bureau.getReview(reviewId);
+  const fetched = await bureau.reviews.get(reviewId);
   try {
     projectReview(fetched as never);
     return 'ok';

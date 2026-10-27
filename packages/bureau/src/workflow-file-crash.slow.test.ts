@@ -163,7 +163,7 @@ async function parkedScenario(scope: ScenarioScope): Promise<void> {
       sleeper?.workflowVersion,
     );
     // The deleted workflow keeps nothing scheduled.
-    const live = await bureau.listSchedules({ status: ['active', 'paused'] });
+    const live = await bureau.schedules.list({ status: ['active', 'paused'] });
     expect(live?.items.map((schedule) => schedule.id).toSorted()).toEqual([
       'bureau-workflow-schedule:midstep:1',
       'bureau-workflow-schedule:sleeper:1',
@@ -173,9 +173,9 @@ async function parkedScenario(scope: ScenarioScope): Promise<void> {
     const stepRuns = await engine.list({ type: 'agentRun', idPrefix: 'workflow-agent-' });
     expect(stepRuns.items).toHaveLength(3);
     for (const stepRun of stepRuns.items) {
-      expect(await bureau.tasks.record(stepRun.id)).toBeUndefined();
+      expect(await bureau.internals.taskRegistry.record(stepRun.id)).toBeUndefined();
     }
-    const page = await bureau.tasks.enumerate({ limit: 100, offset: 0 });
+    const page = await bureau.internals.taskRegistry.enumerate({ limit: 100, offset: 0 });
     expect(page.tasks).toEqual([]);
   } finally {
     const shutdown = await bureau?.shutdown();
@@ -230,7 +230,7 @@ async function claimScenario(scope: ScenarioScope): Promise<void> {
       .durableEngine()!
       .list({ type: 'agentRun', idPrefix: 'workflow-agent-' });
     expect(stepRuns.items).toHaveLength(1);
-    expect(await bureau.tasks.record(stepRuns.items[0]!.id)).toBeUndefined();
+    expect(await bureau.internals.taskRegistry.record(stepRuns.items[0]!.id)).toBeUndefined();
   } finally {
     const shutdown = await bureau?.shutdown();
     rmSync(directory, { recursive: true, force: true });

@@ -209,7 +209,7 @@ async function recoveryScenario(backend: Backend, scope: ScenarioScope): Promise
     expect(b.stepsAtOrAfterOne() + c.stepsAtOrAfterOne()).toBe(1);
     expect(b.stepZeroCalls() + c.stepZeroCalls()).toBe(0);
 
-    const auditTrail = winner.bureau.auditTrail;
+    const auditTrail = winner.bureau.internals.auditTrail;
     if (auditTrail === undefined) throw new Error('the bureau has no audit trail');
 
     // Continuity: audit sequence numbers are never reused.

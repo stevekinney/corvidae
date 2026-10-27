@@ -59,7 +59,7 @@ describe('the A2A record’s lifetime', () => {
       };
       expect(body.result.task.status.state).toBe('TASK_STATE_COMPLETED');
       const key = `${A2A_TASK_RECORD_KEY_PREFIX}${encodeURIComponent(body.result.task.id)}`;
-      expect(await bureau.kv?.get(key)).not.toBeNull();
+      expect(await bureau.internals.kv?.get(key)).not.toBeNull();
 
       runtime.setTime(Date.parse(ORIGIN) + 3 * DAY_MS);
       // The first pass sweeps the run-creation binding; the next deletes the task it held.
@@ -67,7 +67,7 @@ describe('the A2A record’s lifetime', () => {
       await bureau.runDurableMaintenance();
 
       expect(bureau.getRun(body.result.task.id)).toBeUndefined();
-      expect(await bureau.kv?.get(key)).toBeNull();
+      expect(await bureau.internals.kv?.get(key)).toBeNull();
     } finally {
       await bureau.dispose();
       await fixture.dispose();

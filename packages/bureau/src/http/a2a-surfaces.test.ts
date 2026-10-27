@@ -324,7 +324,7 @@ async function withButton() {
       ...(metadata === undefined ? {} : { metadata }),
     });
   const status = async () => {
-    const view = await fixture.opened.bureau.tasks.get(task.id);
+    const view = await fixture.opened.bureau.internals.taskRegistry.get(task.id);
     return view?.status;
   };
   const update = async () => {

@@ -180,7 +180,7 @@ describe('the command-receipts extension', () => {
           currentRevision: revision,
         },
       });
-      const view = await opened.bureau.tasks.get(task.id);
+      const view = await opened.bureau.internals.taskRegistry.get(task.id);
       expect(view?.status).toBe('input-required');
     });
   });
@@ -214,7 +214,7 @@ describe('the command-receipts extension', () => {
         const first = await send(opened, { message: late });
         const second = await send(opened, { message: late }, ACTIVE, 'other');
         expect(second.result.task.id).not.toBe(first.result.task.id);
-        const stored = await opened.bureau.tasks.get(second.result.task.id);
+        const stored = await opened.bureau.internals.taskRegistry.get(second.result.task.id);
         expect(stored?.agentName).toBe('other');
       },
       { second: true },
@@ -226,7 +226,7 @@ describe('the command-receipts extension', () => {
       const late = message('too late', {
         metadata: { [COMMAND_RECEIPTS_EXTENSION_URI]: { deadline: '2000-01-01T00:00:00Z' } },
       });
-      const tasks = opened.bureau.tasks;
+      const tasks = opened.bureau.internals.taskRegistry;
       const settle = tasks.recordSettled.bind(tasks);
       let failed = false;
       tasks.recordSettled = async (...input: Parameters<typeof settle>) => {
@@ -271,7 +271,9 @@ describe('the command-receipts extension', () => {
 
       expect(timedOut.error.code).toBe(-32603);
       expect(timedOut.error.data[0]).toMatchObject({ reason: 'TIMEOUT', domain: 'bureau' });
-      const view = await opened.bureau.tasks.get(timedOut.error.data[0].metadata.taskId);
+      const view = await opened.bureau.internals.taskRegistry.get(
+        timedOut.error.data[0].metadata.taskId,
+      );
       expect(view?.status).toBe('working');
     });
   });

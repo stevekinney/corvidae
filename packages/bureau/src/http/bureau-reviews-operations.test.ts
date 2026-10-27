@@ -92,12 +92,12 @@ function stubHost(
     mayAccess: mayAccessOwnedResource,
   };
   const reviews: BureauReviewsOperationHost['reviews'] = {
-    listPendingReviews: () => [toolApprovalReview()],
-    getReview: async (id) =>
+    list: () => [toolApprovalReview()],
+    get: async (id) =>
       id === 'approval:run-1:call-1'
         ? { ...toolApprovalReview(), status: 'approved' as ReviewStatus }
         : undefined,
-    resolveReview: async (input) => {
+    resolve: async (input) => {
       record.push(input);
       return { id: input.id, kind: 'tool-approval', decision: input.decision };
     },
@@ -149,8 +149,8 @@ describe('the parks of runs another process holds (COR-1579)', () => {
     };
     const local = runHumanWaitReview({ id: 'human-wait:run-1:answer:0', runId: 'run-1' });
     const { reviews } = stubHost({
-      listPendingReviews: () => [local],
-      pendingHumanWaitsOfRun: async (runId: string) => [
+      list: () => [local],
+      pendingOf: async (runId: string) => [
         {
           ...(runHumanWaitReview({ id: `human-wait:${runId}:answer:0`, runId }) as Extract<
             PendingReview,
@@ -194,7 +194,7 @@ describe('a human wait of a run with no session (COR-1577)', () => {
 
   it('is listed to the run’s owner, hidden from another caller, and open to an operator', async () => {
     const owned = {
-      reviews: stubHost({ listPendingReviews: () => [runHumanWaitReview()] }).reviews,
+      reviews: stubHost({ list: () => [runHumanWaitReview()] }).reviews,
       ownership: {
         runOwner: async (runId: string) => (runId === 'run-2' ? 'api-key:other' : undefined),
         mayAccess: mayAccessOwnedResource,
@@ -314,8 +314,8 @@ describe('the tool-approval action projection', () => {
     });
     const handler = serve(
       stubHost({
-        listPendingReviews: () => [review],
-        getReview: async () => ({ ...review, status: 'pending' as ReviewStatus }),
+        list: () => [review],
+        get: async () => ({ ...review, status: 'pending' as ReviewStatus }),
       }),
     );
 
@@ -456,7 +456,7 @@ describe('bureau.reviews.resolve', () => {
   it('reports superseded when the approval was re-gated and the review stays pending', async () => {
     const handler = serve(
       stubHost({
-        resolveReview: async (input) => ({
+        resolve: async (input) => ({
           id: input.id,
           kind: 'tool-approval',
           decision: input.decision,
@@ -478,7 +478,7 @@ describe('bureau.reviews.resolve', () => {
     const failing = (error: BureauError) =>
       serve(
         stubHost({
-          resolveReview: async () => {
+          resolve: async () => {
             throw error;
           },
         }),
@@ -511,7 +511,7 @@ describe('bureau.reviews.resolve', () => {
     const failing = (error: BureauError) =>
       serve(
         stubHost({
-          resolveReview: async () => {
+          resolve: async () => {
             throw error;
           },
         }),
@@ -574,7 +574,7 @@ describe('bureau.reviews.resolve', () => {
     const failing = (error: BureauError) =>
       serve(
         stubHost({
-          resolveReview: async () => {
+          resolve: async () => {
             throw error;
           },
         }),
@@ -714,7 +714,7 @@ describe('the reviews operations against a real Bureau', () => {
       principal: 'api-key:tester',
     });
     await waitForCondition(
-      () => bureau.listPendingReviews().some((review) => review.runId === run.id),
+      () => bureau.reviews.list().some((review) => review.runId === run.id),
       'expected requestHumanInput to park and surface a pending review',
     );
     return { bureau, run };
@@ -773,7 +773,7 @@ describe('the reviews operations against a real Bureau', () => {
       });
 
       expect(resolved.result).toMatchObject({ decision: 'reject', receipt: 'applied' });
-      const records = JSON.stringify(await bureau.auditTrail?.query({}));
+      const records = JSON.stringify(await bureau.internals.auditTrail?.query({}));
       expect(records).toContain('api-key:tester');
     } finally {
       await bureau.dispose();
@@ -836,7 +836,7 @@ describe('the reviews operations against a real Bureau', () => {
         principal: 'api-key:tester',
       });
       await waitForCondition(
-        () => bureau.listPendingReviews().some((review) => review.runId === run.id),
+        () => bureau.reviews.list().some((review) => review.runId === run.id),
         'expected the tool call to surface a pending approval',
       );
       const handler = createBureauHandler(bureau, { authentication });
@@ -925,7 +925,7 @@ describe('the reviews operations against a real Bureau', () => {
         principal: 'api-key:tester',
       });
       await waitForCondition(
-        () => bureau.listPendingReviews().some((review) => review.runId === run.id),
+        () => bureau.reviews.list().some((review) => review.runId === run.id),
         'expected the tool call to surface a pending approval',
       );
       const handler = createBureauHandler(bureau, { authentication });
@@ -1050,10 +1050,10 @@ describe('who reaches the human wait of a bureau.run() run, through a real Burea
     });
     const run = bureau.run('asker', 'deploy', principal === undefined ? {} : { principal });
     await waitForCondition(
-      () => bureau.listPendingReviews().some((review) => review.runId === run.id),
+      () => bureau.reviews.list().some((review) => review.runId === run.id),
       'expected the catalog run to park and surface a pending review',
     );
-    const [review] = bureau.listPendingReviews();
+    const [review] = bureau.reviews.list();
     return { bureau, run, id: review!.id };
   }
 
@@ -1079,7 +1079,7 @@ describe('who reaches the human wait of a bureau.run() run, through a real Burea
       );
       expect(list.result).toEqual({ reviews: [] });
       // The refusals left the review pending and the run parked.
-      expect(bureau.listPendingReviews().map((review) => review.id)).toEqual([id]);
+      expect(bureau.reviews.list().map((review) => review.id)).toEqual([id]);
       const owner = await callAs(OWNER_KEY, handler, 'bureau.reviews.resolve', {
         id,
         decision: 'approve',

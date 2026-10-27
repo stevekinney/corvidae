@@ -569,7 +569,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * `tools:` list does not gate it. The tool is bound to that run's OWN event emitter and its real
    * `ctx.services` object — the only wiring under which a `HumanWaitParkedEvent` the tool
    * dispatches actually reaches `subscribeLiveFrames`/`store` listeners (including AB-13's
-   * flow-control `markParked`) and `listPendingReviews` (AB-20). The park is a `human-wait`
+   * flow-control `markParked`) and `reviews.list` (AB-20). The park is a `human-wait`
    * review: a `createRun` run's carries its `sessionId`, and a `bureau.run()` run's, which has no
    * session, is addressed by its `runId` and resumed through the engine by that id. The agent
    * must stop on the call (`stopWhen.toolCalled('requestHumanInput')`) for the run to park.
@@ -807,13 +807,13 @@ export type BureauEventType = keyof BureauEventMap & string;
 
 /**
  * Shared review lifecycle vocabulary (AB-46) both {@link PendingToolApprovalReview}
- * and {@link PendingHumanWaitReview} report a `status` from. `listPendingReviews()`
+ * and {@link PendingHumanWaitReview} report a `status` from. `reviews.list()`
  * only ever returns `'pending'` items; every other status surfaces through
- * `getReview(id)`'s audit-trail reconstruction or the audit trail itself.
+ * `reviews.get(id)`'s audit-trail reconstruction or the audit trail itself.
  *
  * - `'pending'` — awaiting a decision.
- * - `'approved'` / `'denied'` — resolved via `resolveReview` with `decision: 'approve' | 'deny'`.
- * - `'rejected'` — resolved via `resolveReview` with `decision: 'reject'` (requires a reason).
+ * - `'approved'` / `'denied'` — resolved via `reviews.resolve` with `decision: 'approve' | 'deny'`.
+ * - `'rejected'` — resolved via `reviews.resolve` with `decision: 'reject'` (requires a reason).
  * - `'expired'` — a tool-approval review swept by the expiry pass (a schedule fire's, the maintenance pass's) past its binding's `expiresAt`.
  * - `'revoked'` — transitioned by task-retention expiry or `deleteSession` via `revokePendingApprovalsForRun`.
  * - `'canceled'` — transitioned by `abortRun`/`cancelDurableRun` via `revokePendingApprovalsForRun`.
@@ -833,7 +833,7 @@ export type ReviewStatus =
  * A tool call parked by armorer's `needs_approval` policy decision. `approval`
  * is the exact {@link PendingToolApproval} (signed with `approvalToken` when
  * the bureau's toolbox was constructed with `approvalSecret`) that
- * `resolveReview` passes straight to `Toolbox.resumeApproval` on approve.
+ * `reviews.resolve` passes straight to `Toolbox.resumeApproval` on approve.
  */
 export interface PendingToolApprovalReview {
   kind: 'tool-approval';
@@ -851,7 +851,7 @@ export interface PendingToolApprovalReview {
   status: ReviewStatus;
   /**
    * The supersession round (COR-855): 0 for an approval never superseded,
-   * incremented each time `resolveReview` approves it and the policy gates the
+   * incremented each time `reviews.resolve` approves it and the policy gates the
    * resumed call again, which replaces the approval under the same id. It
    * separates one supersession's resolution from the next.
    */
@@ -861,7 +861,7 @@ export interface PendingToolApprovalReview {
 /**
  * A durable run parked on `ctx.waitForSignal` by the `requestHumanInput` tool
  * (operative's F3 HITL primitive). `signalName` is the exact name
- * `resolveReview` passes to `Bureau.signalSession` on approve.
+ * `reviews.resolve` passes to `Bureau.signalSession` on approve.
  */
 export interface PendingHumanWaitReview {
   kind: 'human-wait';
@@ -871,7 +871,7 @@ export interface PendingHumanWaitReview {
   /**
    * The Bureau session the run belongs to. Absent for a run started with `bureau.run()`
    * (COR-1577), which has no session: the run id is what addresses the review, and
-   * {@link Bureau.resolveReview} resumes it through the engine by that id.
+   * {@link Bureau.reviews.resolve} resumes it through the engine by that id.
    */
   sessionId?: string | undefined;
   agentName: string | undefined;
@@ -905,7 +905,7 @@ export interface ResolveReviewInput {
   id: string;
   /**
    * `'reject'` (AB-46) is a `deny` outcome plus a REQUIRED caller-supplied
-   * `reason`: `resolveReview` throws `BureauError('reject requires a reason',
+   * `reason`: `reviews.resolve` throws `BureauError('reject requires a reason',
    * 'BAD_REQUEST')` before any state change when `reason` is absent or empty,
    * for both review kinds.
    */
@@ -927,7 +927,7 @@ export interface ResolveReviewInput {
   /**
    * COR-1659 — the {@link PendingToolApprovalReview.round} the caller read. A re-gated approval
    * keeps its id and advances its round, so a caller that read round N would otherwise resolve
-   * the replacement. When given, `resolveReview` compares it with the review's current round
+   * the replacement. When given, `reviews.resolve` compares it with the review's current round
    * before anything is claimed, and throws a `CONFLICT` `BureauError` (a
    * `ReviewRoundChangedError`) on a mismatch: nothing is decided, written, or audited. A human
    * wait is always at round 0. Omitted, the call is not fenced.
@@ -1133,9 +1133,200 @@ export interface BureauRunOptions {
   principal?: string;
 }
 
-export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
-  /** This bureau's identity — {@link BureauOptions.id}, or a generated one. */
-  readonly id: string;
+/**
+ * The reviews of a Bureau: the queue of parked runs awaiting a human decision, and the
+ * decision. A tool approval the policy gated and a `requestHumanInput` wait are both reviews.
+ * `bureau.reviews.*` operations served by `createBureauHandler` delegate to these members.
+ */
+export interface BureauReviews {
+  /**
+   * List every parked run awaiting human review (AB-20): armorer's
+   * `needs_approval` tool-approval flow AND durable `requestHumanInput`
+   * (`ctx.waitForSignal`) waits, across all live runs. Newest requests last
+   * are NOT guaranteed — order is run-registration order, not age order.
+   * Excludes items already resolved via `reviews.resolve` (approved, denied, or
+   * rejected), even if the underlying run has not produced further activity.
+   * Also excludes any `tool-approval` review whose binding's `expiresAt` is at
+   * or before the current clock time (AB-46) — a read-time filter with no
+   * write; the expiry pass is the write that transitions it to `'expired'`.
+   */
+  list(): PendingReview[];
+
+  /**
+   * Look up one review by id, live or resolved (AB-46). For a still-pending
+   * id this is `reviews.list()`'s live scan. For a resolved id, this
+   * reconstructs `PendingReview & { status }` from the chronologically-last
+   * `review.*` audit-trail record matching `detail.review.id === id` —
+   * `undefined` when no audit trail is configured (ephemeral bureau) or when
+   * `id` matches nothing at all.
+   */
+  get(
+    id: string,
+  ): Promise<(PendingReview & { status: ReviewStatus; resolvedBy?: string }) | undefined>;
+
+  /**
+   * The human waits a run is still parked on, read from durable state (COR-1579), so a process
+   * that shares a durable store with the one holding the run can list, read and resolve its park.
+   * When this process holds the run it returns the run's entries from
+   * {@link BureauReviews.list}. Otherwise it derives the park as recovery does: the park,
+   * its ordinal and its prompt from the run's checkpoint, still pending while the engine's
+   * `waitingForSignals` names its signal. A session run's review carries the session from the
+   * durable run input; a `bureau.run()` run's carries none. Empty for a run that is not parked on
+   * a human wait, or that this Bureau has no durable engine to read. Pending tool approvals are
+   * not derived.
+   */
+  pendingOf(taskId: string): Promise<PendingHumanWaitReview[]>;
+
+  /**
+   * Approve, deny, or reject a pending review (AB-46). Approve resumes the
+   * run: a `tool-approval` calls `Toolbox.resumeApproval` on the bureau's
+   * toolbox and returns its `ToolExecutionResult`; a `human-wait` calls
+   * `signalSession` with the parked signal name. Deny records the decision
+   * without resuming anything for `tool-approval` (the binding is revoked; no
+   * run to continue), and delivers `{ __abDenied: true, reason? }` on the
+   * parked signal for `human-wait`, continuing that run one generation step.
+   * Reject is deny plus a REQUIRED `input.reason`: `reviews.resolve` throws
+   * `BureauError('reject requires a reason', 'BAD_REQUEST')` before any state
+   * change when it is absent or empty. A `tool-approval` reject echoes
+   * `input.reason` on `ResolveReviewResult.feedback`; a `human-wait` reject
+   * delivers `{ __abRejected: true, reason: input.reason }` on the signal.
+   * Every resolution is recorded in the audit trail attributed to
+   * `input.principal`.
+   *
+   * A `tool-approval` resolution also writes its outcome into the session's
+   * conversation (COR-855): the executed result on approve, an error result
+   * carrying the reason on deny and reject, each replacing the pending
+   * `action_required` tool-result row in place, so the next run started on the
+   * session answers an up-to-date conversation. A resolution the policy gates
+   * again (`superseded`) writes nothing.
+   *
+   * Throws `BureauError('NOT_FOUND')` when `input.id` does not match a
+   * currently pending review (including an already-resolved one).
+   */
+  resolve(input: ResolveReviewInput): Promise<ResolveReviewResult>;
+}
+
+/**
+ * The durable schedules of a Bureau: registering, reading, and changing recurring schedules, and
+ * the history of their definitions. Every operation that needs the durable engine resolves
+ * `undefined` when none is composed. `bureau.schedules.*` operations served by
+ * `createBureauHandler` delegate to these members.
+ */
+export interface BureauSchedules {
+  /**
+   * Register a durable recurring schedule via `engine.schedule(...)`.
+   * Throws `ScheduleLocatorUnavailableError` when the schedule was created
+   * but its summary could not be immediately retrieved — the schedule IS
+   * registered in that case, only its locator failed. Returns `undefined`
+   * when no durable engine is composed.
+   */
+  create(definition: DurableScheduleDefinition): Promise<ScheduleSummary | undefined>;
+
+  /**
+   * Retrieve a durable schedule by id. Returns `null` when the schedule does not
+   * exist, `undefined` when no durable engine is composed.
+   */
+  get(scheduleId: string): Promise<ScheduleSummary | null | undefined>;
+
+  /**
+   * List durable schedules, optionally filtered. Returns `undefined` when no
+   * durable engine is composed.
+   */
+  list(filter?: ScheduleFilter): Promise<PaginatedResult<ScheduleSummary> | undefined>;
+
+  /**
+   * Pause a durable schedule. Returns `true` on success, `undefined` when no
+   * durable engine is composed. With `guard.expectedRevision`, the pause applies only if the
+   * schedule's `revision` is still that value, and a mismatch throws Weft's
+   * `ScheduleStaleRevisionError` having written nothing; Weft compares it inside its serialized
+   * write, so Bureau never compares it itself.
+   */
+  pause(scheduleId: string, guard?: ScheduleRevisionGuard): Promise<true | undefined>;
+
+  /**
+   * Resume a paused durable schedule. Returns `true` on success, `undefined` when no durable
+   * engine is composed. `guard` as for {@link BureauSchedules.pause}.
+   */
+  resume(scheduleId: string, guard?: ScheduleRevisionGuard): Promise<true | undefined>;
+
+  /**
+   * Cancel and permanently delete a durable schedule. Returns `true` on success,
+   * `undefined` when no durable engine is composed. `guard` as for {@link BureauSchedules.pause}.
+   */
+  cancel(scheduleId: string, guard?: ScheduleRevisionGuard): Promise<true | undefined>;
+
+  /**
+   * Change a durable schedule's cadence, description, and overlap policy (COR-1482), by wrapping
+   * Weft's `updateSchedule`. Weft replaces the cadence wholesale, so `update.spec` is required, in
+   * the same grammar as {@link DurableScheduleDefinition.spec}. The schedule's input, agent, owner
+   * and session are not changed. Resolves `true`, or `undefined` when no durable engine is
+   * composed. A schedule that does not exist, and a workflow file's schedule (which belongs to its
+   * file), reject with `NOT_FOUND`; an overlap Bureau does not offer, or `'allow'` on a schedule
+   * with a recurring session, rejects with `BAD_REQUEST`. `guard` as for
+   * {@link BureauSchedules.pause}.
+   */
+  update(
+    scheduleId: string,
+    update: DurableScheduleUpdate,
+    guard?: ScheduleRevisionGuard,
+  ): Promise<true | undefined>;
+
+  /**
+   * The name of the catalog agent an agent schedule runs, or `undefined` when there is no such
+   * schedule, when it is a workflow file's schedule (which runs no agent of its own), or when no
+   * durable engine is composed. It is read from the schedule's stored input and is the only part
+   * of that input this returns: never its text or its session. It does not check who may see the
+   * schedule, so a caller answers to {@link Bureau.getOwner} first.
+   */
+  agentName(scheduleId: string): Promise<string | undefined>;
+
+  /**
+   * The start of the text an agent schedule sends each fire: at most 500 characters, ending in `…`
+   * when it was cut, so a schedule can be told by what it says. `undefined` when there is no such
+   * schedule, when it is a workflow file's, when its input holds no text, or when no durable engine
+   * is composed. It reads the stored input beside {@link BureauSchedules.agentName}, never its
+   * session, and does not check who may see the schedule, so a caller answers to
+   * {@link Bureau.getOwner} first.
+   */
+  inputPreview(scheduleId: string): Promise<string | undefined>;
+
+  /**
+   * One page of the schedule definition's durable event history (`schedule.created`, paused,
+   * resumed, and cancelled), from the exclusive `options.since` cursor. It is
+   * {@link Bureau.eventHistory} for the `schedule` owner: the outcomes, `options.principal`
+   * authorization, and paging are that method's, so see it for the full contract.
+   */
+  events(
+    scheduleId: string,
+    options?: DurableEventHistoryPageOptions,
+  ): Promise<
+    | DurableEventPage
+    | DurableEventGap
+    | EventHistoryUnsupportedOutcome
+    | EventHistoryNotFoundOutcome
+    | EventHistoryDeletedAggregateOutcome
+  >;
+
+  /**
+   * Replays the schedule definition's durable event history from the exclusive `options.since`
+   * cursor, then delivers live events with no gap and no duplicate at the handoff. It is
+   * {@link Bureau.subscribeEventHistory} for the `schedule` owner, so an ephemeral bureau returns
+   * an already-closed subscription and `options.principal` applies as it does there.
+   */
+  subscribeEvents(
+    scheduleId: string,
+    listener: (event: DurableEventEnvelope) => void,
+    options?: DurableEventHistorySubscribeOptions,
+  ): Subscription;
+}
+
+/**
+ * The seam between a Bureau and the code that serves or tests it: `createBureauHandler` reads
+ * these members to serve the operations, and the test harness reads them to inspect what the
+ * Bureau holds. An application builds on the other members of {@link Bureau}; none of these
+ * is part of its surface, and the project may reshape them without a deprecation period.
+ */
+export interface BureauInternals {
   /**
    * Whether {@link BureauOptions.id} was supplied. `false` means {@link Bureau.id}
    * is a generated identifier that changes on every restart, which
@@ -1143,18 +1334,13 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * would orphan whatever that storage holds.
    */
   readonly hasExplicitId: boolean;
-  /**
-   * The runtime this bureau runs on: {@link BureauOptions.runtime}, or the process's own services
-   * when none was given. An adapter that compares a deadline or schedules a timer for the
-   * bureau (the A2A mount of `createBureauHandler`) reads it here, so a custom runtime governs
-   * the adapter too and not only the bureau.
-   */
-  readonly runtimeServices: RuntimeServices;
+
   /**
    * How long a settled task stays addressable: {@link BureauRetentionOptions.tasks}, or its
    * 30-day default when none was given.
    */
   readonly taskRetention: RetentionWindowOption;
+
   /**
    * Whether this bureau has storage and a durable engine. Only such a bureau
    * keeps run-creation receipts and human-wait parks across a restart, so an
@@ -1162,6 +1348,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * refuses a bureau without one.
    */
   readonly hasDurableEngine: boolean;
+
   /**
    * This bureau's own events, as a replay-plus-live feed.
    *
@@ -1180,6 +1367,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * async-iterator method.
    */
   readonly eventFeed: BureauEventFeed;
+
   /**
    * The event feeds of the runs this bureau owns, keyed by run id.
    *
@@ -1197,7 +1385,108 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * Read-only: entries are bureau's to create and remove.
    */
   readonly runEventFeeds: AgentRunEventRegistry;
+
   readonly store: Store;
+
+  readonly sessionStore: SessionStore | undefined;
+
+  readonly kv: ConditionalTextValueStore | undefined;
+
+  /**
+   * The durable audit trail (Layer B glass-box).
+   *
+   * Present when the bureau has a KV store configured (`storage`). `undefined`
+   * when the bureau is ephemeral (no `storage`).
+   *
+   * The audit trail sinks `tool.*`, `run.*`, and `step.completed` events into
+   * the KV store as an append-only log. Use `auditTrail.query()` to read them
+   * back with optional `since`, `runId`, and `type` filters.
+   *
+   * Layer A (live) = `store.getState()` + `memory.list()` + `getSession()`.
+   * Layer B (durable) = `auditTrail.query()`.
+   */
+  readonly auditTrail: AuditTrail | undefined;
+
+  /**
+   * The webhook notifier (AB-21). Present whenever `options.webhooks.targets`
+   * is non-empty; `undefined` when no webhooks are configured (the default).
+   * Use `webhookNotifier.listDeliveries()` to inspect durable delivery state.
+   */
+  readonly webhookNotifier: WebhookNotifier | undefined;
+
+  /**
+   * The online eval sampler (AB-53). Present whenever `options.onlineEvals`
+   * configures at least one judge with a positive `sampleRate`; `undefined`
+   * when online evals are disabled (the default). Use
+   * `onlineEvalSampler.sampledCount()`/`observedCount()` to inspect sampling
+   * state and `onlineEvalSampler.flush()` to await in-flight judge
+   * evaluations deterministically.
+   */
+  readonly onlineEvalSampler: OnlineEvalSampler | undefined;
+
+  /**
+   * AB-369: every run `abortRun` has requested cancellation for but whose
+   * `activeRun.closed()` has not yet settled — the same `abortingRunIds`
+   * bookkeeping `abortRun` itself maintains, read publicly rather than
+   * inferred. `since` is the {@link RuntimeServices.clock} timestamp
+   * `abortRun` recorded when it first requested cancellation for that run.
+   * A run still listed here long after its abort should have settled is a
+   * genuine leak — {@link BureauQuiescenceReport} (`bureau/test`) surfaces
+   * it as a non-quiescent row.
+   */
+  abortingTasks(): readonly AbortingRun[];
+
+  /**
+   * COR-1490 — resolves once the session has recorded the end of the run `runId`, however long
+   * its save takes (it waits on the save itself, never on a count of turns), and at once for a run
+   * whose end is already recorded or that this process does not hold (so a reader in another
+   * process can read a session that does not yet hold the run's final rows).
+   *
+   * Rejects when the run ended without this process saving its end: the engine lost a checkpoint
+   * compare-and-swap or was disposed and abandoned the run to whoever owns it, or the Bureau shut
+   * down first. The rejection comes when the run's own result settles, never at a deadline. A save
+   * that starts and keeps failing does not reject: it is diagnosed after its last attempt and this
+   * resolves, so a reader should check that the session holds what it needs. A reader that needs
+   * the thread as the run left it, such as the AG-UI mount's end-of-run snapshot, waits here before
+   * it reads the session.
+   */
+  whenTaskRecorded(runId: string): Promise<void>;
+
+  /**
+   * COR-1481 — the task registry behind `bureau.tasks.*`: the durable record of
+   * each top-level run (its owner, context, originating message, and how it ended),
+   * and the reads and cancellation the management plane serves over it. See
+   * `task-registry.ts`.
+   */
+  readonly taskRegistry: TaskRegistry;
+}
+
+export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
+  /** This bureau's identity — {@link BureauOptions.id}, or a generated one. */
+  readonly id: string;
+  /**
+   * The reviews awaiting a human decision, and the decision (`list`, `get`, `resolve`,
+   * `pendingOf`). See {@link BureauReviews}.
+   */
+  readonly reviews: BureauReviews;
+  /**
+   * The durable schedules: `create`, `get`, `list`, `pause`, `resume`, `cancel`, `update`, the
+   * `agentName` and `inputPreview` of an agent schedule, and the schedule definition's event
+   * history (`events`, `subscribeEvents`). See {@link BureauSchedules}.
+   */
+  readonly schedules: BureauSchedules;
+  /**
+   * The seam the handler and the test harness read: stores, event feeds, and the task registry.
+   * It is not part of the surface an application builds on. See {@link BureauInternals}.
+   */
+  readonly internals: BureauInternals;
+  /**
+   * The runtime this bureau runs on: {@link BureauOptions.runtime}, or the process's own services
+   * when none was given. An adapter that compares a deadline or schedules a timer for the
+   * bureau (the A2A mount of `createBureauHandler`) reads it here, so a custom runtime governs
+   * the adapter too and not only the bureau.
+   */
+  readonly runtimeServices: RuntimeServices;
   readonly memory: GovernedMemory | undefined;
   /**
    * The model namespace: the catalog the deployment offers (`catalog()`, `replace(rows)`), the
@@ -1367,25 +1656,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   getOwner(resource: OwnedResource): Promise<string | undefined>;
 
   /**
-   * The name of the catalog agent an agent schedule runs, or `undefined` when there is no such
-   * schedule, when it is a workflow file's schedule (which runs no agent of its own), or when no
-   * durable engine is composed. It is read from the schedule's stored input and is the only part
-   * of that input this returns: never its text or its session. It does not check who may see the
-   * schedule, so a caller answers to {@link Bureau.getOwner} first.
-   */
-  getScheduleAgentName(scheduleId: string): Promise<string | undefined>;
-
-  /**
-   * The start of the text an agent schedule sends each fire: at most 500 characters, ending in `…`
-   * when it was cut, so a schedule can be told by what it says. `undefined` when there is no such
-   * schedule, when it is a workflow file's, when its input holds no text, or when no durable engine
-   * is composed. It reads the stored input beside {@link Bureau.getScheduleAgentName}, never its
-   * session, and does not check who may see the schedule, so a caller answers to
-   * {@link Bureau.getOwner} first.
-   */
-  getScheduleInputPreview(scheduleId: string): Promise<string | undefined>;
-
-  /**
    * Subscribes to live liveness updates for a run (AB-88/AB-214),
    * delegating to the underlying `ActiveRun`'s `subscribeSnapshot`. Delivers
    * the current snapshot synchronously before returning, then a new
@@ -1415,18 +1685,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * returns its terminal summary.
    */
   abortRun(id: string): RunSummary;
-
-  /**
-   * AB-369: every run `abortRun` has requested cancellation for but whose
-   * `activeRun.closed()` has not yet settled — the same `abortingRunIds`
-   * bookkeeping `abortRun` itself maintains, read publicly rather than
-   * inferred. `since` is the {@link RuntimeServices.clock} timestamp
-   * `abortRun` recorded when it first requested cancellation for that run.
-   * A run still listed here long after its abort should have settled is a
-   * genuine leak — {@link BureauQuiescenceReport} (`bureau/test`) surfaces
-   * it as a non-quiescent row.
-   */
-  listAbortingRuns(): readonly AbortingRun[];
 
   /**
    * Read the durable engine's view of a run: its full {@link WorkflowState}
@@ -1618,22 +1876,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   ): Promise<SessionInputAdmissionOutcome>;
 
   /**
-   * COR-1490 — resolves once the session has recorded the end of the run `runId`, however long
-   * its save takes (it waits on the save itself, never on a count of turns), and at once for a run
-   * whose end is already recorded or that this process does not hold (so a reader in another
-   * process can read a session that does not yet hold the run's final rows).
-   *
-   * Rejects when the run ended without this process saving its end: the engine lost a checkpoint
-   * compare-and-swap or was disposed and abandoned the run to whoever owns it, or the Bureau shut
-   * down first. The rejection comes when the run's own result settles, never at a deadline. A save
-   * that starts and keeps failing does not reject: it is diagnosed after its last attempt and this
-   * resolves, so a reader should check that the session holds what it needs. A reader that needs
-   * the thread as the run left it, such as the AG-UI mount's end-of-run snapshot, waits here before
-   * it reads the session.
-   */
-  whenRunRecorded(runId: string): Promise<void>;
-
-  /**
    * COR-1490 — the identifiers of the conversation rows `runId` itself took session input into,
    * in delivery order, from the durable delivery record (which commits with the transcript the
    * run saved). Empty for a run that delivered none, and for a Bureau with no session mailbox.
@@ -1731,72 +1973,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   forkSession(sessionId: string, request: ForkSessionRequest): Promise<ForkSessionResult>;
 
   /**
-   * List every parked run awaiting human review (AB-20): armorer's
-   * `needs_approval` tool-approval flow AND durable `requestHumanInput`
-   * (`ctx.waitForSignal`) waits, across all live runs. Newest requests last
-   * are NOT guaranteed — order is run-registration order, not age order.
-   * Excludes items already resolved via `resolveReview` (approved, denied, or
-   * rejected), even if the underlying run has not produced further activity.
-   * Also excludes any `tool-approval` review whose binding's `expiresAt` is at
-   * or before the current clock time (AB-46) — a read-time filter with no
-   * write; the expiry pass is the write that transitions it to `'expired'`.
-   */
-  listPendingReviews(): PendingReview[];
-
-  /**
-   * Look up one review by id, live or resolved (AB-46). For a still-pending
-   * id this is `listPendingReviews()`'s live scan. For a resolved id, this
-   * reconstructs `PendingReview & { status }` from the chronologically-last
-   * `review.*` audit-trail record matching `detail.review.id === id` —
-   * `undefined` when no audit trail is configured (ephemeral bureau) or when
-   * `id` matches nothing at all.
-   */
-  getReview(
-    id: string,
-  ): Promise<(PendingReview & { status: ReviewStatus; resolvedBy?: string }) | undefined>;
-
-  /**
-   * The human waits a run is still parked on, read from durable state (COR-1579), so a process
-   * that shares a durable store with the one holding the run can list, read and resolve its park.
-   * When this process holds the run it returns the run's entries from
-   * {@link Bureau.listPendingReviews}. Otherwise it derives the park as recovery does: the park,
-   * its ordinal and its prompt from the run's checkpoint, still pending while the engine's
-   * `waitingForSignals` names its signal. A session run's review carries the session from the
-   * durable run input; a `bureau.run()` run's carries none. Empty for a run that is not parked on
-   * a human wait, or that this Bureau has no durable engine to read. Pending tool approvals are
-   * not derived.
-   */
-  pendingHumanWaitsOfRun(runId: string): Promise<PendingHumanWaitReview[]>;
-
-  /**
-   * Approve, deny, or reject a pending review (AB-46). Approve resumes the
-   * run: a `tool-approval` calls `Toolbox.resumeApproval` on the bureau's
-   * toolbox and returns its `ToolExecutionResult`; a `human-wait` calls
-   * `signalSession` with the parked signal name. Deny records the decision
-   * without resuming anything for `tool-approval` (the binding is revoked; no
-   * run to continue), and delivers `{ __abDenied: true, reason? }` on the
-   * parked signal for `human-wait`, continuing that run one generation step.
-   * Reject is deny plus a REQUIRED `input.reason`: `resolveReview` throws
-   * `BureauError('reject requires a reason', 'BAD_REQUEST')` before any state
-   * change when it is absent or empty. A `tool-approval` reject echoes
-   * `input.reason` on `ResolveReviewResult.feedback`; a `human-wait` reject
-   * delivers `{ __abRejected: true, reason: input.reason }` on the signal.
-   * Every resolution is recorded in the audit trail attributed to
-   * `input.principal`.
-   *
-   * A `tool-approval` resolution also writes its outcome into the session's
-   * conversation (COR-855): the executed result on approve, an error result
-   * carrying the reason on deny and reject, each replacing the pending
-   * `action_required` tool-result row in place, so the next run started on the
-   * session answers an up-to-date conversation. A resolution the policy gates
-   * again (`superseded`) writes nothing.
-   *
-   * Throws `BureauError('NOT_FOUND')` when `input.id` does not match a
-   * currently pending review (including an already-resolved one).
-   */
-  resolveReview(input: ResolveReviewInput): Promise<ResolveReviewResult>;
-
-  /**
    * Installs the host-owned authority freshness check used immediately before
    * a delayed tool approval is resumed. Transports that issue revocable
    * credentials should configure this when they attach to the bureau.
@@ -1846,64 +2022,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    *   finishes.
    */
   waitForRecovery?(): Promise<BureauRecoveryReport>;
-
-  /**
-   * Register a durable recurring schedule via `engine.schedule(...)`.
-   * Throws `ScheduleLocatorUnavailableError` when the schedule was created
-   * but its summary could not be immediately retrieved — the schedule IS
-   * registered in that case, only its locator failed. Returns `undefined`
-   * when no durable engine is composed.
-   */
-  createSchedule(definition: DurableScheduleDefinition): Promise<ScheduleSummary | undefined>;
-
-  /**
-   * Retrieve a durable schedule by id. Returns `null` when the schedule does not
-   * exist, `undefined` when no durable engine is composed.
-   */
-  getSchedule(scheduleId: string): Promise<ScheduleSummary | null | undefined>;
-
-  /**
-   * List durable schedules, optionally filtered. Returns `undefined` when no
-   * durable engine is composed.
-   */
-  listSchedules(filter?: ScheduleFilter): Promise<PaginatedResult<ScheduleSummary> | undefined>;
-
-  /**
-   * Pause a durable schedule. Returns `true` on success, `undefined` when no
-   * durable engine is composed. With `guard.expectedRevision`, the pause applies only if the
-   * schedule's `revision` is still that value, and a mismatch throws Weft's
-   * `ScheduleStaleRevisionError` having written nothing; Weft compares it inside its serialized
-   * write, so Bureau never compares it itself.
-   */
-  pauseSchedule(scheduleId: string, guard?: ScheduleRevisionGuard): Promise<true | undefined>;
-
-  /**
-   * Resume a paused durable schedule. Returns `true` on success, `undefined` when no durable
-   * engine is composed. `guard` as for {@link Bureau.pauseSchedule}.
-   */
-  resumeSchedule(scheduleId: string, guard?: ScheduleRevisionGuard): Promise<true | undefined>;
-
-  /**
-   * Cancel and permanently delete a durable schedule. Returns `true` on success,
-   * `undefined` when no durable engine is composed. `guard` as for {@link Bureau.pauseSchedule}.
-   */
-  cancelSchedule(scheduleId: string, guard?: ScheduleRevisionGuard): Promise<true | undefined>;
-
-  /**
-   * Change a durable schedule's cadence, description, and overlap policy (COR-1482), by wrapping
-   * Weft's `updateSchedule`. Weft replaces the cadence wholesale, so `update.spec` is required, in
-   * the same grammar as {@link DurableScheduleDefinition.spec}. The schedule's input, agent, owner
-   * and session are not changed. Resolves `true`, or `undefined` when no durable engine is
-   * composed. A schedule that does not exist, and a workflow file's schedule (which belongs to its
-   * file), reject with `NOT_FOUND`; an overlap Bureau does not offer, or `'allow'` on a schedule
-   * with a recurring session, rejects with `BAD_REQUEST`. `guard` as for
-   * {@link Bureau.pauseSchedule}.
-   */
-  updateSchedule(
-    scheduleId: string,
-    update: DurableScheduleUpdate,
-    guard?: ScheduleRevisionGuard,
-  ): Promise<true | undefined>;
 
   /**
    * Subscribe to every live frame. The FIRST subscriber is also replayed, in
@@ -1990,16 +2108,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * of the policy passed to the later call.
    */
   shutdown(options?: BureauShutdownOptions): Promise<BureauShutdownReport>;
-
-  readonly sessionStore: SessionStore | undefined;
-  readonly kv: ConditionalTextValueStore | undefined;
-  /**
-   * COR-1481 — the task registry behind `bureau.tasks.*`: the durable record of
-   * each top-level run (its owner, context, originating message, and how it ended),
-   * and the reads and cancellation the management plane serves over it. See
-   * `task-registry.ts`.
-   */
-  readonly tasks: TaskRegistry;
   /**
    * COR-1631 — the task's interactive surfaces: create, compare-and-swap update,
    * snapshot, action admission, close, owner abort, and cleanup, kept in the
@@ -2013,38 +2121,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * `shutdown()` has closed admission, `stopped` once it has completed.
    */
   readonly lifecycle: 'ready' | 'draining' | 'stopped';
-
-  /**
-   * The durable audit trail (Layer B glass-box).
-   *
-   * Present when the bureau has a KV store configured (`storage`). `undefined`
-   * when the bureau is ephemeral (no `storage`).
-   *
-   * The audit trail sinks `tool.*`, `run.*`, and `step.completed` events into
-   * the KV store as an append-only log. Use `auditTrail.query()` to read them
-   * back with optional `since`, `runId`, and `type` filters.
-   *
-   * Layer A (live) = `store.getState()` + `memory.list()` + `getSession()`.
-   * Layer B (durable) = `auditTrail.query()`.
-   */
-  readonly auditTrail: AuditTrail | undefined;
-
-  /**
-   * The webhook notifier (AB-21). Present whenever `options.webhooks.targets`
-   * is non-empty; `undefined` when no webhooks are configured (the default).
-   * Use `webhookNotifier.listDeliveries()` to inspect durable delivery state.
-   */
-  readonly webhookNotifier: WebhookNotifier | undefined;
-
-  /**
-   * The online eval sampler (AB-53). Present whenever `options.onlineEvals`
-   * configures at least one judge with a positive `sampleRate`; `undefined`
-   * when online evals are disabled (the default). Use
-   * `onlineEvalSampler.sampledCount()`/`observedCount()` to inspect sampling
-   * state and `onlineEvalSampler.flush()` to await in-flight judge
-   * evaluations deterministically.
-   */
-  readonly onlineEvalSampler: OnlineEvalSampler | undefined;
 
   /**
    * The managed-asset service (COR-794). Present whenever `options.assets`
@@ -2181,7 +2257,7 @@ export interface EventHistoryDeletedAggregateOutcome extends DurableEventPage {
 /**
  * AB-369: a run `abortRun` requested cancellation for whose cleanup has not
  * yet settled — one row per entry `abortRun`'s own `abortingRunIds`
- * bookkeeping holds. See {@link Bureau.listAbortingRuns}.
+ * bookkeeping holds. See {@link Bureau.internals.abortingTasks}.
  */
 export interface AbortingRun {
   readonly runId: string;
@@ -2526,7 +2602,7 @@ export type ServerFrame =
 
 /**
  * Parameters for registering a durable bureau schedule via
- * {@link Bureau.createSchedule}. The schedule fires the named `agentName`
+ * {@link BureauSchedules.create}. The schedule fires the named `agentName`
  * on the given `spec`; each fire is either a fresh session (no `sessionId`)
  * or appended to the same persistent session (`sessionId` given).
  */
@@ -2538,7 +2614,7 @@ export interface ScheduleRevisionGuard {
   readonly expectedRevision?: number | undefined;
 }
 
-/** What {@link Bureau.updateSchedule} changes. Omitted `description` and `overlap` keep their values. */
+/** What {@link BureauSchedules.update} changes. Omitted `description` and `overlap` keep their values. */
 export interface DurableScheduleUpdate {
   /** The schedule's new cadence: a cron expression or a Weft duration shorthand, as at creation. */
   readonly spec: string;

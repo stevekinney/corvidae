@@ -52,7 +52,7 @@ import type {
 } from './a2a-push-checkpoint.ts';
 import { isTerminal } from './a2a-task-projection.ts';
 import type { A2ATaskReader } from './a2a-task-reader.ts';
-import { formsOf } from './a2a-input-forms.ts';
+import { type FormsAuditInternals, formsOf } from './a2a-input-forms.ts';
 import {
   type A2AStreamBureau,
   createFoldProjector,
@@ -79,7 +79,9 @@ const SWEEP_MS = 3_600_000;
 export type A2APushBureau = A2AStreamBureau & {
   /** The Bureau's life: the projector stops once it is no longer `ready`. */
   readonly lifecycle: 'ready' | 'draining' | 'stopped';
-  readonly tasks: Pick<TaskRegistry, 'get' | 'onSettled' | 'onChanged'>;
+  readonly internals: FormsAuditInternals & {
+    readonly taskRegistry: Pick<TaskRegistry, 'get' | 'onSettled' | 'onChanged'>;
+  };
 };
 
 /** The sender and outbox a Bureau delivers push notifications through. */
@@ -272,7 +274,7 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
       await checkpoints.remove(taskId, configId);
       return true;
     }
-    const initial = await bureau.tasks.get(taskId);
+    const initial = await bureau.internals.taskRegistry.get(taskId);
     if (initial === undefined) return true;
     const retained = await readRetained(bureau, taskId, checkpoint.cursor);
     if (retained === undefined) return true;
@@ -302,7 +304,7 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
       // A `task.resynced` restates a status a failed append lost: it is delivered as the status.
       const element = statusElementOf(projected);
       if (element !== undefined) {
-        view ??= (await bureau.tasks.get(taskId)) ?? initial;
+        view ??= (await bureau.internals.taskRegistry.get(taskId)) ?? initial;
         const reply = element.status === 'completed' ? await reader.replyOf(view) : undefined;
         // One terminal delivery per configuration, whichever source fired first.
         const duplicateTerminal = isTerminal(element.status) && terminalSent;
@@ -396,7 +398,7 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
   async function pumpTask(taskId: string): Promise<boolean> {
     // A configuration installed in the window after its task was removed is cleaned up here, as
     // the removal listener's own pass could already have finished.
-    if ((await bureau.tasks.get(taskId)) === undefined) {
+    if ((await bureau.internals.taskRegistry.get(taskId)) === undefined) {
       await cleanup(taskId);
       return true;
     }
@@ -478,8 +480,8 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
     // The registry changes a task without a durable event (it starts working, or fails with no
     // record), so its changes pump too, as a stream's do.
     const unwatchRegistry = [
-      bureau.tasks.onChanged(taskId, () => trigger()),
-      bureau.tasks.onSettled(taskId, () => trigger()),
+      bureau.internals.taskRegistry.onChanged(taskId, () => trigger()),
+      bureau.internals.taskRegistry.onSettled(taskId, () => trigger()),
     ];
     const subscribe = (): void => {
       subscription = new AbortController();
@@ -560,7 +562,7 @@ export function createA2APushProjector(options: A2APushProjectorOptions): A2APus
   /** Recovers one task's checkpoints. Resolves the failure, or `undefined` on success. */
   async function recoverTask(taskId: string): Promise<{ readonly error: unknown } | undefined> {
     try {
-      if ((await bureau.tasks.get(taskId)) === undefined) await cleanup(taskId);
+      if ((await bureau.internals.taskRegistry.get(taskId)) === undefined) await cleanup(taskId);
       else {
         // Under the task's fence, so an install of the same task cannot race its reconciliation.
         await fence(taskId, () => reconcile(taskId));

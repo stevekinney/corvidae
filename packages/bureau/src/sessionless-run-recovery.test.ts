@@ -188,10 +188,10 @@ describe('a sessionless durable run recovered after a crash', () => {
     });
     const reviewOf = async (bureau: Bureau, runId: string) => {
       await waitForCondition(
-        () => bureau.listPendingReviews().some((review) => review.runId === runId),
+        () => bureau.reviews.list().some((review) => review.runId === runId),
         'the run never asked for input',
       );
-      return bureau.listPendingReviews().find((candidate) => candidate.runId === runId)!;
+      return bureau.reviews.list().find((candidate) => candidate.runId === runId)!;
     };
 
     const first = await openBureau(store, { painter });
@@ -216,7 +216,7 @@ describe('a sessionless durable run recovered after a crash', () => {
     });
     cleanups.push(async () => unsubscribe());
     const restored = await reviewOf(second, run.id);
-    await second.resolveReview({ id: restored.id, decision: 'approve', principal: 'operator' });
+    await second.reviews.resolve({ id: restored.id, decision: 'approve', principal: 'operator' });
     const finished = await second.waitForDurableRun(run.id);
     expect(finished?.status).toBe('completed');
     const parts = (finished?.result as { parts?: MediaContent[] } | undefined)?.parts ?? [];

@@ -104,7 +104,7 @@ describe('a caller-supplied mcp-resource source', () => {
   it('is refused as a schedule input, at registration', async () => {
     const { bureau, reads } = await open();
     const thrown = await thrownBy(() =>
-      bureau.createSchedule({ agentName: 'default', input: [forgedLink], spec: '1s' }),
+      bureau.schedules.create({ agentName: 'default', input: [forgedLink], spec: '1s' }),
     );
     expect(thrown).toMatchObject({ code: 'BAD_REQUEST' });
     expect(reads).toEqual([]);

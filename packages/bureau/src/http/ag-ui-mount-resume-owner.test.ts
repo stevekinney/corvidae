@@ -138,9 +138,12 @@ describe('a resume that reads a session another owner created under the threadâ€
       const handler = aliceHandlerOver({
         ...bureau,
         // A review read back after a restart names no agent; the session's agent stands in for it.
-        getReview: async (id): Promise<PendingReview | undefined> => {
-          const found = await bureau.getReview(id);
-          return found === undefined ? undefined : { ...found, agentName: undefined };
+        reviews: {
+          ...bureau.reviews,
+          get: async (id): Promise<PendingReview | undefined> => {
+            const found = await bureau.reviews.get(id);
+            return found === undefined ? undefined : { ...found, agentName: undefined };
+          },
         },
         getSession: async (id) => {
           const session = await bureau.getSession(id);
@@ -155,7 +158,7 @@ describe('a resume that reads a session another owner created under the threadâ€
         type: EventType.RUN_ERROR,
         code: 'INTERRUPT_NOT_FOUND',
       });
-      expect(bureau.listPendingReviews()).toHaveLength(1);
+      expect(bureau.reviews.list()).toHaveLength(1);
     });
   });
 
@@ -177,7 +180,7 @@ describe('a resume that reads a session another owner created under the threadâ€
         type: EventType.RUN_ERROR,
         code: 'CONTINUATION_UNAVAILABLE',
       });
-      expect(bureau.listPendingReviews()).toHaveLength(1);
+      expect(bureau.reviews.list()).toHaveLength(1);
     });
   });
 
@@ -189,10 +192,13 @@ describe('a resume that reads a session another owner created under the threadâ€
       let resolved = false;
       const handler = aliceHandlerOver({
         ...bureau,
-        resolveReview: async (...args) => {
-          const outcome = await bureau.resolveReview(...args);
-          resolved = true;
-          return outcome;
+        reviews: {
+          ...bureau.reviews,
+          resolve: async (...args) => {
+            const outcome = await bureau.reviews.resolve(...args);
+            resolved = true;
+            return outcome;
+          },
         },
         getSession: async (id) => {
           const session = await bureau.getSession(id);

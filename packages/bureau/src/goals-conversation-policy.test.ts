@@ -62,8 +62,9 @@ async function ended(bureau: Bureau, goalRunId = 'g1'): Promise<GoalState> {
 }
 
 function sessionsOf(bureau: Bureau): SessionStore {
-  if (bureau.sessionStore === undefined) throw new Error('the bureau has no session store');
-  return bureau.sessionStore;
+  if (bureau.internals.sessionStore === undefined)
+    throw new Error('the bureau has no session store');
+  return bureau.internals.sessionStore;
 }
 
 /** The session's runs as `[runId, status]`, and its transcript. */

@@ -467,7 +467,7 @@ const ravens = await bureau.children.wait({ parentRunId, childRunId: 'research-r
 const stopped = await bureau.children.wait({ parentRunId, childRunId: 'research-crows' });
 // { outcome: 'settled', child: { status: 'aborted', outcome: { reason: 'duplicate work' } } }
 
-const history = await bureau.auditTrail?.query({ runId: 'research-crows' });
+const history = await bureau.internals.auditTrail?.query({ runId: 'research-crows' });
 // history?.map((record) => record.type) → ['child.started', 'child.aborted']
 
 plannerRun.abort('report planned');

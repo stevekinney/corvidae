@@ -269,7 +269,7 @@ async function waitForRunCompletion(bureau: Bureau, runId: string) {
  * has already settled by the time this is called or settles later.
  */
 async function waitForRunSettled(bureau: Bureau, runId: string): Promise<void> {
-  const runFeed = bureau.runEventFeeds.get(runId);
+  const runFeed = bureau.internals.runEventFeeds.get(runId);
   if (!runFeed) {
     throw new Error(`No run event feed registered for run ${runId}`);
   }
@@ -619,7 +619,7 @@ describe('createBureau', () => {
       agents: {},
       store,
     });
-    expect(bureau.store).toBe(store);
+    expect(bureau.internals.store).toBe(store);
   });
 
   it('AB-387: stamps Action.timestamp from the bureau-level manual runtime clock when no store is supplied', async () => {
@@ -638,7 +638,7 @@ describe('createBureau', () => {
 
     try {
       const summary = await bureau.createRun({ agentName: 'default', message: 'stamp check' });
-      const runState = bureau.store.getRun(summary.id);
+      const runState = bureau.internals.store.getRun(summary.id);
       expect(runState?.actions.length).toBeGreaterThan(0);
       for (const action of runState?.actions ?? []) {
         expect(action.timestamp).toBe(pinnedTime);
@@ -734,7 +734,7 @@ describe('createBureau', () => {
     expect(summary.id).toBeString();
     expect(summary.sessionId).toBeString();
     expect(summary.status).toBe('running');
-    expect(bureau.store.getRun(summary.id)).toBeDefined();
+    expect(bureau.internals.store.getRun(summary.id)).toBeDefined();
   });
 
   it('preserves native malformed ownership-map merge behavior for strings and sparse arrays', async () => {
@@ -825,7 +825,7 @@ describe('createBureau', () => {
       expect(contents[0]).toBe('Hello');
       expect(contents.at(-1)).toBe('All done.');
       expect(transcript).toEqual(
-        bureau.store.getRun(summary.id)?.steps.at(-1)?.conversation.current,
+        bureau.internals.store.getRun(summary.id)?.steps.at(-1)?.conversation.current,
       );
       expect(JSON.parse(JSON.stringify(detail)).transcript).toEqual(transcript);
     } finally {
@@ -924,7 +924,7 @@ describe('createBureau', () => {
     });
 
     // Capture tool.started events via the ActiveRun's event surface.
-    const runState = bureau.store.getRun(summary.id);
+    const runState = bureau.internals.store.getRun(summary.id);
     runState?.activeRun.addEventListener('tool.started', (event) => {
       capturedStamps.push({
         agentName: event.agentName,
@@ -966,7 +966,7 @@ describe('createBureau', () => {
       message: 'Stamp test',
     });
 
-    const runState = bureau.store.getRun(summary.id);
+    const runState = bureau.internals.store.getRun(summary.id);
     runState?.activeRun.addEventListener('tool.started', (event) => {
       capturedStamps.push({ agentName: event.agentName, runId: event.runId });
     });
@@ -2732,7 +2732,8 @@ describe('createBureau', () => {
         const reference = bureauReference;
         recordedWhenCallbackRan = (async () => {
           const kinds: string[] = [];
-          for await (const envelope of reference.eventFeed.feed.replay()) kinds.push(envelope.kind);
+          for await (const envelope of reference.internals.eventFeed.feed.replay())
+            kinds.push(envelope.kind);
           return kinds;
         })();
       },
@@ -2764,7 +2765,7 @@ describe('createBureau', () => {
         replayedFrames += 1;
         if (!causing && replayedFrames === 1) {
           causing = true;
-          bureau.store.recordAction(runId, 'test.cause-a-frame', {});
+          bureau.internals.store.recordAction(runId, 'test.cause-a-frame', {});
           causing = false;
         }
       });
@@ -3289,7 +3290,7 @@ describe('createBureau', () => {
         message: 'Recover into the audit trail',
       });
       await pollUntil(() => bureauAReachedStep1);
-      await bureauA.sessionStore!.update(run.sessionId, (session) => ({
+      await bureauA.internals.sessionStore!.update(run.sessionId, (session) => ({
         ...session!,
         metadata: {
           ...session!.metadata,
@@ -3364,7 +3365,7 @@ describe('createBureau', () => {
         // so it survives the restart and is queryable from the durable trail.
         let auditRecords: AuditRecord[] = [];
         await pollUntil(async () => {
-          auditRecords = (await bureauB.auditTrail?.query({ runId: run.id })) ?? [];
+          auditRecords = (await bureauB.internals.auditTrail?.query({ runId: run.id })) ?? [];
           return auditRecords.some((record) => record.type === 'run.completed');
         });
         const completed = auditRecords.filter((record) => record.type === 'run.completed');
@@ -3652,7 +3653,7 @@ describe('createBureau', () => {
       // Subscribe to tool.started on the reattached ActiveRun BEFORE recovery
       // events drain. bureauB's createBureau calls recoverDurableRuns synchronously
       // before returning, so store.getRun may already resolve.
-      const runState = bureauB.store.getRun(run.id);
+      const runState = bureauB.internals.store.getRun(run.id);
       runState?.activeRun.addEventListener('tool.started', (event) => {
         capturedStamps.push({ agentName: event.agentName, runId: event.runId });
       });
@@ -4194,13 +4195,13 @@ describe('createBureau', () => {
     const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
     await invoked;
 
-    expect(bureau.listAbortingRuns()).toEqual([]);
+    expect(bureau.internals.abortingTasks()).toEqual([]);
 
     const expectedSince = runtime.clock.now();
     const aborted = bureau.abortRun(run.id);
     expect(aborted.status).toBe('aborting');
 
-    const abortingRuns = bureau.listAbortingRuns();
+    const abortingRuns = bureau.internals.abortingTasks();
     expect(abortingRuns).toHaveLength(1);
     expect(abortingRuns[0]?.runId).toBe(run.id);
     expect(abortingRuns[0]?.since).toBe(expectedSince);
@@ -4211,7 +4212,7 @@ describe('createBureau', () => {
     // past `'running'` either — this is a leak the pre-AB-369 baseline could
     // only prove via mutation testing, never observe from a public surface.
     for (let i = 0; i < 20; i++) await Promise.resolve();
-    expect(bureau.listAbortingRuns().map((entry) => entry.runId)).toContain(run.id);
+    expect(bureau.internals.abortingTasks().map((entry) => entry.runId)).toContain(run.id);
     expect(bureau.getRun(run.id)?.status).toBe('running');
 
     bureau.dispose();
@@ -4225,7 +4226,7 @@ describe('createBureau', () => {
     // several microtask ticks before `closed()` — chained through `result`'s
     // OWN `.then()`s — ever resolves. A repeat `abortRun` call that lands in
     // that window must NOT delete the `abortingRunIds` entry itself (review
-    // finding, PR #583): doing so would let `listAbortingRuns()` — and
+    // finding, PR #583): doing so would let `internals.abortingTasks()` — and
     // `BureauQuiescenceReport` — under-report a cleanup that has not
     // genuinely settled yet, exactly the invisible leak this issue exists to
     // close. Only the `closed()` continuation may clear the entry.
@@ -4242,7 +4243,7 @@ describe('createBureau', () => {
     let caughtWindow = false;
     for (let i = 0; i < 200; i++) {
       const status = bureau.getRun(run.id)?.status;
-      const hasEntry = bureau.listAbortingRuns().some((entry) => entry.runId === run.id);
+      const hasEntry = bureau.internals.abortingTasks().some((entry) => entry.runId === run.id);
       if (status !== 'running' && hasEntry) {
         caughtWindow = true;
         break;
@@ -4251,18 +4252,20 @@ describe('createBureau', () => {
       await Promise.resolve();
     }
     expect(caughtWindow).toBe(true);
-    expect(bureau.listAbortingRuns().map((entry) => entry.runId)).toContain(run.id);
+    expect(bureau.internals.abortingTasks().map((entry) => entry.runId)).toContain(run.id);
 
     // The repeat call returns the run's current (already non-running)
     // summary, matching `abortRun`'s existing idempotency contract — but it
     // must leave the still-pending `abortingRunIds` entry alone.
     const repeat = bureau.abortRun(run.id);
     expect(repeat.status).not.toBe('aborting');
-    expect(bureau.listAbortingRuns().map((entry) => entry.runId)).toContain(run.id);
+    expect(bureau.internals.abortingTasks().map((entry) => entry.runId)).toContain(run.id);
 
     // It clears only once `closed()` genuinely settles.
-    await pollUntil(() => !bureau.listAbortingRuns().some((entry) => entry.runId === run.id));
-    expect(bureau.listAbortingRuns().map((entry) => entry.runId)).not.toContain(run.id);
+    await pollUntil(
+      () => !bureau.internals.abortingTasks().some((entry) => entry.runId === run.id),
+    );
+    expect(bureau.internals.abortingTasks().map((entry) => entry.runId)).not.toContain(run.id);
 
     bureau.dispose();
   });
@@ -4277,10 +4280,12 @@ describe('createBureau', () => {
 
     const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
     bureau.abortRun(run.id);
-    expect(bureau.listAbortingRuns().map((entry) => entry.runId)).toContain(run.id);
+    expect(bureau.internals.abortingTasks().map((entry) => entry.runId)).toContain(run.id);
 
-    await pollUntil(() => !bureau.listAbortingRuns().some((entry) => entry.runId === run.id));
-    expect(bureau.listAbortingRuns().map((entry) => entry.runId)).not.toContain(run.id);
+    await pollUntil(
+      () => !bureau.internals.abortingTasks().some((entry) => entry.runId === run.id),
+    );
+    expect(bureau.internals.abortingTasks().map((entry) => entry.runId)).not.toContain(run.id);
 
     bureau.dispose();
   });
@@ -4380,7 +4385,7 @@ describe('createBureau', () => {
 
     try {
       const { activeRun, emitter } = createParkedActiveRun();
-      const runId = bureau.store.register(activeRun, 'run-abort-double-revoke');
+      const runId = bureau.internals.store.register(activeRun, 'run-abort-double-revoke');
       // A run registered by hand has no composed toolbox; this one is the run's own.
       scheduledFireReviewStateOf(bureau).runToolboxesByRunId.set(runId, toolbox);
       const approvalReviewId = `approval:${runId}:call-double-revoke`;
@@ -4452,7 +4457,7 @@ describe('createBureau', () => {
         }),
       );
 
-      expect(bureau.listPendingReviews().map((review) => review.id)).toEqual([approvalReviewId]);
+      expect(bureau.reviews.list().map((review) => review.id)).toEqual([approvalReviewId]);
 
       // Synchronous back-to-back calls, matching the doc comment's own
       // "same-run repeat call while it is still `'running'`" scenario — no
@@ -4462,11 +4467,11 @@ describe('createBureau', () => {
       bureau.abortRun(runId);
       bureau.abortRun(runId);
 
-      await pollUntil(() => bureau.listPendingReviews().length === 0);
+      await pollUntil(() => bureau.reviews.list().length === 0);
 
       expect(revokeCalls).toBe(1);
 
-      const records = await bureau.auditTrail!.query({ runId });
+      const records = await bureau.internals.auditTrail!.query({ runId });
       const canceledRecords = records.filter(
         (record) =>
           record.type === 'review.tool-approval.canceled' &&
@@ -4867,7 +4872,7 @@ describe('createBureau', () => {
       message: 'Request approval then delete the run',
     });
     await waitForRunCompletion(bureau, run.id);
-    expect(bureau.listPendingReviews()).toHaveLength(1);
+    expect(bureau.reviews.list()).toHaveLength(1);
 
     failNextDeletionPersistence = true;
     await withAdvancingClock(runtime, retireSettledTasks(bureau, runtime));
@@ -4890,11 +4895,11 @@ describe('createBureau', () => {
     // and the acknowledgement of each of those three outbox entries (6). So the assertion waits
     // for the outbox to empty and then counts every batch.
     for await (const _turn of awakeTurns()) {
-      const pending = await bureau.sessionStore!.outbox.pending();
+      const pending = await bureau.internals.sessionStore!.outbox.pending();
       if (pending.length === 0) break;
       await yieldToPortableEventLoop();
     }
-    const stillPending = await bureau.sessionStore!.outbox.pending();
+    const stillPending = await bureau.internals.sessionStore!.outbox.pending();
     expect(stillPending).toEqual([]);
     expect(deletionPersistenceAttempts).toBe(10);
     const persistedSession = await bureau.getSession(run.sessionId);
@@ -4960,7 +4965,7 @@ describe('createBureau', () => {
       message: 'Request approval then delete the session',
     });
     await waitForRunCompletion(bureau, run.id);
-    expect(bureau.listPendingReviews()).toHaveLength(1);
+    expect(bureau.reviews.list()).toHaveLength(1);
 
     await bureau.deleteSession(run.sessionId);
     expect(revocations).toBe(1);
@@ -5272,7 +5277,7 @@ describe('createBureau', () => {
     }
   });
 
-  it('createSchedule registers a native schedule and returns its summary on a durable bureau (#109)', async () => {
+  it('schedules.create registers a native schedule and returns its summary on a durable bureau (#109)', async () => {
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({
@@ -5286,7 +5291,7 @@ describe('createBureau', () => {
     });
 
     try {
-      const summary = await bureau.createSchedule({
+      const summary = await bureau.schedules.create({
         agentName: 'default',
         input: 'Summarize overnight activity',
         spec: '0 9 * * *',
@@ -5301,9 +5306,9 @@ describe('createBureau', () => {
       expect(typeof summary?.id).toBe('string');
 
       // The schedule is then visible through the read surface.
-      const fetched = await bureau.getSchedule(summary!.id);
+      const fetched = await bureau.schedules.get(summary!.id);
       expect(fetched?.id).toBe(summary!.id);
-      const listed = await bureau.listSchedules();
+      const listed = await bureau.schedules.list();
       expect(listed?.items.some((schedule) => schedule.id === summary!.id)).toBe(true);
     } finally {
       bureau.dispose();
@@ -5317,9 +5322,9 @@ describe('createBureau', () => {
       },
     });
 
-    expect(bureau.auditTrail).toBeUndefined();
-    expect(bureau.webhookNotifier).toBeUndefined();
-    expect(bureau.onlineEvalSampler).toBeUndefined();
+    expect(bureau.internals.auditTrail).toBeUndefined();
+    expect(bureau.internals.webhookNotifier).toBeUndefined();
+    expect(bureau.internals.onlineEvalSampler).toBeUndefined();
     expect(bureau.completed).toBe(false);
     expect(bureau.signal.aborted).toBe(false);
 
@@ -5332,7 +5337,7 @@ describe('createBureau', () => {
     bureau.dispose();
   });
 
-  it('createSchedule registers a fixed-interval schedule for a weft duration spec', async () => {
+  it('schedules.create registers a fixed-interval schedule for a weft duration spec', async () => {
     // A weft duration grammar string (e.g. '6h', '5 minutes') is a fixed interval,
     // not cron — toScheduleSpec wraps it as { every } so weft parses it as an
     // interval. ISO-8601 (`PT6H`) is NOT weft duration grammar and stays cron.
@@ -5349,13 +5354,17 @@ describe('createBureau', () => {
     });
 
     try {
-      const hourly = await bureau.createSchedule({ agentName: 'default', input: 'x', spec: '6h' });
+      const hourly = await bureau.schedules.create({
+        agentName: 'default',
+        input: 'x',
+        spec: '6h',
+      });
       expect(hourly?.intervalMs).toBe(6 * 60 * 60 * 1000);
       expect(hourly?.cronExpression).toBeUndefined();
 
       // Multi-word weft durations are intervals too (the prior single-token regex
       // wrongly routed these to cron).
-      const everyFive = await bureau.createSchedule({
+      const everyFive = await bureau.schedules.create({
         agentName: 'default',
         input: 'x',
         spec: '5 minutes',
@@ -5367,7 +5376,7 @@ describe('createBureau', () => {
     }
   });
 
-  it('createSchedule refuses an agent the catalog does not resolve, naming it, and registers a known one (COR-1667)', async () => {
+  it('schedules.create refuses an agent the catalog does not resolve, naming it, and registers a known one (COR-1667)', async () => {
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
@@ -5377,8 +5386,8 @@ describe('createBureau', () => {
     });
 
     try {
-      const refusal = await bureau
-        .createSchedule({ agentName: 'nobody', input: 'x', spec: '0 9 * * *' })
+      const refusal = await bureau.schedules
+        .create({ agentName: 'nobody', input: 'x', spec: '0 9 * * *' })
         .then(
           () => undefined,
           (rejection: unknown) => rejection,
@@ -5389,10 +5398,10 @@ describe('createBureau', () => {
       expect((refusal as BureauError).code).toBe('NOT_FOUND');
       expect((refusal as Error).message).toContain('"nobody"');
       // Nothing was registered by the refused call.
-      const afterRefusal = await bureau.listSchedules();
+      const afterRefusal = await bureau.schedules.list();
       expect(afterRefusal?.items ?? []).toHaveLength(0);
 
-      const known = await bureau.createSchedule({
+      const known = await bureau.schedules.create({
         agentName: 'default',
         input: 'x',
         spec: '0 9 * * *',
@@ -5403,7 +5412,7 @@ describe('createBureau', () => {
     }
   });
 
-  it('createSchedule rejects a blank recurring sessionId and overlap:allow with a session (codex)', async () => {
+  it('schedules.create rejects a blank recurring sessionId and overlap:allow with a session (codex)', async () => {
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
@@ -5413,8 +5422,8 @@ describe('createBureau', () => {
     });
 
     try {
-      const blank = await bureau
-        .createSchedule({ agentName: 'default', input: 'x', spec: '0 9 * * *', sessionId: '   ' })
+      const blank = await bureau.schedules
+        .create({ agentName: 'default', input: 'x', spec: '0 9 * * *', sessionId: '   ' })
         .then(
           () => undefined,
           (rejection: unknown) => rejection,
@@ -5422,8 +5431,8 @@ describe('createBureau', () => {
       expect(blank).toBeInstanceOf(BureauError);
       expect((blank as BureauError).code).toBe('BAD_REQUEST');
 
-      const overlapping = await bureau
-        .createSchedule({
+      const overlapping = await bureau.schedules
+        .create({
           agentName: 'default',
           input: 'x',
           spec: '0 9 * * *',
@@ -5438,7 +5447,7 @@ describe('createBureau', () => {
       expect((overlapping as BureauError).code).toBe('BAD_REQUEST');
 
       // overlap:'allow' WITHOUT a session is fine (stateless fires may run concurrently).
-      const ok = await bureau.createSchedule({
+      const ok = await bureau.schedules.create({
         agentName: 'default',
         input: 'x',
         spec: '0 9 * * *',
@@ -5450,7 +5459,7 @@ describe('createBureau', () => {
     }
   });
 
-  it('createSchedule returns undefined (no-op) on a non-durable bureau', async () => {
+  it('schedules.create returns undefined (no-op) on a non-durable bureau', async () => {
     // Without a durable engine there is nothing to schedule; the method short-
     // circuits to undefined before any registration, matching the other
     // durable-only accessors.
@@ -5461,7 +5470,7 @@ describe('createBureau', () => {
     });
 
     try {
-      const result = await bureau.createSchedule({
+      const result = await bureau.schedules.create({
         agentName: 'researcher',
         input: 'noop',
         spec: '0 9 * * *',
@@ -5472,7 +5481,7 @@ describe('createBureau', () => {
     }
   });
 
-  it('createSchedule throws ScheduleLocatorUnavailableError naming the scheduleId when describe() rejects after registration', async () => {
+  it('schedules.create throws ScheduleLocatorUnavailableError naming the scheduleId when describe() rejects after registration', async () => {
     // Stub weft's own `ScheduleHandle.describe()` — what `createAgentSchedule`
     // delegates `handle.describe()` to on the successful-registration path —
     // to reject exactly once, simulating a schedule that registered but whose
@@ -5499,7 +5508,7 @@ describe('createBureau', () => {
     try {
       let caught: unknown;
       try {
-        await bureau.createSchedule({
+        await bureau.schedules.create({
           agentName: 'default',
           input: 'Summarize overnight activity',
           spec: '0 9 * * *',
@@ -5527,7 +5536,7 @@ describe('createBureau', () => {
       // The schedule IS registered despite the describe() failure — a fresh
       // describe (via getSchedule, unaffected by the mockRejectedValueOnce)
       // proves registration succeeded and only the locator call failed.
-      const fetched = await bureau.getSchedule(locatorError.scheduleId);
+      const fetched = await bureau.schedules.get(locatorError.scheduleId);
       expect(fetched?.status).toBe('active');
     } finally {
       describeSpy.mockRestore();
@@ -5690,7 +5699,7 @@ describe('createBureau schedule management sentinel (regression PRRT_kwDORvupsc6
   // "no durable engine". Routes checking `result === undefined` would therefore
   // return 501 even when the operation succeeded.
 
-  it('pauseSchedule / resumeSchedule / cancelSchedule return undefined when no durable engine is composed', async () => {
+  it('schedules.pause / resume / cancel return undefined when no durable engine is composed', async () => {
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({ generate: createMockGenerate(), toolbox: createEmptyToolbox() }),
@@ -5698,14 +5707,14 @@ describe('createBureau schedule management sentinel (regression PRRT_kwDORvupsc6
       // No storage / durable — no engine
     });
 
-    expect(await bureau.pauseSchedule('sched-1')).toBeUndefined();
-    expect(await bureau.resumeSchedule('sched-1')).toBeUndefined();
-    expect(await bureau.cancelSchedule('sched-1')).toBeUndefined();
+    expect(await bureau.schedules.pause('sched-1')).toBeUndefined();
+    expect(await bureau.schedules.resume('sched-1')).toBeUndefined();
+    expect(await bureau.schedules.cancel('sched-1')).toBeUndefined();
 
     bureau.dispose();
   });
 
-  it('pauseSchedule / resumeSchedule / cancelSchedule return true when a durable engine is composed', async () => {
+  it('schedules.pause / resume / cancel return true when a durable engine is composed', async () => {
     // Build a throwaway probe so we can reach the bundled Engine prototype.
     const probe = await createRuntimeComposition({
       generate: createMockGenerate(),
@@ -5738,9 +5747,9 @@ describe('createBureau schedule management sentinel (regression PRRT_kwDORvupsc6
 
       try {
         // Each method must return true (operation performed), not undefined (no engine).
-        expect(await bureau.pauseSchedule('sched-1')).toBe(true);
-        expect(await bureau.resumeSchedule('sched-1')).toBe(true);
-        expect(await bureau.cancelSchedule('sched-1')).toBe(true);
+        expect(await bureau.schedules.pause('sched-1')).toBe(true);
+        expect(await bureau.schedules.resume('sched-1')).toBe(true);
+        expect(await bureau.schedules.cancel('sched-1')).toBe(true);
 
         // Confirm the engine methods were actually called through, each carrying its pending
         // transition record (COR-194).
@@ -8726,7 +8735,7 @@ describe('createBureau review queue (AB-20)', () => {
       durable: true,
     });
     try {
-      const reviews = bureau.listPendingReviews();
+      const reviews = bureau.reviews.list();
       expect(reviews).toHaveLength(2);
       expect(reviews[0]).toMatchObject({
         id: reviewId,
@@ -8739,10 +8748,14 @@ describe('createBureau review queue (AB-20)', () => {
           toolName: 'charge-card',
         }),
       });
-      await bureau.resolveReview({ id: reviewId, decision: 'deny', principal: 'operator-a' });
-      expect(bureau.listPendingReviews().map((review) => review.id)).toEqual([secondReviewId]);
-      await bureau.resolveReview({ id: secondReviewId, decision: 'deny', principal: 'operator-a' });
-      expect(bureau.listPendingReviews()).toHaveLength(0);
+      await bureau.reviews.resolve({ id: reviewId, decision: 'deny', principal: 'operator-a' });
+      expect(bureau.reviews.list().map((review) => review.id)).toEqual([secondReviewId]);
+      await bureau.reviews.resolve({
+        id: secondReviewId,
+        decision: 'deny',
+        principal: 'operator-a',
+      });
+      expect(bureau.reviews.list()).toHaveLength(0);
     } finally {
       await bureau.dispose();
     }
@@ -8817,27 +8830,27 @@ describe('createBureau review queue (AB-20)', () => {
     });
     try {
       expect(
-        bureau
-          .listPendingReviews()
+        bureau.reviews
+          .list()
           .map((review) => review.id)
           .toSorted(),
       ).toEqual([olderReviewId, newestReviewId].toSorted());
-      expect(bureau.listPendingReviews().every((review) => review.sessionId === sessionId)).toBe(
-        true,
-      );
+      expect(bureau.reviews.list().every((review) => review.sessionId === sessionId)).toBe(true);
       expect(
-        Object.fromEntries(
-          bureau.listPendingReviews().map((review) => [review.runId, review.agentName]),
-        ),
+        Object.fromEntries(bureau.reviews.list().map((review) => [review.runId, review.agentName])),
       ).toEqual({
         [olderRunId]: 'older-run-agent',
         [newestRunId]: 'newest-run-agent',
       });
       await bureau.deleteSession(sessionId);
-      expect(bureau.listPendingReviews()).toHaveLength(0);
+      expect(bureau.reviews.list()).toHaveLength(0);
       expect(
         await throwingRejectionOf(
-          bureau.resolveReview({ id: olderReviewId, decision: 'approve', principal: 'operator-a' }),
+          bureau.reviews.resolve({
+            id: olderReviewId,
+            decision: 'approve',
+            principal: 'operator-a',
+          }),
         ),
       ).toThrow(`No pending review with id "${olderReviewId}"`);
     } finally {
@@ -8891,7 +8904,7 @@ describe('createBureau review queue (AB-20)', () => {
       durable: true,
     });
     try {
-      expect(bureau.listPendingReviews()).toHaveLength(0);
+      expect(bureau.reviews.list()).toHaveLength(0);
       const session = await bureau.getSession('session-expired-terminal-review');
       expect(session?.metadata['pendingApprovalOverrides']).not.toHaveProperty(reviewId);
       expect(session?.metadata['lastRequestAuthorities']).not.toHaveProperty(runId);
@@ -8924,7 +8937,7 @@ describe('createBureau review queue (AB-20)', () => {
       message: 'Persist approval for restart',
     });
     await waitForRunCompletion(bureauA, run.id);
-    expect(bureauA.listPendingReviews()).toHaveLength(1);
+    expect(bureauA.reviews.list()).toHaveLength(1);
     await bureauA.dispose();
 
     const bureauB = await createBureau<AgentDefinitions>({
@@ -8939,9 +8952,9 @@ describe('createBureau review queue (AB-20)', () => {
       durable: true,
     });
     try {
-      const [review] = bureauB.listPendingReviews();
+      const [review] = bureauB.reviews.list();
       expect(review).toBeDefined();
-      const outcome = await bureauB.resolveReview({
+      const outcome = await bureauB.reviews.resolve({
         id: review!.id,
         decision: 'approve',
         principal: 'operator-restart',
@@ -8976,7 +8989,7 @@ describe('createBureau review queue (AB-20)', () => {
     const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
     await waitForRunCompletion(bureau, run.id);
 
-    const reviews = bureau.listPendingReviews();
+    const reviews = bureau.reviews.list();
     expect(reviews).toHaveLength(1);
     const [review] = reviews;
     expect(review!.kind).toBe('tool-approval');
@@ -9012,12 +9025,12 @@ describe('createBureau review queue (AB-20)', () => {
     });
 
     const { activeRun, emitter } = createParkedActiveRun();
-    const runId = bureau.store.register(activeRun, 'run-parked-human-wait');
+    const runId = bureau.internals.store.register(activeRun, 'run-parked-human-wait');
     emitter.dispatchEvent(
       new HumanWaitParkedEvent('human-response', runId, 'Approve this refund?'),
     );
 
-    const reviews = bureau.listPendingReviews();
+    const reviews = bureau.reviews.list();
     expect(reviews).toHaveLength(1);
     const [review] = reviews;
     expect(review!.kind).toBe('human-wait');
@@ -9038,7 +9051,7 @@ describe('createBureau review queue (AB-20)', () => {
     // actually suspends. A run must still be "still parked" even though a
     // same-step action was recorded after the park event — only a status
     // change away from `'running'` (the run resuming to completion) should
-    // exclude it. See `listPendingReviews omits a human-wait run whose park
+    // exclude it. See `reviews.list omits a human-wait run whose park
     // has resolved and the run completed` below for that side of the check.
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
@@ -9047,7 +9060,7 @@ describe('createBureau review queue (AB-20)', () => {
     });
 
     const { activeRun, emitter } = createParkedActiveRun();
-    const runId = bureau.store.register(activeRun, 'run-parked-human-wait-trailing-step');
+    const runId = bureau.internals.store.register(activeRun, 'run-parked-human-wait-trailing-step');
     emitter.dispatchEvent(
       new HumanWaitParkedEvent('human-response', runId, 'Approve this refund?'),
     );
@@ -9064,7 +9077,7 @@ describe('createBureau review queue (AB-20)', () => {
       }),
     );
 
-    const reviews = bureau.listPendingReviews();
+    const reviews = bureau.reviews.list();
     expect(reviews).toHaveLength(1);
     const [review] = reviews;
     expect(review!.kind).toBe('human-wait');
@@ -9083,7 +9096,7 @@ describe('createBureau review queue (AB-20)', () => {
     });
 
     const { activeRun, emitter } = createParkedActiveRun();
-    const runId = bureau.store.register(activeRun, 'run-resumed-human-wait');
+    const runId = bureau.internals.store.register(activeRun, 'run-resumed-human-wait');
     emitter.dispatchEvent(new HumanWaitParkedEvent('human-response', runId));
     // Resuming a `ctx.waitForSignal` park runs the durable workflow straight
     // through to completion (it does not start a new step) — the run's
@@ -9092,7 +9105,7 @@ describe('createBureau review queue (AB-20)', () => {
       new RunAbortedEvent(1, new Conversation(), new AbortAgentRunError('resumed')),
     );
 
-    expect(bureau.listPendingReviews()).toHaveLength(0);
+    expect(bureau.reviews.list()).toHaveLength(0);
 
     bureau.dispose();
   });
@@ -9114,13 +9127,13 @@ describe('createBureau review queue (AB-20)', () => {
     try {
       const run = await bureau.createRun({ agentName: 'default', message: 'park-twice' });
       await waitForCondition(
-        () => bureau.listPendingReviews().some((review) => review.runId === run.id),
+        () => bureau.reviews.list().some((review) => review.runId === run.id),
         'expected the first park',
       );
-      const [first] = bureau.listPendingReviews();
+      const [first] = bureau.reviews.list();
       expect(first!.id.split(':')[1]).toBe(run.id);
 
-      await bureau.resolveReview({
+      await bureau.reviews.resolve({
         id: first!.id,
         decision: 'approve',
         principal: 'api-key:reviewer-repark',
@@ -9128,10 +9141,10 @@ describe('createBureau review queue (AB-20)', () => {
       });
 
       await waitForCondition(
-        () => bureau.listPendingReviews().some((review) => review.id !== first!.id),
+        () => bureau.reviews.list().some((review) => review.id !== first!.id),
         'expected the re-park on the same signal to surface',
       );
-      const reviews = bureau.listPendingReviews();
+      const reviews = bureau.reviews.list();
       expect(reviews).toHaveLength(1);
       const [second] = reviews;
       expect(second!.kind).toBe('human-wait');
@@ -9141,7 +9154,7 @@ describe('createBureau review queue (AB-20)', () => {
       // The stale first id is retired: resolving it is NOT_FOUND.
       expect(
         await rejectionOf(
-          bureau.resolveReview({
+          bureau.reviews.resolve({
             id: first!.id,
             decision: 'approve',
             principal: 'api-key:reviewer-repark',
@@ -9171,11 +9184,11 @@ describe('createBureau review queue (AB-20)', () => {
     try {
       const run = await bureau.createRun({ agentName: 'default', message: 'park-twice-frozen' });
       await waitForCondition(
-        () => bureau.listPendingReviews().some((review) => review.runId === run.id),
+        () => bureau.reviews.list().some((review) => review.runId === run.id),
         'expected the first park',
       );
-      const [first] = bureau.listPendingReviews();
-      await bureau.resolveReview({
+      const [first] = bureau.reviews.list();
+      await bureau.reviews.resolve({
         id: first!.id,
         decision: 'approve',
         principal: 'reviewer-frozen',
@@ -9183,16 +9196,16 @@ describe('createBureau review queue (AB-20)', () => {
 
       // No clock advance and no sleep: both parks carry the identical timestamp.
       await waitForCondition(
-        () => bureau.listPendingReviews().some((review) => review.id !== first!.id),
+        () => bureau.reviews.list().some((review) => review.id !== first!.id),
         'expected the re-park on the same signal to surface',
       );
-      const actions = bureau.store
+      const actions = bureau.internals.store
         .getRun(run.id)!
         .actions.filter((action) => action.type === HumanWaitParkedEvent.type);
       expect(actions.length).toBeGreaterThanOrEqual(2);
       expect(actions.at(-1)!.timestamp).toBe(actions[0]!.timestamp);
 
-      const reviews = bureau.listPendingReviews();
+      const reviews = bureau.reviews.list();
       expect(reviews).toHaveLength(1);
       expect(reviews[0]!.id).not.toBe(first!.id);
       expect(reviews[0]!.id.split(':')[1]).toBe(run.id);
@@ -9226,10 +9239,10 @@ describe('createBureau review queue (AB-20)', () => {
     const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
     await waitForRunCompletion(bureau, run.id);
 
-    const [review] = bureau.listPendingReviews();
+    const [review] = bureau.reviews.list();
     expect(review).toBeDefined();
 
-    const outcome = await bureau.resolveReview({
+    const outcome = await bureau.reviews.resolve({
       id: review!.id,
       decision: 'approve',
       principal: 'api-key:reviewer-1',
@@ -9244,7 +9257,7 @@ describe('createBureau review queue (AB-20)', () => {
     expect(validatorCalls).toBe(0);
 
     // Resolved reviews disappear from the queue.
-    expect(bureau.listPendingReviews()).toHaveLength(0);
+    expect(bureau.reviews.list()).toHaveLength(0);
 
     bureau.dispose();
   });
@@ -9284,17 +9297,17 @@ describe('createBureau review queue (AB-20)', () => {
       },
     });
     await waitForRunCompletion(bureau, run.id);
-    const [review] = bureau.listPendingReviews();
+    const [review] = bureau.reviews.list();
     authorityCurrent = false;
 
-    const resolution = bureau.resolveReview({
+    const resolution = bureau.reviews.resolve({
       id: review!.id,
       decision: 'approve',
       principal: 'api-key:reviewer',
     });
     expect(await throwingRejectionOf(resolution)).toThrow('no longer current');
     expect(charges).toEqual([]);
-    expect(bureau.listPendingReviews()).toHaveLength(1);
+    expect(bureau.reviews.list()).toHaveLength(1);
     bureau.dispose();
   });
 
@@ -10266,7 +10279,7 @@ describe('createBureau review queue (AB-20)', () => {
         const afterRecovery = await bureauB.getSession(run.sessionId);
         expect(afterRecovery?.metadata['pendingApprovalOverrides']).not.toHaveProperty(reviewId);
         expect(afterRecovery?.metadata['lastRequestAuthorities']).not.toHaveProperty(run.id);
-        expect(bureauB.listPendingReviews()).toHaveLength(0);
+        expect(bureauB.reviews.list()).toHaveLength(0);
         expect(charges).toEqual([]);
       } finally {
         await bureauB.dispose();
@@ -10322,12 +10335,12 @@ describe('createBureau review queue (AB-20)', () => {
       message: 'Charge despite cleanup storage failure',
     });
     await waitForRunCompletion(bureau, run.id);
-    const [review] = bureau.listPendingReviews();
+    const [review] = bureau.reviews.list();
     expect(review).toBeDefined();
     failedSessionUpdatesRemaining = 3;
 
-    const resolutionError = await bureau
-      .resolveReview({
+    const resolutionError = await bureau.reviews
+      .resolve({
         id: review!.id,
         decision: 'approve',
         principal: 'api-key:reviewer-cleanup',
@@ -10341,7 +10354,7 @@ describe('createBureau review queue (AB-20)', () => {
     expect((resolutionError as Error).message).toContain('override cleanup unavailable');
 
     expect(charges).toEqual([425]);
-    expect(bureau.listPendingReviews()).toHaveLength(0);
+    expect(bureau.reviews.list()).toHaveLength(0);
 
     const persistedSession = await bureau.getSession(run.sessionId);
     expect(persistedSession?.metadata['approvalResolutionStartedIds']).toContain(review!.id);
@@ -10360,10 +10373,10 @@ describe('createBureau review queue (AB-20)', () => {
       durable: false,
     });
     try {
-      expect(restartedBureau.listPendingReviews()).toHaveLength(0);
+      expect(restartedBureau.reviews.list()).toHaveLength(0);
       expect(charges).toEqual([425]);
-      const restartedResolutionError = await restartedBureau
-        .resolveReview({
+      const restartedResolutionError = await restartedBureau.reviews
+        .resolve({
           id: review!.id,
           decision: 'approve',
           principal: 'api-key:reviewer-cleanup',
@@ -10419,16 +10432,16 @@ describe('createBureau review queue (AB-20)', () => {
         message: 'Charge despite cleanup storage failure',
       });
       await waitForRunCompletion(bureau, run.id);
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       failedSessionUpdatesRemaining = 3;
       const input = { id: review!.id, decision: 'approve' as const, principal: 'api-key:reviewer' };
-      await bureau.resolveReview(input).then(
+      await bureau.reviews.resolve(input).then(
         () => undefined,
         () => undefined,
       );
       failedSessionUpdatesRemaining = 0;
 
-      await bureau.resolveReview(input);
+      await bureau.reviews.resolve(input);
 
       const history = (await bureau.getSession(run.sessionId))!.conversationHistory;
       const row = history.ids
@@ -10482,16 +10495,16 @@ describe('createBureau review queue (AB-20)', () => {
         message: 'Charge despite cleanup storage failure',
       });
       await waitForRunCompletion(bureau, run.id);
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       failedSessionUpdatesRemaining = 3;
       const input = { id: review!.id, decision: 'approve' as const, principal: 'api-key:reviewer' };
-      await bureau.resolveReview(input).then(
+      await bureau.reviews.resolve(input).then(
         () => undefined,
         () => undefined,
       );
       failedSessionUpdatesRemaining = 0;
       // The retry's write of the outcome into the conversation fails too.
-      const store = bureau.sessionStore!;
+      const store = bureau.internals.sessionStore!;
       const update = store.update.bind(store);
       spyOn(store, 'update').mockImplementation((id, updater, options) =>
         update(
@@ -10511,7 +10524,7 @@ describe('createBureau review queue (AB-20)', () => {
         ),
       );
 
-      const retried = await bureau.resolveReview(input).then(
+      const retried = await bureau.reviews.resolve(input).then(
         () => undefined,
         (error: unknown) => error,
       );
@@ -10566,10 +10579,10 @@ describe('createBureau review queue (AB-20)', () => {
     await withAdvancingClock(runtime, waitForRunCompletion(bureau, run.id));
 
     expect(failedApprovalPersistence).toBe(true);
-    expect(bureau.listPendingReviews()).toHaveLength(1);
+    expect(bureau.reviews.list()).toHaveLength(1);
     const persistedSession = await bureau.getSession(run.sessionId);
     expect(persistedSession?.metadata['pendingApprovalOverrides']).toHaveProperty(
-      bureau.listPendingReviews()[0]!.id,
+      bureau.reviews.list()[0]!.id,
     );
     expect(diagnostics).toEqual([]);
     bureau.dispose();
@@ -10602,14 +10615,14 @@ describe('createBureau review queue (AB-20)', () => {
     const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
     await waitForRunCompletion(bureau, run.id);
 
-    const [review] = bureau.listPendingReviews();
+    const [review] = bureau.reviews.list();
     expect(review).toBeDefined();
-    await bureau.sessionStore!.update(run.sessionId, (session) => ({
+    await bureau.internals.sessionStore!.update(run.sessionId, (session) => ({
       ...session!,
       metadata: { ...session!.metadata, resolvedReviewIds: [review!.id] },
     }));
 
-    const outcome = await bureau.resolveReview({
+    const outcome = await bureau.reviews.resolve({
       id: review!.id,
       decision: 'approve',
       principal: 'api-key:reviewer-3',
@@ -10619,7 +10632,7 @@ describe('createBureau review queue (AB-20)', () => {
     expect(charges).toEqual([]); // the tool did NOT run — gated again
 
     // The review is still there to be resolved, not silently dropped.
-    const stillPending = bureau.listPendingReviews();
+    const stillPending = bureau.reviews.list();
     expect(stillPending).toHaveLength(1);
     expect(stillPending[0]!.id).toBe(review!.id);
     const persistedSession = await bureau.getSession(run.sessionId);
@@ -10650,12 +10663,12 @@ describe('createBureau review queue (AB-20)', () => {
 
     const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
     await waitForRunCompletion(bureau, run.id);
-    const [review] = bureau.listPendingReviews();
+    const [review] = bureau.reviews.list();
     expect(review).toBeDefined();
 
     expect(
       await throwingRejectionOf(
-        bureau.resolveReview({
+        bureau.reviews.resolve({
           id: review!.id,
           decision: 'approve',
           principal: 'api-key:reviewer-denied',
@@ -10664,14 +10677,14 @@ describe('createBureau review queue (AB-20)', () => {
     ).toThrow('Cannot approve: Current policy denies this charge');
 
     expect(charges).toEqual([]);
-    expect(bureau.listPendingReviews().map(({ id }) => id)).toEqual([review!.id]);
+    expect(bureau.reviews.list().map(({ id }) => id)).toEqual([review!.id]);
     const persistedSession = await bureau.getSession(run.sessionId);
     expect(persistedSession?.metadata['resolvedReviewIds'] ?? []).not.toContain(review!.id);
     expect(persistedSession?.metadata['pendingApprovalOverrides']).toHaveProperty(review!.id);
     expect(persistedSession?.metadata['approvalResolutionStartedIds'] ?? []).not.toContain(
       review!.id,
     );
-    const approvedRecords = await bureau.auditTrail!.query({
+    const approvedRecords = await bureau.internals.auditTrail!.query({
       runId: run.id,
       type: 'review.tool-approval.approved',
     });
@@ -10730,7 +10743,7 @@ describe('createBureau review queue (AB-20)', () => {
     });
     await waitForRunCompletion(bureau, run.id);
 
-    const [review] = bureau.listPendingReviews();
+    const [review] = bureau.reviews.list();
     expect(review?.kind).toBe('tool-approval');
     if (!review || review.kind !== 'tool-approval')
       throw new Error('Expected tool approval review');
@@ -10741,7 +10754,7 @@ describe('createBureau review queue (AB-20)', () => {
     originalApprovalTokenForFailure.value = originalApprovalToken;
 
     failReplacementPersistence = true;
-    const outcome = await bureau.resolveReview({
+    const outcome = await bureau.reviews.resolve({
       id: review.id,
       decision: 'approve',
       principal: 'api-key:reviewer-replacement-retry',
@@ -10750,7 +10763,7 @@ describe('createBureau review queue (AB-20)', () => {
     expect(outcome.decision).toBe('approve');
     expect(replacementPersistenceAttempts).toBe(3);
     expect(charges).toEqual([]);
-    const [stillPendingReview] = bureau.listPendingReviews();
+    const [stillPendingReview] = bureau.reviews.list();
     expect(stillPendingReview?.kind).toBe('tool-approval');
     if (!stillPendingReview || stillPendingReview.kind !== 'tool-approval') {
       throw new Error('Expected replacement approval review');
@@ -10818,7 +10831,7 @@ describe('createBureau review queue (AB-20)', () => {
     });
     await waitForRunCompletion(bureau, run.id);
 
-    const [review] = bureau.listPendingReviews();
+    const [review] = bureau.reviews.list();
     expect(review?.kind).toBe('tool-approval');
     if (!review || review.kind !== 'tool-approval')
       throw new Error('Expected tool approval review');
@@ -10832,8 +10845,8 @@ describe('createBureau review queue (AB-20)', () => {
     originalApprovalTokenForFailure.value = originalApprovalToken;
 
     failReplacementPersistence = true;
-    const resolutionError = await bureau
-      .resolveReview({
+    const resolutionError = await bureau.reviews
+      .resolve({
         id: review.id,
         decision: 'approve',
         principal: 'api-key:reviewer-replacement-exhaustion',
@@ -10849,7 +10862,7 @@ describe('createBureau review queue (AB-20)', () => {
 
     expect(replacementPersistenceAttempts).toBe(3);
     expect(charges).toEqual([]);
-    const [stillPendingReview] = bureau.listPendingReviews();
+    const [stillPendingReview] = bureau.reviews.list();
     expect(stillPendingReview?.kind).toBe('tool-approval');
     if (!stillPendingReview || stillPendingReview.kind !== 'tool-approval') {
       throw new Error('Expected original approval review');
@@ -10865,7 +10878,7 @@ describe('createBureau review queue (AB-20)', () => {
     // recovers, a subsequent resolution uses that replacement binding rather
     // than the consumed original descriptor.
     failReplacementPersistence = false;
-    const retryOutcome = await bureau.resolveReview({
+    const retryOutcome = await bureau.reviews.resolve({
       id: review.id,
       decision: 'approve',
       principal: 'api-key:reviewer-replacement-exhaustion',
@@ -10890,21 +10903,21 @@ describe('createBureau review queue (AB-20)', () => {
     // the run→session mapping inside `createRunFromRequest`, which nothing in
     // this monorepo yet drives for a `requestHumanInput`-parked run (see the
     // AB-20 PR description). `review.sessionId` is therefore `''` here; what
-    // this test verifies is that `resolveReview` forwards it — and the
+    // this test verifies is that `reviews.resolve` forwards it — and the
     // signal name and payload — to `bureau.signalSession` UNCHANGED, which is
     // the actual resume wiring under test. `mockImplementation` bypasses the
     // real session lookup (already covered by the signalSession tests above)
-    // so this test is purely about resolveReview's call, not signalSession's.
+    // so this test is purely about reviews.resolve's call, not signalSession's.
     const signalSpy = spyOn(bureau, 'signalSession').mockImplementation(async () => {});
 
     const { activeRun, emitter } = createParkedActiveRun();
-    const runId = bureau.store.register(activeRun, 'run-approve-human-wait');
+    const runId = bureau.internals.store.register(activeRun, 'run-approve-human-wait');
     emitter.dispatchEvent(new HumanWaitParkedEvent('human-response', runId, 'Approve?'));
 
-    const [review] = bureau.listPendingReviews();
+    const [review] = bureau.reviews.list();
     expect(review).toBeDefined();
 
-    const outcome = await bureau.resolveReview({
+    const outcome = await bureau.reviews.resolve({
       id: review!.id,
       decision: 'approve',
       principal: 'api-key:reviewer-2',
@@ -10914,7 +10927,7 @@ describe('createBureau review queue (AB-20)', () => {
     expect(outcome.decision).toBe('approve');
     expect(signalSpy).toHaveBeenCalledWith('', 'human-response', { approved: true });
 
-    expect(bureau.listPendingReviews()).toHaveLength(0);
+    expect(bureau.reviews.list()).toHaveLength(0);
 
     bureau.dispose();
   });
@@ -10944,10 +10957,10 @@ describe('createBureau review queue (AB-20)', () => {
     const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
     await waitForRunCompletion(bureau, run.id);
 
-    const [review] = bureau.listPendingReviews();
+    const [review] = bureau.reviews.list();
     expect(review).toBeDefined();
 
-    const outcome = await bureau.resolveReview({
+    const outcome = await bureau.reviews.resolve({
       id: review!.id,
       decision: 'deny',
       principal: 'api-key:reviewer-3',
@@ -10960,16 +10973,16 @@ describe('createBureau review queue (AB-20)', () => {
 
     // The audit trail record carries the ATTRIBUTED principal — this is the
     // NEUTER-VERIFIED assertion: dropping `principal: input.principal` from
-    // resolveReview's `auditTrail.record(...)` call (or the `record()` write
+    // reviews.resolve's `auditTrail.record(...)` call (or the `record()` write
     // path itself) makes this specific assertion fail, not just a vague
     // "record exists" check.
-    const records = await bureau.auditTrail!.query({ runId: run.id });
+    const records = await bureau.internals.auditTrail!.query({ runId: run.id });
     const denyRecord = records.find((record) => record.type === 'review.tool-approval.denied');
     expect(denyRecord).toBeDefined();
     expect(denyRecord!.principal).toBe('api-key:reviewer-3');
     expect((denyRecord!.detail as { reason?: string }).reason).toBe('Amount looks fraudulent');
 
-    expect(bureau.listPendingReviews()).toHaveLength(0);
+    expect(bureau.reviews.list()).toHaveLength(0);
     const persistedSession = await bureau.getSession(run.sessionId);
     expect(persistedSession?.metadata['resolvedReviewIds']).toContain(review!.id);
 
@@ -10977,7 +10990,7 @@ describe('createBureau review queue (AB-20)', () => {
     // Session deletion does not own the in-memory run's resolved-review
     // suppression. Until the run itself is deleted, the resolved approval
     // must not reappear in the review queue.
-    expect(bureau.listPendingReviews()).toHaveLength(0);
+    expect(bureau.reviews.list()).toHaveLength(0);
     await withAdvancingClock(runtime, retireSettledTasks(bureau, runtime));
     await pollUntil(async () => {
       const session = await bureau.getSession(run.sessionId);
@@ -10995,8 +11008,8 @@ describe('createBureau review queue (AB-20)', () => {
       },
     });
 
-    const error = await bureau
-      .resolveReview({ id: 'approval:nope:nope', decision: 'approve', principal: 'static-token' })
+    const error = await bureau.reviews
+      .resolve({ id: 'approval:nope:nope', decision: 'approve', principal: 'static-token' })
       .then(
         () => undefined,
         (rejection: unknown) => rejection,
@@ -11025,30 +11038,30 @@ describe('createBureau review queue (AB-20)', () => {
       runtime,
       ...SHORT_TASK_RETENTION,
     });
-    // AB-46: `resolveReview` deny on a `human-wait` review now delivers
+    // AB-46: `reviews.resolve` deny on a `human-wait` review now delivers
     // `{ __abDenied: true, ... }` via the real `bureau.signalSession` (the
     // fix this record ships — a denied human-wait run must not stay parked
     // forever). This run has no real session association (registered
     // directly via `store.register()`, not `bureau.createRun()`), so
-    // `signalSession` is stubbed exactly as the "resolveReview approve on a
+    // `signalSession` is stubbed exactly as the "reviews.resolve approve on a
     // human-wait review" test above does — this test is about
     // `resolvedReviewIds` pruning, not signal delivery.
     const signalSpy = spyOn(bureau, 'signalSession').mockImplementation(async () => {});
 
     const runId = 'run-prune-resolved-ids';
     const first = createParkedActiveRun();
-    bureau.store.register(first.activeRun, runId);
+    bureau.internals.store.register(first.activeRun, runId);
     first.emitter.dispatchEvent(new HumanWaitParkedEvent('human-response', runId, 'Approve?'));
 
-    const [review] = bureau.listPendingReviews();
+    const [review] = bureau.reviews.list();
     expect(review).toBeDefined();
-    await bureau.resolveReview({
+    await bureau.reviews.resolve({
       id: review!.id,
       decision: 'deny',
       principal: 'api-key:reviewer-5',
     });
     expect(signalSpy).toHaveBeenCalledWith('', 'human-response', { __abDenied: true });
-    expect(bureau.listPendingReviews()).toHaveLength(0);
+    expect(bureau.reviews.list()).toHaveLength(0);
 
     // Terminate the run and let its task age out — retention keeps a still-`running` run.
     first.emitter.dispatchEvent(
@@ -11061,12 +11074,12 @@ describe('createBureau review queue (AB-20)', () => {
     // still in `resolvedReviewIds` from the first run, so it would never
     // surface — after the fix, deleting the first run pruned it.
     const second = createParkedActiveRun();
-    bureau.store.register(second.activeRun, runId);
+    bureau.internals.store.register(second.activeRun, runId);
     second.emitter.dispatchEvent(
       new HumanWaitParkedEvent('human-response', runId, 'Approve again?'),
     );
 
-    const reviewsAfterReuse = bureau.listPendingReviews();
+    const reviewsAfterReuse = bureau.reviews.list();
     expect(reviewsAfterReuse).toHaveLength(1);
     expect(reviewsAfterReuse[0]!.id).toBe(review!.id);
 
@@ -11105,10 +11118,10 @@ describe('createBureau review queue (AB-20)', () => {
       const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
 
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       if (!review) throw new Error('Expected a pending review');
 
-      await bureau.resolveReview({
+      await bureau.reviews.resolve({
         id: review.id,
         decision: 'deny',
         principal: 'api-key:prune-decisions-reviewer',
@@ -11176,13 +11189,13 @@ describe('createBureau review lifecycle (AB-46)', () => {
         agentName: 'default',
         message: 'Please refund this order',
       });
-      await pollUntil(() => bureau.listPendingReviews().some((review) => review.runId === run.id));
+      await pollUntil(() => bureau.reviews.list().some((review) => review.runId === run.id));
 
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       expect(review!.kind).toBe('human-wait');
       expect(bureau.getRun(run.id)?.status).toBe('running');
 
-      const outcome = await bureau.resolveReview({
+      const outcome = await bureau.reviews.resolve({
         id: review!.id,
         decision: 'deny',
         principal: 'test-operator',
@@ -11194,7 +11207,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
 
       const finalRun = bureau.getRun(run.id);
       expect(finalRun?.status).toBe('completed');
-      expect(bureau.listPendingReviews()).toHaveLength(0);
+      expect(bureau.reviews.list()).toHaveLength(0);
     } finally {
       bureau.dispose();
     }
@@ -11219,11 +11232,11 @@ describe('createBureau review lifecycle (AB-46)', () => {
     try {
       const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       expect(review).toBeDefined();
 
-      const missingReasonError = await bureau
-        .resolveReview({ id: review!.id, decision: 'reject', principal: 'operator-a' })
+      const missingReasonError = await bureau.reviews
+        .resolve({ id: review!.id, decision: 'reject', principal: 'operator-a' })
         .then(
           () => undefined,
           (rejection: unknown) => rejection,
@@ -11232,8 +11245,8 @@ describe('createBureau review lifecycle (AB-46)', () => {
       expect((missingReasonError as BureauError).code).toBe('BAD_REQUEST');
       expect((missingReasonError as BureauError).message).toBe('reject requires a reason');
 
-      const emptyReasonError = await bureau
-        .resolveReview({
+      const emptyReasonError = await bureau.reviews
+        .resolve({
           id: review!.id,
           decision: 'reject',
           principal: 'operator-a',
@@ -11248,7 +11261,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
 
       // Neither rejected attempt changed any state — the review is still
       // pending exactly as it was.
-      expect(bureau.listPendingReviews().map((candidate) => candidate.id)).toEqual([review!.id]);
+      expect(bureau.reviews.list().map((candidate) => candidate.id)).toEqual([review!.id]);
     } finally {
       bureau.dispose();
     }
@@ -11264,14 +11277,14 @@ describe('createBureau review lifecycle (AB-46)', () => {
     try {
       const signalSpy = spyOn(bureau, 'signalSession').mockImplementation(async () => {});
       const { activeRun, emitter } = createParkedActiveRun();
-      const runId = bureau.store.register(activeRun, 'run-reject-human-wait-validation');
+      const runId = bureau.internals.store.register(activeRun, 'run-reject-human-wait-validation');
       emitter.dispatchEvent(new HumanWaitParkedEvent('human-response', runId, 'Approve?'));
 
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       expect(review).toBeDefined();
 
-      const error = await bureau
-        .resolveReview({ id: review!.id, decision: 'reject', principal: 'operator-a' })
+      const error = await bureau.reviews
+        .resolve({ id: review!.id, decision: 'reject', principal: 'operator-a' })
         .then(
           () => undefined,
           (rejection: unknown) => rejection,
@@ -11279,7 +11292,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
       expect(error).toBeInstanceOf(BureauError);
       expect((error as BureauError).code).toBe('BAD_REQUEST');
       expect(signalSpy).not.toHaveBeenCalled();
-      expect(bureau.listPendingReviews()).toHaveLength(1);
+      expect(bureau.reviews.list()).toHaveLength(1);
     } finally {
       bureau.dispose();
     }
@@ -11307,10 +11320,10 @@ describe('createBureau review lifecycle (AB-46)', () => {
     try {
       const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       expect(review).toBeDefined();
 
-      const outcome = await bureau.resolveReview({
+      const outcome = await bureau.reviews.resolve({
         id: review!.id,
         decision: 'reject',
         principal: 'operator-b',
@@ -11321,7 +11334,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
       expect(outcome.result).toBeUndefined();
       expect(charges).toEqual([]); // never executed
 
-      const records = await bureau.auditTrail!.query({ runId: run.id });
+      const records = await bureau.internals.auditTrail!.query({ runId: run.id });
       const rejectedRecord = records.find(
         (record) => record.type === 'review.tool-approval.rejected',
       );
@@ -11329,7 +11342,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
       expect(rejectedRecord!.principal).toBe('operator-b');
       expect((rejectedRecord!.detail as { reason?: string }).reason).toBe('Duplicate charge');
 
-      expect(bureau.listPendingReviews()).toHaveLength(0);
+      expect(bureau.reviews.list()).toHaveLength(0);
     } finally {
       bureau.dispose();
     }
@@ -11345,13 +11358,13 @@ describe('createBureau review lifecycle (AB-46)', () => {
     try {
       const signalSpy = spyOn(bureau, 'signalSession').mockImplementation(async () => {});
       const { activeRun, emitter } = createParkedActiveRun();
-      const runId = bureau.store.register(activeRun, 'run-reject-human-wait');
+      const runId = bureau.internals.store.register(activeRun, 'run-reject-human-wait');
       emitter.dispatchEvent(new HumanWaitParkedEvent('human-response', runId, 'Approve?'));
 
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       expect(review).toBeDefined();
 
-      const outcome = await bureau.resolveReview({
+      const outcome = await bureau.reviews.resolve({
         id: review!.id,
         decision: 'reject',
         principal: 'operator-c',
@@ -11363,7 +11376,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
         __abRejected: true,
         reason: 'Not authorized',
       });
-      expect(bureau.listPendingReviews()).toHaveLength(0);
+      expect(bureau.reviews.list()).toHaveLength(0);
     } finally {
       bureau.dispose();
     }
@@ -11396,12 +11409,12 @@ describe('createBureau review lifecycle (AB-46)', () => {
           message: 'Charge the customer',
         });
         await waitForRunCompletion(bureau, run.id);
-        const [review] = bureau.listPendingReviews();
+        const [review] = bureau.reviews.list();
         expect(review).toBeDefined();
 
-        const found = await bureau.getReview(review!.id);
+        const found = await bureau.reviews.get(review!.id);
         expect(found).toBeDefined();
-        // `ageMilliseconds` is computed fresh on each `listPendingReviews()`
+        // `ageMilliseconds` is computed fresh on each `reviews.list()`
         // scan, so it can drift by a millisecond between the two live reads
         // above — compare everything else exactly.
         expect({ ...found, ageMilliseconds: 0 }).toEqual({ ...review, ageMilliseconds: 0 });
@@ -11437,18 +11450,18 @@ describe('createBureau review lifecycle (AB-46)', () => {
           message: 'Charge the customer',
         });
         await waitForRunCompletion(bureau, run.id);
-        const [review] = bureau.listPendingReviews();
+        const [review] = bureau.reviews.list();
         expect(review).toBeDefined();
 
-        await bureau.resolveReview({
+        await bureau.reviews.resolve({
           id: review!.id,
           decision: 'deny',
           principal: 'operator-d',
           reason: 'Looks fraudulent',
         });
 
-        expect(bureau.listPendingReviews()).toHaveLength(0);
-        const resolved = await bureau.getReview(review!.id);
+        expect(bureau.reviews.list()).toHaveLength(0);
+        const resolved = await bureau.reviews.get(review!.id);
         expect(resolved).toBeDefined();
         expect(resolved!.status).toBe('denied');
         expect(resolved!.kind).toBe('tool-approval');
@@ -11482,12 +11495,12 @@ describe('createBureau review lifecycle (AB-46)', () => {
           message: 'Charge the customer',
         });
         await waitForRunCompletion(bureau, run.id);
-        const [review] = bureau.listPendingReviews();
+        const [review] = bureau.reviews.list();
         expect(review).toBeDefined();
 
-        await bureau.resolveReview({ id: review!.id, decision: 'deny', principal: 'operator-e' });
+        await bureau.reviews.resolve({ id: review!.id, decision: 'deny', principal: 'operator-e' });
 
-        const resolved = await bureau.getReview(review!.id);
+        const resolved = await bureau.reviews.get(review!.id);
         expect(resolved).toBeUndefined();
       } finally {
         bureau.dispose();
@@ -11506,7 +11519,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
       try {
         const id = 'approval:run-legacy:call-legacy';
         // The shape the audit trail held before COR-855: no `round` on the review.
-        await bureau.auditTrail!.record({
+        await bureau.internals.auditTrail!.record({
           runId: 'run-legacy',
           type: 'review.approved',
           principal: 'operator-legacy',
@@ -11525,7 +11538,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
           },
         });
 
-        const found = await bureau.getReview(id);
+        const found = await bureau.reviews.get(id);
 
         expect(found).toMatchObject({ id, kind: 'tool-approval', status: 'approved', round: 0 });
       } finally {
@@ -11543,8 +11556,8 @@ describe('createBureau review lifecycle (AB-46)', () => {
       });
 
       try {
-        expect(await bureau.getReview('malformed-id-no-colon')).toBeUndefined();
-        expect(await bureau.getReview('approval:no-such-run:no-such-call')).toBeUndefined();
+        expect(await bureau.reviews.get('malformed-id-no-colon')).toBeUndefined();
+        expect(await bureau.reviews.get('approval:no-such-run:no-such-call')).toBeUndefined();
       } finally {
         bureau.dispose();
       }
@@ -11554,7 +11567,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
       // No code path in this record writes a `review.*.superseded` audit
       // entry yet (AB-46 scopes that write to a future re-gate change) —
       // this writes one directly through the same public `auditTrail.record`
-      // seam `recordReviewStatusTransition` uses, to prove `getReview`
+      // seam `recordReviewStatusTransition` uses, to prove `reviews.get`
       // decodes it correctly rather than silently falling through to
       // `'denied'` when that write lands.
       const bureau = await createBureau<AgentDefinitions>({
@@ -11568,7 +11581,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
       try {
         const runId = 'run-superseded-review';
         const reviewId = `approval:${runId}:call-superseded`;
-        await bureau.auditTrail!.record({
+        await bureau.internals.auditTrail!.record({
           runId,
           type: 'review.tool-approval.superseded',
           detail: {
@@ -11593,7 +11606,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
           principal: 'system:supersession',
         });
 
-        const resolved = await bureau.getReview(reviewId);
+        const resolved = await bureau.reviews.get(reviewId);
         expect(resolved?.status).toBe('superseded');
       } finally {
         bureau.dispose();
@@ -11654,12 +11667,12 @@ describe('createBureau review lifecycle (AB-46)', () => {
       const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
 
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       expect(review).toBeDefined();
 
       await runtime.advance(1500);
 
-      expect(bureau.listPendingReviews()).toHaveLength(0);
+      expect(bureau.reviews.list()).toHaveLength(0);
 
       const sweptCount = await expireReviews(bureau);
       expect(sweptCount).toBe(1);
@@ -11667,10 +11680,10 @@ describe('createBureau review lifecycle (AB-46)', () => {
       const secondSweepCount = await expireReviews(bureau);
       expect(secondSweepCount).toBe(0);
 
-      const resolved = await bureau.getReview(review!.id);
+      const resolved = await bureau.reviews.get(review!.id);
       expect(resolved?.status).toBe('expired');
 
-      const records = await bureau.auditTrail!.query({ runId: run.id });
+      const records = await bureau.internals.auditTrail!.query({ runId: run.id });
       const expiredRecord = records.find(
         (record) => record.type === 'review.tool-approval.expired',
       );
@@ -11757,7 +11770,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
       durable: true,
     });
     try {
-      const reviews = bureau.listPendingReviews();
+      const reviews = bureau.reviews.list();
       expect(reviews.map((review) => review.id)).toEqual([freshReviewId]);
     } finally {
       await bureau.dispose();
@@ -11774,7 +11787,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
 
     try {
       const { activeRun, emitter } = createParkedActiveRun();
-      const runId = bureau.store.register(activeRun, 'run-abort-both-kinds');
+      const runId = bureau.internals.store.register(activeRun, 'run-abort-both-kinds');
       emitter.dispatchEvent(
         new StepCompletedEvent({
           parts: [],
@@ -11825,35 +11838,35 @@ describe('createBureau review lifecycle (AB-46)', () => {
 
       const approvalReviewId = `approval:${runId}:call-abort-1`;
       // The id ends in the park ordinal, so read it from the pending list.
-      const humanWaitReviewId = bureau
-        .listPendingReviews()
+      const humanWaitReviewId = bureau.reviews
+        .list()
         .find((review) => review.kind === 'human-wait')!.id;
       expect(humanWaitReviewId.startsWith(`human-wait:${runId}:human-response:`)).toBe(true);
       expect(
-        bureau
-          .listPendingReviews()
+        bureau.reviews
+          .list()
           .map((review) => review.id)
           .toSorted(),
       ).toEqual([approvalReviewId, humanWaitReviewId].toSorted());
 
       bureau.abortRun(runId);
 
-      await pollUntil(() => bureau.listPendingReviews().length === 0);
+      await pollUntil(() => bureau.reviews.list().length === 0);
 
-      const resolvedApproval = await bureau.getReview(approvalReviewId);
+      const resolvedApproval = await bureau.reviews.get(approvalReviewId);
       expect(resolvedApproval?.status).toBe('canceled');
-      const resolvedHumanWait = await bureau.getReview(humanWaitReviewId);
+      const resolvedHumanWait = await bureau.reviews.get(humanWaitReviewId);
       expect(resolvedHumanWait?.status).toBe('canceled');
 
-      const records = await bureau.auditTrail!.query({ runId });
+      const records = await bureau.internals.auditTrail!.query({ runId });
       expect(records.some((record) => record.type === 'review.tool-approval.canceled')).toBe(true);
       expect(records.some((record) => record.type === 'review.human-wait.canceled')).toBe(true);
       const reviewRecords = records.filter((record) => record.type.startsWith('review.'));
       expect(reviewRecords.length).toBeGreaterThan(0);
       expect(reviewRecords.every((record) => record.principal === 'system:run-abort')).toBe(true);
 
-      const approveAfterCancel = await bureau
-        .resolveReview({ id: approvalReviewId, decision: 'approve', principal: 'operator-f' })
+      const approveAfterCancel = await bureau.reviews
+        .resolve({ id: approvalReviewId, decision: 'approve', principal: 'operator-f' })
         .then(
           () => undefined,
           (rejection: unknown) => rejection,
@@ -11861,8 +11874,8 @@ describe('createBureau review lifecycle (AB-46)', () => {
       expect(approveAfterCancel).toBeInstanceOf(BureauError);
       expect((approveAfterCancel as BureauError).code).toBe('NOT_FOUND');
 
-      const denyAfterCancel = await bureau
-        .resolveReview({ id: humanWaitReviewId, decision: 'deny', principal: 'operator-f' })
+      const denyAfterCancel = await bureau.reviews
+        .resolve({ id: humanWaitReviewId, decision: 'deny', principal: 'operator-f' })
         .then(
           () => undefined,
           (rejection: unknown) => rejection,
@@ -11901,26 +11914,26 @@ describe('createBureau review lifecycle (AB-46)', () => {
 
     try {
       const run = await bureau.createRun({ agentName: 'default', message: 'park-for-cancel' });
-      await pollUntil(() => bureau.listPendingReviews().some((review) => review.runId === run.id));
+      await pollUntil(() => bureau.reviews.list().some((review) => review.runId === run.id));
 
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       expect(review).toBeDefined();
 
       const outcome = await bureau.cancelDurableRun(run.id);
       expect(outcome.status).toBe('requested');
 
-      await pollUntil(() => bureau.listPendingReviews().length === 0);
+      await pollUntil(() => bureau.reviews.list().length === 0);
 
-      const resolved = await bureau.getReview(review!.id);
+      const resolved = await bureau.reviews.get(review!.id);
       expect(resolved?.status).toBe('canceled');
 
-      const records = await bureau.auditTrail!.query({ runId: run.id });
+      const records = await bureau.internals.auditTrail!.query({ runId: run.id });
       const canceledRecord = records.find((record) => record.type === 'review.human-wait.canceled');
       expect(canceledRecord).toBeDefined();
       expect(canceledRecord!.principal).toBe('system:run-abort');
 
-      const resolveAfterCancel = await bureau
-        .resolveReview({ id: review!.id, decision: 'approve', principal: 'operator-g' })
+      const resolveAfterCancel = await bureau.reviews
+        .resolve({ id: review!.id, decision: 'approve', principal: 'operator-g' })
         .then(
           () => undefined,
           (rejection: unknown) => rejection,
@@ -11987,10 +12000,10 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
 
       const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       expect(review).toBeDefined();
 
-      await bureau.resolveReview({
+      await bureau.reviews.resolve({
         id: review!.id,
         decision: 'approve',
         principal: 'operator-approved',
@@ -12008,7 +12021,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
         },
       ]);
 
-      const records = await bureau.auditTrail!.query({ runId: run.id });
+      const records = await bureau.internals.auditTrail!.query({ runId: run.id });
       expect(records.some((record) => record.type === 'review.tool-approval.approved')).toBe(true);
     } finally {
       bureau.dispose();
@@ -12039,10 +12052,10 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
 
       const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       expect(review).toBeDefined();
 
-      await bureau.resolveReview({ id: review!.id, decision: 'deny', principal: 'operator-x' });
+      await bureau.reviews.resolve({ id: review!.id, decision: 'deny', principal: 'operator-x' });
 
       expect(denied).toEqual([review!.id]);
       expect(rejected).toEqual([]);
@@ -12077,10 +12090,10 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
 
       const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       expect(review).toBeDefined();
 
-      await bureau.resolveReview({
+      await bureau.reviews.resolve({
         id: review!.id,
         decision: 'reject',
         principal: 'operator-y',
@@ -12110,34 +12123,34 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
       bureau.addEventListener('review.rejected', (event) => rejected.push(event.reviewId));
 
       const approveRun = createParkedActiveRun();
-      const approveRunId = bureau.store.register(approveRun.activeRun, 'run-hw-approve');
+      const approveRunId = bureau.internals.store.register(approveRun.activeRun, 'run-hw-approve');
       approveRun.emitter.dispatchEvent(
         new HumanWaitParkedEvent('human-response', approveRunId, 'Approve?'),
       );
-      const [approveReview] = bureau.listPendingReviews();
-      await bureau.resolveReview({
+      const [approveReview] = bureau.reviews.list();
+      await bureau.reviews.resolve({
         id: approveReview!.id,
         decision: 'approve',
         principal: 'operator-hw-a',
       });
 
       const denyRun = createParkedActiveRun();
-      const denyRunId = bureau.store.register(denyRun.activeRun, 'run-hw-deny');
+      const denyRunId = bureau.internals.store.register(denyRun.activeRun, 'run-hw-deny');
       denyRun.emitter.dispatchEvent(new HumanWaitParkedEvent('human-response', denyRunId, 'Deny?'));
-      const [denyReview] = bureau.listPendingReviews();
-      await bureau.resolveReview({
+      const [denyReview] = bureau.reviews.list();
+      await bureau.reviews.resolve({
         id: denyReview!.id,
         decision: 'deny',
         principal: 'operator-hw-d',
       });
 
       const rejectRun = createParkedActiveRun();
-      const rejectRunId = bureau.store.register(rejectRun.activeRun, 'run-hw-reject');
+      const rejectRunId = bureau.internals.store.register(rejectRun.activeRun, 'run-hw-reject');
       rejectRun.emitter.dispatchEvent(
         new HumanWaitParkedEvent('human-response', rejectRunId, 'Reject?'),
       );
-      const [rejectReview] = bureau.listPendingReviews();
-      await bureau.resolveReview({
+      const [rejectReview] = bureau.reviews.list();
+      await bureau.reviews.resolve({
         id: rejectReview!.id,
         decision: 'reject',
         principal: 'operator-hw-r',
@@ -12215,7 +12228,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
         principal: 'api-key:alice',
       });
       await waitForRunCompletion(bureau, run.id);
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       expect(review).toBeDefined();
 
       await runtime.advance(1500);
@@ -12233,7 +12246,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
       // COR-718 — expiry is only the actor: the expired review keeps its run's owner.
       expect(await bureau.getOwner({ kind: 'review', id: review!.id })).toBe('api-key:alice');
       expect(await bureau.getOwner({ kind: 'audit', runId: run.id })).toBe('api-key:alice');
-      const entries = await bureau.auditTrail?.query({
+      const entries = await bureau.internals.auditTrail?.query({
         runId: run.id,
         type: 'review.tool-approval.expired',
       });
@@ -12274,7 +12287,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
 
       const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       expect(review).toBeDefined();
 
       await retireSettledTasks(bureau, runtime);
@@ -12296,7 +12309,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
       // (approved/denied/rejected/expired/canceled/superseded) already has
       // this same durable-query assertion elsewhere in this file; this
       // closes the one gap AB-228 found.
-      const revokedRecords = await bureau.auditTrail!.query({ runId: run.id });
+      const revokedRecords = await bureau.internals.auditTrail!.query({ runId: run.id });
       const revokedRecord = revokedRecords.find(
         (record) => record.type === 'review.tool-approval.revoked',
       );
@@ -12333,7 +12346,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
 
       const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       expect(review).toBeDefined();
       const session = await bureau.getSession(run.sessionId);
       expect(session?.metadata['lastRunId']).toBe(run.id);
@@ -12369,7 +12382,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
       bureau.addEventListener('review.revoked', (event) => revoked.push(event.reviewId));
 
       const { activeRun, emitter } = createParkedActiveRun();
-      const runId = bureau.store.register(activeRun, 'run-abort-events');
+      const runId = bureau.internals.store.register(activeRun, 'run-abort-events');
       emitter.dispatchEvent(
         new StepCompletedEvent({
           parts: [],
@@ -12420,13 +12433,13 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
 
       const approvalReviewId = `approval:${runId}:call-abort-events-1`;
       // The id ends in the park ordinal, so read it from the pending list.
-      const humanWaitReviewId = bureau
-        .listPendingReviews()
+      const humanWaitReviewId = bureau.reviews
+        .list()
         .find((review) => review.kind === 'human-wait')!.id;
       expect(humanWaitReviewId.startsWith(`human-wait:${runId}:human-response:`)).toBe(true);
 
       bureau.abortRun(runId);
-      await pollUntil(() => bureau.listPendingReviews().length === 0);
+      await pollUntil(() => bureau.reviews.list().length === 0);
 
       expect(canceled.map((event) => (event as { reviewId: string }).reviewId).toSorted()).toEqual(
         [approvalReviewId, humanWaitReviewId].toSorted(),
@@ -12469,10 +12482,10 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
 
       const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       expect(review).toBeDefined();
 
-      const outcome = await bureau.resolveReview({
+      const outcome = await bureau.reviews.resolve({
         id: review!.id,
         decision: 'approve',
         principal: 'operator-supersede',
@@ -12481,7 +12494,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
       expect(charges).toEqual([]); // gated again, never executed
 
       // Still there, under the SAME id, now backed by the replacement approval.
-      const stillPending = bureau.listPendingReviews();
+      const stillPending = bureau.reviews.list();
       expect(stillPending).toHaveLength(1);
       expect(stillPending[0]!.id).toBe(review!.id);
 
@@ -12494,7 +12507,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
         kind: 'tool-approval',
       });
 
-      const records = await bureau.auditTrail!.query({ runId: run.id });
+      const records = await bureau.internals.auditTrail!.query({ runId: run.id });
       const supersededRecord = records.find(
         (record) => record.type === 'review.tool-approval.superseded',
       );
@@ -12572,21 +12585,21 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
 
       const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       expect(review).toBeDefined();
 
       // Approve resumes the call; the policy gates it again on its SECOND
       // evaluation, producing a fresh `pendingApproval` for the SAME review
       // id and leaving `pendingApprovalOverrides` populated for it.
-      const outcome = await bureau.resolveReview({
+      const outcome = await bureau.reviews.resolve({
         id: review!.id,
         decision: 'approve',
         principal: 'operator-dup',
       });
       expect(outcome.decision).toBe('approve');
       expect(charges).toEqual([]);
-      expect(bureau.listPendingReviews()).toHaveLength(1);
-      expect(bureau.listPendingReviews()[0]!.id).toBe(review!.id);
+      expect(bureau.reviews.list()).toHaveLength(1);
+      expect(bureau.reviews.list()[0]!.id).toBe(review!.id);
 
       // Let the REPLACEMENT binding expire and sweep it — nothing clears
       // the lingering override on expiry.
@@ -12604,7 +12617,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
       expect(revoked).toEqual([]);
       expect(canceled).toEqual([]);
 
-      const resolved = await bureau.getReview(review!.id);
+      const resolved = await bureau.reviews.get(review!.id);
       expect(resolved?.status).toBe('expired');
     } finally {
       bureau.dispose();
@@ -12779,7 +12792,7 @@ describe('createBureau flow control (AB-13)', () => {
 // `requestHumanInput`, so a HumanWaitParkedEvent from an ACTUAL durable park
 // never reached bureau's listeners — only synthetic `ActiveRun` fixtures
 // (`createParkedActiveRun` above) exercised AB-13's `markParked`/`markResumed`
-// and AB-20's `listPendingReviews` human-wait branch. These tests drive a
+// and AB-20's `reviews.list` human-wait branch. These tests drive a
 // REAL durable run through `requestHumanInput` end to end via the new
 // `humanInput: true` bureau option.
 
@@ -12831,8 +12844,8 @@ describe('createBureau human input wiring — real durable park (F3)', () => {
       // 2. Wait for the REAL requestHumanInput tool call to fire
       // HumanWaitParkedEvent and free the slot (AB-13 markParked).
       await pollUntil(() =>
-        bureau
-          .listPendingReviews()
+        bureau.reviews
+          .list()
           .some((review) => review.kind === 'human-wait' && review.runId === run1.id),
       );
 
@@ -12920,9 +12933,9 @@ describe('createBureau human input wiring — real durable park (F3)', () => {
         message: 'Please refund this order',
       });
 
-      await pollUntil(() => bureau.listPendingReviews().some((review) => review.runId === run.id));
+      await pollUntil(() => bureau.reviews.list().some((review) => review.runId === run.id));
 
-      const reviews = bureau.listPendingReviews();
+      const reviews = bureau.reviews.list();
       expect(reviews).toHaveLength(1);
       const [review] = reviews;
       expect(review!.kind).toBe('human-wait');
@@ -12936,7 +12949,7 @@ describe('createBureau human input wiring — real durable park (F3)', () => {
       // not a synthetic fixture) — it has not settled.
       expect(bureau.getRun(run.id)?.status).toBe('running');
 
-      const result = await bureau.resolveReview({
+      const result = await bureau.reviews.resolve({
         id: review!.id,
         decision: 'approve',
         principal: 'test-operator',
@@ -12949,7 +12962,7 @@ describe('createBureau human input wiring — real durable park (F3)', () => {
       expect(finalRun?.status).toBe('completed');
 
       // Resolved reviews disappear from the queue immediately.
-      expect(bureau.listPendingReviews()).toHaveLength(0);
+      expect(bureau.reviews.list()).toHaveLength(0);
     } finally {
       bureau.dispose();
     }
@@ -12997,12 +13010,12 @@ describe('createBureau human input wiring — real durable park (F3)', () => {
         },
       });
 
-      await pollUntil(() => bureau.listPendingReviews().some((review) => review.runId === run.id));
-      const [review] = bureau.listPendingReviews();
+      await pollUntil(() => bureau.reviews.list().some((review) => review.runId === run.id));
+      const [review] = bureau.reviews.list();
       authorityCurrent = false;
       expect(
         await throwingRejectionOf(
-          bureau.resolveReview({
+          bureau.reviews.resolve({
             id: review!.id,
             decision: 'approve',
             principal: 'test-operator',
@@ -13010,7 +13023,7 @@ describe('createBureau human input wiring — real durable park (F3)', () => {
         ),
       ).toThrow('no longer current');
       expect(signalSpy).not.toHaveBeenCalled();
-      expect(bureau.listPendingReviews()).toHaveLength(1);
+      expect(bureau.reviews.list()).toHaveLength(1);
     } finally {
       bureau.dispose();
     }
@@ -13098,13 +13111,13 @@ describe('createBureau requestHumanInput availability across durability configur
         agentName: 'default',
         message: 'park over ephemeral memory storage',
       });
-      await pollUntil(() => bureau.listPendingReviews().some((review) => review.runId === run.id));
+      await pollUntil(() => bureau.reviews.list().some((review) => review.runId === run.id));
 
       // Discovery: the model's first step already saw requestHumanInput as an
       // available tool (AC — discovery reveals availability before invocation).
       expect(seenTools).toContain('requestHumanInput');
 
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       expect(review?.kind).toBe('human-wait');
     } finally {
       bureau.dispose();
@@ -13150,15 +13163,13 @@ describe('createBureau requestHumanInput availability across durability configur
           agentName: 'default',
           message: 'park over persistent sqlite storage',
         });
-        await pollUntil(() =>
-          bureau.listPendingReviews().some((review) => review.runId === run.id),
-        );
+        await pollUntil(() => bureau.reviews.list().some((review) => review.runId === run.id));
 
         // Discovery: the model's first step already saw requestHumanInput as an
         // available tool (AC — discovery reveals availability before invocation).
         expect(seenTools).toContain('requestHumanInput');
 
-        const [review] = bureau.listPendingReviews();
+        const [review] = bureau.reviews.list();
         expect(review?.kind).toBe('human-wait');
       } finally {
         await bureau.dispose();
@@ -13782,7 +13793,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
         fetch: (async () => new Response(null, { status: 200 })) as unknown as typeof fetch,
       },
     });
-    expect(bureau.webhookNotifier).toBeDefined();
+    expect(bureau.internals.webhookNotifier).toBeDefined();
 
     const report = await bureau.shutdown();
     const webhookOwner = report.owners.find((owner) => owner.kind === 'webhook-notifier');
@@ -14316,7 +14327,10 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
       // `'action'` emitter path this producer subscribes through) — proves
       // both are driven by the identical underlying transition, not two
       // independently-derived records that happen to agree.
-      const auditRecords = await bureau.auditTrail!.query({ runId: run.id, type: 'run.completed' });
+      const auditRecords = await bureau.internals.auditTrail!.query({
+        runId: run.id,
+        type: 'run.completed',
+      });
       expect(auditRecords).toHaveLength(1);
       expect(auditRecords[0]?.runId).toBe(run.id);
 
@@ -14358,8 +14372,14 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
         agentName: 'default',
         message: 'Carry a session action',
       });
-      bureau.store.recordAction(run.id, 'session.created', { sessionId: 'sess-A', agentName: 'x' });
-      bureau.store.recordAction(run.id, 'session.saved', { sessionId: 'sess-B', agentName: 'x' });
+      bureau.internals.store.recordAction(run.id, 'session.created', {
+        sessionId: 'sess-A',
+        agentName: 'x',
+      });
+      bureau.internals.store.recordAction(run.id, 'session.saved', {
+        sessionId: 'sess-B',
+        agentName: 'x',
+      });
       await runtime.deferred.drain();
 
       const pageA = await bureau.eventHistory({ kind: 'session', id: 'sess-A' });
@@ -14470,7 +14490,7 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
         agentName: 'default',
         message: 'Carry a malformed session action',
       });
-      bureau.store.recordAction(run.id, 'session.created', { agentName: 'x' }); // no sessionId
+      bureau.internals.store.recordAction(run.id, 'session.created', { agentName: 'x' }); // no sessionId
       await runtime.deferred.drain();
 
       const runPage = await bureau.eventHistory({ kind: 'run', id: run.id });
@@ -15062,7 +15082,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
         agentName: 'default',
         message: 'Carry a session-deleted action',
       });
-      bureau.store.recordAction(run.id, 'session.deleted', { sessionId: 'sess-deleted' });
+      bureau.internals.store.recordAction(run.id, 'session.deleted', { sessionId: 'sess-deleted' });
       await runtime.deferred.drain();
       await waitForRunCompletion(bureau, run.id);
       await runtime.deferred.drain();
@@ -15131,8 +15151,8 @@ describe('bureau.eventHistory deleted-aggregate detection is independent of the 
       // More events BEFORE the marker, recorded while the run is still
       // registered in the store (`Store.recordAction` no-ops once
       // `deleteRun` removes it).
-      bureau.store.recordAction(run.id, 'run.completed', { finishReason: 'stop' });
-      bureau.store.recordAction(run.id, 'run.completed', { finishReason: 'stop' });
+      bureau.internals.store.recordAction(run.id, 'run.completed', { finishReason: 'stop' });
+      bureau.internals.store.recordAction(run.id, 'run.completed', { finishReason: 'stop' });
       await runtime.deferred.drain();
 
       await retireSettledTasks(bureau, runtime);
@@ -15210,10 +15230,10 @@ describe('bureau.eventHistory deleted-aggregate detection is independent of the 
       await waitForRunCompletion(bureau, run.id);
       await runtime.deferred.drain();
 
-      bureau.store.recordAction(run.id, 'session.saved', { sessionId });
-      bureau.store.recordAction(run.id, 'session.deleted', { sessionId });
-      bureau.store.recordAction(run.id, 'session.saved', { sessionId });
-      bureau.store.recordAction(run.id, 'session.saved', { sessionId });
+      bureau.internals.store.recordAction(run.id, 'session.saved', { sessionId });
+      bureau.internals.store.recordAction(run.id, 'session.deleted', { sessionId });
+      bureau.internals.store.recordAction(run.id, 'session.saved', { sessionId });
+      bureau.internals.store.recordAction(run.id, 'session.saved', { sessionId });
       await runtime.deferred.drain();
 
       const fullOutcome = await bureau.eventHistory({ kind: 'session', id: sessionId });
@@ -15552,7 +15572,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       await waitForRunCompletion(bureau, recreatedRun.id);
       await runtime.deferred.drain();
 
-      const sessionStore = bureau.sessionStore;
+      const sessionStore = bureau.internals.sessionStore;
       if (!sessionStore) throw new Error('expected a configured session store');
       const loadSpy = spyOn(sessionStore, 'load').mockImplementationOnce(async () => undefined);
 
@@ -15695,7 +15715,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       // doc comment) — synthesize one directly the same supported way
       // AB-313's own tests do, so this owner has at least one durable
       // event for the retention floor below to advance past.
-      bureau.store.recordAction(run.id, 'session.saved', { sessionId: run.sessionId });
+      bureau.internals.store.recordAction(run.id, 'session.saved', { sessionId: run.sessionId });
       await runtime.deferred.drain();
 
       const beforeGap = await bureau.eventHistory(
@@ -15773,7 +15793,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       await waitForRunCompletion(bureau, run.id);
       await runtime.deferred.drain();
 
-      bureau.store.recordAction(run.id, 'session.saved', { sessionId: run.sessionId });
+      bureau.internals.store.recordAction(run.id, 'session.saved', { sessionId: run.sessionId });
       await runtime.deferred.drain();
 
       const beforeGap = await bureau.eventHistory(
@@ -15791,7 +15811,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       await adminFeed.dispose();
       adminStorage[Symbol.dispose]();
 
-      const sessionStore = bureau.sessionStore;
+      const sessionStore = bureau.internals.sessionStore;
       if (!sessionStore) throw new Error('expected a configured session store');
       const loadSpy = spyOn(sessionStore, 'load').mockImplementationOnce(async () => undefined);
 
@@ -16920,7 +16940,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         // still-live run or a terminal-but-pending-approval run can have.
         // Sharing `completedRun`'s session puts both entries through the
         // same pruning pass.
-        const sessionStore = bureau.sessionStore;
+        const sessionStore = bureau.internals.sessionStore;
         if (!sessionStore) throw new Error('expected a configured session store');
         await sessionStore.update(completedRun.sessionId, (session) => {
           if (!session) return undefined;
@@ -17005,7 +17025,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         // the pruner distinguishes from absence
         // elsewhere in this module — while the run's own ownership entry
         // is still a normal candidate once retention advances.
-        const sessionStore = bureau.sessionStore;
+        const sessionStore = bureau.internals.sessionStore;
         if (!sessionStore) throw new Error('expected a configured session store');
         await sessionStore.update(completedRun.sessionId, (session) => {
           if (!session) return undefined;
@@ -17075,7 +17095,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         const adminFeed = createFleetEventFeed(adminStorage);
         await adminFeed.retain({ beforeSequence: lastEvent.sequence + 1 });
 
-        const sessionStore = bureau.sessionStore;
+        const sessionStore = bureau.internals.sessionStore;
         if (!sessionStore) throw new Error('expected a configured session store');
         const originalUpdate = sessionStore.update.bind(sessionStore);
         // Simulates "a new durable event for this SAME run lands in the
@@ -17154,7 +17174,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         // file. The run's own `lastRequestAuthorities` entry was already
         // cleared by its terminal transition, so nothing here recreates it
         // — this replaces the WHOLE map with a malformed value.
-        const sessionStore = bureau.sessionStore;
+        const sessionStore = bureau.internals.sessionStore;
         if (!sessionStore) throw new Error('expected a configured session store');
         await sessionStore.update(run.sessionId, (session) => {
           if (!session) return undefined;
@@ -17496,7 +17516,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         await adminFeed.dispose();
         adminStorage[Symbol.dispose]();
 
-        const sessionStore = bureau.sessionStore;
+        const sessionStore = bureau.internals.sessionStore;
         if (!sessionStore) throw new Error('expected a configured session store');
         const listSpy = spyOn(sessionStore, 'list').mockImplementationOnce(() => {
           throw new Error('injected sessionStore.list failure');
@@ -17593,7 +17613,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         const firstPassGate = new Promise<void>((resolve) => {
           releaseFirstPass = resolve;
         });
-        const sessionStore = bureau.sessionStore;
+        const sessionStore = bureau.internals.sessionStore;
         if (!sessionStore) throw new Error('expected a configured session store');
         const originalList = sessionStore.list.bind(sessionStore);
         let listCallCount = 0;
@@ -17698,7 +17718,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       const passGate = new Promise<void>((resolve) => {
         releasePass = resolve;
       });
-      const sessionStore = bureau.sessionStore;
+      const sessionStore = bureau.internals.sessionStore;
       if (!sessionStore) throw new Error('expected a configured session store');
       const originalUpdate = sessionStore.update.bind(sessionStore);
       const updateSpy = spyOn(sessionStore, 'update').mockImplementationOnce(
@@ -17902,7 +17922,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           // The state only the claim can discriminate: the run's authority
           // entry is gone from the shared session store while its workflow
           // still executes on A, and B holds neither the run nor a write.
-          const sessionStore = bureauA.sessionStore;
+          const sessionStore = bureauA.internals.sessionStore;
           if (!sessionStore) throw new Error('expected a configured session store');
           await sessionStore.update(run.sessionId, (session) => {
             if (!session) return undefined;
@@ -18080,7 +18100,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
     }
 
     async function removeRunOwner(bureau: Bureau, sessionId: string, runId: string) {
-      const sessionStore = bureau.sessionStore;
+      const sessionStore = bureau.internals.sessionStore;
       if (!sessionStore) throw new Error('expected a configured session store');
       await sessionStore.update(sessionId, (session) => {
         if (!session) return undefined;
@@ -18136,7 +18156,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
             (ownersOf(pruned) as Record<string, unknown> | undefined)?.[run.id],
           ).toBeUndefined();
 
-          const sessionStore = bureauA.sessionStore;
+          const sessionStore = bureauA.internals.sessionStore;
           if (!sessionStore) throw new Error('expected a configured session store');
           const updateSpy = spyOn(sessionStore, 'update');
           let restoreOptions: unknown[];
@@ -18201,7 +18221,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           });
           await waitForRunCompletion(bureauA, run.id);
           await runtimeA.deferred.drain();
-          const [review] = bureauA.listPendingReviews();
+          const [review] = bureauA.reviews.list();
           if (!review) throw new Error('expected one pending tool-approval review');
           await retainThrough(databasePath, await appendFloorMarker(databasePath));
 
@@ -18212,7 +18232,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
 
           // B prunes in the window after A's resolution write removes the
           // run's authority entry and before A records `review.denied`.
-          const sessionStore = bureauA.sessionStore;
+          const sessionStore = bureauA.internals.sessionStore;
           if (!sessionStore) throw new Error('expected a configured session store');
           const originalUpdate = sessionStore.update.bind(sessionStore);
           let viewFromB: AgentSession | undefined;
@@ -18241,7 +18261,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
             },
           );
           try {
-            await bureauA.resolveReview({
+            await bureauA.reviews.resolve({
               id: review.id,
               decision: 'deny',
               principal: 'operator-b',
@@ -18339,7 +18359,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         async ({ bureau, runs, databasePath }) => {
           const [run] = runs;
           if (!run) throw new Error('expected one run');
-          const sessionStore = bureau.sessionStore;
+          const sessionStore = bureau.internals.sessionStore;
           if (!sessionStore) throw new Error('expected a configured session store');
           const before = await bureau.getSession(run.sessionId);
           const originalUpdate = sessionStore.update.bind(sessionStore);
@@ -18444,7 +18464,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
             principal: 'alice',
           });
           await waitForRunCompletion(bureau, run.id);
-          expect(bureau.listPendingReviews()).toHaveLength(1);
+          expect(bureau.reviews.list()).toHaveLength(1);
           await runtime.advance(1500);
 
           await removeRunOwner(bureau, run.sessionId, run.id);
@@ -18500,7 +18520,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
     });
 
     async function recreateSession(bureau: Bureau, sessionId: string): Promise<string> {
-      const sessionStore = bureau.sessionStore;
+      const sessionStore = bureau.internals.sessionStore;
       if (!sessionStore) throw new Error('expected a configured session store');
       await sessionStore.delete(sessionId);
       await sessionStore.save(
@@ -18566,7 +18586,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         async ({ bureau, runs, databasePath }) => {
           const [run] = runs;
           if (!run) throw new Error('expected one run');
-          const sessionStore = bureau.sessionStore;
+          const sessionStore = bureau.internals.sessionStore;
           if (!sessionStore) throw new Error('expected a configured session store');
           const originalUpdate = sessionStore.update.bind(sessionStore);
           const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
@@ -18633,7 +18653,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           await waitForRunCompletion(bureau, run.id);
           await removeRunOwner(bureau, run.sessionId, run.id);
 
-          const sessionStore = bureau.sessionStore;
+          const sessionStore = bureau.internals.sessionStore;
           if (!sessionStore) throw new Error('expected a configured session store');
           const originalUpdate = sessionStore.update.bind(sessionStore);
           const updateSpy = spyOn(sessionStore, 'update').mockImplementation(
@@ -18667,7 +18687,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         async ({ bureau, runs, databasePath, diagnostics }) => {
           const [first] = runs;
           if (!first) throw new Error('expected two runs');
-          const sessionStore = bureau.sessionStore;
+          const sessionStore = bureau.internals.sessionStore;
           if (!sessionStore) throw new Error('expected a configured session store');
           const originalUpdate = sessionStore.update.bind(sessionStore);
           const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
@@ -18733,7 +18753,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
             principal: 'alice',
           });
           await waitForRunCompletion(bureau, run.id);
-          const sessionStore = bureau.sessionStore;
+          const sessionStore = bureau.internals.sessionStore;
           if (!sessionStore) throw new Error('expected a configured session store');
           const updateSpy = spyOn(sessionStore, 'update');
           try {
@@ -18795,13 +18815,17 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
             principal: 'alice',
           });
           await waitForRunCompletion(bureau, run.id);
-          const [review] = bureau.listPendingReviews();
+          const [review] = bureau.reviews.list();
           if (!review) throw new Error('expected one pending review');
-          const sessionStore = bureau.sessionStore;
+          const sessionStore = bureau.internals.sessionStore;
           if (!sessionStore) throw new Error('expected a configured session store');
           const updateSpy = spyOn(sessionStore, 'update');
           try {
-            await bureau.resolveReview({ id: review.id, decision: 'deny', principal: 'operator' });
+            await bureau.reviews.resolve({
+              id: review.id,
+              decision: 'deny',
+              principal: 'operator',
+            });
             // The resolution's own two writes, plus COR-855's one: the denial
             // replaces the pending tool result in the session's conversation.
             expect(updateSpy.mock.calls.length).toBe(3);
@@ -18845,7 +18869,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         });
         await waitForRunCompletion(bureau, run.id);
 
-        const before = await bureau.auditTrail?.query({ runId: run.id });
+        const before = await bureau.internals.auditTrail?.query({ runId: run.id });
         expect(before?.length).toBeGreaterThan(0);
 
         // Advance far past any plausible cutoff and run maintenance
@@ -18854,10 +18878,10 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         await runtime.advance(10_000_000_000);
         await bureau.runDurableMaintenance();
 
-        const after = await bureau.auditTrail?.query({ runId: run.id });
+        const after = await bureau.internals.auditTrail?.query({ runId: run.id });
         expect(after).toEqual(before);
 
-        const prunedRecords = await bureau.auditTrail?.query({ type: 'audit.pruned' });
+        const prunedRecords = await bureau.internals.auditTrail?.query({ type: 'audit.pruned' });
         expect(prunedRecords).toEqual([]);
       } finally {
         await bureau.shutdown();
@@ -18897,7 +18921,9 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         });
         await waitForRunCompletion(bureau, seedRun.id);
         await runtime.deferred.drain();
-        const seedAuditRecordsBefore = await bureau.auditTrail?.query({ runId: seedRun.id });
+        const seedAuditRecordsBefore = await bureau.internals.auditTrail?.query({
+          runId: seedRun.id,
+        });
         if (!seedAuditRecordsBefore || seedAuditRecordsBefore.length === 0) {
           throw new Error('expected at least one durable audit record for the seed run');
         }
@@ -18916,7 +18942,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         });
         await waitForRunCompletion(bureau, runA.id);
         await runtime.deferred.drain();
-        const runAAuditRecordsBefore = await bureau.auditTrail?.query({ runId: runA.id });
+        const runAAuditRecordsBefore = await bureau.internals.auditTrail?.query({ runId: runA.id });
         if (!runAAuditRecordsBefore || runAAuditRecordsBefore.length === 0) {
           throw new Error('expected at least one durable audit record for run A');
         }
@@ -18952,23 +18978,25 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         });
         await waitForRunCompletion(bureau, runB.id);
         await runtime.deferred.drain();
-        const runBAuditRecordsBefore = await bureau.auditTrail?.query({ runId: runB.id });
+        const runBAuditRecordsBefore = await bureau.internals.auditTrail?.query({ runId: runB.id });
         if (!runBAuditRecordsBefore || runBAuditRecordsBefore.length === 0) {
           throw new Error('expected at least one durable audit record for run B');
         }
 
         await bureau.runDurableMaintenance();
 
-        const seedAuditRecordsAfter = await bureau.auditTrail?.query({ runId: seedRun.id });
+        const seedAuditRecordsAfter = await bureau.internals.auditTrail?.query({
+          runId: seedRun.id,
+        });
         expect(seedAuditRecordsAfter).toEqual([]);
 
-        const runAAuditRecordsAfter = await bureau.auditTrail?.query({ runId: runA.id });
+        const runAAuditRecordsAfter = await bureau.internals.auditTrail?.query({ runId: runA.id });
         expect(runAAuditRecordsAfter).toEqual(runAAuditRecordsBefore);
 
-        const runBAuditRecordsAfter = await bureau.auditTrail?.query({ runId: runB.id });
+        const runBAuditRecordsAfter = await bureau.internals.auditTrail?.query({ runId: runB.id });
         expect(runBAuditRecordsAfter).toEqual(runBAuditRecordsBefore);
 
-        const prunedRecords = await bureau.auditTrail?.query({ type: 'audit.pruned' });
+        const prunedRecords = await bureau.internals.auditTrail?.query({ type: 'audit.pruned' });
         expect(prunedRecords).toHaveLength(1);
         expect((prunedRecords![0]!.detail as { count: number; cutoffMs: number }).count).toBe(
           seedAuditRecordsBefore.length,
@@ -19009,7 +19037,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         // BEFORE the run's own durable event ever lands, at the clock's
         // starting reading (`t0`).
         const predictedRunId = `${runtime.identifierPrefix}-run-1`;
-        await bureau.auditTrail?.record({
+        await bureau.internals.auditTrail?.record({
           runId: predictedRunId,
           type: 'seeded.early-marker',
           detail: { note: "earlier than the run's own durable event" },
@@ -19042,12 +19070,12 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         // record, since this run's own id is still a durable-feed owner.
         await runtime.advance(2_000_000);
 
-        const before = await bureau.auditTrail?.query({ runId: predictedRunId });
+        const before = await bureau.internals.auditTrail?.query({ runId: predictedRunId });
         expect(before?.some((record) => record.type === 'seeded.early-marker')).toBe(true);
 
         await bureau.runDurableMaintenance();
 
-        const after = await bureau.auditTrail?.query({ runId: predictedRunId });
+        const after = await bureau.internals.auditTrail?.query({ runId: predictedRunId });
         expect(after?.some((record) => record.type === 'seeded.early-marker')).toBe(true);
       } finally {
         await bureau.shutdown();
@@ -19092,7 +19120,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         });
         await waitForRunCompletion(bureau, runA.id);
         await runtime.deferred.drain();
-        const runAAuditRecordsBefore = await bureau.auditTrail?.query({ runId: runA.id });
+        const runAAuditRecordsBefore = await bureau.internals.auditTrail?.query({ runId: runA.id });
         if (!runAAuditRecordsBefore || runAAuditRecordsBefore.length === 0) {
           throw new Error('expected at least one durable audit record for run A');
         }
@@ -19152,7 +19180,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         // delete-time re-check this issue adds did not exist, the pass
         // would have already decided (at listing) that run A is
         // unprotected and would delete its earlier audit records anyway.
-        const auditTrail = bureau.auditTrail;
+        const auditTrail = bureau.internals.auditTrail;
         if (!auditTrail) throw new Error('expected an audit trail for a durable bureau');
         const originalPrune = auditTrail.prune.bind(auditTrail);
         let injected = false;
@@ -19191,7 +19219,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         expect(sawUnprotectedAtListing).toBe(true);
         expect(injected).toBe(true);
 
-        const runAAuditRecordsAfter = await bureau.auditTrail?.query({ runId: runA.id });
+        const runAAuditRecordsAfter = await bureau.internals.auditTrail?.query({ runId: runA.id });
         expect(runAAuditRecordsAfter).toEqual(runAAuditRecordsBefore);
       } finally {
         await bureau.shutdown();
@@ -19229,7 +19257,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
           principal: 'alice',
         });
         await waitForRunCompletion(bureau, run.id);
-        const before = await bureau.auditTrail?.query({ runId: run.id });
+        const before = await bureau.internals.auditTrail?.query({ runId: run.id });
         if (!before || before.length === 0) {
           throw new Error('expected at least one durable audit record for the run');
         }
@@ -19281,11 +19309,11 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         await runtime.advance(300_000); // the automatic interval's own cadence
 
         await waitForCondition(async () => {
-          const records = await bureau.auditTrail?.query({ runId: run.id });
+          const records = await bureau.internals.auditTrail?.query({ runId: run.id });
           return records?.length === 0;
         }, 'expected the automatic maintenance timer to prune the audit trail on its own');
 
-        const prunedRecords = await bureau.auditTrail?.query({ type: 'audit.pruned' });
+        const prunedRecords = await bureau.internals.auditTrail?.query({ type: 'audit.pruned' });
         expect(prunedRecords?.length).toBeGreaterThan(0);
       } finally {
         await bureau.shutdown();
@@ -19323,7 +19351,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         });
         await waitForRunCompletion(bureauA, run.id);
 
-        const beforePrune = await bureauA.auditTrail?.query({ runId: run.id });
+        const beforePrune = await bureauA.internals.auditTrail?.query({ runId: run.id });
         if (!beforePrune || beforePrune.length === 0) {
           throw new Error('expected at least one durable audit record for the run');
         }
@@ -19370,7 +19398,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         await runtimeA.advance(1_000_000);
         await bureauA.runDurableMaintenance();
 
-        const afterPrune = await bureauA.auditTrail?.query({ runId: run.id });
+        const afterPrune = await bureauA.internals.auditTrail?.query({ runId: run.id });
         expect(afterPrune).toEqual([]);
       } finally {
         await bureauA.shutdown();
@@ -19399,7 +19427,9 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         });
         await waitForRunCompletion(bureauB, runAfterRestart.id);
 
-        const afterRestart = await bureauB.auditTrail?.query({ runId: runAfterRestart.id });
+        const afterRestart = await bureauB.internals.auditTrail?.query({
+          runId: runAfterRestart.id,
+        });
         if (!afterRestart || afterRestart.length === 0) {
           throw new Error('expected at least one durable audit record for the post-restart run');
         }
@@ -19442,7 +19472,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         principal: 'alice',
       });
       await waitForRunCompletion(bureau, run.id);
-      const before = await bureau.auditTrail?.query({ runId: run.id });
+      const before = await bureau.internals.auditTrail?.query({ runId: run.id });
       if (!before || before.length === 0) {
         throw new Error('expected at least one durable audit record for the run');
       }
@@ -19457,10 +19487,10 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
       // immediately for `!runtime.durable`, never reaching this pass.
       expect(result).toBe(true);
 
-      const after = await bureau.auditTrail?.query({ runId: run.id });
+      const after = await bureau.internals.auditTrail?.query({ runId: run.id });
       expect(after).toEqual([]);
 
-      const prunedRecords = await bureau.auditTrail?.query({ type: 'audit.pruned' });
+      const prunedRecords = await bureau.internals.auditTrail?.query({ type: 'audit.pruned' });
       expect(prunedRecords?.length).toBeGreaterThan(0);
     } finally {
       await bureau.shutdown();
@@ -19493,7 +19523,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         principal: 'alice',
       });
       await waitForRunCompletion(bureau, run.id);
-      const before = await bureau.auditTrail?.query({ runId: run.id });
+      const before = await bureau.internals.auditTrail?.query({ runId: run.id });
       if (!before || before.length === 0) {
         throw new Error('expected at least one durable audit record for the run');
       }
@@ -19518,11 +19548,11 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
       }
 
       await waitForCondition(async () => {
-        const records = await bureau.auditTrail?.query({ runId: run.id });
+        const records = await bureau.internals.auditTrail?.query({ runId: run.id });
         return records?.length === 0;
       }, 'expected the automatic maintenance timer to prune the audit trail on its own for a KV-only bureau');
 
-      const prunedRecords = await bureau.auditTrail?.query({ type: 'audit.pruned' });
+      const prunedRecords = await bureau.internals.auditTrail?.query({ type: 'audit.pruned' });
       expect(prunedRecords?.length).toBeGreaterThan(0);
     } finally {
       await bureau.shutdown();
@@ -19621,7 +19651,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
           principal: 'alice',
         });
         await waitForRunCompletion(bureau, run.id);
-        const before = await bureau.auditTrail?.query({ runId: run.id });
+        const before = await bureau.internals.auditTrail?.query({ runId: run.id });
         if (!before || before.length === 0) {
           throw new Error('expected at least one durable audit record for the run');
         }
@@ -19636,7 +19666,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         // ...but pruneAuditTrail() still ran in the SAME call, despite the
         // engine failing first — before this fix, the engine's rejection
         // exited the function before either sub-pass ran.
-        const after = await bureau.auditTrail?.query({ runId: run.id });
+        const after = await bureau.internals.auditTrail?.query({ runId: run.id });
         expect(after).toEqual([]);
       } finally {
         bureau.dispose();
@@ -19968,8 +19998,8 @@ describe('AB-260: BureauOptions.runtime composition', () => {
         () => deliveredCount > 0,
         'webhook delivery for the eval threshold breach was never attempted',
       );
-      await bureau.webhookNotifier?.flush();
-      await bureau.onlineEvalSampler?.flush();
+      await bureau.internals.webhookNotifier?.flush();
+      await bureau.internals.onlineEvalSampler?.flush();
 
       await bureau.dispose();
 
@@ -20034,7 +20064,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       const run = await bureau.createRun({ agentName: 'default', message: 'Loop the tool' });
       await waitForRunCompletion(bureau, run.id);
 
-      const warningRecords = await bureau.auditTrail!.query({
+      const warningRecords = await bureau.internals.auditTrail!.query({
         runId: run.id,
         type: 'toolbox.loop-warning',
       });
@@ -20059,7 +20089,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       expect(warningDetail.originalEvent).not.toHaveProperty('tool');
       expect(warningDetail.originalEvent).not.toHaveProperty('call');
 
-      const blockedRecords = await bureau.auditTrail!.query({
+      const blockedRecords = await bureau.internals.auditTrail!.query({
         runId: run.id,
         type: 'toolbox.loop-blocked',
       });
@@ -20079,8 +20109,12 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       // Confirm the bare, un-prefixed armorer name never appears — proves
       // the trail is keyed on the ACTUAL wire string, not the name AB-87's
       // prose used.
-      expect(await bureau.auditTrail!.query({ runId: run.id, type: 'loop-warning' })).toEqual([]);
-      expect(await bureau.auditTrail!.query({ runId: run.id, type: 'loop-blocked' })).toEqual([]);
+      expect(
+        await bureau.internals.auditTrail!.query({ runId: run.id, type: 'loop-warning' }),
+      ).toEqual([]);
+      expect(
+        await bureau.internals.auditTrail!.query({ runId: run.id, type: 'loop-blocked' }),
+      ).toEqual([]);
     } finally {
       await bureau.dispose();
     }
@@ -20131,7 +20165,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       });
       await waitForRunCompletion(bureau, run.id);
 
-      const exceededRecords = await bureau.auditTrail!.query({
+      const exceededRecords = await bureau.internals.auditTrail!.query({
         runId: run.id,
         type: 'toolbox.budget-exceeded',
       });
@@ -20140,9 +20174,9 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       // Confirm the bare, un-prefixed `budget.exceeded` never matches this
       // real emission — proves the trail is keyed on the ACTUAL wire
       // string, not the class name that never dispatches in production.
-      expect(await bureau.auditTrail!.query({ runId: run.id, type: 'budget.exceeded' })).toEqual(
-        [],
-      );
+      expect(
+        await bureau.internals.auditTrail!.query({ runId: run.id, type: 'budget.exceeded' }),
+      ).toEqual([]);
     } finally {
       await bureau.dispose();
     }
@@ -20167,34 +20201,34 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
     });
 
     try {
-      const summary = await bureau.createSchedule({
+      const summary = await bureau.schedules.create({
         agentName: 'default',
         input: 'paused forever',
         spec: '1h',
       });
       expect(summary).toBeDefined();
 
-      await bureau.pauseSchedule(summary!.id);
-      await bureau.resumeSchedule(summary!.id);
-      await bureau.cancelSchedule(summary!.id);
+      await bureau.schedules.pause(summary!.id);
+      await bureau.schedules.resume(summary!.id);
+      await bureau.schedules.cancel(summary!.id);
 
       const owner = `schedule:${summary!.id}`;
-      const createdRecords = await bureau.auditTrail!.query({
+      const createdRecords = await bureau.internals.auditTrail!.query({
         runId: owner,
         type: 'schedule.created',
       });
       expect(createdRecords).toHaveLength(1);
-      const pausedRecords = await bureau.auditTrail!.query({
+      const pausedRecords = await bureau.internals.auditTrail!.query({
         runId: owner,
         type: 'schedule.paused',
       });
       expect(pausedRecords).toHaveLength(1);
-      const resumedRecords = await bureau.auditTrail!.query({
+      const resumedRecords = await bureau.internals.auditTrail!.query({
         runId: owner,
         type: 'schedule.resumed',
       });
       expect(resumedRecords).toHaveLength(1);
-      const cancelledRecords = await bureau.auditTrail!.query({
+      const cancelledRecords = await bureau.internals.auditTrail!.query({
         runId: owner,
         type: 'schedule.cancelled',
       });
@@ -20237,7 +20271,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       await bureau.deleteSession(run.sessionId);
 
       const owner = `session:${run.sessionId}`;
-      const deletedRecords = await bureau.auditTrail!.query({
+      const deletedRecords = await bureau.internals.auditTrail!.query({
         runId: owner,
         type: 'session.deleted',
       });
@@ -20252,7 +20286,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       // Deleting an id that was never a live session dispatches nothing —
       // there is no genuine deletion fact to record.
       await bureau.deleteSession('never-existed-session');
-      const nonExistentRecords = await bureau.auditTrail!.query({
+      const nonExistentRecords = await bureau.internals.auditTrail!.query({
         runId: 'session:never-existed-session',
         type: 'session.deleted',
       });
@@ -20299,7 +20333,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       expect(deleted).toEqual([run.sessionId]);
 
       const owner = `session:${run.sessionId}`;
-      const deletedRecords = await bureau.auditTrail!.query({
+      const deletedRecords = await bureau.internals.auditTrail!.query({
         runId: owner,
         type: 'session.deleted',
       });
@@ -20495,7 +20529,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       await deletion;
       await waitForRunCompletion(bureau, run.id);
 
-      const allRecords = await bureau.auditTrail!.query({ limit: 1000 });
+      const allRecords = await bureau.internals.auditTrail!.query({ limit: 1000 });
       const runTerminalIndex = allRecords.findIndex(
         (record) => record.runId === run.id && record.type === 'run.completed',
       );
@@ -20605,7 +20639,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       await bureau.deleteSession(sessionId);
       await waitForRunCompletion(bureau, run.id);
 
-      const allRecords = await bureau.auditTrail!.query({ limit: 1000 });
+      const allRecords = await bureau.internals.auditTrail!.query({ limit: 1000 });
       const runTerminal = allRecords.find(
         (record) => record.runId === run.id && record.type === 'run.completed',
       );
@@ -20625,7 +20659,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       // run resumed and reached its own terminal action.
       expect(sessionDeleted.sequence!).toBeLessThan(runTerminal.sequence!);
 
-      const allIndexes = await bureau.auditTrail!.query({ limit: 1000 });
+      const allIndexes = await bureau.internals.auditTrail!.query({ limit: 1000 });
       const sessionDeletedIndex = allIndexes.findIndex(
         (record) => record.runId === `session:${sessionId}` && record.type === 'session.deleted',
       );
@@ -20693,7 +20727,10 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       });
       await waitForRunCompletion(bureau, run.id);
 
-      const [record] = await bureau.auditTrail!.query({ runId: run.id, type: 'run.completed' });
+      const [record] = await bureau.internals.auditTrail!.query({
+        runId: run.id,
+        type: 'run.completed',
+      });
       // At or above 10 — the run may write several other audited events
       // (tool.*, step.completed) before its own terminal action, each
       // consuming one more value from the same shared counter; the exact
@@ -20758,7 +20795,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       // The counter started at 0 (not a clock reading, not left unset) —
       // some record from this run landed at exactly 0, proving the
       // fallback floor rather than merely that SOME sequence exists.
-      const allRecords = await bureau.auditTrail!.query({ runId: run.id, limit: 1000 });
+      const allRecords = await bureau.internals.auditTrail!.query({ runId: run.id, limit: 1000 });
       expect(allRecords.some((r) => r.sequence === 0)).toBe(true);
       expect(
         received.some(
@@ -20852,7 +20889,7 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
       // point.
       expect(deletionSettled).toBe(false);
 
-      const records = await bureau.auditTrail!.query({
+      const records = await bureau.internals.auditTrail!.query({
         runId: `session:${sessionId}`,
         type: 'session.deleted',
       });
@@ -20919,7 +20956,7 @@ describe('AB-389 — session commit outbox', () => {
       expect(page.events.map((event) => event.kind)).toEqual(['session.created']);
 
       // The entry was acknowledged (removed) once its durable write settled.
-      const recoveredSessionStore = bureau.sessionStore;
+      const recoveredSessionStore = bureau.internals.sessionStore;
       if (!recoveredSessionStore) throw new Error('expected a configured session store');
       expect(await recoveredSessionStore.outbox.pending()).toHaveLength(0);
     } finally {
@@ -21003,7 +21040,7 @@ describe('AB-389 — session commit outbox', () => {
 
     try {
       await bureauA.waitForRecovery?.();
-      const sessionStoreA = bureauA.sessionStore;
+      const sessionStoreA = bureauA.internals.sessionStore;
       if (!sessionStoreA) throw new Error('expected a configured session store');
 
       const session = createAgentSession({
@@ -21057,7 +21094,7 @@ describe('AB-389 — session commit outbox', () => {
 
     try {
       await bureau.waitForRecovery?.();
-      const sessionStore = bureau.sessionStore;
+      const sessionStore = bureau.internals.sessionStore;
       if (!sessionStore) throw new Error('expected a configured session store');
 
       const session = createAgentSession({
@@ -21106,7 +21143,7 @@ describe('AB-389 — session commit outbox', () => {
     });
 
     try {
-      const sessionStore = bureau.sessionStore;
+      const sessionStore = bureau.internals.sessionStore;
       if (!sessionStore) throw new Error('expected a configured session store');
 
       failOutboxList = true;
@@ -21149,7 +21186,7 @@ describe('AB-389 — session commit outbox', () => {
 
     try {
       await bureau.waitForRecovery?.();
-      const sessionStore = bureau.sessionStore;
+      const sessionStore = bureau.internals.sessionStore;
       if (!sessionStore) throw new Error('expected a configured session store');
 
       const pendingSpy = spyOn(sessionStore.outbox, 'pending').mockImplementationOnce(() => {
@@ -21223,7 +21260,7 @@ describe('AB-389 — session commit outbox', () => {
 
     try {
       await bureau.waitForRecovery?.();
-      const sessionStore = bureau.sessionStore;
+      const sessionStore = bureau.internals.sessionStore;
       if (!sessionStore) throw new Error('expected a configured session store');
 
       const session = createAgentSession({
@@ -21303,7 +21340,7 @@ describe('AB-389 — session commit outbox', () => {
     });
 
     try {
-      const sessionStore = bureau.sessionStore;
+      const sessionStore = bureau.internals.sessionStore;
       if (!sessionStore) throw new Error('expected a configured session store');
 
       const session = createAgentSession({
@@ -21334,7 +21371,7 @@ describe('AB-389 — session commit outbox', () => {
       // anywhere yet.
       expect(await sessionStore.outbox.pending()).toHaveLength(1);
       expect(
-        await bureau.auditTrail!.query({
+        await bureau.internals.auditTrail!.query({
           runId: `session:${session.id}`,
           type: 'session.deleted',
         }),
@@ -21366,7 +21403,7 @@ describe('AB-389 — session commit outbox', () => {
         const pending = await sessionStore.outbox.pending();
         return pending.length === 0;
       }, 'expected the outbox to fully drain after the audit backend recovered');
-      const records = await bureau.auditTrail!.query({
+      const records = await bureau.internals.auditTrail!.query({
         runId: `session:${session.id}`,
         type: 'session.deleted',
       });
@@ -21472,7 +21509,7 @@ describe('AB-389 — session commit outbox', () => {
 
       // The unrelated outbox entry drains anyway — authority-independent
       // draining runs before the defer decision, not gated behind it.
-      const recoveredSessionStore = bureauB.sessionStore;
+      const recoveredSessionStore = bureauB.internals.sessionStore;
       if (!recoveredSessionStore) throw new Error('expected a configured session store');
       await waitForCondition(async () => {
         const pending = await recoveredSessionStore.outbox.pending();
@@ -21550,13 +21587,13 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
     try {
       await bureau.waitForRecovery?.();
 
-      const records = await bureau.auditTrail!.query({ runId: reviewAuditPayload.runId });
+      const records = await bureau.internals.auditTrail!.query({ runId: reviewAuditPayload.runId });
       expect(records).toHaveLength(1);
       expect(records[0]?.type).toBe(reviewAuditPayload.type);
       expect(records[0]?.principal).toBe(reviewAuditPayload.principal);
       expect(records[0]?.detail).toEqual(reviewAuditPayload.detail);
 
-      const recoveredSessionStore = bureau.sessionStore;
+      const recoveredSessionStore = bureau.internals.sessionStore;
       if (!recoveredSessionStore) throw new Error('expected a configured session store');
       expect(await recoveredSessionStore.outbox.pending()).toHaveLength(0);
 
@@ -21564,7 +21601,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
       // fact — the idempotency guard `drainOutboxAttachmentEntry` checks
       // before writing.
       await bureau.runDurableMaintenance();
-      const recordsAfterSecondPass = await bureau.auditTrail!.query({
+      const recordsAfterSecondPass = await bureau.internals.auditTrail!.query({
         runId: reviewAuditPayload.runId,
       });
       expect(recordsAfterSecondPass).toHaveLength(1);
@@ -21598,10 +21635,10 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
       const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
 
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       if (!review) throw new Error('Expected a pending review');
 
-      const outcome = await bureau.resolveReview({
+      const outcome = await bureau.reviews.resolve({
         id: review.id,
         decision: 'approve',
         principal: 'api-key:ab-391-reviewer',
@@ -21609,11 +21646,11 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
       expect(outcome.decision).toBe('approve');
 
       // Reconstructed from the audit trail with no further drain trigger —
-      // `resolveReview` itself drains the outbox before returning.
-      const resolved = await bureau.getReview(review.id);
+      // `reviews.resolve` itself drains the outbox before returning.
+      const resolved = await bureau.reviews.get(review.id);
       expect(resolved?.status).toBe('approved');
 
-      const records = await bureau.auditTrail!.query({ runId: run.id });
+      const records = await bureau.internals.auditTrail!.query({ runId: run.id });
       const approvedRecords = records.filter(
         (record) => record.type === 'review.tool-approval.approved',
       );
@@ -21648,7 +21685,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
     });
 
     try {
-      const sessionStore = bureau.sessionStore;
+      const sessionStore = bureau.internals.sessionStore;
       if (!sessionStore) throw new Error('expected a configured session store');
       const firstSession = createAgentSession({
         id: 'ab-391-unknown-namespace-session',
@@ -21706,7 +21743,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
     });
 
     try {
-      const sessionStore = bureau.sessionStore;
+      const sessionStore = bureau.internals.sessionStore;
       if (!sessionStore) throw new Error('expected a configured session store');
       const session = createAgentSession({
         id: 'ab-391-malformed-payload-session',
@@ -21731,7 +21768,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
       await bureau.runDurableMaintenance();
 
       expect(await sessionStore.outbox.pending()).toHaveLength(0);
-      const records = await bureau.auditTrail!.query({ runId: 'ab-391-malformed-run' });
+      const records = await bureau.internals.auditTrail!.query({ runId: 'ab-391-malformed-run' });
       expect(records).toHaveLength(0);
     } finally {
       await bureau.dispose();
@@ -21765,7 +21802,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
       const type = 'review.tool-approval.approved';
       const floodCount = 500;
       for (let index = 0; index < floodCount; index += 1) {
-        await bureau.auditTrail!.record({
+        await bureau.internals.auditTrail!.record({
           runId,
           type,
           detail: { flood: index },
@@ -21774,7 +21811,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
         });
       }
 
-      const sessionStore = bureau.sessionStore;
+      const sessionStore = bureau.internals.sessionStore;
       if (!sessionStore) throw new Error('expected a configured session store');
       const session = createAgentSession({
         id: 'ab-391-dedup-limit-session',
@@ -21799,7 +21836,11 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
       // preceded it.
       expect(await sessionStore.outbox.pending()).toHaveLength(0);
 
-      const allMatching = await bureau.auditTrail!.query({ runId, type, limit: floodCount + 10 });
+      const allMatching = await bureau.internals.auditTrail!.query({
+        runId,
+        type,
+        limit: floodCount + 10,
+      });
       const targetRecords = allMatching.filter(
         (record) => JSON.stringify(record.detail) === JSON.stringify(targetPayload.detail),
       );
@@ -21809,7 +21850,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
       // A second maintenance pass (nothing left pending) must not duplicate
       // the record either.
       await bureau.runDurableMaintenance();
-      const afterSecondPass = await bureau.auditTrail!.query({
+      const afterSecondPass = await bureau.internals.auditTrail!.query({
         runId,
         type,
         limit: floodCount + 10,
@@ -21853,22 +21894,22 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
       const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
 
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       if (!review) throw new Error('Expected a pending review');
 
-      const sessionStore = bureau.sessionStore;
+      const sessionStore = bureau.internals.sessionStore;
       if (!sessionStore) throw new Error('expected a configured session store');
       const deleted = await sessionStore.delete(review.sessionId!);
       expect(deleted).toBe(true);
 
-      const outcome = await bureau.resolveReview({
+      const outcome = await bureau.reviews.resolve({
         id: review.id,
         decision: 'approve',
         principal: 'api-key:vanish-reviewer',
       });
       expect(outcome.decision).toBe('approve');
 
-      const records = await bureau.auditTrail!.query({ runId: run.id });
+      const records = await bureau.internals.auditTrail!.query({ runId: run.id });
       const approvedRecords = records.filter(
         (record) => record.type === 'review.tool-approval.approved',
       );
@@ -21919,11 +21960,11 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
       const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
 
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       if (!review) throw new Error('Expected a pending review');
 
       failAuditDedupeWriteOnce = true;
-      const outcome = await bureau.resolveReview({
+      const outcome = await bureau.reviews.resolve({
         id: review.id,
         decision: 'approve',
         principal: 'api-key:drain-fail-reviewer',
@@ -21937,14 +21978,14 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
 
       // The audit record is not yet visible — the failed drain left the
       // attachment pending rather than losing it.
-      const recordsBeforeRecovery = await bureau.auditTrail!.query({ runId: run.id });
+      const recordsBeforeRecovery = await bureau.internals.auditTrail!.query({ runId: run.id });
       expect(
         recordsBeforeRecovery.filter((record) => record.type === 'review.tool-approval.approved'),
       ).toHaveLength(0);
 
       // A later drain (no longer failing) recovers it — exactly once.
       await bureau.runDurableMaintenance();
-      const recordsAfterRecovery = await bureau.auditTrail!.query({ runId: run.id });
+      const recordsAfterRecovery = await bureau.internals.auditTrail!.query({ runId: run.id });
       const approvedRecords = recordsAfterRecovery.filter(
         (record) => record.type === 'review.tool-approval.approved',
       );
@@ -22005,11 +22046,11 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
       const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
 
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       if (!review) throw new Error('Expected a pending review');
 
       failOnceAfterRealCommit = true;
-      const outcome = await bureau.resolveReview({
+      const outcome = await bureau.reviews.resolve({
         id: review.id,
         decision: 'approve',
         principal: 'api-key:ambiguous-reviewer',
@@ -22020,7 +22061,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
       expect(failOnceAfterRealCommit).toBe(false);
 
       await bureau.runDurableMaintenance();
-      const records = await bureau.auditTrail!.query({ runId: run.id });
+      const records = await bureau.internals.auditTrail!.query({ runId: run.id });
       const approvedRecords = records.filter(
         (record) => record.type === 'review.tool-approval.approved',
       );
@@ -22037,7 +22078,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
     // resolver of any kind — already durably recorded a DIFFERENT decision
     // for this exact reviewId before this call's own commit runs.
     // Committed directly through `bureau.sessionStore.update()` (not
-    // through `bureau.resolveReview()`), mirroring the standalone-store
+    // through `bureau.reviews.resolve()`), mirroring the standalone-store
     // pattern the AB-390/AB-391 crash-recovery tests above use to commit
     // "from outside" this bureau's own request path.
     const bureau = await createBureau<AgentDefinitions>({
@@ -22063,7 +22104,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
       const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
 
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       if (!review) throw new Error('Expected a pending review');
 
       const approved: string[] = [];
@@ -22071,8 +22112,8 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
       bureau.addEventListener('review.approved', (event) => approved.push(event.reviewId));
       bureau.addEventListener('review.denied', (event) => denied.push(event.reviewId));
 
-      if (!bureau.sessionStore) throw new Error('Expected a configured session store');
-      await bureau.sessionStore.update(
+      if (!bureau.internals.sessionStore) throw new Error('Expected a configured session store');
+      await bureau.internals.sessionStore.update(
         review.sessionId!,
         (session) => {
           if (!session) return session;
@@ -22110,8 +22151,8 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
         },
       );
 
-      const error = await bureau
-        .resolveReview({
+      const error = await bureau.reviews
+        .resolve({
           id: review.id,
           decision: 'approve',
           principal: 'api-key:conflicting-reviewer',
@@ -22128,13 +22169,13 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
       // No live event for the decision that never actually landed, and
       // none for the foreign one either — that decision was committed
       // directly through the session store, not through this bureau's own
-      // `resolveReview`/`recordReviewDecision` path, so it dispatches no
+      // `reviews.resolve`/`recordReviewDecision` path, so it dispatches no
       // live event of its own; only the durable audit trail speaks for it.
       expect(approved).toEqual([]);
       expect(denied).toEqual([]);
 
       await bureau.runDurableMaintenance();
-      const records = await bureau.auditTrail!.query({ runId: run.id });
+      const records = await bureau.internals.auditTrail!.query({ runId: run.id });
       const approvedRecords = records.filter(
         (record) => record.type === 'review.tool-approval.approved',
       );
@@ -22183,11 +22224,11 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
       const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
       await waitForRunCompletion(bureau, run.id);
 
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       if (!review) throw new Error('Expected a pending review');
 
-      if (!bureau.sessionStore) throw new Error('Expected a configured session store');
-      await bureau.sessionStore.update(
+      if (!bureau.internals.sessionStore) throw new Error('Expected a configured session store');
+      await bureau.internals.sessionStore.update(
         review.sessionId!,
         (session) => {
           if (!session) return session;
@@ -22225,8 +22266,8 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
         },
       );
 
-      const error = await bureau
-        .resolveReview({
+      const error = await bureau.reviews
+        .resolve({
           id: review.id,
           decision: 'approve',
           principal: 'api-key:losing-fence-reviewer',
@@ -22321,7 +22362,7 @@ describe('AB-390 — outbox claim lease', () => {
     try {
       await bureauA.waitForRecovery?.();
       await bureauB.waitForRecovery?.();
-      const sessionStoreA = bureauA.sessionStore;
+      const sessionStoreA = bureauA.internals.sessionStore;
       if (!sessionStoreA) throw new Error('expected a configured session store');
 
       // Committed and deleted through a STANDALONE `SessionStore` over the
@@ -22358,7 +22399,7 @@ describe('AB-390 — outbox claim lease', () => {
       await Promise.all([bureauA.runDurableMaintenance(), bureauB.runDurableMaintenance()]);
 
       expect(sessionDeletedSeenByA + sessionDeletedSeenByB).toBe(1);
-      const auditRecords = await bureauA.auditTrail!.query({
+      const auditRecords = await bureauA.internals.auditTrail!.query({
         runId: `session:${session.id}`,
         type: 'session.deleted',
       });
@@ -22396,7 +22437,7 @@ describe('AB-390 — outbox claim lease', () => {
 
     try {
       await bureau.waitForRecovery?.();
-      const sessionStore = bureau.sessionStore;
+      const sessionStore = bureau.internals.sessionStore;
       if (!sessionStore) throw new Error('expected a configured session store');
 
       // Committed through a STANDALONE `SessionStore` over the SAME
@@ -22502,7 +22543,7 @@ describe('AB-390 — outbox claim lease', () => {
     });
 
     try {
-      const sessionStore = bureau.sessionStore;
+      const sessionStore = bureau.internals.sessionStore;
       if (!sessionStore) throw new Error('expected a configured session store');
 
       const session = createAgentSession({
@@ -22554,7 +22595,7 @@ describe('AB-390 — outbox claim lease', () => {
         const pending = await sessionStore.outbox.pending();
         return pending.length === 0;
       }, 'expected the drain to complete once the audit write settles');
-      const records = await bureau.auditTrail!.query({
+      const records = await bureau.internals.auditTrail!.query({
         runId: `session:${session.id}`,
         type: 'session.deleted',
       });
@@ -22626,7 +22667,7 @@ describe('AB-390 — outbox claim lease', () => {
     });
 
     try {
-      const sessionStore = bureau.sessionStore;
+      const sessionStore = bureau.internals.sessionStore;
       if (!sessionStore) throw new Error('expected a configured session store');
 
       const session = createAgentSession({
@@ -22694,7 +22735,7 @@ describe('AB-390 — outbox claim lease', () => {
     });
 
     try {
-      const sessionStore = bureau.sessionStore;
+      const sessionStore = bureau.internals.sessionStore;
       if (!sessionStore) throw new Error('expected a configured session store');
 
       // Committed through a STANDALONE `SessionStore` over the SAME
@@ -22771,7 +22812,7 @@ describe('AB-390 — outbox claim lease', () => {
 
     try {
       await bureau.waitForRecovery?.();
-      const sessionStore = bureau.sessionStore;
+      const sessionStore = bureau.internals.sessionStore;
       if (!sessionStore) throw new Error('expected a configured session store');
 
       const standaloneStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
@@ -22874,7 +22915,7 @@ describe('AB-390 — outbox claim lease', () => {
     try {
       await bureauA.waitForRecovery?.();
       await bureauB.waitForRecovery?.();
-      const sessionStoreA = bureauA.sessionStore;
+      const sessionStoreA = bureauA.internals.sessionStore;
       if (!sessionStoreA) throw new Error('expected a configured session store');
 
       const standaloneStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
@@ -22901,7 +22942,7 @@ describe('AB-390 — outbox claim lease', () => {
       await Promise.all([bureauA.runDurableMaintenance(), bureauB.runDurableMaintenance()]);
 
       expect(sessionDeletedSeenByA + sessionDeletedSeenByB).toBe(1);
-      const auditRecords = await bureauA.auditTrail!.query({
+      const auditRecords = await bureauA.internals.auditTrail!.query({
         runId: `session:${session.id}`,
         type: 'session.deleted',
       });
@@ -22947,7 +22988,7 @@ describe('AB-390 — outbox claim lease', () => {
 
     try {
       await bureau.waitForRecovery?.();
-      const sessionStore = bureau.sessionStore;
+      const sessionStore = bureau.internals.sessionStore;
       if (!sessionStore) throw new Error('expected a configured session store');
 
       const standaloneStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
@@ -23047,7 +23088,7 @@ describe('AB-390 — outbox claim lease', () => {
 
     try {
       await bureau.waitForRecovery?.();
-      const sessionStore = bureau.sessionStore;
+      const sessionStore = bureau.internals.sessionStore;
       if (!sessionStore) throw new Error('expected a configured session store');
 
       const standaloneStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
@@ -23144,7 +23185,7 @@ describe('AB-390 — outbox claim lease', () => {
 
     try {
       await bureau.waitForRecovery?.();
-      const sessionStore = bureau.sessionStore;
+      const sessionStore = bureau.internals.sessionStore;
       if (!sessionStore) throw new Error('expected a configured session store');
 
       const standaloneStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
@@ -23263,7 +23304,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
 
   /** Every `run.cleanup-settled` record this bureau holds for one run. */
   async function cleanupRecordsFor(bureau: Bureau, runId: string): Promise<AuditRecord[]> {
-    const records = (await bureau.auditTrail?.query({ runId })) ?? [];
+    const records = (await bureau.internals.auditTrail?.query({ runId })) ?? [];
     return records.filter((record) => record.type === 'run.cleanup-settled');
   }
 
@@ -23351,7 +23392,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
     const bureau = await createRetentionBureau();
     try {
       const run = await bureau.createRun({ agentName: 'default', message: 'keep-all' });
-      await waitForRunState(bureau.store, run.id);
+      await waitForRunState(bureau.internals.store, run.id);
 
       const record = await awaitCleanupRecord(bureau, run.id);
       expect(record.detail).toEqual({ acknowledgement: { status: 'not-required' } });
@@ -23371,7 +23412,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
     const bureau = await createRetentionBureau({ retention: { checkpoints: { keepLast: 1 } } });
     try {
       const run = await bureau.createRun({ agentName: 'default', message: 'prune me' });
-      await waitForRunState(bureau.store, run.id);
+      await waitForRunState(bureau.internals.store, run.id);
 
       const record = await awaitCleanupRecord(bureau, run.id);
       expect(record.detail).toEqual({ acknowledgement: { status: 'completed' } });
@@ -23399,7 +23440,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
     const bureau = await createRetentionBureau({ retention: { checkpoints: { keepLast: 1 } } });
     try {
       const run = await bureau.createRun({ agentName: 'default', message: 'store rejects' });
-      await waitForRunState(bureau.store, run.id);
+      await waitForRunState(bureau.internals.store, run.id);
 
       const record = await awaitCleanupRecord(bureau, run.id);
       expect(record.detail).toMatchObject({
@@ -23432,7 +23473,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
     const bureau = await createRetentionBureau({ retention: { checkpoints: { keepLast: 1 } } });
     try {
       const run = await bureau.createRun({ agentName: 'default', message: 'not terminal yet' });
-      await waitForRunState(bureau.store, run.id);
+      await waitForRunState(bureau.internals.store, run.id);
 
       const record = await awaitCleanupRecord(bureau, run.id);
       const detail = record.detail as { acknowledgement: { status: string; reason?: string } };
@@ -23490,7 +23531,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
 
     try {
       const run = await bureau.createRun({ agentName: 'default', message: 'slow prune' });
-      await waitForRunState(bureau.store, run.id);
+      await waitForRunState(bureau.internals.store, run.id);
       await waitForCondition(
         () => observedSignal !== undefined,
         'the cleanup step never reached the engine prune',
@@ -23527,7 +23568,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
     try {
       const run = await bureau.createRun({ agentName: 'default', message: 'cancel then settle' });
       await waitForCondition(
-        () => bureau.store.getRun(run.id)?.status === 'running',
+        () => bureau.internals.store.getRun(run.id)?.status === 'running',
         'the run never started',
       );
 
@@ -23536,7 +23577,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
       // Release the parked generate so the run's OWN terminal listener also
       // fires — the second trigger for the same run id.
       resolve({ content: 'released', toolCalls: [] });
-      await waitForRunState(bureau.store, run.id);
+      await waitForRunState(bureau.internals.store, run.id);
 
       // Both triggers reached the memoized step; only one ran.
       const records = await cleanupRecordsFor(bureau, run.id);
@@ -23668,7 +23709,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
     const bureau = await createRetentionBureau({ retention: { checkpoints: { keepLast: 1 } } });
     try {
       const run = await bureau.createRun({ agentName: 'default', message: 'deposed' });
-      await waitForRunState(bureau.store, run.id);
+      await waitForRunState(bureau.internals.store, run.id);
 
       const record = await awaitCleanupRecord(bureau, run.id);
       const detail = record.detail as { acknowledgement: { status: string; reason?: string } };
@@ -23724,7 +23765,7 @@ describe('createBureau schedule tick observation (COR-660)', () => {
     bureau.addEventListener(ScheduleSkippedEvent.type, (event) => skipped.push(event));
 
     try {
-      const summary = await bureau.createSchedule({
+      const summary = await bureau.schedules.create({
         agentName: 'default',
         input: 'observed tick prompt',
         spec: '1m',
@@ -23768,7 +23809,7 @@ describe('createBureau schedule tick observation (COR-660)', () => {
       expect(attempted.length).toBeGreaterThanOrEqual(2);
       expect(attempted.every((event) => event.scheduleId === scheduleId)).toBe(true);
 
-      await bureau.cancelSchedule(scheduleId);
+      await bureau.schedules.cancel(scheduleId);
       released.resolve();
     } finally {
       released.resolve();
