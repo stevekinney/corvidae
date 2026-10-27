@@ -331,9 +331,9 @@ const COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer('COVERAGE_ALLOWANCE_OVE
     'src/server/json-rpc-websocket.ts',
     {
       reason:
-        'Transport disconnect and concurrency exits are behaviorally tested, but Bun does not deterministically attribute these residual paths (the emit() catch-block’s emitterBroken = true, line 117). Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption): corvidae additionally carries a defensive branch upstream does not (lines 219-225) that rejects a subscription-start result whose envelope shape is not isSubscriptionStartEnvelope() and reports an internal error instead of proceeding — every current caller only ever constructs a well-formed envelope, so no test manufactures the malformed shape needed to reach it.',
+        'Transport disconnect and concurrency exits are behaviorally tested, but Bun does not deterministically attribute these residual paths (the emit() catch-block’s emitterBroken = true, line 117). Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption): corvidae additionally carries a defensive branch upstream does not (lines 235-241) that rejects a subscription-start result whose envelope shape is not isSubscriptionStartEnvelope() and reports an internal error instead of proceeding — every current caller only ever constructs a well-formed envelope, so no test manufactures the malformed shape needed to reach it.',
       functions: 2,
-      lines: new Set([117, 219, 220, 221, 222, 223, 224, 225]),
+      lines: new Set([117, 235, 236, 237, 238, 239, 240, 241]),
       requireUncoveredLines: true,
     },
   ],
