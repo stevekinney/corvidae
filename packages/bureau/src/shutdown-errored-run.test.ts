@@ -7,7 +7,7 @@
  */
 import { EventType } from '@ag-ui/core';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { type BatchOperation } from '@lostgradient/weft';
+import { type BatchOperation, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS } from './create-bureau.ts';
@@ -64,6 +64,40 @@ describe('a graceful dispose between a run’s error and its durable commit', ()
       expect(failed.at(-1)!.event.type).toBe(EventType.RUN_ERROR);
       expect(session?.metadata['lastRunStatus']).toBe('error');
       expect(engineDisposedInTheGap).toBe(false);
+    } finally {
+      await restarted.dispose();
+    }
+  });
+
+  it('detach waits for an errored run to commit before disposing its durable engine', async () => {
+    const clock = createManualRuntimeServices({ origin: new Date().toISOString() });
+    const harness = await openHarness({
+      script: [{ kind: 'fail', error: new Error('provider said no') }],
+      storage: 'sqlite',
+      seamStorage: true,
+      bureauRuntime: clock,
+    });
+    const commit = harness.seam!.holdWrite(commitsCompletion);
+    const failed = await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
+    await commit.reached;
+
+    let claimReleased = false;
+    void harness.seam!.awaitWrite(releasesClaim).then(() => {
+      claimReleased = true;
+    });
+    const shuttingDown = harness.bureau.shutdown({ policy: 'detach' });
+    for (let tick = 0; tick < 20; tick += 1) await yieldToPortableEventLoop();
+    expect(claimReleased).toBe(false);
+    commit.release();
+    const report = await shuttingDown;
+    expect(report.detached).toBe(0);
+    expect(report.owners).toContainEqual({ kind: 'durable-engine', outcome: 'completed' });
+
+    const restarted = await harness.restart([]);
+    try {
+      const session = await restarted.bureau.contexts.get('thread-1');
+      expect(failed.at(-1)!.event.type).toBe(EventType.RUN_ERROR);
+      expect(session?.metadata['lastRunStatus']).toBe('error');
     } finally {
       await restarted.dispose();
     }
