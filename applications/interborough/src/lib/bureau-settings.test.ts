@@ -36,7 +36,13 @@ describe('the settings the Bureau shows', () => {
 
   test('are refused when the answer is not a snapshot', async () => {
     stub = installBureauStub({ 'bureau.settings.get': () => ({ values: {}, revision: -1 }) });
-    await expect(getSettings()).rejects.toThrow();
+    let refusal: unknown;
+    try {
+      await getSettings();
+    } catch (error) {
+      refusal = error;
+    }
+    expect(refusal).toBeInstanceOf(Error);
   });
 
   test('come with a schema, one node for each key', async () => {
