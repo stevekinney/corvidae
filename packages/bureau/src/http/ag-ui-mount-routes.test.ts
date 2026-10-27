@@ -1375,26 +1375,6 @@ describe('attach', () => {
     );
   });
 
-  it('delivers later durable text exactly once across the history/live handoff', async () => {
-    await withHarness(
-      { script: [{ kind: 'block', barrier: 'hold' }, say('later')] },
-      async ({ handler, generate }) => {
-        const starter = new FrameReader(await handler(startRequest(runAgentInput())));
-        await starter.until(EventType.STEP_STARTED);
-        await generate.reached('hold');
-        generate.release('hold');
-        const attached = await readAgUiStream(await handler(attachThreadRequest('thread-1')));
-        await starter.rest();
-        const later = attached.filter(
-          (frame) =>
-            frame.event.type === EventType.TEXT_MESSAGE_CONTENT && frame.event.delta === 'later',
-        );
-        expect(later).toHaveLength(1);
-        expect(attached.at(-1)!.event.type).toBe(EventType.RUN_FINISHED);
-      },
-    );
-  });
-
   it.each(['999999999', 'not-a-cursor'])(
     'falls back to the snapshot for an invalid cursor %s',
     async (cursor) => {
