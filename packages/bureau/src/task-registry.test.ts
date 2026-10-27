@@ -1,5 +1,6 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
+  type ConditionalTextValueStore,
   MemoryStorage,
   textValueStore,
   WEFT_RESERVED_KEY_PREFIXES,
@@ -50,7 +51,13 @@ type HostState = {
   abortOutcome?: 'requested' | 'already-terminal' | 'not-found';
 };
 
-function build(state?: Partial<HostState>) {
+function build(
+  state?: Partial<HostState>,
+  options: {
+    kv?: ConditionalTextValueStore;
+    onSettled?: Parameters<typeof createTaskRegistry>[0]['onSettled'];
+  } = {},
+) {
   const runtime = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
   const held: HostState = {
     live: new Map(),
@@ -89,13 +96,14 @@ function build(state?: Partial<HostState>) {
         runtime.timers.setTimeout(resolve, milliseconds);
       }),
   };
-  const kv = textValueStore(new MemoryStorage());
+  const kv = options.kv ?? textValueStore(new MemoryStorage());
   const registry = createTaskRegistry({
     kv,
     clock: runtime.clock,
     identifiers: runtime.identifiers,
     host,
     diagnose: (message) => diagnostics.push(message),
+    onSettled: options.onSettled,
   });
   return { registry, kv, host, held, runtime, diagnostics };
 }
@@ -707,6 +715,50 @@ describe('cancel', () => {
 
       expect(record?.settled?.answer).toEqual({ text: 'the answer', truncated: false });
     }
+  });
+
+  it('announces settlement only after the committed write and only once', async () => {
+    const release = Promise.withResolvers<void>();
+    const base = textValueStore(new MemoryStorage());
+    let hold = false;
+    const kv = new Proxy(base, {
+      get(target, property, receiver) {
+        if (property !== 'conditionalBatch') return Reflect.get(target, property, receiver);
+        return async (...args: Parameters<typeof base.conditionalBatch>) => {
+          if (hold) await release.promise;
+          return base.conditionalBatch(...args);
+        };
+      },
+    });
+    const events: string[] = [];
+    const { registry } = build(undefined, {
+      kv,
+      onSettled: async (record) => {
+        events.push(record.taskId);
+      },
+    });
+    await admit(registry, 'run-1');
+    hold = true;
+    const writing = registry.recordSettled('run-1', {
+      at: '2026-10-18T00:00:09.000Z',
+      status: 'completed',
+      finishReason: 'stop-condition',
+      message: null,
+    });
+    await Promise.resolve();
+    expect(events).toEqual([]);
+
+    hold = false;
+    release.resolve();
+    await writing;
+    await registry.recordSettled('run-1', {
+      at: '2026-10-18T00:00:10.000Z',
+      status: 'completed',
+      finishReason: 'stop-condition',
+      message: null,
+    });
+
+    expect(events).toEqual(['run-1']);
   });
 
   it('stores an answer on a catalog task’s record only, never on a session task’s', async () => {
