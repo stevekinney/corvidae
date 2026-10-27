@@ -10,6 +10,7 @@ import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createAgent,
   type GenerateFunction,
+  type RunResult,
   stopWhen,
   waitForCondition,
 } from '@lostgradient/operative';
@@ -100,6 +101,15 @@ async function withDurableBureau(
   }
 }
 
+/** A run result with each `Conversation` instance replaced by its messages, for deep equality. */
+function plainResult(result: RunResult): unknown {
+  return {
+    ...result,
+    conversation: result.conversation.getMessages(),
+    steps: result.steps.map((step) => ({ ...step, conversation: step.conversation.getMessages() })),
+  };
+}
+
 async function durableRunIds(bureau: Bureau): Promise<string[] | undefined> {
   const page = await bureau.tasks.workflows();
   return page?.items.map((run) => run.id).toSorted();
@@ -123,6 +133,49 @@ describe('tasks.start with a run-creation request id', () => {
       expect(await durableRunIds(bureau)).toEqual([first.id]);
       expect(listHeldTasks(bureau).map((run) => run.id)).toEqual([first.id]);
     });
+  });
+
+  it('settles a replayed task this process does not hold with the original full result', async () => {
+    const runtime = createManualRuntimeServices({ origin: ORIGIN });
+    const fixture = createSqliteStorageFixture({ runtime });
+    const open = () =>
+      createBureau<AgentDefinitions>({
+        agents: {
+          default: createAgent({
+            generate: async () => ({
+              content: 'done',
+              toolCalls: [],
+              usage: { prompt: 3, completion: 5, total: 8 },
+            }),
+            stopWhen: stopWhen.noToolCalls(),
+            toolbox: createToolbox<readonly Tool[]>([]),
+          }),
+        },
+        runtime,
+        storage: fixture.configuration,
+        durable: true,
+        durableOwnership: { ownership: 'none' },
+      });
+    try {
+      const first = await open();
+      const task = await startTaskFrom(first, REQUEST);
+      const original = await task.result();
+      await first.dispose();
+
+      // A new process over the same store: the retry replays a task it never held.
+      const second = await open();
+      try {
+        const retry = await startTaskFrom(second, REQUEST);
+        expect(listHeldTasks(second)).toEqual([]);
+        // A `Conversation` is a live instance with bound methods, so each result's transcripts
+        // are compared by their messages; every other field is compared as it is.
+        expect(plainResult(await retry.result())).toEqual(plainResult(original));
+      } finally {
+        await second.dispose();
+      }
+    } finally {
+      await fixture.dispose();
+    }
   });
 
   it('creates one run for two identical requests issued concurrently', async () => {

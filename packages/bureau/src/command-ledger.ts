@@ -235,9 +235,10 @@ export class BureauLedgerConflictError extends Error {
 
 /**
  * A run was created and durably started, but the ledger could not record its
- * receipt. Unlike any other start failure, the run exists and keeps
- * executing: `runId` names it, and retrying the same request observes it and
- * records the receipt rather than creating another run.
+ * receipt. Unlike any other start failure, the run exists: `runId` names it.
+ * Bureau's `tasks.start` aborts it, since the caller that receives this error
+ * holds no handle to it, and retrying the same request observes it and
+ * records its receipt rather than creating another run.
  */
 export class RunCreationReceiptUnrecordedError extends Error {
   /** The caller-supplied idempotency key whose receipt was not recorded. */
@@ -968,7 +969,7 @@ export type RunCreationAttempt =
       /**
        * Record the created run's receipt. Rejects with
        * {@link RunCreationReceiptUnrecordedError} when the record cannot be
-       * written; the run still exists then.
+       * written; the run still exists then, and the caller decides its fate.
        */
       complete(summary: RunSummary): Promise<CreatedRunSummary>;
       release(cause: unknown): Promise<void>;

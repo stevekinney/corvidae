@@ -1302,11 +1302,13 @@ export interface StartTaskOptions {
    * the same key with any of those changed is refused with `BureauLedgerConflictError`. Needs
    * `principal` (`BAD_REQUEST` otherwise) and a durable engine (`NOT_CONFIGURED`, subject
    * `durable`). Bound to its task until {@link BureauRetentionOptions.receipts} after it settles.
+   * A receipt that cannot be recorded rejects the start with `RunCreationReceiptUnrecordedError`
+   * naming the task, which is aborted; a retry returns it.
    */
   readonly commandId?: string;
   /** Authenticated, request-scoped authority forwarded to Armorer tool execution. */
   readonly requestContext?: ToolRequestContext;
-  /** Aborts the task when it fires. */
+  /** Aborts the task when it fires, from the moment the task starts executing. */
   readonly signal?: AbortSignal;
   /** The caller's trace context, the parent of the task's spans. */
   readonly traceContext?: unknown;

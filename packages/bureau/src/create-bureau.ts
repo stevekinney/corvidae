@@ -1215,6 +1215,11 @@ type SessionTaskFields = {
   readonly taskInput?: TaskInput | undefined;
   readonly inputParts?: Exclude<SessionInputPayload, string> | undefined;
   readonly onActiveRun?: ((activeRun: ActiveRun) => void) | undefined;
+  /**
+   * The caller's start signal, bound to the run once its workflow is prepared and before its
+   * receipt is recorded: the run executes from that point, so an abort must reach it from there.
+   */
+  readonly signal?: AbortSignal | undefined;
   /** The caller's trace context: the run's `parentContext`, the parent of its spans. */
   readonly traceContext?: unknown;
   /** The caller's tracer binding, which runs the run's generate and tool calls under the parent. */
@@ -7106,6 +7111,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       ...(startOptions.withTraceContext === undefined
         ? {}
         : { withTraceContext: startOptions.withTraceContext }),
+      ...(startOptions.signal === undefined ? {} : { signal: startOptions.signal }),
       taskInput: input,
       onActiveRun(activeRun) {
         const run = createAgentRun<unknown, true>(activeRun, {
@@ -7115,7 +7121,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         live = { run, events: run[Symbol.asyncIterator]() };
       },
     });
-    // A replay creates no run here: the handle follows the run this process holds, if any.
+    // A replay creates no run here: the handle follows the run this process holds, if any, and
+    // the signal is bound to it here. A fresh run's signal was bound as the run was created.
     if (live === undefined) {
       const held = store.getRun(created.id)?.activeRun;
       if (held !== undefined) {
@@ -7124,19 +7131,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
           hasOutput: true,
         });
         live = { run, events: run[Symbol.asyncIterator]() };
-      }
-    }
-    const signal = startOptions.signal;
-    if (signal !== undefined) {
-      const onAbort = () => abortTask(created.id, 'Aborted by the start signal');
-      if (signal.aborted) onAbort();
-      else if (live !== undefined) {
-        // Only a run this process holds can be aborted from here, and once it settles the signal
-        // has nothing left to abort: the listener goes with it, so a long-lived caller signal does
-        // not collect one per task.
-        signal.addEventListener('abort', onAbort, { once: true });
-        const removeListener = () => signal.removeEventListener('abort', onAbort);
-        void live.run.result().then(removeListener, removeListener);
+        if (startOptions.signal !== undefined) {
+          bindStartSignal(startOptions.signal, created.id, held.result);
+        }
       }
     }
     return createTaskHandle<unknown>({
@@ -7148,6 +7145,23 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       abort: (reason) => abortTask(created.id, reason),
       snapshot: () => taskSnapshot(created.id),
     });
+  }
+
+  /**
+   * Binds a task's start signal to the run this process holds under `id`: an aborted signal
+   * aborts it now, a later abort when it fires. Once the run settles the signal has nothing left
+   * to abort, so the listener goes with it, and a long-lived caller signal does not collect one
+   * per task.
+   */
+  function bindStartSignal(signal: AbortSignal, id: string, settled: Promise<unknown>): void {
+    const onAbort = () => abortTask(id, 'Aborted by the start signal');
+    if (signal.aborted) {
+      onAbort();
+      return;
+    }
+    signal.addEventListener('abort', onAbort, { once: true });
+    const removeListener = () => signal.removeEventListener('abort', onAbort);
+    void settled.then(removeListener, removeListener);
   }
 
   /**
@@ -7173,11 +7187,13 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
 
   /**
    * The result of a task this process does not run, once its workflow is terminal in the durable
-   * store: the workflow's recorded result. A task that did not complete rejects with its error.
+   * store: the full `RunResult`, rebuilt from the workflow's summary and the run's checkpoint as
+   * every other durable reader does, since the workflow records only a summary (a step count, no
+   * usage or conversation). A task that did not complete rejects with its error.
    */
   async function settledTaskResult(id: string): Promise<RunResult> {
     const state = await waitForDurableRun(id);
-    if (state === undefined) {
+    if (state === undefined || runtime.durable === undefined) {
       throw new BureauError('Task results need a durable engine', 'NOT_CONFIGURED', 'durable');
     }
     if (state === null) throw new BureauError(`Task "${id}" not found`, 'NOT_FOUND');
@@ -7187,7 +7203,11 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         'CONFLICT',
       );
     }
-    return state.result as RunResult;
+    const reading = await readDurableRunResult(runtime.durable, id, { runtime: runtimeServices });
+    if (reading.status !== 'completed') {
+      throw new BureauError(`Task "${id}" result cannot be read (${reading.status})`, 'CONFLICT');
+    }
+    return reading.result;
   }
 
   async function createRunFromRequest(
@@ -8060,6 +8080,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       if (runtime.durable) {
         await activeRun.durablyStarted;
       }
+      // Bound before the receipt write below: the run is executing by now, so an abort during a
+      // slow write reaches it at once rather than once the write returns.
+      if (request.signal !== undefined) bindStartSignal(request.signal, runId, activeRun.result);
 
       created = serializeRunState(store.getRun(runId)!, sessionId);
     } catch (error) {
@@ -8132,10 +8155,15 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     // COR-424: the ledger records the run only once it is durably started,
     // so a retry never replays a run that a restart could not recover. When
     // recording fails, `complete` rejects with a
-    // `RunCreationReceiptUnrecordedError` naming the run, which keeps
-    // executing; the claim stays pending, and a retry observes the run and
-    // records its receipt.
-    return ledgerClaim === undefined ? created : ledgerClaim.complete(created);
+    // `RunCreationReceiptUnrecordedError` naming the run. The caller holds no
+    // handle to that run, so it is aborted rather than left executing
+    // unowned; the claim stays pending, and a retry observes the aborted run
+    // and records its receipt.
+    if (ledgerClaim === undefined) return created;
+    return ledgerClaim.complete(created).catch((error: unknown) => {
+      abortTask(runId, 'Aborted: the task’s receipt was not recorded');
+      throw error;
+    });
   }
 
   /**
