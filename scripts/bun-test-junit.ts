@@ -25,6 +25,7 @@ import {
 import { budgetFailures, readAllowlist } from './check-test-durations.ts';
 import { rootScriptEnvironment } from './environment-configuration.ts';
 import { TEST_TIMEOUT_ARGUMENT } from './test-deadlines.ts';
+import { bunCrashReportsSince, workerCrashMessage } from './worker-crash-report.ts';
 
 export const JUNIT_DIRECTORY = join('test-output', 'junit');
 
@@ -84,6 +85,7 @@ async function main(): Promise<number> {
     return 0;
   }
   const bunTestArguments = narrowed;
+  const startedAt = Date.now();
   const child = Bun.spawn(
     [
       'bun',
@@ -98,6 +100,8 @@ async function main(): Promise<number> {
   const exitCode = await child.exited;
   const workspace = relative(join(import.meta.dir, '..'), process.cwd()) || '.';
   const reports = existsSync(reportPath) ? [readFileSync(reportPath, 'utf8')] : [];
+  const crashMessage = workerCrashMessage(workspace, reports, bunCrashReportsSince(startedAt));
+  if (crashMessage !== null) process.stderr.write(crashMessage);
   return finishRun(workspace, exitCode, reports, readAllowlist(), (message) =>
     process.stderr.write(message),
   );

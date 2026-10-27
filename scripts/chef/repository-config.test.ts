@@ -50,6 +50,19 @@ describe('validateRepositoryConfig', () => {
     expect(config.lockPattern).toBe('^bun ');
   });
 
+  test('accepts a fast check command that holds the {filters} placeholder', () => {
+    const command = 'bunx turbo run typecheck lint {filters}';
+    expect(
+      validateRepositoryConfig({ ...valid(), fastCheckCommand: command }).fastCheckCommand,
+    ).toBe(command);
+    expect(validateRepositoryConfig(valid()).fastCheckCommand).toBeUndefined();
+    expectInvalid((value) => (value['fastCheckCommand'] = ''), '"fastCheckCommand"');
+    expectInvalid(
+      (value) => (value['fastCheckCommand'] = 'bunx turbo run lint'),
+      '"fastCheckCommand" must hold the {filters} placeholder',
+    );
+  });
+
   test('names each invalid field', () => {
     expectInvalid((value) => delete value['repository'], '"repository"');
     expectInvalid((value) => (value['repository'] = 'no-slash'), 'owner/name');

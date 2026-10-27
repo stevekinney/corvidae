@@ -28,16 +28,22 @@
  * everything exactly once, in order.
  */
 import type { WorkflowEvent } from '@lostgradient/weft';
-import { HttpClient } from '@lostgradient/weft';
+import { flushPortableMicrotasks, HttpClient } from '@lostgradient/weft';
 import { waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import { quietFor, yieldEventLoopTurn } from '@lostgradient/testing/wait-until';
+import { quietFor } from '@lostgradient/testing/wait-until';
 import {
   startLiveSourceTestServer,
   type LiveSourceTestServer,
 } from './live-source-test-server.test-support.ts';
 import { WorkflowTailSource } from './workflow-tail-source.svelte.ts';
+
+/**
+ * Promise turns that drain a delivery already queued behind the stream reader: a count of
+ * microtask hops, which never depends on host load.
+ */
+const MICROTASK_TURNS = 100;
 
 /**
  * `client.tail()` defaults to `eventTransport: 'auto'` (WebSocket first, real
@@ -161,9 +167,9 @@ describe('WorkflowTailSource (integration, real server)', () => {
 
       source.close();
       expect(source.status).toBe('closed');
-      // A delivery already queued when close() ran lands within a turn; what arrives after that
-      // would be close() failing to stop the stream.
-      await yieldEventLoopTurn();
+      // A delivery already queued when close() ran is a microtask; what arrives after that would
+      // be close() failing to stop the stream.
+      await flushPortableMicrotasks(MICROTASK_TURNS);
       const countAtClose = received.length;
 
       await server.engine.signal(workflowId, 'advance');

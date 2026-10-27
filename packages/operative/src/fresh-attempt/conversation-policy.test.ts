@@ -6,6 +6,7 @@ import { createSessionStore } from '../session/create-session-store';
 import { ForkThroughRunError, createSessionHandle } from '../session/session-handle';
 import { createTestRunOptions } from '../session/session-handle-test-support';
 import type { SessionHandle } from '../session/session-handle-types';
+import { drainMicrotasks } from '../testing/drain-microtasks.test-support.ts';
 import { applyConversationPolicy } from './conversation-policy';
 import {
   FIXTURE_NOW,
@@ -32,9 +33,9 @@ async function createRanSession() {
     resolveFreshAttemptSource: resolverFor(createFixtureSource()),
   });
   await handle.run('first').result();
-  await yieldToPortableEventLoop();
+  await drainMicrotasks();
   await handle.run('second').result();
-  await yieldToPortableEventLoop();
+  await drainMicrotasks();
   return handle;
 }
 

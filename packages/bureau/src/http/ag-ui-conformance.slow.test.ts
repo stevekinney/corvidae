@@ -814,7 +814,7 @@ describe('slow consumer', () => {
 });
 
 describe('cleanup', () => {
-  it('leaves no listener, snapshot subscription, or timer once every stream has ended', async () => {
+  it('releases attachment resources on disconnect and the shared producer on native settlement', async () => {
     const runtime = createManualRuntimeServices();
     await withServed(
       {
@@ -866,7 +866,7 @@ describe('cleanup', () => {
         await firstObserver.frames();
 
         // A client that goes away once the server has its stream open: the run keeps
-        // going, and the stream's listener and subscription go.
+        // going. The shared producer remains until that run settles.
         subscribed = Promise.withResolvers<void>();
         allGone = Promise.withResolvers<void>();
         const abandonedObserver = observed();
@@ -883,9 +883,11 @@ describe('cleanup', () => {
         expect(frameListeners).toBe(1);
         abandoned.abortRun();
         await aborted;
-        await allGone.promise;
+        expect(frameListeners).toBe(1);
         expect(harness.bureau.tasks.detail(abandonedRunId)?.status).toBe('running');
         harness.generate.release('hold');
+        await harness.bureau.tasks.wait(abandonedRunId);
+        await allGone.promise;
         await abandonedObserver.frames();
 
         expect(frameListeners).toBe(0);

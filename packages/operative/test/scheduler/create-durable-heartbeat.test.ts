@@ -892,6 +892,7 @@ describe('createDurableHeartbeat', () => {
         .catch(() => {
           createSettled = true;
         });
+      // load-proof: negative window: create must still be waiting on the held-open cancel; load can only delay a wrongly early settle, never produce one
       await yieldToPortableEventLoop();
       expect(createSettled).toBe(false);
 

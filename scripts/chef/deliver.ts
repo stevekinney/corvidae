@@ -8,21 +8,42 @@
 //                               [--log-dir <dir>] [--issue <ID> --completion-file <md>]
 //                               [--remove-worktree --provider claude|codex --name <name>]
 //                               [--usage-log <file> --transcript <path>...]
-//                               [--max-attempts <n>]
-//                               [--fixes-main | --waive-load-flake <reason> --control-head <sha>]
+//                               [--max-attempts <n>] [--removed-names <file>]
+//                               [--fixes-main | --waive-load-flake <reason> --control-head <sha>
+//                                | --waive-main-health --reason <text>]
 //                               [--config <json>] [--json]
 //
 // The steps run in order and stop at the first failure, which is named:
+//   threads    every review thread is resolved, read with the same paginated read the merge gate
+//              uses (SEEN must equal TOTAL). An unresolved thread stops delivery here, before
+//              anything is fetched, merged, pushed or gated; the merge gate checks again at merge
+//              time, because a bot can open a thread while the gate runs;
 //   fetch      `git fetch origin <default>`, retried up to three times when Git cannot lock the ref;
 //   base       `merge-gate.ts`'s base check on the worktree's head. When the head may not be merged
 //              as it is, `origin/<default>` is merged into the branch (`git merge --no-edit`). A
 //              conflict runs `git merge --abort` and refuses with step `conflict`, leaving the tree
-//              as it was. A clean merge runs the install command from `repository.json`, pushes the
-//              branch, and discards `--gate-log`, which described the old head;
+//              as it was. A clean merge runs the install command from `repository.json`, then the
+//              integration check (below), pushes the branch, and discards `--gate-log`, which
+//              described the old head;
+//   integration after a merge-in and before the push: the fast check that finds, in minutes, what
+//              the full gate would find in an hour. It runs only when `origin/<default>` was merged
+//              in. (1) With a `fastCheckCommand` in `repository.json`, it runs that command for the
+//              workspaces both sides touched, as `integration-check.ts` defines them (the files this
+//              branch changed since its previous base, against the files that landed on
+//              `origin/<default>` since then: a workspace both changed, or one side's workspace that
+//              consumes the other's). (2) With `--removed-names <file>` (one identifier per line,
+//              `#` comments allowed), it searches the source files that landed on `origin/<default>`
+//              since the previous base for those identifiers as member accesses, quoted keys or
+//              object keys, which catches fixtures `tsc` cannot see (`Object.create`, spreads,
+//              `as never`). A failure of either is step `integration`: the detail lists the failing
+//              files or the `path:line (name)` hits and the log of the command's output, and the
+//              branch is put back to its previous head (nothing was pushed), so a rerun sees the same
+//              pending update;
 //   gate       with no usable passing gate log at the current head (it exists, exits 0, names this
 //              head and a clean tree at the start and end), runs the gate exactly as
 //              `gate-run.ts run` does into `<log-dir>/gate-<shortsha>.log`. `--log-dir` defaults to
-//              the directory of `--gate-log`, else `<worktree>/tmp/chef`;
+//              the directory of `--gate-log`, else `<worktree>/tmp/chef`. The gate is never retried:
+//              when it fails, the failure is classified (below) and delivery stops;
 //   merge      `merge-gate.ts`'s own sequence (comment file, threads, merge lock, tree check, and the
 //              spend record when `--usage-log` and `--transcript` are given, together) with
 //              nothing reimplemented; its failed step is reported as is;
@@ -31,36 +52,74 @@
 //   worktree   with `--remove-worktree`: `worktree.ts remove`, whose refusal is reported as step
 //              `worktree` with `merged` still true.
 //
-// `--fixes-main` declares the pull request the fix for a red `main`, and `--waive-load-flake
-// <reason> --control-head <sha>` waives a red `main` whose failure is a load flake (see
-// `merge-gate.ts`). Either is forwarded to the merge gate on every attempt; without one the merge
-// gate refuses at main-health while `main` is red.
+// Gate failure classification: when the gate exits nonzero, `gate-failure.ts` runs
+// `gate-run.ts triage` on the log against the merge base (which pull requests changed each failed
+// package), then runs every failing test file alone, twice, on the pull request's head and on a
+// detached worktree of `origin/<default>` (`gate-run.ts control`), and classifies the failure:
+//   branch         a file fails alone on the head the way the gate saw it, and not on `main`;
+//   main           a file fails the same way on `main` too (the failure is not this change's);
+//   unreproduced   every file passes alone on both trees (load or a flake);
+//   unclassified   no failing test file in the log (a lint or type-check failure), a file that could
+//                  not be rerun, or one that fails alone in a different way.
+// The step is `gate` and the report carries `classification` and `controlFiles`. Nothing is
+// retried: the coordinator decides what each class means.
 //
-// Retry: fetch, base, gate and merge are one attempt. When the merge gate refuses at `contains-base`
-// (another session merged into the default branch during the gate), the whole attempt repeats: merge
-// the new base in, install, push, gate again, merge. `--max-attempts` (default 3, minimum 1) caps the
-// total attempts; every other refusal stops at once. Each attempt writes one line to standard error
-// (attempt number, base sha, gate exit code), and the result carries `attempts`.
+// `--fixes-main` declares the pull request the fix for a red `main`; `--waive-load-flake <reason>
+// --control-head <sha>` waives a red `main` whose failure is a load flake; `--waive-main-health
+// --reason <text>` merges past a red `main` for a stated reason (see `merge-gate.ts`). The three are
+// exclusive and forwarded to the merge gate on every attempt; without one the merge gate refuses at
+// main-health while `main` is red.
+//
+// Retry: threads, fetch, base, gate and merge are one attempt. When the merge gate refuses at
+// `contains-base` (another session merged into the default branch during the gate), the whole
+// attempt repeats: merge the new base in, install, check, push, gate again, merge. `--max-attempts`
+// (default 3, minimum 1) caps the total attempts; every other refusal stops at once. Each attempt
+// writes one line to standard error (attempt number, base sha, gate exit code), and the result
+// carries `attempts`.
 //
 // Output: at most six lines, or with `--json` one object: pr, merged, mergeCommit, basePath,
-// gateLog, failedStep, detail, issue and attempts (the Linear state it was left in, or null).
+// gateLog, failedStep, detail, issue, attempts, classification (the gate failure class, else null)
+// and controlFiles. A gate failure adds a `classification:` line, one line per rerun file and the
+// triage lines.
 //
-// Exit codes: 0 merged and every later step succeeded, 1 refused or a step failed (named), 2 invalid
-// CLI usage.
+// Exit codes: 0 merged and every later step succeeded, 1 refused or a step failed (named; also a
+// `branch` or `unclassified` gate failure), 2 invalid CLI usage, 3 the gate failed and the failure
+// is `main`'s, 4 the gate failed and could not be reproduced (`unreproduced`).
 
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fetchWithRetry } from './fetch-retry.ts';
-import { readGateLog, runGate, type GateRunOptions, type GateRunResult } from './gate-run.ts';
+import { classificationExitCode, type GateFailureClass } from './gate-classification.ts';
+import { classifyGateFailure, type FileOutcome } from './gate-failure.ts';
+import {
+  readGateLog,
+  runControl,
+  runGate,
+  workspaceDirectories,
+  type ControlOptions,
+  type ControlResult,
+  type GateRunOptions,
+  type GateRunResult,
+} from './gate-run.ts';
+import {
+  expandFastCheck,
+  failingFilesFromOutput,
+  integrationWorkspaces,
+  parseRemovedNames,
+  removedNameHits,
+} from './integration-check.ts';
 import { createClient, LinearError, postComment, setState, type LinearClient } from './linear.ts';
 import {
   checkMergeBase,
   mergeGateExclusively,
   parseLoadFlakeWaiver,
+  parseMainHealthWaiver,
   type LoadFlakeWaiver,
+  type MainHealthWaiver,
   type MergeGateOptions,
   type MergeGateReport,
 } from './merge-gate.ts';
+import { filesystemSource, readWorkspaceGraph } from './merge-overlap.ts';
 import {
   defaultRunner,
   emitResult,
@@ -70,6 +129,7 @@ import {
   type Runner,
 } from './process-runner.ts';
 import { DEFAULT_CONFIGURATION_PATH, loadRepositoryConfig } from './repository-config.ts';
+import { listThreads, ReviewThreadsError, type ThreadListing } from './review-threads.ts';
 import {
   Refusal,
   removeWorktree,
@@ -102,6 +162,10 @@ export interface DeliverOptions {
   fixesMain?: boolean | undefined;
   /** Waives a red `main` whose failure is a load flake; forwarded to the merge gate. */
   loadFlakeWaiver?: LoadFlakeWaiver | undefined;
+  /** Merges past a red `main` for a stated reason; forwarded to the merge gate. */
+  mainHealthWaiver?: MainHealthWaiver | undefined;
+  /** Identifiers this branch removed; the integration check searches the files that landed on main. */
+  removedNames?: string[] | undefined;
 }
 
 export interface DeliverReport {
@@ -116,6 +180,12 @@ export interface DeliverReport {
   issue: string | null;
   /** How many times base, gate and merge ran: more than 1 only when the base moved mid-gate. */
   attempts: number;
+  /** Whose failure a failed gate is; `null` when the gate did not fail. */
+  classification: GateFailureClass | null;
+  /** The failing test files that were rerun alone, with their verdicts. */
+  controlFiles: { file: string; package: string | undefined; verdict: string }[];
+  /** The triage lines for a failed gate: which pull requests changed each failed package. */
+  triage: string | null;
 }
 
 export interface DeliverDependencies {
@@ -128,6 +198,10 @@ export interface DeliverDependencies {
   /** The Linear client; the command line supplies `createClient()`, which reads the credentials. */
   client: LinearClient;
   remove: (options: RemoveOptions) => RemoveResult;
+  /** Reads every review thread of a pull request, paginated; `listThreads` in production. */
+  threads: (repository: string, pr: number) => ThreadListing;
+  /** Runs one command in two trees, as `gate-run.ts control` does; `runControl` in production. */
+  control: (options: ControlOptions) => ControlResult;
   /** Receives one progress line per attempt; the command line writes it to standard error. */
   log: (line: string) => void;
   /** Blocks between fetch retries; defaults to `Bun.sleepSync`. */
@@ -136,6 +210,10 @@ export interface DeliverDependencies {
 
 function firstLine(text: string): string {
   return (text.split('\n').find((line) => line.trim() !== '') ?? '').trim().slice(0, 200);
+}
+
+function describeOutcome(outcome: FileOutcome): DeliverReport['controlFiles'][number] {
+  return { file: outcome.file, package: outcome.package, verdict: outcome.verdict };
 }
 
 /** Why `path` is not a usable passing gate log for `head`, or `undefined` when it is one. */
@@ -182,6 +260,9 @@ export async function deliver(
     detail: null,
     issue: null,
     attempts: 0,
+    classification: null,
+    controlFiles: [],
+    triage: null,
   };
   const fail = (step: string, detail: string): DeliverReport => {
     report.failedStep = step;
@@ -189,11 +270,37 @@ export async function deliver(
     return report;
   };
   const headOf = (): string => git('rev-parse', 'HEAD').stdout.trim();
+  const logDirectory = (): string =>
+    resolve(
+      options.logDirectory ??
+        (options.gateLog === undefined
+          ? join(options.worktree, 'tmp', 'chef')
+          : dirname(options.gateLog)),
+    );
+  const removedNames = options.removedNames ?? [];
 
   let gateLog = options.gateLog;
   const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   for (let attempt = 1; ; attempt++) {
     report.attempts = attempt;
+    // threads: an unresolved thread is known before any work is done, so stop before doing it
+    const readThreads = partial.threads;
+    if (readThreads === undefined) return fail('threads', 'no review-thread reader was provided.');
+    let listing: ThreadListing;
+    try {
+      listing = readThreads(config.repository, options.pr);
+    } catch (error) {
+      if (!(error instanceof ReviewThreadsError)) throw error;
+      return fail('threads', error.message);
+    }
+    if (listing.seen !== listing.total)
+      return fail('threads', `read ${listing.seen} of ${listing.total} review threads.`);
+    if (listing.unresolved > 0)
+      return fail(
+        'threads',
+        `${listing.unresolved} review thread(s) are unresolved; answer and resolve them before the gate runs.`,
+      );
+
     // fetch
     const fetched = fetchWithRetry(() => git('fetch', 'origin', defaultBranch), {
       sleep: partial.sleep,
@@ -214,6 +321,15 @@ export async function deliver(
           `${baseCheck} The worktree is not clean, so ${remote} was not merged in.`,
         );
       const previousHead = headOf();
+      // What each side changed since the branch's previous base, read before the merge moves HEAD.
+      const checksIntegration = config.fastCheckCommand !== undefined || removedNames.length > 0;
+      const previousBase = checksIntegration ? git('merge-base', remote, 'HEAD').stdout.trim() : '';
+      const changedSince = (to: string): string[] =>
+        git('diff', '--name-only', '--no-renames', previousBase, to)
+          .stdout.split('\n')
+          .filter((line) => line !== '');
+      const branchFiles = previousBase === '' ? [] : changedSince('HEAD');
+      const incomingFiles = previousBase === '' ? [] : changedSince(remote);
       const merged = git('merge', '--no-edit', remote);
       if (merged.code !== 0) {
         const aborted = git('merge', '--abort');
@@ -236,6 +352,47 @@ export async function deliver(
           'install',
           `${config.installCommand} failed (exit ${installed.code}): ${firstLine(installed.stderr || installed.stdout)}; ${restore()}.`,
         );
+      // integration: collisions between this branch and what landed on the default branch
+      const collisions: string[] = [];
+      if (removedNames.length > 0) {
+        const hits = removedNameHits(options.worktree, incomingFiles, removedNames);
+        if (hits.length > 0)
+          collisions.push(
+            `removed name(s) still used in files that landed on ${remote}: ${hits
+              .slice(0, 20)
+              .map((hit) => `${hit.path}:${hit.line} (${hit.name})`)
+              .join(', ')}${hits.length > 20 ? `, and ${hits.length - 20} more` : ''}`,
+          );
+      }
+      if (config.fastCheckCommand !== undefined) {
+        const workspaces = integrationWorkspaces(
+          branchFiles,
+          incomingFiles,
+          readWorkspaceGraph(filesystemSource(options.worktree)),
+        );
+        if (workspaces.length > 0) {
+          const command = expandFastCheck(config.fastCheckCommand, workspaces);
+          const checked = runner(['sh', '-c', command], { cwd: options.worktree });
+          if (checked.code !== 0) {
+            const output = `${checked.stdout}\n${checked.stderr}`;
+            const logPath = join(logDirectory(), `integration-${headOf().slice(0, 12)}.log`);
+            mkdirSync(dirname(logPath), { recursive: true });
+            writeFileSync(logPath, `$ ${command}\n${output}\n`);
+            const names = new Map(
+              [...workspaceDirectories(options.worktree)].map(([name, directory]) => [
+                name,
+                directory,
+              ]),
+            );
+            const files = failingFilesFromOutput(output, names);
+            collisions.push(
+              `${command} failed (exit ${checked.code}) in ${workspaces.join(', ')}${files.length > 0 ? `: ${files.join(', ')}` : `: ${firstLine(output)}`}; output in ${logPath}`,
+            );
+          }
+        }
+      }
+      if (collisions.length > 0)
+        return fail('integration', `${collisions.join('; ')}; ${restore()}.`);
       const pushed = git('push', 'origin', 'HEAD');
       if (pushed.code !== 0)
         return fail(
@@ -253,13 +410,7 @@ export async function deliver(
     const baseSha = git('rev-parse', remote).stdout.trim().slice(0, 12);
     if (head === '') return fail('gate', `${options.worktree} has no readable HEAD.`);
     if (unusableGateLog(gateLog, head) !== undefined || gateLog === undefined) {
-      const directory = resolve(
-        options.logDirectory ??
-          (options.gateLog === undefined
-            ? join(options.worktree, 'tmp', 'chef')
-            : dirname(options.gateLog)),
-      );
-      gateLog = join(directory, `gate-${head.slice(0, 12)}.log`);
+      gateLog = join(logDirectory(), `gate-${head.slice(0, 12)}.log`);
       report.gateLog = gateLog;
       const gate = partial.gate;
       if (gate === undefined) return fail('gate', 'no gate runner was provided.');
@@ -269,7 +420,32 @@ export async function deliver(
         log: gateLog,
       });
       log(`attempt ${attempt}: base ${baseSha} gate exit ${result.code}`);
-      if (result.code !== 0) return fail('gate', `the gate exited ${result.code}; see ${gateLog}.`);
+      if (result.code !== 0) {
+        // Classify the failure and stop: the gate is never run again on its own account.
+        const control = partial.control;
+        const failure = classifyGateFailure({
+          runner,
+          worktree: options.worktree,
+          defaultBranch,
+          installCommand: config.installCommand,
+          controlRoot: config.worktreeRoots.claude,
+          pr: options.pr,
+          gateLog,
+          logDirectory: logDirectory(),
+          control:
+            control ??
+            (() => {
+              throw new Error('no control runner was provided.');
+            }),
+        });
+        report.classification = failure.classification;
+        report.controlFiles = failure.files.map(describeOutcome);
+        report.triage = failure.triage === '' ? null : failure.triage;
+        return fail(
+          'gate',
+          `the gate exited ${result.code}; see ${gateLog}. The failure is ${failure.classification}${failure.notes.length > 0 ? ` (${failure.notes.join(' ')})` : ''}.`,
+        );
+      }
     } else log(`attempt ${attempt}: base ${baseSha} gate exit 0 (log reused)`);
 
     // merge
@@ -285,6 +461,7 @@ export async function deliver(
       checkMainHealth: true,
       fixesMain: options.fixesMain === true,
       loadFlakeWaiver: options.loadFlakeWaiver,
+      mainHealthWaiver: options.mainHealthWaiver,
       ...(options.usageLog === undefined
         ? {}
         : { usageLog: options.usageLog, transcripts: options.transcripts ?? [] }),
@@ -347,6 +524,14 @@ export function renderDeliver(report: DeliverReport): string {
   if (report.issue !== null) lines.push(`issue: ${report.issue}`);
   if (report.failedStep !== null)
     lines.push(`FAILED at ${report.failedStep}: ${report.detail ?? ''}`);
+  if (report.classification !== null) {
+    lines.push(`classification: ${report.classification}`);
+    for (const file of report.controlFiles)
+      lines.push(
+        `  ${file.file}${file.package === undefined ? '' : ` (${file.package})`}: ${file.verdict}`,
+      );
+    if (report.triage !== null) lines.push(report.triage);
+  }
   return lines.join('\n');
 }
 
@@ -370,9 +555,11 @@ export async function run(
       'max-attempts',
       'waive-load-flake',
       'control-head',
+      'reason',
+      'removed-names',
     ],
     repeated: ['transcript'],
-    flags: ['remove-worktree', 'fixes-main', 'json'],
+    flags: ['remove-worktree', 'fixes-main', 'waive-main-health', 'json'],
   });
   if (parsed.positionals.length > 0)
     throw new UsageError(`Unexpected argument ${parsed.positionals[0]}.`);
@@ -394,6 +581,19 @@ export async function run(
     parsed.values['control-head'],
     parsed.flags.has('fixes-main'),
   );
+  const mainHealthWaiver = parseMainHealthWaiver(
+    parsed.flags.has('waive-main-health'),
+    parsed.values['reason'],
+    parsed.flags.has('fixes-main'),
+    loadFlakeWaiver,
+  );
+  const removedNamesFile = parsed.values['removed-names'];
+  if (removedNamesFile !== undefined && !existsSync(removedNamesFile))
+    throw new UsageError(`No such removed-names file: ${removedNamesFile}`);
+  const removedNames =
+    removedNamesFile === undefined
+      ? undefined
+      : parseRemovedNames(readFileSync(removedNamesFile, 'utf8'));
   const remove = parsed.flags.has('remove-worktree');
   const provider = parsed.values['provider'];
   const name = parsed.values['name'];
@@ -418,13 +618,21 @@ export async function run(
       maxAttempts: maxAttemptsText === undefined ? undefined : Number(maxAttemptsText),
       fixesMain: parsed.flags.has('fixes-main'),
       loadFlakeWaiver,
+      mainHealthWaiver,
+      removedNames,
       removeWorktree:
         remove && provider !== undefined && name !== undefined ? { provider, name } : undefined,
     },
     dependencies,
   );
+  const code =
+    report.failedStep === null
+      ? 0
+      : report.failedStep === 'gate' && report.classification !== null
+        ? classificationExitCode(report.classification)
+        : 1;
   return {
-    code: report.failedStep === null ? 0 : 1,
+    code,
     output: parsed.flags.has('json') ? JSON.stringify(report) : renderDeliver(report),
   };
 }
@@ -436,6 +644,8 @@ function productionDependencies(): Partial<DeliverDependencies> {
     gate: (options) => runGate(options),
     merge: (options) => mergeGateExclusively(options),
     remove: (options) => removeWorktree(options),
+    threads: (repository, pr) => listThreads(repository, pr),
+    control: (options) => runControl(options),
     client: createClient(),
     log: (line) => process.stderr.write(`${line}\n`),
   };
