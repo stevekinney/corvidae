@@ -1,6 +1,7 @@
 import type { ContextOperationRequest } from '../context.ts';
 import { parsePerAttemptTimeoutMs } from '../context/activity-schedule-to-close.ts';
 import { ActivityStartedEvent } from '../events.ts';
+import { tagWorkflowEventGeneration } from '../events/workflow-event-generation.ts';
 import type { ComposedActivityInterceptor, ComposedWorkflowInterceptor } from '../interceptor.ts';
 import { assertPayloadWithinLimit } from '../payload-size.ts';
 import type { ActivityContext, ActivityVerificationResult, OperationOutcome } from '../types.ts';
@@ -366,11 +367,14 @@ export async function executeActivity(
   ): unknown => {
     if (!isRemoteMode) {
       internals.engine?.dispatchEvent(
-        new ActivityStartedEvent(
-          operation.operationId,
-          workflowId,
-          operation.activityName,
-          attempt,
+        tagWorkflowEventGeneration(
+          new ActivityStartedEvent(
+            operation.operationId,
+            workflowId,
+            operation.activityName,
+            attempt,
+          ),
+          operation.workflowExecutionToken,
         ),
       );
     }

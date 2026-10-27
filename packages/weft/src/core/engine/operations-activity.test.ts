@@ -11,6 +11,8 @@ import { MemoryStorage } from '../../storage/memory.ts';
 import { rejectionOf, throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { decode, encode } from '../codec.ts';
 import type { ContextOperationRequest } from '../context.ts';
+import { ActivityStartedEvent } from '../events.ts';
+import { getWorkflowEventGeneration } from '../events/workflow-event-generation.ts';
 import type { ActivityInterception } from '../interceptor.ts';
 import { getActivityFunctionWithMetadata, resolveActivityFunction } from './activity-resolution.ts';
 import {
@@ -209,6 +211,62 @@ async function createReconciliationRecordValue(
 }
 
 describe('activity operation helpers', () => {
+  it('reports inline invocation start without an interceptor and tags its generation', async () => {
+    const dispatched: Event[] = [];
+    const internals = createInternals({
+      engine: { dispatchEvent: (event: Event) => dispatched.push(event) },
+    });
+    const operation = createActivityOperation({
+      workflowExecutionToken: 'generation-a',
+      fn: () => 'inline-result',
+    });
+
+    await executeActivity(internals as never, 'workflow-id', operation, createCallbacks());
+
+    expect(dispatched).toHaveLength(1);
+    expect(dispatched[0]).toBeInstanceOf(ActivityStartedEvent);
+    expect(getWorkflowEventGeneration(dispatched[0]!)).toBe('generation-a');
+  });
+
+  it('reports start only when a forwarding interceptor invokes the implementation', async () => {
+    const dispatched: Event[] = [];
+    const internals = createInternals({
+      engine: { dispatchEvent: (event: Event) => dispatched.push(event) },
+    });
+    const execute = mock(async (_interception: unknown, next: (value: unknown) => unknown) =>
+      next('payload'),
+    );
+
+    await executeActivity(
+      internals as never,
+      'workflow-id',
+      createActivityOperation({ fn: () => 'inline-result' }),
+      createCallbacks({
+        getComposedActivityInterceptor: () => ({ execute }) as never,
+      }),
+    );
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(dispatched).toHaveLength(1);
+  });
+
+  it('does not report start when an interceptor short-circuits', async () => {
+    const dispatched: Event[] = [];
+    const internals = createInternals({
+      engine: { dispatchEvent: (event: Event) => dispatched.push(event) },
+    });
+
+    await executeActivity(
+      internals as never,
+      'workflow-id',
+      createActivityOperation(),
+      createCallbacks({
+        getComposedActivityInterceptor: () => ({ execute: async () => 'synthetic-result' }),
+      }),
+    );
+
+    expect(dispatched).toHaveLength(0);
+  });
   it('resolves global activities for unknown workflow ids', () => {
     const activityFunction = () => 'global-result';
     const operation = createActivityOperation();

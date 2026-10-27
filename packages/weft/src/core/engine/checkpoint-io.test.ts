@@ -11,6 +11,7 @@ import { rejectionOf, throwingRejectionOf } from '../../testing/promise-outcome.
 import { createCheckpoint, serializeCheckpoint } from '../checkpoint.ts';
 import type { ContextOperationRequest } from '../context.ts';
 import { EMPTY_EVENT_HEAD } from '../event-log.ts';
+import { ActivityCompletedEvent } from '../events.ts';
 import type { Checkpoint } from '../types.ts';
 import { rememberCommittedCheckpointBytes } from './checkpoint-commit-snapshots.ts';
 import { WorkflowCheckpointConflictError } from './checkpoint-conflict-error.ts';
@@ -590,5 +591,52 @@ describe('checkpoint commit compare-and-swap guard', () => {
     expect(await storage.get(KEYS.checkpoint('checkpoint-workflow-torn-down'))).toEqual(
       serializeCheckpoint(checkpoint),
     );
+  });
+
+  it('dispatches activity completion only after the checkpoint batch commits', async () => {
+    const storage = new MemoryStorage();
+    const checkpoint = createCheckpoint('checkpoint-activity-commit', '1', 1_000, 'run-a');
+    const internals = createCheckpointInternals(storage, checkpoint);
+    internals.durableInlineOperations = new Map([
+      [
+        'checkpoint-activity-commit',
+        { operationId: 'activity-1', type: 'activity', workflowExecutionToken: 'run-a' },
+      ],
+    ]) as never;
+    internals.pendingTimelineEntries.set('checkpoint-activity-commit', {
+      startedAt: 900,
+      entry: {
+        step: 1,
+        operationType: 'activity',
+        operationLabel: 'send-email',
+        inputSummary: 'input',
+        timestamp: 900,
+        status: 'completed',
+        duration: 42,
+      },
+    });
+    const observed: Array<{ event: Event; committed: boolean }> = [];
+    const callbacks = {
+      ...createPersistCallbacks(),
+      dispatchEvent: (event: Event) => {
+        observed.push({
+          event,
+          committed: internals.checkpoints.has('checkpoint-activity-commit'),
+        });
+      },
+    };
+    await seedCheckpoint(storage, checkpoint);
+
+    await persistCheckpoint(
+      internals,
+      checkpoint.workflowId,
+      checkpointOperation,
+      serializeCheckpointBuffer({ ...checkpoint, step: 1, workflowExecutionToken: 'run-a' }),
+      callbacks,
+    );
+
+    expect(observed).toHaveLength(1);
+    expect(observed[0]?.event).toBeInstanceOf(ActivityCompletedEvent);
+    expect(observed[0]?.committed).toBe(true);
   });
 });

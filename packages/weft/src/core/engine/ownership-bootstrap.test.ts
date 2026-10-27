@@ -1584,6 +1584,36 @@ describe('buildOwnerSideSignalPollTarget (WFT-79 Finding 1)', () => {
     expect(resumed).toEqual(['wf-parked']);
   });
 
+  it('does not resume or report a parked workflow for an unrelated signal name', async () => {
+    const delivered: string[] = [];
+    const { sources, resumed } = makeSources({
+      isParkedInlineWorkflow: (workflowId) => workflowId === 'wf-parked',
+      parkedSignalName: () => 'approve',
+      dispatchSignalDelivered: (_workflowId, signalName) => delivered.push(signalName),
+    });
+    const target = buildOwnerSideSignalPollTarget(sources);
+
+    await target.wakeWorkflow('wf-parked', 'reject');
+
+    expect(resumed).toEqual([]);
+    expect(delivered).toEqual([]);
+  });
+
+  it('reports one delivery only after a matching parked workflow resumes', async () => {
+    const delivered: string[] = [];
+    const { sources, resumed } = makeSources({
+      isParkedInlineWorkflow: (workflowId) => workflowId === 'wf-parked',
+      parkedSignalName: () => 'approve',
+      dispatchSignalDelivered: (_workflowId, signalName) => delivered.push(signalName),
+    });
+    const target = buildOwnerSideSignalPollTarget(sources);
+
+    await target.wakeWorkflow('wf-parked', 'approve');
+
+    expect(resumed).toEqual(['wf-parked']);
+    expect(delivered).toEqual(['approve']);
+  });
+
   it('wakeWorkflow wakes only the CONFIRMED-buffered waiter among multiple race branches for the same workflow — never a sibling whose signal never arrived', async () => {
     const { sources, woken } = makeSources({
       listSignalWaiterEntries: () => [
