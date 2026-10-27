@@ -16,6 +16,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 
 /** Every protocol line on an invocation's stdout starts with this. */
 export const INVOCATION_LINE_PREFIX = '@@invocation ';
@@ -45,8 +46,6 @@ export const WEFT_WORKFLOW_INPUT = 'order-1';
 
 /** The one Operative run the Operative scenario drives. */
 export const OPERATIVE_RUN_ID = 'invocation-driven-agent-run';
-
-const POLL_ATTEMPTS = 2000;
 const POLL_DELAY_MS = 5;
 const runtime = createDefaultRuntimeServices();
 
@@ -74,7 +73,7 @@ export async function pollUntil(
   description: string,
   check: () => boolean | Promise<boolean>,
 ): Promise<void> {
-  for (let attempt = 0; attempt < POLL_ATTEMPTS; attempt += 1) {
+  for await (const _turn of awakeTurns()) {
     if (await check()) return;
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, POLL_DELAY_MS));
   }

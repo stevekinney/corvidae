@@ -937,13 +937,13 @@ describe('/c/:name (legacy route)', () => {
 
     expect(response.status).toBe(301);
     expect(response.headers.get('Location')).toBe('/page/button');
-  }, 30_000);
+  });
 
   it('preserves the query string across the redirect', async () => {
     const response = await handleRequest(req('/c/button?theme=dark'));
 
     expect(response.headers.get('Location')).toBe('/page/button?theme=dark');
-  }, 30_000);
+  });
 
   it('does not render a second documentation surface', async () => {
     const response = await handleRequest(req('/c/button'));
@@ -951,22 +951,22 @@ describe('/c/:name (legacy route)', () => {
 
     expect(body).not.toContain('data-canonical-documentation');
     expect(body).not.toContain('Open interactive documentation');
-  }, 30_000);
+  });
 
   it('returns 404 for an unknown component', async () => {
     const response = await handleRequest(req('/c/does-not-exist'));
     expect(response.status).toBe(404);
-  }, 30_000);
+  });
 
   it('returns 404 for segments with uppercase (not in safe-segment pattern)', async () => {
     const response = await handleRequest(req('/c/Button'));
     expect(response.status).toBe(404);
-  }, 30_000);
+  });
 
   it('returns 404 for segments starting with a hyphen', async () => {
     const response = await handleRequest(req('/c/-bad'));
     expect(response.status).toBe(404);
-  }, 30_000);
+  });
 });
 
 describe('canonical page navigation', () => {
@@ -987,7 +987,7 @@ describe('canonical page navigation', () => {
     expect(html).toMatch(/<nav[^>]*class="dx-nav[^"]*"/);
     expect(html).toContain('aria-label="Components"');
     expect(html).toContain('__CINDER_SIDEBAR__');
-  }, 60_000);
+  });
 
   it('points every navigation link at the canonical route', async () => {
     const response = await handleRequest(req('/page/button'));
@@ -996,7 +996,7 @@ describe('canonical page navigation', () => {
     expect(html).toMatch(/href="\/page\/[a-z]/);
     // No link should still aim at the redirecting legacy route.
     expect(html).not.toContain('href="/c/');
-  }, 60_000);
+  });
 
   it('omits the sidebar from the snapshot and preview surfaces', async () => {
     for (const query of ['?snapshot=1', '?preview=1']) {
@@ -1008,7 +1008,7 @@ describe('canonical page navigation', () => {
       expect(html).not.toContain('dx-nav');
       expect(html).toContain('<div id="app"></div>');
     }
-  }, 60_000);
+  });
 });
 describe('/shell-bundle/:filename.js', () => {
   it('returns 200 application/javascript for the canonical /shell.js entry', async () => {
@@ -1022,7 +1022,7 @@ describe('/shell-bundle/:filename.js', () => {
     // root route's initial payload.
     expect(body).toContain('Preview theme:');
     expect(body).toContain('import("/shell-bundle/');
-  }, 30_000);
+  });
 
   it('returns 404 for an unknown shell-bundle filename', async () => {
     const response = await handleRequest(req('/shell-bundle/does-not-exist.js'));
@@ -1035,17 +1035,17 @@ describe('/page-bundle/:name.js', () => {
     const response = await handleRequest(req(`/page-bundle/${FIXTURE_COMPONENT}.js`));
     expect(response.status).toBe(200);
     expect(response.headers.get('Content-Type')).toBe('application/javascript');
-  }, 30_000);
+  });
 
   it('returns 404 for an unknown component', async () => {
     const response = await handleRequest(req('/page-bundle/does-not-exist.js'));
     expect(response.status).toBe(404);
-  }, 30_000);
+  });
 
   it('returns 404 for segments with uppercase (blocked by isSafeSegment)', async () => {
     const response = await handleRequest(req('/page-bundle/Button.js'));
     expect(response.status).toBe(404);
-  }, 30_000);
+  });
 });
 
 // Code-split chunks. Both bundle families (page-bundle and per-scenario
@@ -1085,7 +1085,7 @@ describe('chunks under /page-bundle/<filename>.js', () => {
       expect(chunkResponse.status).toBe(200);
       expect(chunkResponse.headers.get('Content-Type')).toBe('application/javascript');
     }
-  }, 60_000);
+  });
 
   it('serves markdown-backed editor page bundles and their chunks', async () => {
     for (const componentName of ['markdown-editor', 'review-editor']) {
@@ -1107,7 +1107,7 @@ describe('chunks under /page-bundle/<filename>.js', () => {
         expect(chunkResponse.headers.get('Content-Type')).toBe('application/javascript');
       }
     }
-  }, 60_000);
+  });
 });
 
 // HTTP caching contract for the bundle routes. Content-hashed chunk URLs are
@@ -1124,13 +1124,13 @@ describe('Cache-Control headers on bundle routes', () => {
     const response = await handleRequest(req(`/page-bundle/${FIXTURE_COMPONENT}.js`));
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe(NO_STORE);
-  }, 30_000);
+  });
 
   it('serves the shell-bundle entry URL with no-store', async () => {
     const response = await handleRequest(req('/shell-bundle/shell.js'));
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe(NO_STORE);
-  }, 30_000);
+  });
 
   it('serves the bare scenario bundle entry URL with no-store', async () => {
     const response = await handleRequest(
@@ -1138,7 +1138,7 @@ describe('Cache-Control headers on bundle routes', () => {
     );
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe(NO_STORE);
-  }, 30_000);
+  });
 
   it('serves content-hashed page-bundle chunks with an immutable Cache-Control', async () => {
     // `chat` lazy-loads markdown rendering, so its entry references at least
@@ -1160,7 +1160,7 @@ describe('Cache-Control headers on bundle routes', () => {
     const chunkResponse = await handleRequest(req(chunkUrls[0]!));
     expect(chunkResponse.status).toBe(200);
     expect(chunkResponse.headers.get('Cache-Control')).toBe(IMMUTABLE);
-  }, 60_000);
+  });
 });
 
 // Bundle artifact paths must follow the predictable shapes the route
@@ -1175,7 +1175,7 @@ describe('build artifact paths', () => {
     expect(body.length).toBeGreaterThan(0);
     // Sanity: this is JavaScript, not HTML.
     expect(body).not.toMatch(/^<!doctype html/i);
-  }, 60_000);
+  });
 
   it('chat entry chunk does not eagerly contain @shikijs/langs grammar payloads', async () => {
     // Phase 3 verification proxy: with code splitting on, the highlighter
@@ -1189,7 +1189,7 @@ describe('build artifact paths', () => {
     // language grammar inlined.
     const grammarMarkers = body.match(/scopeName/g) ?? [];
     expect(grammarMarkers.length).toBe(0);
-  }, 60_000);
+  });
 });
 
 describe('/styles/* (path traversal guard)', () => {
@@ -1261,7 +1261,6 @@ describe('stable entry URLs evaluate the hashed entry once', () => {
       expect(code).toContain(marker);
       expect(stableCode).toBe(`import ${JSON.stringify(url)};\n`);
     },
-    60_000,
   );
 
   it('serves the same thin module from the cached entry on a second request', async () => {
@@ -1270,7 +1269,7 @@ describe('stable entry URLs evaluate the hashed entry once', () => {
     const secondResponse = await handleRequest(req('/page-bundle/chat.js'));
     const second = await secondResponse.text();
     expect(second).toBe(first);
-  }, 60_000);
+  });
 });
 
 describe('/bundle/:name/:scenario.js', () => {
@@ -1675,7 +1674,7 @@ describe('/page/:name', () => {
     expect(bundleResponse.status).toBe(200);
     const bundle = await bundleResponse.text();
     expect(bundle).toContain('Disabled value');
-  }, 30_000);
+  });
 
   it('renders a host fixture route through the fixture bundle family', async () => {
     const hash = await fixtureContentHash('tabs');
@@ -1693,7 +1692,7 @@ describe('/page/:name', () => {
     expect(bundleResponse.status).toBe(200);
     const bundle = await bundleResponse.text();
     expect(bundle).toContain('Project sections');
-  }, 30_000);
+  });
 
   it('returns 404 for a missing fixture name', async () => {
     const hash = await fixtureContentHash('input');
@@ -1763,7 +1762,7 @@ describe('/page/:name', () => {
       expect(chunkResponse.status).toBe(200);
       expect(chunkResponse.headers.get('Content-Type')).toBe('application/javascript');
     }
-  }, 30_000);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1834,14 +1833,14 @@ describe('/api/manifest', () => {
     const response = await handleRequest(req('/api/manifest'));
     expect(response.status).toBe(200);
     expect(response.headers.get('Content-Type')).toBe('application/json');
-  }, 30_000);
+  });
 
   it('returns an array with at least 21 entries', async () => {
     const response = await handleRequest(req('/api/manifest'));
     const manifests = (await response.json()) as unknown[];
     expect(Array.isArray(manifests)).toBe(true);
     expect(manifests.length).toBeGreaterThanOrEqual(21);
-  }, 30_000);
+  });
 
   it('each entry has name, kebabName, file, importPath, and props array', async () => {
     const response = await handleRequest(req('/api/manifest'));
@@ -1853,14 +1852,14 @@ describe('/api/manifest', () => {
       expect(typeof entry.importPath).toBe('string');
       expect(Array.isArray(entry.props)).toBe(true);
     }
-  }, 30_000);
+  });
 
   it('includes button in the manifest', async () => {
     const response = await handleRequest(req('/api/manifest'));
     const manifests = (await response.json()) as ComponentManifest[];
     const button = manifests.find((entry) => entry.kebabName === 'button');
     expect(button).toBeDefined();
-  }, 30_000);
+  });
 
   it('includes compose-only leaves in the canonical /api/manifest', async () => {
     // The full manifest keeps compose-only leaves so direct /page/<name> routes
@@ -1870,7 +1869,7 @@ describe('/api/manifest', () => {
     const manifests = (await response.json()) as ComponentManifest[];
     const manifestNames = new Set(manifests.map((entry) => entry.kebabName));
     expect(manifestNames.has(COMPOSE_ONLY_FIXTURE_COMPONENT)).toBe(true);
-  }, 30_000);
+  });
 
   it('excludes compose-only leaves from /api/manifest?standalone=1', async () => {
     // ?standalone=1 is the Playwright-sweep input: compose-only leaves are
@@ -1882,7 +1881,7 @@ describe('/api/manifest', () => {
     for (const componentName of COMPOSE_ONLY_COMPONENTS) {
       expect(manifestNames.has(componentName)).toBe(false);
     }
-  }, 30_000);
+  });
 });
 
 describe('/api/manifest/:name', () => {
@@ -1890,14 +1889,14 @@ describe('/api/manifest/:name', () => {
     const response = await handleRequest(req('/api/manifest/button'));
     expect(response.status).toBe(200);
     expect(response.headers.get('Content-Type')).toBe('application/json');
-  }, 30_000);
+  });
 
   it('returns parsed JSON with name=Button and kebabName=button', async () => {
     const response = await handleRequest(req('/api/manifest/button'));
     const result = (await response.json()) as ComponentManifest;
     expect(result.name).toBe('Button');
     expect(result.kebabName).toBe('button');
-  }, 30_000);
+  });
 
   it('returns parsed JSON for a compose-only component by name', async () => {
     const response = await handleRequest(req(`/api/manifest/${COMPOSE_ONLY_FIXTURE_COMPONENT}`));
@@ -1907,24 +1906,24 @@ describe('/api/manifest/:name', () => {
     expect(response.status).toBe(200);
     const result = (await response.json()) as ComponentManifest;
     expect(result.kebabName).toBe(COMPOSE_ONLY_FIXTURE_COMPONENT);
-  }, 30_000);
+  });
 
   it('returns 404 for an unknown component', async () => {
     const response = await handleRequest(req('/api/manifest/does-not-exist'));
     expect(response.status).toBe(404);
-  }, 30_000);
+  });
 
   it('returns 404 for segments with uppercase (isSafeSegment blocked)', async () => {
     const response = await handleRequest(req('/api/manifest/Button'));
     expect(response.status).toBe(404);
-  }, 30_000);
+  });
 
   it('uses the extracted package import path for Chat', async () => {
     const response = await handleRequest(req('/api/manifest/chat'));
     expect(response.status).toBe(200);
     const result = (await response.json()) as ComponentManifest;
     expect(result.importPath).toBe('@lostgradient/chat');
-  }, 30_000);
+  });
 });
 
 describe('generated schema metadata', () => {
@@ -2132,7 +2131,7 @@ describe('/api/documentation/:name', () => {
     expect(body.readme.html).toContain('<h2 id="readme-usage">Usage</h2>');
     expect(body.constraints).not.toBeNull();
     expect(body.examples).not.toBeNull();
-  }, 30_000);
+  });
 
   it('serves documentation from the extracted Chat package manifest', async () => {
     const response = await handleRequest(req('/api/documentation/chat'));
@@ -2142,17 +2141,17 @@ describe('/api/documentation/:name', () => {
     if (!isComponentDocumentationPayload(body)) return;
     expect(body.component.id).toBe('chat');
     expect(body.component.importSpecifier).toBe('@lostgradient/chat');
-  }, 30_000);
+  });
 
   it('returns 404 for an unknown component', async () => {
     const response = await handleRequest(req('/api/documentation/does-not-exist'));
     expect(response.status).toBe(404);
-  }, 30_000);
+  });
 
   it('returns 404 for segments with uppercase (isSafeSegment blocked)', async () => {
     const response = await handleRequest(req('/api/documentation/Button'));
     expect(response.status).toBe(404);
-  }, 30_000);
+  });
 });
 
 describe('/bundle/:name/controls.js (route retired)', () => {
@@ -2164,17 +2163,17 @@ describe('/bundle/:name/controls.js (route retired)', () => {
   it('returns 404 — no scenario bundle by that name', async () => {
     const response = await handleRequest(req('/bundle/button/controls.js'));
     expect(response.status).toBe(404);
-  }, 30_000);
+  });
 
   it('returns 404 for an unknown component', async () => {
     const response = await handleRequest(req('/bundle/does-not-exist/controls.js'));
     expect(response.status).toBe(404);
-  }, 30_000);
+  });
 
   it('returns 404 for unsafe segment (uppercase)', async () => {
     const response = await handleRequest(req('/bundle/Button/controls.js'));
     expect(response.status).toBe(404);
-  }, 30_000);
+  });
 });
 
 describe('/page/:name server-rendering surfaces', () => {
@@ -2201,7 +2200,7 @@ describe('/page/:name server-rendering surfaces', () => {
     expect(html).toContain('data-component-page');
     // Real documentation content, not just a shell.
     expect(html).toMatch(/<h1[^>]*>Button/);
-  }, 60_000);
+  });
 
   it('omits inline sourcemaps from the server-rendered head', async () => {
     const response = await handleRequest(req('/page/button'));
@@ -2210,7 +2209,7 @@ describe('/page/:name server-rendering surfaces', () => {
     // Inline base64 sourcemaps measured 50.3% of the deployed document and sit
     // on the critical rendering path. See strip-inline-sourcemaps.ts.
     expect(html).not.toContain('sourceMappingURL=data:');
-  }, 60_000);
+  });
 
   it('leaves #app empty for ?snapshot=1 so the visual harness contract holds', async () => {
     const response = await handleRequest(req('/page/button?snapshot=1'));
@@ -2222,7 +2221,7 @@ describe('/page/:name server-rendering surfaces', () => {
     expect(html).toContain('<div id="app"></div>');
     expect(html).not.toContain('data-component-page');
     expect(html).toContain('data-snapshot-mode');
-  }, 60_000);
+  });
 
   it('leaves #app empty for ?preview=1 so the preview frame shows only the example', async () => {
     const response = await handleRequest(req('/page/button?preview=1'));
@@ -2231,7 +2230,7 @@ describe('/page/:name server-rendering surfaces', () => {
 
     expect(html).toContain('<div id="app"></div>');
     expect(html).not.toContain('data-component-page');
-  }, 60_000);
+  });
 
   it('renders a substantially smaller document for the client-only surfaces', async () => {
     const [canonical, preview] = await Promise.all([
@@ -2243,7 +2242,7 @@ describe('/page/:name server-rendering surfaces', () => {
     // carrying the documentation tree again its size converges on the canonical
     // page's.
     expect(preview.length).toBeLessThan(canonical.length / 2);
-  }, 60_000);
+  });
 });
 
 describe('loadPageServerRenderer memo identity', () => {

@@ -4,6 +4,7 @@ import { readdirSync } from 'node:fs';
 import { rejectionOf } from '@lostgradient/testing';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { trackRealTimers } from '../conformance/conformance.test-support.ts';
 import type { ByteReader } from '../session/session-types.ts';
 import { flush } from '../session/session.test-support.ts';
@@ -690,7 +691,8 @@ const scenario20 = scenario('leaves no descriptor behind', async () => {
   const before = await lowestOver(50);
   for (let round = 0; round < 3; round += 1) await attempt();
   let after = descriptors();
-  for (let turn = 0; turn < 2_000 && after > before; turn += 1) {
+  for await (const _turn of awakeTurns()) {
+    if (!(after > before)) break;
     await Bun.sleep(1);
     after = descriptors();
   }

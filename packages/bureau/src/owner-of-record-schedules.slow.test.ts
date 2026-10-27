@@ -16,6 +16,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
 import type { AgentDefinitions } from './agent-catalog';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 // A schedule fire is driven by Weft's poller on real elapsed time, which is why
 // this file is a slow lane: nothing here can run faster than the schedule's
@@ -23,13 +24,9 @@ import type { AgentDefinitions } from './agent-catalog';
 
 const generate: GenerateFunction = async () => ({ content: 'acknowledged', toolCalls: [] });
 
-async function waitForReal(condition: () => boolean, timeoutMs = 20_000): Promise<boolean> {
-  const start = performance.now();
-  while (performance.now() - start < timeoutMs) {
-    if (condition()) return true;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  return condition();
+async function waitForReal(condition: () => boolean): Promise<true> {
+  await waitUntil(condition, { message: 'waitForReal' });
+  return true;
 }
 
 async function openBureau() {

@@ -1,6 +1,7 @@
 import { $ } from 'bun';
 import { join } from 'node:path';
 
+import { TEST_TIMEOUT_ARGUMENT } from '../../../scripts/test-deadlines.ts';
 import {
   coverageTestArguments,
   discoverCoverageTestFiles,
@@ -43,7 +44,7 @@ if (testFiles.length === 0) {
 // `coverage/`.
 console.log(`Running ${testFiles.length} coverage test files in the versioned baseline order.`);
 const run =
-  await $`TZ=UTC bun --config=./bunfig.ui.toml test --conditions browser --conditions svelte --coverage --coverage-reporter=lcov --coverage-dir=${UI_COVERAGE_DIRECTORY} ${testArguments}`
+  await $`TZ=UTC bun --config=./bunfig.ui.toml test ${TEST_TIMEOUT_ARGUMENT} --conditions browser --conditions svelte --coverage --coverage-reporter=lcov --coverage-dir=${UI_COVERAGE_DIRECTORY} ${testArguments}`
     .cwd(packageRoot)
     .nothrow();
 process.exit(run.exitCode);

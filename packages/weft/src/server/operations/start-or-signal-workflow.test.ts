@@ -79,7 +79,6 @@ async function waitForRecordedFinalizerState(engine: Engine, workflowId: string)
     async () => (await engine.storage.get(KEYS.finalizerState(workflowId))) !== null,
     {
       label: `workflow ${workflowId} recorded finalizer state`,
-      timeoutMs: 2000,
       intervalMs: 5,
     },
   );

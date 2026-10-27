@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 import type { ScanOptions } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
@@ -20,7 +21,7 @@ import { CleanupWarningEvent } from './events.ts';
 import { activity, workflow, type WorkflowContext } from './types.ts';
 
 async function forceFinalizers(stopWhen: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 200; attempt++) {
+  for await (const _turn of awakeTurns()) {
     Bun.gc(true);
     await flush();
     await sleepForTesting(5);

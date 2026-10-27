@@ -84,7 +84,6 @@ async function waitUntilParkedOnSleep(storage: MemoryStorage, workflowId: string
     },
     {
       label: `"${workflowId}" parked on its sleep`,
-      timeoutMs: 2_000,
     },
   );
 }
@@ -117,7 +116,6 @@ async function maintainAt(
   await engine.runMaintenance(now);
   await waitForCondition(() => settled(engine), {
     label: `"${workflowId}" settled at ${now}`,
-    timeoutMs: 2_000,
   });
   const state = await engine.get(workflowId);
   await engine.shutdown();
@@ -165,7 +163,6 @@ describe('a parked durable sleep replayed before its deadline', () => {
     await recovering.recoverAll();
     await waitForCondition(() => reparkedAt(recovering, workflowId, recoveredAt), {
       label: `"${workflowId}" recovered`,
-      timeoutMs: 2_000,
     });
     await recovering.shutdown();
     expect(await storedSleepDeadlines(storage, workflowId)).toEqual([ORIGINAL_DEADLINE]);

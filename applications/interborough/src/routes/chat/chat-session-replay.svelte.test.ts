@@ -12,6 +12,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { RESUME_ATTEMPT_FAILED_MESSAGES } from '@lostgradient/bureau';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import type { Fetcher } from '../../lib/bureau-client.ts';
 import { withTypedAnswers } from './answer-rows.ts';
 import { ChatSessionState } from './chat-session.svelte.ts';
@@ -73,8 +74,7 @@ function open(fetchAgUi: Fetcher): ChatSessionState {
 }
 
 async function until(condition: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 400 && !condition(); attempt += 1) await Bun.sleep(5);
-  expect(condition()).toBe(true);
+  await waitUntil(condition, { message: 'until' });
 }
 
 function userRows(session: ChatSessionState): string[] {

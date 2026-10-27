@@ -264,5 +264,5 @@ describe('scan — live inventory against the real source tree', () => {
     // suite (or a concurrent worktree's suite) saturates the CPU — the failure
     // mode is a timeout, never an assertion. Budget generously so a loaded
     // machine doesn't flag a green scan as broken.
-  }, 90_000);
+  });
 });

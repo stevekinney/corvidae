@@ -20,15 +20,10 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { describe, expect, setDefaultTimeout, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 
 const COMPONENTS_DIR = join(import.meta.dir, '..', 'components');
 const TOKEN_REGISTRY = join(import.meta.dir, '..', 'tokens', 'registry.generated.json');
-
-// This file scans every component variables manifest. Under parallel CI or
-// multi-worktree local runs, Bun's default 5s test timeout can expire while the
-// scan is still making progress.
-setDefaultTimeout(30_000);
 
 const FILE_UPLOAD_PROGRESS_COLOR_VARIABLES = [
   { component: 'file-upload', variable: '--cinder-file-upload-progress-background' },

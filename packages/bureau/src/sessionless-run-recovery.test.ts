@@ -119,14 +119,10 @@ describe('a durable task recovered after a crash', () => {
     const during = await holdersOf(second, assetId);
 
     resume.resolve();
-    await waitForCondition(
-      async () => {
-        const state = await second.tasks.detail(run.id);
-        return state?.status !== 'running';
-      },
-      'the recovered run never finished',
-      200,
-    );
+    await waitForCondition(async () => {
+      const state = await second.tasks.detail(run.id);
+      return state?.status !== 'running';
+    }, 'the recovered run never finished');
     const after = await holdersOf(second, assetId);
 
     // The replay re-seeded the input row under its own id: one holder, held by the task's

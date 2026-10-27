@@ -241,5 +241,5 @@ describe.skipIf(!browserSmokeEnabled)('WebExtensionStorage — real Chromium smo
     } finally {
       await page.close();
     }
-  }, 30_000);
+  });
 });

@@ -154,15 +154,12 @@ describe('additional coverage', () => {
     // otherwise it would wait the settled 30-second interval before seeing
     // the server's loading state. The third call proves the 2-second cadence,
     // rather than only the immediate refresh.
-    await waitFor(
-      () => {
-        const diagnosticsCalls = scripted!.calls.filter(
-          (call) => typeof call.init?.body === 'string' && call.init.body.includes(DIAGNOSTICS),
-        );
-        expect(diagnosticsCalls.length).toBeGreaterThan(2);
-      },
-      { timeout: 2_500 },
-    );
+    await waitFor(() => {
+      const diagnosticsCalls = scripted!.calls.filter(
+        (call) => typeof call.init?.body === 'string' && call.init.body.includes(DIAGNOSTICS),
+      );
+      expect(diagnosticsCalls.length).toBeGreaterThan(2);
+    });
 
     // Switch to a different revision while the first preload is unresolved.
     await inspect(container, getByRole, NAME, 'a-different-revision');

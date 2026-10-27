@@ -29,11 +29,13 @@ import type { AgentDefinitions } from '../agent-catalog';
 const [mode, storagePath, markerPath] = process.argv.slice(2);
 
 if (
-  (mode !== 'settlement' && mode !== 'admission') ||
+  (mode !== 'settlement' && mode !== 'admission' && mode !== 'parked') ||
   storagePath === undefined ||
   markerPath === undefined
 ) {
-  process.stderr.write('usage: task-record-crash-child <settlement|admission> <path> <marker>\n');
+  process.stderr.write(
+    'usage: task-record-crash-child <settlement|admission|parked> <path> <marker>\n',
+  );
   process.exit(2);
 }
 
@@ -48,7 +50,7 @@ const textOf = (args: readonly unknown[]): string =>
   );
 const holdsThisWrite = (args: readonly unknown[]): boolean => {
   const text = textOf(args);
-  if (!text.includes('bureau-task:v1:')) return false;
+  if (mode === 'parked' || !text.includes('bureau-task:v1:')) return false;
   return mode === 'settlement' ? text.includes('\\"settled\\"') : text.includes('\\"history\\"');
 };
 
@@ -96,6 +98,16 @@ if (mode === 'settlement') {
   for (;;) {
     const durable = await bureau.tasks.workflow(run.id);
     if (held && durable?.status === 'completed') kill(run.id);
+    await sleep(10);
+  }
+} else if (mode === 'parked') {
+  // Holds no write: the task parks on its human wait, and the process dies there.
+  const run = await bureau.tasks.start('asker', 'which environment?', {
+    principal: 'api-key:alice',
+    contextId: CONTEXT_ID,
+  });
+  for (;;) {
+    if (bureau.reviews.list().some((review) => review.runId === run.id)) kill(run.id);
     await sleep(10);
   }
 } else {

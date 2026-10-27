@@ -193,7 +193,6 @@ describe('recordFinalizerState', () => {
         async () => (await storage.get(KEYS.finalizerState('finalizer-orphan-run'))) !== null,
         {
           label: 'finalizer state to be committed after the workflow parks',
-          timeoutMs: 400,
           intervalMs: 5,
         },
       );

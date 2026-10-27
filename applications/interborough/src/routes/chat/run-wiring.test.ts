@@ -19,6 +19,7 @@ import {
 import { describe, expect, test } from 'bun:test';
 
 import { RESUME_ROUND_CHANGED_MESSAGE } from '@lostgradient/bureau';
+import { quietFor, waitUntil, yieldEventLoopTurn } from '@lostgradient/testing/wait-until';
 import type { Fetcher } from '../../lib/bureau-client.ts';
 import { AG_UI_PATH, createChatRunWiring, openingTurn } from './run-wiring.ts';
 
@@ -489,7 +490,8 @@ describe('a stop', () => {
     );
     // The turn is reading the run once its request is out and its first event has arrived.
     await expectEventually(() => sent.length === 1);
-    await Bun.sleep(10);
+    // The turn is reading within a few turns of this process, however busy the host is.
+    for (let turn = 0; turn < 3; turn += 1) await yieldEventLoopTurn();
 
     controller.abort();
     await turn;
@@ -510,7 +512,8 @@ describe('a stop', () => {
       (error: unknown) => error,
     );
     await expectEventually(() => sent.length === 1);
-    await Bun.sleep(10);
+    // The turn is reading within a few turns of this process, however busy the host is.
+    for (let turn = 0; turn < 3; turn += 1) await yieldEventLoopTurn();
 
     wiring.detach();
     controller.abort();
@@ -523,8 +526,7 @@ describe('a stop', () => {
 });
 
 async function expectEventually(condition: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 200 && !condition(); attempt += 1) await Bun.sleep(5);
-  expect(condition()).toBe(true);
+  await waitUntil(condition, { message: 'expectEventually' });
 }
 
 describe('the thread’s history', () => {
@@ -1712,7 +1714,7 @@ describe('a stop before the run’s first event', () => {
 
     controller.abort();
     // The turn is still reading: nothing is cancelled, because nothing has named the run.
-    await Bun.sleep(10);
+    await quietFor(10);
     expect(sent).toHaveLength(1);
     expect(mounted.requestSignals[0]?.aborted).toBe(false);
     mounted.release();

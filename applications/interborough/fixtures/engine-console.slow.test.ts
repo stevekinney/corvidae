@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import { Engine } from '@lostgradient/weft';
 
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { UPDATE_DESK_RUN_ID } from './engine-console-ids.ts';
 import { seedEngineConsole } from './engine-console.ts';
 import { workflows } from './workflows.ts';
@@ -42,9 +43,9 @@ describe('seedEngineConsole slow update', () => {
 
     // The handler finishes on its own; the history entry and the stored result settle together.
     const updateId = pending.items[0]!.updateId;
-    const deadline = Date.now() + 10_000;
     let settled = await engine.getUpdateResult(updateId);
-    while (settled === null && Date.now() < deadline) {
+    for await (const _ of awakeTurns()) {
+      if (!(settled === null)) break;
       await Bun.sleep(100);
       settled = await engine.getUpdateResult(updateId);
     }

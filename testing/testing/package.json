@@ -6,7 +6,8 @@
     ".": "./src/index.ts",
     "./coverage-ratchet": "./src/coverage-ratchet/index.ts",
     "./hang-guard": "./src/hang-guard.ts",
-    "./temporary-path": "./src/temporary-path.ts"
+    "./temporary-path": "./src/temporary-path.ts",
+    "./wait-until": "./src/wait-until.ts"
   },
   "scripts": {
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src",

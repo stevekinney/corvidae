@@ -289,7 +289,6 @@ describe('weft.tasks.deliveries over WebSocket', () => {
       concurrency: 2,
     });
     await waitForCondition(() => context.registry.getWorker('w-1') !== undefined, {
-      timeoutMs: 1_000,
       label: 'worker registration',
     });
     context.registry.assignTask('w-1', 'op-ws', 30_000, undefined, 'secret-attempt-token');
@@ -299,7 +298,6 @@ describe('weft.tasks.deliveries over WebSocket', () => {
     send({ ...result, attemptToken: 'wrong-token' });
     send({ ...result, attemptToken: 'secret-attempt-token' });
     await waitForCondition(() => sent.some((message) => message.includes('"applied"')), {
-      timeoutMs: 1_000,
       label: 'applied ack',
     });
     send({ ...result, attemptToken: 'secret-attempt-token' });
@@ -308,7 +306,7 @@ describe('weft.tasks.deliveries over WebSocket', () => {
         const recorded = await readDeliveries(engine, 'op-ws');
         return recorded.deliveries.length === 3;
       },
-      { timeoutMs: 1_000, label: 'three recorded deliveries' },
+      { label: 'three recorded deliveries' },
     );
 
     const history = await readDeliveries(engine, 'op-ws');

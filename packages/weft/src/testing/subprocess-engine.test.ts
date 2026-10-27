@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { HANG_GUARD_MILLISECONDS } from '../../scripts/lib/hang-guard.ts';
+import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 import { HttpClient } from '../client/http-client.ts';
 import type { WorkflowState } from '../core/types.ts';
 import { sleepForTesting } from './fake-timers.test-support.ts';
@@ -148,9 +149,8 @@ async function waitForWorkflowStatus(
   predicate: (state: WorkflowState) => boolean,
   label: string,
 ): Promise<WorkflowState> {
-  const deadline = Date.now() + 3_000;
   let lastState: WorkflowState | null = null;
-  while (Date.now() < deadline) {
+  for await (const _turn of awakeTurns()) {
     lastState = await client.get(workflowId);
     if (lastState !== null && predicate(lastState)) return lastState;
     await sleepForTesting(10);
@@ -159,8 +159,7 @@ async function waitForWorkflowStatus(
 }
 
 async function waitForFileText(path: string, expected: string, label: string): Promise<void> {
-  const deadline = Date.now() + 3_000;
-  while (Date.now() < deadline) {
+  for await (const _turn of awakeTurns()) {
     if ((await Bun.file(path).exists()) && (await Bun.file(path).text()) === expected) return;
     await sleepForTesting(10);
   }

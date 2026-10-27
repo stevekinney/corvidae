@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import {
   destroyAllHarnesses,
   mountHarness,
@@ -57,7 +58,7 @@ describe('geometry reaches the host', () => {
     for (let signal = 0; signal < 20; signal += 1) window.dispatchEvent(new Event('resize'));
     await waitFor(() => geometries.length === 1, 'the geometry');
     window.dispatchEvent(new Event('resize'));
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await quietFor(60);
     expect(geometries).toEqual([{ columns: 100, rows: 30 }]);
     expect(engine().resizes).toEqual([{ columns: 100, rows: 30 }]);
     harness.destroy();
@@ -75,7 +76,7 @@ describe('geometry reaches the host', () => {
     await waitFor(() => geometries.length === 1, 'the first geometry');
     engine().measurement = undefined;
     window.dispatchEvent(new Event('resize'));
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await quietFor(60);
     expect(geometries).toHaveLength(1);
     engine().measurement = { columns: 90, rows: 20 };
     window.dispatchEvent(new Event('resize'));
@@ -95,7 +96,7 @@ describe('geometry reaches the host', () => {
     expect(fake.created[0]!.options.geometry).toEqual({ columns: 120, rows: 40 });
     engine().measurement = { columns: 10, rows: 5 };
     window.dispatchEvent(new Event('resize'));
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await quietFor(60);
     expect(geometries).toEqual([]);
     expect(engine().measureCount).toBe(0);
     harness.destroy();
@@ -199,7 +200,7 @@ describe('an engine that fails during a session', () => {
     )!;
     retry.click();
     harness.flush();
-    await new Promise((resolve) => setTimeout(resolve, 40));
+    await quietFor(40);
     expect(requests).toBe(1);
     expect(fake.created).toHaveLength(1);
     expect(failedController.subscriptions).toBe(1);

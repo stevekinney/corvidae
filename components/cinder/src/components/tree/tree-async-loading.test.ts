@@ -1,6 +1,7 @@
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 /// <reference lib="dom" />
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { describe, expect, test } from 'bun:test';
 import { createRawSnippet, flushSync, mount, unmount } from 'svelte';
 import { treeItem } from './tree-test-helpers.ts';
@@ -214,7 +215,7 @@ describe('Tree — async loading', () => {
     // Expand again
     await fireEvent.keyDown(item, { key: 'ArrowRight' });
     // Give time for any re-trigger
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await quietFor(50);
     // Should still be 1, not 2
     expect(callCount).toBe(1);
   });

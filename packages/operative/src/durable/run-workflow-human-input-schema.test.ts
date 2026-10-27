@@ -13,6 +13,7 @@ import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory } from 'conversationalist';
 
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { noToolCalls } from '../conditions/predicates';
 import { createRequestHumanInputTool } from '../create-request-human-input-tool';
 import type { HumanInputSchema } from '../human-input-schema';
@@ -110,7 +111,7 @@ describe('the model-facing requestHumanInput result', () => {
         { runId: 'schema-run', sessionId: 'schema-run', agentName: 'asker', prompt: 'start' },
         { id: 'schema-run', services },
       );
-      for (let attempt = 0; attempt < 50; attempt++) {
+      for await (const _turn of awakeTurns()) {
         if (container.ref.pendingHumanWait !== undefined) break;
         await yieldToPortableEventLoop();
       }

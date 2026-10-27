@@ -16,18 +16,11 @@ import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, base64Of, pngBytes } from './testing/asset-fixtures.test-support';
 import type { AgentDefinitions } from './agent-catalog';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
-// The poll ends inside Bun's default per-test limit, which this file leaves as it is: a
-// 1 s schedule fires well within it, and a fire that does not is a failure, not a slow test.
-const FIRE_WAIT_MS = 4_000;
-
-async function waitForReal(condition: () => boolean, timeoutMs: number): Promise<boolean> {
-  const start = performance.now();
-  while (performance.now() - start < timeoutMs) {
-    if (condition()) return true;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  return condition();
+async function waitForReal(condition: () => boolean): Promise<true> {
+  await waitUntil(condition, { message: 'waitForReal' });
+  return true;
 }
 
 describe('a scheduled fire with a media input (COR-716)', () => {
@@ -74,7 +67,7 @@ describe('a scheduled fire with a media input (COR-716)', () => {
       });
       expect(summary).toBeDefined();
 
-      const fired = await waitForReal(() => seen.length >= 1, FIRE_WAIT_MS);
+      const fired = await waitForReal(() => seen.length >= 1);
       await bureau.schedules.cancel(summary!.id);
 
       expect(fired).toBe(true);

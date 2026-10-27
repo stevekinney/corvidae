@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import {
   destroyAllHarnesses,
   mountHarness,
@@ -117,7 +118,7 @@ describe('engine failure fails closed', () => {
     )!;
     retry.click();
     harness.flush();
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await quietFor(60);
     expect(requests).toBe(1);
     // The controller was revoked by the failure, so it is never subscribed to again.
     expect(loads).toBe(1);
@@ -178,7 +179,7 @@ describe('engine failure fails closed', () => {
     behavior = () => Promise.reject(new Error('blocked'));
     const harness = mountHarness(Terminal, { title: 'Shell', state: 'writable' });
     await failed(harness);
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await quietFor(60);
     expect(loads).toBe(1);
   });
 
@@ -275,7 +276,7 @@ describe('recovery controls and controller-bound failures (COR-1516)', () => {
     await failed(harness);
     required(harness, 'button').click();
     harness.flush();
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await quietFor(60);
     expect(requests).toBe(1);
     expect(loads).toBe(1);
     expect(controller.subscriptions).toBe(0);
@@ -299,7 +300,7 @@ describe('recovery controls and controller-bound failures (COR-1516)', () => {
     await failed(harness);
     props.controller = undefined;
     harness.flush();
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await quietFor(60);
     expect(required(harness, '.cinder-terminal__message').textContent).toBe(
       'Terminal engine unavailable',
     );
@@ -308,7 +309,7 @@ describe('recovery controls and controller-bound failures (COR-1516)', () => {
     // Bringing the revoked controller back is not a replacement either.
     props.controller = sameController;
     harness.flush();
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await quietFor(60);
     expect(required(harness, '.cinder-terminal__message').textContent).toBe(
       'Terminal engine unavailable',
     );
@@ -366,7 +367,7 @@ describe('recovery controls and controller-bound failures (COR-1516)', () => {
     await failed(harness);
     props.controller = undefined;
     harness.flush();
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    await quietFor(30);
     expect(loads).toBe(1);
     required(harness, 'button').click();
     harness.flush();

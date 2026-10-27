@@ -463,12 +463,15 @@ describe('createDurableMultiAgentHarness', () => {
       }
     });
 
-    it('throws after the maximum attempts when the condition is never true', async () => {
+    it('throws once the hang guard elapses when the condition is never true', async () => {
       const harness = await createDurableMultiAgentHarness();
 
       try {
         expect(
-          await throwingRejectionOf(harness.waitForCondition(() => false, 'always false', 3)),
+          await throwingRejectionOf(
+            // hang-guard-self-test: the condition is never true, so no load can satisfy it in time
+            harness.waitForCondition(() => false, 'always false', { hangGuardMilliseconds: 20 }),
+          ),
         ).toThrow('always false');
       } finally {
         harness.dispose();

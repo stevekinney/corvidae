@@ -354,6 +354,7 @@ describe('ReproductionArtifact — cross-package shape (AB-334)', () => {
     const shutdownReport: BureauShutdownReport = {
       admissionClosed: true,
       policy: 'drain',
+      detached: 0,
       requested: 1,
       completed: 1,
       failed: 0,

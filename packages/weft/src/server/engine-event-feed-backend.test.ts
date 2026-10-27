@@ -71,7 +71,6 @@ async function waitForEventCount(
   engine: Engine,
   workflowId: string,
   expected: number,
-  timeoutMilliseconds = 500,
 ): Promise<void> {
   await waitForCondition(
     async () => {
@@ -80,7 +79,6 @@ async function waitForEventCount(
     },
     {
       label: `${expected} events for ${workflowId}`,
-      timeoutMs: timeoutMilliseconds,
       intervalMs: 5,
     },
   );
@@ -403,7 +401,6 @@ describe('createEngineEventFeedBackend — tokens selector', () => {
     engine: Engine,
     workflowId: string,
     expected: number,
-    timeoutMilliseconds = 500,
   ): Promise<void> {
     await waitForCondition(
       async () => {
@@ -412,7 +409,6 @@ describe('createEngineEventFeedBackend — tokens selector', () => {
       },
       {
         label: `${expected} token chunks for ${workflowId}`,
-        timeoutMs: timeoutMilliseconds,
         intervalMs: 5,
       },
     );

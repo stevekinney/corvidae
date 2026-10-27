@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import {
   destroyAllHarnesses,
   mountHarness,
@@ -218,7 +219,7 @@ describe('recovery actions', () => {
       // The host changes the state later, which removes the button the reader used.
       props.state = 'connecting';
       harness.flush();
-      await new Promise((resolve) => setTimeout(resolve, 30));
+      await quietFor(30);
       expect(document.activeElement?.textContent?.trim()).toBe('Elsewhere');
     } finally {
       elsewhere.remove();

@@ -29,14 +29,13 @@ import {
   storedText,
 } from './schedule-fire-fixtures.test-support';
 import type { Bureau, PendingReview, PendingToolApprovalReview } from './types';
+import { quietFor } from '@lostgradient/testing/wait-until';
 
 const harness = createScheduleFireHarness();
 
 afterEach(async () => {
   await harness.dispose();
 });
-
-const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 const waitOptions = {
   generate: askingGenerate(),
@@ -310,7 +309,7 @@ describe('a close that waits for the seed read', () => {
     hold.arm();
     const fireId = await startFire(bureau, 'closes-seed-order');
     const review = await reviewOf(bureau, fireId);
-    await Promise.race([hold.reached, sleep(3_000)]);
+    await hold.reached;
     expect(hold.held).toBe(true);
 
     // The wait is answered while the fire's seed read, which the request waits on, is under way.
@@ -320,7 +319,7 @@ describe('a close that waits for the seed read', () => {
       principal: OWNER.alice,
       payload: 'staging',
     });
-    await sleep(200);
+    await quietFor(200);
     hold.release();
     await resolving;
     await pollUntil(async () => {
@@ -338,11 +337,11 @@ describe('a close that waits for the seed read', () => {
     hold.arm();
     const fireId = await startFire(bureau, 'closes-seed-cancel');
     await reviewOf(bureau, fireId);
-    await Promise.race([hold.reached, sleep(3_000)]);
+    await hold.reached;
     expect(hold.held).toBe(true);
 
     void bureau.durableEngine()?.cancel(fireId);
-    await sleep(300);
+    await quietFor(300);
     hold.release();
     await pollUntil(async () => {
       const kinds = await historyKinds(bureau, fireId);
@@ -375,7 +374,7 @@ describe('a tool approval’s decision that waits for the seed read', () => {
     hold.arm();
     const fireId = await startFire(bureau, 'closes-seed-approval');
     const review = await reviewOf(bureau, fireId);
-    await Promise.race([hold.reached, sleep(3_000)]);
+    await hold.reached;
     expect(hold.held).toBeGreaterThan(0);
 
     let decided = false;
@@ -384,7 +383,7 @@ describe('a tool approval’s decision that waits for the seed read', () => {
       .then(() => {
         decided = true;
       });
-    await sleep(500);
+    await quietFor(500);
     // The decision has not been recorded ahead of the request it closes.
     expect(decided).toBe(false);
     hold.release();
@@ -440,7 +439,7 @@ describe('a canceled fire’s closes, retried at boot', () => {
       );
       return records.length > 0 ? true : undefined;
     }, 'the next boot to write the audit record');
-    await sleep(300);
+    await quietFor(300);
 
     expect(
       await auditRecordsOf(restarted, fireId, 'review.human-wait.canceled', review.id),
@@ -492,7 +491,7 @@ describe('a canceled fire’s closes, retried at boot', () => {
       const kinds = await historyKinds(restarted, fireId);
       return kinds.includes('review.canceled') ? true : undefined;
     }, 'the next boot to write the history event');
-    await sleep(300);
+    await quietFor(300);
 
     const restartedKinds = await historyKinds(restarted, fireId);
     expect(restartedKinds.filter((kind) => kind === 'review.canceled')).toHaveLength(1);
@@ -541,7 +540,7 @@ describe('a canceled fire’s closes, retried at boot', () => {
     );
     hold.arm();
     void first.durableEngine()?.cancel(fireId);
-    await Promise.race([hold.reached, sleep(3_000)]);
+    await hold.reached;
     expect(hold.held).toBe(true);
 
     // The next boot reads a checkpoint whose latest step cannot be read. A tolerant read would
@@ -560,7 +559,7 @@ describe('a canceled fire’s closes, retried at boot', () => {
       `canceled schedule fire "${fireId}" was closed`,
       'its checkpoint could not be read strictly',
     );
-    await sleep(300);
+    await quietFor(300);
     expect(await auditRecordsOf(second, fireId, 'review.human-wait.canceled')).toEqual([]);
     await second.dispose();
 
@@ -571,7 +570,7 @@ describe('a canceled fire’s closes, retried at boot', () => {
       const records = await auditRecordsOf(third, fireId, 'review.human-wait.canceled');
       return records.length > 0 ? true : undefined;
     }, 'the later boot to close the wait');
-    await sleep(300);
+    await quietFor(300);
 
     const closed = await auditRecordsOf(third, fireId, 'review.human-wait.canceled');
     expect(closed.map((record) => (record.detail as { review: { id: string } }).review.id)).toEqual(
@@ -680,7 +679,7 @@ describe('a canceled fire’s tool approval, retried at boot', () => {
       );
       return records.length > 0 ? true : undefined;
     }, 'the next boot to write the audit record');
-    await sleep(300);
+    await quietFor(300);
 
     expect(
       await auditRecordsOf(restarted, fireId, 'review.tool-approval.canceled', review.id),
@@ -743,7 +742,7 @@ describe('a canceled fire’s tool approval, retried at boot', () => {
           : undefined,
       'the boot to report the review it could not write',
     );
-    await sleep(300);
+    await quietFor(300);
     expect(
       await auditRecordsOf(second, fireId, 'review.tool-approval.canceled', review.id),
     ).toEqual([]);
@@ -785,7 +784,8 @@ describe('a canceled fire’s tool approval, retried at boot', () => {
     await first.dispose();
 
     const restarted = await openWaiting(path);
-    await sleep(1_500);
+    // No canceled record may appear; a slow host can only delay one, never bring it forward.
+    await quietFor(1_500);
 
     expect(
       await auditRecordsOf(restarted, fireId, 'review.tool-approval.canceled', abandoned),

@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { PaginatedResult, WorkflowState, WorkflowSummary } from '@lostgradient/weft';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import type { WorkflowCatalogActivePointerLike } from '../../../lib/workflow-revision.ts';
 import OverviewTabHarness from './overview-tab.test-harness.svelte';
 
@@ -268,7 +269,7 @@ describe('OverviewTab', () => {
     await fireEvent.input(input, { target: { value: 'one' } });
     await fireEvent.keyDown(input, { key: 'Enter' });
     await fireEvent.click(getByRole('button', { name: 'Remove one' }));
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await quietFor(20);
 
     // The remove waits for the add; it has not been sent.
     expect(calls).toEqual(['add one']);

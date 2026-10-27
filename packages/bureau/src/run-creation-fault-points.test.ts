@@ -45,6 +45,7 @@ import type { Bureau, BureauDiagnostic } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 import { type TaskStartRequest, startTaskFrom } from './test/task-start-request.ts';
 import { listHeldTasks } from './test';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 const REQUEST: TaskStartRequest = {
   agentName: 'default',
@@ -70,12 +71,9 @@ const BACKENDS: readonly (readonly [string, FixtureFactory])[] = [
 ];
 
 /** A bounded poll with a small real delay between checks; never a blind sleep. */
-async function pollUntil(check: () => boolean | Promise<boolean>): Promise<boolean> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (await check()) return true;
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
-  return check();
+async function pollUntil(check: () => boolean | Promise<boolean>): Promise<true> {
+  await waitUntil(check, { message: 'pollUntil' });
+  return true;
 }
 
 /** One key/value a storage call was about to write. */

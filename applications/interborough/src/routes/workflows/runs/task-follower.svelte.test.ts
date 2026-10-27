@@ -6,6 +6,7 @@
 import { waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { taskFixture } from '../../../lib/bureau-fixtures.test-support.ts';
 import type { TaskEvent } from '../../../lib/bureau-tasks.ts';
 import {
@@ -265,7 +266,7 @@ describe('a stream that ends', () => {
     expect(current.artifact?.text).toBe('The answer.');
     // It is asked for once: it does not become a loop.
     current.collect();
-    await Bun.sleep(20);
+    await quietFor(20);
     expect(stub?.streams.length).toBe(2);
   });
 
@@ -313,7 +314,7 @@ describe('a stream that ends', () => {
     await waitFor(() => expect(sleeper.pending()).toBe(1));
     current.dispose();
     sleeper.release();
-    await Bun.sleep(20);
+    await quietFor(20);
     expect(stub?.streams.length).toBe(1);
   });
 });

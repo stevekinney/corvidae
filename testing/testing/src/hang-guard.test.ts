@@ -1,12 +1,18 @@
 import { describe, expect, it } from 'bun:test';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { afterAwakeTime, runWithHangGuard, spawnWithHangGuard } from './hang-guard.ts';
 import { outcomeOf, rethrow } from './helpers/module-scope-outcome.ts';
 
-/** Resolves with the real milliseconds until `afterAwakeTime` fired, or `undefined` if it had not by `within`. */
+/**
+ * Resolves with the real milliseconds until `afterAwakeTime` fired. Given `within`, resolves
+ * `undefined` instead if it had not by then: a window only a test that proves the guard does NOT
+ * fire uses, because a loaded host can only delay a tick, never bring it forward. A test that proves
+ * it fires passes none and waits for it, so no load can fail it.
+ */
 function firedWithin(
   milliseconds: number,
-  within: number,
+  within: number | undefined,
   options: Parameters<typeof afterAwakeTime>[2],
 ): Promise<number | undefined> {
   const started = performance.now();
@@ -19,16 +25,19 @@ function firedWithin(
       },
       options,
     );
-    const limit = setTimeout(() => {
-      cancel();
-      resolve(undefined);
-    }, within);
+    const limit =
+      within === undefined
+        ? undefined
+        : setTimeout(() => {
+            cancel();
+            resolve(undefined);
+          }, within);
   });
 }
 
 describe('afterAwakeTime', () => {
   it('fires once the budget of steady ticks is spent', async () => {
-    const fired = await firedWithin(100, 2_000, { tickMilliseconds: 10 });
+    const fired = await firedWithin(100, undefined, { tickMilliseconds: 10 });
     expect(fired).toBeGreaterThanOrEqual(100);
   });
 
@@ -39,7 +48,7 @@ describe('afterAwakeTime', () => {
     const now = (): number => performance.now() + (++readings >= 2 ? 600_000 : 0);
     expect(await firedWithin(200, 120, { tickMilliseconds: 10, now })).toBeUndefined();
     readings = 0;
-    expect(await firedWithin(200, 2_000, { tickMilliseconds: 10, now })).toBeGreaterThanOrEqual(
+    expect(await firedWithin(200, undefined, { tickMilliseconds: 10, now })).toBeGreaterThanOrEqual(
       190,
     );
   });
@@ -47,7 +56,7 @@ describe('afterAwakeTime', () => {
   it('falls back to its real backstop at the full budget while fake timers are active', async () => {
     // Fake timers freeze the clock, so no tick can credit anything. The backstop still fires.
     const frozen = performance.now();
-    const fired = await firedWithin(100, 2_000, {
+    const fired = await firedWithin(100, undefined, {
       tickMilliseconds: 10,
       now: () => frozen,
       fakeTimersActive: () => true,
@@ -56,11 +65,13 @@ describe('afterAwakeTime', () => {
   });
 
   it('resumes ticking when fake timers end before the budget is spent', async () => {
-    let fake = true;
-    setTimeout(() => (fake = false), 30);
-    const fired = await firedWithin(100, 2_000, {
+    // Fake timers are reported on the first look only: the first tick finds them and stops, and the
+    // backstop finds real timers and resumes. Counting looks, not milliseconds, keeps the order of
+    // the two independent of how late a loaded host runs either timer.
+    let looks = 0;
+    const fired = await firedWithin(100, undefined, {
       tickMilliseconds: 10,
-      fakeTimersActive: () => fake,
+      fakeTimersActive: () => ++looks === 1,
     });
     expect(fired).toBeGreaterThanOrEqual(100);
   });
@@ -76,6 +87,7 @@ describe('afterAwakeTime', () => {
     }) as typeof setTimeout;
     try {
       let fired = false;
+      // hang-guard-self-test: the guard under test is the thing being proven to fire, so its budget is the subject
       afterAwakeTime(30, () => (fired = true), { tickMilliseconds: 5 });
       while (!fired) await Bun.sleep(5);
     } finally {
@@ -86,21 +98,24 @@ describe('afterAwakeTime', () => {
 
   it('never fires once cancelled', async () => {
     let fired = false;
+    // hang-guard-self-test: the guard under test is the thing being proven to fire, so its budget is the subject
     const cancel = afterAwakeTime(20, () => (fired = true), { tickMilliseconds: 5 });
     cancel();
-    await Bun.sleep(60);
+    await quietFor(60);
     expect(fired).toBe(false);
   });
 });
 
 // Each process scenario runs once at module scope, off Bun's per-test clock.
 const killsAHungChild = await outcomeOf(async () => {
+  // hang-guard-self-test: the guard under test is the thing being proven to fire, so its budget is the subject
   const child = spawnWithHangGuard(['sleep', '30'], { hangGuardMilliseconds: 200 });
   expect(await child.exited).not.toBe(0);
   expect(child.signalCode).toBe('SIGTERM');
 });
 
 const usesTheKillSignal = await outcomeOf(async () => {
+  // hang-guard-self-test: the guard under test is the thing being proven to fire, so its budget is the subject
   const child = spawnWithHangGuard(['sleep', '30'], {
     hangGuardMilliseconds: 200,
     killSignal: 'SIGKILL',

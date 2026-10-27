@@ -33,6 +33,7 @@ import {
 } from './a2a-push-projector.ts';
 import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { eventually, Receiver, SIGNING_SECRET } from './a2a-push.test-support.ts';
+import { quietFor } from '@lostgradient/testing/wait-until';
 
 const VIEW: TaskView = {
   id: 'task-1',
@@ -151,6 +152,8 @@ function standIn(initial: DurableEventEnvelope[] = []) {
     notifyChanged() {
       for (const listener of changeListeners) listener(view as TaskView);
     },
+    /** Whether the projector has opened a history subscription and registered for registry changes. */
+    isWatching: () => listeners.length > 0 && changeListeners.length > 0,
     /** Whether every history subscription has been stopped. */
     allUnsubscribed: () => signals.length > 0 && signals.every((signal) => signal.aborted),
     /** Runs `hook` just before the next paged replay reads the history. */
@@ -308,7 +311,7 @@ describe('the push projector', () => {
 
     // A restart finds nothing owed.
     await fixture.projectorOver().pump('task-1', 'config-1');
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await quietFor(100);
     expect(fixture.receiver.requests).toHaveLength(4);
   });
 
@@ -321,7 +324,7 @@ describe('the push projector', () => {
     await fixture.projectorOver().recover();
     await eventually(() => fixture.receiver.requests.length === 1);
     await fixture.projector.pump('task-1', 'config-1');
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await quietFor(100);
 
     expect(fixture.receiver.kinds()).toEqual(['status:TASK_STATE_INPUT_REQUIRED']);
   });
@@ -348,7 +351,7 @@ describe('the push projector', () => {
     expect(await cursorOf(fixture.checkpoints)).toBe('0');
 
     await fixture.projectorOver().pump('task-1', 'config-1');
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await quietFor(100);
 
     expect(fixture.receiver.requests).toHaveLength(1);
     expect(await cursorOf(fixture.checkpoints)).toBe('1');
@@ -381,7 +384,7 @@ describe('the push projector', () => {
     });
     expect(await cursorOf(fixture.checkpoints)).toBe('3');
     await fixture.projector.pump('task-1', 'config-1');
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await quietFor(100);
     expect(fixture.receiver.requests).toHaveLength(1);
   });
 
@@ -423,7 +426,7 @@ describe('the push projector', () => {
     }
 
     void fixture.projector.pump('task-1', 'config-1');
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    await quietFor(400);
 
     // Delivery is not running, so the first event stays open and the second must not be enqueued.
     const destination = pushDestinationRef(
@@ -502,11 +505,10 @@ describe('the push projector', () => {
     await fixture.configure('0');
     fixture.startDelivery();
     fixture.projector.watch('task-1');
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await eventually(() => fixture.isWatching());
 
     fixture.closeSubscriptions(new Error('history store fault'));
     fixture.append(requested(1));
-    await new Promise((resolve) => setTimeout(resolve, 150));
 
     await eventually(() => fixture.receiver.requests.length === 1);
     expect(fixture.errors).toHaveLength(1);
@@ -529,7 +531,7 @@ describe('the push projector', () => {
     await fixture.configure('0');
     fixture.startDelivery();
     fixture.projector.watch('task-1');
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await eventually(() => fixture.isWatching());
 
     fixture.setView({ ...VIEW, status: 'failed', finishReason: 'error' });
     fixture.notifyChanged();
@@ -542,7 +544,7 @@ describe('the push projector', () => {
     await fixture.configure('0');
     fixture.startDelivery();
     fixture.projector.watch('task-1');
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await eventually(() => fixture.isWatching());
 
     fixture.setView({ ...VIEW, status: 'completed', finishReason: 'stop' });
     fixture.notifyChanged();
@@ -552,7 +554,7 @@ describe('the push projector', () => {
     fixture.append(completed(1));
     await fixture.projectorOver().pump('task-1', 'config-1');
     await fixture.projector.pump('task-1', 'config-1');
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await quietFor(200);
 
     const terminals = fixture.receiver
       .kinds()
@@ -576,7 +578,7 @@ describe('the push projector', () => {
     const fixture = harness([started]);
     await fixture.configure('0');
     fixture.projector.watch('task-1');
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await eventually(() => fixture.isWatching());
 
     await fixture.pushStore.delete('task-1', fixture.projector.contextOf(CALLER), 'config-1');
     await fixture.checkpoints.remove('task-1', 'config-1');
@@ -648,7 +650,7 @@ describe('the push projector', () => {
     await fixture.projector.cleanup('task-1');
     await pumped.catch(() => undefined);
     fixture.startDelivery();
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await quietFor(150);
 
     expect(fixture.receiver.requests).toEqual([]);
     expect(await fixture.checkpoints.read('task-1', 'config-1')).toBeUndefined();
@@ -694,7 +696,7 @@ describe('the push projector', () => {
     fixture.startDelivery();
 
     await fixture.projector.pump('task-1', 'config-1');
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await quietFor(100);
 
     expect(fixture.receiver.requests).toEqual([]);
     expect(await cursorOf(fixture.checkpoints)).toBe('3');

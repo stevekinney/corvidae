@@ -1,5 +1,4 @@
 import type { GenerateFunction, SessionInputAdmissionOutcome } from '@lostgradient/operative';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
@@ -8,6 +7,7 @@ import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau } from './types';
 import { createAgent } from '@lostgradient/operative';
 import type { AgentDefinitions } from './agent-catalog';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 /**
  * COR-435 — mailbox-backed `submitSessionInput` admission, persistence, and
@@ -49,12 +49,9 @@ function createEmptyToolbox(): Toolbox {
   return createToolbox([]) as unknown as Toolbox;
 }
 
-async function pollUntil(check: () => boolean | Promise<boolean>, attempts = 20): Promise<boolean> {
-  for (let i = 0; i < attempts; i++) {
-    if (await check()) return true;
-    await yieldToPortableEventLoop();
-  }
-  return check();
+async function pollUntil(check: () => boolean | Promise<boolean>): Promise<true> {
+  await waitUntil(check, { message: 'pollUntil' });
+  return true;
 }
 
 async function createRunningBureauSession(bureau: Bureau, principal = 'alice'): Promise<string> {

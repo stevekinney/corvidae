@@ -5,6 +5,7 @@ import {
   waitForRealTimersForTesting,
 } from '../../testing/fake-timers.test-support.ts';
 
+import { quietFor } from '../../../scripts/lib/wait-until.ts';
 import type {
   BatchOperation,
   ConditionalBatchCondition,
@@ -64,7 +65,6 @@ async function waitForWorkflowPresence(
     },
     {
       label: `workflow "${workflowId}" existence to become ${String(shouldExist)}`,
-      timeoutMs: 400,
       intervalMs: 5,
     },
   );
@@ -209,7 +209,7 @@ async function waitForRunningWorkflow(engine: Engine, workflowId: string): Promi
       const state = await engine.get(workflowId);
       return state?.status === 'running';
     },
-    { label: `workflow "${workflowId}" to reach running state`, timeoutMs: 400, intervalMs: 5 },
+    { label: `workflow "${workflowId}" to reach running state`, intervalMs: 5 },
   );
 }
 
@@ -344,7 +344,6 @@ describe('workflow retention', () => {
       },
       {
         label: 'first retention sweep to delete exactly one workflow',
-        timeoutMs: 400,
         intervalMs: 5,
       },
     );
@@ -356,7 +355,6 @@ describe('workflow retention', () => {
       },
       {
         label: 'second retention sweep to delete the remaining workflow',
-        timeoutMs: 400,
         intervalMs: 5,
       },
     );
@@ -397,7 +395,6 @@ describe('workflow retention', () => {
       },
       {
         label: 'exactly one workflow to be purged while the first retention sweep is in flight',
-        timeoutMs: 400,
         intervalMs: 5,
       },
     );
@@ -747,8 +744,8 @@ describe('workflow retention', () => {
     // observable "purge did not happen" event to await, so a fixed real-time
     // window is the only way to give the (would-be regression)
     // default-fallback purge a fair chance to have already run.
-    // fixed delay: negative assertion
-    await waitForRealTimersForTesting(80);
+    // No purge may happen; a slow host can only delay one, never bring it forward.
+    await quietFor(80);
     expect(await engine.get(workflowId)).not.toBeNull();
 
     engine[Symbol.dispose]();
@@ -853,8 +850,8 @@ describe('workflow retention', () => {
     // to await, so a fixed real-time window is the only way to give the
     // (would-be regression) short-sibling-policy purge a fair chance to
     // have already run.
-    // fixed delay: negative assertion
-    await waitForRealTimersForTesting(80);
+    // No purge may happen; a slow host can only delay one, never bring it forward.
+    await quietFor(80);
     expect(await engine.get(workflowId)).not.toBeNull();
 
     engine[Symbol.dispose]();
@@ -1071,7 +1068,6 @@ describe('workflow retention', () => {
       },
       {
         label: 'retention sweep to delete orphaned terminal workflow index entries',
-        timeoutMs: 400,
         intervalMs: 5,
       },
     );

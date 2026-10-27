@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
 
+import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 import { Engine } from '../core/engine.ts';
 import type { WorkflowContext } from '../core/types.ts';
 import { workflow } from '../core/types.ts';
@@ -46,10 +47,8 @@ async function waitForEventCount(
   engine: Engine,
   workflowId: string,
   expected: number,
-  timeoutMilliseconds = 1_000,
 ): Promise<void> {
-  const deadline = Date.now() + timeoutMilliseconds;
-  while (Date.now() < deadline) {
+  for await (const _turn of awakeTurns()) {
     const events = await engine.getEvents(workflowId);
     if (events.length >= expected) {
       return;

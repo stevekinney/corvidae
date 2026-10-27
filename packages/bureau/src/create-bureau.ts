@@ -288,6 +288,7 @@ import { createCatalogTaskSettler } from './catalog-task-settlement';
 import {
   createCatalogRunAssetReleaser,
   createRecoveredRunReleaseListener,
+  type ReleasableConversation,
 } from './catalog-run-asset-release';
 import {
   createCatalogRunSettlementHook,
@@ -2638,6 +2639,12 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
    * durable run that completed (COR-1580).
    */
   const erroredActiveRuns = new Set<ActiveRun>();
+  /**
+   * Runs this process recovered from the durable engine instead of starting them. A graceful
+   * `'abort'` shutdown leaves these running for the next process to recover, as `'detach'` leaves
+   * every durable run: only the tasks a process started are its own to cancel (COR-1707).
+   */
+  const recoveredActiveRuns = new WeakSet<ActiveRun>();
   // AB-22: runs dispatched through `bureau.run(...)`, tracked separately from
   // `activeRuns` above (which holds only bureau-owned `ActiveRun` internals,
   // not the arbitrary `AgentRun` a catalog `RunnableAgent` may return on the
@@ -7572,6 +7579,10 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       // synchronous, so a `shutdown()` that started during the awaits above
       // rejects this run instead of letting it start outside shutdown's snapshot.
       let activeRun: ReturnType<typeof createActiveRun>;
+      // COR-1707 — with no session store, nothing saves the context's rows or claims what they
+      // reference, so the task holds its own rows, its input included, under its run for the
+      // task's life, as a catalog run does; its end releases them (the terminal listeners below).
+      const rowHolder: 'session' | 'run' = runtime.sessionStore === undefined ? 'run' : 'session';
       try {
         // COR-1481 — the task's record, before anything of the run starts, so a
         // record that cannot be written ends the start like any other start failure.
@@ -7609,7 +7620,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
             ...copyAgentOwnedRunOptions(sessionAgent?.options),
             // COR-716 — a managed asset in this run's input (or in input admitted to
             // its session mid-run) resolves as the run's owner.
-            ...sessionRunMediaOptions(sessionAgent, runtime.mediaOptionsFor(owner, 'session')),
+            ...sessionRunMediaOptions(sessionAgent, runtime.mediaOptionsFor(owner, rowHolder)),
             maximumSteps: effectiveMaximumSteps,
             maximumTokens: effectiveMaximumTokens,
             // COR-1577 — a named agent's stop conditions replace the Bureau's default ones.
@@ -7769,12 +7780,24 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         });
       });
 
+      /** A task that held its own rows (no session store) lets them go when it ends. */
+      const releaseTaskRowClaims = (ended: ReleasableConversation): void => {
+        if (rowHolder !== 'run') return;
+        void trackCatalogAssetRelease(
+          catalogRunAssets.releaseConversation({
+            runId,
+            principalId: ownerOrLocal(owner),
+            conversation: ended,
+          }),
+        );
+      };
       // The session will record this run's end once it is terminal; a reader that asks before that
       // (`whenRunRecorded`) waits for the save, whenever the run gets there.
       expectTerminalSessionRecord(runId);
       activeRun.once('run.completed', (event) => {
         activeRuns.delete(activeRun);
         erroredActiveRuns.delete(activeRun);
+        releaseTaskRowClaims(event.conversation);
         releaseRunToolboxWhenIdle(runToolbox);
         disposeRegisteredStreamListeners(disposeStreamListeners);
         // COR-625: a terminal transition owes this run one checkpoint-
@@ -7834,6 +7857,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       activeRun.once('run.aborted', (event) => {
         activeRuns.delete(activeRun);
         erroredActiveRuns.delete(activeRun);
+        releaseTaskRowClaims(event.conversation);
         releaseRunToolboxWhenIdle(runToolbox);
         disposeRegisteredStreamListeners(disposeStreamListeners);
         // COR-625: a terminal transition owes this run one checkpoint-
@@ -8547,6 +8571,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     seedRunSeqGeneration(runId);
     store.register(recoveredRun, runId);
     activeRuns.add(recoveredRun);
+    recoveredActiveRuns.add(recoveredRun);
     runSessionIdentifiers.set(recoveredRun, sessionId);
 
     // AB-12 — stamp a `workflow.reattached` marker into this run's action
@@ -16876,8 +16901,18 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     runAdmissionClosed = true;
     sessionInputClosing.resolve();
 
-    const policy: 'abort' | 'drain' = shutdownOptions?.policy ?? 'abort';
+    const policy: 'abort' | 'drain' | 'detach' = shutdownOptions?.policy ?? 'abort';
     const timeoutMilliseconds = shutdownOptions?.timeoutMilliseconds;
+    // Capture the durable runs left for recovery at admission close: every one under 'detach',
+    // and under 'abort' the ones this process recovered rather than started. The report
+    // must count the same run identities that are still active when teardown
+    // settles, not a stale size snapshot: a run may complete while shutdown
+    // is waiting for workflow/toolbox/owner cleanup.
+    const detachedRuns = new Set<ActiveRun>(
+      runtime.durable && policy !== 'drain'
+        ? [...activeRuns].filter((run) => policy === 'detach' || recoveredActiveRuns.has(run))
+        : [],
+    );
 
     // COR-1527: stop reacting to the workflow files at once, so nothing registers with an engine
     // that is about to be disposed; the chain below waits for the apply in progress first.
@@ -16912,6 +16947,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       return Object.freeze({
         admissionClosed: true,
         policy,
+        detached: [...detachedRuns].filter((run) => activeRuns.has(run)).length,
         requested: owners.length,
         completed: owners.filter((owner) => owner.outcome === 'completed').length,
         failed: owners.filter((owner) => owner.outcome === 'failed').length,
@@ -16980,7 +17016,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       // COR-1630 — the results of the catalog runs 'abort' aborts: each handle settling is what
       // starts that run's asset release, so the release is known only after it.
       const abortedCatalogRunResults: Array<Promise<void>> = [];
-      if (policy === 'abort') {
+      const abortActiveRuns = policy === 'abort' || (policy === 'detach' && !runtime.durable);
+      const abortCatalogRuns = policy === 'abort' || policy === 'detach';
+      if (abortActiveRuns) {
         // Deliberately NOT awaited here (or anywhere gating the
         // unconditional engine/storage teardown below): a caller-owned
         // `ActiveRun` whose underlying provider call never honors its
@@ -17002,6 +17040,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         // terminal listeners remove it first), as `whenActiveRunTerminal`
         // requires.
         for (const activeRun of activeRuns) {
+          // A run this process recovered is left running for the next one, as under 'detach'.
+          if (runtime.durable && recoveredActiveRuns.has(activeRun)) continue;
           abortedRunTerminals.push(whenActiveRunTerminal(activeRun));
           activeRun.abort('Bureau disposed');
         }
@@ -17024,6 +17064,16 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         // already cached at this point, every subsequent shutdown()/dispose()
         // call would return the same rejection forever instead of ever
         // completing cleanup (review round 2, Codex).
+      } else {
+        // 'drain' waits caller-owned runs; 'detach' leaves durable caller-owned runs for recovery.
+        for (const activeRun of activeRuns) {
+          if (policy === 'drain') runTerminals.push(whenActiveRunTerminal(activeRun));
+        }
+        for (const erroredRun of erroredActiveRuns) {
+          runTerminals.push(whenErroredRunEnds(erroredRun));
+        }
+      }
+      if (abortCatalogRuns) {
         const currentCatalogRuns = [...catalogRuns];
         for (const catalogRun of currentCatalogRuns) {
           try {
@@ -17047,15 +17097,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
           }
         }
       } else {
-        // 'drain': let every caller-owned run reach its own natural terminal
-        // result instead of aborting it — only Bureau-owned background work
-        // (above/below) is stopped like 'abort'.
-        for (const activeRun of activeRuns) {
-          runTerminals.push(whenActiveRunTerminal(activeRun));
-        }
-        for (const erroredRun of erroredActiveRuns) {
-          runTerminals.push(whenErroredRunEnds(erroredRun));
-        }
+        // Catalog runs are caller-owned too, but unlike durable ActiveRuns they have no recovery
+        // record, so detach retains the existing abort behavior for them.
         const currentCatalogRuns = [...catalogRuns];
         for (const catalogRun of currentCatalogRuns) {
           runTerminals.push(Promise.allSettled([catalogRun.result()]));
@@ -17064,8 +17107,11 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       const toolboxes = [
         ...new Set([runtime.baseToolbox, ...runToolboxes, ...runToolboxesByRunId.values()]),
       ];
+      const toolboxPolicy = policy === 'detach' ? 'abort' : policy;
       const toolboxShutdownResults = await Promise.allSettled([
-        ...toolboxes.map((toolbox) => toolbox.shutdown({ policy, reason: 'Bureau disposed' })),
+        ...toolboxes.map((toolbox) =>
+          toolbox.shutdown({ policy: toolboxPolicy, reason: 'Bureau disposed' }),
+        ),
         ...runTerminals,
       ]);
       for (const result of toolboxShutdownResults) {
@@ -17143,8 +17189,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       // A child aborted by this shutdown records its `aborted` settlement only
       // once its own result arrives, which a durable child's fenced
       // cancellation makes later than the drain above looked. Wait for it,
-      // under the same bound, so the audit trail is still open to take it.
-      if (policy === 'abort' && childTopology.awaitingSettlements() > 0) {
+      // under the same bound, so the audit trail is still open to take it. 'detach' aborts
+      // children as 'abort' does, so it waits for them too.
+      if (abortCatalogRuns && childTopology.awaitingSettlements() > 0) {
         await awaitAbortedRunTerminals([childTopology.settlementsKnown()]);
       }
       await childTopology.drain();

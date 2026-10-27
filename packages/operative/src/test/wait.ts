@@ -1,49 +1,56 @@
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 
 /**
- * How long a wait keeps polling, at least, before it gives up. It sits under Bun's 5 s test
- * timeout, so it raises no budget: a wait that would pass is no slower, and one that fails reports
- * its own message instead of a bare timeout.
+ * The most awake time a wait spends before it gives up on a condition that never comes, in
+ * milliseconds. The same number as `HANG_GUARD_MILLISECONDS` in `@lostgradient/testing`, which this
+ * module cannot import because it ships with the package (a test pins them equal). It is a hang
+ * guard, not a performance bound: far above any healthy run on a loaded host.
  */
-export const MINIMUM_WAIT_MILLISECONDS = 3_000;
+export const WAIT_HANG_GUARD_MILLISECONDS = 120_000;
+
+// The longest one turn can credit, so a gap the process did not live through (the host asleep, the
+// process stopped) counts as one turn rather than as hung time.
+const LONGEST_TURN_MILLISECONDS = 1_000;
+
+/** What {@link waitForCondition} can be told besides the condition and its failure message. */
+export interface WaitForConditionOptions {
+  /** Hands control back between checks. Defaults to one portable event-loop turn. */
+  yieldTurn?: () => Promise<void>;
+  /** Awake time after which the wait fails. Only a test of the guard itself shortens it. */
+  hangGuardMilliseconds?: number;
+}
 
 /**
- * Polls `condition`, yielding one macrotask between tries. Each yield also
- * drains Weft's deferred inline-launch queue (its `setTimeout(0)` starts) so
- * durable runs can advance.
+ * Checks `condition` between event-loop turns until it holds. Each yield also drains Weft's
+ * deferred inline-launch queue (its `setTimeout(0)` starts) so durable runs can advance.
  *
- * A yield is not a unit of time: a message-channel turn can finish in
- * microseconds, so a run that needs a timer, a thread-pool result, or disk I/O
- * (all slower under host load) can outlast any fixed count of them. The wait
- * therefore gives up only once `maximumAttempts` tries have passed and
- * `minimumWaitMilliseconds` (default {@link MINIMUM_WAIT_MILLISECONDS}; pass 0 for a wait that is
- * meant to fail fast) has elapsed, so the count never decides
- * the outcome on a loaded host.
+ * The wait ends on the condition, never on a count of turns: how many turns a round trip takes
+ * depends on how busy the host is, so a turn cap fails healthy runs on a loaded machine. Its only
+ * deadline is the awake-time hang guard, which credits each turn with the time it actually took,
+ * capped at one second, so a hung condition still fails and a slow host never does.
  *
- * Throws with `failureMessage` when the condition is not met within the limit.
+ * Throws with `failureMessage` when the condition is not met within the hang guard.
  */
 export async function waitForCondition(
   condition: () => boolean | Promise<boolean>,
   failureMessage: string,
-  maximumAttempts = 50,
-  yieldTurn: () => Promise<void> = yieldToPortableEventLoop,
-  minimumWaitMilliseconds = MINIMUM_WAIT_MILLISECONDS,
+  options: WaitForConditionOptions = {},
 ): Promise<void> {
-  const startedAt = performance.now();
-  for (let attempt = 0; ; attempt++) {
-    if (await condition()) {
-      return;
-    }
-    if (
-      attempt + 1 >= maximumAttempts &&
-      performance.now() - startedAt >= minimumWaitMilliseconds
-    ) {
-      break;
+  const {
+    yieldTurn = yieldToPortableEventLoop,
+    hangGuardMilliseconds = WAIT_HANG_GUARD_MILLISECONDS,
+  } = options;
+  let credited = 0;
+  let last = performance.now();
+  while (!(await condition())) {
+    if (credited >= hangGuardMilliseconds) {
+      throw new Error(failureMessage);
     }
     await yieldTurn();
+    const now = performance.now();
+    credited += Math.min(Math.max(0, now - last), LONGEST_TURN_MILLISECONDS);
+    last = now;
   }
-
-  throw new Error(failureMessage);
 }
 
 /**
@@ -56,7 +63,8 @@ export interface RunLookup {
 
 /**
  * Waits until `store.getRun(runId)` satisfies `predicate`, defaulting to
- * waiting for any non-`running` status. Returns the settled run state.
+ * waiting for any non-`running` status. Returns the settled run state. `options`
+ * are {@link waitForCondition}'s.
  *
  * Works with any object that exposes `getRun(id): { status: string } | undefined`
  * — operative's `Store` and gateway's `Bureau` both qualify structurally.
@@ -65,7 +73,7 @@ export async function waitForRunState<R extends { status: string }>(
   store: { getRun(id: string): R | undefined },
   runId: string,
   predicate: (run: R) => boolean = (run) => run.status !== 'running',
-  minimumWaitMilliseconds = MINIMUM_WAIT_MILLISECONDS,
+  options: WaitForConditionOptions = {},
 ): Promise<R> {
   let matchingRun: R | undefined;
   await waitForCondition(
@@ -78,9 +86,7 @@ export async function waitForRunState<R extends { status: string }>(
       return false;
     },
     `Run ${runId} did not reach the expected state`,
-    undefined,
-    undefined,
-    minimumWaitMilliseconds,
+    options,
   );
 
   return matchingRun!;

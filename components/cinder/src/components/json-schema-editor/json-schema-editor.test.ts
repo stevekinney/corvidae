@@ -460,17 +460,14 @@ describe('JsonSchemaEditor — controlled and uncontrolled schema inputs', () =>
 
     const region = screen.getByRole('region', { name: 'JSON Schema editor' });
     // Real Shiki: the WebAssembly engine and the json grammar load on first use.
-    await waitFor(
-      () => {
-        expect(region.querySelector('.cinder-code-block__highlighted pre.shiki')).not.toBeNull();
-      },
-      { timeout: 30_000 },
-    );
+    await waitFor(() => {
+      expect(region.querySelector('.cinder-code-block__highlighted pre.shiki')).not.toBeNull();
+    });
     const highlighted = region.querySelector('.cinder-code-block__highlighted pre.shiki');
     expect(highlighted?.textContent).toBe('{\n  "type": "string"\n}');
     // Grammar tokens carry the light/dark theme colors, so the JSON really highlighted.
     expect(highlighted?.querySelectorAll('span[style*="--shiki-dark"]').length).toBeGreaterThan(0);
-  }, 60_000);
+  });
 
   test('keeps the textarea focused after discarding a malformed source draft', async () => {
     render(JsonSchemaEditorImplementation, {

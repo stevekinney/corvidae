@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 
+import { quietFor, waitUntil } from '../../../scripts/lib/wait-until.ts';
 import { KEYS, type Storage } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
+import { yieldToPortableEventLoop } from '../../testing/event-loop.ts';
 import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { EngineLeaseAcquisitionTimeoutError, EngineLeaseCorruptedError } from './lease-errors.ts';
 import {
@@ -344,7 +346,8 @@ describe('createLeaseManager', () => {
       }),
     );
     const acquired = challenger.acquire();
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    // The challenger polls every millisecond; a few turns of this process let it try at least once.
+    for (let turn = 0; turn < 3; turn += 1) await yieldToPortableEventLoop();
     await incumbent.release();
     await acquired;
 
@@ -538,8 +541,10 @@ describe('createLeaseManager', () => {
     clock.advance(5);
     manager.startRenewal();
     manager.startRenewal(); // second call is a no-op (no second interval)
-    // Wait for at least one interval tick to fire.
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    // Wait for an interval tick to renew the lease.
+    await waitUntil(async () => (await holderExpiry(storage))! > expiryBefore!, {
+      message: 'a renewal tick to extend the lease',
+    });
     manager.stop();
 
     expect(await holderExpiry(storage)).toBeGreaterThan(expiryBefore!);
@@ -557,7 +562,7 @@ describe('createLeaseManager', () => {
 
     clock.advance(5);
     manager.startRenewal();
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    await quietFor(30);
 
     expect(await holderExpiry(storage)).toBe(expiryBefore);
   });
@@ -736,9 +741,13 @@ describe('createLeaseManager', () => {
     // the renewal's stopped/leaseLost guards have read the clock).
     const storage = new MemoryStorage();
     let throwOnNow = false;
+    let thrown = 0;
     let value = 1_000_000;
     const getNow = (): number => {
-      if (throwOnNow) throw new Error('clock blew up mid-renewal');
+      if (throwOnNow) {
+        thrown += 1;
+        throw new Error('clock blew up mid-renewal');
+      }
       value += 1;
       return value;
     };
@@ -754,7 +763,7 @@ describe('createLeaseManager', () => {
       throwOnNow = true; // the next renewal's expiresAt computation throws
       manager.startRenewal();
       // Let the interval fire at least once; the guard must contain the rejection.
-      await new Promise((resolve) => setTimeout(resolve, 25));
+      await waitUntil(() => thrown > 0, { message: 'the renewal to read the failing clock' });
       throwOnNow = false; // let release() compute its own clock value normally
       // release() awaits the (contained) in-flight renewal and must still resolve.
       expect(await manager.release()).toBe(true);
@@ -893,11 +902,15 @@ describe('createLeaseManager', () => {
     manager.startRenewal();
     // Let several interval ticks fire while the first renewal is parked. The guard
     // must skip every overlapping tick — only the parked one is in flight.
-    await new Promise((resolve) => setTimeout(resolve, 40));
+    await waitUntil(() => renewalGate.holderPutCount() >= 2, {
+      message: 'the first renewal to park at the gate',
+    });
+    // load-proof: a later tick can only land after this window, so waiting longer cannot add a write
+    await quietFor(40);
     expect(renewalGate.holderPutCount()).toBe(2); // exactly one renewal write reached storage (the parked one)
 
     renewalGate.release(); // unblock the parked renewal
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await quietFor(10);
     manager.stop();
 
     // No overlapping renewal CASed against stale bytes → no false deposition.

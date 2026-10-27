@@ -113,7 +113,6 @@ describe('workflow and activity execution tokens', () => {
       id: 'finalizer-token-workflow-1',
     });
     await waitForCondition(() => runToken !== undefined, {
-      timeoutMs: 2_000,
       label: 'workflow recorded run token',
     });
 
@@ -251,7 +250,6 @@ describe('workflow and activity execution tokens', () => {
     });
     await lateActivityStarted.promise;
     await waitForCondition(() => runToken !== undefined, {
-      timeoutMs: 2_000,
       label: 'workflow recorded external owner token',
     });
 
@@ -299,7 +297,6 @@ describe('workflow and activity execution tokens', () => {
     });
 
     await waitForCondition(() => requests.length > 0, {
-      timeoutMs: 2_000,
       label: 'broker.enqueue to be called',
     });
 

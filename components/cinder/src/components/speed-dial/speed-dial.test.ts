@@ -247,8 +247,7 @@ describe('SpeedDial', () => {
       dispatchTransitionBoundary(action, 'transitionend', 'transform');
       expect(complete).not.toHaveBeenCalled();
 
-      await Bun.sleep(560);
-      expect(complete).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(complete).toHaveBeenCalledTimes(1));
 
       cancel();
     } finally {

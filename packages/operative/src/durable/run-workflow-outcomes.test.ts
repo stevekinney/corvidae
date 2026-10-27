@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
 import { z } from 'zod';
 
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { noToolCalls, pendingApproval, some } from '../conditions/predicates';
 import {
   BudgetExceededError,
@@ -507,7 +508,7 @@ async function settleOrPark(
   const result = handle.result();
   result.catch(() => undefined);
   let parkedSince: number | undefined;
-  for (let turn = 0; turn < 400; turn += 1) {
+  for await (const turn of awakeTurns()) {
     await yieldToPortableEventLoop();
     const snapshot = await handle.snapshot();
     if (snapshot !== null && snapshot.status !== 'running') {

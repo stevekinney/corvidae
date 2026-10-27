@@ -45,7 +45,7 @@ describe('compilePageBundleArtifacts', () => {
     // under this bound.
     const oversized = artifactSizes.filter(({ bytes }) => bytes > 2 * MEBIBYTE);
     expect(oversized).toEqual([]);
-  }, 60_000);
+  });
 });
 
 describe('pageEntryComponent', () => {
@@ -108,7 +108,7 @@ describe('prebuildPageBundlesInBatches', () => {
       expect(pageArtifactByPath.has(entryPath!)).toBe(true);
     }
     expect(pageEntryByName.has('not-a-component')).toBe(false);
-  }, 60_000);
+  });
 
   it('never publishes an entry pointer for a batch an invalidation superseded', async () => {
     const prebuild = prebuildPageBundlesInBatches(['button']);
@@ -118,7 +118,7 @@ describe('prebuildPageBundlesInBatches', () => {
 
     expect(result?.status).toBe('fulfilled');
     expect(pageEntryByName.has('button')).toBe(false);
-  }, 60_000);
+  });
 });
 
 describe('buildPageBundle generation', () => {
@@ -134,5 +134,5 @@ describe('buildPageBundle generation', () => {
 
     expect(stableEntry).toMatch(/^import "\/page-bundle\/page-button-[A-Za-z0-9]+\.js";\n$/);
     expect(pageEntryByName.has('button')).toBe(false);
-  }, 60_000);
+  });
 });

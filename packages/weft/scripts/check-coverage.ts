@@ -4,6 +4,7 @@ import { $, Glob } from 'bun';
 // stays a single source of truth (no hand-rolled TOML parse that could drift). The
 // path resolves relative to THIS file, so it holds regardless of the invocation cwd.
 import bunfig from '../bunfig.toml';
+import { HANG_GUARD_MILLISECONDS } from './lib/hang-guard.ts';
 // The package manifest supplies the `test` script's own exclusions, for the same reason
 // `bunfig.toml` supplies the instrumentation ignores: one list, read where it is written.
 import packageJson from '../package.json' with { type: 'json' };
@@ -192,7 +193,9 @@ export function assertNoAllowanceKeyIsCoverageIgnored(
   }
 }
 
-const COVERAGE_TEST_TIMEOUT_MS = 30_000;
+// Bun's per-test timeout for the coverage run: twice the hang guard, as `scripts/test-deadlines.ts`
+// sets it for every other lane (this package cannot import the root scripts, so it computes its own).
+const TEST_TIMEOUT_ARGUMENT = `--timeout=${2 * HANG_GUARD_MILLISECONDS}`;
 const COVERAGE_FAILURE_OUTPUT_TAIL_BYTES = 16 * 1024 * 1024;
 const COVERAGE_TEST_FILE_GLOBS = ['*test.ts', '*spec.ts'] as const;
 
@@ -567,7 +570,7 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer(
       {
         reason:
           'The remaining fake-timer line is the defensive error for a timer identifier not created by this test harness.',
-        lines: new Set([232]),
+        lines: new Set([242]),
         requireUncoveredLines: true,
       },
     ],
@@ -576,7 +579,7 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer(
       {
         reason:
           'Driver and runtime-specific behavior cannot be attributed in the default Bun LCOV process; fresh coverage confirms only these residual misses.',
-        lines: new Set([71, 72, 73]),
+        lines: new Set([72, 73, 74]),
         requireUncoveredLines: true,
       },
     ],
@@ -767,7 +770,7 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
         reason:
           'Transport disconnect and concurrency exits are behaviorally tested, but Bun does not deterministically attribute these residual paths.',
         functions: 2,
-        lines: new Set([96, 97, 111, 115, 126, 134, 139, 144, 149]),
+        lines: new Set([97, 98, 112, 116, 127, 135, 140, 145, 150]),
         requireUncoveredLines: true,
       },
     ],
@@ -831,6 +834,10 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       // others, and an allowance for it failed the gate whenever it was covered.
       // `worker-fault-injection.test.ts` now passes over a buffered message on every run, so
       // the line is deterministically covered.
+      //
+      // Line 307, the rejection inside `waitForServerMessage`'s timeout callback, is allowed: the
+      // callers that once passed `timeoutMs` and let it elapse no longer set a wall-clock budget
+      // (load-proof tests), so no suite runs the callback.
       {
         reason:
           'Transport disconnect and concurrency exits are behaviorally tested, but Bun does not deterministically attribute these residual paths.',
@@ -838,11 +845,11 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
         lines: new Set([
           100, 115, 116, 117, 118, 126, 127, 128, 159, 160, 161, 162, 163, 164, 165, 166, 171, 172,
           173, 174, 217, 218, 219, 220, 244, 250, 256, 257, 258, 259, 260, 265, 266, 267, 305, 306,
-          313, 314, 315, 316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329, 330,
-          331, 332, 333, 334, 335, 336, 337, 338, 339, 340, 341, 342, 343, 344, 345, 346, 347, 348,
-          349, 350, 351, 352, 371, 372, 379, 383, 397, 398, 404, 409, 410, 417, 418, 419, 420, 421,
-          422, 423, 424, 425, 426, 427, 428, 429, 431, 440, 441, 447, 448, 453, 454, 467, 468, 469,
-          470, 471, 472, 476, 477, 478, 479, 480, 484, 485, 486, 487, 488,
+          307, 313, 314, 315, 316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329,
+          330, 331, 332, 333, 334, 335, 336, 337, 338, 339, 340, 341, 342, 343, 344, 345, 346, 347,
+          348, 349, 350, 351, 352, 371, 372, 379, 383, 397, 398, 404, 409, 410, 417, 418, 419, 420,
+          421, 422, 423, 424, 425, 426, 427, 428, 429, 431, 440, 441, 447, 448, 453, 454, 467, 468,
+          469, 470, 471, 472, 476, 477, 478, 479, 480, 484, 485, 486, 487, 488,
         ]),
         requireUncoveredLines: true,
       },
@@ -1114,7 +1121,7 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       {
         reason:
           'The shared conformance check sequence (COR-1365 moved it here from `src/cli/conformance.ts`, which carried this allowance at lines 91/158/239). Only the three defensive dispatch/cancel/shutdown failure throws remain uncovered: a sandbox server that refuses a dispatch, refuses to record a cancellation it was just handed, or loses the worker it just registered is not something any conformance fixture can produce.',
-        lines: new Set([131, 220, 301]),
+        lines: new Set([151, 249, 335]),
         requireUncoveredLines: true,
       },
     ],
@@ -2337,8 +2344,7 @@ export async function runCoverageShard(
   const args = [
     'bun',
     'test',
-    '--timeout',
-    `${COVERAGE_TEST_TIMEOUT_MS}`,
+    TEST_TIMEOUT_ARGUMENT,
     '--coverage',
     '--coverage-reporter=lcov',
     '--coverage-dir',

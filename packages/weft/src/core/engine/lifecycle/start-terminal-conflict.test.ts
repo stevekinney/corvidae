@@ -165,7 +165,6 @@ describe("engine.start onTerminalConflict: 'start-new'", () => {
     const first = await engine.start('throws-immediately', null, { id: 'reuse-failed' });
     expect(await throwingRejectionOf(first.result())).toThrow('boom');
     await waitForCondition(async () => (await statusOf(engine, 'reuse-failed')) === 'failed', {
-      timeoutMs: 2000,
       label: 'first run reached failed',
     });
 
@@ -196,7 +195,7 @@ describe("engine.start onTerminalConflict: 'start-new'", () => {
     expect(await settled).toBe('rejected');
     await waitForCondition(
       async () => (await statusOf(engine, 'reuse-cancelled')) === 'cancelled',
-      { timeoutMs: 2000, label: 'first run reached cancelled' },
+      { label: 'first run reached cancelled' },
     );
 
     const second = await engine.start('echo-input', 'after-cancel', {

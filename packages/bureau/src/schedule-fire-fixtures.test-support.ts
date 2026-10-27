@@ -17,13 +17,14 @@ import { authentication, OWNER } from './http/management/management-fixtures.tes
 import type { Bureau, BureauOptions, PendingReview } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 import { type DefaultAgentFields, withDefaultAgent } from './testing/default-agent.test-support';
+import { fireReviewFollowerOf } from './fire-review-follower';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 
 export async function pollUntil<T>(
   check: () => T | undefined | Promise<T | undefined>,
   what: string,
-  attempts = 600,
 ): Promise<T> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
+  for await (const _turn of awakeTurns()) {
     const value = await check();
     if (value !== undefined) return value;
     await yieldToPortableEventLoop();
@@ -215,6 +216,14 @@ export async function fireOnce(
     return schedule?.currentWorkflowId;
   }, 'the tick to launch a fire');
   return { scheduleId: created.id, fireId };
+}
+
+/** Waits until `bureau`'s follower of fire reviews has taken up `fireId`, so its history is being read. */
+export async function followedBy(bureau: Bureau, fireId: string): Promise<void> {
+  await pollUntil(
+    () => (fireReviewFollowerOf(bureau).followed().includes(fireId) ? true : undefined),
+    `the review follower to follow fire ${fireId}`,
+  );
 }
 
 export const reviewsOf = (bureau: Bureau, runId: string): PendingReview[] =>

@@ -1,6 +1,7 @@
 import { waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { RECONNECT_BASE_DELAY_MS } from './backoff.ts';
 import { installFetchImplementation } from './fetch.test-support.ts';
 import { FleetEventSource, type FleetEventFrame } from './fleet-event-source.svelte.ts';
@@ -182,7 +183,7 @@ describe('additional coverage', () => {
     source.subscribe(() => {});
     expect(scripted.calls).toHaveLength(1);
 
-    await new Promise((resolve) => setTimeout(resolve, RECONNECT_BASE_DELAY_MS - 200));
+    await quietFor(RECONNECT_BASE_DELAY_MS - 200);
     expect(scripted.calls).toHaveLength(1); // still waiting out the real backoff
     source.close();
   });
@@ -272,12 +273,9 @@ describe('additional coverage', () => {
     // Once the reconnect attempt actually starts (a second fetch call),
     // `caughtUp` must not keep reporting stale catch-up state from the prior
     // connection — `#connect()` resets it before issuing that fetch.
-    await waitFor(
-      () => {
-        expect(scripted.calls).toHaveLength(2);
-      },
-      { timeout: RECONNECT_DELAY_MS + 1000 },
-    );
+    await waitFor(() => {
+      expect(scripted.calls).toHaveLength(2);
+    });
     expect(source.caughtUp).toBe(false);
     source.close();
   });

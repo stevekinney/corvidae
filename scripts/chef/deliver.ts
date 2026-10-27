@@ -8,7 +8,9 @@
 //                               [--log-dir <dir>] [--issue <ID> --completion-file <md>]
 //                               [--remove-worktree --provider claude|codex --name <name>]
 //                               [--usage-log <file> --transcript <path>...]
-//                               [--max-attempts <n>] [--fixes-main] [--config <json>] [--json]
+//                               [--max-attempts <n>]
+//                               [--fixes-main | --waive-load-flake <reason> --control-head <sha>]
+//                               [--config <json>] [--json]
 //
 // The steps run in order and stop at the first failure, which is named:
 //   fetch      `git fetch origin <default>`, retried up to three times when Git cannot lock the ref;
@@ -29,8 +31,10 @@
 //   worktree   with `--remove-worktree`: `worktree.ts remove`, whose refusal is reported as step
 //              `worktree` with `merged` still true.
 //
-// `--fixes-main` declares the pull request the fix for a red `main` and is forwarded to the
-// merge gate on every attempt; without it the merge gate refuses at main-health while `main` is red.
+// `--fixes-main` declares the pull request the fix for a red `main`, and `--waive-load-flake
+// <reason> --control-head <sha>` waives a red `main` whose failure is a load flake (see
+// `merge-gate.ts`). Either is forwarded to the merge gate on every attempt; without one the merge
+// gate refuses at main-health while `main` is red.
 //
 // Retry: fetch, base, gate and merge are one attempt. When the merge gate refuses at `contains-base`
 // (another session merged into the default branch during the gate), the whole attempt repeats: merge
@@ -52,6 +56,8 @@ import { createClient, LinearError, postComment, setState, type LinearClient } f
 import {
   checkMergeBase,
   mergeGateExclusively,
+  parseLoadFlakeWaiver,
+  type LoadFlakeWaiver,
   type MergeGateOptions,
   type MergeGateReport,
 } from './merge-gate.ts';
@@ -94,6 +100,8 @@ export interface DeliverOptions {
   maxAttempts?: number | undefined;
   /** Declares this pull request the fix for a red `main`; forwarded to the merge gate. */
   fixesMain?: boolean | undefined;
+  /** Waives a red `main` whose failure is a load flake; forwarded to the merge gate. */
+  loadFlakeWaiver?: LoadFlakeWaiver | undefined;
 }
 
 export interface DeliverReport {
@@ -276,6 +284,7 @@ export async function deliver(
       dryRun: false,
       checkMainHealth: true,
       fixesMain: options.fixesMain === true,
+      loadFlakeWaiver: options.loadFlakeWaiver,
       ...(options.usageLog === undefined
         ? {}
         : { usageLog: options.usageLog, transcripts: options.transcripts ?? [] }),
@@ -359,6 +368,8 @@ export async function run(
       'provider',
       'name',
       'max-attempts',
+      'waive-load-flake',
+      'control-head',
     ],
     repeated: ['transcript'],
     flags: ['remove-worktree', 'fixes-main', 'json'],
@@ -378,6 +389,11 @@ export async function run(
   const maxAttemptsText = parsed.values['max-attempts'];
   if (maxAttemptsText !== undefined && !/^[1-9]\d*$/.test(maxAttemptsText))
     throw new UsageError(`"${maxAttemptsText}" is not an attempt count of at least 1.`);
+  const loadFlakeWaiver = parseLoadFlakeWaiver(
+    parsed.values['waive-load-flake'],
+    parsed.values['control-head'],
+    parsed.flags.has('fixes-main'),
+  );
   const remove = parsed.flags.has('remove-worktree');
   const provider = parsed.values['provider'];
   const name = parsed.values['name'];
@@ -401,6 +417,7 @@ export async function run(
       transcripts,
       maxAttempts: maxAttemptsText === undefined ? undefined : Number(maxAttemptsText),
       fixesMain: parsed.flags.has('fixes-main'),
+      loadFlakeWaiver,
       removeWorktree:
         remove && provider !== undefined && name !== undefined ? { provider, name } : undefined,
     },

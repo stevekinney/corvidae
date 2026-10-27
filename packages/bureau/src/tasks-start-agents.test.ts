@@ -30,6 +30,7 @@ import { rejectionOf } from './testing/promise-outcome.test-support';
 import { listHeldTasks, runTask } from './test';
 import type { StartTaskOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 
 const runtime = createDefaultRuntimeServices();
 
@@ -783,7 +784,8 @@ describe('every Bureau hook hand-off is a merge (COR-1265 criterion 3)', () => {
 
     try {
       const run = await bureau.tasks.start('default', 'hi');
-      for (let attempt = 0; attempt < 50 && seen.length === 0; attempt += 1) {
+      for await (const _turn of awakeTurns()) {
+        if (!(seen.length === 0)) break;
         await waitOneTimerTurn();
       }
       expect(bureau.tasks.detail(run.id)).toBeDefined();

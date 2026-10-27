@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import { startWorkflowBureau } from './testing/workflow-bureau.test-support';
 import { workflowFileText } from './testing/workflow-file-fixtures.test-support';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -77,7 +78,8 @@ for (const [label, ownership] of OWNERSHIPS) {
       await engine.start('sleeper', null, { id: 'sleeper-run' });
       await engine.start('waiter', null, { id: 'waiter-run' });
       await engine.start('midstep', null, { id: 'midstep-run' });
-      for (let attempt = 0; first.calls.length < 1 && attempt < 1000; attempt += 1) {
+      for await (const _turn of awakeTurns()) {
+        if (!(first.calls.length < 1)) break;
         await Bun.sleep(5);
       }
       // Edit every file after the instances started, so the originals must come from snapshots.
@@ -115,6 +117,6 @@ for (const [label, ownership] of OWNERSHIPS) {
           .map((call) => call.message.split('\n')[0])
           .toSorted((left, right) => (left ?? '').localeCompare(right ?? '')),
       ).toEqual(['midstep original', 'sleeper original', 'waiter original']);
-    }, 30_000);
+    });
   });
 }

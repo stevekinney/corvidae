@@ -13,7 +13,7 @@
  * `docker run --init` recipe sets so captured processes must also have been reaped.
  */
 import { outcomeOf, rethrow } from '@lostgradient/testing';
-import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
+import { HANG_GUARD_MILLISECONDS, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, it } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -59,8 +59,12 @@ type RunningCase = {
 
 const cleanups: (() => Promise<void>)[] = [];
 
-/** Every wait in these cases is bounded, so a stuck step fails the case with a named reason. */
-const WAIT_MILLISECONDS = 4_000;
+/**
+ * Every wait in these cases is bounded, so a stuck step fails the case with a named reason. The
+ * bound is the uniform hang guard: each case runs at module scope, outside any per-test budget,
+ * and a healthy step on a loaded host can take far longer than the 4 s this once was.
+ */
+const WAIT_MILLISECONDS = HANG_GUARD_MILLISECONDS;
 
 function waitFor(condition: () => boolean, description = 'a lifecycle condition'): Promise<void> {
   return waitUntil(condition, WAIT_MILLISECONDS, description);
@@ -115,7 +119,7 @@ async function startCase(
     // A case that failed before its runner exited must not leave it, or what it owns, behind.
     if (driver.exitCode === null && driver.signalCode === null) {
       const runDirectory = /run directory (\S+)/.exec(stdout)?.[1];
-      await interruptRunner(driver, runDirectory, { graceMilliseconds: 1_000 });
+      await interruptRunner(driver, runDirectory, { graceMilliseconds: WAIT_MILLISECONDS });
     }
     sentinel.kill('SIGKILL');
     await exitedWithin(sentinel, WAIT_MILLISECONDS);

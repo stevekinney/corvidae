@@ -7,6 +7,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { quietFor } from '../../../scripts/lib/wait-until.ts';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
@@ -166,7 +167,7 @@ describe('COR-1384: run identity captured on the execution attempt', () => {
     await engine.recoverAll();
     // The adoption read is still in flight when the run reaches its end.
     await engine.signal(id, 'go');
-    await Bun.sleep(50);
+    await quietFor(50);
     // The terminal commit does not proceed on an unsettled identity, so nothing is written yet.
     const midway = await engine.get(id);
     expect(midway?.status).toBe('running');

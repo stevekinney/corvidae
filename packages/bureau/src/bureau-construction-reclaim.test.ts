@@ -175,7 +175,7 @@ describe('a catalog agent run reclaimed while the Bureau scans its agent files (
     expect(state?.error).toBeUndefined();
     expect(state?.status).toBe('completed');
     expect(diagnostics.filter((entry) => entry.level === 'error')).toEqual([]);
-  }, 20_000);
+  });
 });
 
 describe('a named-agent session run reclaimed while the Bureau scans its agent files (COR-1586)', () => {
@@ -273,7 +273,7 @@ describe('a named-agent session run reclaimed while the Bureau scans its agent f
     expect(replies).toEqual(['scribe step 0', 'scribe resumed at 1']);
     expect(wideSteps).toEqual([]);
     expect(diagnostics.filter((entry) => entry.level === 'error')).toEqual([]);
-  }, 20_000);
+  });
 });
 
 describe('a construction that fails while a run is parked for the resolver (COR-1586)', () => {
@@ -422,7 +422,7 @@ describe('a construction that fails while a run is parked for the resolver (COR-
       'storage disposed',
       'waiters settled',
     ]);
-  }, 20_000);
+  });
 });
 
 describe('a Bureau whose construction fails leaves a reclaimed run resumable (COR-1586)', () => {
@@ -534,7 +534,7 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
     } finally {
       await second.shutdown();
     }
-  }, 30_000);
+  });
 
   it('settles a parked run when a step between the composition and the agent file scan throws', async () => {
     const root = await fixtures.scratchDirectory('bureau-reclaim-early-failure-');
@@ -590,7 +590,7 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
     expect(resolution.status === 'unavailable' ? resolution.reason : '').toContain(
       'workflow tools exploded',
     );
-  }, 20_000);
+  });
 });
 
 describe('the recovery-skip listener (COR-1586)', () => {

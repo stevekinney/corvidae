@@ -115,7 +115,6 @@ async function registerSocket(
     () => {},
   );
   await waitForCondition(() => ws.sentMessages.length > 0 || ws.closeCode !== undefined, {
-    timeoutMs: 1_000,
     label: 'registration answer',
   });
   return ws;
@@ -436,7 +435,6 @@ describe('WebSocket: a refused registration records nothing', () => {
     expect(answer(hijack).code).toBe('invalid_registration');
     // The rejected socket is terminated by a short timer; let it fire so none outlives the test.
     await waitForCondition(() => hijack.terminated, {
-      timeoutMs: 1_000,
       label: 'socket terminated',
     });
     expect(await env.catalog.getVersion('billing', 'build-2')).toBeNull();
@@ -493,7 +491,7 @@ describe('WebSocket: a worker id taken while a registration is writing the catal
 
     // The first registration passes the read-only gate, then pauses inside the catalog write.
     const paused = registerSocket(env.context, env.options, 'W1', manifest());
-    await waitForCondition(() => storage.held, { timeoutMs: 1_000, label: 'the write paused' });
+    await waitForCondition(() => storage.held, { label: 'the write paused' });
     // A second socket takes the id while it is paused (its own catalog read is not held).
     const winner = await registerSocket(env.context, env.options, 'W1', manifest());
     expect(answer(winner).type).toBe('registerAck');
@@ -504,7 +502,6 @@ describe('WebSocket: a worker id taken while a registration is writing the catal
     expect(answer(loser).code).toBe('invalid_registration');
     expect(env.context.registry.size).toBe(1);
     await waitForCondition(() => loser.terminated, {
-      timeoutMs: 1_000,
       label: 'the refused socket terminated',
     });
   });
@@ -564,7 +561,6 @@ describe('WebSocket: a proven reconnect whose grace window closes during the cat
       () => {},
     );
     await waitForCondition(() => second.sentMessages.length > 0, {
-      timeoutMs: 2_000,
       label: 'the reconnect answer',
     });
     clearTimeout(timer);

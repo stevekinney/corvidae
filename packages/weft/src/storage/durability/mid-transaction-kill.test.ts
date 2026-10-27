@@ -36,6 +36,7 @@ import { afterAll, describe, expect, it } from 'bun:test';
 import { spawnWithHangGuard } from '../../../scripts/lib/hang-guard.ts';
 import { outcomeOf, rethrow } from '../../testing/module-scope-scenario.test-support.ts';
 
+import { awakeTurns } from '../../../scripts/lib/wait-until.ts';
 import {
   availableAdapterSpecs,
   availableBunNodeAdapterSpecs,
@@ -130,7 +131,7 @@ async function drainReader(
   let text = '';
   let complete = false;
   const deadline = Date.now() + deadlineMs;
-  while (Date.now() < deadline) {
+  for await (const _turn of awakeTurns()) {
     const remaining = Math.max(0, deadline - Date.now());
     const timeoutBranch = realTimeoutBranch(remaining, { kind: 'timeout' as const });
     const result = await Promise.race([
@@ -227,7 +228,7 @@ async function readUntilMarkerOrExit(
   };
 
   try {
-    while (Date.now() < deadline) {
+    for await (const _turn of awakeTurns()) {
       const remaining = Math.max(0, deadline - Date.now());
       const timeoutBranch = realTimeoutBranch<RaceResult>(remaining, { kind: 'timeout' });
       const result: RaceResult = await Promise.race<RaceResult>([

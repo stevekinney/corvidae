@@ -1,5 +1,7 @@
 import { expect, jest } from 'bun:test';
 
+import { HANG_GUARD_MILLISECONDS, afterAwakeTime } from '../../scripts/lib/hang-guard.ts';
+
 type Deferred<T> = {
   promise: Promise<T>;
   resolve: (value: T | PromiseLike<T>) => void;
@@ -163,13 +165,17 @@ export async function withTimeout<T>(
  * Wait until an observable condition is true.
  *
  * Use this for event-driven tests where the exact delay is irrelevant. The
- * timeout is a failure guard; the helper returns as soon as the condition is
- * satisfied.
+ * timeout is a hang guard, not a performance bound: it defaults to
+ * `HANG_GUARD_MILLISECONDS` of awake time under real timers (and of virtual time
+ * under fake ones), so a loaded host never fails a wait whose condition does
+ * arrive. A test passes a shorter one only to prove the helper itself gives up,
+ * under a `// hang-guard-self-test:` comment. The helper returns as soon as the
+ * condition is satisfied.
  */
 export async function waitForCondition(
   predicate: () => boolean | Promise<boolean>,
   {
-    timeoutMs = 500,
+    timeoutMs = HANG_GUARD_MILLISECONDS,
     intervalMs = 1,
     label = 'condition',
   }: { timeoutMs?: number; intervalMs?: number; label?: string } = {},
@@ -216,28 +222,35 @@ async function waitForConditionWithRealTimers(
   label: string,
 ): Promise<void> {
   let lastError: unknown;
-  const start = performance.now();
+  // Awake time, not wall time: a host that sleeps or stalls mid-wait has not hung the condition.
+  let expired = false;
+  const cancel = afterAwakeTime(timeoutMs, () => {
+    expired = true;
+  });
 
-  while (true) {
-    const result = await checkWaitCondition(predicate);
-    if (result.satisfied) {
-      return;
-    }
-    lastError = result.error;
-
-    const remainingMilliseconds = timeoutMs - (performance.now() - start);
-    if (remainingMilliseconds <= 0) {
-      const finalResult = await checkWaitCondition(predicate);
-      if (finalResult.satisfied) {
+  try {
+    while (true) {
+      const result = await checkWaitCondition(predicate);
+      if (result.satisfied) {
         return;
       }
-      lastError = finalResult.error ?? lastError;
-      break;
-    }
+      lastError = result.error;
 
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, Math.min(intervalMs, remainingMilliseconds));
-    });
+      if (expired) {
+        const finalResult = await checkWaitCondition(predicate);
+        if (finalResult.satisfied) {
+          return;
+        }
+        lastError = finalResult.error ?? lastError;
+        break;
+      }
+
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, intervalMs);
+      });
+    }
+  } finally {
+    cancel();
   }
 
   throw createWaitConditionTimeoutError(timeoutMs, label, lastError);

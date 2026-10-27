@@ -24,6 +24,7 @@ import {
   subscribeRequest,
   type SseFrame,
 } from './management-fixtures.test-support.ts';
+import { quietFor } from '@lostgradient/testing/wait-until';
 
 type Faults = {
   /** How many of the next appends to the durable history fail. */
@@ -203,7 +204,7 @@ describe('task.resynced', () => {
     expect(resync?.status).toBe('input-required');
     expect(frames.at(-1)?.event).toBe('task.status');
     expect(lastStatus(frames)).toBe('completed');
-  }, 20_000);
+  });
 
   it('repairs after a failed append and a failed resync on the next maintenance pass, and not again after', async () => {
     const faulty = await faultyStorage();
@@ -221,7 +222,7 @@ describe('task.resynced', () => {
     await opened.bureau.runDurableMaintenance();
     await opened.bureau.runDurableMaintenance();
     expect(await resyncCount(opened, run.id)).toBe(1);
-  }, 20_000);
+  });
 
   it('covers a lost event when a later one appended: N fails, N+1 commits, the resync restates N', async () => {
     const faulty = await faultyStorage();
@@ -254,7 +255,7 @@ describe('task.resynced', () => {
     expect(resyncs(frames)).toHaveLength(1);
     expect(frames.at(-1)?.event).toBe('task.resynced');
     expect(lastStatus(frames)).toBe('completed');
-  }, 20_000);
+  });
 
   it('repairs, on restart, a task whose settlement committed and whose append never did', async () => {
     const faulty = await faultyStorage();
@@ -297,7 +298,7 @@ describe('task.resynced', () => {
     const third = await open(faulty, async () => ({ content: 'unused', toolCalls: [] }));
     await third.bureau.runDurableMaintenance();
     expect(await resyncCount(third, run.id)).toBe(1);
-  }, 30_000);
+  });
 });
 
 /** Removes the resync mark a record carries, as a crash before the mark was written leaves it. */
@@ -330,7 +331,7 @@ describe('the repair of a lost end', () => {
       status: 'completed',
       artifact: { artifactId: `${run.id}:result`, text: 'the answer' },
     });
-  }, 20_000);
+  });
 
   it('keeps a task that finished with an approval open as input-required once its lost event is repaired', async () => {
     const faulty = await faultyStorage();
@@ -353,7 +354,7 @@ describe('the repair of a lost end', () => {
     const frames = await framesOf(opened, run.id, (seen) => seen.length >= 3);
     expect(frames.at(-1)?.event).toBe('task.resynced');
     expect(lastStatus(frames)).toBe('input-required');
-  }, 20_000);
+  });
 });
 
 describe('the task event projection of task.resynced', () => {
@@ -450,7 +451,7 @@ describe('the task event projection of task.resynced', () => {
     const disposing = second.bureau.shutdown().then(() => {
       disposed = true;
     });
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await quietFor(200);
     expect(disposed).toBe(false);
 
     release.resolve();
@@ -459,5 +460,5 @@ describe('the task event projection of task.resynced', () => {
     faulty.faults.hold = undefined;
     const third = await open(faulty, async () => ({ content: 'unused', toolCalls: [] }));
     expect(await resyncCount(third, run.id)).toBe(1);
-  }, 30_000);
+  });
 });

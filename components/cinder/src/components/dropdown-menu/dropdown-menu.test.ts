@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { createRawSnippet, flushSync, tick } from 'svelte';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
+import { quietFor } from '@lostgradient/testing/wait-until';
 
 setupHappyDom();
 
@@ -67,7 +68,8 @@ describe('DropdownMenu', () => {
     await fireEvent.keyDown(requiredInstance(document.activeElement, HTMLElement), { key: 'i' });
     expect(document.activeElement?.textContent).toContain('Invite people');
 
-    await Bun.sleep(550);
+    // load-proof: the typeahead reset timer was armed by the key above with a shorter delay than this one, and timers on one clock fire in order of their deadlines
+    await quietFor(550);
     await fireEvent.keyDown(requiredInstance(document.activeElement, HTMLElement), { key: 'a' });
     expect(document.activeElement?.textContent).toContain('Archive');
   });

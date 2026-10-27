@@ -1,4 +1,11 @@
-import { createAgent, createMockGenerate, type GenerateFunction } from '@lostgradient/operative';
+import {
+  createAgent,
+  createMockGenerate,
+  ScheduleAttemptedEvent,
+  SessionCreatedEvent,
+  SteeringAcceptedEvent,
+  type GenerateFunction,
+} from '@lostgradient/operative';
 import {
   AUTHORIZATION_SCOPES,
   type OperationHandlerMount,
@@ -8,7 +15,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { createMemoryAssetStorage } from '../assets/storage';
 import { createBureau } from '../create-bureau.ts';
-import { RunRegisteredEvent, RunRemovedEvent } from '../events.ts';
+import { RunAbortSettledEvent, RunRegisteredEvent, RunRemovedEvent } from '../events.ts';
 import { waitForCondition } from '../test';
 import { BUREAU_SCOPES } from './bureau-scopes.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
@@ -647,6 +654,38 @@ describe('createBureauHandler catalog', () => {
 
       expect(text).toContain('event: run.registered');
       expect(text).toContain('event: run.removed');
+    });
+  });
+
+  it('streams the newly published event families over bureau.events', async () => {
+    await withBureau({ id: 'event-families-bureau' }, async (bureau) => {
+      const handler = createBureauHandler(bureau, { authentication: allScopes });
+      const response = await handler(
+        get('/v1/subscriptions/bureau.events?bureauId=event-families-bureau', {
+          ...credentials,
+          Accept: 'text/event-stream',
+        }),
+      );
+      expect(response.status).toBe(200);
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let text = '';
+      const events = [
+        new SessionCreatedEvent('session-1', 'agent', 'incarnation-1', 1, 100),
+        new ScheduleAttemptedEvent('schedule-1', 200),
+        new SteeringAcceptedEvent('session-1', 'command-1', 2),
+        new RunAbortSettledEvent('run-1'),
+      ];
+      for (const event of events) {
+        bureau.internals.eventFeed.publish(event);
+        while (!text.includes(`event: ${event.type}`)) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          text += decoder.decode(value, { stream: true });
+        }
+      }
+      await reader.cancel();
+      for (const event of events) expect(text).toContain(`event: ${event.type}`);
     });
   });
 

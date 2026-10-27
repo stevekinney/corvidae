@@ -7,6 +7,7 @@ import { cleanup, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
@@ -359,7 +360,7 @@ describe('a page that asks to be kept', () => {
 
     router.navigate('/chat/new?agent=assistant', { replace: true });
     router.navigate('/chat/session-1', { replace: true, keep: true });
-    await Bun.sleep(50);
+    await quietFor(50);
 
     expect(container.querySelector('.weft-chat-route')).toBe(page);
   });

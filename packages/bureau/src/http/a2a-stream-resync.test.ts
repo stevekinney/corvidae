@@ -139,12 +139,7 @@ describe('SubscribeToTask when neither the run.completed append nor its repair c
 
     const streaming = drain(await opened.handler(rpc('SubscribeToTask', { id: taskId })));
     release();
-    const kinds = await Promise.race([
-      streaming,
-      new Promise<string[]>((_resolve, reject) =>
-        setTimeout(() => reject(new Error('the stream never closed')), 8_000),
-      ),
-    ]);
+    const kinds = await streaming;
 
     expect(kinds[0]).toMatch(/^task:/);
     expect(kinds.slice(1)).toEqual(['artifact:live answer', 'status:TASK_STATE_COMPLETED']);

@@ -17,6 +17,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { HANG_GUARD_MILLISECONDS } from '../../scripts/lib/hang-guard.ts';
+import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 import { Engine } from '../core/engine.ts';
 import {
   decodeRemoteTaskRecord,
@@ -197,7 +198,7 @@ async function connectAndRegisterWorker(
   });
   // Registration now awaits a real async manifest digest server-side (protocol
   // v3), so this margin is wider than the old fully-synchronous handshake needed.
-  await worker.nextServerMessage((m) => m.type === 'registerAck', { timeoutMs: 3_000 });
+  await worker.nextServerMessage((m) => m.type === 'registerAck');
   return worker;
 }
 
@@ -264,14 +265,9 @@ async function readResolvedRecord(engine: Engine, operationId: string): Promise<
  * disconnect. Post-cutover (WFT-22) there is no separate "inflight record"
  * to clear — the single ledger record's `state` field is the whole story.
  */
-async function waitForInflightCleared(
-  engine: Engine,
-  operationId: string,
-  options: { timeoutMs?: number } = {},
-): Promise<void> {
-  const deadline = Date.now() + (options.timeoutMs ?? 2_000);
+async function waitForInflightCleared(engine: Engine, operationId: string): Promise<void> {
   let record: ReturnType<typeof decodeRemoteTaskRecord> = null;
-  while (Date.now() < deadline) {
+  for await (const _turn of awakeTurns()) {
     record = decodeRemoteTaskRecord(await engine.storage.get(taskLedgerKey(operationId)));
     if (record === null || (record.state !== 'leased' && record.state !== 'completing')) return;
     await sleepForTesting(5);
@@ -303,7 +299,7 @@ describe('RemoteWorker durability — scanner-driven takeover', () => {
       visibilityTimeout: 250,
     });
 
-    const dispatchToA = await workerA.nextServerMessage(isTask, { timeoutMs: 2_000 });
+    const dispatchToA = await workerA.nextServerMessage(isTask);
     if (!isTask(dispatchToA)) throw new Error('expected task');
     expect(dispatchToA.operationId).toBe(operationId);
     expect(dispatchToA.attempt ?? 1).toBe(1);
@@ -372,8 +368,7 @@ describe('RemoteWorker durability — scanner-driven takeover', () => {
 
     // The resolved record appears once the server processes the completion.
     let resolved: unknown;
-    const deadline = Date.now() + 2_000;
-    while (Date.now() < deadline) {
+    for await (const _turn of awakeTurns()) {
       resolved = await readResolvedRecord(setup.engine, operationId);
       if (resolved !== undefined) break;
       await sleepForTesting(10);
@@ -405,7 +400,7 @@ describe('RemoteWorker durability — idempotent duplicate completion (different
       visibilityTimeout: 30_000, // long — we drive takeover via hardClose
     });
 
-    const dispatchToA = await workerA.nextServerMessage(isTask, { timeoutMs: 2_000 });
+    const dispatchToA = await workerA.nextServerMessage(isTask);
     if (!isTask(dispatchToA)) throw new Error('expected task');
     expect(dispatchToA.operationId).toBe(operationId);
 
@@ -420,9 +415,7 @@ describe('RemoteWorker durability — idempotent duplicate completion (different
     // Phase 2a: worker-a reconnects (new socket, same id) and sends a stale
     // completion BEFORE worker-b has resolved its attempt.
     const workerAPrime = await connectAndRegisterWorker(setup, 'worker-a');
-    const protocolErrorPromise = workerAPrime.nextServerMessage((m) => m.type === 'protocolError', {
-      timeoutMs: 2_000,
-    });
+    const protocolErrorPromise = workerAPrime.nextServerMessage((m) => m.type === 'protocolError');
     workerAPrime.send({
       type: 'taskResult',
       operationId,
@@ -451,8 +444,7 @@ describe('RemoteWorker durability — idempotent duplicate completion (different
     });
 
     let resolved: unknown;
-    const phase2aDeadline = Date.now() + 2_000;
-    while (Date.now() < phase2aDeadline) {
+    for await (const _turn of awakeTurns()) {
       resolved = await readResolvedRecord(setup.engine, operationId);
       if (resolved !== undefined && resolved !== null) break;
       await sleepForTesting(10);
@@ -460,9 +452,7 @@ describe('RemoteWorker durability — idempotent duplicate completion (different
     expect(resolved !== undefined && resolved !== null).toBe(true);
 
     // Phase 2b: after completion, worker-a' sends the same stale completion again.
-    const secondErrorPromise = workerAPrime.nextServerMessage((m) => m.type === 'protocolError', {
-      timeoutMs: 2_000,
-    });
+    const secondErrorPromise = workerAPrime.nextServerMessage((m) => m.type === 'protocolError');
     workerAPrime.send({
       type: 'taskResult',
       operationId,
@@ -518,7 +508,7 @@ describe('RemoteWorker durability — same-worker stale attempt (attempt token)'
       visibilityTimeout: 10,
     });
 
-    const dispatch1 = await workerA.nextServerMessage(isTask, { timeoutMs: 2_000 });
+    const dispatch1 = await workerA.nextServerMessage(isTask);
     if (!isTask(dispatch1)) throw new Error('expected first dispatch');
     expect(dispatch1.operationId).toBe(operationId);
     expect(dispatch1.attempt ?? 1).toBe(1);
@@ -542,6 +532,7 @@ describe('RemoteWorker durability — same-worker stale attempt (attempt token)'
     // (usually zero) remaining real time until the real deadline.
     const remainingUntilExpiry = attempt1Record.leaseDeadline - Date.now();
     if (remainingUntilExpiry > 0) {
+      // load-proof: waits out the remaining real lease time; a loaded host only lengthens the wait past the deadline, which is what the next step needs
       await waitForRealTimersForTesting(remainingUntilExpiry);
     }
     // `scanAt` awaits `scanExpiredTasks` to full completion — an observed
@@ -624,9 +615,7 @@ describe('RemoteWorker durability — same-worker stale attempt (attempt token)'
 
     // Stale completion: worker-a echoes attempt 1's token. Same workerId, so the
     // ownership guard passes — the attempt guard must reject it.
-    const staleError = workerA.nextServerMessage((m) => m.type === 'protocolError', {
-      timeoutMs: 2_000,
-    });
+    const staleError = workerA.nextServerMessage((m) => m.type === 'protocolError');
     workerA.send({
       type: 'taskResult',
       operationId,
@@ -715,7 +704,7 @@ async function reconnectWorker(
       ? { resumeSessionGeneration: options.resumeSessionGeneration }
       : {}),
   });
-  const ack = await worker.nextServerMessage((m) => m.type === 'registerAck', { timeoutMs: 3_000 });
+  const ack = await worker.nextServerMessage((m) => m.type === 'registerAck');
   if (ack.type !== 'registerAck') throw new Error('expected registerAck');
   return { worker, sessionGeneration: ack.sessionGeneration };
 }
@@ -745,7 +734,7 @@ describe('RemoteWorker durability — transient reconnect continuity (COR-220)',
       visibilityTimeout: 30_000,
     });
 
-    const dispatch = await workerA.nextServerMessage(isTask, { timeoutMs: 2_000 });
+    const dispatch = await workerA.nextServerMessage(isTask);
     if (!isTask(dispatch)) throw new Error('expected task');
     expect(dispatch.operationId).toBe(operationId);
 
@@ -807,7 +796,7 @@ describe('RemoteWorker durability — transient reconnect continuity (COR-220)',
       visibilityTimeout: 30_000,
     });
 
-    const dispatch = await workerA.nextServerMessage(isTask, { timeoutMs: 2_000 });
+    const dispatch = await workerA.nextServerMessage(isTask);
     if (!isTask(dispatch)) throw new Error('expected task');
     const staleAttemptToken = dispatch.attemptToken;
 
@@ -838,9 +827,7 @@ describe('RemoteWorker durability — transient reconnect continuity (COR-220)',
 
     // The late frame: worker-a' echoes the FORFEITED attempt's token. Same
     // workerId, brand new session — the old attempt is still stale.
-    const staleRejection = workerAPrime.nextServerMessage((m) => m.type === 'protocolError', {
-      timeoutMs: 2_000,
-    });
+    const staleRejection = workerAPrime.nextServerMessage((m) => m.type === 'protocolError');
     workerAPrime.send({
       type: 'taskResult',
       operationId,
@@ -870,8 +857,7 @@ describe('RemoteWorker durability — transient reconnect continuity (COR-220)',
     });
 
     let resolved: unknown;
-    const deadline = Date.now() + 2_000;
-    while (Date.now() < deadline) {
+    for await (const _turn of awakeTurns()) {
       resolved = await readResolvedRecord(setup.engine, operationId);
       if (resolved !== undefined && resolved !== null) break;
       await sleepForTesting(10);
@@ -916,7 +902,7 @@ describe('RemoteWorker durability — stale-session exclusion from routing durin
       input: { value: 'first' },
       visibilityTimeout: 30_000,
     });
-    const firstDispatch = await workerA.nextServerMessage(isTask, { timeoutMs: 2_000 });
+    const firstDispatch = await workerA.nextServerMessage(isTask);
     if (!isTask(firstDispatch)) throw new Error('expected first task');
 
     await workerA.hardClose();
@@ -1050,7 +1036,6 @@ describe('RemoteWorker durability — backpressure decline is redelivered', () =
 
     // worker-A's socket fails as a result of the decline.
     await waitForCondition(() => !workerA.connected, {
-      timeoutMs: 3_000,
       label: 'worker-A socket failed after backpressure decline',
     });
     expect(workerA.connected).toBe(false);
@@ -1104,7 +1089,6 @@ describe('RemoteWorker durability — backpressure decline is redelivered', () =
         return resolved !== undefined && resolved !== null;
       },
       {
-        timeoutMs: 2_000,
         label: 'backpressure redelivery task resolution',
       },
     );
@@ -1125,8 +1109,7 @@ async function recoverInFlightTaskAcrossSigkill(): Promise<void> {
   const handles = inFlightRestartHandles;
 
   async function waitForTestDispatchUrl(handle: SubprocessServerHandle): Promise<string> {
-    const deadline = Date.now() + 3_000;
-    while (Date.now() < deadline) {
+    for await (const _turn of awakeTurns()) {
       const match = handle.stdout.match(/WEFT_TEST_DISPATCH_URL\s+(\S+)/);
       if (match !== null && match[1] !== undefined) return match[1];
       await sleepForTesting(20);
@@ -1249,7 +1232,7 @@ process.on('SIGINT', () => void stop(0));
       manifest: manifestForActivities(['echo']),
       concurrency: 1,
     });
-    await workerA.nextServerMessage((m) => m.type === 'registerAck', { timeoutMs: 2_000 });
+    await workerA.nextServerMessage((m) => m.type === 'registerAck');
 
     // Trigger the dispatch via the subprocess's test-control HTTP server.
     const testDispatchUrl = await waitForTestDispatchUrl(handle);
@@ -1268,7 +1251,7 @@ process.on('SIGINT', () => void stop(0));
     });
     expect(dispatchResponse.ok).toBe(true);
 
-    const dispatchToA = await workerA.nextServerMessage(isTask, { timeoutMs: 5_000 });
+    const dispatchToA = await workerA.nextServerMessage(isTask);
     if (!isTask(dispatchToA)) throw new Error('expected task');
     expect(dispatchToA.operationId).toBe(operationId);
 
@@ -1286,7 +1269,7 @@ process.on('SIGINT', () => void stop(0));
       manifest: manifestForActivities(['echo']),
       concurrency: 1,
     });
-    await workerB.nextServerMessage((m) => m.type === 'registerAck', { timeoutMs: 2_000 });
+    await workerB.nextServerMessage((m) => m.type === 'registerAck');
 
     // worker-A's task carries the original visibilityTimeout (5_000ms). After
     // reboot, startup task-ledger recovery rehydrates the still-`leased`
@@ -1294,7 +1277,7 @@ process.on('SIGINT', () => void stop(0));
     // elapses, at which point the visibility scanner re-dispatches to
     // worker-B. Wait window must comfortably exceed the remaining deadline
     // budget (post-reboot elapsed time + grace) — 15_000ms is conservative.
-    const dispatchToB = await workerB.nextServerMessage(isTask, { timeoutMs: 15_000 });
+    const dispatchToB = await workerB.nextServerMessage(isTask);
     if (!isTask(dispatchToB)) throw new Error('expected task on B');
     expect(dispatchToB.operationId).toBe(operationId);
     expect((dispatchToB.attempt ?? 1) >= 2).toBe(true);
@@ -1313,9 +1296,8 @@ process.on('SIGINT', () => void stop(0));
 
     // Poll the rebooted subprocess's test-control endpoint for resolution.
     const newTestDispatchUrl = await waitForTestDispatchUrl(rebooted);
-    const deadline = Date.now() + 5_000;
     let resolvedFlag = false;
-    while (Date.now() < deadline) {
+    for await (const _turn of awakeTurns()) {
       const response = await fetch(
         `${newTestDispatchUrl}/__test__/resolved/${encodeURIComponent(operationId)}`,
       );

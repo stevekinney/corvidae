@@ -239,6 +239,40 @@ describe('a task with a supplied image, on a durable engine', () => {
   });
 });
 
+describe('a task with a supplied image, on no durable engine (the in-process path)', () => {
+  it('keeps the input asset resolvable while the task is parked past the retention floor, and lets it go when the task ends', async () => {
+    const environment = createEnvironment();
+    const seen: GenerateContext[] = [];
+    const parked = release();
+    const bureau = await openBureau(environment, { viewer: viewer(seen, parked.gate) });
+    const image = await suppliedImage(bureau);
+    const assetId = assetIdOf(image);
+
+    const run = await bureau.tasks.start('viewer', [image], { principal: alice.id });
+    await waitForCondition(() => seen.length > 0, 'the task never reached its first step');
+
+    const report = await pastTheFloor(environment, bureau);
+
+    expect(report.expired).not.toContain(assetId);
+    expect(await resolves(bureau, assetId)).toBe(true);
+    // No session store saves the context's rows here, so the task holds its input under its run.
+    expect(await holdersOf(bureau, assetId)).toEqual([
+      expect.stringContaining(runRowPrefix(run.id)),
+    ]);
+
+    parked.open();
+    const result = await run.result();
+    expect(result.finishReason).not.toBe('error');
+    // Held for the task's life only: its end lets the claim go, and the floor then expires it.
+    await waitForCondition(
+      () => isUnheld(bureau, assetId),
+      'the finished task never released its claim',
+    );
+    const afterEnd = await pastTheFloor(environment, bureau);
+    expect(afterEnd.expired).toContain(assetId);
+  });
+});
+
 describe.each([
   ['a durable engine', { storage: { type: 'memory' as const }, durable: true }],
   ['no durable engine (the in-process path)', {}],

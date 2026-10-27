@@ -8,7 +8,7 @@ import { SortableController, reorder } from '../../utilities/sortable-controller
 
 setupHappyDom();
 
-const { cleanup, render, fireEvent } = await import('@testing-library/svelte');
+const { cleanup, render, fireEvent, waitFor } = await import('@testing-library/svelte');
 const { default: SortableList } = await import('./sortable-list.svelte');
 
 afterEach(() => {
@@ -573,9 +573,11 @@ describe('SortableList', () => {
     await fireEvent.keyDown(handle, { key: ' ' });
 
     // The live region text is set asynchronously via setTimeout(0) in useAnnouncer.
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    const liveRegion = container.querySelector('[role="alert"]');
-    expect(liveRegion?.textContent).toContain('CUSTOM Alpha LIFTED');
+    await waitFor(() =>
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+        'CUSTOM Alpha LIFTED',
+      ),
+    );
   });
 });
 

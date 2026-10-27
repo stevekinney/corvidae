@@ -77,7 +77,7 @@ async function runningWorkflowOf(engine: Engine, type: string): Promise<string> 
       workflowId = list.items.find((item) => item.status === 'running')?.id ?? '';
       return workflowId.length > 0;
     },
-    { timeoutMs: 2_000, intervalMs: 10, label: `running ${type} workflow` },
+    { intervalMs: 10, label: `running ${type} workflow` },
   );
   return workflowId;
 }
@@ -179,7 +179,7 @@ describe.each(eras)('MCP conformance ($era era)', ({ era, mode, version }) => {
             const state = await engine.get(workflowId);
             return state?.status === 'cancelled';
           },
-          { timeoutMs: 2_000, intervalMs: 10, label: 'cancelled workflow' },
+          { intervalMs: 10, label: 'cancelled workflow' },
         );
       } else {
         // The stateless 2025 lane answers `notifications/cancelled` on a fresh

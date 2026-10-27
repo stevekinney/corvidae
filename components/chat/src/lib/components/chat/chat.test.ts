@@ -530,22 +530,17 @@ describe('Chat — code highlighting', () => {
     // publishes a highlighter here: only the full registry Chat publishes
     // highlights it. Real Shiki loads its WebAssembly engine and grammar on
     // first use.
-    await waitFor(
-      () => {
-        expect(
-          container.querySelector(
-            '.cinder-approval-card .cinder-code-block__highlighted pre.shiki',
-          ),
-        ).not.toBeNull();
-      },
-      { timeout: 30_000 },
-    );
+    await waitFor(() => {
+      expect(
+        container.querySelector('.cinder-approval-card .cinder-code-block__highlighted pre.shiki'),
+      ).not.toBeNull();
+    });
     const highlighted = container.querySelector(
       '.cinder-approval-card .cinder-code-block__highlighted pre.shiki',
     );
     expect(highlighted?.textContent).toBe('echo approval');
     expect(highlighted?.querySelectorAll('span[style]').length).toBeGreaterThan(0);
-  }, 60_000);
+  });
 });
 
 describe('Chat — message rendering', () => {

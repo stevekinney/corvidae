@@ -6,7 +6,6 @@
  */
 
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
@@ -17,6 +16,7 @@ import { createBureau } from './create-bureau';
 import { runTask, waitForTaskState } from './test';
 import { withResolvedOptions } from './testing/named-agent.test-support';
 import type { Bureau } from './types';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const databasePaths: string[] = [];
@@ -53,12 +53,8 @@ function structuredAgent(generate: GenerateFunction) {
   );
 }
 
-async function pollUntil(check: () => boolean | Promise<boolean>, attempts = 400): Promise<void> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (await check()) return;
-    await yieldToPortableEventLoop();
-  }
-  throw new Error('Condition was not met.');
+async function pollUntil(check: () => boolean | Promise<boolean>): Promise<void> {
+  await waitUntil(check, { message: 'pollUntil' });
 }
 
 describe('a named agent’s structured output on a session run', () => {

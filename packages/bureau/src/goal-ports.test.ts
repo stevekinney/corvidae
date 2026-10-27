@@ -1985,7 +1985,11 @@ describe("startAttempt when something else already holds one of the goal's deter
         agentOptions(() => new Promise(() => {})),
         { ...w.durable, runId: 'goal-g1-a0', prompt: "someone else's" },
       );
-      await pollUntil(async () => (await w.engine.get('goal-g1-a0')) !== null);
+      // The run is parked on its model call once the engine reports it running, not before.
+      await pollUntil(async () => {
+        const state = await w.engine.get('goal-g1-a0');
+        return state?.status === 'running';
+      });
       if (override !== undefined) {
         w.runRecords.set('goal-g1-a0', foreignRecord(override));
       }
@@ -2010,7 +2014,10 @@ describe("startAttempt when something else already holds one of the goal's deter
       agentOptions(() => new Promise(() => {})),
       { ...w.durable, runId: 'goal-g1-a0', prompt: 'work' },
     );
-    await pollUntil(async () => (await w.engine.get('goal-g1-a0')) !== null);
+    await pollUntil(async () => {
+      const state = await w.engine.get('goal-g1-a0');
+      return state?.status === 'running';
+    });
     w.markRunAsGoals('goal-g1-a0');
 
     // Every read of the record fails: the run is neither refused as foreign

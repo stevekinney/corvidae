@@ -14,6 +14,7 @@ import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
 
 import { describe, expect, it } from 'bun:test';
 
+import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 import { type BatchOperation, KEYS, type ScanOptions } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import { decode, encode } from './codec.ts';
@@ -61,34 +62,26 @@ async function waitForEventCount(
   engine: Engine,
   workflowId: string,
   expected: number,
-  timeoutMilliseconds = 500,
 ): Promise<void> {
-  const deadline = Date.now() + timeoutMilliseconds;
-  while (Date.now() < deadline) {
+  for await (const _turn of awakeTurns()) {
     const events = await engine.getEvents(workflowId);
     if (events.length >= expected) return;
     await sleepForTesting(5);
   }
-  throw new Error(
-    `Engine did not accumulate ${expected} events for ${workflowId} within ${timeoutMilliseconds}ms`,
-  );
+  throw new Error(`Engine did not accumulate ${expected} events for ${workflowId}`);
 }
 
 async function waitForTokenChunkCount(
   engine: Engine,
   workflowId: string,
   expected: number,
-  timeoutMilliseconds = 500,
 ): Promise<void> {
-  const deadline = Date.now() + timeoutMilliseconds;
-  while (Date.now() < deadline) {
+  for await (const _turn of awakeTurns()) {
     const chunks = await engine.getStreamChunks(workflowId, 'tokens');
     if (chunks.length >= expected) return;
     await sleepForTesting(5);
   }
-  throw new Error(
-    `Engine did not accumulate ${expected} token chunks for ${workflowId} within ${timeoutMilliseconds}ms`,
-  );
+  throw new Error(`Engine did not accumulate ${expected} token chunks for ${workflowId}`);
 }
 
 function findPutOperationValue(

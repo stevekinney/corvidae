@@ -45,8 +45,7 @@ import {
   SESSION_ID,
 } from './process-crash-work-integrity-fixtures';
 import type { AgentDefinitions } from '../agent-catalog';
-
-const POLL_ATTEMPTS = 2000;
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 /** Durable statuses a run never leaves. */
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
   'completed',
@@ -81,12 +80,8 @@ if (
  * bounded by `attempts`. A scenario whose parent enforces its own deadline
  * passes `Infinity`, so a slow host is not mistaken for a stuck one.
  */
-async function pollUntil(
-  description: string,
-  check: () => boolean | Promise<boolean>,
-  attempts = POLL_ATTEMPTS,
-) {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
+async function pollUntil(description: string, check: () => boolean | Promise<boolean>) {
+  for await (const _turn of awakeTurns()) {
     if (await check()) return;
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, POLL_DELAY_MS));
   }
@@ -371,19 +366,14 @@ async function relaunchRecover(): Promise<void> {
     },
   });
   const report = await bureau.waitForRecovery?.();
-  await pollUntil(
-    'the relaunched run to reach a terminal status',
-    async () => {
-      const durable = await bureau.tasks.workflow(runId);
-      if (durable !== null && durable !== undefined && TERMINAL_STATUSES.has(durable.status)) {
-        return true;
-      }
-      await bureau.runDurableMaintenance();
-      return false;
-    },
-    // The parent test kills this child at its own deadline and reports that.
-    Number.POSITIVE_INFINITY,
-  );
+  await pollUntil('the relaunched run to reach a terminal status', async () => {
+    const durable = await bureau.tasks.workflow(runId);
+    if (durable !== null && durable !== undefined && TERMINAL_STATUSES.has(durable.status)) {
+      return true;
+    }
+    await bureau.runDurableMaintenance();
+    return false;
+  });
   const durable = await bureau.tasks.workflow(runId);
   if (durable?.status !== 'completed') {
     // A run that ended any other way will never complete, so say how it ended

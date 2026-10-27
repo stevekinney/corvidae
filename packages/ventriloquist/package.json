@@ -14,13 +14,13 @@
     "typecheck": "tsc -b tsconfig.json && tsc --noEmit -p tsconfig.neutral.json && bun run typecheck:documentation",
     "typecheck:documentation": "bun ../../scripts/check-documentation-code-blocks.ts",
     "test": "bun ../../scripts/bun-test-junit.ts",
-    "test:protocol": "bun test src/protocol",
-    "test:session": "bun test src/session",
-    "test:bun": "bun test src/bun",
-    "test:websocket": "bun test src/websocket",
-    "test:conformance": "bun test src/conformance",
-    "test:benchmarks": "bun test ./scripts/benchmarks/transport.bench.ts",
-    "test:coverage": "bun test --coverage --coverage-reporter=lcov && bun scripts/check-coverage.ts"
+    "test:protocol": "bun ../../scripts/bun-test.ts src/protocol",
+    "test:session": "bun ../../scripts/bun-test.ts src/session",
+    "test:bun": "bun ../../scripts/bun-test.ts src/bun",
+    "test:websocket": "bun ../../scripts/bun-test.ts src/websocket",
+    "test:conformance": "bun ../../scripts/bun-test.ts src/conformance",
+    "test:benchmarks": "bun ../../scripts/bun-test.ts ./scripts/benchmarks/transport.bench.ts",
+    "test:coverage": "bun ../../scripts/bun-test.ts --coverage --coverage-reporter=lcov && bun scripts/check-coverage.ts"
   },
   "devDependencies": {
     "@lostgradient/testing": "workspace:*",

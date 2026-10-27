@@ -31,6 +31,7 @@ import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test
 import { createAskingAgent, finishes } from './test/task-record-crash-agent';
 import type { Bureau, BureauReviews, BureauInternals } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { awakeTurns, waitUntil } from '@lostgradient/testing/wait-until';
 
 const CHILD = join(import.meta.dir, 'test', 'task-record-crash-child.ts');
 
@@ -93,7 +94,63 @@ async function crashScenario(
   }
 }
 
+/** The task states of a run that is not over. */
+const OPEN_STATES: ReadonlySet<string | undefined> = new Set(['working', 'input-required']);
+
+async function taskStatusOf(
+  bureau: { readonly internals: Pick<BureauInternals, 'taskRegistry'> },
+  runId: string,
+) {
+  const task = await bureau.internals.taskRegistry.get(runId);
+  return task?.status;
+}
+
+/** Process 2 recovers the parked task and is disposed; process 3 boots over what it left. */
+async function disposedScenario(scope: ScenarioScope): Promise<void> {
+  const directory = mkdtempSync(join(tmpdir(), 'corvidae-task-record-crash-disposed-'));
+  const storagePath = join(directory, 'bureau.sqlite');
+  const markerPath = join(directory, 'marker.json');
+  scope.onHang(() => rmSync(directory, { recursive: true, force: true }));
+  try {
+    const child = spawnWithHangGuard(['bun', CHILD, 'parked', storagePath, markerPath], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    scope.onHang(() => child.kill());
+    await child.exited;
+    const stderr = await new Response(child.stderr).text();
+    expect(child.signalCode ?? stderr).toBe('SIGKILL');
+    expect(unexpectedChildStderr(stderr)).toBe('');
+    const { runId } = JSON.parse(readFileSync(markerPath, 'utf8')) as { runId: string };
+
+    const second = await openBureau(storagePath);
+    await second.waitForRecovery?.();
+    expect(OPEN_STATES.has(await taskStatusOf(second, runId))).toBe(true);
+    // A graceful shutdown leaves a task this process recovered, not started, for the next boot.
+    await second.dispose();
+
+    const third = await openBureau(storagePath);
+    scope.onHang(() => third.shutdown());
+    try {
+      await third.waitForRecovery?.();
+      const durable = await third.tasks.workflow(runId);
+      expect(durable?.status).toBe('running');
+      expect(OPEN_STATES.has(await taskStatusOf(third, runId))).toBe(true);
+      expect(third.reviews.list().some((review) => review.runId === runId)).toBe(true);
+      await third.internals.taskRegistry.cancel(runId, 0);
+      await waitUntil(async () => (await taskStatusOf(third, runId)) === 'canceled', {
+        message: 'the interrupted task can still be canceled',
+      });
+    } finally {
+      await third.shutdown();
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
 const outcomes = {
+  disposed: await settleScenario((scope) => disposedScenario(scope), HANG_GUARD_MILLISECONDS),
   settlement: await settleScenario(
     (scope) =>
       crashScenario('settlement', scope, async (bureau, runId) => {
@@ -131,7 +188,8 @@ const outcomes = {
         const history = await bureau.internals.taskRegistry.history(runId);
         expect(history?.map((message) => message.text)).toEqual(['which environment?']);
         let review = bureau.reviews.list().find((candidate) => candidate.runId === runId);
-        for (let attempt = 0; review === undefined && attempt < 400; attempt += 1) {
+        for await (const _turn of awakeTurns()) {
+          if (!(review === undefined)) break;
           await new Promise((resolve) => setTimeout(resolve, 10));
           review = bureau.reviews.list().find((candidate) => candidate.runId === runId);
         }
@@ -143,7 +201,7 @@ const outcomes = {
           payload: 'staging',
         });
         await bureau.tasks.wait(runId);
-        for (let attempt = 0; attempt < 400; attempt += 1) {
+        for await (const _turn of awakeTurns()) {
           const current = await bureau.internals.taskRegistry.get(runId);
           if (current?.status === 'completed') break;
           await new Promise((resolve) => setTimeout(resolve, 10));
@@ -156,6 +214,10 @@ const outcomes = {
 };
 
 describe('a task record survives SIGKILL', () => {
+  it('leaves a recovered task that a graceful shutdown interrupted working and cancelable at the next boot', () => {
+    expectScenarioPassed(outcomes.disposed);
+  });
+
   it('settles a finished task whose settlement write was lost', () => {
     expectScenarioPassed(outcomes.settlement);
   });

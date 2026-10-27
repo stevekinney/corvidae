@@ -982,9 +982,15 @@ export type CleanupAcknowledgement = 'not-required' | 'completed' | 'failed' | '
  * Options for {@link Bureau.shutdown}. `policy` defaults to `'abort'` when
  * omitted (including when `options` itself is omitted) — matching
  * `dispose()`'s existing behavior.
+ *
+ * - `'abort'` aborts caller-owned and catalog runs, including durable runs this process started.
+ *   A durable run this process recovered at boot is left recoverable, as under `'detach'`.
+ * - `'drain'` waits for caller-owned and catalog runs to finish naturally.
+ * - `'detach'` leaves durable caller-owned runs recoverable, aborts process-local and catalog
+ *   runs, and waits for errored runs as `'drain'` does. Toolbox cleanup remains abortive.
  */
 export interface BureauShutdownOptions {
-  readonly policy?: 'abort' | 'drain';
+  readonly policy?: 'abort' | 'drain' | 'detach';
   /**
    * Bounds `shutdown()`'s WAIT only — see {@link Bureau.shutdown}. Omit to
    * wait indefinitely.
@@ -1030,7 +1036,12 @@ export interface BureauShutdownOwnerReport {
  */
 export interface BureauShutdownReport {
   readonly admissionClosed: true;
-  readonly policy: 'abort' | 'drain';
+  readonly policy: 'abort' | 'drain' | 'detach';
+  /**
+   * Number of durable caller-owned runs left running for a later process to recover: every one
+   * under `'detach'`, and under `'abort'` the ones this process recovered rather than started.
+   */
+  readonly detached: number;
   readonly requested: number;
   readonly completed: number;
   readonly failed: number;
@@ -2224,11 +2235,16 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * directly when the report is useful.
    *
    * `'abort'` (the default when `policy` is omitted) aborts every active run
-   * immediately, then awaits every drain. `'drain'` closes admission
+   * this process started immediately, then awaits every drain. A durable run this process
+   * recovered at boot is left running for the next process to recover, as `'detach'` leaves it,
+   * and is counted in the report's `detached`. `'drain'` closes admission
    * identically but lets every already-active caller-owned agent run
    * (task-owned) reach its own natural terminal result while
    * Bureau-owned background work (online-evals, webhook notifier,
    * audit trail) is stopped/awaited exactly as under `'abort'`.
+   * `'detach'` closes admission identically, leaves durable caller-owned runs recoverable,
+   * aborts process-local and catalog runs, waits errored runs, and stops/awaits Bureau-owned
+   * background work exactly as under `'abort'`. Toolbox cleanup is always abortive for detach.
    *
    * `timeoutMilliseconds` bounds the WAIT only: on elapse, `shutdown()`
    * resolves (never rejects) with every already-settled owner's real outcome

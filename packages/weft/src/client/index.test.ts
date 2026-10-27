@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
+import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 import { Engine } from '../core/engine.ts';
 import type { WorkflowContext } from '../core/types.ts';
 import { query, workflow } from '../core/types.ts';
@@ -771,7 +772,7 @@ describe('HttpClient', () => {
         id: 'http-suspend-live',
       });
       // Let the run reach 'running' (parked on waitForSignal('continue')).
-      for (let attempt = 0; attempt < 20; attempt++) {
+      for await (const _turn of awakeTurns()) {
         if ((await statusOfWorkflow('http-suspend-live')) === 'running') break;
         await sleepForTesting(5);
       }
@@ -1036,12 +1037,12 @@ describe('HttpClient', () => {
 });
 
 describe('HttpClient live event streaming (end-to-end)', () => {
-  async function waitForStreaming(predicate: () => boolean, timeoutMs: number): Promise<void> {
-    const deadline = Date.now() + timeoutMs;
-    while (!predicate()) {
-      if (Date.now() > deadline) throw new Error('timed out waiting for streaming predicate');
+  async function waitForStreaming(predicate: () => boolean): Promise<void> {
+    for await (const _turn of awakeTurns()) {
+      if (predicate()) return;
       await sleepForTesting(5);
     }
+    throw new Error('timed out waiting for streaming predicate');
   }
 
   it('resumes the event stream after the underlying socket drops', async () => {
@@ -1075,17 +1076,16 @@ describe('HttpClient live event streaming (end-to-end)', () => {
 
     // First signal: delivered live over the original socket.
     await handle.signal('continue', undefined, { signalId: 'first' });
-    await waitForStreaming(() => seen.includes('signal:received'), 2000);
+    await waitForStreaming(() => seen.includes('signal:received'));
 
     // Drop the live socket; the subscription must reconnect on its own.
     expect(liveSockets.length).toBeGreaterThanOrEqual(1);
     liveSockets[liveSockets.length - 1]!.close();
     // Wait for the reconnect to produce a new socket and for it to actually
     // open, so the second signal's events are delivered over the live socket.
-    await waitForStreaming(() => liveSockets.length >= 2, 3000);
+    await waitForStreaming(() => liveSockets.length >= 2);
     await waitForStreaming(
       () => liveSockets[liveSockets.length - 1]!.readyState === WebSocket.OPEN,
-      3000,
     );
 
     // Second signal completes the workflow; the resumed stream must deliver
@@ -1502,12 +1502,7 @@ describe('HttpClient request surface', () => {
       void (async () => {
         // The subscription opens lazily on addEventListener; once the socket
         // is open and catch-up has run, deliver the live terminal event.
-        const deadline = Date.now() + 1000;
-        while (wsServer.sockets.length === 0 || !wsServer.latest().opened) {
-          if (Date.now() > deadline) throw new Error('subscription never opened');
-          await sleepForTesting(2);
-        }
-        await sleepForTesting(5); // let the catch-up fetch settle
+        await handle.whenConnected();
         wsServer.latest().deliver({
           type: 'workflow:completed',
           timestamp: 1,
@@ -1554,9 +1549,8 @@ describe('HttpClient request surface', () => {
     });
 
     // Wait for the catch-up to deliver the terminal event and auto-close.
-    const deadline = Date.now() + 1000;
-    while (completedCounts.first === 0) {
-      if (Date.now() > deadline) throw new Error('terminal event never delivered');
+    for await (const _turn of awakeTurns()) {
+      if (completedCounts.first !== 0) break;
       await sleepForTesting(2);
     }
     expect(completedCounts.first).toBe(1);
@@ -1593,7 +1587,7 @@ describe('HttpClient request surface', () => {
     handle.addEventListener('workflow:started', () => {});
     handle.addEventListener('workflow:completed', () => {});
 
-    await sleepForTesting(5);
+    await handle.whenConnected();
     expect(wsServer.sockets).toHaveLength(1);
   });
 
@@ -1612,7 +1606,7 @@ describe('HttpClient request surface', () => {
     const listener = (() => {}) as EventListener;
 
     handle.addEventListener('workflow:started', listener);
-    await sleepForTesting(5);
+    await handle.whenConnected();
     handle.removeEventListener('workflow:started', listener);
     handle[Symbol.dispose]();
 

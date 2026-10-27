@@ -22,7 +22,6 @@ async function waitForQuery<T>(
       return latestResult !== undefined && predicate(latestResult);
     },
     {
-      timeoutMs: 5_000,
       intervalMs: 25,
       label: `query "${definition.name}" to match the requested state`,
     },
@@ -163,7 +162,6 @@ describe('durable state, remote worker, and testing-harness parity', () => {
 
     await remoteWorker.connect();
     await waitForCondition(() => server?.registry.getWorker('parity-remote-worker') !== undefined, {
-      timeoutMs: 5_000,
       intervalMs: 25,
       label: 'remote worker to register',
     });
