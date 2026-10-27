@@ -315,6 +315,29 @@ describe('createJsonRpcWebSocketSession — frame dispatch', () => {
     await session.close();
   });
 
+  it('falls through to standard dispatch when a feed-dependent primitive has no feed', async () => {
+    const emitter = makeEmitter();
+    const session = createJsonRpcWebSocketSession({
+      registry: createOperationRegistry([]),
+      engine: fakeEngine,
+      principal: anonymousPrincipal(),
+      emitter,
+    });
+
+    await session.handleMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'weft.workflows.subscribe',
+        params: { workflowId: 'wf-1', selector: 'events' },
+        id: 'missing-feed',
+      }),
+    );
+
+    const response = JSON.parse(emitter.sent[0]!);
+    expect(response.error.code).toBe(-32601);
+    await session.close();
+  });
+
   it('drops the response for notification frames', async () => {
     const registry = createOperationRegistry([
       makeOp({

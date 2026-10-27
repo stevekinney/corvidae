@@ -132,6 +132,27 @@ describe('createOperationHandler', () => {
     expect(upgradeCalls).toBe(0);
   });
 
+  it('passes the authenticated principal to an accepted WebSocket upgrade', async () => {
+    let upgradeCalls = 0;
+    const handler = createOperationHandler({
+      operations: [websocketEchoOperation],
+      host: {},
+      authenticate: async () => readerContext(),
+    });
+
+    const upgraded = await handler.upgrade(new Request('http://localhost/jsonrpc'), {
+      upgrade(_request, options) {
+        upgradeCalls += 1;
+        expect(options.data.pathname).toBe('/jsonrpc');
+        expect(options.data.principal?.method).toBe('api-key');
+        return true;
+      },
+    });
+
+    expect(upgraded).toBe(true);
+    expect(upgradeCalls).toBe(1);
+  });
+
   it('starts and delivers a catalog subscription over a real WebSocket', async () => {
     const handler = createOperationHandler({
       operations: [websocketSubscriptionOperation],
