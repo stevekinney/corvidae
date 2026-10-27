@@ -22,6 +22,7 @@ import { alice, base64Of, pngBytes } from './testing/asset-fixtures.test-support
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   while (cleanups.length > 0) await cleanups.pop()!();
+  // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
   await yieldToPortableEventLoop();
 });
 
@@ -86,6 +87,7 @@ async function paint(bureau: PaintingBureau, sessionId: string) {
     principal: alice.id,
   });
   await waitForTaskState(bureau, created.id);
+  // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
   for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
 }
 
@@ -114,6 +116,7 @@ describe('a forked session', () => {
       agentName: 'painter',
     });
     const forked = await handle.fork();
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
     const fork = await bureau.contexts.get(forked.id);
     expect(fork!.metadata).toEqual({ [SESSION_OWNER_METADATA_KEY]: alice.id });

@@ -142,6 +142,7 @@ describe('Workers route — Task queues tab, queue selection and dead-letter cle
     await fireEvent.input(confirmInput, { target: { value: 'op_target' } });
     await fireEvent.click(await findByRole('button', { name: 'Clear dead letter' }));
 
+    // load-proof: the scripted JSON-RPC fetch resolves in memory, so the call is issued inside the click handler promise chain
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(deleteCalled).toBe(true);
   });

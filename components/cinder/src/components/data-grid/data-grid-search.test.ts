@@ -57,14 +57,11 @@ function liveRegionText(container: HTMLElement): string | null | undefined {
   return container.querySelector('[role="status"]')?.textContent;
 }
 
-async function flushLiveRegion(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-}
-
 async function typeAndSettle(container: HTMLElement, value: string): Promise<void> {
   await fireEvent.input(searchInput(container), { target: { value } });
   await waitFor(() => expect(matchCells(container).length).toBeGreaterThan(0));
-  await flushLiveRegion();
+  // The live region sets its text on a timer of its own (blank, then set), so wait for the text.
+  await waitFor(() => expect(liveRegionText(container)).toMatch(/\S/));
 }
 
 describe('DataGrid search — match highlighting outranks selection styling', () => {
@@ -427,8 +424,7 @@ describe('DataGrid search — announcements (COR-1135)', () => {
     );
     if (!nextButton) throw new Error('Expected a "Next match" button');
     await fireEvent.click(nextButton);
-    await flushLiveRegion();
-    expect(liveRegionText(container)).toContain('Match 2 of 2');
+    await waitFor(() => expect(liveRegionText(container)).toContain('Match 2 of 2'));
 
     await fireEvent.input(searchInput(container), { target: { value: 'no-such-value' } });
     await waitFor(() => expect(liveRegionText(container)).toContain('No matches'));
@@ -545,8 +541,7 @@ describe('DataGrid search — coexists with editing and sorting', () => {
     if (!nextButton) throw new Error('Expected a "Next match" button');
     await fireEvent.click(nextButton);
     await waitFor(() => expect(currentMatchCell(container)?.textContent?.trim()).toBe('ada fan'));
-    await flushLiveRegion();
-    expect(liveRegionText(container)).toContain('Match 2 of 2');
+    await waitFor(() => expect(liveRegionText(container)).toContain('Match 2 of 2'));
 
     // A re-render caused by something unrelated to the search — a new
     // `rows` array from committing an edit on a row that has nothing to do
@@ -563,8 +558,9 @@ describe('DataGrid search — coexists with editing and sorting', () => {
       'aria-label': 'Orders',
     });
 
-    await flushLiveRegion();
-    expect(currentMatchCell(container)?.textContent?.trim()).toBe('ada fan');
-    expect(liveRegionText(container)).toContain('Match 2 of 2');
+    await waitFor(() => {
+      expect(currentMatchCell(container)?.textContent?.trim()).toBe('ada fan');
+      expect(liveRegionText(container)).toContain('Match 2 of 2');
+    });
   });
 });

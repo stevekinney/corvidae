@@ -68,6 +68,10 @@ chmod 600 ~/.interborough/secrets/anthropic-api-key
 
 The host passes the catalog rows as `models.catalog` when it creates the Bureau, so no boot step plans against a provider that is not configured, and `bureau.models.replace(rows)` is the only way the rows change. `host.generateFor({ provider, model })` is the generate for an agent assigned a catalog model: it resolves through Bureau's `resolveProviderGenerate` with the provider's key, and refuses a model the catalog does not hold. A change to the configuration or a secret takes effect when the host restarts.
 
+### Decisions
+
+Bureau answers typed questions (`bureau.decisions.decide`, and the `decide` tool a task can call) with a language model from this catalog. An optional `typesafe-api-key` secret (a file in `secrets/`, mode `0600`, whitespace trimmed) adds TypeSafe's Jev as the model for the kinds it serves: `boolean`, `choice`, and `scale`. A `structured` question, and every question when the secret is absent, goes to the catalog's fallback row (`anthropic/claude-haiku-5-5`, else the cheapest priced row with structured output), which needs a configured provider. With neither, `decide` fails with `NOT_CONFIGURED`.
+
 ## Agent files
 
 Agents can be Markdown files in `agents/` under the state directory, `~/.interborough/agents/` or `$INTERBOROUGH_HOME/agents/`. The host creates the directory and passes it to the Bureau as an `agentSource` (`agentFileDirectory` from `@lostgradient/bureau/sources`), so a file `researcher.md` is the agent `researcher` and a change to the directory takes effect without a restart.

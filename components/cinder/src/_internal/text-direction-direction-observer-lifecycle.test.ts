@@ -132,6 +132,7 @@ describe('resolveTextDirection', () => {
     });
 
     wrapper.firstChild!.textContent = 'جدول';
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
     disconnect?.();
 
@@ -150,6 +151,7 @@ describe('resolveTextDirection', () => {
     });
 
     wrapper.dir = 'rtl';
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
     disconnect?.();
 
@@ -171,6 +173,7 @@ describe('resolveTextDirection', () => {
     });
 
     wrapper.setAttribute('data-flow', 'rtl');
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
     disconnect?.();
 
@@ -191,6 +194,7 @@ describe('resolveTextDirection', () => {
       changes += 1;
     });
     newParent.append(element);
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
     disconnect?.();
 

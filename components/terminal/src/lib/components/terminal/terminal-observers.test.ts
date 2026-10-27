@@ -302,11 +302,13 @@ describe('watchThemeAttribute', () => {
       changes += 1;
     });
     section.setAttribute('data-theme', 'dark');
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(changes).toBeGreaterThan(0);
     const seen = changes;
     stop();
     section.setAttribute('data-theme', 'light');
+    // load-proof: negative window: the assertion that follows only requires that nothing has fired once the microtask queue has drained
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(changes).toBe(seen);
     section.remove();
@@ -318,6 +320,7 @@ describe('watchThemeAttribute', () => {
       changes += 1;
     });
     document.body.setAttribute('data-other', 'x');
+    // load-proof: negative window: the assertion that follows only requires that nothing has fired once the microtask queue has drained
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(changes).toBe(0);
     stop();

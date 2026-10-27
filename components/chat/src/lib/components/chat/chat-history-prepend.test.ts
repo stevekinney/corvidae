@@ -151,6 +151,7 @@ async function settleRenderedRows(container: HTMLElement, expectedRows: number):
     expect(container.querySelectorAll('.chat-message').length).toBe(expectedRows);
   });
   await tick();
+  // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
@@ -608,6 +609,7 @@ describe('history prepend at scrollTop=0 (#1237)', () => {
       await fireEvent.input(composer, { target: { value: 'sent mid-load' } });
       await fireEvent.submit(container.querySelector<HTMLFormElement>('form.chat-input')!);
       await tick();
+      // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(timeline.scrollTop).toBeGreaterThan(2000);
 

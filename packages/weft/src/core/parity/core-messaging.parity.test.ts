@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { awakeTurns } from '../../../scripts/lib/wait-until.ts';
-import { sleepForTesting } from '../../testing/fake-timers.test-support.ts';
+import { settleInlineLaunches } from '../../testing/inline-launch-settle.test-support.ts';
 import { TestEngine } from '../../testing/test-engine.ts';
 import type { QueryDefinition, WorkflowContext } from '../types.ts';
 import { query, update, workflow } from '../types.ts';
 
 async function flushWorkflowTurn(): Promise<void> {
-  await sleepForTesting(10);
+  await settleInlineLaunches();
 }
 
 async function waitForQuery<T>(

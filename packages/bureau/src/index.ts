@@ -334,6 +334,18 @@ export type {
 export { createModelPolicyPlanner } from './model-policy';
 export type { Models, ModelsOptions } from './models/create-models';
 export type {
+  BureauDecideOptions,
+  BureauDecisions,
+  DecisionSource,
+  DecisionsOptions,
+  DecisionValue,
+} from './decisions/types';
+export { createDecisionRouting } from './decisions/decision-routing';
+export type { DecisionRoutingOptions } from './decisions/decision-routing';
+export { decisionValidator } from './decisions/decision-validator';
+export type { DecisionValidatorOptions } from './decisions/decision-validator';
+export type { DecideRefusalReason, DecideToolResult } from './decisions/decide-tool';
+export type {
   EvalScore,
   OnlineEvalJudge,
   OnlineEvalSampler,

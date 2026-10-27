@@ -49,7 +49,11 @@ const DETAIL_VALUE_LIMIT = 200;
 const DETAIL_ALLOWLIST: readonly string[] = [
   'agentName',
   'finishReason',
+  'kind',
+  'model',
+  'provider',
   'scheduleId',
+  'schemaSha256',
   'sessionId',
   'status',
   'toolName',

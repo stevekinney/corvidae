@@ -570,7 +570,7 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer(
       {
         reason:
           'The remaining fake-timer line is the defensive error for a timer identifier not created by this test harness.',
-        lines: new Set([242]),
+        lines: new Set([244]),
         requireUncoveredLines: true,
       },
     ],
@@ -781,8 +781,8 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
           'Subprocess-engine startup and failure paths run in child Bun processes whose hits are not merged into the parent LCOV report. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption): upstream’s coordinates no longer matched corvidae’s file.',
         functions: 7,
         lines: new Set([
-          127, 128, 129, 130, 131, 147, 148, 149, 239, 240, 241, 242, 243, 244, 245, 283, 289, 398,
-          399, 400, 401, 402, 403, 404, 405,
+          127, 128, 129, 130, 131, 147, 148, 149, 242, 243, 244, 245, 246, 247, 248, 270, 276, 402,
+          403, 404, 405, 406, 407, 408, 409,
         ]),
         requireUncoveredLines: true,
       },
@@ -1011,7 +1011,7 @@ const CURRENT_BRANCH_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
         reason:
           'The remaining local-tail lines are listener teardown after terminal settlement, covered behaviorally but not mapped by Bun to the closing callback.',
         functions: 2,
-        lines: new Set([168, 169]),
+        lines: new Set([173, 174]),
         requireUncoveredLines: true,
       },
     ],

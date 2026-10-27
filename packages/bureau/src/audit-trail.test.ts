@@ -341,6 +341,7 @@ describe('createAuditTrail', () => {
     emit(new ActionEvent(action));
 
     // Write is fire-and-forget; yield to let the microtask queue settle.
+    // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
     await yieldToPortableEventLoop();
 
     const records = await trail.query({ runId: 'run-sink' });
@@ -377,6 +378,7 @@ describe('createAuditTrail', () => {
       detail: null,
     };
     emit(new ActionEvent(action));
+    // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
     await yieldToPortableEventLoop();
 
     // The seeded record survives untouched, AND the sunk action landed at
@@ -407,6 +409,7 @@ describe('createAuditTrail', () => {
     };
 
     emit(new ActionEvent(action));
+    // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
     await yieldToPortableEventLoop();
 
     const records = await trail.query({ runId: 'run-tripwire' });
@@ -430,6 +433,7 @@ describe('createAuditTrail', () => {
     };
 
     emit(new ActionEvent(action));
+    // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
     await yieldToPortableEventLoop();
 
     expect(await trail.query()).toHaveLength(0);
@@ -479,6 +483,7 @@ describe('createAuditTrail', () => {
     emit(new ActionEvent(secondLifetimeAction));
 
     // Both writes are fire-and-forget; yield to let the microtask queue settle.
+    // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
     await yieldToPortableEventLoop();
 
     const records = await trail.query();
@@ -505,6 +510,7 @@ describe('createAuditTrail', () => {
     };
 
     emit(new ActionEvent(action));
+    // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
     await yieldToPortableEventLoop();
 
     // No records should have been written after dispose
@@ -928,6 +934,7 @@ describe('createAuditTrail', () => {
       );
 
       // The failing write is fire-and-forget; yield for the rejection to settle.
+      // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
       await yieldToPortableEventLoop();
 
       expect(received).toHaveLength(1);
@@ -951,6 +958,7 @@ describe('createAuditTrail', () => {
         }),
       );
 
+      // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
       await yieldToPortableEventLoop();
 
       expect(errorSpy).toHaveBeenCalled();
@@ -1295,6 +1303,7 @@ describe('createAuditTrail', () => {
       const trail = createAuditTrail(bureau, kv);
 
       emit(new SessionDeletedEvent('session-1', 'incarnation-1', 1, 0));
+      // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
       await yieldToPortableEventLoop();
 
       const records = await trail.query({ runId: 'session:session-1' });
@@ -1317,6 +1326,7 @@ describe('createAuditTrail', () => {
         detail: { currentCost: 6, budget: 5 },
       };
       emit(new ActionEvent(action));
+      // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
       await yieldToPortableEventLoop();
 
       const records = await trail.query({ type: 'budget.exceeded' });
@@ -1342,6 +1352,7 @@ describe('createAuditTrail', () => {
         detail: { detector: 'sliding-window', count: 3, message: 'repeated calls detected' },
       };
       emit(new ActionEvent(action));
+      // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
       await yieldToPortableEventLoop();
 
       const records = await trail.query({ type: 'toolbox.loop-warning' });
@@ -1362,6 +1373,7 @@ describe('createAuditTrail', () => {
         detail: { detector: 'sliding-window', count: 5, message: 'blocked repeated calls' },
       };
       emit(new ActionEvent(action));
+      // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
       await yieldToPortableEventLoop();
 
       const records = await trail.query({ type: 'toolbox.loop-blocked' });
@@ -1383,6 +1395,7 @@ describe('createAuditTrail', () => {
           detail: null,
         }),
       );
+      // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
       await yieldToPortableEventLoop();
 
       expect(await trail.query({ type: 'loop-warning' })).toHaveLength(0);
@@ -1409,6 +1422,7 @@ describe('createAuditTrail', () => {
         detail: { reason: 'max-calls' },
       };
       emit(new ActionEvent(action));
+      // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
       await yieldToPortableEventLoop();
 
       const records = await trail.query({ type: 'toolbox.budget-exceeded' });
@@ -1429,6 +1443,7 @@ describe('createAuditTrail', () => {
           sessionId: 'session-1',
         }),
       );
+      // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
       await yieldToPortableEventLoop();
 
       const createdRecords = await trail.query({ runId: 'schedule:schedule-created-1' });
@@ -1452,6 +1467,7 @@ describe('createAuditTrail', () => {
       emit(new SchedulePausedEvent('schedule-1'));
       emit(new ScheduleResumedEvent('schedule-1'));
       emit(new ScheduleCancelledEvent('schedule-2'));
+      // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
       await yieldToPortableEventLoop();
 
       const pausedRecords = await trail.query({ type: 'schedule.paused' });
@@ -1495,6 +1511,7 @@ describe('createAuditTrail', () => {
       emit(new SchedulePausedEvent('schedule-inflight'));
       // The listener dispatches synchronously; once its sequence is claimed
       // the record write is issued (and gated) before `query()` below runs.
+      // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
       await yieldToPortableEventLoop();
       expect(setCallCount()).toBe(1);
 
@@ -1530,6 +1547,7 @@ describe('createAuditTrail', () => {
       // This write is gated forever within this test — deliberately never
       // released, standing in for a genuinely stalled storage backend.
       emit(new SchedulePausedEvent('schedule-stuck'));
+      // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
       await yieldToPortableEventLoop();
       expect(setCallCount()).toBe(1);
 
@@ -1553,6 +1571,7 @@ describe('createAuditTrail', () => {
       const trail = createAuditTrail(bureau, undefined);
 
       emit(new SchedulePausedEvent('schedule-ephemeral'));
+      // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
       await yieldToPortableEventLoop();
 
       expect(await trail.query()).toEqual([]);
@@ -1566,6 +1585,7 @@ describe('createAuditTrail', () => {
       await trail.dispose();
 
       emit(new SchedulePausedEvent('schedule-after-dispose'));
+      // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
       await yieldToPortableEventLoop();
 
       expect(await trail.query({ type: 'schedule.paused' })).toEqual([]);
@@ -1589,6 +1609,7 @@ describe('createAuditTrail', () => {
           detail: null,
         }),
       );
+      // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
       await yieldToPortableEventLoop();
       await trail.record({
         runId: 'run-shared-seq',
@@ -2543,6 +2564,7 @@ describe('createAuditTrail', () => {
       const trail = createAuditTrail(bureau, kv, undefined, { initialSequence: 0, eventTimestamp });
 
       emit(event);
+      // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
       await yieldToPortableEventLoop();
 
       const records = await trail.query({ runId: 'schedule:sched-1' });
@@ -2567,6 +2589,7 @@ describe('createAuditTrail', () => {
       const trail = createAuditTrail(bureau, kv, undefined, { initialSequence: 0, eventTimestamp });
 
       emit(event);
+      // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
       await yieldToPortableEventLoop();
 
       const records = await trail.query({ runId: 'session:sess-1' });
@@ -2590,6 +2613,7 @@ describe('createAuditTrail', () => {
           spec: { every: '5m' },
         }),
       );
+      // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
       await yieldToPortableEventLoop();
 
       const records = await trail.query({ runId: 'schedule:sched-2' });

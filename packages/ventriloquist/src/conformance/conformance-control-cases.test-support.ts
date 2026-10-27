@@ -224,6 +224,7 @@ const lateCallback: CaseDefinition = {
     process.stream.push(new TextEncoder().encode('too late'));
     process.exit(0);
     await rig.observed.exitRecorded;
+    // load-proof: the cancel of the source and the release of its reader are promise continuations of the exit already recorded, so a microtask drain completes them
     await Bun.sleep(0);
     return [
       check(
@@ -269,6 +270,7 @@ const revokedDuringPaste: CaseDefinition = {
     const summary = await rig.session().closed;
     const writesAtRevocation = process.written.length;
     process.releaseWrites();
+    // load-proof: the released writes settle as promise continuations on the in-memory process double, so a microtask drain completes them
     await Bun.sleep(0);
     const failed = rig.client.messages.filter((message) => message.kind === 'operation-failure');
     return [

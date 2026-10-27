@@ -382,7 +382,9 @@ describe('serve() — WebSocket /jsonrpc', () => {
 
       // One final microtask flush so any promise rejections queued
       // by the emitter.send() → close() sequence have a turn.
+      // load-proof: negative window for a late rejection: load can only delay an unhandled rejection, never produce one earlier, so the absence check cannot flip
       await new Promise<void>((resolve) => setImmediate(resolve));
+      // load-proof: negative window for a late rejection: load can only delay an unhandled rejection, never produce one earlier, so the absence check cannot flip
       await new Promise<void>((resolve) => setImmediate(resolve));
     } finally {
       process.off('unhandledRejection', rejectionHandler);
@@ -687,7 +689,9 @@ describe('serve() — WebSocket /jsonrpc', () => {
 
       // Flush microtasks so any late rejections land before the
       // assertion below.
+      // load-proof: negative window for a late rejection: load can only delay an unhandled rejection, never produce one earlier, so the absence check cannot flip
       await new Promise<void>((resolve) => setImmediate(resolve));
+      // load-proof: negative window for a late rejection: load can only delay an unhandled rejection, never produce one earlier, so the absence check cannot flip
       await new Promise<void>((resolve) => setImmediate(resolve));
     } finally {
       process.off('unhandledRejection', rejectionHandler);

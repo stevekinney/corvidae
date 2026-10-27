@@ -123,6 +123,7 @@ describe('SelectionPopover actions snippet', () => {
     const outside = document.createElement('button');
     document.body.append(outside);
     outside.dispatchEvent(new (globalThis.PointerEvent ?? Event)('pointerdown', { bubbles: true }));
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(closeCalls).toBe(1);
@@ -252,6 +253,7 @@ describe('SelectionPopover actions keyboard model', () => {
 describe('SelectionPopover actions opening without a pointer gesture', () => {
   test('moves focus to the first action when open goes false to true with no pointer events', async () => {
     const { component } = render(SelectionPopoverOpenFixture);
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     flushSync(() => (component as unknown as { show(): void }).show());

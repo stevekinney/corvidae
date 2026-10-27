@@ -80,7 +80,10 @@ function parkingAgent(offered: Offered) {
   });
 }
 
-type ToolOptions = Pick<BureauOptions<AgentDefinitions>, 'humanInput' | 'wakeup'>;
+type ToolOptions = Pick<
+  BureauOptions<AgentDefinitions>,
+  'humanInput' | 'wakeup' | 'decide' | 'decisions'
+>;
 
 async function start(
   agents: AgentDefinitions,
@@ -105,6 +108,7 @@ async function sessionTaskTools(options: ToolOptions & { durable?: boolean }): P
   );
   const run = await bureau.tasks.start('alpha', 'hello');
   await waitForTaskState(bureau, run.id);
+  // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
   for (let turn = 0; turn < 10; turn += 1) await yieldToPortableEventLoop();
   return offered.flat();
 }
@@ -169,6 +173,52 @@ describe('a durable Bureau offers the tools by default', () => {
 
     expect(childOffered.flat()).not.toContain('requestHumanInput');
     expect(childOffered.flat()).not.toContain('scheduleWakeup');
+  });
+
+  // COR-1709: `decide` goes to the runs `requestHumanInput` goes to, whatever `humanInput` says.
+  describe('the decide tool', () => {
+    const DECISION_MODEL = {
+      name: 'scripted/model',
+      kinds: new Set(['boolean' as const]),
+      decide: async () => ({ value: true, provider: 'scripted', model: 'model' }),
+    };
+
+    it('is offered to a session task and to a schedule fire, and left out under decide: false', async () => {
+      const decisions = { model: DECISION_MODEL };
+      expect(await sessionTaskTools({ decisions })).toContain('decide');
+      expect(await scheduleFireTools({ decisions })).toContain('decide');
+      expect(await sessionTaskTools({ decisions, decide: false })).not.toContain('decide');
+      expect(await scheduleFireTools({ decisions, decide: false })).not.toContain('decide');
+    });
+
+    it('is offered when requestHumanInput is not', async () => {
+      const tools = await sessionTaskTools({
+        decisions: { model: DECISION_MODEL },
+        humanInput: false,
+      });
+      expect(tools).toContain('decide');
+      expect(tools).not.toContain('requestHumanInput');
+    });
+
+    it('is not offered to a child run', async () => {
+      const childOffered: Offered = [];
+      const bureau = await start(
+        { parent: parkingAgent([]), child: recordingAgent(childOffered) },
+        { decisions: { model: DECISION_MODEL } },
+      );
+      const parent = await bureau.tasks.start('parent', 'go');
+      await pollUntil(() => bureau.reviews.list().some((review) => review.runId === parent.id));
+
+      const dispatched = await bureau.children.dispatch({
+        parentRunId: parent.id,
+        agentName: 'child',
+        input: 'go',
+      });
+      expect(dispatched.outcome).toBe('started');
+      await pollUntil(() => childOffered.length > 0);
+
+      expect(childOffered.flat()).not.toContain('decide');
+    });
   });
 
   it('narrows the tools to an active skill’s allowed-tools, the two it adds included', async () => {

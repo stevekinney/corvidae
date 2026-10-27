@@ -57,7 +57,7 @@ import {
   type Bureau,
 } from '@lostgradient/bureau';
 import { agentFileDirectory, workflowFileDirectory } from '@lostgradient/bureau/sources';
-import type { GenerateFunction } from '@lostgradient/operative';
+import { typesafeJev, type GenerateFunction } from '@lostgradient/operative';
 import {
   BunSQLiteStorage,
   serve,
@@ -85,6 +85,7 @@ import {
   loadProviders,
   PROVIDER_NAMES,
   PROVIDER_SECRET_KEYS,
+  TYPESAFE_SECRET_KEY,
   type ModelSelection,
 } from './providers.ts';
 import { allowedHosts, createRequestGuard } from './request-guard.ts';
@@ -316,6 +317,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       });
     const agentDirectory = bungalow.directory(AGENT_DIRECTORY_NAME);
     const workflowDirectory = bungalow.directory(WORKFLOW_DIRECTORY_NAME);
+    // The TypeSafe key, when the secrets hold one, gives Bureau a decision model for the kinds Jev
+    // serves. It is read here and handed to the model, which keeps it in memory.
+    const typesafeKey = bungalow.readSecret(TYPESAFE_SECRET_KEY)?.trim();
     const bureau = await createBureau({
       id: bungalow.deploymentId,
       agents: {
@@ -325,6 +329,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // A session run of a seeded agent is offered `requestHumanInput`, which `request-human-input`
       // calls to park for an operator's answer.
       validators: createSeededValidators(),
+      ...(typesafeKey === undefined || typesafeKey === ''
+        ? {}
+        : { decisions: { model: typesafeJev({ apiKey: typesafeKey }) } }),
       // A file's `model` is a row of this catalog, so it runs with the key in the secrets.
       models: {
         catalog: providers.rows,

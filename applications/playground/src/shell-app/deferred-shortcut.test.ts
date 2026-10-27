@@ -4,6 +4,7 @@ import { describe, expect, it } from 'bun:test';
 import { attachDeferredShortcut } from './deferred-shortcut.ts';
 
 /** Let every already-queued promise reaction run. */
+// load-proof: the hydrate callbacks are in-memory promises, so every reaction settles inside the microtask queue
 async function settle(): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
 }

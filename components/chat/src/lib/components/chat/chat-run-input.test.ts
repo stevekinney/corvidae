@@ -206,6 +206,7 @@ describe('Chat follow-ups during a run', () => {
     // The first acknowledgement is slow, so the second has not been handed over.
     expect(seen).toEqual(['first']);
     releases[0]!();
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     expect(seen).toEqual(['first', 'second']);
     releases[1]!();
@@ -234,6 +235,7 @@ describe('Chat follow-ups during a run', () => {
     await rendered.rerender({ conversation: createConversationHistory({ id: 'after' }) });
     await tick();
     await submit(rendered.container, 'fresh');
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
     expect(seen).toEqual(['stuck', 'fresh']);
@@ -309,6 +311,7 @@ describe('Chat follow-ups wired to the session controller', () => {
   }
 
   async function settle(): Promise<void> {
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     await tick();
   }

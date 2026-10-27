@@ -9,11 +9,17 @@ import type { AgentDefinitions, AgentNames, BureauAgentCatalog } from './agent-c
  * objects themselves: reading a lazy agent's own `.name` would give the
  * `'(lazy)'` placeholder rather than its catalog key, and routing from keys
  * means a lazy agent never has to load to decide whether to select it. An
- * agent's optional `description` and `skillDescriptors` stay on the catalog
- * entry, where `createAgentDiscoveryTool` searches them.
+ * agent's `skillDescriptors` stay on the catalog entry, where
+ * `createAgentDiscoveryTool` searches them; its `description` is carried
+ * here as a string.
  */
 export interface AgentDescriptor<D extends AgentDefinitions = AgentDefinitions> {
   readonly name: AgentNames<D>;
+  /**
+   * The agent's `description` when it declares one, read from the catalog entry (a string, never a
+   * load of the agent). `createDecisionRouting` shows it to the model beside the name.
+   */
+  readonly description?: string;
 }
 
 /**

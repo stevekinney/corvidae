@@ -30,6 +30,7 @@ describe('mapWithConcurrency', () => {
     const results = await mapWithConcurrency(items, 4, async (item) => {
       inFlight += 1;
       peak = Math.max(peak, inFlight);
+      // load-proof: simulated work: the assertions are the peak count of items in flight, which the scheduler fixes before any item's await returns, whatever the duration of that await
       await Bun.sleep(1);
       inFlight -= 1;
       return item;
@@ -43,6 +44,7 @@ describe('mapWithConcurrency', () => {
     const mapped = mapWithConcurrency([0, 1, 2, 3, 4, 5], 2, async (item) => {
       started.push(item);
       if (item === 1) throw new Error('item 1 failed');
+      // load-proof: simulated work: what is asserted is which items started after the first failure, which the scheduler decides before any item's await returns
       await Bun.sleep(1);
       return item;
     });

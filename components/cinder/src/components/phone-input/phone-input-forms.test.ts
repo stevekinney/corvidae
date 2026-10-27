@@ -63,6 +63,7 @@ describe('PhoneInput form reset', () => {
     expect(input.value).toBe('(202) 555-0123');
 
     form.dispatchEvent(new Event('reset', { bubbles: true, cancelable: true }));
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(countrySelect(rendered.container).value).toBe('US');
@@ -79,7 +80,9 @@ describe('PhoneInput form reset', () => {
       props: { id: 'p', label: 'Phone', value: 'invalid' },
     });
     form.dispatchEvent(new Event('reset', { bubbles: true, cancelable: true }));
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(nationalInput(rendered.container).value).toBe('invalid');
     rendered.unmount();
@@ -95,6 +98,7 @@ describe('PhoneInput form reset', () => {
     });
     expect(countrySelect(rendered.container).value).toBe('GB');
     form.dispatchEvent(new Event('reset', { bubbles: true, cancelable: true }));
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(countrySelect(rendered.container).value).toBe('GB');
     expect(
@@ -113,6 +117,7 @@ describe('PhoneInput form reset', () => {
     const input = nationalInput(rendered.container);
     await waitFor(() => expect(input.value).toContain('415'));
     form.dispatchEvent(new Event('reset', { bubbles: true, cancelable: true }));
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(input.value).toContain('415');
     rendered.unmount();
@@ -141,6 +146,7 @@ describe('PhoneInput form reset', () => {
     });
 
     form.dispatchEvent(new Event('reset', { bubbles: true, cancelable: true }));
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(resetCanceled).toBe(true);
@@ -167,6 +173,7 @@ describe('PhoneInput form reset', () => {
     await fireEvent.input(input, { target: { value: '2025550123' } });
 
     form.dispatchEvent(new Event('reset', { bubbles: true, cancelable: true }));
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(countrySelect(rendered.container).value).toBe('US');
@@ -196,6 +203,7 @@ describe('PhoneInput form reset', () => {
     await waitFor(() => expect(countrySelect(rendered.container).value).toBe('US'));
     await fireEvent.input(input, { target: { value: '4165550123' } });
     form.dispatchEvent(new Event('reset', { bubbles: true, cancelable: true }));
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(countrySelect(rendered.container).value).toBe('US');

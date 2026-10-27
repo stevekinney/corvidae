@@ -122,6 +122,8 @@ export const OPERATION_MAP = {
 
   'bureau.audit.query': { member: 'audit.query' },
 
+  'bureau.decisions.decide': { member: 'decisions.decide' },
+
   'bureau.agents.list': { member: 'agents.list' },
   // Describes one catalog agent against the models catalog (COR-1708).
   'bureau.agents.models': { member: 'agents.models' },

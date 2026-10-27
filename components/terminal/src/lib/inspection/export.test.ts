@@ -1,3 +1,4 @@
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import type { TerminalProjection } from '../components/terminal/terminal-projection.ts';
@@ -159,7 +160,8 @@ describe('saveTextAsFile', () => {
     } finally {
       anchorPrototype.click = original;
     }
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    // The address is revoked from a zero-delay timer.
+    await waitUntil(() => revoked.length > 0, { message: 'the object URL to be revoked' });
     expect(clicked).toEqual([{ href: 'blob:terminal-test', download: EXPORT_FILE_NAME }]);
     expect(blobs).toHaveLength(1);
     expect(blobs[0]!.type).toBe('text/plain;charset=utf-8');
