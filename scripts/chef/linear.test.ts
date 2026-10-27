@@ -533,7 +533,7 @@ describe('read', () => {
     expect(result.code).toBe(0);
     const lines = result.output.split('\n');
     expect(lines[0]).toBe('COR-1: state=Todo updatedAt=2026-10-22T10:00:00Z comments=4');
-    expect(lines.slice(1).map((line) => line.trim().split(' ').slice(1).join(' '))).toEqual([
+    expect(lines.slice(1, 4).map((line) => line.trim().split(' ').slice(1).join(' '))).toEqual([
       'two',
       'three',
       'four',
@@ -541,6 +541,28 @@ describe('read', () => {
     const json = JSON.parse(await runOutput(['read', 'COR-1', '--json'], dependencies(fake)));
     expect(json.comments).toBe(4);
     expect(json.lastComments).toHaveLength(3);
+  });
+
+  test('prints the full description after the summary lines and includes it in --json', async () => {
+    const fake = fakeLinear();
+    const body = '## Execution brief\n\nDo the thing.\n\n## Appended revision\n\nAlso this.';
+    fake.issues[0]!.description = body;
+    const result = await run(['read', 'COR-1'], dependencies(fake));
+    expect(result.code).toBe(0);
+    const lines = result.output.split('\n');
+    expect(lines[0]).toStartWith('COR-1: state=Todo');
+    expect(result.output.endsWith(`\n${body}`)).toBe(true);
+    const json = JSON.parse(await runOutput(['read', 'COR-1', '--json'], dependencies(fake)));
+    expect(json.description).toBe(body);
+  });
+
+  test('prints no description block for an issue without one', async () => {
+    const fake = fakeLinear();
+    fake.issues[0]!.description = '';
+    const result = await run(['read', 'COR-1'], dependencies(fake));
+    expect(result.output.split('\n')).toHaveLength(1);
+    const json = JSON.parse(await runOutput(['read', 'COR-1', '--json'], dependencies(fake)));
+    expect(json.description).toBe('');
   });
 
   test('exits 1 for an unknown issue', async () => {
