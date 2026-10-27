@@ -954,9 +954,13 @@ describe('transcripts stay inside the Bureau', () => {
         },
       });
       const bodies: string[] = [];
+      // The settings stream is live and replays nothing, so a resume from the first revision is what
+      // gives it an event to scan.
+      await bureau.settings.update({ 'decisions.maximumPerTask': 3 }, { expectedRevision: 0 });
 
       for (const operation of BUREAU_HANDLER_OPERATIONS) {
         const params = paramsFor(operation, {
+          ...(operation.name === 'bureau.settings.events' ? { fromCursor: '0' } : {}),
           id: operation.name.startsWith('bureau.agents.definitions.') ? 'support' : alice.reviewId,
           runId: alice.run.id,
           taskId: alice.run.id,
@@ -1001,7 +1005,9 @@ describe('transcripts stay inside the Bureau', () => {
                 response,
                 operation.name === 'bureau.events'
                   ? 'event: review.approved'
-                  : 'event: run.completed',
+                  : operation.name === 'bureau.settings.events'
+                    ? 'event: settings.changed'
+                    : 'event: run.completed',
               ),
         );
       }

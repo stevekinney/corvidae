@@ -32,6 +32,15 @@ export class StubFault extends Error {
 
 export type BureauHandler = (params: Record<string, unknown>) => unknown;
 
+/** What a stubbed subscription is opened with: the `Last-Event-ID` a resume names, and the abort signal. */
+export type StubSubscriptionRequest = {
+  readonly lastEventId: string | undefined;
+  readonly signal: AbortSignal | undefined;
+};
+
+/** Answers a subscription at `/bureau/v1/subscriptions/<operation>`. */
+export type StubSubscriptionHandler = (request: StubSubscriptionRequest) => Response;
+
 /** The directory the stub reports for agent files. */
 export const STUB_AGENT_DIRECTORY = '/home/tester/.interborough/agents';
 /** The directory the stub reports for workflow files. */
@@ -67,6 +76,8 @@ export type BureauStub = {
   restore(): void;
 };
 
+const SUBSCRIPTION_PREFIX = '/bureau/v1/subscriptions/';
+
 /** The URL a `fetch` input names. */
 export function urlOf(input: RequestInfo | URL): string {
   return typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -83,7 +94,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  */
 export function installBureauStub(
   handlers: Record<string, BureauHandler>,
-  options: { readonly hostPaths?: string | null; readonly passThrough?: boolean } = {},
+  options: {
+    readonly hostPaths?: string | null;
+    readonly passThrough?: boolean;
+    /** Answers the subscriptions it names, by operation name; any other one is `Not found`. */
+    readonly subscriptions?: Readonly<Record<string, StubSubscriptionHandler>>;
+  } = {},
 ): BureauStub {
   const table = new Map(Object.entries(handlers));
   const calls: BureauCall[] = [];
@@ -102,6 +118,15 @@ export function installBureauStub(
       return directory === null
         ? new Response('Not found', { status: 404 })
         : Response.json(stubHostPaths(directory, STUB_WORKFLOW_DIRECTORY));
+    }
+    const subscription = url.pathname.startsWith(SUBSCRIPTION_PREFIX)
+      ? options.subscriptions?.[url.pathname.slice(SUBSCRIPTION_PREFIX.length)]
+      : undefined;
+    if (subscription !== undefined) {
+      return subscription({
+        lastEventId: new Headers(init?.headers).get('last-event-id') ?? undefined,
+        signal: init?.signal ?? undefined,
+      });
     }
     if (url.pathname !== '/bureau/jsonrpc' || typeof init?.body !== 'string') {
       return new Response('Not found', { status: 404 });

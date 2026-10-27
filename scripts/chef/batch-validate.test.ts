@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { rejectionOf } from '../promise-outcome.test-support.ts';
@@ -20,7 +20,8 @@ const base = {
   minimumMerges: 5,
   maximumAgeHours: 2,
   load: 1,
-  maximumLoad: 8,
+  maximumLoad: 8 as number | undefined,
+  greenAtTip: false,
 };
 
 describe('decideDue', () => {
@@ -45,6 +46,19 @@ describe('decideDue', () => {
     expect(decideDue({ ...base, mergesSince: 9, load: 7.9 }).due).toBe(true);
   });
 
+  test('ignores the load entirely unless a limit was asked for', () => {
+    const busy = { ...base, mergesSince: 9, load: 99 };
+    expect(decideDue({ ...busy, maximumLoad: undefined })).toMatchObject({ due: true });
+    expect(decideDue({ ...busy, maximumLoad: 50 }).due).toBe(false);
+  });
+
+  test('a green record at the tip skips the run, even when a later run at that head failed', () => {
+    const decision = decideDue({ ...base, mergesSince: 9, greenAtTip: true });
+    expect(decision.due).toBe(false);
+    expect(decision.reason).toContain('green batch validate');
+    expect(decideDue({ ...base, mergesSince: 9, greenAtTip: false }).due).toBe(true);
+  });
+
   test('an unreadable last time counts as due rather than never', () => {
     const last = { ...base.last, time: 'garbage' };
     expect(decideDue({ ...base, last }).due).toBe(true);
@@ -59,7 +73,7 @@ describe('batchValidate', () => {
   beforeEach(() => {
     sandbox = mkdtempSync(join(tmpdir(), 'batch-validate-'));
     main = join(sandbox, 'main');
-    mkdirSync(main);
+    mkdirSync(join(main, '.git'), { recursive: true });
     const configPath = join(sandbox, 'config.json');
     writeFileSync(
       configPath,
@@ -79,7 +93,7 @@ describe('batchValidate', () => {
       configPath,
       minimumMerges: 5,
       maximumAgeHours: 2,
-      maximumLoad: 8,
+      maximumLoad: undefined,
       worktree: undefined,
       dryRun: false,
     };
@@ -129,6 +143,9 @@ describe('batchValidate', () => {
     );
   }
 
+  /** The host-wide lock: one file in the Git common directory. */
+  const lockPath = () => join(main, '.git', 'corvidae-batch-validate.lock');
+
   const history = (count: number) =>
     Array.from({ length: count }, (_, index) => String(count - index).padStart(40, '0'));
 
@@ -146,7 +163,7 @@ describe('batchValidate', () => {
     expect(calls[0]?.log).toStartWith(join(main, 'tmp', 'chef', 'batch-validate'));
     expect(commands.some((c) => c.join(' ').startsWith('git worktree add --detach'))).toBe(true);
     expect(commands.some((c) => c[0] === 'sh' && c[2] === 'install-it')).toBe(true);
-    expect(existsSync(join(main, 'tmp', 'chef', 'batch-validate.lock'))).toBe(false);
+    expect(existsSync(lockPath())).toBe(false);
   });
 
   test('reuses the worktree by moving it to the tip, and reports a failing validate as exit 1', async () => {
@@ -209,7 +226,7 @@ describe('batchValidate', () => {
     expect(refused.sleeps).toEqual([]);
   });
 
-  test('skips when too few merges, high load, a live lock, or a dry run', async () => {
+  test('skips when too few merges, or on a dry run', async () => {
     const commits = history(8);
     const { gate, calls } = gateReturning(0);
     record(commits[2] as string, 0, hoursAgo(0.2));
@@ -221,34 +238,143 @@ describe('batchValidate', () => {
     });
     expect(quiet).toMatchObject({ ran: false, code: 0 });
     record(commits[5] as string, 0, hoursAgo(0.2));
+    const dry = await batchValidate(
+      { ...options, dryRun: true },
+      { runner: world(commits).runner, now: () => now, load: () => 1, gate },
+    );
+    expect(dry.reason).toStartWith('would run');
+    expect(existsSync(lockPath())).toBe(false);
+    expect(calls).toHaveLength(0);
+  });
+
+  test('runs under a high load by default, and waits for one only when --max-load asks', async () => {
+    const commits = history(8);
+    record(commits[5] as string, 0, hoursAgo(0.2));
+    const { gate, calls } = gateReturning(0);
     const busy = await batchValidate(options, {
       runner: world(commits).runner,
       now: () => now,
-      load: () => 12,
+      load: () => 99,
       gate,
     });
-    expect(busy.reason).toContain('load');
-    writeFileSync(join(main, 'tmp', 'chef', 'batch-validate.lock'), '4242\n');
+    expect(busy).toMatchObject({ ran: true, code: 0 });
+    expect(calls).toHaveLength(1);
+    const limited = await batchValidate(
+      { ...options, maximumLoad: 8 },
+      { runner: world(commits).runner, now: () => now, load: () => 99, gate },
+    );
+    expect(limited).toMatchObject({ ran: false, code: 0 });
+    expect(limited.reason).toContain('load');
+    expect(calls).toHaveLength(1);
+  });
+
+  test('skips when a green record already stands at the current origin/main head', async () => {
+    const commits = history(8);
+    // A green run at the tip, then a later red one at the same head: the green one still counts.
+    mkdirSync(join(main, 'tmp', 'chef'), { recursive: true });
+    writeFileSync(
+      healthFilePath(main),
+      JSON.stringify({
+        runs: [
+          { head: commits[7], exitCode: 0, time: hoursAgo(5), command: 'bun run validate' },
+          { head: commits[0], exitCode: 0, time: hoursAgo(3), command: 'bun run validate' },
+          { head: commits[0], exitCode: 1, time: hoursAgo(1), command: 'bun run validate' },
+        ],
+        fixes: [],
+      }),
+    );
+    const { gate, calls } = gateReturning(0);
+    const result = await batchValidate(options, {
+      runner: world(commits).runner,
+      now: () => now,
+      load: () => 1,
+      gate,
+    });
+    expect(result).toMatchObject({ ran: false, code: 0 });
+    expect(result.reason).toContain('green batch validate');
+    expect(calls).toHaveLength(0);
+  });
+
+  test('a live lock in the Git common directory makes a second run exit 0 naming the holder', async () => {
+    const commits = history(8);
+    record(commits[5] as string, 0, hoursAgo(0.2));
+    writeFileSync(
+      lockPath(),
+      JSON.stringify({ pid: 4242, startedAt: 'x', head: sha('b'), acquiredAt: hoursAgo(0.1) }),
+    );
+    const { gate, calls } = gateReturning(0);
     const locked = await batchValidate(options, {
       runner: world(commits).runner,
       now: () => now,
       load: () => 1,
       alive: (pid) => pid === 4242,
+      processStart: () => 'x',
       gate,
     });
-    expect(locked.reason).toContain('already running');
-    const stale = await batchValidate(
-      { ...options, dryRun: true },
-      {
+    expect(locked).toMatchObject({ ran: false, code: 0 });
+    expect(locked.reason).toContain('already running by pid 4242');
+    expect(calls).toHaveLength(0);
+    expect(existsSync(lockPath())).toBe(true);
+  });
+
+  test('reclaims the lock of a dead pid, and of a pid that now belongs to another process', async () => {
+    const commits = history(8);
+    record(commits[5] as string, 0, hoursAgo(0.2));
+    const { gate, calls } = gateReturning(0);
+    for (const dependencies of [
+      { alive: () => false, processStart: () => undefined },
+      { alive: () => true, processStart: () => 'a different start time' },
+    ]) {
+      writeFileSync(
+        lockPath(),
+        JSON.stringify({ pid: 4242, startedAt: 'x', head: sha('b'), acquiredAt: hoursAgo(1) }),
+      );
+      const result = await batchValidate(options, {
         runner: world(commits).runner,
         now: () => now,
         load: () => 1,
-        alive: () => false,
         gate,
-      },
-    );
-    expect(stale.reason).toStartWith('would run');
-    expect(calls).toHaveLength(0);
+        ...dependencies,
+      });
+      expect(result).toMatchObject({ ran: true, code: 0 });
+      expect(existsSync(lockPath())).toBe(false);
+    }
+    expect(calls).toHaveLength(2);
+  });
+
+  test('a second coordinator that starts mid-run exits 0 and leaves the first run alone', async () => {
+    const commits = history(8);
+    record(commits[5] as string, 0, hoursAgo(0.2));
+    const dependencies = { now: () => now, load: () => 1 };
+    let second: Awaited<ReturnType<typeof batchValidate>> | undefined;
+    let held: { pid: number; head: string } | undefined;
+    const gate = async (): Promise<GateRunResult> => {
+      held = JSON.parse(readFileSync(lockPath(), 'utf8'));
+      second = await batchValidate(options, {
+        ...dependencies,
+        runner: world(commits).runner,
+        gate: gateReturning(0).gate,
+      });
+      return {
+        code: 0,
+        head: sha('f'),
+        waits: 0,
+        startClean: true,
+        endClean: true,
+        endHead: sha('f'),
+      };
+    };
+    const first = await batchValidate(options, {
+      ...dependencies,
+      runner: world(commits).runner,
+      gate,
+    });
+    expect(first).toMatchObject({ ran: true, code: 0 });
+    expect(held?.pid).toBe(process.pid);
+    expect(held?.head).toBe(commits[0] as string);
+    expect(second).toMatchObject({ ran: false, code: 0 });
+    expect(second?.reason).toContain(`already running by pid ${process.pid}`);
+    expect(existsSync(lockPath())).toBe(false);
   });
 
   test('a failing install is exit 1 and still releases the lock', async () => {
@@ -267,7 +393,7 @@ describe('batchValidate', () => {
     });
     expect(result.code).toBe(1);
     expect(result.reason).toContain('install-it failed');
-    expect(existsSync(join(main, 'tmp', 'chef', 'batch-validate.lock'))).toBe(false);
+    expect(existsSync(lockPath())).toBe(false);
   });
 });
 
