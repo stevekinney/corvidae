@@ -22344,7 +22344,9 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
     try {
       // `'not-found'` describes a run this call never genuinely terminated;
       // only `'requested'` proves a committed cancellation.
-      await expect(bureau.tasks.cancel('no-such-run')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      expect(await rejectionOf(bureau.tasks.cancel('no-such-run'))).toMatchObject({
+        code: 'NOT_FOUND',
+      });
       expect(pruneSpy).not.toHaveBeenCalled();
       expect(await cleanupRecordsFor(bureau, 'no-such-run')).toHaveLength(0);
     } finally {

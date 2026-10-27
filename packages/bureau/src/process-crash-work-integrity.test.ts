@@ -52,6 +52,7 @@ import {
 } from './test/hoisted-scenario';
 import type { Bureau } from './types';
 import { unexpectedChildStderr } from './test/child-stderr';
+import { rejectionOf } from './testing/promise-outcome.test-support';
 
 const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
 const runtime = createDefaultRuntimeServices();
@@ -410,7 +411,7 @@ async function abortSiblingScenario(backend: Backend, scope: ScenarioScope): Pro
     expect(await bureau.tasks.cancel(marker.xRunId)).not.toMatchObject({
       receipt: 'cancel-requested',
     });
-    await expect(bureau.tasks.cancel('process-crash-unknown-run')).rejects.toMatchObject({
+    expect(await rejectionOf(bureau.tasks.cancel('process-crash-unknown-run'))).toMatchObject({
       code: 'NOT_FOUND',
     });
 
