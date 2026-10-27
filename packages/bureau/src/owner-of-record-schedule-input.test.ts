@@ -28,7 +28,7 @@ describe('the owner of a schedule that is not an agent schedule (COR-718)', () =
         generate,
         toolbox: createToolbox([], { context: {} }),
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
       try {
@@ -52,7 +52,7 @@ describe('the owner of a schedule that is not an agent schedule (COR-718)', () =
           }),
         },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
       try {
@@ -92,7 +92,7 @@ describe('the start of the text a schedule sends (COR-1654)', () => {
           }),
         },
         storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
       try {

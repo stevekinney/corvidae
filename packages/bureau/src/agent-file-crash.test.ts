@@ -114,7 +114,9 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
             },
         },
         storage: { type: 'sqlite', path: storagePath },
-        durableExecution: true,
+        durable: true,
+        // A session run is also offered `scheduleWakeup`; the snapshot assertion is one tool set.
+        wakeup: false,
         durableOwnership: {
           ownership: 'workflow-lease',
           workflowClaimTtlMs: CLAIM_TTL_MS,
@@ -187,7 +189,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
     expect(calls).toHaveLength(4);
     for (const call of calls) {
       expect(call.model).toBe('claude-opus-5-5');
-      expect(call.tools).toEqual(['lookup-order']);
+      expect(call.tools).toEqual(['lookup-order', 'requestHumanInput']);
     }
 
     // Retention: every one of those runs, a recovered `bureau.run` run included, had its snapshot
@@ -207,9 +209,11 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
         agentSource: agentFileDirectory(agents, { tools: { 'lookup-order': lookupTool } }),
         models: { generate: () => async () => ({ content: 'unused', toolCalls: [] }) },
         storage: { type: 'sqlite', path: storagePath },
-        durableExecution: true,
+        durable: true,
+        // A session run is also offered `scheduleWakeup`; the snapshot assertion is one tool set.
+        wakeup: false,
         durableOwnership: { ownership: 'none' },
-        durableBackgroundTasks: 'manual',
+        maintenance: 'manual',
         runtime: yearOn,
       });
       const before = await Promise.all([

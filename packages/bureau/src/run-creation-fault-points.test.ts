@@ -308,7 +308,7 @@ async function withScenario(
             }),
           },
           storage,
-          durableExecution: true,
+          durable: true,
           durableOwnership: { ownership: 'none' },
         });
         bureaus.push(bureau);

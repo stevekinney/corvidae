@@ -99,7 +99,6 @@ export async function openPushBureau(
     durableHistory?: boolean;
     /** The Bureau's own storage, for a test that fails its appends; the push store stays in memory. */
     bureauStorage?: Storage;
-    humanInput?: boolean;
     push?: boolean;
     sweepIntervalMs?: number;
   } = {},
@@ -123,7 +122,6 @@ export async function openPushBureau(
     publish: ['asker'],
     durableHistory: options.durableHistory ?? true,
     ...(options.bureauStorage === undefined ? {} : { storage: options.bureauStorage }),
-    ...(options.humanInput === true ? { humanInput: true } : {}),
     handlerOptions: {
       publicUrl: 'http://localhost',
       ...(options.push === false

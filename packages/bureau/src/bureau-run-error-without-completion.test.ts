@@ -113,7 +113,7 @@ describe('a durable run that fails and then loses its checkpoint compare-and-swa
       },
       runtime: createManualRuntimeServices({ origin: ORIGIN }),
       storage: race.storage,
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     });
     try {

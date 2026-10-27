@@ -69,7 +69,7 @@ async function openBureau() {
   const bureau = await createBureau({
     agents: { painter },
     storage: { type: 'memory' },
-    durableExecution: false,
+    durable: false,
     runtime,
     assets: { storage: fixture.storage, policy: { defaultRetentionMilliseconds: 1_000 } },
   });

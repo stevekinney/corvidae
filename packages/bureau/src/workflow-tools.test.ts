@@ -57,18 +57,23 @@ function hashOf(harness: WorkflowToolsHarness, id: string): string {
   return harness.bureau.workflows!.list().find((entry) => entry.id === id)!.hash!;
 }
 
+/** The workflow tools in an offered set: Bureau's own `requestHumanInput` rides beside them. */
+function workflowToolsOf(offered: readonly string[] | undefined): string[] {
+  return (offered ?? []).filter((name) => name.startsWith('workflows-'));
+}
+
 describe('which agents are offered the tools', () => {
   it('offers an agent file the tools it lists, and no others', async () => {
     const harness = await start({ agents: [] });
     await harness.putAgent('lister', ['workflows-list']);
     await harness.putAgent('bare', []);
     await harness.callTool('workflows-list', {}, { agent: 'lister' });
-    const listerOffered = harness.offered.at(-1);
+    const listerOffered = workflowToolsOf(harness.offered.at(-1));
     // The agent that lists none is offered none, so it makes no call, but its model is still asked.
     const bareCall = await harness.callTool('workflows-list', {}, { agent: 'bare' });
     expect(bareCall.outcome).not.toBe('success');
     expect(listerOffered).toEqual(['workflows-list']);
-    expect(harness.offered.at(-1)).toEqual([]);
+    expect(workflowToolsOf(harness.offered.at(-1))).toEqual([]);
   });
 
   it('names the five tools with hyphens, and lists them in the deployment’s tool catalog', async () => {
@@ -81,7 +86,7 @@ describe('which agents are offered the tools', () => {
     ]);
     const harness = await start();
     await harness.callTool('workflows-list', {});
-    expect(harness.offered[0]).toEqual([...WORKFLOW_TOOL_NAMES].toSorted());
+    expect(workflowToolsOf(harness.offered[0])).toEqual([...WORKFLOW_TOOL_NAMES].toSorted());
   });
 
   it('refuses a host tool with one of their names at createBureau, with BAD_REQUEST', async () => {
@@ -92,7 +97,7 @@ describe('which agents are offered the tools', () => {
         workflowSource: workflowFileDirectory('/nonexistent-workflows'),
         models: { generate: () => async () => ({ content: '', toolCalls: [] }) },
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
       }).then(
         (bureau) => (bureau.dispose(), undefined),
         (failure: unknown) => failure,
@@ -109,7 +114,7 @@ describe('which agents are offered the tools', () => {
       agentSource: agentFileDirectory('/nonexistent', { tools: { 'workflows-list': lookupTool } }),
       models: { generate: () => async () => ({ content: '', toolCalls: [] }) },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     await bureau.dispose();
   });

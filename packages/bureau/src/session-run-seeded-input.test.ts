@@ -48,7 +48,7 @@ function rowReferencing(assetId: string): Message[] {
 
 describe.each([
   ['in-process', {}],
-  ['durable', { storage: { type: 'memory' as const }, durableExecution: true }],
+  ['durable', { storage: { type: 'memory' as const }, durable: true }],
 ] as const)('a session run with a managed-asset input (%s)', (_name, extra) => {
   it('completes when a retention claim fails transiently, and the drain claims the row later', async () => {
     const runtime = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
@@ -56,9 +56,7 @@ describe.each([
     cleanups.push(() => fixture.dispose());
     const bureau = await createBureau({
       agents: { echo },
-      ...(Object.keys(extra).length === 0
-        ? { storage: { type: 'memory' }, durableExecution: false }
-        : {}),
+      ...(Object.keys(extra).length === 0 ? { storage: { type: 'memory' }, durable: false } : {}),
       runtime,
       assets: { storage: fixture.storage, policy: { defaultRetentionMilliseconds: 1_000 } },
       ...extra,

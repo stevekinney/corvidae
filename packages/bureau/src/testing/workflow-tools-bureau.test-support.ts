@@ -105,7 +105,7 @@ export async function startWorkflowToolsBureau(
     workflowSource: workflowFileDirectory(workflowsPath),
     models: { generate: (_descriptor: BackendDescriptor) => generate },
     storage: { type: 'memory' },
-    durableExecution: true,
+    durable: true,
     ...options.overrides,
   });
   const putAgent = async (

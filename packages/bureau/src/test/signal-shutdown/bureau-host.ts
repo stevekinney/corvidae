@@ -93,7 +93,7 @@ const bureau = await createBureau<AgentDefinitions>({
     }),
   },
   storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
-  durableExecution: true,
+  durable: true,
   durableOwnership: {
     ownership: 'workflow-lease',
     workflowClaimTtlMs: CLAIM_TTL_MS,

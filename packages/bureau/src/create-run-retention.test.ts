@@ -89,7 +89,7 @@ async function withBureau(
     },
     runtime,
     storage: fixture.configuration,
-    durableExecution: true,
+    durable: true,
     durableOwnership: { ownership: 'none' },
     ...overrides,
   });
@@ -204,7 +204,7 @@ describe.each(BACKENDS)('run-creation retention over %s', (_backend, factory) =>
         const fresh = await bureau.createRun(REQUEST);
         expect(fresh.id).not.toBe(created.id);
       },
-      { runCreationTerminalRetentionMs: 60_000 },
+      { retention: { receipts: { olderThan: 60_000 } } },
     );
   });
 
@@ -255,7 +255,7 @@ describe.each(BACKENDS)('run-creation retention over %s', (_backend, factory) =>
           requestId: 'request-1',
         });
       },
-      { durableBackgroundTasks: 'manual' },
+      { maintenance: 'manual' },
     );
   });
 });
@@ -315,15 +315,15 @@ describe('locateRunCreationReceipt', () => {
   });
 });
 
-describe('runCreationTerminalRetentionMs', () => {
-  it.each([0, -1, 1.5])('rejects %p at construction', async (runCreationTerminalRetentionMs) => {
+describe('retention.receipts', () => {
+  it.each([0, -1, 1.5])('rejects %p at construction', async (receiptMilliseconds) => {
     const failure = await rejectionOf(
       createBureau<AgentDefinitions>({
         agents: {
           default: createAgent({ generate: finishes, toolbox: createToolbox<readonly Tool[]>([]) }),
         },
         runtime: createManualRuntimeServices({ origin: ORIGIN }),
-        runCreationTerminalRetentionMs,
+        retention: { receipts: { olderThan: receiptMilliseconds } },
       }),
     );
     expect(failure).toBeInstanceOf(BureauError);

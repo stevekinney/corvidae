@@ -233,7 +233,6 @@ describe('the interrupt of a settled approval', () => {
     await withHarness(
       {
         script: [askHuman],
-        humanInput: true,
         stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
         storage: 'sqlite',
       },
@@ -323,7 +322,6 @@ describe('a human wait', () => {
     await withHarness(
       {
         script: [askHuman],
-        humanInput: true,
         stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
       },
       async ({ handler, bureau }) => {
@@ -368,7 +366,6 @@ describe('a human wait', () => {
     await withHarness(
       {
         script: [askHuman],
-        humanInput: true,
         stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
       },
       async ({ handler, bureau }) => {
@@ -421,7 +418,6 @@ describe('a thread that is waiting on an answer', () => {
     await withHarness(
       {
         script: [askHuman],
-        humanInput: true,
         stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
       },
       async ({ handler, bureau }) => {

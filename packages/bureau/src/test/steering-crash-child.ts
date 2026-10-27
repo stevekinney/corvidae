@@ -82,7 +82,7 @@ const bureau = await createBureau<AgentDefinitions>({
     }),
   },
   storage: { type: 'sqlite', path: storagePath },
-  durableExecution: true,
+  durable: true,
   // A short workflow claim, so a later process can recover this one's run
   // soon after it is killed (the parent waits out the TTL first).
   durableOwnership: {

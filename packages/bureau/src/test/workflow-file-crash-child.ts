@@ -79,7 +79,7 @@ const bureau = await createBureau<AgentDefinitions>({
   },
   workflowSource: workflowFileDirectory(workflowsPath),
   storage: killingAfterStepClaim(new BunSQLiteStorage(storagePath)),
-  durableExecution: true,
+  durable: true,
   durableOwnership: {
     ownership: 'workflow-lease',
     workflowClaimTtlMs: CLAIM_TTL_MS,

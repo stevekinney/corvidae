@@ -324,7 +324,6 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       },
       // A session run of a seeded agent is offered `requestHumanInput`, which `request-human-input`
       // calls to park for an operator's answer.
-      humanInput: true,
       validators: createSeededValidators(),
       // A file's `model` is a row of this catalog, so it runs with the key in the secrets.
       models: {

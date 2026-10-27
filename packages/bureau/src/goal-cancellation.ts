@@ -28,7 +28,7 @@
  * and answers from the same read-back, so `already-terminal` is reserved for a
  * goal that ended for some other reason.
  *
- * A bureau with no durable engine (`durableExecution: false` over a store that
+ * A bureau with no durable engine (`durable: false` over a store that
  * still holds goals) cannot do steps 1 to 3 or read anything in step 5, so it
  * records the marker and the commit and answers `cancellation-pending`
  * awaiting `durable-engine`; it never claims a workflow-level acknowledgement.

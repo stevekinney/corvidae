@@ -66,13 +66,13 @@ export async function settledEventsOf(bureau: Bureau, fireId: string) {
 export function fireBureauOptions(
   generate: GenerateFunction,
   seed: string,
-): Pick<BureauOptions, 'durableOwnership' | 'durableBackgroundTasks' | 'runtime' | 'agents'> {
+): Pick<BureauOptions, 'durableOwnership' | 'maintenance' | 'runtime' | 'agents'> {
   const runtime = createManualRuntimeServices({ identifierSeed: seed });
   drivenRuntimes.add(runtime);
   return {
     agents: { default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }) },
     durableOwnership: OWNERSHIP,
-    durableBackgroundTasks: 'manual',
+    maintenance: 'manual',
     runtime,
   };
 }

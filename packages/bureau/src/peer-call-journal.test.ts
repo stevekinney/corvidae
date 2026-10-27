@@ -156,7 +156,7 @@ async function callerBureau(
   const bureau = await createBureau<AgentDefinitions>({
     agents: { caller: agent },
     storage: { type: 'sqlite', path: databasePath },
-    durableExecution: true,
+    durable: true,
     durableOwnership: { ownership: 'none' },
   });
   bureaus.push(bureau);

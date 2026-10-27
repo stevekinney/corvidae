@@ -266,7 +266,7 @@ describe('a task registry that cannot write', () => {
         }),
       },
       storage: new StuckTaskRecordStorage(),
-      durableExecution: true,
+      durable: true,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
     cleanups.push(() => bureau.dispose());

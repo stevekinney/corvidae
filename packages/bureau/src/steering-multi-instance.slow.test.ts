@@ -30,7 +30,7 @@ async function openBureau(path: string) {
       }),
     },
     storage: { type: 'sqlite', path },
-    durableExecution: true,
+    durable: true,
   });
 }
 
@@ -67,7 +67,7 @@ describe('durable steering across two Bureau processes', () => {
         }),
       },
       storage: { type: 'sqlite', path },
-      durableExecution: true,
+      durable: true,
     });
     const bureauB = await openBureau(path);
     try {
@@ -132,7 +132,7 @@ describe('durable steering across two Bureau processes', () => {
         }),
       },
       storage: { type: 'sqlite', path },
-      durableExecution: true,
+      durable: true,
     });
     const bureauB = await openBureau(path);
     try {
@@ -236,7 +236,7 @@ describe('durable steering across two Bureau processes', () => {
         }),
       },
       storage: { type: 'sqlite', path },
-      durableExecution: true,
+      durable: true,
     });
     const bureauB = await openBureau(path);
     try {

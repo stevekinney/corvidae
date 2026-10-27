@@ -166,6 +166,9 @@ const LISTED_HISTORY_LIMIT = 100;
 /** How long a blocking send waits between reads of a task no event has announced. */
 const SETTLE_POLL_MS = 1_000;
 
+/** How long `CancelTask` waits, by default, for the task it canceled to stop. */
+const DEFAULT_CANCEL_WAIT_MS = 5_000;
+
 /**
  * What a send's ledger entry claims: for a continuation, the path it was admitted by. A retry
  * of a claim left pending takes the same path, whatever state the task has reached since, so an
@@ -304,7 +307,11 @@ export type BureauA2ARequestHandlerOptions = {
   readonly timers?: RuntimeTimers | undefined;
   /** The clock a command's deadline is read against, and the identifiers an expired task takes. */
   readonly runtime?: Pick<RuntimeServices, 'clock' | 'identifiers'> | undefined;
-  /** How long a cancel waits for the run's cleanup to acknowledge before it answers. */
+  /**
+   * How long `CancelTask` waits for the task it canceled to reach a terminal state before it
+   * answers. A task still stopping when the wait ends is answered as it stands. Defaults to five
+   * seconds.
+   */
   readonly cancelWaitMilliseconds?: number;
   /**
    * Whether the agent takes a new task: `false` once it is withdrawn. A withdrawn agent's tasks
@@ -736,7 +743,7 @@ export function createBureauA2ARequestHandler(
   options: BureauA2ARequestHandlerOptions,
 ): A2ARequestHandler {
   const { agentName, bureau, records, ledger } = options;
-  const cancelWait = options.cancelWaitMilliseconds ?? 0;
+  const cancelWait = options.cancelWaitMilliseconds ?? DEFAULT_CANCEL_WAIT_MS;
   const timers = options.timers ?? createDefaultRuntimeServices().timers;
   const runtime = options.runtime ?? createDefaultRuntimeServices();
   const declared = declaredExtensionsOf(options.card());
@@ -894,8 +901,13 @@ export function createBureauA2ARequestHandler(
    * Waits until the task is terminal or waits on its requester, or the request ends. The task's
    * own events wake it; a slow poll is only the safety net. An event that arrives while the task
    * is being read is not lost: it marks the read stale, and the task is read again at once.
+   * `done` is the state it waits for: {@link isSettled} unless the caller names another.
    */
-  async function settledView(taskId: string, signal: AbortSignal | undefined): Promise<TaskView> {
+  async function settledView(
+    taskId: string,
+    signal: AbortSignal | undefined,
+    done: (state: TaskView['status']) => boolean = isSettled,
+  ): Promise<TaskView> {
     let changed = false;
     let wake: (() => void) | undefined;
     const notify = () => {
@@ -910,7 +922,7 @@ export function createBureauA2ARequestHandler(
         changed = false;
         const view = await bureau.tasks.get(taskId);
         if (view === undefined) throw taskNotFound(taskId);
-        if (isSettled(view.status) || signal?.aborted === true) return view;
+        if (done(view.status) || signal?.aborted === true) return view;
         if (changed) continue;
         await new Promise<void>((resolve) => {
           const timer = timers.setTimeout(resolve, SETTLE_POLL_MS);
@@ -961,6 +973,28 @@ export function createBureauA2ARequestHandler(
         });
       }
       return view;
+    } finally {
+      timers.clearTimeout(timer);
+      signal?.removeEventListener('abort', forward);
+    }
+  }
+
+  /**
+   * The task once a cancel has stopped it: the first terminal view within `cancelWait`, or the
+   * task as it stands when the wait or the request ends first. A canceled run settles moments
+   * after the request, and `CancelTask` answers with the task in its post-cancel state.
+   */
+  async function stoppedView(
+    taskId: string,
+    context: ServerCallContext | undefined,
+  ): Promise<TaskView> {
+    const controller = new AbortController();
+    const timer = timers.setTimeout(() => controller.abort(), Math.max(0, cancelWait));
+    const signal = context === undefined ? undefined : requestSignalOf(context);
+    const forward = () => controller.abort();
+    signal?.addEventListener('abort', forward, { once: true });
+    try {
+      return await settledView(taskId, controller.signal, isTerminal);
     } finally {
       timers.clearTimeout(timer);
       signal?.removeEventListener('abort', forward);
@@ -1866,12 +1900,14 @@ export function createBureauA2ARequestHandler(
       if (isTerminal(view.status)) {
         throw new TaskNotCancelableError(`Task '${view.id}' is ${view.status}.`);
       }
-      const outcome = await bureau.tasks.cancel(view.id, cancelWait);
+      // The registry is not asked to wait for the cleanup: the wait below, for the task's terminal
+      // state, is what the answer needs.
+      const outcome = await bureau.tasks.cancel(view.id, 0);
       if (outcome === undefined) throw taskNotFound(view.id);
       if (outcome.reason === 'already-terminal') {
         throw new TaskNotCancelableError(`Task '${view.id}' finished before it could be canceled.`);
       }
-      const current = (await bureau.tasks.get(view.id)) ?? view;
+      const current = await stoppedView(view.id, context);
       return respondWith(current, { includeArtifacts: true, activated });
     },
 

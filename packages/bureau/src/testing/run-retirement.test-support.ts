@@ -1,27 +1,23 @@
 /**
  * `Bureau` has no method that deletes a run. A run leaves when its task ages out under
- * `BureauOptions.taskRetention`, which a durable maintenance pass applies on the runtime clock. A
+ * `BureauRetentionOptions.tasks`, which a durable maintenance pass applies on the runtime clock. A
  * test that needs a settled run gone builds its Bureau on a `ManualRuntimeServices` with
- * `taskRetention: { olderThan: TASK_RETENTION_MILLISECONDS }`, lets the run settle, and calls
+ * `retention: { tasks: { olderThan: TASK_RETENTION_MILLISECONDS } }`, lets the run settle, and calls
  * `retireSettledTasks`.
  */
 import type { ManualRuntimeServices } from '@lostgradient/lifecycle';
 
 import type { Bureau, BureauOptions } from '../types';
 
-/** The `taskRetention.olderThan` a test passes so that `retireSettledTasks` retires every settled task. */
+/** The `retention.tasks.olderThan` a test passes so that `retireSettledTasks` retires every settled task. */
 export const TASK_RETENTION_MILLISECONDS = 60_000;
 
 /**
  * The retention options a test spreads into its Bureau's options. A durable Bureau also keeps a
  * task for as long as its run-creation request is bound, so that binding is short too.
  */
-export const SHORT_TASK_RETENTION: Pick<
-  BureauOptions,
-  'taskRetention' | 'runCreationTerminalRetentionMs'
-> = {
-  taskRetention: { olderThan: TASK_RETENTION_MILLISECONDS },
-  runCreationTerminalRetentionMs: 1_000,
+export const SHORT_TASK_RETENTION: Pick<BureauOptions, 'retention'> = {
+  retention: { tasks: { olderThan: TASK_RETENTION_MILLISECONDS }, receipts: { olderThan: 1_000 } },
 };
 
 /**
@@ -41,12 +37,8 @@ export async function retireSettledTasks(
  * The retention options for a Bureau on the real clock, where a test cannot move time: a settled
  * task is retired as soon as a millisecond has passed since it settled.
  */
-export const IMMEDIATE_TASK_RETENTION: Pick<
-  BureauOptions,
-  'taskRetention' | 'runCreationTerminalRetentionMs'
-> = {
-  taskRetention: { olderThan: 0 },
-  runCreationTerminalRetentionMs: 1,
+export const IMMEDIATE_TASK_RETENTION: Pick<BureauOptions, 'retention'> = {
+  retention: { tasks: { olderThan: 0 }, receipts: { olderThan: 1 } },
 };
 
 /**

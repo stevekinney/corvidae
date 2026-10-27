@@ -71,7 +71,7 @@ async function createDurableBureauWithRunningSession(
       default: createAgent({ generate: createHungGenerate(), toolbox: createEmptyToolbox() }),
     },
     storage: { type: 'memory' },
-    durableExecution: true,
+    durable: true,
     ...overrides,
   });
   const sessionId = await createRunningBureauSession(bureau);
@@ -248,7 +248,7 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
         default: createAgent({ generate: createHungGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     try {
       const firstSessionId = await createRunningBureauSession(bureau, 'alice');
@@ -288,7 +288,7 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
         default: createAgent({ generate: createHungGenerate(), toolbox: createEmptyToolbox() }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     try {
       const sessionId = await createRunningBureauSession(bureau, 'alice');

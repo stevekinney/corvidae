@@ -145,7 +145,6 @@ describe('a fire canceled with a committed approval, then a crash before the can
 describe('a fire canceled while parked on a human wait', () => {
   const waitOptions = {
     generate: askingGenerate(),
-    humanInput: true,
     stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
   };
 
@@ -242,7 +241,7 @@ describe('a fire approval’s session prune commits before its in-memory state i
       storage,
       runtime,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
-      taskRetention: { olderThan: 60_000 },
+      retention: { tasks: { olderThan: 60_000 } },
       agents: {
         default: createAgent({
           generate: chargesOnce,

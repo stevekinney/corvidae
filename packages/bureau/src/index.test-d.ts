@@ -141,7 +141,16 @@ type RemovedBureauOption =
   | 'persistence'
   | 'sessionPersistenceSleep'
   | 'shutdownTimeoutSleep'
-  | 'sessionPersistenceRetryDelayMilliseconds';
+  | 'sessionPersistenceRetryDelayMilliseconds'
+  // COR-1701: the five retention windows now live under `retention`, and the two durable options
+  // were renamed `durable` and `maintenance`.
+  | 'auditRetention'
+  | 'checkpointRetention'
+  | 'eventRetention'
+  | 'taskRetention'
+  | 'runCreationTerminalRetentionMs'
+  | 'durableExecution'
+  | 'durableBackgroundTasks';
 export const bureauDeclaresNoRemovedMember: [Extract<keyof Bureau, RemovedBureauMember>] extends [
   never,
 ]
@@ -169,7 +178,9 @@ export const createdRunSummary: CreatedRunSummary = createdRun;
 
 // COR-424: the run-creation binding's retention window and its receipt query.
 void COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS;
-export const retentionOption: BureauOptions['runCreationTerminalRetentionMs'] = 86_400_000;
+export const retentionOption: NonNullable<BureauOptions['retention']> = {
+  receipts: { olderThan: 86_400_000 },
+};
 type LocateReturn424 = Awaited<ReturnType<Bureau['locateRunCreationReceipt']>>;
 declare const locatedReceipt: LocateReturn424;
 export const receiptLocation: RunCreationReceiptLocation = locatedReceipt;

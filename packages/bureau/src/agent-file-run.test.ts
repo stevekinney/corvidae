@@ -76,7 +76,7 @@ describe('bureau.run of a file agent', () => {
     expect(observed).toEqual([
       {
         model: OPUS_5_5,
-        tools: ['lookup-order'],
+        tools: ['lookup-order', 'requestHumanInput'],
         systemPrompt: 'You are a careful researcher.',
       },
     ]);
@@ -106,7 +106,7 @@ describe('bureau.run of a file agent', () => {
 
   it('schedules a file agent, refuses a name no agent has, and still fails at fire time once the file is gone (COR-1667)', async () => {
     const { bureau, put, directory, observed } = await start({
-      overrides: { durableExecution: true },
+      overrides: { durable: true },
     });
     await put('researcher.md', RESEARCHER);
     await bureau.agents.refresh();
@@ -215,7 +215,11 @@ describe('bureau.run of a file agent', () => {
 
 describe('a session run of a file agent', () => {
   it('runs with the same options as bureau.run, and records the hash on the session', async () => {
-    const harness = await start({ scripts: { [OPUS_5_5]: () => 'reply' } });
+    // `wakeup: false`: a session run is also offered `scheduleWakeup`, which a catalog run is not.
+    const harness = await start({
+      scripts: { [OPUS_5_5]: () => 'reply' },
+      overrides: { wakeup: false },
+    });
     const { bureau, put, observed } = harness;
     await put('researcher.md', RESEARCHER);
     await bureau.agents.refresh();
@@ -227,7 +231,7 @@ describe('a session run of a file agent', () => {
     const [catalogRun, sessionRun] = observed as [Observation, Observation];
     expect(sessionRun).toEqual(catalogRun);
     expect(sessionRun.systemPrompt).toBe('You are a careful researcher.');
-    expect(sessionRun.tools).toEqual(['lookup-order']);
+    expect(sessionRun.tools).toEqual(['lookup-order', 'requestHumanInput']);
 
     const hash = bureau.agents
       .list()

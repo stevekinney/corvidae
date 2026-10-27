@@ -1,5 +1,5 @@
 /**
- * COR-1527 — under `durableBackgroundTasks: 'manual'` a step that a restart runs again waits for
+ * COR-1527 — under `maintenance: 'manual'` a step that a restart runs again waits for
  * its recovered agent run through the engine's own handle, which maintenance drives, and not
  * through `waitForDurableRun`, which refuses to wait in that mode. An agent step also adopts an
  * existing run at its derived id only when that run carries the step's own marker.
@@ -27,7 +27,7 @@ const step = {
 };
 
 describe('an agent step that a restart runs again', () => {
-  it('waits for its recovered run under durableBackgroundTasks: manual, and completes', async () => {
+  it('waits for its recovered run under maintenance: manual, and completes', async () => {
     const root = await mkdtemp(join(tmpdir(), 'bureau-workflow-manual-'));
     cleanups.push(() => rm(root, { recursive: true, force: true }));
     const workflows = join(root, 'workflows');
@@ -60,7 +60,7 @@ describe('an agent step that a restart runs again', () => {
       overrides: {
         storage,
         durableOwnership: { ownership: 'none' },
-        durableBackgroundTasks: 'manual',
+        maintenance: 'manual',
         onDiagnostic: () => undefined,
       },
       // Slow enough that the re-run step finds its agent run still in flight.

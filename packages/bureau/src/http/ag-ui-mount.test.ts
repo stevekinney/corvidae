@@ -21,7 +21,7 @@ async function buildBureau(options: { durable: boolean }) {
       [AGENT_NAME]: createAgent({ generate, name: AGENT_NAME }),
       default: createAgent({ generate }),
     },
-    ...(options.durable ? { storage: { type: 'memory' as const }, durableExecution: true } : {}),
+    ...(options.durable ? { storage: { type: 'memory' as const }, durable: true } : {}),
   });
 }
 
@@ -89,7 +89,7 @@ describe('the agUi option on createBureauHandler', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     try {
       const handler = createBureauHandler(bureau, {

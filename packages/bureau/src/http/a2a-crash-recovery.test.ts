@@ -112,11 +112,9 @@ async function withService(
   const opened = await openBureau({
     agents: { asker: createAgent({ name: 'asker', generate }) },
     publish: ['asker'],
-    humanInput: true,
     bureauOptions: {
       runtime: bureauRuntime,
-      taskRetention: { olderThan: 2 * TASK_AGE_MILLISECONDS },
-      runCreationTerminalRetentionMs: 1000,
+      retention: { tasks: { olderThan: 2 * TASK_AGE_MILLISECONDS }, receipts: { olderThan: 1000 } },
     },
   });
   try {

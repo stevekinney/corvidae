@@ -81,7 +81,7 @@ type Store = Awaited<ReturnType<typeof createStore>>;
 
 async function openBureau(
   store: Store,
-  agents: Parameters<typeof createBureau>[0]['agents'],
+  agents: NonNullable<Parameters<typeof createBureau>[0]['agents']>,
   extra: Partial<Parameters<typeof createBureau>[0]> = {},
 ): Promise<Bureau> {
   const bureau = await createBureau({
@@ -89,7 +89,7 @@ async function openBureau(
     runtime: store.runtime,
     assets: { storage: store.fixture.storage, policy: { defaultRetentionMilliseconds: 1_000 } },
     storage: store.storage,
-    durableExecution: true,
+    durable: true,
     // A second Bureau may take over the run the first one never released.
     durableOwnership: { ownership: 'none' },
     ...extra,
@@ -186,7 +186,6 @@ describe('a sessionless durable run recovered after a crash', () => {
       toolbox: createToolbox([]),
       stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     });
-    const options = { humanInput: true, stopWhen: stopWhen.noToolCalls() };
     const reviewOf = async (bureau: Bureau, runId: string) => {
       await waitForCondition(
         () => bureau.listPendingReviews().some((review) => review.runId === runId),
@@ -195,11 +194,11 @@ describe('a sessionless durable run recovered after a crash', () => {
       return bureau.listPendingReviews().find((candidate) => candidate.runId === runId)!;
     };
 
-    const first = await openBureau(store, { painter }, options);
+    const first = await openBureau(store, { painter });
     const run = first.run('painter', 'Draw', { principal: alice.id });
     await reviewOf(first, run.id);
 
-    const second = await openBureau(store, { painter }, options);
+    const second = await openBureau(store, { painter });
     const claims: Array<{
       type: 'asset.retained' | 'asset.released';
       assetId: string;

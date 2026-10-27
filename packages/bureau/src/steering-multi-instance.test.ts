@@ -53,7 +53,7 @@ async function openBureau(path: string) {
       }),
     },
     storage: { type: 'sqlite', path },
-    durableExecution: true,
+    durable: true,
   });
 }
 
@@ -65,7 +65,7 @@ async function durableEnginePrototype() {
     generate: () => new Promise<never>(() => {}),
     toolbox: createToolbox([]),
     storage: { type: 'memory' },
-    durableExecution: true,
+    durable: true,
   });
   const prototype = Object.getPrototypeOf(probe.durable!.engine) as {
     get: (id: string) => Promise<unknown>;
@@ -288,7 +288,7 @@ describe('durable steering across two Bureau processes', () => {
         }),
       },
       storage: { type: 'sqlite', path },
-      durableExecution: true,
+      durable: true,
       runtime,
     });
     try {
@@ -396,7 +396,7 @@ describe('durable steering across two Bureau processes', () => {
         }),
       },
       storage: { type: 'sqlite', path },
-      durableExecution: true,
+      durable: true,
     });
     let bureauB: TestBureau | undefined;
 
@@ -519,7 +519,7 @@ describe('durable steering across two Bureau processes', () => {
         }),
       },
       storage: { type: 'sqlite', path },
-      durableExecution: true,
+      durable: true,
       modelPolicy: {
         policyRevision: 1,
         users: {
@@ -538,7 +538,7 @@ describe('durable steering across two Bureau processes', () => {
         }),
       },
       storage: { type: 'sqlite', path },
-      durableExecution: true,
+      durable: true,
       modelPolicy: {
         policyRevision: 2,
         users: { 'fast-tier': { exactOverride: { model: 'claude-opus-4-8' } } },
@@ -1373,7 +1373,7 @@ describe('durable steering across two Bureau processes', () => {
         }),
       },
       storage: { type: 'sqlite', path },
-      durableExecution: true,
+      durable: true,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
     });
     let disposed = false;
@@ -1841,7 +1841,7 @@ describe('durable steering across two Bureau processes', () => {
         }),
       },
       storage: { type: 'sqlite', path },
-      durableExecution: true,
+      durable: true,
       onDiagnostic: (diagnostic) => {
         diagnostics.push(diagnostic.message);
       },
@@ -1926,7 +1926,7 @@ describe('durable steering across two Bureau processes', () => {
         }),
       },
       storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
-      durableExecution: false,
+      durable: false,
     });
     try {
       const sessionId = await startRunningSession(bureau);

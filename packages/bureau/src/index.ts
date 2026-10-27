@@ -453,6 +453,8 @@ export type {
   BureauEventType,
   BureauMemoryAuthorityOptions,
   BureauOptions,
+  BureauReceiptRetentionOption,
+  BureauRetentionOptions,
   BureauRecoveryReport,
   BureauRunOptions,
   BureauShutdownOptions,

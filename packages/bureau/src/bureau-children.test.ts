@@ -441,7 +441,7 @@ describe('bureau.children over an ephemeral bureau', () => {
     const bureau = await createBureau({
       agents: {},
       storage: storageOverTextStore(failing),
-      durableExecution: false,
+      durable: false,
       onDiagnostic,
     });
 
@@ -517,7 +517,7 @@ describe('bureau.children over a durable bureau', () => {
     const bureau = await createBureau({
       agents: hangingAgents(),
       storage,
-      durableExecution: true,
+      durable: true,
       onDiagnostic,
     });
 
@@ -572,7 +572,7 @@ describe('bureau.children over a durable bureau', () => {
     const bureau = await createBureau({
       agents: hangingAgents(),
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       onDiagnostic,
     });
 
@@ -619,7 +619,7 @@ describe('bureau.children over a durable bureau', () => {
       const bureau = await createBureau({
         agents: hangingAgents(),
         storage: { type: 'sqlite', path },
-        durableExecution: true,
+        durable: true,
         onDiagnostic,
       });
 
@@ -648,7 +648,7 @@ describe('bureau.children over a durable bureau', () => {
       const second = await createBureau({
         agents: hangingAgents(),
         storage: { type: 'sqlite', path },
-        durableExecution: true,
+        durable: true,
         onDiagnostic,
       });
       try {
@@ -674,7 +674,7 @@ describe('bureau.children over a durable bureau', () => {
     const bureau = await createBureau({
       agents: { planner: lazyHanging('planner'), worker: lazyHanging('worker') },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       onDiagnostic,
     });
 
@@ -733,7 +733,7 @@ describe('bureau.children over a durable bureau', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       onDiagnostic,
     });
 
@@ -809,7 +809,7 @@ describe('bureau.children across a process restart', () => {
         }),
       },
       storage: { type: 'sqlite', path },
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
       onDiagnostic,
       children: { signals: { worker: proceedSignals }, delegation },
@@ -869,7 +869,7 @@ describe('bureau.children across a process restart', () => {
           }),
         },
         storage: { type: 'sqlite', path },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
         onDiagnostic,
         children: { signals: { worker: proceedSignals }, delegation },
@@ -912,7 +912,7 @@ describe('bureau.children across a process restart', () => {
       const bureauC = await createBureau({
         agents: {},
         storage: { type: 'sqlite', path },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
         onDiagnostic,
       });
@@ -952,7 +952,7 @@ describe('bureau.children across a process restart', () => {
           }),
         },
         storage: { type: 'sqlite', path },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
         onDiagnostic,
         children: { delegation },
@@ -995,7 +995,7 @@ describe('bureau.children across a process restart', () => {
           }),
         },
         storage: { type: 'sqlite', path },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
         onDiagnostic,
         // A different secret: every grant signed under the old one fails verification.

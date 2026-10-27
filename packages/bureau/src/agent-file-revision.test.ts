@@ -636,9 +636,9 @@ describe('a Bureau restarted after an offline edit', () => {
     directories.push(agents);
     const storagePath = join(directory, 'bureau.sqlite');
     const overrides = {
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' as const },
-      durableBackgroundTasks: 'manual' as const,
+      maintenance: 'manual' as const,
       onDiagnostic: () => undefined,
     };
     const recordOf = async (storage: Storage, runId: string) => {

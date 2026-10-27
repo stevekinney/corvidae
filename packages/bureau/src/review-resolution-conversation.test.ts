@@ -108,7 +108,7 @@ async function parkedBureau(toolbox: Toolbox, diagnostics: string[] = []) {
       }),
     },
     storage: { type: 'memory' },
-    durableExecution: false,
+    durable: false,
     onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
   });
   const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
@@ -408,7 +408,7 @@ describe('an approval resolved while its run is still going', () => {
         }),
       },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       onDiagnostic: () => undefined,
     });
     try {
@@ -464,7 +464,7 @@ describe('createRun with neither message nor appendMessages', () => {
         default: createAgent({ generate: async () => ({ content: 'Hello.', toolCalls: [] }) }),
       },
       storage: { type: 'memory' },
-      durableExecution: false,
+      durable: false,
     });
     try {
       const first = await bureau.createRun({ agentName: 'default', message: 'Hi' });

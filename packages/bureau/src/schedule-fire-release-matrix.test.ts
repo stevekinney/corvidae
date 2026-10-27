@@ -65,7 +65,7 @@ async function fireWithApproval(kind: 'stopped' | 'continuing') {
         ? stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls())
         : stopWhen.noToolCalls(),
     storage,
-    taskRetention: { olderThan: 1 },
+    retention: { tasks: { olderThan: 1 } },
   };
   const bureau = await harness.open(options);
   const { fireId, scheduleId } = await fireOnce(bureau, OWNER.alice, SESSION);

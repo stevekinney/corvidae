@@ -48,7 +48,7 @@ it('writes the file as the agent after a restart, for a session run that was in 
       workflowSource: workflowFileDirectory(workflows),
       models: { generate: () => generate },
       storage,
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
       onDiagnostic: () => undefined,
     });

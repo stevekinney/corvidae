@@ -129,7 +129,7 @@ describe('a catalog task', () => {
   });
 
   it('is input-required while its run waits on a human, and respond answers that wait', async () => {
-    await withBureau({ agents: { asker }, humanInput: true }, async (opened) => {
+    await withBureau({ agents: { asker } }, async (opened) => {
       const run = opened.bureau.run('asker', 'which one?', { principal: OWNER.alice });
       await waitForCondition(
         () => opened.bureau.listPendingReviews().some((review) => review.runId === run.id),

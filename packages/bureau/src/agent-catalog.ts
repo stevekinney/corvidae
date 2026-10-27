@@ -208,7 +208,7 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
   tools(): readonly AgentToolDescription[];
   /**
    * The snapshots that have run for `id`, most recently run first. A snapshot is kept while any
-   * run that references it is retained (`BureauOptions.taskRetention`) and pruned after the last.
+   * run that references it is retained (`BureauRetentionOptions.tasks`) and pruned after the last.
    */
   revisions(id: string): Promise<readonly AgentRevision[]>;
   /**

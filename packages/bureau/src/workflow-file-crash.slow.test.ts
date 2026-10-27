@@ -56,7 +56,7 @@ function openBureau(storagePath: string, workflows: string, messages: string[]):
     agents: { ...agents },
     workflowSource: workflowFileDirectory(workflows),
     storage: { type: 'sqlite', path: storagePath },
-    durableExecution: true,
+    durable: true,
     durableOwnership: {
       ownership: 'workflow-lease',
       workflowClaimTtlMs: CLAIM_TTL_MS,

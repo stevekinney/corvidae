@@ -53,7 +53,7 @@ function parksThenAnswers(): GenerateFunction {
 async function withA2A<T>(
   generate: GenerateFunction,
   body: (opened: OpenedBureau) => Promise<T>,
-  options: { humanInput?: boolean; second?: boolean } = {},
+  options: { second?: boolean } = {},
 ): Promise<T> {
   const opened = await openBureau({
     agents: {
@@ -62,7 +62,6 @@ async function withA2A<T>(
     },
     publish: options.second === true ? ['asker', 'other'] : ['asker'],
     durableHistory: true,
-    ...(options.humanInput === true ? { humanInput: true } : {}),
     handlerOptions: { publicUrl: 'http://localhost' },
   });
   try {
@@ -158,36 +157,32 @@ describe('the command-receipts extension', () => {
   });
 
   it('refuses a continuation with a stale expectedRevision, typed and changing nothing', async () => {
-    await withA2A(
-      parksThenAnswers(),
-      async (opened) => {
-        const parked = await send(opened, { message: message('start') });
-        const task = parked.result.task;
-        const revision = receiptOf(parked).revision;
-        expect(typeof revision).toBe('string');
+    await withA2A(parksThenAnswers(), async (opened) => {
+      const parked = await send(opened, { message: message('start') });
+      const task = parked.result.task;
+      const revision = receiptOf(parked).revision;
+      expect(typeof revision).toBe('string');
 
-        const stale = await send(opened, {
-          message: message('blue', {
-            taskId: task.id,
-            metadata: { [COMMAND_RECEIPTS_EXTENSION_URI]: { expectedRevision: `${revision}-old` } },
-          }),
-        });
+      const stale = await send(opened, {
+        message: message('blue', {
+          taskId: task.id,
+          metadata: { [COMMAND_RECEIPTS_EXTENSION_URI]: { expectedRevision: `${revision}-old` } },
+        }),
+      });
 
-        expect(stale.error.code).toBe(-32602);
-        expect(stale.error.data[0]).toMatchObject({
-          reason: 'STALE_REVISION',
-          domain: 'bureau',
-          metadata: {
-            taskId: task.id,
-            expectedRevision: `${revision}-old`,
-            currentRevision: revision,
-          },
-        });
-        const view = await opened.bureau.tasks.get(task.id);
-        expect(view?.status).toBe('input-required');
-      },
-      { humanInput: true },
-    );
+      expect(stale.error.code).toBe(-32602);
+      expect(stale.error.data[0]).toMatchObject({
+        reason: 'STALE_REVISION',
+        domain: 'bureau',
+        metadata: {
+          taskId: task.id,
+          expectedRevision: `${revision}-old`,
+          currentRevision: revision,
+        },
+      });
+      const view = await opened.bureau.tasks.get(task.id);
+      expect(view?.status).toBe('input-required');
+    });
   });
 
   it('records a new task whose deadline has passed as failed and expired, starting no run', async () => {
@@ -249,26 +244,22 @@ describe('the command-receipts extension', () => {
   });
 
   it('leaves a waiting task waiting when a continuation’s deadline has passed', async () => {
-    await withA2A(
-      parksThenAnswers(),
-      async (opened) => {
-        const started = await send(opened, { message: message('start') });
-        const parked = started.result.task;
+    await withA2A(parksThenAnswers(), async (opened) => {
+      const started = await send(opened, { message: message('start') });
+      const parked = started.result.task;
 
-        const late = await send(opened, {
-          message: message('blue', {
-            taskId: parked.id,
-            metadata: {
-              [COMMAND_RECEIPTS_EXTENSION_URI]: { deadline: '2000-01-01T00:00:00Z' },
-            },
-          }),
-        });
+      const late = await send(opened, {
+        message: message('blue', {
+          taskId: parked.id,
+          metadata: {
+            [COMMAND_RECEIPTS_EXTENSION_URI]: { deadline: '2000-01-01T00:00:00Z' },
+          },
+        }),
+      });
 
-        expect(late.result.task.status.state).toBe('TASK_STATE_INPUT_REQUIRED');
-        expect(receiptOf(late).receipt.state).toBe('expired');
-      },
-      { humanInput: true },
-    );
+      expect(late.result.task.status.state).toBe('TASK_STATE_INPUT_REQUIRED');
+      expect(receiptOf(late).receipt.state).toBe('expired');
+    });
   });
 
   it('answers TIMEOUT when the deadline passes while a blocking send waits, and the task goes on', async () => {
