@@ -81,7 +81,13 @@ import { createA2APushProjector } from './a2a-push-projector.ts';
 import { type A2ATaskRecords, createA2ATaskRecords } from './a2a-task-record.ts';
 import { mediaInputModesOf, mediaOutputModesOf } from './a2a-agent-card.ts';
 import { createTaskReader } from './a2a-task-reader.ts';
-import type { Bureau, BureauReviews, BureauSchedules, BureauInternals } from '../types.ts';
+import type {
+  Bureau,
+  BureauAudit,
+  BureauInternals,
+  BureauReviews,
+  BureauSchedules,
+} from '../types.ts';
 import { bureauReviewsOperations } from './bureau-reviews-operations.ts';
 import { bureauRunEventsSubscriptionOperation } from './bureau-run-events-operation.ts';
 import { createAssetsMount } from './assets-mount.ts';
@@ -214,6 +220,7 @@ export type BureauHandlerSource = Pick<
   | 'removeEventListener'
 > & {
   readonly reviews: Pick<BureauReviews, 'list' | 'get' | 'resolve' | 'pendingOf'>;
+  readonly audit: Pick<BureauAudit, 'query'>;
   readonly schedules: Pick<
     BureauSchedules,
     | 'create'
@@ -1070,10 +1077,8 @@ export function buildBureauHandlerHost(
     goals: bureau.goals,
     memory: { governed: bureau.memory, tenantId: bureau.id },
     audit: {
-      get trail() {
-        return bureau.internals.auditTrail;
-      },
-      ownerOf: ({ runId, detail }) => bureau.getOwner({ kind: 'audit', runId, detail }),
+      keepsTrail: () => bureau.internals.auditTrail !== undefined,
+      query: bureau.audit.query,
     },
     assets: bureau.assets,
     respondLedger: createRespondLedger(bureau),

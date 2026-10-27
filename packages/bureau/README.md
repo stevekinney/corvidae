@@ -279,6 +279,7 @@ The most commonly used members:
 | `subscribeLiveFrames(listener)` | `() => void` | Subscribe to every `ServerFrame` the bureau emits; returns an unsubscribe function. The first subscriber is also replayed (in a microtask, after the call returns its unsubscribe handle) the frames emitted during boot recovery and by the runs it recovered (at most the newest 1024, in emission order), so recovered runs that emitted while `createBureau()` was still awaiting are not lost; later subscribers see only new frames. |
 | `addEventListener` / `on` / `once` / `subscribe` / `toObservable` / `events` | — | The typed `BureauEventMap` surface for actions, run registration and removal, disposal, schedule lifecycle, recovery decisions, and non-pending review transitions. Schedule terminal events carry the fired `runId`; recovery events carry the classification verdict or rejection reason; review events carry identifiers and status metadata but never approval arguments, signal payloads, or decision reasons. |
 | `eventHistory` / `subscribeEventHistory` | `(owner, options?) => Promise<DurableEventPage \| DurableEventGap \| EventHistoryUnsupportedOutcome>` / `(owner, listener, options?) => Subscription` | `eventHistory` pages one run's or session's durable event history, `subscribeEventHistory` replays then live-tails it with no gap or duplicate at the handoff (AB-91/AB-311). |
+| `audit` | `BureauAudit` | The audit trail read as redacted metadata: `query(filter?, options?)` returns `{ records, nextCursor }`, the same records `bureau.audit.query` serves over the handler. The raw trail is `bureau.internals.auditTrail`. See [The Audit Trail](#the-audit-trail). |
 | `reviews` | `BureauReviews` | The reviews awaiting a human decision: `list()`, `get(id)`, `resolve(input)`, `pendingOf(taskId)`. See [Reviews](#reviews-bureaureviews). |
 | `shutdown(options?)` | `Promise<BureauShutdownReport>` | AB-207—the awaited drain. `{ policy: 'abort' }` (the default) aborts every active run immediately, then awaits every Bureau-owned subsystem's teardown (online-evals, webhook notifier, audit trail, durable engine); `{ policy: 'drain' }` lets every caller-owned run (`bureau.run`/session-owned) reach its own natural terminal result while Bureau-owned background work is stopped identically to `'abort'`. `timeoutMilliseconds` bounds the WAIT only—on elapse, `shutdown()` resolves (never rejects) reporting every still-outstanding owner `'unresolved'`; the underlying drain is not abandoned, only the wait for it. |
 | `dispose()` | `Promise<void>` | Thin wrapper over `shutdown({ policy: 'abort' })`, kept for its existing `Promise<void>` shape. Tears down subscriptions and closes owned storage handles—genuinely awaited now (AB-207), not fire-and-forget. |
@@ -352,6 +353,24 @@ const toFrame: (runId: string, event: StreamEvent) => StreamFrame | undefined = 
 Converts an `operative` `StreamEvent` (`stream:text-delta`, `stream:tool-call-start`, `stream:tool-call-delta`, `stream:tool-call-complete`, `stream:complete`, `stream:error`) into the matching typed `StreamFrame` (the stream members of `ServerFrame`, before Bureau stamps `runSeq`), stamped with the owning `runId`. Returns `undefined` for event types with no frame equivalent. Bureau uses this internally to translate a run's `streaming` output into the frames delivered by `subscribeLiveFrames`; an application-owned WebSocket or server-sent events transport can use it the same way.
 
 ### The Audit Trail
+
+`bureau.audit.query(filter?, options?)` reads the audit trail as metadata and is what the handler's `bureau.audit.query` operation delegates to, so an in-process caller and a wire caller read identical records for the same filter. Each record is `sequence`, `timestamp`, `type`, `resource` (the run, `schedule:<id>`, `session:<id>`, `agent:<id>`, or `workflow:<id>`), `principal` (the actor), and a few scalar `detail` fields from an allowlist; no secret, transcript, tool argument, tool result, review prompt, or memory content leaves the Bureau. `filter` narrows by `runId`, `type`, and `since` (epoch milliseconds) and pages with `limit` (1 to 100, default 50) and `cursor`; `nextCursor` is `null` on the last page. An in-process caller is the host and reads every record. Pass `options.owner` (an owner string such as `api-key:alice`) to read as that owner: only records about resources it owns come back, and a page is filled from those, so a cursor advances across records the owner may not see. The handler does exactly that for a caller without `bureau.audit:read`, and passes no owner for one with it. A Bureau without `storage` keeps no trail: `query` rejects with `BureauError` (`UNSUPPORTED_CAPABILITY`), and a `limit` or `cursor` it did not issue rejects with `BAD_REQUEST`.
+
+```typescript
+import type { Bureau } from '@lostgradient/bureau';
+
+declare const bureau: Bureau;
+
+const first = await bureau.audit.query({ type: 'run.completed', limit: 20 });
+const next =
+  first.nextCursor === null
+    ? undefined
+    : await bureau.audit.query({ type: 'run.completed', limit: 20, cursor: first.nextCursor });
+const alices = await bureau.audit.query({}, { owner: 'api-key:alice' });
+console.log(first.records.length, next?.records.length, alices.records.length);
+```
+
+The raw, unredacted trail is `bureau.internals.auditTrail`:
 
 ```typescript
 import { createAuditTrail, type Bureau } from '@lostgradient/bureau';

@@ -548,7 +548,7 @@ Every current `Bureau` member (`packages/bureau/src/types.ts:1102-1836`) maps to
 | `reviews.list`, `reviews.get`, `reviews.resolve` | `bureau.reviews.*`; `INPUT_REQUIRED` on the task |
 | `issueGrant`, `revokeGrant`, `listGrants` | Internal |
 | `webhookNotifier` | `bureau.deliveries.*`; push notification configs |
-| `auditTrail` | `bureau.audit.query` |
+| `audit.query` (was `auditTrail`; the raw trail is `internals.auditTrail`) | `bureau.audit.query`, which delegates to it |
 | `eventHistory`, `subscribeEventHistory` | `bureau.tasks.events`; the durable-history extension |
 | `eventFeed`, `runEventFeeds`, `subscribeLiveFrames`, `events`, `on`, `once`, `subscribe`, `toObservable`, `addEventListener`, `removeEventListener` | Internal; the live sources behind the AG-UI streams and, without durable history, the A2A status and artifact projection |
 | `agents` | Agent Cards; `bureau.agents.list` |
