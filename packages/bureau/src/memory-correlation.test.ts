@@ -68,10 +68,8 @@ async function answerOnce(createContextEpoch?: () => ContextEpochSealer) {
     requestAuthorityValidator: () => true,
   });
   bureaus.push(bureau);
-  const run = await bureau.createRun({
-    message: 'Where does the user like to sit?',
-    sessionId: 'session-7',
-    agentName: 'scout',
+  const run = await bureau.tasks.start('scout', 'Where does the user like to sit?', {
+    contextId: 'session-7',
     principal: 'owner-a',
     requestContext,
   });

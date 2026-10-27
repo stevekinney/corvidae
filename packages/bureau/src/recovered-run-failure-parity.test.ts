@@ -167,10 +167,10 @@ async function withFreshRun<T>(
     assets: { storage: createMemoryAssetStorage() },
   });
   try {
-    const run = await bureau.createRun({ agentName: 'default', message: 'Go.' });
+    const run = await bureau.tasks.start('default', 'Go.');
     await whenRunning?.(bureau, run.id);
     open();
-    return await inspect(await settle(bureau, run.id, run.sessionId));
+    return await inspect(await settle(bureau, run.id, run.contextId));
   } finally {
     open();
     await bureau.dispose();
@@ -209,7 +209,7 @@ async function withRecoveredRun<T>(
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
-    const run = await bureauA.createRun({ agentName: 'default', message: 'Go.' });
+    const run = await bureauA.tasks.start('default', 'Go.');
     await crashed.reached;
     replayed = holdFirstTerminalRunCommit(
       await resolveStorage({ type: 'sqlite', path: databasePath }),
@@ -235,7 +235,7 @@ async function withRecoveredRun<T>(
     await replayed.reached;
     await beforeReplaySettles?.(bureauB, run.id);
     replayed.release();
-    return await inspect(await settle(bureauB, run.id, run.sessionId), calls);
+    return await inspect(await settle(bureauB, run.id, run.contextId), calls);
   } finally {
     await bureauB?.dispose();
     // Disposed before any release: bureau A's held commit stays pending, as a dead process's would.

@@ -8,7 +8,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
-import type { Bureau, RunSummary } from '../types';
+import type { Bureau, TaskHandle } from '../types';
 import {
   BureauHarnessUnsupportedError,
   type BureauTestHarness,
@@ -203,16 +203,16 @@ describe('createBureauTestHarness', () => {
   });
 
   describe('startSession', () => {
-    it('is a thin wrapper over Bureau.createRun', async () => {
+    it('is a thin wrapper over Bureau.tasks.start', async () => {
       const harness = await harnessWithMemoryStorage();
 
-      const summary = await harness.startSession({
+      const summary = await harness.startTask({
         agentName: 'default',
-        message: 'hello session',
+        input: 'hello session',
       });
       await waitForTaskState(harness.bureau, summary.id);
 
-      expect(summary.sessionId).toBeDefined();
+      expect(summary.contextId).toBeDefined();
       expect(harness.bureau.tasks.detail(summary.id)?.status).toBe('completed');
     });
   });
@@ -226,7 +226,7 @@ describe('createBureauTestHarness', () => {
         },
       });
 
-      const parent = await harness.startSession({ agentName: 'default', message: 'parent' });
+      const parent = await harness.startTask({ agentName: 'default', input: 'parent' });
       const child = harness.startChild(parent.id, 'helper', 'child input');
 
       expect(child.parentRunId).toBe(parent.id);
@@ -246,9 +246,9 @@ describe('createBureauTestHarness', () => {
     it('is a thin wrapper over Bureau.getDurableRun, returning undefined without a durable engine', async () => {
       const harness = await harnessWithMemoryStorage();
 
-      const summary = await harness.startSession({
+      const summary = await harness.startTask({
         agentName: 'default',
-        message: 'no durable engine here',
+        input: 'no durable engine here',
       });
       await waitForTaskState(harness.bureau, summary.id);
 
@@ -260,14 +260,14 @@ describe('createBureauTestHarness', () => {
     it('is a thin wrapper over BureauContexts.signal, propagating its NOT_CONFIGURED error without a durable engine', async () => {
       const harness = await harnessWithMemoryStorage();
 
-      const summary = await harness.startSession({
+      const summary = await harness.startTask({
         agentName: 'default',
-        message: 'no durable engine here',
+        input: 'no durable engine here',
       });
       await waitForTaskState(harness.bureau, summary.id);
 
       expect(
-        await throwingRejectionOf(harness.deliverSignal(summary.sessionId, 'wake', {})),
+        await throwingRejectionOf(harness.deliverSignal(summary.contextId, 'wake', {})),
       ).toThrow(/durable/i);
     });
   });
@@ -312,9 +312,9 @@ describe('createBureauTestHarness', () => {
         },
       });
 
-      const summary = await harness.startSession({
+      const summary = await harness.startTask({
         agentName: 'default',
-        message: 'trigger approval',
+        input: 'trigger approval',
       });
       await waitForTaskState(harness.bureau, summary.id);
 
@@ -377,7 +377,7 @@ describe('createBureauTestHarness — durable backend (sqlite)', () => {
       expect(schedule?.id).toBeDefined();
       expect(schedule?.status).toBe('active');
 
-      const summary = await harness.startSession({ agentName: 'default', message: 'durable run' });
+      const summary = await harness.startTask({ agentName: 'default', input: 'durable run' });
       await waitForTaskState(harness.bureau, summary.id);
 
       const durableRun = await harness.reattachDurable(summary.id);
@@ -429,8 +429,8 @@ describe('two concurrent harnesses are fully isolated', () => {
       let storageB: BureauStorageFixture;
       let harnessA: BureauTestHarness;
       let harnessB: BureauTestHarness;
-      let runA: RunSummary;
-      let runB: RunSummary;
+      let runA: TaskHandle;
+      let runB: TaskHandle;
       let eventsSeenByA: string[];
 
       beforeAll(async () => {
@@ -463,8 +463,8 @@ describe('two concurrent harnesses are fully isolated', () => {
       // frame from firing later, during the event-isolation hook's
       // subscription window, and being mistaken for cross-harness leakage.
       beforeAll(async () => {
-        runA = await harnessA.startSession({ agentName: 'default', message: 'on A' });
-        runB = await harnessB.startSession({ agentName: 'default', message: 'on B' });
+        runA = await harnessA.startTask({ agentName: 'default', input: 'on A' });
+        runB = await harnessB.startTask({ agentName: 'default', input: 'on B' });
         await waitForTerminalSnapshot(harnessA.bureau, runA.id);
       });
 
@@ -488,9 +488,9 @@ describe('two concurrent harnesses are fully isolated', () => {
         // harnessA into afterAll's teardown, which could mask the real
         // failure behind an unrelated dispose-time symptom.
         try {
-          const runOnBOnly = await harnessB.startSession({
+          const runOnBOnly = await harnessB.startTask({
             agentName: 'default',
-            message: 'B-only run',
+            input: 'B-only run',
           });
           await waitForTerminalSnapshot(harnessB.bureau, runOnBOnly.id);
         } finally {

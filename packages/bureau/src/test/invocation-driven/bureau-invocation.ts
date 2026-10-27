@@ -84,11 +84,7 @@ async function parentRunId(): Promise<string | undefined> {
 
 /** Starts the parent and its child, and returns once the child is done and the parent is parked. */
 async function startParentWithChild(): Promise<void> {
-  const parent = await bureau.createRun({
-    agentName: 'default',
-    message: 'plan the work',
-    principal: PRINCIPAL,
-  });
+  const parent = await bureau.tasks.start('default', 'plan the work', { principal: PRINCIPAL });
   const dispatched = await bureau.children.dispatch({
     parentRunId: parent.id,
     agentName: 'worker',

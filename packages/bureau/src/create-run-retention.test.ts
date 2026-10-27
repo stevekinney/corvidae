@@ -27,18 +27,19 @@ import {
   createSqliteStorageFixture,
 } from './test/storage-fixtures';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
-import type { Bureau, BureauOptions, CreateRunRequest } from './types';
+import type { Bureau, BureauOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { type TaskStartRequest, startTaskFrom } from './test/task-start-request.ts';
 
 const ORIGIN = '2026-10-13T00:00:00.000Z';
 const ORIGIN_MS = Date.parse(ORIGIN);
 const DAY_MS = 86_400_000;
 
-const REQUEST: CreateRunRequest = {
+const REQUEST: TaskStartRequest = {
   agentName: 'default',
-  message: 'Summarize the quarter.',
+  input: 'Summarize the quarter.',
   principal: 'alice',
-  runCreationRequestId: 'request-1',
+  commandId: 'request-1',
 };
 
 const LOCATE = {
@@ -114,10 +115,10 @@ async function pollUntil(check: () => boolean): Promise<boolean> {
 }
 
 /** Creates the request's run, waits for it to finish, and lets a receipt query observe that. */
-async function settledRun(bureau: Bureau, request: CreateRunRequest = REQUEST) {
-  const created = await bureau.createRun(request);
+async function settledRun(bureau: Bureau, request: TaskStartRequest = REQUEST) {
+  const created = await startTaskFrom(bureau, request);
   expect(await pollUntil(() => bureau.tasks.detail(created.id)?.status === 'completed')).toBe(true);
-  expect(await bureau.tasks.receipt(LOCATE)).toEqual(recorded(created.receipt, created.sessionId));
+  expect(await bureau.tasks.receipt(LOCATE)).toEqual(recorded(created.receipt, created.contextId));
   return created;
 }
 
@@ -141,7 +142,7 @@ describe.each(BACKENDS)('run-creation retention over %s', (_backend, factory) =>
       const created = await settledRun(bureau);
 
       runtime.setTime(ORIGIN_MS + DAY_MS - 1);
-      const retry = await bureau.createRun(REQUEST);
+      const retry = await startTaskFrom(bureau, REQUEST);
 
       expect(retry.id).toBe(created.id);
       expect(retry.receipt).toEqual(created.receipt);
@@ -159,7 +160,7 @@ describe.each(BACKENDS)('run-creation retention over %s', (_backend, factory) =>
         requestId: 'request-1',
         expiredAt: new Date(ORIGIN_MS + DAY_MS).toISOString(),
       });
-      const fresh = await bureau.createRun(REQUEST);
+      const fresh = await startTaskFrom(bureau, REQUEST);
 
       expect(fresh.id).not.toBe(created.id);
       expect(fresh.receipt).toEqual({
@@ -176,13 +177,13 @@ describe.each(BACKENDS)('run-creation retention over %s', (_backend, factory) =>
   it('no longer reports a conflict for a different payload once the binding has expired', async () => {
     await withBureau(factory, async (bureau, runtime) => {
       const created = await settledRun(bureau);
-      const changed = { ...REQUEST, message: 'Summarize the year.' };
-      expect(await rejectionOf(bureau.createRun(changed))).toBeInstanceOf(
+      const changed = { ...REQUEST, input: 'Summarize the year.' };
+      expect(await rejectionOf(startTaskFrom(bureau, changed))).toBeInstanceOf(
         BureauLedgerConflictError,
       );
 
       runtime.setTime(ORIGIN_MS + DAY_MS);
-      const fresh = await bureau.createRun(changed);
+      const fresh = await startTaskFrom(bureau, changed);
 
       expect(fresh.id).not.toBe(created.id);
       expect(fresh.receipt).toMatchObject({ runId: fresh.id, requestId: 'request-1' });
@@ -197,11 +198,11 @@ describe.each(BACKENDS)('run-creation retention over %s', (_backend, factory) =>
         const created = await settledRun(bureau);
 
         runtime.setTime(ORIGIN_MS + 59_999);
-        expect(await bureau.createRun(REQUEST)).toMatchObject({ id: created.id });
+        expect(await startTaskFrom(bureau, REQUEST)).toMatchObject({ id: created.id });
 
         runtime.setTime(ORIGIN_MS + 60_000);
         expect(await bureau.tasks.receipt(LOCATE)).toMatchObject({ status: 'expired' });
-        const fresh = await bureau.createRun(REQUEST);
+        const fresh = await startTaskFrom(bureau, REQUEST);
         expect(fresh.id).not.toBe(created.id);
       },
       { retention: { receipts: { olderThan: 60_000 } } },
@@ -213,7 +214,7 @@ describe.each(BACKENDS)('run-creation retention over %s', (_backend, factory) =>
     await withBureau(
       factory,
       async (bureau, runtime) => {
-        const created = await bureau.createRun(REQUEST);
+        const created = await startTaskFrom(bureau, REQUEST);
         const settledAt = ORIGIN_MS + 5_000;
         runtime.setTime(settledAt);
         gate.resolve();
@@ -228,7 +229,7 @@ describe.each(BACKENDS)('run-creation retention over %s', (_backend, factory) =>
           requestId: 'request-1',
           expiredAt: new Date(settledAt + DAY_MS).toISOString(),
         });
-        const fresh = await bureau.createRun(REQUEST);
+        const fresh = await startTaskFrom(bureau, REQUEST);
         expect(fresh.id).not.toBe(created.id);
       },
       {
@@ -243,7 +244,7 @@ describe.each(BACKENDS)('run-creation retention over %s', (_backend, factory) =>
       async (bureau, runtime) => {
         const created = await settledRun(bureau);
         expect(
-          await rejectionOf(bureau.createRun({ ...REQUEST, message: 'Summarize the year.' })),
+          await rejectionOf(startTaskFrom(bureau, { ...REQUEST, input: 'Summarize the year.' })),
         ).toBeInstanceOf(BureauLedgerConflictError);
 
         runtime.setTime(ORIGIN_MS + DAY_MS - 1);

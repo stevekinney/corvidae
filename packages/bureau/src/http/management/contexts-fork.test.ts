@@ -47,7 +47,7 @@ async function withBureau<T>(body: (opened: OpenedBureau) => Promise<T>): Promis
 }
 
 async function finishedSession(opened: OpenedBureau, principal: string = OWNER.alice) {
-  const run = await opened.bureau.createRun({ message: 'go', agentName: 'agent', principal });
+  const run = await opened.bureau.tasks.start('agent', 'go', { principal });
   await waitForTaskState(opened.bureau, run.id);
   return run;
 }
@@ -71,7 +71,7 @@ describe('bureau.contexts.fork', () => {
       const run = await finishedSession(opened);
       const through = `${run.id}:step:1`;
 
-      const body = await forkCall(opened, run.sessionId, 'alice-key', {
+      const body = await forkCall(opened, run.contextId, 'alice-key', {
         throughMessageId: through,
       });
 
@@ -81,17 +81,17 @@ describe('bureau.contexts.fork', () => {
       const list = await rpc(opened.handler, 'bureau.contexts.list', {}, 'alice-key');
       const rows = list.result?.['contexts'] as Array<Record<string, unknown>>;
       expect(rows.find((row) => row['id'] === contextId)).toMatchObject({
-        parentContextId: run.sessionId,
+        parentContextId: run.contextId,
         forkedFromMessageId: through,
         owner: OWNER.alice,
       });
-      expect(rows.find((row) => row['id'] === run.sessionId)).toMatchObject({
+      expect(rows.find((row) => row['id'] === run.contextId)).toMatchObject({
         parentContextId: null,
         forkedFromMessageId: null,
       });
       const get = await rpc(opened.handler, 'bureau.contexts.get', { contextId }, 'alice-key');
       expect(get.result).toMatchObject({
-        parentContextId: run.sessionId,
+        parentContextId: run.contextId,
         forkedFromMessageId: through,
         model: null,
         configVersion: 0,
@@ -105,11 +105,11 @@ describe('bureau.contexts.fork', () => {
       await rpc(
         opened.handler,
         'bureau.contexts.steer',
-        { contextId: run.sessionId, commandId: 'switch', override: OPUS_5 },
+        { contextId: run.contextId, commandId: 'switch', override: OPUS_5 },
         'alice-key',
       );
 
-      const body = await forkCall(opened, run.sessionId, 'alice-key', {
+      const body = await forkCall(opened, run.contextId, 'alice-key', {
         throughMessageId: `${run.id}:step:1`,
       });
 
@@ -131,21 +131,19 @@ describe('bureau.contexts.fork', () => {
   it('answers an exact retry with the same result, and another message under the command as a Conflict', async () => {
     await withBureau(async (opened) => {
       const run = await finishedSession(opened);
-      const second = await opened.bureau.createRun({
-        message: 'again',
-        agentName: 'agent',
+      const second = await opened.bureau.tasks.start('agent', 'again', {
+        contextId: run.contextId,
         principal: OWNER.alice,
-        sessionId: run.sessionId,
       });
       await waitForTaskState(opened.bureau, second.id);
-      const first = await forkCall(opened, run.sessionId, 'alice-key', {
+      const first = await forkCall(opened, run.contextId, 'alice-key', {
         throughMessageId: `${run.id}:step:1`,
       });
 
-      const retry = await forkCall(opened, run.sessionId, 'alice-key', {
+      const retry = await forkCall(opened, run.contextId, 'alice-key', {
         throughMessageId: `${run.id}:step:1`,
       });
-      const other = await forkCall(opened, run.sessionId, 'alice-key', {
+      const other = await forkCall(opened, run.contextId, 'alice-key', {
         throughMessageId: `${second.id}:step:1`,
       });
 
@@ -160,12 +158,12 @@ describe('bureau.contexts.fork', () => {
   it('answers a user message as a Conflict not-a-branch-point, and a missing message as NotFound', async () => {
     await withBureau(async (opened) => {
       const run = await finishedSession(opened);
-      const session = await opened.bureau.contexts.get(run.sessionId);
+      const session = await opened.bureau.contexts.get(run.contextId);
 
-      const user = await forkCall(opened, run.sessionId, 'alice-key', {
+      const user = await forkCall(opened, run.contextId, 'alice-key', {
         throughMessageId: session!.conversationHistory.ids[0],
       });
-      const missing = await forkCall(opened, run.sessionId, 'alice-key', {
+      const missing = await forkCall(opened, run.contextId, 'alice-key', {
         commandId: 'fork-2',
         throughMessageId: 'no-such-message',
       });
@@ -188,11 +186,11 @@ describe('bureau.contexts.fork', () => {
       const run = await finishedSession(opened);
       const through = `${run.id}:step:1`;
 
-      const foreign = await forkCall(opened, run.sessionId, 'bob-key', {
+      const foreign = await forkCall(opened, run.contextId, 'bob-key', {
         throughMessageId: through,
       });
       const missing = await forkCall(opened, 'no-such-context', 'alice-key');
-      const operator = await forkCall(opened, run.sessionId, 'operator-key', {
+      const operator = await forkCall(opened, run.contextId, 'operator-key', {
         commandId: 'operator-fork',
         throughMessageId: through,
       });
@@ -210,7 +208,7 @@ describe('bureau.contexts.fork', () => {
       const run = await finishedSession(opened);
       const before = await opened.bureau.contexts.list();
 
-      const writeOnly = await forkCall(opened, run.sessionId, 'contexts-writer-key', {
+      const writeOnly = await forkCall(opened, run.contextId, 'contexts-writer-key', {
         commandId: 'write-only-fork',
         throughMessageId: `${run.id}:step:1`,
       });
@@ -219,7 +217,7 @@ describe('bureau.contexts.fork', () => {
       expect(writeOnly.error?.data).toMatchObject({
         weftCode: 'NotFound',
         resource: 'context',
-        identifier: run.sessionId,
+        identifier: run.contextId,
       });
       const after = await opened.bureau.contexts.list();
       expect(after.length).toBe(before.length);
@@ -236,7 +234,7 @@ describe('bureau.contexts.fork', () => {
         { throughMessageId: undefined },
         { owner: 'someone-else' },
       ]) {
-        const body = await forkCall(opened, run.sessionId, 'alice-key', params);
+        const body = await forkCall(opened, run.contextId, 'alice-key', params);
         expect(body.error?.data).toMatchObject({ weftCode: 'InvalidParams' });
       }
     });
@@ -297,7 +295,7 @@ describe('bureau.contexts.fork refusals', () => {
           throw new SessionForkRefusedError(reason, 'refused');
         });
 
-        const body = await call(handler, run.sessionId);
+        const body = await call(handler, run.contextId);
 
         expect(body.error?.data).toMatchObject({ weftCode: 'Conflict', reason });
       });
@@ -314,7 +312,7 @@ describe('bureau.contexts.fork refusals', () => {
         );
       });
 
-      const body = await call(handler, run.sessionId);
+      const body = await call(handler, run.contextId);
 
       expect(body.error?.data).toMatchObject({ weftCode: 'Unavailable', reason: 'shutting-down' });
     });
@@ -327,7 +325,7 @@ describe('bureau.contexts.fork refusals', () => {
         throw new BureauError('Steering for this session is contended.', 'CONFLICT');
       });
 
-      const body = await call(handler, run.sessionId);
+      const body = await call(handler, run.contextId);
 
       expect(body.error).toBeDefined();
       expect(body.error?.data).not.toMatchObject({ reason: 'shutting-down' });

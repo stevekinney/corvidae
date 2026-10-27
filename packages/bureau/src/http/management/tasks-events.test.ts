@@ -60,7 +60,7 @@ function parksThenAnswers(): GenerateFunction {
 }
 
 async function parkedRun(opened: OpenedBureau, principal = OWNER.alice) {
-  const run = await opened.bureau.createRun({ agentName: 'default', message: 'park', principal });
+  const run = await opened.bureau.tasks.start('default', 'park', { principal });
   await waitForCondition(
     () => opened.bureau.reviews.list().some((review) => review.runId === run.id),
     'the run never parked',
@@ -79,11 +79,7 @@ describe('bureau.tasks.events', () => {
     await withBureau(
       { generate: async () => ({ content: 'ok', toolCalls: [] }) },
       async (opened) => {
-        const run = await opened.bureau.createRun({
-          agentName: 'default',
-          message: 'go',
-          principal: OWNER.alice,
-        });
+        const run = await opened.bureau.tasks.start('default', 'go', { principal: OWNER.alice });
         await waitForCondition(
           () => opened.bureau.tasks.detail(run.id)?.status === 'completed',
           'finish',
@@ -141,11 +137,7 @@ describe('bureau.tasks.events', () => {
         : { content: 'the final answer', toolCalls: [] };
     };
     await withBureau({ generate, toolbox }, async (opened) => {
-      const run = await opened.bureau.createRun({
-        agentName: 'default',
-        message: 'go',
-        principal: OWNER.alice,
-      });
+      const run = await opened.bureau.tasks.start('default', 'go', { principal: OWNER.alice });
       await waitForCondition(
         () => opened.bureau.tasks.detail(run.id)?.status === 'completed',
         'finish',
@@ -226,9 +218,7 @@ describe('bureau.tasks.events', () => {
     await withBureau(
       { generate: chargesOnce, toolbox: approvalToolbox(charges), stopAtApproval: true },
       async (opened) => {
-        const run = await opened.bureau.createRun({
-          agentName: 'default',
-          message: 'charge',
+        const run = await opened.bureau.tasks.start('default', 'charge', {
           principal: OWNER.alice,
         });
         await waitForCondition(
@@ -291,11 +281,7 @@ describe('bureau.tasks.events', () => {
 
   it('answers an ephemeral Bureau, which keeps no durable history, as an unsupported capability', async () => {
     await withBureau({ durableHistory: false }, async (opened) => {
-      const run = await opened.bureau.createRun({
-        agentName: 'default',
-        message: 'go',
-        principal: OWNER.alice,
-      });
+      const run = await opened.bureau.tasks.start('default', 'go', { principal: OWNER.alice });
 
       const response = await opened.handler(
         subscribeRequest('bureau.tasks.events', { taskId: run.id }, 'alice-key'),

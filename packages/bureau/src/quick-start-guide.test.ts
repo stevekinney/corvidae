@@ -14,7 +14,7 @@ import type { GenerateFunction } from '@lostgradient/operative';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
-import { type BureauContexts, createBureau, type RunSummary } from './index';
+import { type BureauContexts, createBureau, type TaskHandle } from './index';
 import { createAgent } from '@lostgradient/operative';
 import type { AgentDefinitions } from './agent-catalog';
 
@@ -49,10 +49,10 @@ const answerWithoutTools: GenerateFunction = async () => ({
  */
 async function terminalSessionSaved(
   bureau: { readonly contexts: Pick<BureauContexts, 'get'> },
-  run: Pick<RunSummary, 'id' | 'sessionId'>,
+  run: Pick<TaskHandle, 'id' | 'contextId'>,
 ): Promise<void> {
   for (;;) {
-    const session = await bureau.contexts.get(run.sessionId);
+    const session = await bureau.contexts.get(run.contextId);
     const metadata = session?.metadata;
     if (metadata?.['lastRunId'] === run.id && metadata['lastRunStatus'] !== 'running') return;
     await Bun.sleep(5);
@@ -66,11 +66,8 @@ describe('README — Quick Start', () => {
       storage: { type: 'sqlite', path: databasePath },
     });
 
-    const run = await bureau.createRun({
-      agentName: 'summarizer',
-      message: 'Summarize the Q3 report.',
-    });
-    expect(run.status).toBe('running');
+    const run = await bureau.tasks.start('summarizer', 'Summarize the Q3 report.');
+    expect(bureau.tasks.detail(run.id)?.status).toBe('running');
 
     // Wait for completion via the live event surface. A run records many actions
     // before it finishes, so keep the subscription open until this run's terminal
@@ -110,10 +107,7 @@ describe('README — Quick Start', () => {
     const heardByOnce: string[] = [];
     bureau.once('action', ({ action }) => heardByOnce.push(action.type));
 
-    const run = await bureau.createRun({
-      agentName: 'default',
-      message: 'Summarize the Q3 report.',
-    });
+    const run = await bureau.tasks.start('default', 'Summarize the Q3 report.');
     await settled.promise;
 
     expect(heardByOnce).toEqual(['run.started']);

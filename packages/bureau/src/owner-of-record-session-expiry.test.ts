@@ -44,12 +44,7 @@ async function openBureau() {
 type OpenBureau = Awaited<ReturnType<typeof openBureau>>['bureau'];
 
 async function settled(bureau: OpenBureau, principal: string, sessionId: string) {
-  const run = await bureau.createRun({
-    agentName: 'default',
-    message: 'hello',
-    sessionId,
-    principal,
-  });
+  const run = await bureau.tasks.start('default', 'hello', { contextId: sessionId, principal });
   await waitForCondition(
     () => bureau.tasks.detail(run.id)?.status !== 'running',
     `run ${run.id} never settled`,
@@ -292,10 +287,8 @@ async function expiryDuringRun(open: (generate: GenerateFunction) => Promise<Any
   const { generate, release, reached } = gatedGenerate();
   const bureau = await open(generate);
   try {
-    const aliceRun = await bureau.createRun({
-      agentName: 'default',
-      message: 'ALICE-SECRET-PROMPT',
-      sessionId: 'shared',
+    const aliceRun = await bureau.tasks.start('default', 'ALICE-SECRET-PROMPT', {
+      contextId: 'shared',
       principal: ALICE,
     });
     await reached.promise;
@@ -303,10 +296,8 @@ async function expiryDuringRun(open: (generate: GenerateFunction) => Promise<Any
 
     // The session store knows nothing of runs: the expiry is Bureau's to handle.
     expect(await bureau.internals.sessionStore!.cleanup({ olderThan: -60_000 })).toBe(1);
-    const bobRun = await bureau.createRun({
-      agentName: 'default',
-      message: 'bob prompt',
-      sessionId: 'shared',
+    const bobRun = await bureau.tasks.start('default', 'bob prompt', {
+      contextId: 'shared',
       principal: BOB,
     });
     await waitForCondition(

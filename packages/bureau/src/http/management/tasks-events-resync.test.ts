@@ -175,11 +175,7 @@ async function answer(opened: OpenedBureau, runId: string): Promise<void> {
 async function park(opened: OpenedBureau, faults: Faults, failing: number) {
   // The first append the run makes is the `review.requested` of its wait.
   faults.failAppends = failing;
-  const run = await opened.bureau.createRun({
-    agentName: 'default',
-    message: 'park',
-    principal: OWNER.alice,
-  });
+  const run = await opened.bureau.tasks.start('default', 'park', { principal: OWNER.alice });
   await waitForCondition(
     () => opened.bureau.reviews.list().some((review) => review.runId === run.id),
     'the run never parked',
@@ -346,11 +342,7 @@ describe('the repair of a lost end', () => {
     });
     // The approval's event and the repair after it fail; the run's end commits.
     faulty.faults.failAppends = 2;
-    const run = await opened.bureau.createRun({
-      agentName: 'default',
-      message: 'charge',
-      principal: OWNER.alice,
-    });
+    const run = await opened.bureau.tasks.start('default', 'charge', { principal: OWNER.alice });
     await waitForCondition(
       () => opened.bureau.reviews.list().some((review) => review.runId === run.id),
       'the approval never became pending',

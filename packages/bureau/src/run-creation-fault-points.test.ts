@@ -41,14 +41,15 @@ import {
   createLmdbStorageFixture,
   createSqliteStorageFixture,
 } from './test/storage-fixtures';
-import type { Bureau, BureauDiagnostic, CreateRunRequest } from './types';
+import type { Bureau, BureauDiagnostic } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { type TaskStartRequest, startTaskFrom } from './test/task-start-request.ts';
 
-const REQUEST: CreateRunRequest = {
+const REQUEST: TaskStartRequest = {
   agentName: 'default',
-  message: 'Reconcile the ledger.',
+  input: 'Reconcile the ledger.',
   principal: 'alice',
-  runCreationRequestId: 'request-1',
+  commandId: 'request-1',
 };
 
 const IDENTITY: CommandLedgerIdentity = {
@@ -349,7 +350,7 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
     await withScenario(factory, async ({ storageB, ledger, crashOn, boot }) => {
       const crash = crashOn(ledgerWriteIn('pending'), 'before-write');
       const bureauA = await boot(crash.storage, heldGenerate().generate);
-      bureauA.createRun(REQUEST).catch(() => {});
+      startTaskFrom(bureauA, REQUEST).catch(() => {});
       expect(await pollUntil(() => crash.crashed())).toBe(true);
 
       expect(await ledger.read(IDENTITY)).toBeUndefined();
@@ -357,7 +358,7 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
 
       const generateB = heldGenerate();
       const bureauB = await boot(storageB, generateB.generate);
-      const retry = await bureauB.createRun(REQUEST);
+      const retry = await startTaskFrom(bureauB, REQUEST);
 
       expect(retry.receipt).toMatchObject({
         runId: retry.id,
@@ -378,7 +379,7 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
       // pending, and names a run that never reached the engine.
       const crash = crashOn(ledgerWriteIn('pending'), 'after-write');
       const bureauA = await boot(crash.storage, heldGenerate().generate);
-      bureauA.createRun(REQUEST).catch(() => {});
+      startTaskFrom(bureauA, REQUEST).catch(() => {});
       expect(await pollUntil(() => crash.crashed())).toBe(true);
       const pending = await ledger.read(IDENTITY);
       if (pending?.state !== 'pending') throw new Error('expected the claim to be pending');
@@ -387,16 +388,19 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
 
       const generateB = heldGenerate();
       const bureauB = await boot(storageB, generateB.generate);
-      const retry = await bureauB.createRun(REQUEST);
-      const again = await bureauB.createRun(REQUEST);
+      const retry = await startTaskFrom(bureauB, REQUEST);
+      const again = await startTaskFrom(bureauB, REQUEST);
 
       expect(retry).toMatchObject({
         id: claim.runId,
-        sessionId: claim.sessionId,
-        status: 'pending',
+        contextId: claim.sessionId,
         receipt: { runId: claim.runId, requestId: 'request-1', status: 'pending' },
       });
-      expect(again).toEqual(retry);
+      expect({ id: again.id, contextId: again.contextId, receipt: again.receipt }).toEqual({
+        id: retry.id,
+        contextId: retry.contextId,
+        receipt: retry.receipt,
+      });
       expect(await durableRunIds(bureauB)).toEqual([]);
       expect(bureauB.listRuns()).toEqual([]);
       expect(generateB.calls()).toBe(0);
@@ -410,7 +414,7 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
       // records it: the entry stays pending and names a run the engine has.
       const crash = crashOn(ledgerWriteIn('completed'), 'before-write', runLaunched);
       const bureauA = await boot(crash.storage, heldGenerate().generate);
-      bureauA.createRun(REQUEST).catch(() => {});
+      startTaskFrom(bureauA, REQUEST).catch(() => {});
       expect(await pollUntil(() => crash.crashed())).toBe(true);
 
       const pending = await ledger.read(IDENTITY);
@@ -420,7 +424,7 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
 
       const generateB = heldGenerate();
       const bureauB = await boot(storageB, generateB.generate);
-      const retry = await bureauB.createRun(REQUEST);
+      const retry = await startTaskFrom(bureauB, REQUEST);
 
       const receipt = {
         runId,
@@ -428,7 +432,8 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
         createdAt: pending.claimedAt,
         status: 'running',
       };
-      expect(retry).toMatchObject({ id: runId, status: 'running', receipt });
+      expect(retry).toMatchObject({ id: runId, receipt });
+      expect(bureauB.tasks.detail(runId)?.status).toBe('running');
       expect(await durableRunIds(bureauB)).toEqual([runId]);
       expect(bureauB.listRuns().map((run) => run.id)).toEqual([runId]);
       // The retry recorded the receipt, so it no longer depends on when a
@@ -444,7 +449,7 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
       expect(
         await pollUntil(async () => (await durableStatus(bureauB, runId)) === 'completed'),
       ).toBe(true);
-      const later = await bureauB.createRun(REQUEST);
+      const later = await startTaskFrom(bureauB, REQUEST);
       expect(later.id).toBe(runId);
       expect(later.receipt).toEqual(receipt);
       expect(await durableRunIds(bureauB)).toEqual([runId]);
@@ -458,7 +463,7 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
       // it is running.
       const crash = crashOn(ledgerWriteIn('completed'), 'before-write');
       const bureauA = await boot(crash.storage, heldGenerate().generate);
-      bureauA.createRun(REQUEST).catch(() => {});
+      startTaskFrom(bureauA, REQUEST).catch(() => {});
       expect(await pollUntil(() => crash.crashed())).toBe(true);
       const pending = await ledger.read(IDENTITY);
       if (pending?.state !== 'pending') throw new Error('expected the claim to be pending');
@@ -466,7 +471,7 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
 
       const generateB = heldGenerate();
       const bureauB = await boot(storageB, generateB.generate);
-      const retry = await bureauB.createRun(REQUEST);
+      const retry = await startTaskFrom(bureauB, REQUEST);
 
       const receipt = {
         runId,
@@ -474,7 +479,7 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
         createdAt: pending.claimedAt,
         status: 'aborted',
       };
-      expect(retry).toMatchObject({ id: runId, status: 'aborted', receipt });
+      expect(retry).toMatchObject({ id: runId, receipt });
       expect(await durableStatus(bureauB, runId)).toBe('cancelled');
       expect(generateB.calls()).toBe(0);
       expect(await ledger.read(IDENTITY)).toMatchObject({
@@ -491,13 +496,13 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
       // hears back: the acknowledgement `createRun` resolves with is lost.
       const crash = crashOn(ledgerWriteIn('completed'), 'after-write', runLaunched);
       const bureauA = await boot(crash.storage, heldGenerate().generate);
-      const unacknowledged = await bureauA.createRun(REQUEST);
+      const unacknowledged = await startTaskFrom(bureauA, REQUEST);
       expect(crash.crashed()).toBe(true);
       const completed = await ledger.read(IDENTITY);
       if (completed?.state !== 'completed') throw new Error('expected a completed entry');
 
       const bureauB = await boot(storageB, heldGenerate().generate);
-      const retry = await bureauB.createRun(REQUEST);
+      const retry = await startTaskFrom(bureauB, REQUEST);
 
       expect(retry.id).toBe(unacknowledged.id);
       expect(retry.receipt).toEqual(unacknowledged.receipt);
@@ -517,7 +522,7 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
         'before-write',
       );
       const bureauA = await boot(crash.storage, heldGenerate().generate);
-      const created = await bureauA.createRun(REQUEST);
+      const created = await startTaskFrom(bureauA, REQUEST);
       bureauA.abortRun(created.id);
       expect(
         await pollUntil(
@@ -529,9 +534,9 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
 
       const generateB = heldGenerate();
       const bureauB = await boot(storageB, generateB.generate);
-      const retry = await bureauB.createRun(REQUEST);
+      const retry = await startTaskFrom(bureauB, REQUEST);
 
-      expect(retry).toMatchObject({ id: created.id, status: 'aborted' });
+      expect(retry).toMatchObject({ id: created.id });
       expect(retry.receipt).toEqual(created.receipt);
       expect(generateB.calls()).toBe(0);
       expect(await durableRunIds(bureauB)).toEqual([created.id]);

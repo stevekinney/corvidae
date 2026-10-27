@@ -117,9 +117,9 @@ describe('a Bureau run narrowed by an active skill (COR-1628)', () => {
       },
     });
 
-    const run = await bureau.createRun({ agentName: 'default', message: 'activate, then ping' });
+    const run = await bureau.tasks.start('default', 'activate, then ping');
     const recorded = await pollUntil(async () => {
-      const session = await bureau.contexts.get(run.sessionId);
+      const session = await bureau.contexts.get(run.contextId);
       const messages = session === undefined ? [] : getMessages(session.conversationHistory);
       return resultOf(messages, 'ping-1');
     }, 'the refusal to be recorded in the session');
@@ -266,10 +266,10 @@ describe('a durable run that refused a call and recovered (COR-1628)', () => {
         }),
       },
     });
-    const run = await first.createRun({ agentName: 'default', message: 'activate, then ping' });
+    const run = await first.tasks.start('default', 'activate, then ping');
     await pollForTime(
       async () =>
-        reachedLaterStep && (await skillsRecorded(first, run.sessionId)) ? true : undefined,
+        reachedLaterStep && (await skillsRecorded(first, run.contextId)) ? true : undefined,
       'the refused step to commit',
     );
     await letStepsCommit();
@@ -412,7 +412,7 @@ async function playScript(path: RunPath, script: ScriptedCall[][]): Promise<Scri
         }),
       },
     });
-    await bureau.createRun({ agentName: 'default', message: 'play the script' });
+    await bureau.tasks.start('default', 'play the script');
     await finished.promise;
   }
   return { toolsByStep, results, executions };

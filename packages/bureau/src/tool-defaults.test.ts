@@ -106,7 +106,7 @@ async function sessionTaskTools(options: ToolOptions & { durable?: boolean }): P
     { alpha: recordingAgent(offered), default: recordingAgent([]) },
     options,
   );
-  const run = await bureau.createRun({ message: 'hello', agentName: 'alpha' });
+  const run = await bureau.tasks.start('alpha', 'hello');
   await waitForTaskState(bureau, run.id);
   for (let turn = 0; turn < 10; turn += 1) await yieldToPortableEventLoop();
   return offered.flat();

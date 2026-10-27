@@ -108,11 +108,8 @@ const bureau = await createBureau({
   storage: { type: 'sqlite', path: 'bureau.sqlite' },
 });
 
-const run = await bureau.createRun({
-  agentName: 'summarizer',
-  message: 'Summarize the Q3 report.',
-});
-console.log(run.status); // "running"
+const run = await bureau.tasks.start('summarizer', 'Summarize the Q3 report.');
+console.log(bureau.tasks.detail(run.id)?.status); // "running"
 
 // Wait for completion via the live event surface. A run records many actions
 // before it finishes, so keep the subscription open until this run's terminal
@@ -649,11 +646,7 @@ console.log(served.includes('bureau.tasks.respond')); // true
 
 // The handler starts no run of its own except through its AG-UI mount, so the host starts this
 // one. `principal` is the owner of record: an API-key caller `alice` owns as `api-key:alice`.
-const run = await bureau.createRun({
-  agentName: 'releaser',
-  message: 'Release it.',
-  principal: 'api-key:alice',
-});
+const run = await bureau.tasks.start('releaser', 'Release it.', { principal: 'api-key:alice' });
 await waitForCondition(
   () => bureau.reviews.list().some((review) => review.runId === run.id),
   'the run did not park on its question',
@@ -1483,11 +1476,9 @@ const bureau = await createBureau({
   requestAuthorityValidator: () => true,
 });
 
-const run = await bureau.createRun({
-  agentName: 'default',
-  message: 'Book the 9:40 to Denver.',
-  principal: 'alice', // the run's owner of record, whose partition its memory is written to
-  sessionId: 'session-42', // the memory belongs to the agent, so every chat of Alice's shares it
+const run = await bureau.tasks.start('default', 'Book the 9:40 to Denver.', {
+  principal: 'alice', // the task's owner of record, whose partition its memory is written to
+  contextId: 'session-42', // the memory belongs to the agent, so every chat of Alice's shares it
   requestContext: {
     authority: {
       principalId: 'user:alice',
@@ -1498,7 +1489,7 @@ const run = await bureau.createRun({
     },
   },
 });
-await waitForRunState({ getRun: (id) => bureau.tasks.detail(id) }, run.id);
+await run.result();
 
 // The host reads memory with its own authority, never with the run's.
 const auditor = createMemoryAuthority({

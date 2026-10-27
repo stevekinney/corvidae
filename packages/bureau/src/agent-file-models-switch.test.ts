@@ -12,6 +12,7 @@ import { waitForTaskState } from './test';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
 import type { BureauDiagnostic } from './types';
+import { startTaskFrom } from './test/task-start-request.ts';
 
 const harnesses: FileBureauHarness[] = [];
 afterEach(async () => {
@@ -82,11 +83,11 @@ const PICKER = (models?: string) =>
   });
 
 async function runPicker(harness: FileBureauHarness, sessionId?: string) {
-  return harness.bureau.createRun({
-    message: 'go',
+  return startTaskFrom(harness.bureau, {
+    input: 'go',
     agentName: 'picker',
     principal: 'alice',
-    ...(sessionId === undefined ? {} : { sessionId }),
+    ...(sessionId === undefined ? {} : { contextId: sessionId }),
   });
 }
 
@@ -109,7 +110,7 @@ describe('a file agent with no models list', () => {
     const run = await runPicker(harness);
     await resolver.entered;
 
-    const outcome = await steer(harness, run.sessionId, 'switch', GPT_4_1);
+    const outcome = await steer(harness, run.contextId, 'switch', GPT_4_1);
     resolver.release();
     await waitForTaskState(harness.bureau, run.id);
 
@@ -124,8 +125,8 @@ describe('a file agent with no models list', () => {
     const first = await runPicker(harness);
     await waitForTaskState(harness.bureau, first.id);
 
-    const outcome = await steer(harness, first.sessionId, 'idle', OPUS_5);
-    const second = await runPicker(harness, first.sessionId);
+    const outcome = await steer(harness, first.contextId, 'idle', OPUS_5);
+    const second = await runPicker(harness, first.contextId);
     await waitForTaskState(harness.bureau, second.id);
 
     expect(outcome.outcome).toBe('accepted');
@@ -156,8 +157,8 @@ describe('a file agent with a models list', () => {
     const run = await runPicker(harness);
     await waitForTaskState(harness.bureau, run.id);
 
-    const outside = await steer(harness, run.sessionId, 'outside', OPUS_5);
-    const inside = await steer(harness, run.sessionId, 'inside', GPT_4_1);
+    const outside = await steer(harness, run.contextId, 'outside', OPUS_5);
+    const inside = await steer(harness, run.contextId, 'inside', GPT_4_1);
 
     expect(outside).toEqual({
       outcome: 'rejected',
@@ -173,10 +174,10 @@ describe('a file agent with a models list', () => {
     const run = await runPicker(harness);
     await waitForTaskState(harness.bureau, run.id);
 
-    const outcome = await steer(harness, run.sessionId, 'unusable', GPT_4_1);
+    const outcome = await steer(harness, run.contextId, 'unusable', GPT_4_1);
 
     expect(outcome.outcome === 'rejected' && outcome.failure.reason).toBe('model-not-allowed');
-    const steering = await harness.bureau.contexts.steering(run.sessionId);
+    const steering = await harness.bureau.contexts.steering(run.contextId);
     expect(steering?.model).toBeNull();
   });
 });
@@ -189,14 +190,14 @@ describe('an override that can no longer be used', () => {
     const harness = await start(resolver, PICKER(`[${KNOWN_MODEL}, openai/gpt-4.1]`), diagnostics);
     const first = await runPicker(harness);
     await waitForTaskState(harness.bureau, first.id);
-    const switched = await steer(harness, first.sessionId, 'switch', GPT_4_1);
+    const switched = await steer(harness, first.contextId, 'switch', GPT_4_1);
     expect(switched.outcome).toBe('accepted');
     const callsBefore = resolver.calls.length;
 
     // A person edits the file by hand, and the model it listed is no longer in it.
     await harness.put('picker.md', PICKER(`[${KNOWN_MODEL}]`));
     await harness.bureau.agents.refresh();
-    const second = await runPicker(harness, first.sessionId);
+    const second = await runPicker(harness, first.contextId);
     await waitForTaskState(harness.bureau, second.id);
 
     const summary = harness.bureau.tasks.detail(second.id);
@@ -205,7 +206,7 @@ describe('an override that can no longer be used', () => {
     // No provider call was made for it, with the override or with the default.
     expect(resolver.calls).toHaveLength(callsBefore);
     // The session still reports the override it was switched to.
-    expect(await harness.bureau.contexts.steering(first.sessionId)).toMatchObject({
+    expect(await harness.bureau.contexts.steering(first.contextId)).toMatchObject({
       model: { provider: 'openai', model: 'gpt-4.1' },
     });
   });

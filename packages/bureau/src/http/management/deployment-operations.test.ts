@@ -137,9 +137,7 @@ describe('bureau.deployment.get', () => {
   it('reports draining while shutdown waits for a run, and the deployment as ready before', async () => {
     const opened = await openBureau({});
     try {
-      const run = await opened.bureau.createRun({
-        agentName: 'default',
-        message: 'hold',
+      const run = await opened.bureau.tasks.start('default', 'hold', {
         principal: 'api-key:alice',
       });
       await waitForCondition(

@@ -92,10 +92,10 @@ describe('snapshot retention', () => {
   it('releases a session run’s snapshot when its task is deleted, not before', async () => {
     const harness = await start();
     const { bureau, runtime, at } = harness;
-    const first = await bureau.createRun({ message: 'one', agentName: 'researcher' });
+    const first = await bureau.tasks.start('researcher', 'one');
     await waitForTaskState(bureau, first.id);
     at(10 * DAY_MS);
-    const second = await bureau.createRun({ message: 'two', agentName: 'researcher' });
+    const second = await bureau.tasks.start('researcher', 'two');
     await waitForTaskState(bureau, second.id);
     await runtime.deferred.drain();
 
@@ -117,7 +117,7 @@ describe('snapshot retention', () => {
   it('prunes a session run’s snapshot through the same retention pass that deletes its task', async () => {
     const harness = await start();
     const { bureau, runtime, at } = harness;
-    const created = await bureau.createRun({ message: 'one', agentName: 'researcher' });
+    const created = await bureau.tasks.start('researcher', 'one');
     await waitForTaskState(bureau, created.id);
     await runtime.deferred.drain();
     expect(await revisionCount(harness)).toBe(1);

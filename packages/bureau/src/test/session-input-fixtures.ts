@@ -480,12 +480,15 @@ export interface OpenedProcess {
  * Opens a Bureau over the SQLite file at `path` through a {@link seamStorage}, as one of several
  * processes sharing that file would: each call opens its own connection and shares nothing else.
  * `options` are spread over the defaults (no agents, an empty toolbox, durable execution, and a
- * run that stops when the model calls no tool).
+ * run that stops when the model calls no tool); `options.maximumSteps` caps the `default` agent.
  */
 export async function openProcess(
   path: string,
   generate: GenerateFunction,
-  options: Partial<BureauOptions<AgentDefinitions>> = {},
+  {
+    maximumSteps,
+    ...options
+  }: Partial<BureauOptions<AgentDefinitions>> & { readonly maximumSteps?: number } = {},
 ): Promise<OpenedProcess> {
   const real = await resolveStorage({ type: 'sqlite', path });
   const seam = seamStorage(real);
@@ -495,6 +498,7 @@ export async function openProcess(
         generate,
         toolbox: createToolbox([]),
         stopWhen: stopWhen.noToolCalls(),
+        ...(maximumSteps === undefined ? {} : { maximumSteps }),
       }),
     },
     durable: true,

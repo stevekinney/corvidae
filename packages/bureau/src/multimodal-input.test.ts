@@ -275,18 +275,14 @@ describe('session input carrying a managed asset (COR-716)', () => {
       await bureau.dispose();
     });
 
-    const run = await bureau.createRun({
-      agentName: 'default',
-      message: 'Start',
-      principal: alice.id,
-    });
+    const run = await bureau.tasks.start('default', 'Start', { principal: alice.id });
     await stepZeroStarted.promise;
     const { source, bytes } = await admitImage(bureau);
     const payload = [
       { type: 'text', text: 'look at this' },
       { type: 'image', source },
     ] as const;
-    const admitted = await bureau.contexts.input(run.sessionId, {
+    const admitted = await bureau.contexts.input(run.contextId, {
       id: 'input-a',
       principal: alice.id,
       deliveryMode: 'steer',
@@ -347,15 +343,11 @@ describe('session input carrying a managed asset (COR-716)', () => {
       await bureau.dispose();
     });
 
-    const run = await bureau.createRun({
-      message: 'Start',
-      principal: alice.id,
-      agentName: 'echo',
-    });
+    const run = await bureau.tasks.start('echo', 'Start', { principal: alice.id });
     await stepZeroStarted.promise;
     const { source, bytes } = await admitImage(bureau);
     const payload = [{ type: 'image', source }] as const;
-    const admitted = await bureau.contexts.input(run.sessionId, {
+    const admitted = await bureau.contexts.input(run.contextId, {
       id: 'input-named',
       principal: alice.id,
       deliveryMode: 'steer',
@@ -406,15 +398,11 @@ describe('session input carrying a managed asset (COR-716)', () => {
       releaseStepZero.resolve();
       await bureau.dispose();
     });
-    const run = await bureau.createRun({
-      agentName: 'default',
-      message: 'Start',
-      principal: alice.id,
-    });
+    const run = await bureau.tasks.start('default', 'Start', { principal: alice.id });
     await stepZeroStarted.promise;
     const payload: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: 'as submitted' }];
 
-    const pending = bureau.contexts.input(run.sessionId, {
+    const pending = bureau.contexts.input(run.contextId, {
       id: 'input-snapshot',
       principal: alice.id,
       deliveryMode: 'steer',
@@ -450,11 +438,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
       hold.resolve();
       await bureau.dispose();
     });
-    const run = await bureau.createRun({
-      agentName: 'default',
-      message: 'Start',
-      principal: alice.id,
-    });
+    const run = await bureau.tasks.start('default', 'Start', { principal: alice.id });
     await yieldToPortableEventLoop();
 
     for (const payload of [
@@ -464,7 +448,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
     ]) {
       let thrown: unknown;
       try {
-        await bureau.contexts.input(run.sessionId, {
+        await bureau.contexts.input(run.contextId, {
           id: `input-${JSON.stringify(payload).length}`,
           principal: alice.id,
           deliveryMode: 'steer',

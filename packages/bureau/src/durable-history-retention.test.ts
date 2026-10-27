@@ -23,6 +23,7 @@ import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { startTaskFrom } from './test/task-start-request.ts';
 
 const ORIGIN = '2026-10-13T00:00:00.000Z';
 const ORIGIN_MS = Date.parse(ORIGIN);
@@ -104,7 +105,7 @@ async function withBureau(
 
 /** Creates a run and waits for it to finish. */
 async function settledRun(bureau: Bureau, message = 'work') {
-  const created = await bureau.createRun({ agentName: 'default', message, principal: 'alice' });
+  const created = await bureau.tasks.start('default', message, { principal: 'alice' });
   expect(await pollUntil(() => bureau.tasks.detail(created.id)?.status === 'completed')).toBe(true);
   return created;
 }
@@ -325,11 +326,7 @@ describe('retention.tasks', () => {
     };
     await withBureau(
       async ({ bureau, at }) => {
-        const created = await bureau.createRun({
-          agentName: 'default',
-          message: 'fails',
-          principal: 'alice',
-        });
+        const created = await bureau.tasks.start('default', 'fails', { principal: 'alice' });
         expect(await pollUntil(() => bureau.tasks.detail(created.id)?.status === 'error')).toBe(
           true,
         );
@@ -361,11 +358,7 @@ describe('retention.tasks', () => {
       async ({ bureau, at }) => {
         const settled = await settledRun(bureau, 'short');
         hold.on = true;
-        const running = await bureau.createRun({
-          agentName: 'default',
-          message: 'long',
-          principal: 'alice',
-        });
+        const running = await bureau.tasks.start('default', 'long', { principal: 'alice' });
 
         at(365 * DAY_MS);
         await bureau.runDurableMaintenance();
@@ -406,16 +399,16 @@ describe('retention.tasks', () => {
       async ({ bureau, at }) => {
         const request = {
           agentName: 'default',
-          message: 'Summarize the quarter.',
+          input: 'Summarize the quarter.',
           principal: 'alice',
-          runCreationRequestId: 'request-1',
+          commandId: 'request-1',
         };
         const locate = {
           principal: 'alice',
           agentName: 'default',
           commandId: 'request-1',
         } as const;
-        const created = await bureau.createRun(request);
+        const created = await startTaskFrom(bureau, request);
         expect(await pollUntil(() => bureau.tasks.detail(created.id)?.status === 'completed')).toBe(
           true,
         );
@@ -488,11 +481,7 @@ describe('runDurableMaintenance in a fully ephemeral bureau (COR-1477)', () => {
       retention: { tasks: { olderThan: DAY_MS } },
     });
     try {
-      const created = await bureau.createRun({
-        agentName: 'default',
-        message: 'work',
-        principal: 'alice',
-      });
+      const created = await bureau.tasks.start('default', 'work', { principal: 'alice' });
       expect(await pollUntil(() => bureau.tasks.detail(created.id)?.status === 'completed')).toBe(
         true,
       );

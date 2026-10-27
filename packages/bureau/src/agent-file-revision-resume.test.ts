@@ -210,13 +210,10 @@ describe('a session run the durable engine resumes after a restart', () => {
     });
     await edit(first, 'Version one.\n');
     await edit(first, 'Version two.\n');
-    const created = await first.bureau.createRun({
-      message: 'long question',
-      agentName: 'researcher',
-    });
+    const created = await first.bureau.tasks.start('researcher', 'long question');
     await waitForCondition(
       async () => {
-        const session = await first.bureau.contexts.get(created.sessionId);
+        const session = await first.bureau.contexts.get(created.contextId);
         return session?.metadata['lastAgentRevision'] === 2 && first.observed.length > 0;
       },
       'the session run is recorded and calling the model',

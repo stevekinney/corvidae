@@ -115,7 +115,7 @@ describe('requestHumanInput park is observable on a fresh dispatch (AB-336)', ()
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'default', message: 'park-me' });
+      const run = await bureau.tasks.start('default', 'park-me');
 
       await waitForCondition(
         () => bureau.reviews.list().some((review) => review.runId === run.id),
@@ -198,7 +198,7 @@ describe('requestHumanInput park is observable on a fresh dispatch (AB-336)', ()
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'default', message: 'park-me' });
+      const run = await bureau.tasks.start('default', 'park-me');
 
       await waitForCondition(
         () => bureau.reviews.list().some((review) => review.runId === run.id),
@@ -275,7 +275,7 @@ describe('requestHumanInput park survives a process restart while still parked (
       durableOwnership: { ownership: 'none' },
     });
 
-    const run = await bureauA.createRun({ agentName: 'default', message: 'park-me' });
+    const run = await bureauA.tasks.start('default', 'park-me');
     await waitForCondition(
       () => bureauA.reviews.list().some((review) => review.runId === run.id),
       'expected bureau A to park on requestHumanInput before the simulated crash',
@@ -384,7 +384,7 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
       durableOwnership: { ownership: 'none' },
     });
 
-    const run = await bureauA.createRun({ agentName: 'default', message: 'park-me' });
+    const run = await bureauA.tasks.start('default', 'park-me');
     await waitForCondition(
       () => bureauA.reviews.list().some((review) => review.runId === run.id),
       'expected bureau A to park on requestHumanInput before the simulated crash',
@@ -392,9 +392,9 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
     const parkedId = bureauA.reviews.list()[0]!.id;
     // The real delivery: the signal reaches the engine, so the resumed run
     // moves on to its next (never-completing) step.
-    await bureauA.contexts.signal(run.sessionId, 'human-response');
+    await bureauA.contexts.signal(run.contextId, 'human-response');
     await waitForCondition(() => aCalls === 2, 'expected bureau A to resume past the park');
-    await bureauA.internals.sessionStore!.update(run.sessionId, (session) => ({
+    await bureauA.internals.sessionStore!.update(run.contextId, (session) => ({
       ...session!,
       metadata: { ...session!.metadata, resolvedReviewIds: [parkedId] },
     }));
@@ -470,7 +470,7 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
       durableOwnership: { ownership: 'none' },
     });
 
-    const run = await bureauA.createRun({ agentName: 'default', message: 'park-twice-then-crash' });
+    const run = await bureauA.tasks.start('default', 'park-twice-then-crash');
     const resolvedIds: string[] = [];
     for (let ordinal = 0; ordinal < 2; ordinal++) {
       await waitForCondition(
@@ -576,7 +576,7 @@ describe('a re-park after a resolved park and a crash before the next commit (CO
       durableOwnership: { ownership: 'none' },
     });
 
-    const run = await bureauA.createRun({ agentName: 'default', message: 'park-resume-crash' });
+    const run = await bureauA.tasks.start('default', 'park-resume-crash');
     await waitForCondition(
       () => bureauA.reviews.list().some((review) => review.runId === run.id),
       'expected bureau A to park',
@@ -661,10 +661,7 @@ describe('resolving a recovered run re-park leaves no phantom review (COR-106)',
     });
 
     const bureauA = await createBureau(options(async () => park('call-a')));
-    const run = await bureauA.createRun({
-      agentName: 'default',
-      message: 'park-crash-repark-resolve',
-    });
+    const run = await bureauA.tasks.start('default', 'park-crash-repark-resolve');
     await waitForCondition(
       () => bureauA.reviews.list().some((review) => review.runId === run.id),
       'expected bureau A to park',
@@ -748,7 +745,7 @@ describe('parallel same-signal parks keep review ids stable across a restart (CO
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
-    const run = await bureauA.createRun({ agentName: 'default', message: 'parallel-park-crash' });
+    const run = await bureauA.tasks.start('default', 'parallel-park-crash');
     const pendingA = (): string[] =>
       bureauA.reviews
         .list()
@@ -845,10 +842,7 @@ describe('a run recovered mid-step whose replay reaches requestHumanInput actual
       durableOwnership: { ownership: 'none' },
     });
 
-    const run = await bureauA.createRun({
-      agentName: 'default',
-      message: 'park-me-after-recovery',
-    });
+    const run = await bureauA.tasks.start('default', 'park-me-after-recovery');
     await waitForCondition(
       () => bureauAReachedStep1,
       'expected bureau A to reach step 1 before the simulated crash',
@@ -1006,7 +1000,7 @@ describe("combineToolboxes forwards the base toolbox's approval gating to a huma
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
+      const run = await bureau.tasks.start('default', 'Charge the customer');
 
       await waitForCondition(
         () => bureau.reviews.list().some((review) => review.runId === run.id),
@@ -1075,11 +1069,7 @@ describe("combineToolboxes forwards the base toolbox's approval gating to a huma
         delegationBehavior: 'does-not-propagate',
       });
 
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'Charge the customer',
-        principal,
-      });
+      const run = await bureau.tasks.start('default', 'Charge the customer', { principal });
 
       await waitForCondition(() => charges.length > 0, 'expected the tool call to execute');
 
@@ -1161,7 +1151,7 @@ describe('the first park request in a step is honored and the rest are refused (
       durable: true,
       maintenance: 'manual',
     });
-    const run = await bureau.createRun({ agentName: 'default', message: 'park-twice' });
+    const run = await bureau.tasks.start('default', 'park-twice');
     const reviews = () =>
       bureau.reviews
         .list()

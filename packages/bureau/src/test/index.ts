@@ -61,3 +61,4 @@ export {
 } from './storage-fixtures';
 export { waitForCondition, waitForRunState } from '@lostgradient/operative';
 export { waitForTaskState } from './wait-for-task-state';
+export { startTaskFrom, type TaskStartRequest } from './task-start-request';

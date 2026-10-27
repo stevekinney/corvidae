@@ -129,11 +129,9 @@ function builtRows(...inputs: Array<MessageInput & { id: string }>): Message[] {
 
 /** Runs the echo agent on a session whose history starts with the given rows, and lets its commits drain. */
 async function converse(bureau: Bureau, sessionId: string, rows: Message[] = []) {
-  const created = await bureau.createRun({
-    ...(rows.length === 0 ? { message: 'Hello' } : { appendMessages: rows }),
-    agentName: 'echo',
+  const created = await bureau.tasks.start('echo', rows.length === 0 ? 'Hello' : { append: rows }, {
     principal: alice.id,
-    sessionId,
+    contextId: sessionId,
   });
   await waitForTaskState(bureau, created.id);
   for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();

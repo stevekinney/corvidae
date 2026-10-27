@@ -168,9 +168,7 @@ describe('a tool-returned image through an approved review', () => {
       await bureau.dispose();
     });
 
-    const run = await bureau.createRun({
-      agentName: 'photographer',
-      message: 'Take a snapshot',
+    const run = await bureau.tasks.start('photographer', 'Take a snapshot', {
       principal: alice.id,
     });
     await waitForTaskState(bureau, run.id);
@@ -179,7 +177,7 @@ describe('a tool-returned image through an approved review', () => {
     expect(review?.kind).toBe('tool-approval');
     await bureau.reviews.resolve({ id: review!.id, decision: 'approve', principal: alice.id });
 
-    const session = await bureau.contexts.get(run.sessionId);
+    const session = await bureau.contexts.get(run.contextId);
     const history = session!.conversationHistory;
     const row = history.ids
       .map((id) => history.messages[id]!)

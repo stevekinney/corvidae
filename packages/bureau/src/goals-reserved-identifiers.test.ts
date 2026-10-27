@@ -105,11 +105,11 @@ describe('an id an ordinary caller chooses', () => {
     },
   );
 
-  it.each(RESERVED)('may not be the session id %s of createRun', async (sessionId) => {
+  it.each(RESERVED)('may not be the session id %s of tasks.start', async (sessionId) => {
     const bureau = await boot();
 
-    const error = await bureau
-      .createRun({ agentName: 'default', message: 'hello', sessionId })
+    const error = await bureau.tasks
+      .start('default', 'hello', { contextId: sessionId })
       .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(BureauError);
@@ -142,13 +142,9 @@ describe('an id an ordinary caller chooses', () => {
   it('is still free when it only resembles a goal prefix', async () => {
     const bureau = await boot();
 
-    const run = await bureau.createRun({
-      agentName: 'default',
-      message: 'hello',
-      sessionId: 'goalpost',
-    });
+    const run = await bureau.tasks.start('default', 'hello', { contextId: 'goalpost' });
 
-    expect(run.sessionId).toBe('goalpost');
+    expect(run.contextId).toBe('goalpost');
   });
 });
 

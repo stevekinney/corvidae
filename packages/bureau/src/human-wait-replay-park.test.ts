@@ -165,7 +165,7 @@ describe('a reattached run whose first park happens after boot-time reconstructi
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
-      const run = await bureauA.createRun({ agentName: 'default', message: 'park-me' });
+      const run = await bureauA.tasks.start('default', 'park-me');
       const runId = run.id;
       await waitForCondition(
         () => reviewsFor(bureauA!, runId).length === 1,
@@ -287,7 +287,7 @@ describe('a reattached run whose first park happens after boot-time reconstructi
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
-      const run = await bureauA.createRun({ agentName: 'default', message: 'park-then-continue' });
+      const run = await bureauA.tasks.start('default', 'park-then-continue');
       const runId = run.id;
       await waitForCondition(
         () => reviewsFor(bureauA!, runId).length === 1,
@@ -351,7 +351,7 @@ describe('bounded duplicate park events (COR-121)', () => {
       durable: true,
     });
     try {
-      const run = await bureau.createRun({ agentName: 'default', message: 'park-me' });
+      const run = await bureau.tasks.start('default', 'park-me');
       await waitForCondition(
         () => reviewsFor(bureau, run.id).length === 1,
         'expected the fresh run to park',
@@ -384,7 +384,7 @@ describe('bounded duplicate park events (COR-121)', () => {
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
-      const run = await bureauA.createRun({ agentName: 'default', message: 'park-me' });
+      const run = await bureauA.tasks.start('default', 'park-me');
       await waitForCondition(
         () => reviewsFor(bureauA!, run.id).length === 1,
         'expected bureau A to park',
@@ -460,18 +460,18 @@ describe('flow-control slot accounting under dual dispatch (COR-121 guard)', () 
         durable: true,
         flowControl: { concurrency: { limit: 1 } },
       });
-      const runOne = await bureau.createRun({ agentName: 'default', message: 'park-me' });
+      const runOne = await bureau.tasks.start('default', 'park-me');
       await waitForCondition(
         () => reviewsFor(bureau!, runOne.id).length === 1,
         'expected run one to park',
       );
       expect(intercept.matched()).toBe(1);
 
-      await bureau.contexts.signal(runOne.sessionId, 'human-response', { approved: true });
+      await bureau.contexts.signal(runOne.contextId, 'human-response', { approved: true });
       intercept.release();
       await waitForCondition(() => calls === 2, 'expected the continuation generate to start');
 
-      const rejected = await bureau.createRun({ agentName: 'default', message: 'second' }).then(
+      const rejected = await bureau.tasks.start('default', 'second').then(
         () => undefined,
         (error: unknown) => error,
       );

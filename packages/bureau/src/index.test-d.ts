@@ -24,7 +24,6 @@ import type {
   BureauStorageFixture,
   BureauTestHarness,
   BureauTestHarnessOptions,
-  CreatedRunSummary,
   CreateLmdbStorageFixtureOptions,
   CreateMemoryStorageFixtureOptions,
   CreatePersistentStorageFixtureOptions,
@@ -171,10 +170,9 @@ void digestCommandPayload;
 void digestRunCreationPayload;
 void RUN_CREATION_OPERATION_VERSION;
 void RunCreationReceiptUnrecordedError;
-type CreateRunReturn = Awaited<ReturnType<Bureau['createRun']>>;
-declare const createdRun: CreateRunReturn;
-export const createdRunReceipt: RunCreationReceipt | undefined = createdRun.receipt;
-export const createdRunSummary: CreatedRunSummary = createdRun;
+type StartedTask = Awaited<ReturnType<Bureau['tasks']['start']>>;
+declare const startedTask: StartedTask;
+export const startedTaskReceipt: RunCreationReceipt | undefined = startedTask.receipt;
 
 // COR-424: the run-creation binding's retention window and its receipt query.
 void COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS;

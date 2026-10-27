@@ -163,11 +163,11 @@ describe('bureau.children over an ephemeral bureau', () => {
       children: { signals: { worker: proceedSignals } },
       onDiagnostic,
     });
-    const parent = await bureau.createRun({ agentName: 'default', message: 'plan the work' });
+    const parent = await bureau.tasks.start('default', 'plan the work');
     return { bureau, parent };
   }
 
-  it('dispatches, lists, gets, and waits on a child of a createRun parent', async () => {
+  it('dispatches, lists, gets, and waits on a child of a tasks.start parent', async () => {
     const { bureau, parent } = await createParentBureau({ worker: completingWorker() });
 
     try {
@@ -206,7 +206,7 @@ describe('bureau.children over an ephemeral bureau', () => {
 
   it('never lets an unrelated parent inspect, wait on, signal, or cancel another parent’s child', async () => {
     const { bureau, parent } = await createParentBureau({ worker: hangingWorker() });
-    const other = await bureau.createRun({ agentName: 'default', message: 'another plan' });
+    const other = await bureau.tasks.start('default', 'another plan');
 
     try {
       const dispatched = await bureau.children.dispatch({
@@ -288,7 +288,7 @@ describe('bureau.children over an ephemeral bureau', () => {
     }
   });
 
-  it('refuses a child under a createRun parent that abortRun has not finished tearing down', async () => {
+  it('refuses a child under a tasks.start parent that abortRun has not finished tearing down', async () => {
     const { bureau, parent } = await createParentBureau({ worker: hangingWorker() });
 
     try {

@@ -40,7 +40,7 @@ function open(
 }
 
 async function startTask(bureau: Bureau<AgentDefinitions>): Promise<string> {
-  const run = await bureau.createRun({ message: 'hold', agentName: 'worker', principal: OWNER });
+  const run = await bureau.tasks.start('worker', 'hold', { principal: OWNER });
   await waitForCondition(
     async () => (await bureau.internals.taskRegistry.record(run.id)) !== undefined,
     'record',

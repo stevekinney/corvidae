@@ -97,12 +97,8 @@ if (mode === 'retry') {
   await bureau.waitForRecovery?.();
   sessionId = sessionArgument ?? '';
 } else {
-  const run = await bureau.createRun({
-    agentName: 'default',
-    message: 'Wait forever',
-    principal: 'alice',
-  });
-  sessionId = run.sessionId;
+  const run = await bureau.tasks.start('default', 'Wait forever', { principal: 'alice' });
+  sessionId = run.contextId;
   runId = run.id;
   // Poll rather than sleep: the run must actually be live before a pause is
   // admissible, and a fixed delay would either be flaky or slow.

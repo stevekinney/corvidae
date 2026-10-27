@@ -31,9 +31,7 @@ describe('the first A2A continuation of a task another transport started', () =>
   it('records the continuation and, once the task settles, its reply', async () => {
     const run = gated();
     await withA2A({ asker: run.generate }, async (opened) => {
-      const started = await opened.bureau.createRun({
-        agentName: 'asker',
-        message: 'started natively',
+      const started = await opened.bureau.tasks.start('asker', 'started natively', {
         principal: OWNER.alice,
       });
 

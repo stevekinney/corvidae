@@ -61,15 +61,15 @@ import type {
   BureauOptions,
   BureauRunOptions,
   BureauShutdownOptions,
-  CreateRunRequest,
   DurableScheduleDefinition,
   ResolveReviewInput,
   ResolveReviewResult,
-  RunSummary,
+  TaskHandle,
 } from '../types';
 import type { BureauQuiescenceReport } from './quiescence';
 import { assertBureauQuiescent, BureauQuiescenceError } from './quiescence';
 import type { BureauStorageFixture } from './storage-fixtures';
+import { type TaskStartRequest, startTaskFrom } from './task-start-request.ts';
 
 /**
  * A durable run this harness was told to track for quiescence purposes
@@ -215,8 +215,8 @@ export interface BureauTestHarness<D extends AgentDefinitions = AgentDefinitions
     options?: BureauRunOptions,
   ): AgentRunForName<D, TName>;
 
-  /** Thin wrapper over `Bureau.createRun` — the session/durable-execution entry point. */
-  startSession(request: CreateRunRequest): Promise<RunSummary>;
+  /** Starts a task through `bureau.tasks.start`, from one {@link TaskStartRequest} object. */
+  startTask(request: TaskStartRequest): Promise<TaskHandle>;
 
   /**
    * Dispatches a child run correlated to `parentRunId` through Bureau's own
@@ -451,8 +451,8 @@ export async function createBureauTestHarness<D extends AgentDefinitions = Agent
       return run;
     },
 
-    startSession(request) {
-      return readyBureau.createRun(request);
+    startTask(request) {
+      return startTaskFrom(readyBureau, request);
     },
 
     startChild(parentRunId, agentName, input, dispatchOptions) {

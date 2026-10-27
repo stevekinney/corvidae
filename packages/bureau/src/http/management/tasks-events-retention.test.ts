@@ -49,11 +49,7 @@ describe('bureau.tasks.events below the retention floor', () => {
     });
     try {
       const handler = createBureauHandler(bureau, { authentication });
-      const first = await bureau.createRun({
-        agentName: 'default',
-        message: 'first',
-        principal: OWNER.alice,
-      });
+      const first = await bureau.tasks.start('default', 'first', { principal: OWNER.alice });
       await waitForCondition(() => bureau.tasks.detail(first.id)?.status === 'completed', 'first');
       await runtime.deferred.drain();
 
@@ -66,11 +62,7 @@ describe('bureau.tasks.events below the retention floor', () => {
       // task's events sit above the floor the maintenance pass leaves.
       runtime.setTime(Date.parse(ORIGIN) + 7 * DAY_MS + 1);
       await bureau.runDurableMaintenance();
-      const second = await bureau.createRun({
-        agentName: 'default',
-        message: 'second',
-        principal: OWNER.alice,
-      });
+      const second = await bureau.tasks.start('default', 'second', { principal: OWNER.alice });
       await waitForCondition(
         () => bureau.tasks.detail(second.id)?.status === 'completed',
         'second',
@@ -138,11 +130,7 @@ describe('bureau.tasks.events below the retention floor', () => {
     });
     try {
       const handler = createBureauHandler(bureau, { authentication });
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'park',
-        principal: OWNER.alice,
-      });
+      const run = await bureau.tasks.start('default', 'park', { principal: OWNER.alice });
       await waitForCondition(
         () => bureau.reviews.list().some((review) => review.runId === run.id),
         'the run never parked',
@@ -225,11 +213,7 @@ describe('bureau.tasks.events below the retention floor', () => {
     });
     try {
       const handler = createBureauHandler(bureau, { authentication });
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'charge',
-        principal: OWNER.alice,
-      });
+      const run = await bureau.tasks.start('default', 'charge', { principal: OWNER.alice });
       await waitForCondition(
         () => bureau.reviews.list().some((review) => review.runId === run.id),
         'the approval never became pending',

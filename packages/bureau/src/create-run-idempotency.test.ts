@@ -21,7 +21,8 @@ import { BureauLedgerConflictError } from './command-ledger';
 import { BureauError, createBureau } from './create-bureau';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
-import type { Bureau, BureauOptions, CreateRunRequest } from './types';
+import type { Bureau, BureauOptions } from './types';
+import { startTaskFrom } from './test/task-start-request.ts';
 
 const ORIGIN = '2026-10-13T00:00:00.000Z';
 
@@ -42,9 +43,9 @@ function heldGenerate(): { generate: GenerateFunction; release(): void } {
 
 const REQUEST = {
   agentName: 'default',
-  message: 'Summarize the quarter.',
+  input: 'Summarize the quarter.',
   principal: 'alice',
-  runCreationRequestId: 'request-1',
+  commandId: 'request-1',
 } as const;
 
 type ExtraOptions = Pick<BureauOptions, 'flowControl'> & {
@@ -103,11 +104,11 @@ async function durableRunIds(bureau: Bureau): Promise<string[] | undefined> {
   return page?.items.map((run) => run.id).toSorted();
 }
 
-describe('createRun with a run-creation request id', () => {
+describe('tasks.start with a run-creation request id', () => {
   it('returns the same run and the original receipt on an exact retry, persisting one run', async () => {
     await withDurableBureau(async (bureau) => {
-      const first = await bureau.createRun(REQUEST);
-      const retry = await bureau.createRun(REQUEST);
+      const first = await startTaskFrom(bureau, REQUEST);
+      const retry = await startTaskFrom(bureau, REQUEST);
 
       expect(first.receipt).toEqual({
         runId: first.id,
@@ -116,7 +117,7 @@ describe('createRun with a run-creation request id', () => {
         status: 'running',
       });
       expect(retry.id).toBe(first.id);
-      expect(retry.sessionId).toBe(first.sessionId);
+      expect(retry.contextId).toBe(first.contextId);
       expect(retry.receipt).toEqual(first.receipt);
       expect(await durableRunIds(bureau)).toEqual([first.id]);
       expect(bureau.listRuns().map((run) => run.id)).toEqual([first.id]);
@@ -126,8 +127,8 @@ describe('createRun with a run-creation request id', () => {
   it('creates one run for two identical requests issued concurrently', async () => {
     await withDurableBureau(async (bureau) => {
       const [first, second] = await Promise.all([
-        bureau.createRun(REQUEST),
-        bureau.createRun(REQUEST),
+        startTaskFrom(bureau, REQUEST),
+        startTaskFrom(bureau, REQUEST),
       ]);
 
       expect(second.id).toBe(first.id);
@@ -138,9 +139,9 @@ describe('createRun with a run-creation request id', () => {
 
   it('rejects the same request id with a different payload as a typed conflict carrying the original receipt', async () => {
     await withDurableBureau(async (bureau) => {
-      const first = await bureau.createRun(REQUEST);
+      const first = await startTaskFrom(bureau, REQUEST);
       const conflict = await rejectionOf(
-        bureau.createRun({ ...REQUEST, message: 'Summarize the year.' }),
+        startTaskFrom(bureau, { ...REQUEST, input: 'Summarize the year.' }),
       );
 
       expect(conflict).toBeInstanceOf(BureauLedgerConflictError);
@@ -153,16 +154,16 @@ describe('createRun with a run-creation request id', () => {
       expect(bureau.listRuns().map((run) => run.id)).toEqual([first.id]);
 
       // The original entry is unaffected: an exact retry still replays it.
-      const retry = await bureau.createRun(REQUEST);
+      const retry = await startTaskFrom(bureau, REQUEST);
       expect(retry.receipt).toEqual(first.receipt);
     });
   });
 
   it('creates one run per published agent for one request id', async () => {
     await withDurableBureau(async (bureau) => {
-      const forBureau = await bureau.createRun(REQUEST);
-      const forResearcher = await bureau.createRun({ ...REQUEST, agentName: 'researcher' });
-      const researcherRetry = await bureau.createRun({ ...REQUEST, agentName: 'researcher' });
+      const forBureau = await startTaskFrom(bureau, REQUEST);
+      const forResearcher = await startTaskFrom(bureau, { ...REQUEST, agentName: 'researcher' });
+      const researcherRetry = await startTaskFrom(bureau, { ...REQUEST, agentName: 'researcher' });
 
       expect(forResearcher.id).not.toBe(forBureau.id);
       expect(researcherRetry.id).toBe(forResearcher.id);
@@ -172,8 +173,8 @@ describe('createRun with a run-creation request id', () => {
 
   it('scopes the request id to the caller', async () => {
     await withDurableBureau(async (bureau) => {
-      const alice = await bureau.createRun(REQUEST);
-      const bob = await bureau.createRun({ ...REQUEST, principal: 'bob' });
+      const alice = await startTaskFrom(bureau, REQUEST);
+      const bob = await startTaskFrom(bureau, { ...REQUEST, principal: 'bob' });
 
       expect(bob.id).not.toBe(alice.id);
       expect(bureau.listRuns()).toHaveLength(2);
@@ -182,8 +183,8 @@ describe('createRun with a run-creation request id', () => {
 
   it('keys the request id without surrounding whitespace', async () => {
     await withDurableBureau(async (bureau) => {
-      const first = await bureau.createRun(REQUEST);
-      const retry = await bureau.createRun({ ...REQUEST, runCreationRequestId: ' request-1 ' });
+      const first = await startTaskFrom(bureau, REQUEST);
+      const retry = await startTaskFrom(bureau, { ...REQUEST, commandId: ' request-1 ' });
 
       expect(retry.id).toBe(first.id);
       expect(retry.receipt).toEqual(first.receipt);
@@ -193,8 +194,8 @@ describe('createRun with a run-creation request id', () => {
 
   it('keys the principal exactly as the run records its owner', async () => {
     await withDurableBureau(async (bureau) => {
-      const padded = await bureau.createRun({ ...REQUEST, principal: ' alice ' });
-      const exact = await bureau.createRun(REQUEST);
+      const padded = await startTaskFrom(bureau, { ...REQUEST, principal: ' alice ' });
+      const exact = await startTaskFrom(bureau, REQUEST);
 
       // A padded principal is a different owner, so it never replays to `alice`.
       expect(exact.id).not.toBe(padded.id);
@@ -211,11 +212,11 @@ describe('createRun with a run-creation request id', () => {
   it('requires an authenticated principal to own the request id', async () => {
     await withDurableBureau(async (bureau) => {
       for (const request of [
-        { agentName: 'default', message: 'hi', runCreationRequestId: 'request-1' },
-        { agentName: 'default', message: 'hi', principal: ' ', runCreationRequestId: 'request-1' },
-        { agentName: 'default', message: 'hi', principal: 'alice', runCreationRequestId: ' ' },
+        { agentName: 'default', input: 'hi', commandId: 'request-1' },
+        { agentName: 'default', input: 'hi', principal: ' ', commandId: 'request-1' },
+        { agentName: 'default', input: 'hi', principal: 'alice', commandId: ' ' },
       ]) {
-        const rejection = await rejectionOf(bureau.createRun(request));
+        const rejection = await rejectionOf(startTaskFrom(bureau, request));
         expect(rejection).toBeInstanceOf(BureauError);
         expect((rejection as BureauError).code).toBe('BAD_REQUEST');
       }
@@ -234,7 +235,7 @@ describe('createRun with a run-creation request id', () => {
       runtime: createManualRuntimeServices({ origin: ORIGIN }),
     });
     try {
-      const rejection = await rejectionOf(bureau.createRun(REQUEST));
+      const rejection = await rejectionOf(startTaskFrom(bureau, REQUEST));
       expect(rejection).toBeInstanceOf(BureauError);
       expect(rejection).toMatchObject({ code: 'NOT_CONFIGURED', subject: 'durable' });
       expect(bureau.listRuns()).toEqual([]);
@@ -255,16 +256,8 @@ describe('createRun with a run-creation request id', () => {
       runtime: createManualRuntimeServices({ origin: ORIGIN }),
     });
     try {
-      const first = await bureau.createRun({
-        agentName: 'default',
-        message: 'hi',
-        principal: 'alice',
-      });
-      const second = await bureau.createRun({
-        agentName: 'default',
-        message: 'hi',
-        principal: 'alice',
-      });
+      const first = await bureau.tasks.start('default', 'hi', { principal: 'alice' });
+      const second = await bureau.tasks.start('default', 'hi', { principal: 'alice' });
 
       expect(first.receipt).toBeUndefined();
       expect(second.id).not.toBe(first.id);
@@ -277,8 +270,8 @@ describe('createRun with a run-creation request id', () => {
   it('replays an exact retry instead of letting flow control reject it as a duplicate', async () => {
     await withDurableBureau(
       async (bureau) => {
-        const first = await bureau.createRun(REQUEST);
-        const retry = await bureau.createRun(REQUEST);
+        const first = await startTaskFrom(bureau, REQUEST);
+        const retry = await startTaskFrom(bureau, REQUEST);
 
         expect(retry.id).toBe(first.id);
         expect(retry.receipt).toEqual(first.receipt);
@@ -290,12 +283,8 @@ describe('createRun with a run-creation request id', () => {
   it('releases the claim when flow control rejects a fresh request, so a later retry starts the run', async () => {
     await withDurableBureau(
       async (bureau, release) => {
-        const occupying = await bureau.createRun({
-          agentName: 'default',
-          message: 'first',
-          principal: 'alice',
-        });
-        const rejected = await rejectionOf(bureau.createRun(REQUEST));
+        const occupying = await bureau.tasks.start('default', 'first', { principal: 'alice' });
+        const rejected = await rejectionOf(startTaskFrom(bureau, REQUEST));
         expect(rejected).toBeInstanceOf(BureauError);
         expect((rejected as BureauError).code).toBe('RATE_LIMITED');
 
@@ -305,7 +294,7 @@ describe('createRun with a run-creation request id', () => {
           'the occupying run did not complete',
         );
 
-        const retry = await bureau.createRun(REQUEST);
+        const retry = await startTaskFrom(bureau, REQUEST);
         expect(retry.id).not.toBe(occupying.id);
         expect(retry.receipt).toMatchObject({ runId: retry.id, requestId: 'request-1' });
         expect(
@@ -320,23 +309,21 @@ describe('createRun with a run-creation request id', () => {
   });
 });
 
-describe('createRun on a session bound to an agent (COR-1577)', () => {
+describe('tasks.start on a session bound to an agent (COR-1577)', () => {
   // Deliberately names no agent: the session's own agent is inherited, which the type no longer
   // lets a caller write.
   const SESSION_REQUEST = {
-    message: 'Carry on.',
+    input: 'Carry on.',
     principal: 'alice',
-    sessionId: 'bound',
-    runCreationRequestId: 'request-1',
+    contextId: 'bound',
+    commandId: 'request-1',
   } as const;
 
   /** Binds `bound` to `researcher` with a first run, and lets that run finish. */
   async function bindSession(bureau: Bureau, release: () => void): Promise<string> {
-    const creator = await bureau.createRun({
-      message: 'Start.',
+    const creator = await bureau.tasks.start('researcher', 'Start.', {
+      contextId: 'bound',
       principal: 'alice',
-      agentName: 'researcher',
-      sessionId: 'bound',
     });
     release();
     await waitForCondition(
@@ -346,43 +333,10 @@ describe('createRun on a session bound to an agent (COR-1577)', () => {
     return creator.id;
   }
 
-  async function runIds(bureau: Bureau): Promise<string[]> {
-    return bureau
-      .listRuns()
-      .map((run) => run.id)
-      .toSorted();
-  }
-
-  it('treats a retry that spells the inherited agent as the same command as one that omitted it', async () => {
-    await withDurableBureau(async (bureau, release) => {
-      const creatorId = await bindSession(bureau, release);
-
-      const omitted = await bureau.createRun(SESSION_REQUEST as CreateRunRequest);
-      const spelled = await bureau.createRun({ ...SESSION_REQUEST, agentName: 'researcher' });
-
-      expect(spelled.id).toBe(omitted.id);
-      expect(spelled.receipt).toEqual(omitted.receipt);
-      expect(await runIds(bureau)).toEqual([creatorId, omitted.id].toSorted());
-    });
-  });
-
-  it('treats a retry that omits the agent as the same command as one that spelled it', async () => {
-    await withDurableBureau(async (bureau, release) => {
-      const creatorId = await bindSession(bureau, release);
-
-      const spelled = await bureau.createRun({ ...SESSION_REQUEST, agentName: 'researcher' });
-      const omitted = await bureau.createRun(SESSION_REQUEST as CreateRunRequest);
-
-      expect(omitted.id).toBe(spelled.id);
-      expect(omitted.receipt).toEqual(spelled.receipt);
-      expect(await runIds(bureau)).toEqual([creatorId, spelled.id].toSorted());
-    });
-  });
-
   it('locates the one receipt by the session, by the spelled agent, or by both', async () => {
     await withDurableBureau(async (bureau, release) => {
       await bindSession(bureau, release);
-      const omitted = await bureau.createRun(SESSION_REQUEST as CreateRunRequest);
+      const omitted = await startTaskFrom(bureau, { ...SESSION_REQUEST, agentName: 'researcher' });
       const key = { principal: 'alice', commandId: 'request-1' } as const;
 
       const bySession = await bureau.tasks.receipt({ ...key, contextId: 'bound' });
@@ -405,7 +359,7 @@ describe('createRun on a session bound to an agent (COR-1577)', () => {
   it('locates a session that does not exist under the agent the request stated, and refuses a contradiction', async () => {
     await withDurableBureau(async (bureau, release) => {
       await bindSession(bureau, release);
-      const omitted = await bureau.createRun(SESSION_REQUEST as CreateRunRequest);
+      const omitted = await startTaskFrom(bureau, { ...SESSION_REQUEST, agentName: 'researcher' });
       const key = { principal: 'alice', commandId: 'request-1' } as const;
 
       // No such session: the stated agent alone keys the request, as it does for a new session.

@@ -74,7 +74,7 @@ describe('a run reclaimed while the bureau is still being composed (COR-1509)', 
       },
     });
     bureaus.push(owner);
-    const run = await owner.createRun({ agentName: 'default', message: 'go' });
+    const run = await owner.tasks.start('default', 'go');
     await reachedStepOne.promise;
 
     // The second bureau reclaims it while its composition is held open.
@@ -141,7 +141,7 @@ describe('a run reclaimed while the bureau is still being composed (COR-1509)', 
     const steps = await auditTrail.query({ runId: run.id, type: 'step.completed' });
     // The reclaimed run was reattached, so its session reached a terminal status rather than being
     // left `running`, and its terminal event was delivered and recorded.
-    const session = await bureau.contexts.get(run.sessionId);
+    const session = await bureau.contexts.get(run.contextId);
     expect(session?.metadata['lastRunStatus']).toBe('completed');
     const terminal = await auditTrail.query({ runId: run.id, type: 'run.completed' });
     expect(terminal).toHaveLength(1);

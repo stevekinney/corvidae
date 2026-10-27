@@ -223,10 +223,8 @@ describe('a procedure from proposal to revocation through public APIs (COR-770)'
       },
     });
     bureaus.push(bureau);
-    const run = await bureau.createRun({
-      message: 'Rotate the staging certificate.',
-      sessionId: 'session-1',
-      agentName: 'operator',
+    const run = await bureau.tasks.start('operator', 'Rotate the staging certificate.', {
+      contextId: 'session-1',
     });
     await waitForTaskState(bureau, run.id);
     // The procedure named reload_balancer, but the policy denied it, so it never ran.

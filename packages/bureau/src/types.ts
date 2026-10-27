@@ -83,11 +83,7 @@ import type { McpResourceReader } from './assets/content-source-resolver';
 import type { AssetService } from './assets/types';
 import type { AuditRetentionOption, AuditTrail, CheckpointRetentionOption } from './audit-trail';
 import type { BureauEventFeed } from './bureau-event-feed.ts';
-import type {
-  CreatedRunSummary,
-  RunCreationReceipt,
-  RunCreationReceiptLocation,
-} from './command-ledger';
+import type { RunCreationReceipt, RunCreationReceiptLocation } from './command-ledger';
 import type { BureauChildDelegationOptions, BureauChildren } from './child-topology';
 import type {
   DurableEventHistoryPageOptions,
@@ -2093,23 +2089,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * validators named in {@link BureauOptions.validators}. See `goal-types.ts`.
    */
   readonly goals: BureauGoals<AgentNames<D>>;
-
-  /**
-   * Creates a run of the agent named by {@link CreateRunRequest.agentName}: a catalog agent, or
-   * `'bureau'`, the implicit Bureau-wide agent that runs the Bureau-level `generate` and toolbox
-   * until those options are removed (COR-323, part 2). The run is durable when a durable engine is
-   * composed and otherwise runs in memory.
-   *
-   * COR-424: a request naming {@link CreateRunRequest.runCreationRequestId}
-   * goes through the run-creation command ledger and resolves with a
-   * `receipt`. Retrying it with the same principal, agent, request id, and
-   * payload returns the original run and receipt rather than creating
-   * another run; reusing the request id with a different payload rejects
-   * with `BureauLedgerConflictError`. Both hold while the binding is retained
-   * ({@link BureauRetentionOptions.receipts}); after that the
-   * request id creates a new run.
-   */
-  createRun(request: CreateRunRequest): Promise<CreatedRunSummary>;
   /**
    * The runs `createRun` started that this process still holds. A
    * `bureau.run()` run is not listed, though `getRun` and `abortRun` accept
@@ -2594,13 +2573,6 @@ export interface CreateRunRequest {
    */
   appendMessages?: ReadonlyArray<Message> | undefined;
   sessionId?: string;
-  systemPrompt?: string | undefined;
-  maximumSteps?: number | undefined;
-  /**
-   * Per-request output token cap; overrides the provider's construction-time
-   * maximumTokens for this run. Maps to the provider's max_tokens parameter.
-   */
-  maximumTokens?: number;
   /**
    * COR-1577 — the catalog agent to run. The run executes that agent's own `generate`, tools,
    * system prompt and stop conditions, as `bureau.run(name, …)` would, with this Bureau's opt-in
@@ -2612,9 +2584,9 @@ export interface CreateRunRequest {
    * catalog, `bureau` (the implicit agent that no longer exists) included, is refused with
    * `NOT_FOUND`; both land before anything is persisted.
    *
-   * For the system prompt, `maximumSteps` and `maximumTokens`, the request's own field wins, then
-   * the agent's value. Stop conditions come from the agent. The session's request context governs tool approvals, never the agent's
-   * `executeOptions.requestContext`.
+   * The system prompt, `maximumSteps`, `maximumTokens`, and stop conditions are the agent's (COR-1707:
+   * a run carries none of its own). The session's request context governs tool approvals, never the
+   * agent's `executeOptions.requestContext`.
    *
    * The run uses that agent's own `generate`, tools, and stop condition. A durable run
    * recovers as its agent: one whose agent has left the catalog fails, and one whose
@@ -2643,8 +2615,8 @@ export interface CreateRunRequest {
    * by `(principal, agentName, runCreationRequestId, operation version)`,
    * with surrounding whitespace trimmed from the request id (the principal is
    * keyed exactly as the run records its owner), and a digest of the payload
-   * (`message`, `sessionId`, `systemPrompt`, `maximumSteps`, `maximumTokens`,
-   * each at the value the run will use), and
+   * (`agentName`, the task input, `contextId`, and the request context's `authority`, `audience`,
+   * and `locale`), and
    * resolves with a receipt. Requires `principal`, since an idempotency key
    * needs an authenticated caller to belong to, and a bureau with a durable
    * engine (`NOT_CONFIGURED` otherwise), since a receipt promises a retry

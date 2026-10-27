@@ -19,6 +19,7 @@ import {
   userTexts,
 } from './test/session-input-fixtures';
 import type { Bureau } from './types';
+import { startTaskFrom } from './test/task-start-request.ts';
 
 /**
  * COR-1476 — admission against a run's end, with two Bureau processes on one
@@ -52,21 +53,24 @@ describe('admission against a run ending, across two processes (COR-1476)', () =
   it("(a) the submit side's liveness read is held until the ending run's mailbox read finishes: the run cancels, the submit reads canceled", async () => {
     const stepZeroStarted = deferred();
     const releaseStepZero = deferred();
-    const a = await openProcess(path, async () => {
-      stepZeroStarted.resolve();
-      await releaseStepZero.promise;
-      return { content: 'answer', toolCalls: [] };
-    });
+    const a = await openProcess(
+      path,
+      async () => {
+        stepZeroStarted.resolve();
+        await releaseStepZero.promise;
+        return { content: 'answer', toolCalls: [] };
+      },
+      { maximumSteps: 1 },
+    );
     const b = await openProcess(path, async () => {
       throw new Error('process B never generates');
     });
     const holds: Array<{ release: () => void }> = [];
     try {
-      const run = await a.bureau.createRun({
+      const run = await startTaskFrom(a.bureau, {
         agentName: 'default',
-        message: 'First',
+        input: 'First',
         principal: 'alice',
-        maximumSteps: 1,
       });
       await stepZeroStarted.promise;
 
@@ -77,14 +81,14 @@ describe('admission against a run ending, across two processes (COR-1476)', () =
         b.seam.awaitWrite(admitsSessionInput),
       );
       holds.push(heldLiveness);
-      const submitting = b.bureau.contexts.input(run.sessionId, input);
+      const submitting = b.bureau.contexts.input(run.contextId, input);
       await heldLiveness.reached;
 
       // The run ends: it records its end, reads the mailbox, and cancels the input.
       const cancelledByA = a.seam.awaitWrite(cancelsSessionInput);
       releaseStepZero.resolve();
       await cancelledByA;
-      expect(await mailboxState(a.bureau, a.real, run.sessionId)).toBe('cancelled');
+      expect(await mailboxState(a.bureau, a.real, run.contextId)).toBe('cancelled');
 
       // B's liveness read proceeds: no run is live, and the input it would
       // cancel is already cancelled. It reads the receipt back: canceled.
@@ -116,11 +120,7 @@ describe('admission against a run ending, across two processes (COR-1476)', () =
     });
     const holds: Array<{ release: () => void }> = [];
     try {
-      const run = await a.bureau.createRun({
-        agentName: 'default',
-        message: 'First',
-        principal: 'alice',
-      });
+      const run = await a.bureau.tasks.start('default', 'First', { principal: 'alice' });
       await stepZeroStarted.promise;
 
       // The run is cancelled. Its settlement writes `run-ended` first, and its
@@ -134,10 +134,10 @@ describe('admission against a run ending, across two processes (COR-1476)', () =
 
       // B admits the input now. Its liveness read folds the run's end and finds
       // nothing live, so it cancels the input itself.
-      const outcome = await b.bureau.contexts.input(run.sessionId, input);
+      const outcome = await b.bureau.contexts.input(run.contextId, input);
       expect(outcome.outcome).toBe('admitted');
       if (outcome.outcome === 'admitted') expect(outcome.receipt.state).toBe('canceled');
-      expect(await mailboxState(a.bureau, a.real, run.sessionId)).toBe('cancelled');
+      expect(await mailboxState(a.bureau, a.real, run.contextId)).toBe('cancelled');
 
       // The run's read proceeds and finds the input already cancelled.
       heldMailboxRead.release();
@@ -145,7 +145,7 @@ describe('admission against a run ending, across two processes (COR-1476)', () =
       expect(cancelled.status).toBe('requested');
       heldTerminalSave.release();
       await a.bureau.tasks.wait(run.id);
-      expect(await mailboxState(a.bureau, a.real, run.sessionId)).toBe('cancelled');
+      expect(await mailboxState(a.bureau, a.real, run.contextId)).toBe('cancelled');
       expect(a.bureau.listRuns()).toHaveLength(1);
       expect(b.bureau.listRuns()).toHaveLength(0);
     } finally {
@@ -163,19 +163,22 @@ describe("a run's end against a session recreated while it ran (COR-1476)", () =
     const SESSION = 'session-recreated-at-end';
     const run1Started = deferred();
     const release1 = deferred();
-    const a = await openProcess(path, async () => {
-      run1Started.resolve();
-      await release1.promise;
-      return { content: 'done', toolCalls: [] };
-    });
+    const a = await openProcess(
+      path,
+      async () => {
+        run1Started.resolve();
+        await release1.promise;
+        return { content: 'done', toolCalls: [] };
+      },
+      { maximumSteps: 1 },
+    );
     const b = await openProcess(path, async () => ({ content: 'done', toolCalls: [] }));
     try {
-      const first = await a.bureau.createRun({
+      const first = await startTaskFrom(a.bureau, {
         agentName: 'default',
-        message: 'First',
+        input: 'First',
         principal: 'alice',
-        sessionId: SESSION,
-        maximumSteps: 1,
+        contextId: SESSION,
       });
       await run1Started.promise;
       const oldSession = await a.bureau.contexts.get(SESSION);
@@ -186,11 +189,9 @@ describe("a run's end against a session recreated while it ran (COR-1476)", () =
       // new one: one admitted late under the old incarnation, which run 1, on
       // its last step, can no longer deliver, and one for the new.
       await b.bureau.contexts.delete(SESSION);
-      const second = await b.bureau.createRun({
-        agentName: 'default',
-        message: 'Second',
+      const second = await b.bureau.tasks.start('default', 'Second', {
+        contextId: SESSION,
         principal: 'alice',
-        sessionId: SESSION,
       });
       await b.bureau.tasks.wait(second.id);
       const recreated = await b.bureau.contexts.get(SESSION);
@@ -234,11 +235,15 @@ describe('input admitted to a recreated session while an old run still drains (C
     const SESSION = 'session-window';
     const stepZeroStarted = deferred();
     const releaseStepZero = deferred();
-    const a = await openProcess(path, async () => {
-      stepZeroStarted.resolve();
-      await releaseStepZero.promise;
-      return { content: 'answer', toolCalls: [] };
-    });
+    const a = await openProcess(
+      path,
+      async () => {
+        stepZeroStarted.resolve();
+        await releaseStepZero.promise;
+        return { content: 'answer', toolCalls: [] };
+      },
+      { maximumSteps: 3 },
+    );
     const prompts2: string[][] = [];
     const run2Started = deferred();
     const release2 = deferred();
@@ -252,12 +257,11 @@ describe('input admitted to a recreated session while an old run still drains (C
     });
     const holds: Array<{ release: () => void }> = [];
     try {
-      const run = await a.bureau.createRun({
+      const run = await startTaskFrom(a.bureau, {
         agentName: 'default',
-        message: 'First',
+        input: 'First',
         principal: 'alice',
-        sessionId: SESSION,
-        maximumSteps: 3,
+        contextId: SESSION,
       });
       await stepZeroStarted.promise;
       // The late drain after step 0: the old run's gate's first mailbox read is held.
@@ -269,11 +273,9 @@ describe('input admitted to a recreated session while an old run still drains (C
       // Inside that window process B deletes and recreates the session, its run
       // holds the new incarnation's step, and the client submits input to it.
       await b.bureau.contexts.delete(SESSION);
-      const second = await b.bureau.createRun({
-        agentName: 'default',
-        message: 'Second',
+      const second = await b.bureau.tasks.start('default', 'Second', {
+        contextId: SESSION,
         principal: 'alice',
-        sessionId: SESSION,
       });
       await run2Started.promise;
       const admitted = await b.bureau.contexts.input(SESSION, input);

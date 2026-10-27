@@ -55,12 +55,7 @@ async function openBlockedBureau(storage: MemoryStorage, blocked: { value: boole
 type FirstBureau = Awaited<ReturnType<typeof openBlockedBureau>>['bureau'];
 
 async function settled(bureau: FirstBureau, principal: string, sessionId: string) {
-  const run = await bureau.createRun({
-    agentName: 'default',
-    message: 'hello',
-    sessionId,
-    principal,
-  });
+  const run = await bureau.tasks.start('default', 'hello', { contextId: sessionId, principal });
   await waitForCondition(
     () => bureau.tasks.detail(run.id)?.status !== 'running',
     `run ${run.id} never settled`,

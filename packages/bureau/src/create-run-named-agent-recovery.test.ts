@@ -115,7 +115,7 @@ async function startRunThatDies(databasePath: string) {
       return new Promise<never>(() => {});
     },
   });
-  const run = await crashed.createRun({ message: 'Recover me', agentName: 'scribe' });
+  const run = await crashed.tasks.start('scribe', 'Recover me');
   await pollUntil(() => reachedStep1);
   // The first Bureau is deliberately not disposed: a graceful shutdown would cancel the run and
   // leave nothing for the restart to recover. The afterEach hook releases it.
@@ -131,11 +131,11 @@ describe('a named session run after a restart', () => {
       scribe: async ({ step }) => ({ content: `scribe resumed at ${step}`, toolCalls: [] }),
     });
     await pollUntil(async () => {
-      const session = await restarted.contexts.get(run.sessionId);
+      const session = await restarted.contexts.get(run.contextId);
       return session?.metadata['lastRunStatus'] === 'completed';
     });
 
-    expect(await assistantReplies(restarted, run.sessionId)).toEqual([
+    expect(await assistantReplies(restarted, run.contextId)).toEqual([
       'scribe step 0',
       'scribe resumed at 1',
     ]);
@@ -147,11 +147,11 @@ describe('a named session run after a restart', () => {
 
     const restarted = await bureauOver(databasePath, {});
     await pollUntil(async () => {
-      const session = await restarted.contexts.get(run.sessionId);
+      const session = await restarted.contexts.get(run.contextId);
       return session?.metadata['lastRunStatus'] !== 'running';
     });
 
-    const session = await restarted.contexts.get(run.sessionId);
+    const session = await restarted.contexts.get(run.contextId);
     expect(session?.metadata['lastRunStatus']).toBe('error');
     const lastError = session?.metadata['lastError'];
     expect(typeof lastError === 'string' ? lastError : '').toContain('no longer in the catalog');
@@ -168,11 +168,11 @@ describe('a named session run after a restart', () => {
       warnings,
     });
     await pollUntil(async () => {
-      const session = await restarted.contexts.get(run.sessionId);
+      const session = await restarted.contexts.get(run.contextId);
       return session?.metadata['lastRunStatus'] === 'completed';
     });
 
-    expect(await assistantReplies(restarted, run.sessionId)).toContain('scribe, revised');
+    expect(await assistantReplies(restarted, run.contextId)).toContain('scribe, revised');
     expect(warnings.some((warning) => warning.includes('definition revision changed'))).toBe(true);
   });
 });
@@ -204,13 +204,13 @@ describe('requestHumanInput on a named session run', () => {
     });
     bureaus.push(bureau);
 
-    const run = await bureau.createRun({ message: 'deploy', agentName: 'asker' });
+    const run = await bureau.tasks.start('asker', 'deploy');
     await pollUntil(() => bureau.reviews.list().some((review) => review.runId === run.id));
     const [review] = bureau.reviews.list();
     if (review === undefined || review.kind !== 'human-wait') throw new Error('Expected a park.');
     expect(review).toMatchObject({
       runId: run.id,
-      sessionId: run.sessionId,
+      sessionId: run.contextId,
       agentName: 'asker',
       prompt: 'Which environment?',
     });
@@ -224,7 +224,7 @@ describe('requestHumanInput on a named session run', () => {
     await waitForTaskState(bureau, run.id);
 
     await pollUntil(async () => {
-      const replies = await assistantReplies(bureau, run.sessionId);
+      const replies = await assistantReplies(bureau, run.contextId);
       return replies.includes('thanks, deploying');
     });
     expect(bureau.reviews.list()).toEqual([]);

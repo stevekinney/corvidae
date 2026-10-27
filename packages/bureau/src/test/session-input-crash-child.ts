@@ -29,6 +29,7 @@ import { z } from 'zod';
 import { createBureau } from '../create-bureau';
 import { admitsSessionInput, savesSessionAs, seamStorage } from './session-input-fixtures';
 import type { AgentDefinitions } from '../agent-catalog';
+import { startTaskFrom } from './task-start-request.ts';
 
 const [backend, storagePath, markerPath, mode = 'running'] = process.argv.slice(2);
 if (
@@ -101,11 +102,7 @@ if (mode === 'running') {
     durableOwnership,
   });
 
-  const run = await bureau.createRun({
-    agentName: 'default',
-    message: 'Start',
-    principal: 'alice',
-  });
+  const run = await bureau.tasks.start('default', 'Start', { principal: 'alice' });
   for (let attempt = 0; attempt < 400 && !stepOneStarted; attempt += 1) {
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, 10));
   }
@@ -119,14 +116,14 @@ if (mode === 'running') {
     ['input-a', 'first'],
     ['input-b', 'second'],
   ] as const) {
-    outcomes.push(await submit(bureau, run.sessionId, id, payload));
+    outcomes.push(await submit(bureau, run.contextId, id, payload));
   }
   if (outcomes.some((outcome) => outcome !== 'admitted')) {
     process.stderr.write(`child: expected both inputs admitted, got ${outcomes.join(',')}\n`);
     process.exit(4);
   }
-  const session = await bureau.contexts.get(run.sessionId);
-  killNow(run.sessionId, session?.incarnation ?? '', run.id);
+  const session = await bureau.contexts.get(run.contextId);
+  killNow(run.contextId, session?.incarnation ?? '', run.id);
 }
 
 // `ended`: the run finishes; its terminal session write is held so the session
@@ -136,6 +133,7 @@ const seam = seamStorage(await resolveStorage({ type: backend, path: storagePath
 const bureau = await createBureau<AgentDefinitions>({
   agents: {
     default: createAgent({
+      maximumSteps: 1,
       generate: async () => ({ content: 'done', toolCalls: [] }),
       toolbox: createToolbox([nextTool]),
       stopWhen: stopWhen.noToolCalls(),
@@ -147,18 +145,17 @@ const bureau = await createBureau<AgentDefinitions>({
   // Ends the run on its first reply, as `completed`.
 });
 const heldTerminalSave = seam.holdWrite(savesSessionAs('completed'));
-const run = await bureau.createRun({
+const run = await startTaskFrom(bureau, {
   agentName: 'default',
-  message: 'Start',
+  input: 'Start',
   principal: 'alice',
-  maximumSteps: 1,
 });
 await heldTerminalSave.reached;
-const endedSession = await bureau.contexts.get(run.sessionId);
+const endedSession = await bureau.contexts.get(run.contextId);
 void seam
   .awaitWriteCommitted(admitsSessionInput)
-  .then(() => killNow(run.sessionId, endedSession?.incarnation ?? '', run.id));
-const outcome = await submit(bureau, run.sessionId, 'input-a', 'too late');
+  .then(() => killNow(run.contextId, endedSession?.incarnation ?? '', run.id));
+const outcome = await submit(bureau, run.contextId, 'input-a', 'too late');
 // Unreachable when the admission commits: the kill lands first.
 process.stderr.write(`child: survived the admission, which answered ${outcome}\n`);
 process.exit(5);

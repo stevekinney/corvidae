@@ -198,7 +198,6 @@ export type {
   CommandLedgerPruneResult,
   CommandPayloadValue,
   CreateCommandLedgerOptions,
-  CreatedRunSummary,
   CreateRunCreationLedgerOptions,
   LocateRunCreationReceiptInput,
   RunCreationAttempt,

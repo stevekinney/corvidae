@@ -954,10 +954,10 @@ describe('conversation state holds references, not bytes', () => {
     const sessionId = 'asset-conversation';
     const reference = JSON.stringify(admission.source);
     for (let turn = 0; turn < 2; turn++) {
-      const run = await harness.startSession({
+      const run = await harness.startTask({
         agentName: 'default',
-        message: `turn ${turn}: describe ${reference}`,
-        sessionId,
+        input: `turn ${turn}: describe ${reference}`,
+        contextId: sessionId,
       });
       await waitForTaskState(harness.bureau, run.id);
     }

@@ -4,6 +4,7 @@
  * the reviews its entries answer and opens a new stream, on the same native run
  * for a human wait and on a fresh one for a tool approval.
  */
+import type { TaskHandle } from '../types.ts';
 import { type Event, EventType, type ResumeEntry } from '@ag-ui/core';
 import { createDefaultRuntimeServices, createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { stopWhen, type Toolbox, waitForCondition } from '@lostgradient/operative';
@@ -673,12 +674,14 @@ describe('a resume whose run cannot start', () => {
       { script: [chargeOnce, say('Charged, and carrying on.')], toolbox: approvalToolbox(charges) },
       async ({ handler, bureau }) => {
         const first = await startUntilInterrupted(handler);
-        const createRun = spyOn(bureau, 'createRun').mockRejectedValueOnce(new Error('disk full'));
+        const startTask = spyOn(bureau.tasks, 'start').mockRejectedValueOnce(
+          new Error('disk full'),
+        );
 
         const failed = await readAgUiStream(
           await handler(resumeRequest([resolved(first.interruptIds[0]!)])),
         );
-        createRun.mockRestore();
+        startTask.mockRestore();
         const next = await readAgUiStream(
           await handler(
             startRequest(
@@ -781,10 +784,12 @@ describe('a resume that did not finish', () => {
       async (harness) => {
         const first = await startUntilInterrupted(harness.handler);
         const entries = [resolved(first.interruptIds[0]!)];
-        const createRun = spyOn(harness.bureau, 'createRun').mockImplementationOnce(() => never());
+        const startTask = spyOn(harness.bureau.tasks, 'start').mockImplementationOnce(() =>
+          never<TaskHandle>(),
+        );
         void harness.handler(resumeRequest(entries));
-        await waitForCondition(() => createRun.mock.calls.length === 1, 'the run never started');
-        createRun.mockRestore();
+        await waitForCondition(() => startTask.mock.calls.length === 1, 'the run never started');
+        startTask.mockRestore();
         expect(harness.bureau.reviews.list()).toHaveLength(0);
         await living.advance(DEFAULT_AG_UI_LEASE_MS);
 
@@ -1481,12 +1486,12 @@ describe('a resume through the route of another published agent', () => {
       async (harness) => {
         const first = await startUntilInterrupted(harness.handler);
         const entries = [resolved(first.interruptIds[0]!)];
-        const createRun = spyOn(harness.bureau, 'createRun').mockImplementationOnce(
-          () => new Promise(() => {}),
+        const startTask = spyOn(harness.bureau.tasks, 'start').mockImplementationOnce(
+          () => new Promise<TaskHandle>(() => {}),
         );
         void harness.handler(resumeRequest(entries));
-        await waitForCondition(() => createRun.mock.calls.length === 1, 'the run never started');
-        createRun.mockRestore();
+        await waitForCondition(() => startTask.mock.calls.length === 1, 'the run never started');
+        startTask.mockRestore();
         await living.advance(DEFAULT_AG_UI_LEASE_MS);
 
         const retried = await readAgUiStream(

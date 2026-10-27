@@ -182,11 +182,7 @@ const waitingOnSecond = {
 describe('bureau.tasks.respond when the run parks again before the answer is recorded (COR-1607)', () => {
   it('keeps a session task input-required, in tasks.get and in its event stream', async () => {
     await withHeldBureau({ generate: parksTwice() }, async (opened, hold) => {
-      const run = await opened.bureau.createRun({
-        agentName: 'default',
-        message: 'park',
-        principal: OWNER.alice,
-      });
+      const run = await opened.bureau.tasks.start('default', 'park', { principal: OWNER.alice });
       await waitForCondition(
         async () => (await countOf(opened, run.id, 'review.requested')) === 1,
         'the run never parked on its first wait',

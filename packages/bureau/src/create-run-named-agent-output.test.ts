@@ -81,7 +81,7 @@ describe('a named agent’s structured output on a session run', () => {
     bureaus.push(bureau);
 
     const direct = await bureau.run('viaRun', 'question').result();
-    const run = await bureau.createRun({ message: 'question', agentName: 'viaSession' });
+    const run = await bureau.tasks.start('viaSession', 'question');
     await waitForTaskState(bureau, run.id);
 
     // The same contract: one retry, then the valid answer.
@@ -124,7 +124,7 @@ describe('a named agent’s structured output after a restart', () => {
       durableOwnership: { ownership: 'none' },
     });
     bureaus.push(crashed);
-    const run = await crashed.createRun({ message: 'go', agentName: 'scribe' });
+    const run = await crashed.tasks.start('scribe', 'go');
     await pollUntil(() => reachedStep1);
     // Left running on purpose: a graceful shutdown would cancel the run and leave nothing to resume.
 
@@ -152,7 +152,7 @@ describe('a named agent’s structured output after a restart', () => {
     });
     bureaus.push(restarted);
     await pollUntil(async () => {
-      const session = await restarted.contexts.get(run.sessionId);
+      const session = await restarted.contexts.get(run.contextId);
       return session?.metadata['lastRunStatus'] === 'completed';
     });
 

@@ -84,13 +84,9 @@ describe('a caller-supplied mcp-resource source', () => {
 
   it('is refused as a session input, and the reader is never asked', async () => {
     const { bureau, reads } = await open();
-    const run = await bureau.createRun({
-      agentName: 'default',
-      message: 'Start',
-      principal: alice.id,
-    });
+    const run = await bureau.tasks.start('default', 'Start', { principal: alice.id });
     const thrown = await thrownBy(() =>
-      bureau.contexts.input(run.sessionId, {
+      bureau.contexts.input(run.contextId, {
         id: 'forged-input',
         principal: alice.id,
         deliveryMode: 'steer',

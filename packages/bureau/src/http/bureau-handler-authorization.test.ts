@@ -46,6 +46,7 @@ import {
 } from './create-bureau-handler.ts';
 import { mayAccessOwnedResource, type OwnerAccessPredicate } from './owner-predicate.ts';
 import { createMemoryAssetStorage } from '../assets/storage';
+import { startTaskFrom } from '../test/task-start-request.ts';
 
 type Handler = (request: Request) => Promise<Response>;
 type Credential = { subject: string; scopes: readonly AuthorizationScope[] };
@@ -291,9 +292,9 @@ async function openBureau(id = 'authorization-bureau') {
 
 /** A parked run, and the id of the review it is waiting on. */
 async function parkRun(bureau: Bureau, principal: string | undefined, message = 'park me') {
-  const run = await bureau.createRun({
+  const run = await startTaskFrom(bureau, {
     agentName: 'default',
-    message,
+    input: message,
     ...(principal === undefined ? {} : { principal }),
   });
   await waitForCondition(
@@ -789,7 +790,7 @@ describe('identifiers grant nothing', () => {
         taskId: bob.run.id,
         scheduleId: bobScheduleId,
         goalRunId: bobGoalRunId,
-        contextId: bob.run.sessionId,
+        contextId: bob.run.contextId,
         bureauId: bureau.id,
       };
       let probed = 0;
@@ -927,7 +928,7 @@ describe('deployment isolation', () => {
 describe('transcripts stay inside the Bureau', () => {
   it('returns no session transcript content from any served operation', async () => {
     await withTwoOwners(async ({ bureau, alice }) => {
-      const session = await bureau.contexts.get(alice.run.sessionId);
+      const session = await bureau.contexts.get(alice.run.contextId);
       expect(JSON.stringify(session?.conversationHistory)).toContain(SENTINEL);
       // Let the run finish, so its feeds hold every kind of event it publishes.
       await bureau.reviews.resolve({
@@ -957,7 +958,7 @@ describe('transcripts stay inside the Bureau', () => {
           goalRunId: 'goal-none',
           // Not alice's own context for the one operation that would remove what the rest reads.
           contextId:
-            operation.name === 'bureau.contexts.delete' ? 'no-such-context' : alice.run.sessionId,
+            operation.name === 'bureau.contexts.delete' ? 'no-such-context' : alice.run.contextId,
           messageId: 'message-1',
           bureauId: bureau.id,
           decision: 'approve',

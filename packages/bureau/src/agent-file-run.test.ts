@@ -225,7 +225,7 @@ describe('a session run of a file agent', () => {
     await bureau.agents.refresh();
 
     await bureau.run('researcher', 'hello').result();
-    const created = await bureau.createRun({ message: 'hello', agentName: 'researcher' });
+    const created = await bureau.tasks.start('researcher', 'hello');
     await waitForTaskState(bureau, created.id);
 
     const [catalogRun, sessionRun] = observed as [Observation, Observation];
@@ -236,7 +236,7 @@ describe('a session run of a file agent', () => {
     const hash = bureau.agents
       .list()
       .find((listing) => listing.id === 'researcher')?.definitionHash;
-    const session = await bureau.contexts.get(created.sessionId);
+    const session = await bureau.contexts.get(created.contextId);
     expect(session?.metadata['lastAgentDefinitionHash']).toBe(hash);
     expect(session?.agentName).toBe('researcher');
     const revisions = await bureau.agents.revisions('researcher');
@@ -252,7 +252,7 @@ describe('a session run of a file agent', () => {
     // Both pass the preflight check for a session that does not exist yet; one binds it first.
     const outcomes = await Promise.allSettled(
       ['alpha-file', 'bravo-file'].map((agentName) =>
-        bureau.createRun({ message: 'hello', agentName, sessionId: 'session-shared' }),
+        bureau.tasks.start(agentName, 'hello', { contextId: 'session-shared' }),
       ),
     );
     expect(outcomes.map((outcome) => outcome.status).toSorted()).toEqual(['fulfilled', 'rejected']);
@@ -273,7 +273,7 @@ describe('a session run of a file agent', () => {
     await put('broken.md', agentFileText({ model: 'anthropic/none' }));
     await bureau.agents.refresh();
     const refusal = await rejectionOf(
-      bureau.createRun({ message: 'hello', agentName: 'broken', sessionId: 'session-broken' }),
+      bureau.tasks.start('broken', 'hello', { contextId: 'session-broken' }),
     );
     expect(refusal).toBeInstanceOf(BureauError);
     expect((refusal as BureauError).code).toBe('NOT_FOUND');

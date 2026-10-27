@@ -150,7 +150,7 @@ async function harnessWithHungAuditTrail(runtime: ManualRuntimeServices) {
   );
   const storage = faultedAuditStorageFixture(engine);
   const harness = await createBureauTestHarness({
-    agents: { default: createAgent({ generate: mockGenerate() }) },
+    agents: { default: createAgent({ maximumSteps: 1, generate: mockGenerate() }) },
     storage,
     runtime,
   });
@@ -159,7 +159,7 @@ async function harnessWithHungAuditTrail(runtime: ManualRuntimeServices) {
     await harness.bureau.dispose();
     storage.rawStorage[Symbol.dispose]();
   });
-  await harness.startSession({ agentName: 'default', message: 'hello', maximumSteps: 1 });
+  await harness.startTask({ agentName: 'default', input: 'hello' });
   await waitForCondition(() => reached, 'fault engine block on the audit write was never reached');
   return { harness, release };
 }
@@ -413,9 +413,9 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
         durable: true,
       });
 
-      const summary = await harness.startSession({
+      const summary = await harness.startTask({
         agentName: 'default',
-        message: 'durable run that never finishes',
+        input: 'durable run that never finishes',
       });
       // Waits for the DURABLE engine's own persisted state (not just
       // Bureau's in-memory `getRun` status, which flips to "running" before
@@ -473,9 +473,9 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
         durable: true,
       });
 
-      const summary = await harness.startSession({
+      const summary = await harness.startTask({
         agentName: 'default',
-        message: 'deliberately detached durable run',
+        input: 'deliberately detached durable run',
       });
       await waitForCondition(async () => {
         const state = await harness.bureau.tasks.workflow(summary.id);
@@ -730,7 +730,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
       },
     });
 
-    const runSummary = await harness.bureau.createRun({ agentName: 'default', message: 'hello' });
+    const runSummary = await harness.bureau.tasks.start('default', 'hello');
     const runId = runSummary.id;
     await invoked;
     harness.bureau.abortRun(runId);
@@ -791,7 +791,7 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
     const harness = await createBureauTestHarness({
       agents: {
         worker: createAgent({ name: 'worker', generate: mockGenerate('worker done') }),
-        default: createAgent({ generate: mockGenerate() }),
+        default: createAgent({ maximumSteps: 1, generate: mockGenerate() }),
       },
       storage,
       runtime,
@@ -821,7 +821,7 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
     // `createRun`/`createRunFromRequest` path does. `maximumSteps: 1`
     // forces `'run.completed'` on the very first step (`mockGenerate`'s
     // empty `toolCalls` never signals completion on its own).
-    await harness.startSession({ agentName: 'default', message: 'hello', maximumSteps: 1 });
+    await harness.startTask({ agentName: 'default', input: 'hello' });
     await waitForCondition(
       () => onReachedCalled,
       'fault engine block on the evaluation audit write was never reached',
@@ -874,7 +874,7 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
     const harness = await createBureauTestHarness({
       agents: {
         worker: createAgent({ name: 'worker', generate: mockGenerate('worker done') }),
-        default: createAgent({ generate: mockGenerate() }),
+        default: createAgent({ maximumSteps: 1, generate: mockGenerate() }),
       },
       storage,
       runtime,
@@ -891,7 +891,7 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
     // the same distinction). The write is fire-and-forget from the run's
     // own perspective, so there is no need to wait for the session to
     // finish — only for the fault plan to have been reached.
-    await harness.startSession({ agentName: 'default', message: 'hello', maximumSteps: 1 });
+    await harness.startTask({ agentName: 'default', input: 'hello' });
     await waitForCondition(
       () => onReachedCalled,
       'fault engine block on the audit write was never reached',
@@ -964,7 +964,11 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
     const harness = await createBureauTestHarness({
       agents: {
         worker: createAgent({ name: 'worker', generate: mockGenerate('worker done') }),
-        default: createAgent({ generate: mockGenerate(), stopWhen: stopWhen.noToolCalls() }),
+        default: createAgent({
+          maximumSteps: 1,
+          generate: mockGenerate(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
       },
       storage,
       runtime,
@@ -986,10 +990,9 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
     // `auditTrail.query()` itself — polling with `query()` here would walk
     // straight into the SAME `nth: 1` block this test means to trigger
     // deliberately, deadlocking the wait on itself.
-    const summary = await harness.startSession({
+    const summary = await harness.startTask({
       agentName: 'default',
-      message: 'hello',
-      maximumSteps: 1,
+      input: 'hello',
     });
     await waitForCondition(
       () => harness.bureau.tasks.detail(summary.id)?.status === 'completed',

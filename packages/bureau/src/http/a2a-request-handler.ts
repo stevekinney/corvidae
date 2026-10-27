@@ -269,8 +269,10 @@ export class BureauA2AUser implements User {
 /** The part of a Bureau the request handler reads. */
 export type A2ABureau = Pick<
   Bureau,
-  'createRun' | 'getOwner' | 'addEventListener' | 'removeEventListener' | 'assets' | 'surfaces'
-> & { readonly tasks: Pick<BureauTasks, 'detail' | 'receipt' | 'events' | 'subscribeEvents'> } & {
+  'getOwner' | 'addEventListener' | 'removeEventListener' | 'assets' | 'surfaces'
+> & {
+  readonly tasks: Pick<BureauTasks, 'detail' | 'receipt' | 'events' | 'subscribeEvents' | 'start'>;
+} & {
   readonly reviews: Pick<BureauReviews, 'get'>;
 } & {
   readonly contexts: Pick<BureauContexts, 'get' | 'input'>;
@@ -1085,15 +1087,14 @@ export function createBureauA2ARequestHandler(
         : await checkNewTask(message, owner);
     let run;
     try {
-      run = await bureau.createRun({
+      // A message of text alone starts the task as a string; one with files appends a row whose id
+      // follows from the `messageId`, so an exact retry appends the same row.
+      run = await bureau.tasks.start(
         agentName,
-        principal: owner,
-        // A message of text alone starts the run as a string; one with files starts it as a row
-        // whose id follows from the `messageId`, so an exact retry appends the same row.
-        ...(inbound.content === undefined
-          ? { message: text }
+        inbound.content === undefined
+          ? text
           : {
-              appendMessages: [
+              append: [
                 {
                   // The id follows from the whole command (version, agent, message), not the bare
                   // `messageId`: the same id sent to two agents in one context is two commands, and
@@ -1107,10 +1108,13 @@ export function createBureauA2ARequestHandler(
                   hidden: false,
                 },
               ],
-            }),
-        ...(message.contextId === '' ? {} : { sessionId: message.contextId }),
-        runCreationRequestId: `a2a:${version}:${message.messageId}`,
-      });
+            },
+        {
+          principal: owner,
+          ...(message.contextId === '' ? {} : { contextId: message.contextId }),
+          commandId: `a2a:${version}:${message.messageId}`,
+        },
+      );
     } catch (error) {
       if (error instanceof BureauLedgerConflictError) {
         throw invalid(
@@ -1132,9 +1136,9 @@ export function createBureauA2ARequestHandler(
     await records.create({
       recordVersion: 1,
       taskId: run.id,
-      contextId: run.sessionId,
+      contextId: run.contextId,
       incarnation: admitted?.incarnation ?? '',
-      history: [historyEntryOf(inbound.history, run.id, run.sessionId)],
+      history: [historyEntryOf(inbound.history, run.id, run.contextId)],
       replyRecorded: false,
     });
     recordReplyWhenSettled(run.id);

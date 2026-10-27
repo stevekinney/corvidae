@@ -40,7 +40,7 @@ async function withBureau<T>(body: (opened: OpenedBureau) => Promise<T>): Promis
 
 /** A session of the selectable agent whose run is going. */
 async function liveSession(opened: OpenedBureau, principal: string = OWNER.alice) {
-  const run = await opened.bureau.createRun({ message: 'work', agentName: 'picker', principal });
+  const run = await opened.bureau.tasks.start('picker', 'work', { principal });
   await waitForCondition(
     () => opened.bureau.tasks.detail(run.id)?.status === 'running',
     'run started',
@@ -66,14 +66,14 @@ describe('bureau.contexts.steer admission outcomes', () => {
     await withBureau(async (opened) => {
       const run = await liveSession(opened);
 
-      const body = await steer(opened, run.sessionId, 'alice-key');
+      const body = await steer(opened, run.contextId, 'alice-key');
 
       expect(body.error).toBeUndefined();
       expect(body.result).toMatchObject({
         outcome: 'accepted',
         command: {
           id: 'command-1',
-          sessionId: run.sessionId,
+          sessionId: run.contextId,
           state: 'accepted',
           configVersion: 1,
           requestedValue: { target: 'model', override: 'claude-opus-5', provider: 'anthropic' },
@@ -85,10 +85,10 @@ describe('bureau.contexts.steer admission outcomes', () => {
   it('answers an exact retry as replayed, and a different model under the same command as a conflict', async () => {
     await withBureau(async (opened) => {
       const run = await liveSession(opened);
-      await steer(opened, run.sessionId, 'alice-key');
+      await steer(opened, run.contextId, 'alice-key');
 
-      const retry = await steer(opened, run.sessionId, 'alice-key');
-      const conflicting = await steer(opened, run.sessionId, 'alice-key', { override: OPUS_5_5 });
+      const retry = await steer(opened, run.contextId, 'alice-key');
+      const conflicting = await steer(opened, run.contextId, 'alice-key', { override: OPUS_5_5 });
 
       expect(retry.result).toMatchObject({ outcome: 'replayed' });
       expect(conflicting.error).toBeUndefined();
@@ -103,7 +103,7 @@ describe('bureau.contexts.steer admission outcomes', () => {
     await withBureau(async (opened) => {
       const run = await liveSession(opened);
 
-      const body = await steer(opened, run.sessionId, 'alice-key', { override: GPT_4_1 });
+      const body = await steer(opened, run.contextId, 'alice-key', { override: GPT_4_1 });
 
       expect(body.error).toBeUndefined();
       expect(body.result).toMatchObject({
@@ -116,14 +116,14 @@ describe('bureau.contexts.steer admission outcomes', () => {
   it('answers a stale expectedRevision as rejected with stale-revision, and a current one as accepted', async () => {
     await withBureau(async (opened) => {
       const run = await liveSession(opened);
-      await steer(opened, run.sessionId, 'alice-key');
+      await steer(opened, run.contextId, 'alice-key');
 
-      const stale = await steer(opened, run.sessionId, 'alice-key', {
+      const stale = await steer(opened, run.contextId, 'alice-key', {
         commandId: 'command-2',
         override: OPUS_5_5,
         expectedRevision: 0,
       });
-      const current = await steer(opened, run.sessionId, 'alice-key', {
+      const current = await steer(opened, run.contextId, 'alice-key', {
         commandId: 'command-3',
         override: OPUS_5_5,
         expectedRevision: 1,
@@ -146,7 +146,7 @@ describe('bureau.contexts.steer admission outcomes', () => {
         'run stopped',
       );
 
-      const body = await steer(opened, run.sessionId, 'alice-key');
+      const body = await steer(opened, run.contextId, 'alice-key');
 
       expect(body.result).toMatchObject({ outcome: 'accepted' });
     });
@@ -159,13 +159,13 @@ describe('bureau.contexts.steer faults', () => {
       const run = await liveSession(opened);
 
       const missing = await steer(opened, 'no-such-context', 'alice-key');
-      const foreign = await steer(opened, run.sessionId, 'bob-key');
+      const foreign = await steer(opened, run.contextId, 'bob-key');
 
       expect(missing.error?.data).toMatchObject({ weftCode: 'NotFound', resource: 'context' });
       expect(foreign.error?.data).toMatchObject({
         weftCode: 'NotFound',
         resource: 'context',
-        identifier: run.sessionId,
+        identifier: run.contextId,
       });
     });
   });
@@ -174,7 +174,7 @@ describe('bureau.contexts.steer faults', () => {
     await withBureau(async (opened) => {
       const run = await liveSession(opened);
 
-      const body = await steer(opened, run.sessionId, 'contexts-writer-key');
+      const body = await steer(opened, run.contextId, 'contexts-writer-key');
 
       expect(body.error?.data).toMatchObject({ weftCode: 'NotFound' });
     });
@@ -192,7 +192,7 @@ describe('bureau.contexts.steer faults', () => {
         { principal: 'someone-else' },
         { override: { ...OPUS_5, effort: 'high' } },
       ]) {
-        const body = await steer(opened, run.sessionId, 'alice-key', params);
+        const body = await steer(opened, run.contextId, 'alice-key', params);
         expect(body.error?.data).toMatchObject({ weftCode: 'InvalidParams' });
       }
     });
@@ -245,7 +245,7 @@ describe('bureau.contexts.steer over a Bureau with a stubbed admission', () => {
         reason: 'durable-steering-unavailable',
       }));
 
-      const body = await call(handler, run.sessionId);
+      const body = await call(handler, run.contextId);
 
       expect(body.error).toBeUndefined();
       expect(body.result).toEqual({
@@ -262,7 +262,7 @@ describe('bureau.contexts.steer over a Bureau with a stubbed admission', () => {
         throw new BureauShuttingDownError('Cannot steer: Bureau is shutting down.', SHUT_AT);
       });
 
-      const body = await call(handler, run.sessionId);
+      const body = await call(handler, run.contextId);
 
       expect(body.error).toBeUndefined();
       expect(body.result).toMatchObject({
@@ -277,7 +277,7 @@ describe('bureau.contexts.steer over a Bureau with a stubbed admission', () => {
       const run = await liveSession(opened, 'anonymous:local');
       const handler = stubbed(opened, async () => ({ outcome: 'not-found' }));
 
-      const body = await call(handler, run.sessionId);
+      const body = await call(handler, run.contextId);
 
       expect(body.error?.data).toMatchObject({ weftCode: 'NotFound', resource: 'context' });
     });

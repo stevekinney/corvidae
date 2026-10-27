@@ -140,10 +140,10 @@ describe('the host’s agent directory', () => {
     const { handed, resolver } = fakeProvider('Session reply.');
     const home = await prepareHome({ 'researcher.md': RESEARCHER });
     const host = await startAt(home, { resolveProviderGenerate: resolver });
-    const created = await host.bureau.createRun({ message: 'Hello', agentName: 'researcher' });
+    const created = await host.bureau.tasks.start('researcher', 'Hello');
     const outcome = await host.bureau.tasks.wait(created.id);
     expect(outcome).toBeDefined();
-    const session = await host.bureau.contexts.get(created.sessionId);
+    const session = await host.bureau.contexts.get(created.contextId);
     expect(session?.agentName).toBe('researcher');
     expect(handed.at(-1)).toMatchObject({ provider: 'anthropic', model: 'claude-sonnet-5' });
   });

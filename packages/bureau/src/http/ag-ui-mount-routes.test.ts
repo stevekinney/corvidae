@@ -3,6 +3,7 @@
  * fetch against the handler, every run is scripted (no model), and every event
  * read back is parsed with `@ag-ui/core`'s own schema.
  */
+import type { TaskHandle } from '../types.ts';
 import { EventType, type RunAgentInput } from '@ag-ui/core';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { stopWhen, type Toolbox, waitForCondition } from '@lostgradient/operative';
@@ -269,12 +270,14 @@ describe('a start that races another on the same thread in another process', () 
       try {
         const reached = Promise.withResolvers<void>();
         const held = Promise.withResolvers<void>();
-        const createRun = harness.bureau.createRun.bind(harness.bureau);
-        spyOn(harness.bureau, 'createRun').mockImplementationOnce(async (request) => {
-          reached.resolve();
-          await held.promise;
-          return createRun(request);
-        });
+        const startTask = harness.bureau.tasks.start.bind(harness.bureau.tasks);
+        spyOn(harness.bureau.tasks, 'start').mockImplementationOnce(
+          async (...args: Parameters<typeof startTask>) => {
+            reached.resolve();
+            await held.promise;
+            return startTask(...args);
+          },
+        );
         const start = (handler: Harness['handler'], runId: string) =>
           handler(
             startRequest(
@@ -356,9 +359,9 @@ describe('a start that races another on the same thread in another process', () 
         try {
           const reached = Promise.withResolvers<void>();
           // The first Bureau claims the thread and its process dies before it creates the run.
-          spyOn(harness.bureau, 'createRun').mockImplementationOnce(() => {
+          spyOn(harness.bureau.tasks, 'start').mockImplementationOnce(() => {
             reached.resolve();
-            return new Promise(() => {});
+            return new Promise<TaskHandle>(() => {});
           });
           void harness.handler(
             startRequest(
@@ -679,10 +682,8 @@ describe('whether a thread is busy, decided from what the store holds', () => {
         await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
         await settled(harness);
         // Another run is started on the thread directly, past the mount, and settles.
-        const second = await harness.bureau.createRun({
-          sessionId: 'thread-1',
-          agentName: 'assistant',
-          message: 'and another thing',
+        const second = await harness.bureau.tasks.start('assistant', 'and another thing', {
+          contextId: 'thread-1',
           principal: 'anonymous:local',
         });
         await waitForCondition(

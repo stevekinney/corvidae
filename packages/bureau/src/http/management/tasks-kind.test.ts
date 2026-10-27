@@ -45,11 +45,7 @@ type KindedTask = { id: string; contextId: string; kind: string };
 describe('a task view’s kind', () => {
   it('is chat for a session run, catalog for a bureau.run() dispatch, and schedule-fire for a fire', async () => {
     await withBureau(async (opened) => {
-      const chat = await opened.bureau.createRun({
-        agentName: 'holder',
-        message: 'work',
-        principal: OWNER.alice,
-      });
+      const chat = await opened.bureau.tasks.start('holder', 'work', { principal: OWNER.alice });
       await waitForCondition(
         () => opened.bureau.tasks.detail(chat.id)?.status === 'running',
         'the session run never started',

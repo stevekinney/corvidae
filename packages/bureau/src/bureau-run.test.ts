@@ -1203,7 +1203,7 @@ describe('every Bureau hook hand-off is a merge (COR-1265 criterion 3)', () => {
     }
   });
 
-  it('carries Bureau’s tier into an interactive bureau.createRun run', async () => {
+  it('carries Bureau’s tier into an interactive bureau.tasks.start run', async () => {
     const seen: string[] = [];
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
@@ -1223,7 +1223,7 @@ describe('every Bureau hook hand-off is a merge (COR-1265 criterion 3)', () => {
     });
 
     try {
-      const run = await bureau.createRun({ agentName: 'default', message: 'hi' });
+      const run = await bureau.tasks.start('default', 'hi');
       for (let attempt = 0; attempt < 50 && seen.length === 0; attempt += 1) {
         await waitOneTimerTurn();
       }

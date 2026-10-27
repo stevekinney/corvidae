@@ -191,7 +191,6 @@ export type BureauHandlerSource = Pick<
   | 'getOwner'
   | 'lifecycle'
   | 'waitForRecovery'
-  | 'createRun'
   | 'abortRun'
   | 'listRuns'
   | 'subscribeLiveFrames'
@@ -205,7 +204,7 @@ export type BureauHandlerSource = Pick<
   | 'surfaces'
   | 'addEventListener'
   | 'removeEventListener'
-> & {
+> & { readonly tasks: Pick<BureauTasks, 'start'> } & {
   readonly tasks: Pick<
     BureauTasks,
     'detail' | 'snapshot' | 'workflow' | 'wait' | 'events' | 'subscribeEvents' | 'receipt'

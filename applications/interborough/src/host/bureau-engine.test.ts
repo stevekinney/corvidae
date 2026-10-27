@@ -72,7 +72,7 @@ describe('the Engine console', () => {
     let runId: string | undefined;
     const feed = await readFeedUntil(host, () => runId);
 
-    const run = await host.bureau.createRun({ agentName: 'assistant', message: 'watch me' });
+    const run = await host.bureau.tasks.start('assistant', 'watch me');
     runId = run.id;
     await started;
     const received = await feed.done;
@@ -84,7 +84,7 @@ describe('the Engine console', () => {
 
   test('cancels a run the Bureau started through its own ownership', async () => {
     const { host, started, release } = await startWithRunInFlight();
-    const run = await host.bureau.createRun({ agentName: 'assistant', message: 'cancel me' });
+    const run = await host.bureau.tasks.start('assistant', 'cancel me');
     await started;
 
     await new HttpClient({ baseUrl: host.url.origin }).cancel(run.id);

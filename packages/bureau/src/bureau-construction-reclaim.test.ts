@@ -209,7 +209,7 @@ describe('a named-agent session run reclaimed while the Bureau scans its agent f
       durableOwnership: leaseOptions,
     });
     bureaus.push(owner);
-    const run = await owner.createRun({ message: 'Recover me', agentName: 'scribe' });
+    const run = await owner.tasks.start('scribe', 'Recover me');
     await reachedStepOne.promise;
 
     const hold = fixtures.holdAgentFileScan();
@@ -262,11 +262,11 @@ describe('a named-agent session run reclaimed while the Bureau scans its agent f
     const built = await successor;
 
     const completed = await pollUntil(async () => {
-      const session = await built.contexts.get(run.sessionId);
+      const session = await built.contexts.get(run.contextId);
       return session?.metadata['lastRunStatus'] === 'completed';
     });
     expect(completed).toBe(true);
-    const session = await built.contexts.get(run.sessionId);
+    const session = await built.contexts.get(run.contextId);
     const replies = (session === undefined ? [] : getMessages(session.conversationHistory))
       .filter((message) => message.role === 'assistant')
       .map((message) => (typeof message.content === 'string' ? message.content : ''));

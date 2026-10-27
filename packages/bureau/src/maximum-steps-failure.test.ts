@@ -55,13 +55,9 @@ async function openStepLimitBureau(options: Partial<BureauOptions>): Promise<Bur
 
 /** Starts a run and waits for the session to record how it ended. */
 async function runToLimit(bureau: Bureau) {
-  const run = await bureau.createRun({
-    agentName: 'default',
-    message: 'Never settles',
-    principal: 'alice',
-  });
+  const run = await bureau.tasks.start('default', 'Never settles', { principal: 'alice' });
   await waitForCondition(async () => {
-    const session = await bureau.contexts.get(run.sessionId);
+    const session = await bureau.contexts.get(run.contextId);
     return session?.metadata['lastRunStatus'] === 'error';
   }, 'the session never recorded how the run ended');
   return run;
@@ -91,7 +87,7 @@ describe.each(EXECUTIONS)('a run that stops at its step limit, %s (COR-1627)', (
 
     const run = await runToLimit(bureau);
 
-    const session = await bureau.contexts.get(run.sessionId);
+    const session = await bureau.contexts.get(run.contextId);
     expect(session?.metadata['lastRunStatus']).toBe('error');
     expect(session?.metadata['lastFinishReason']).toBe('maximum-steps');
     expect(session?.metadata['lastError']).toContain('Agent run exceeded maximumSteps (2).');
@@ -99,11 +95,7 @@ describe.each(EXECUTIONS)('a run that stops at its step limit, %s (COR-1627)', (
 
   it('settles its task as failed with the step-limit error, and records one run.error in the audit trail', async () => {
     const bureau = await openStepLimitBureau(options);
-    const run = await bureau.createRun({
-      agentName: 'default',
-      message: 'Never settles',
-      principal: 'alice',
-    });
+    const run = await bureau.tasks.start('default', 'Never settles', { principal: 'alice' });
     await waitForCondition(async () => {
       const task = await bureau.internals.taskRegistry.get(run.id);
       return task?.status === 'failed';
@@ -123,7 +115,7 @@ describe.each(EXECUTIONS)('a run that stops at its step limit, %s (COR-1627)', (
     expect(task?.statusMessage).toContain('Agent run exceeded maximumSteps (2).');
     const listed = await bureau.internals.taskRegistry.list({
       principal: 'alice',
-      contextId: run.sessionId,
+      contextId: run.contextId,
       limit: 10,
     });
     expect(listed.tasks.map((entry) => [entry.id, entry.status])).toEqual([[run.id, 'failed']]);
@@ -233,11 +225,7 @@ describe.each(SETTLING_EXECUTIONS)('a failing run’s task, %s (COR-1627)', (_na
         ...configure(storage),
       });
       bureaus.push(bureau);
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'Never settles',
-        principal: 'alice',
-      });
+      const run = await bureau.tasks.start('default', 'Never settles', { principal: 'alice' });
       const announced: string[] = [];
       bureau.internals.taskRegistry.onSettled(run.id, (view) => announced.push(view.status));
       release();
@@ -285,11 +273,7 @@ describe('a durable run that crashes before its step limit and is recovered (COR
         durableOwnership: { ownership: 'none' },
       });
       bureaus.push(crashed);
-      const run = await crashed.createRun({
-        agentName: 'default',
-        message: 'Never settles',
-        principal: 'alice',
-      });
+      const run = await crashed.tasks.start('default', 'Never settles', { principal: 'alice' });
       await waitForCondition(() => reachedSecondStep, 'the first process never reached step 1');
 
       // Bureau B recovers the workflow, which replays step 0 and runs step 1 to the limit.
@@ -312,7 +296,7 @@ describe('a durable run that crashes before its step limit and is recovered (COR
       bureaus.push(recovering);
 
       await waitForCondition(async () => {
-        const session = await recovering.contexts.get(run.sessionId);
+        const session = await recovering.contexts.get(run.contextId);
         return session?.metadata['lastRunStatus'] === 'error';
       }, 'the recovered run never settled as an error');
       await waitForCondition(async () => {
@@ -323,7 +307,7 @@ describe('a durable run that crashes before its step limit and is recovered (COR
       const records = (await recovering.internals.auditTrail?.query({ runId: run.id })) ?? [];
       expect(records.filter((record) => record.type === 'run.error')).toHaveLength(1);
       expect(records.filter((record) => record.type === 'run.completed')).toHaveLength(1);
-      const settled = await recovering.contexts.get(run.sessionId);
+      const settled = await recovering.contexts.get(run.contextId);
       expect(settled?.metadata['lastFinishReason']).toBe('maximum-steps');
     } finally {
       // The crashed Bureau stays open until the recovering one is done with the file.

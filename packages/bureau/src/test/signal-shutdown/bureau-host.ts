@@ -112,11 +112,7 @@ function summarize(report: BureauShutdownReport) {
 /** A run offered once shutdown has started must be refused. */
 async function offerRunAfterAdmissionClosed(): Promise<string> {
   try {
-    await bureau.createRun({
-      agentName: 'default',
-      message: 'offered during shutdown',
-      principal: 'alice',
-    });
+    await bureau.tasks.start('default', 'offered during shutdown', { principal: 'alice' });
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
@@ -169,11 +165,7 @@ handleShutdownSignals({
   },
 });
 
-const run = await bureau.createRun({
-  agentName: 'default',
-  message: 'signal shutdown run',
-  principal: 'alice',
-});
+const run = await bureau.tasks.start('default', 'signal shutdown run', { principal: 'alice' });
 const runId = run.id;
 await stepOneReached.promise;
 writeMarker(directory, 'bureau-started', { runId });

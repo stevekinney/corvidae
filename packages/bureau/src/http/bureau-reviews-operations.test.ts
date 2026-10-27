@@ -708,11 +708,7 @@ describe('the reviews operations against a real Bureau', () => {
       storage: { type: 'memory' },
       durable: true,
     });
-    const run = await bureau.createRun({
-      agentName: 'default',
-      message: 'park-me',
-      principal: 'api-key:tester',
-    });
+    const run = await bureau.tasks.start('default', 'park-me', { principal: 'api-key:tester' });
     await waitForCondition(
       () => bureau.reviews.list().some((review) => review.runId === run.id),
       'expected requestHumanInput to park and surface a pending review',
@@ -830,11 +826,7 @@ describe('the reviews operations against a real Bureau', () => {
       durable: true,
     });
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'Charge it',
-        principal: 'api-key:tester',
-      });
+      const run = await bureau.tasks.start('default', 'Charge it', { principal: 'api-key:tester' });
       await waitForCondition(
         () => bureau.reviews.list().some((review) => review.runId === run.id),
         'expected the tool call to surface a pending approval',
@@ -850,7 +842,7 @@ describe('the reviews operations against a real Bureau', () => {
       });
 
       expect(resolved.result).toMatchObject({ decision: 'approve', receipt: 'applied' });
-      const session = await bureau.contexts.get(run.sessionId);
+      const session = await bureau.contexts.get(run.contextId);
       const history = session?.conversationHistory;
       const row = history?.ids
         .map((id) => history.messages[id])
@@ -919,11 +911,7 @@ describe('the reviews operations against a real Bureau', () => {
       durable: true,
     });
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'Charge it',
-        principal: 'api-key:tester',
-      });
+      const run = await bureau.tasks.start('default', 'Charge it', { principal: 'api-key:tester' });
       await waitForCondition(
         () => bureau.reviews.list().some((review) => review.runId === run.id),
         'expected the tool call to surface a pending approval',

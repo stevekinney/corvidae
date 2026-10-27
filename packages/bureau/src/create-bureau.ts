@@ -1181,30 +1181,6 @@ function validateMessageRequest(
   } else if (!request.message || typeof request.message !== 'string') {
     toBadRequest('Request must include a "message" string');
   }
-
-  if (request.systemPrompt !== undefined && typeof request.systemPrompt !== 'string') {
-    toBadRequest('"systemPrompt" must be a string');
-  }
-
-  if (request.maximumSteps !== undefined) {
-    if (
-      typeof request.maximumSteps !== 'number' ||
-      !Number.isInteger(request.maximumSteps) ||
-      request.maximumSteps <= 0
-    ) {
-      toBadRequest('"maximumSteps" must be a positive integer');
-    }
-  }
-
-  if (request.maximumTokens !== undefined) {
-    if (
-      typeof request.maximumTokens !== 'number' ||
-      !Number.isInteger(request.maximumTokens) ||
-      request.maximumTokens <= 0
-    ) {
-      toBadRequest('"maximumTokens" must be a positive integer');
-    }
-  }
 }
 
 /**
@@ -7197,11 +7173,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     if (resolution.status === 'resolver-failed') throw resolution.error;
     const sessionAgent: SessionAgentRun = resolution.run;
     // Request beats agent, and agent beats Bureau, for what the run is seeded and capped with.
-    const effectiveSystemPrompt =
-      request.systemPrompt ?? sessionAgent?.instructions ?? runtime.systemPrompt;
-    const effectiveMaximumSteps =
-      request.maximumSteps ?? sessionAgent?.options.maximumSteps ?? runtime.maximumSteps;
-    const effectiveMaximumTokens = request.maximumTokens ?? sessionAgent?.options.maximumTokens;
+    const effectiveSystemPrompt = sessionAgent?.instructions ?? runtime.systemPrompt;
+    const effectiveMaximumSteps = sessionAgent?.options.maximumSteps ?? runtime.maximumSteps;
+    const effectiveMaximumTokens = sessionAgent?.options.maximumTokens;
     const requestContext = normalizeRunRequestContext(
       request.requestContext,
       runId,
@@ -7360,22 +7334,12 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
             ? {}
             : { steeringStartingRuns: { [runId]: runtimeServices.clock.nowISO() } }),
           lastUserMessage: requestText,
-          // Always write these keys (null when absent) so a reused session never
-          // inherits a stale cap from a previous run. A conditional spread would leave
-          // the old value in place when the request omits the field; null is treated as
-          // "unset" by buildRunDepsFromSession (it gates on typeof === 'number'),
-          // so null is a safe sentinel for "caller did not specify a cap" (PRRT_kwDORvupsc6MZ1Mb).
-          lastMaximumTokens: request.maximumTokens ?? null,
           // COR-1577 — the definition the named agent had when this run started, so recovery can
           // tell when the catalog's has moved on. Null for the default agent, which has none.
           [SESSION_AGENT_REVISION_METADATA_KEY]: sessionAgent?.definitionRevision ?? null,
           // COR-1524 — the file the agent was read from, by hash, so recovery builds from the
           // snapshot. Null for a code-defined agent, and for the default one.
           [SESSION_AGENT_DEFINITION_HASH_METADATA_KEY]: sessionAgent?.agentBinding?.hash ?? null,
-          // Persist the per-request step cap too, so a recovered run honours the
-          // caller's maximumSteps instead of falling back to the bureau default
-          // (PRRT_kwDORvupsc6MZfl5 — mirror of the maximumTokens recovery fix).
-          lastMaximumSteps: request.maximumSteps ?? null,
           // Reset the active-skill snapshot at the start of every run so a reused
           // session never seeds a fresh run with the PREVIOUS run's active skills.
           // The snapshot is otherwise written only by createSkillRecordSnapshotHook
@@ -18759,7 +18723,6 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     get assets(): AssetService | undefined {
       return assetServiceInstance;
     },
-    createRun: createRunFromRequest,
     listRuns,
     getOwner,
     abortRun,

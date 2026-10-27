@@ -157,11 +157,7 @@ describe('a durable run that fails after it committed a step (COR-1587)', () => 
           reportedUsage.push(frame.frame.report.usage.total);
         }
       });
-      const summary = await bureau.createRun({
-        agentName: 'default',
-        message: 'Go.',
-        sessionId: 'thread-1',
-      });
+      const summary = await bureau.tasks.start('default', 'Go.', { contextId: 'thread-1' });
       await reachedStepOne;
       refusing.refuseWritesUnder(DURABLE_RUN_RECORD);
       release();
@@ -234,11 +230,7 @@ describe('a durable run that fails after it committed a step (COR-1587)', () => 
       maximumHistoryEvents: 6,
     });
     try {
-      const summary = await bureau.createRun({
-        agentName: 'default',
-        message: 'Go.',
-        sessionId: 'thread-1',
-      });
+      const summary = await bureau.tasks.start('default', 'Go.', { contextId: 'thread-1' });
       await bureau.internals.whenTaskRecorded(summary.id);
 
       expect(bureau.listRuns().find((run) => run.id === summary.id)?.status).toBe('error');

@@ -424,7 +424,7 @@ describe('error', () => {
         codes['RUN_CONFLICT'] = codeOf(
           await post({ messages: [{ id: 'user-3', role: 'user', content: 'a changed request' }] }),
         );
-        const createRun = spyOn(harness.bureau, 'createRun').mockRejectedValueOnce(
+        const startTask = spyOn(harness.bureau.tasks, 'start').mockRejectedValueOnce(
           new Error('storage fell over'),
         );
         codes['RUN_FAILED'] = codeOf(
@@ -434,7 +434,7 @@ describe('error', () => {
             messages: [{ id: 'user-9', role: 'user', content: 'will fail to start' }],
           }),
         );
-        createRun.mockRestore();
+        startTask.mockRestore();
 
         expect(codes).toEqual({
           THREAD_NOT_FOUND: 'THREAD_NOT_FOUND',

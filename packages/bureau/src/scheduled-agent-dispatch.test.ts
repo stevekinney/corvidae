@@ -160,10 +160,8 @@ describe('a fire into a session another agent began', () => {
         other: createAgent({ generate: other.generate }),
       },
     });
-    const begun = await bureau.createRun({
-      message: 'hello',
-      agentName: 'other',
-      sessionId: 'shared',
+    const begun = await bureau.tasks.start('other', 'hello', {
+      contextId: 'shared',
       principal: OWNER.alice,
     });
     await pollUntil(async () => {
@@ -223,10 +221,8 @@ describe('the origin of a session a fire creates (COR-1645)', () => {
     const bureau = await harness.open({
       agents: { worker: createAgent({ generate: worker.generate }) },
     });
-    const begun = await bureau.createRun({
-      message: 'hello',
-      agentName: 'worker',
-      sessionId: 'shared-chat',
+    const begun = await bureau.tasks.start('worker', 'hello', {
+      contextId: 'shared-chat',
       principal: OWNER.alice,
     });
     await pollUntil(async () => {
@@ -273,7 +269,7 @@ describe('a session or recovered run stored under the implicit "bureau" agent', 
     );
 
     const refusal = await rejectionOf(
-      bureau.createRun({ agentName: 'bureau', message: 'hello', sessionId: 'legacy-session' }),
+      bureau.tasks.start('bureau', 'hello', { contextId: 'legacy-session' }),
     );
 
     expect((refusal as BureauError).code).toBe('NOT_FOUND');

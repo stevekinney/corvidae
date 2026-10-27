@@ -26,6 +26,7 @@ import { sessionRowHolderId } from './assets/row-asset-claims';
 import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, base64Of, pngBytes } from './testing/asset-fixtures.test-support';
+import { startTaskFrom } from './test/task-start-request.ts';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -93,12 +94,14 @@ async function paint(
   sessionId: string,
   extra: { appendMessages?: ReadonlyArray<Message>; message?: string } = {},
 ) {
-  const created = await bureau.createRun({
-    ...(extra.appendMessages === undefined ? { message: 'Draw' } : {}),
-    ...extra,
+  const created = await startTaskFrom(bureau, {
+    input:
+      extra.appendMessages === undefined
+        ? (extra.message ?? 'Draw')
+        : { append: extra.appendMessages },
     agentName: 'painter',
     principal: alice.id,
-    sessionId,
+    contextId: sessionId,
   });
   await waitForTaskState(bureau, created.id);
   for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
@@ -151,7 +154,7 @@ describe('a generated image a session row references', () => {
     expect(report.expired).not.toContain(assetId!);
     expect(await resolves(opened, assetId!)).toBe(true);
 
-    await bureau.contexts.delete(created.sessionId);
+    await bureau.contexts.delete(created.contextId);
     const afterDelete = await collect(opened);
 
     expect(afterDelete.expired).toContain(assetId!);
@@ -253,7 +256,7 @@ describe('a supplied image a user row references', () => {
     expect(report.expired).not.toContain(assetId);
     expect(await resolves(opened, assetId)).toBe(true);
 
-    await opened.bureau.contexts.delete(created.sessionId);
+    await opened.bureau.contexts.delete(created.contextId);
     const afterDelete = await collect(opened);
 
     expect(afterDelete.expired).toContain(assetId);

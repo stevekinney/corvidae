@@ -80,6 +80,7 @@ type RemovedTaskMembers = Extract<
   | 'locateRunCreationReceipt'
   | 'eventHistory'
   | 'subscribeEventHistory'
+  | 'createRun'
 >;
 
 export type NoFlatReviewMembers = AssertNever<RemovedReviewMembers>;

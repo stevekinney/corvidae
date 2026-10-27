@@ -21,6 +21,7 @@ import { BureauError, createBureau } from './create-bureau';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import type { Bureau } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { startTaskFrom } from './test/task-start-request.ts';
 
 const ORIGIN = '2026-10-13T00:00:00.000Z';
 
@@ -43,7 +44,7 @@ const userRow = (id: string, ...parts: string[]): MessageInput & { id: string } 
   content: parts.map((text) => ({ type: 'text' as const, text })),
 });
 
-describe('createRun appendMessages', () => {
+describe('tasks.start appendMessages', () => {
   it('appends the rows verbatim, after the system prompt, and the run answers them', async () => {
     const seen: Array<ReadonlyArray<Message>> = [];
     const bureau = await createBureau<AgentDefinitions>({
@@ -60,9 +61,8 @@ describe('createRun appendMessages', () => {
       durable: false,
     });
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        appendMessages: builtRows(ORIGIN, userRow('client-row-1', 'first part', 'second part')),
+      const run = await bureau.tasks.start('default', {
+        append: builtRows(ORIGIN, userRow('client-row-1', 'first part', 'second part')),
       });
       await settle(bureau, run.id);
 
@@ -73,7 +73,7 @@ describe('createRun appendMessages', () => {
         { type: 'text', text: 'first part' },
         { type: 'text', text: 'second part' },
       ]);
-      const session = await bureau.contexts.get(run.sessionId);
+      const session = await bureau.contexts.get(run.contextId);
       expect(session?.conversationHistory.ids).toContain('client-row-1');
     } finally {
       await bureau.dispose();
@@ -95,7 +95,7 @@ describe('createRun appendMessages', () => {
         content: 'hello',
       });
 
-      const error = await bureau.createRun({ agentName: 'default', appendMessages: rows }).then(
+      const error = await bureau.tasks.start('default', { append: rows }).then(
         () => undefined,
         (rejection: unknown) => rejection,
       );
@@ -115,12 +115,10 @@ describe('createRun appendMessages', () => {
     });
     try {
       for (const bad of ['text', [{ role: 'user' }], [null]]) {
-        const error = await bureau
-          .createRun({ agentName: 'default', appendMessages: bad as never })
-          .then(
-            () => undefined,
-            (rejection: unknown) => rejection,
-          );
+        const error = await bureau.tasks.start('default', { append: bad as never }).then(
+          () => undefined,
+          (rejection: unknown) => rejection,
+        );
         expect((error as BureauError).code).toBe('BAD_REQUEST');
       }
     } finally {
@@ -137,18 +135,17 @@ describe('createRun appendMessages', () => {
       durable: false,
     });
     try {
-      const first = await bureau.createRun({
-        agentName: 'default',
-        appendMessages: builtRows(ORIGIN, userRow('same', 'a')),
+      const first = await bureau.tasks.start('default', {
+        append: builtRows(ORIGIN, userRow('same', 'a')),
       });
       await settle(bureau, first.id);
 
-      const error = await bureau
-        .createRun({
-          agentName: 'default',
-          sessionId: first.sessionId,
-          appendMessages: builtRows(ORIGIN, userRow('same', 'b')),
-        })
+      const error = await bureau.tasks
+        .start(
+          'default',
+          { append: builtRows(ORIGIN, userRow('same', 'b')) },
+          { contextId: first.contextId },
+        )
         .then(
           () => undefined,
           (rejection: unknown) => rejection,
@@ -161,7 +158,7 @@ describe('createRun appendMessages', () => {
   });
 });
 
-describe('createRun appendMessages and the task it admits', () => {
+describe('tasks.start appendMessages and the task it admits', () => {
   it('records the text of the appended user row as the task’s originating message, across a restart', async () => {
     const runtime = createManualRuntimeServices({ origin: ORIGIN });
     const fixture = createSqliteStorageFixture({ runtime });
@@ -180,11 +177,11 @@ describe('createRun appendMessages and the task it admits', () => {
       });
     try {
       const first = await open();
-      const run = await first.createRun({
-        agentName: 'default',
-        principal: 'alice',
-        appendMessages: builtRows(ORIGIN, userRow('client-row-1', 'plan ', 'my trip')),
-      });
+      const run = await first.tasks.start(
+        'default',
+        { append: builtRows(ORIGIN, userRow('client-row-1', 'plan ', 'my trip')) },
+        { principal: 'alice' },
+      );
       await settle(first, run.id);
       await first.dispose();
 
@@ -201,7 +198,7 @@ describe('createRun appendMessages and the task it admits', () => {
   });
 });
 
-describe('createRun appendMessages under a run-creation request id', () => {
+describe('tasks.start appendMessages under a run-creation request id', () => {
   async function withDurableBureau(body: (bureau: Bureau) => Promise<void>): Promise<void> {
     const runtime = createManualRuntimeServices({ origin: ORIGIN });
     const fixture = createSqliteStorageFixture({ runtime });
@@ -228,17 +225,19 @@ describe('createRun appendMessages under a run-creation request id', () => {
   const request = (rows: ReadonlyArray<Message>) => ({
     agentName: 'default',
     principal: 'alice',
-    runCreationRequestId: 'request-1',
-    sessionId: 'session-1',
-    appendMessages: rows,
+    commandId: 'request-1',
+    contextId: 'session-1',
+    input: { append: rows },
   });
 
   it('treats a retry with the same rows as the same command, whatever stamped them', async () => {
     await withDurableBureau(async (bureau) => {
-      const first = await bureau.createRun(
+      const first = await startTaskFrom(
+        bureau,
         request(builtRows('2026-10-13T00:00:00.000Z', userRow('row-1', 'hello'))),
       );
-      const retry = await bureau.createRun(
+      const retry = await startTaskFrom(
+        bureau,
         request(builtRows('2026-10-13T00:05:00.000Z', userRow('row-1', 'hello'))),
       );
 
@@ -248,14 +247,15 @@ describe('createRun appendMessages under a run-creation request id', () => {
 
   it('refuses a retry whose rows differ', async () => {
     await withDurableBureau(async (bureau) => {
-      await bureau.createRun(request(builtRows(ORIGIN, userRow('row-1', 'hello'))));
+      await startTaskFrom(bureau, request(builtRows(ORIGIN, userRow('row-1', 'hello'))));
 
-      const error = await bureau
-        .createRun(request(builtRows(ORIGIN, userRow('row-1', 'goodbye'))))
-        .then(
-          () => undefined,
-          (rejection: unknown) => rejection,
-        );
+      const error = await startTaskFrom(
+        bureau,
+        request(builtRows(ORIGIN, userRow('row-1', 'goodbye'))),
+      ).then(
+        () => undefined,
+        (rejection: unknown) => rejection,
+      );
 
       expect(error).toBeInstanceOf(BureauLedgerConflictError);
     });
@@ -264,9 +264,9 @@ describe('createRun appendMessages under a run-creation request id', () => {
   it('does not mistake a request with no message for one with an empty message', async () => {
     await withDurableBureau(async (bureau) => {
       const rows = builtRows(ORIGIN, userRow('row-1', 'hello'));
-      await bureau.createRun(request(rows));
+      await startTaskFrom(bureau, request(rows));
 
-      const error = await bureau.createRun({ ...request(rows), message: 'and also this' }).then(
+      const error = await startTaskFrom(bureau, { ...request(rows), input: 'and also this' }).then(
         () => undefined,
         (rejection: unknown) => rejection,
       );

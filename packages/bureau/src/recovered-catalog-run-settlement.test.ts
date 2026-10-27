@@ -250,11 +250,7 @@ describe('a recovered child run', () => {
       });
     const first = await open();
     cleanups.push(() => first.dispose());
-    const parent = await first.createRun({
-      agentName: 'default',
-      message: 'parent',
-      principal: PRINCIPAL,
-    });
+    const parent = await first.tasks.start('default', 'parent', { principal: PRINCIPAL });
     await waitForCondition(
       () => first.reviews.list().some((review) => review.runId === parent.id),
       'the parent parks',

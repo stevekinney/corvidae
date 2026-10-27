@@ -136,11 +136,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
   it('refuses a fire into a recurring session another principal owns', async () => {
     const bureau = await openBureau();
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'mine',
-        principal: 'api-key:bob',
-      });
+      const run = await bureau.tasks.start('default', 'mine', { principal: 'api-key:bob' });
       await waitForReal(() => bureau.tasks.detail(run.id)?.status !== 'running');
       const failed: string[] = [];
       bureau.addEventListener('schedule.failed', (event) => failed.push(event.runId));
@@ -148,13 +144,13 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
         agentName: 'default',
         input: 'tick',
         spec: '1s',
-        sessionId: run.sessionId,
+        sessionId: run.contextId,
         principal: 'api-key:alice',
       });
 
       expect(await waitForReal(() => failed.length >= 1)).toBe(true);
       await bureau.schedules.cancel(summary!.id);
-      const session = await bureau.contexts.get(run.sessionId);
+      const session = await bureau.contexts.get(run.contextId);
       expect(session?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('api-key:bob');
       expect(JSON.stringify(session?.conversationHistory)).not.toContain('tick');
 
@@ -254,13 +250,11 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       // The fire has built its services and is waiting in generate, and the session does not exist.
       await entered.promise;
       await bureau.schedules.cancel(summary!.id);
-      const created = await bureau.createRun({
-        agentName: 'default',
-        message: 'bob got there first',
-        sessionId: 'raced-recurring',
+      const created = await bureau.tasks.start('default', 'bob got there first', {
+        contextId: 'raced-recurring',
         principal: 'api-key:bob',
       });
-      expect(created.sessionId).toBe('raced-recurring');
+      expect(created.contextId).toBe('raced-recurring');
       release.resolve();
 
       expect(await waitForReal(() => failed.length >= 1)).toBe(true);

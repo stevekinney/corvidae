@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import type { AgentDefinitions } from './agent-catalog';
+import { startTaskFrom } from './test/task-start-request.ts';
 
 function nextTool() {
   return createTool({
@@ -41,9 +42,9 @@ async function crashAndRecover(principal: string | undefined) {
     durable: true,
     durableOwnership: { ownership: 'none' },
   });
-  const run = await crashed.createRun({
+  const run = await startTaskFrom(crashed, {
     agentName: 'default',
-    message: 'Be recovered',
+    input: 'Be recovered',
     ...(principal === undefined ? {} : { principal }),
   });
   await waitForCondition(() => reachedStepOne, 'the first process never reached step one');

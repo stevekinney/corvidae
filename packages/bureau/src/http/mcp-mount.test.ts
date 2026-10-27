@@ -82,7 +82,7 @@ async function connect(handler: Handler, key: string, mode: Mode): Promise<Clien
 }
 
 async function startRun(opened: OpenedBureau, principal: string) {
-  const run = await opened.bureau.createRun({ message: 'work', principal, agentName: 'worker' });
+  const run = await opened.bureau.tasks.start('worker', 'work', { principal });
   await waitForCondition(
     () => opened.bureau.tasks.detail(run.id)?.status === 'running',
     `run ${run.id} never started`,

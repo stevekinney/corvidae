@@ -176,10 +176,8 @@ describe('the epoch records the memory bundle a turn consumed (COR-771)', () => 
       requestAuthorityValidator: () => true,
     });
     bureaus.push(bureau);
-    const run = await bureau.createRun({
-      message: 'Which automobile?',
-      sessionId: 'session-1',
-      agentName: 'scout',
+    const run = await bureau.tasks.start('scout', 'Which automobile?', {
+      contextId: 'session-1',
       principal: 'owner-a',
       requestContext,
     });
@@ -201,10 +199,8 @@ describe('the epoch records the memory bundle a turn consumed (COR-771)', () => 
       },
     });
     bureaus.push(plain);
-    const unmemoried = await plain.createRun({
-      message: 'Which automobile?',
-      sessionId: 'session-2',
-      agentName: 'scout',
+    const unmemoried = await plain.tasks.start('scout', 'Which automobile?', {
+      contextId: 'session-2',
     });
     await waitForTaskState(plain, unmemoried.id);
     expect(turns.at(-1)?.source?.disposition).toEqual({ kind: 'absent-by-composition' });
@@ -227,10 +223,8 @@ describe('the epoch records the memory bundle a turn consumed (COR-771)', () => 
       requestAuthorityValidator: () => true,
     });
     bureaus.push(bureau);
-    const run = await bureau.createRun({
-      message: 'Which automobile?',
-      sessionId: 'session-1',
-      agentName: 'scout',
+    const run = await bureau.tasks.start('scout', 'Which automobile?', {
+      contextId: 'session-1',
       principal: 'owner-a',
       requestContext,
     });
@@ -265,10 +259,8 @@ describe('a session’s next run (COR-771)', () => {
     });
     bureaus.push(bureau);
     const ask = async () => {
-      const run = await bureau.createRun({
-        message: 'Which automobile?',
-        sessionId: 'session-1',
-        agentName: 'scout',
+      const run = await bureau.tasks.start('scout', 'Which automobile?', {
+        contextId: 'session-1',
         principal: 'owner-a',
         requestContext,
       });
@@ -429,10 +421,8 @@ describe('a durable run recovered by a restarted Bureau (COR-771)', () => {
     };
 
     const crashed = await open();
-    const run = await crashed.createRun({
-      message: 'Which automobile?',
-      sessionId: 'session-1',
-      agentName: 'scout',
+    const run = await crashed.tasks.start('scout', 'Which automobile?', {
+      contextId: 'session-1',
       principal: 'owner-a',
       requestContext,
     });

@@ -151,9 +151,7 @@ describe('bureau.eventHistory run ownership survives a process restart over LMDB
     });
 
     try {
-      const run = await bureauA.createRun({
-        agentName: 'default',
-        message: 'Attribute me to alice across a restart',
+      const run = await bureauA.tasks.start('default', 'Attribute me to alice across a restart', {
         principal: 'alice',
       });
       await pollUntilWithRealDelay(() => bureauAReachedStep1);
@@ -188,7 +186,7 @@ describe('bureau.eventHistory run ownership survives a process restart over LMDB
         const recovered = bureauB.tasks.detail(run.id);
         expect(recovered).toMatchObject({
           id: run.id,
-          sessionId: run.sessionId,
+          sessionId: run.contextId,
           status: 'completed',
           principal: 'alice',
           steps: 1,

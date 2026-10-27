@@ -59,11 +59,7 @@ describe.each([
     });
     try {
       const handler = createBureauHandler(bureau, { authentication });
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'Never settles',
-        principal: OWNER.alice,
-      });
+      const run = await bureau.tasks.start('default', 'Never settles', { principal: OWNER.alice });
       await waitForCondition(
         () => bureau.tasks.detail(run.id)?.status === 'error',
         'the run never failed',

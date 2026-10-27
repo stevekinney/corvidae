@@ -42,6 +42,7 @@ import {
 } from './test/session-input-fixtures';
 import type { Bureau, BureauDiagnostic, BureauOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { startTaskFrom } from './test/task-start-request.ts';
 
 /**
  * COR-1476 — a run that ends cancels the input it never delivered, whatever
@@ -59,7 +60,7 @@ const nextTool = createTool({
 async function openBureau(
   storage: NonNullable<BureauOptions['storage']>,
   generate: GenerateFunction,
-  extra: Partial<BureauOptions> = {},
+  { maximumSteps, ...extra }: Partial<BureauOptions> & { readonly maximumSteps?: number } = {},
 ): Promise<Bureau> {
   return createBureau<AgentDefinitions>({
     agents: {
@@ -67,6 +68,8 @@ async function openBureau(
         generate,
         toolbox: createToolbox([nextTool]),
         stopWhen: stopWhen.noToolCalls(),
+        // The agent's own step cap: a task carries none of its own.
+        ...(maximumSteps === undefined ? {} : { maximumSteps }),
       }),
     },
     storage,
@@ -126,31 +129,34 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
     const stepZeroStarted = deferred();
     const releaseStepZero = deferred();
     let generations = 0;
-    const bureau = await openBureau(storage, async () => {
-      generations += 1;
-      stepZeroStarted.resolve();
-      await releaseStepZero.promise;
-      return { content: 'answer', toolCalls: [] };
-    });
+    const bureau = await openBureau(
+      storage,
+      async () => {
+        generations += 1;
+        stepZeroStarted.resolve();
+        await releaseStepZero.promise;
+        return { content: 'answer', toolCalls: [] };
+      },
+      { maximumSteps: 1 },
+    );
     try {
-      const run = await bureau.createRun({
+      const run = await startTaskFrom(bureau, {
         agentName: 'default',
-        message: 'First',
+        input: 'First',
         principal: 'alice',
-        maximumSteps: 1,
       });
       await stepZeroStarted.promise;
-      const admitted = await bureau.contexts.input(run.sessionId, input('input-x', 'late'));
+      const admitted = await bureau.contexts.input(run.contextId, input('input-x', 'late'));
       expect(admitted.outcome).toBe('admitted');
       if (admitted.outcome === 'admitted') expect(admitted.receipt.state).toBe('accepted');
-      const incarnation = await incarnationOf(bureau, run.sessionId);
+      const incarnation = await incarnationOf(bureau, run.contextId);
 
       // With no step left, the run cannot drain the input, so its end cancels it.
       releaseStepZero.resolve();
       await bureau.tasks.wait(run.id);
       await pollUntil(
         async () =>
-          (await receiptState(storage, run.sessionId, incarnation, 'input-x', 'late')) ===
+          (await receiptState(storage, run.contextId, incarnation, 'input-x', 'late')) ===
           'canceled',
       );
       await bureau.runDurableMaintenance();
@@ -174,24 +180,20 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
       throw new Error('the model is down');
     });
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'First',
-        principal: 'alice',
-      });
+      const run = await bureau.tasks.start('default', 'First', { principal: 'alice' });
       await stepZeroStarted.promise;
-      const admitted = await bureau.contexts.input(run.sessionId, input('input-x', 'never seen'));
+      const admitted = await bureau.contexts.input(run.contextId, input('input-x', 'never seen'));
       expect(admitted.outcome).toBe('admitted');
-      const incarnation = await incarnationOf(bureau, run.sessionId);
+      const incarnation = await incarnationOf(bureau, run.contextId);
       releaseStepZero.resolve();
 
       await pollUntil(async () => {
-        const session = await bureau.contexts.get(run.sessionId);
+        const session = await bureau.contexts.get(run.contextId);
         return session?.metadata['lastRunStatus'] === 'error';
       });
       await pollUntil(
         async () =>
-          (await receiptState(storage, run.sessionId, incarnation, 'input-x', 'never seen')) ===
+          (await receiptState(storage, run.contextId, incarnation, 'input-x', 'never seen')) ===
           'canceled',
       );
       expect(bureau.listRuns()).toHaveLength(1);
@@ -240,14 +242,10 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
     );
     try {
       const baseline = openIntervals;
-      const first = await bureau.createRun({
-        agentName: 'default',
-        message: 'First',
-        principal: 'alice',
-      });
+      const first = await bureau.tasks.start('default', 'First', { principal: 'alice' });
       await stepZeroStarted.promise;
-      await bureau.contexts.input(first.sessionId, input('input-a', 'first'));
-      const incarnation = await incarnationOf(bureau, first.sessionId);
+      await bureau.contexts.input(first.contextId, input('input-a', 'first'));
+      const incarnation = await incarnationOf(bureau, first.contextId);
       releaseStepZero.resolve();
       await stepOneStarted.promise;
       // Step 1's boundary holds the input and keeps its lease alive; its memo
@@ -258,7 +256,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
       await pollUntil(() => openIntervals === baseline);
       await pollUntil(
         async () =>
-          (await receiptState(storage, first.sessionId, incarnation, 'input-a', 'first')) ===
+          (await receiptState(storage, first.contextId, incarnation, 'input-a', 'first')) ===
           'canceled',
       );
       await bureau.runDurableMaintenance();
@@ -285,25 +283,21 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
       return new Promise<never>(() => {});
     });
     try {
-      const first = await bureau.createRun({
-        agentName: 'default',
-        message: 'First',
-        principal: 'alice',
-      });
+      const first = await bureau.tasks.start('default', 'First', { principal: 'alice' });
       await stepZeroStarted.promise;
-      await bureau.contexts.input(first.sessionId, input('input-a', 'first'));
-      const incarnation = await incarnationOf(bureau, first.sessionId);
+      await bureau.contexts.input(first.contextId, input('input-a', 'first'));
+      const incarnation = await incarnationOf(bureau, first.contextId);
       releaseStepZero.resolve();
       await stepOneStarted.promise;
 
       const outcome = await bureau.cancelDurableRun(first.id);
       expect(outcome.status).toBe('requested');
       // The cancellation settled the input before returning.
-      expect(await receiptState(storage, first.sessionId, incarnation, 'input-a', 'first')).toBe(
+      expect(await receiptState(storage, first.contextId, incarnation, 'input-a', 'first')).toBe(
         'canceled',
       );
       await pollUntil(async () => {
-        const session = await bureau.contexts.get(first.sessionId);
+        const session = await bureau.contexts.get(first.contextId);
         return session?.metadata['lastRunStatus'] === 'aborted';
       });
       await bureau.runDurableMaintenance();
@@ -336,14 +330,10 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
         return new Promise<never>(() => {});
       });
       try {
-        const first = await bureau.createRun({
-          agentName: 'default',
-          message: 'First',
-          principal: 'alice',
-        });
+        const first = await bureau.tasks.start('default', 'First', { principal: 'alice' });
         await stepZeroStarted.promise;
-        await bureau.contexts.input(first.sessionId, input('input-x', 'please answer this'));
-        const incarnation = await incarnationOf(bureau, first.sessionId);
+        await bureau.contexts.input(first.contextId, input('input-x', 'please answer this'));
+        const incarnation = await incarnationOf(bureau, first.contextId);
         releaseStepZero.resolve();
         await stepOneStarted.promise;
         // Step 0 drained the turn late and its write promoted it; step 1 answers it.
@@ -359,7 +349,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
           bureau.abortRun(first.id);
         }
         await pollUntil(async () => {
-          const session = await bureau.contexts.get(first.sessionId);
+          const session = await bureau.contexts.get(first.contextId);
           return session?.metadata['lastRunStatus'] === 'aborted';
         });
         await bureau.runDurableMaintenance();
@@ -367,13 +357,13 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
         expect(
           await receiptState(
             storage,
-            first.sessionId,
+            first.contextId,
             incarnation,
             'input-x',
             'please answer this',
           ),
         ).toBe('promoted');
-        const session = await bureau.contexts.get(first.sessionId);
+        const session = await bureau.contexts.get(first.contextId);
         const transcript = new Conversation(session!.conversationHistory).getMessages();
         expect(
           transcript.some(
@@ -408,33 +398,27 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
       return { content: `answer ${run}`, toolCalls: [] };
     });
     try {
-      const first = await bureau.createRun({
-        agentName: 'default',
-        message: 'First',
-        principal: 'alice',
-      });
+      const first = await bureau.tasks.start('default', 'First', { principal: 'alice' });
       await stepZeroStarted.promise;
-      await bureau.contexts.input(first.sessionId, input('input-a', 'please answer this'));
-      const incarnation = await incarnationOf(bureau, first.sessionId);
+      await bureau.contexts.input(first.contextId, input('input-a', 'please answer this'));
+      const incarnation = await incarnationOf(bureau, first.contextId);
       releaseStepZero.resolve();
 
       await pollUntil(async () => {
-        const session = await bureau.contexts.get(first.sessionId);
+        const session = await bureau.contexts.get(first.contextId);
         return session?.metadata['lastRunStatus'] === 'error';
       });
       await bureau.runDurableMaintenance();
       // The failing step saved the turn, and that write promoted it: never canceled.
       expect(
-        await receiptState(storage, first.sessionId, incarnation, 'input-a', 'please answer this'),
+        await receiptState(storage, first.contextId, incarnation, 'input-a', 'please answer this'),
       ).toBe('promoted');
       expect(run).toBe(1);
 
       // The next run the user starts answers the dangling turn together with its own.
-      await bureau.createRun({
-        agentName: 'default',
-        message: 'again',
+      await bureau.tasks.start('default', 'again', {
+        contextId: first.contextId,
         principal: 'alice',
-        sessionId: first.sessionId,
       });
       await pollUntil(() => run === 2);
       expect(runs.find((entry) => entry.run === 2)?.texts).toEqual([
@@ -465,28 +449,27 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
       return { content: 'done', toolCalls: [] };
     });
     try {
-      const first = await bureau.createRun({
+      const first = await startTaskFrom(bureau, {
         agentName: 'default',
-        message: 'First',
+        input: 'First',
         principal: 'alice',
-        maximumSteps: 1,
       });
       await started[0]!.promise;
-      const second = await bureau.createRun({
-        agentName: 'default',
-        message: 'Second',
+      const second = await bureau.tasks.start('default', 'Second', {
+        contextId: first.contextId,
         principal: 'alice',
-        sessionId: first.sessionId,
       });
       await started[1]!.promise;
       const admitted = await bureau.contexts.input(
-        first.sessionId,
+        first.contextId,
         input('input-x', 'for whoever'),
       );
       expect(admitted.outcome).toBe('admitted');
-      const incarnation = await incarnationOf(bureau, first.sessionId);
+      const incarnation = await incarnationOf(bureau, first.contextId);
 
-      // The first run ends with the second still live: it releases, cancels nothing.
+      // The first run ends, before its step-0 boundary could deliver anything, with the second
+      // still live: it releases, cancels nothing.
+      first.abort();
       release[0]!.resolve();
       await bureau.tasks.wait(first.id);
       // The second run's next boundary delivers the input, which it could not
@@ -500,7 +483,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
         'for whoever',
       ]);
       expect(
-        await receiptState(storage, first.sessionId, incarnation, 'input-x', 'for whoever'),
+        await receiptState(storage, first.contextId, incarnation, 'input-x', 'for whoever'),
       ).toBe('promoted');
       expect(bureau.listRuns()).toHaveLength(2);
     } finally {
@@ -524,25 +507,24 @@ describe('a run that ends over a lease a gone holder left behind (COR-1476)', ()
         await releaseStepZero.promise;
         return { content: 'answer', toolCalls: [] };
       },
-      { runtime },
+      { maximumSteps: 1, runtime },
     );
     try {
-      const run = await bureau.createRun({
+      const run = await startTaskFrom(bureau, {
         agentName: 'default',
-        message: 'First',
+        input: 'First',
         principal: 'alice',
-        maximumSteps: 1,
       });
       await stepZeroStarted.promise;
-      await bureau.contexts.input(run.sessionId, input('input-x', 'late'));
-      const incarnation = await incarnationOf(bureau, run.sessionId);
+      await bureau.contexts.input(run.contextId, input('input-x', 'late'));
+      const incarnation = await incarnationOf(bureau, run.contextId);
       // A gate in a process that then died claims it, on the same clock.
-      const deadHolder = createSessionInputMailbox(storage, run.sessionId, incarnation, 100, () =>
+      const deadHolder = createSessionInputMailbox(storage, run.contextId, incarnation, 100, () =>
         runtime.clock.now(),
       );
       const deadClaim = await deadHolder.claim();
       expect(deadClaim.status).toBe('claimed');
-      const mailbox = createSessionInputMailbox(storage, run.sessionId, incarnation, 100, () =>
+      const mailbox = createSessionInputMailbox(storage, run.contextId, incarnation, 100, () =>
         runtime.clock.now(),
       );
       const state = async () => {
@@ -556,7 +538,7 @@ describe('a run that ends over a lease a gone holder left behind (COR-1476)', ()
       await bureau.tasks.wait(run.id);
       await pollUntil(async () => (await state()) === 'cancellation-requested');
       expect(await markers(storage)).toHaveLength(1);
-      expect(await receiptState(storage, run.sessionId, incarnation, 'input-x', 'late')).toBe(
+      expect(await receiptState(storage, run.contextId, incarnation, 'input-x', 'late')).toBe(
         'accepted',
       );
 
@@ -564,7 +546,7 @@ describe('a run that ends over a lease a gone holder left behind (COR-1476)', ()
       runtime.setTime(Date.parse(origin) + 31_000);
       await bureau.runDurableMaintenance();
       expect(await state()).toBe('cancelled');
-      expect(await receiptState(storage, run.sessionId, incarnation, 'input-x', 'late')).toBe(
+      expect(await receiptState(storage, run.contextId, incarnation, 'input-x', 'late')).toBe(
         'canceled',
       );
       expect(await markers(storage)).toHaveLength(0);
@@ -584,14 +566,10 @@ describe('a run whose start fails after its promotion (COR-1476)', () => {
       return { content: 'answer', toolCalls: [] };
     });
     try {
-      const first = await bureau.createRun({
-        agentName: 'default',
-        message: 'First',
-        principal: 'alice',
-      });
+      const first = await bureau.tasks.start('default', 'First', { principal: 'alice' });
       await bureau.tasks.wait(first.id);
       await pollUntil(async () => {
-        const session = await bureau.contexts.get(first.sessionId);
+        const session = await bureau.contexts.get(first.contextId);
         return session?.metadata['lastRunStatus'] === 'completed';
       });
 
@@ -602,13 +580,8 @@ describe('a run whose start fails after its promotion (COR-1476)', () => {
       const promotion = seam.holdWrite(logsRunPromoted);
       const ended = seam.awaitWriteCommitted(logsRunEnded);
       let startError: unknown;
-      const starting = bureau
-        .createRun({
-          agentName: 'default',
-          message: 'Second',
-          principal: 'alice',
-          sessionId: first.sessionId,
-        })
+      const starting = bureau.tasks
+        .start('default', 'Second', { contextId: first.contextId, principal: 'alice' })
         .catch((error: unknown) => {
           startError = error;
         });
@@ -651,22 +624,21 @@ describe('a cancellation that reaches a run after it appended the turn (COR-1476
         await releaseStepOne.promise;
         return { content: 'done', toolCalls: [] };
       },
-      { runtime },
+      { maximumSteps: 3, runtime },
     );
     try {
-      const run = await bureau.createRun({
+      const run = await startTaskFrom(bureau, {
         agentName: 'default',
-        message: 'First',
+        input: 'First',
         principal: 'alice',
-        maximumSteps: 3,
       });
       await stepZeroStarted.promise;
-      await bureau.contexts.input(run.sessionId, input('input-x', 'delivered'));
-      const incarnation = await incarnationOf(bureau, run.sessionId);
+      await bureau.contexts.input(run.contextId, input('input-x', 'delivered'));
+      const incarnation = await incarnationOf(bureau, run.contextId);
       releaseStepZero.resolve();
       await stepOneStarted.promise;
       expect(prompts[1]).toEqual(['First', 'delivered']);
-      const mailbox = createSessionInputMailbox(storage, run.sessionId, incarnation, 100, () =>
+      const mailbox = createSessionInputMailbox(storage, run.contextId, incarnation, 100, () =>
         runtime.clock.now(),
       );
       const [receipt] = await mailbox.list({ limit: 10 });
@@ -680,7 +652,7 @@ describe('a cancellation that reaches a run after it appended the turn (COR-1476
       await yieldToPortableEventLoop();
       const [inWindow] = await mailbox.list({ limit: 10 });
       expect(inWindow?.state).toBe('cancellation-requested');
-      expect(await receiptState(storage, run.sessionId, incarnation, 'input-x', 'delivered')).toBe(
+      expect(await receiptState(storage, run.contextId, incarnation, 'input-x', 'delivered')).toBe(
         'accepted',
       );
 
@@ -688,7 +660,7 @@ describe('a cancellation that reaches a run after it appended the turn (COR-1476
       // cancelled through the acknowledgement.
       releaseStepOne.resolve();
       await bureau.tasks.wait(run.id);
-      expect(await receiptState(storage, run.sessionId, incarnation, 'input-x', 'delivered')).toBe(
+      expect(await receiptState(storage, run.contextId, incarnation, 'input-x', 'delivered')).toBe(
         'promoted',
       );
       const [final] = await mailbox.list({ limit: 10 });
@@ -728,19 +700,18 @@ describe('a promoted input whose command was never acknowledged (COR-1476)', () 
         }
         return { content: 'done', toolCalls: [] };
       },
-      { runtime },
+      { maximumSteps: 2, runtime },
     );
     const holds: Array<{ release: () => void }> = [];
     try {
-      const run = await bureau.createRun({
+      const run = await startTaskFrom(bureau, {
         agentName: 'default',
-        message: 'First',
+        input: 'First',
         principal: 'alice',
-        maximumSteps: 2,
       });
       await stepZeroStarted.promise;
-      await bureau.contexts.input(run.sessionId, input('input-x', 'delivered'));
-      const incarnation = await incarnationOf(bureau, run.sessionId);
+      await bureau.contexts.input(run.contextId, input('input-x', 'delivered'));
+      const incarnation = await incarnationOf(bureau, run.contextId);
       // The run's settlement reads the marker only after it has decided what
       // to cancel: held there, it shows what it left alone.
       const atMarkerRead = seam.holdRead(
@@ -756,7 +727,7 @@ describe('a promoted input whose command was never acknowledged (COR-1476)', () 
       // The run's end spares the command, whose turn its transcript holds. The
       // gate kept the lease its failed acknowledgement left, so disposal has
       // already returned the command to the mailbox: open, promoted, listed.
-      const mailbox = createSessionInputMailbox(real, run.sessionId, incarnation, 100, () =>
+      const mailbox = createSessionInputMailbox(real, run.contextId, incarnation, 100, () =>
         runtime.clock.now(),
       );
       const state = async () => {
@@ -767,11 +738,11 @@ describe('a promoted input whose command was never acknowledged (COR-1476)', () 
       expect(await state()).toBe('accepted');
       atMarkerRead.release();
       await pollUntil(async () => {
-        const session = await bureau.contexts.get(run.sessionId);
+        const session = await bureau.contexts.get(run.contextId);
         return session?.metadata['lastRunStatus'] === 'completed';
       });
       expect(await markers(real)).toHaveLength(1);
-      expect(await receiptState(real, run.sessionId, incarnation, 'input-x', 'delivered')).toBe(
+      expect(await receiptState(real, run.contextId, incarnation, 'input-x', 'delivered')).toBe(
         'promoted',
       );
 
@@ -779,7 +750,7 @@ describe('a promoted input whose command was never acknowledged (COR-1476)', () 
       // leases it any more; the promotion stands.
       await bureau.runDurableMaintenance();
       expect(await state()).toBe('cancelled');
-      expect(await receiptState(real, run.sessionId, incarnation, 'input-x', 'delivered')).toBe(
+      expect(await receiptState(real, run.contextId, incarnation, 'input-x', 'delivered')).toBe(
         'promoted',
       );
       expect(await markers(real)).toHaveLength(0);
@@ -815,17 +786,13 @@ describe('what the retry loop must not hold (COR-1476)', () => {
       { onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic) },
     );
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'First',
-        principal: 'alice',
-      });
+      const run = await bureau.tasks.start('default', 'First', { principal: 'alice' });
       await stepZeroStarted.promise;
-      await bureau.contexts.input(run.sessionId, input('input-a', 'first'));
-      const incarnation = await incarnationOf(bureau, run.sessionId);
+      await bureau.contexts.input(run.contextId, input('input-a', 'first'));
+      const incarnation = await incarnationOf(bureau, run.contextId);
       releaseStepZero.resolve();
       await stepOneStarted.promise;
-      const mailbox = createSessionInputMailbox(real, run.sessionId, incarnation, 100);
+      const mailbox = createSessionInputMailbox(real, run.contextId, incarnation, 100);
       const state = async () => {
         const [receipt] = await mailbox.list({ limit: 10 });
         return receipt?.state;
@@ -839,7 +806,7 @@ describe('what the retry loop must not hold (COR-1476)', () => {
       const cancelling = bureau.cancelDurableRun(run.id);
       await pollUntil(() => failing.attempts() >= 2);
       await pollUntil(async () => {
-        const session = await bureau.contexts.get(run.sessionId);
+        const session = await bureau.contexts.get(run.contextId);
         return session?.metadata['lastRunStatus'] === 'aborted';
       });
       expect(await state()).not.toBe('claimed');
@@ -867,14 +834,13 @@ describe('what the retry loop must not hold (COR-1476)', () => {
     const bureau = await openBureau(
       seam.storage,
       async () => ({ content: 'answer', toolCalls: [] }),
-      { runtime, onDiagnostic: () => {} },
+      { maximumSteps: 1, runtime, onDiagnostic: () => {} },
     );
     try {
-      const run = await bureau.createRun({
+      const run = await startTaskFrom(bureau, {
         agentName: 'default',
-        message: 'First',
+        input: 'First',
         principal: 'alice',
-        maximumSteps: 1,
       });
       await bureau.tasks.wait(run.id);
       // The loop is in its first wait, which nothing has released.
@@ -917,23 +883,22 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
         await releaseStepZero.promise;
         return { content: 'answer', toolCalls: [] };
       },
-      { onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic) },
+      { maximumSteps: 1, onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic) },
     );
     try {
-      const run = await bureau.createRun({
+      const run = await startTaskFrom(bureau, {
         agentName: 'default',
-        message: 'First',
+        input: 'First',
         principal: 'alice',
-        maximumSteps: 1,
       });
       await stepZeroStarted.promise;
-      await bureau.contexts.input(run.sessionId, input('input-x', 'late'));
-      const incarnation = await incarnationOf(bureau, run.sessionId);
+      await bureau.contexts.input(run.contextId, input('input-x', 'late'));
+      const incarnation = await incarnationOf(bureau, run.contextId);
       releaseStepZero.resolve();
 
       await pollUntil(
         async () =>
-          (await receiptState(seam.storage, run.sessionId, incarnation, 'input-x', 'late')) ===
+          (await receiptState(seam.storage, run.contextId, incarnation, 'input-x', 'late')) ===
           'canceled',
       );
       // The first failure is the terminal listener's own log write, reported by
@@ -967,14 +932,13 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
     const bureau = await openBureau(
       seam.storage,
       async () => ({ content: 'answer', toolCalls: [] }),
-      { runtime, onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic) },
+      { maximumSteps: 1, runtime, onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic) },
     );
     try {
-      const run = await bureau.createRun({
+      const run = await startTaskFrom(bureau, {
         agentName: 'default',
-        message: 'First',
+        input: 'First',
         principal: 'alice',
-        maximumSteps: 1,
       });
       await bureau.tasks.wait(run.id);
       // Each wait is a timer on the runtime: the loop's schedule is read off the clock, one wait
@@ -1021,16 +985,12 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
       { onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic) },
     );
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'First',
-        principal: 'alice',
-      });
+      const run = await bureau.tasks.start('default', 'First', { principal: 'alice' });
       await stepZeroStarted.promise;
       releaseStepZero.resolve();
       await stepOneStarted.promise;
-      await bureau.contexts.input(run.sessionId, input('input-x', 'open'));
-      const incarnation = await incarnationOf(bureau, run.sessionId);
+      await bureau.contexts.input(run.contextId, input('input-x', 'open'));
+      const incarnation = await incarnationOf(bureau, run.contextId);
 
       // The cancellation's settlement cannot write `run-ended`; after its first
       // failed attempt the log's head is found corrupt.
@@ -1050,7 +1010,7 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
           diagnostic.scope === 'session-input' && diagnostic.message.includes('corrupt'),
       );
       expect(corrupt).toHaveLength(1);
-      expect(await receiptState(real, run.sessionId, incarnation, 'input-x', 'open')).toBe(
+      expect(await receiptState(real, run.contextId, incarnation, 'input-x', 'open')).toBe(
         'accepted',
       );
     } finally {
@@ -1076,21 +1036,20 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
         await releaseStepZero.promise;
         return { content: 'answer', toolCalls: [] };
       },
-      { onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic) },
+      { maximumSteps: 1, onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic) },
     );
     let sessionId = '';
     let incarnation = '';
     try {
-      const run = await first.createRun({
+      const run = await startTaskFrom(first, {
         agentName: 'default',
-        message: 'First',
+        input: 'First',
         principal: 'alice',
-        maximumSteps: 1,
       });
-      sessionId = run.sessionId;
+      sessionId = run.contextId;
       await stepZeroStarted.promise;
-      await first.contexts.input(run.sessionId, input('input-x', 'late'));
-      incarnation = await incarnationOf(first, run.sessionId);
+      await first.contexts.input(run.contextId, input('input-x', 'late'));
+      incarnation = await incarnationOf(first, run.contextId);
       const mailboxReads = seam.countReads(readsMailbox);
       releaseStepZero.resolve();
 
@@ -1099,13 +1058,13 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
       await first.tasks.wait(run.id);
       await pollUntil(() => failing.attempts() >= 3);
       expect(mailboxReads()).toBe(0);
-      expect(await receiptState(real, run.sessionId, incarnation, 'input-x', 'late')).toBe(
+      expect(await receiptState(real, run.contextId, incarnation, 'input-x', 'late')).toBe(
         'accepted',
       );
       // Closing the bureau ends the retries; shutdown releases, never cancels.
       await first.shutdown();
       expect(mailboxReads()).toBe(0);
-      expect(await receiptState(real, run.sessionId, incarnation, 'input-x', 'late')).toBe(
+      expect(await receiptState(real, run.contextId, incarnation, 'input-x', 'late')).toBe(
         'accepted',
       );
     } finally {
@@ -1218,15 +1177,11 @@ describe("a deleted session's input mailbox (COR-1476)", () => {
       { runtime, maintenance: 'manual' },
     );
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'First',
-        principal: 'alice',
-      });
+      const run = await bureau.tasks.start('default', 'First', { principal: 'alice' });
       await stepZeroStarted.promise;
-      await bureau.contexts.input(run.sessionId, input('input-x', 'delivered'));
-      const incarnation = await incarnationOf(bureau, run.sessionId);
-      const mailbox = createSessionInputMailbox(storage, run.sessionId, incarnation, 100, () =>
+      await bureau.contexts.input(run.contextId, input('input-x', 'delivered'));
+      const incarnation = await incarnationOf(bureau, run.contextId);
+      const mailbox = createSessionInputMailbox(storage, run.contextId, incarnation, 100, () =>
         runtime.clock.now(),
       );
       // The run delivers and retires the input; nothing is open, so the sweep
@@ -1239,7 +1194,7 @@ describe("a deleted session's input mailbox (COR-1476)", () => {
         return receipt?.state === 'applied';
       });
       await pollUntil(async () => {
-        const session = await bureau.contexts.get(run.sessionId);
+        const session = await bureau.contexts.get(run.contextId);
         return session?.metadata['lastRunStatus'] === 'completed';
       });
       await bureau.runDurableMaintenance();
@@ -1247,7 +1202,7 @@ describe("a deleted session's input mailbox (COR-1476)", () => {
 
       // Deletion marks the incarnation again, for the sweep to retire its
       // mailbox: no run will ever maintain it.
-      await bureau.contexts.delete(run.sessionId);
+      await bureau.contexts.delete(run.contextId);
       expect(await markers(storage)).toHaveLength(1);
       await runtime.advance(SESSION_INPUT_TERMINAL_RETENTION_MS + 3_600_000);
       await bureau.runDurableMaintenance();
@@ -1283,15 +1238,11 @@ describe('shutdown releases open input (COR-1476)', () => {
       stepOneStarted.resolve();
       return new Promise<never>(() => {});
     });
-    const run = await first.createRun({
-      agentName: 'default',
-      message: 'First',
-      principal: 'alice',
-    });
+    const run = await first.tasks.start('default', 'First', { principal: 'alice' });
     await stepZeroStarted.promise;
-    await first.contexts.input(run.sessionId, input('input-a', 'first'));
-    await first.contexts.input(run.sessionId, input('input-b', 'second'));
-    const incarnation = await incarnationOf(first, run.sessionId);
+    await first.contexts.input(run.contextId, input('input-a', 'first'));
+    await first.contexts.input(run.contextId, input('input-b', 'second'));
+    const incarnation = await incarnationOf(first, run.contextId);
     releaseStepZero.resolve();
     // Step 1's boundary has claimed both inputs; they are in no transcript yet.
     await stepOneStarted.promise;
@@ -1302,7 +1253,7 @@ describe('shutdown releases open input (COR-1476)', () => {
     try {
       const open = await createSessionInputMailbox(
         afterShutdown,
-        run.sessionId,
+        run.contextId,
         incarnation,
         100,
       ).list({
@@ -1311,7 +1262,7 @@ describe('shutdown releases open input (COR-1476)', () => {
       expect(open.map((receipt) => receipt.idempotencyKey)).toEqual(['input-a', 'input-b']);
       expect(open.every((receipt) => receipt.state !== 'cancelled')).toBe(true);
       expect(
-        await receiptState(afterShutdown, run.sessionId, incarnation, 'input-a', 'first'),
+        await receiptState(afterShutdown, run.contextId, incarnation, 'input-a', 'first'),
       ).toBe('accepted');
     } finally {
       afterShutdown[Symbol.dispose]();
@@ -1333,10 +1284,10 @@ describe('shutdown releases open input (COR-1476)', () => {
     }
     const afterBoot = await resolveStorage(configuration);
     try {
-      expect(await receiptState(afterBoot, run.sessionId, incarnation, 'input-a', 'first')).toBe(
+      expect(await receiptState(afterBoot, run.contextId, incarnation, 'input-a', 'first')).toBe(
         'canceled',
       );
-      expect(await receiptState(afterBoot, run.sessionId, incarnation, 'input-b', 'second')).toBe(
+      expect(await receiptState(afterBoot, run.contextId, incarnation, 'input-b', 'second')).toBe(
         'canceled',
       );
     } finally {

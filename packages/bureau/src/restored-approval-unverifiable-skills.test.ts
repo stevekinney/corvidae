@@ -429,17 +429,13 @@ async function parkedRunWithSkill(catalog: SkillCatalogOnDisk) {
     storage: { type: 'sqlite', path },
     toolbox: chargeApprovalToolbox([]),
   });
-  const run = await first.createRun({
-    agentName: 'default',
-    message: 'charge, then lock',
-    principal: OWNER.alice,
-  });
+  const run = await first.tasks.start('default', 'charge, then lock', { principal: OWNER.alice });
   const review = await pollUntil(
     () => first.reviews.list().find((candidate) => candidate.runId === run.id),
     'the session run’s approval',
   );
   await pollForTime(
-    async () => ((await skillsRecorded(first, run.sessionId)) ? true : undefined),
+    async () => ((await skillsRecorded(first, run.contextId)) ? true : undefined),
     'the active skill to be recorded',
   );
   await letStepsCommit();

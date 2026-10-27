@@ -134,8 +134,8 @@ const PROTOCOL_VERSION = '1.0';
 
 /** What the mount reads from the Bureau. */
 export type AgUiBureau = AgUiStreamBureau &
-  Pick<Bureau, 'abortRun' | 'cancelDurableRun' | 'createRun' | 'listRuns' | 'assets'> & {
-    readonly tasks: Pick<BureauTasks, 'receipt'>;
+  Pick<Bureau, 'abortRun' | 'cancelDurableRun' | 'listRuns' | 'assets'> & {
+    readonly tasks: Pick<BureauTasks, 'receipt' | 'start'>;
   } & { readonly reviews: Pick<BureauReviews, 'get' | 'resolve'> } & {
     readonly internals: Pick<BureauInternals, 'hasDurableEngine' | 'kv'>;
   };
@@ -702,13 +702,11 @@ export function createAgUiMount(
           };
         }
         try {
-          const run = await bureau.createRun({
-            sessionId: input.threadId,
+          const run = await bureau.tasks.start(
             agentName,
-            principal: owner,
-            appendMessages,
-            runCreationRequestId: input.runId,
-          });
+            { append: appendMessages },
+            { contextId: input.threadId, principal: owner, commandId: input.runId },
+          );
           return { runId: run.id };
         } catch (error) {
           return { response: refuse(...refusalFor(error, input.threadId)) };

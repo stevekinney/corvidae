@@ -27,6 +27,7 @@ import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/
 
 import { createBureau } from './index';
 import type { AgentDefinitions } from './agent-catalog';
+import { startTaskFrom } from './test/task-start-request.ts';
 
 /**
  * Where a run's memory lives (COR-1546): the Bureau's identifier is the tenant, the run's owner of
@@ -106,11 +107,9 @@ describe('packages/bureau/README.md — Governed memory', () => {
       requestAuthorityValidator: () => true,
     });
 
-    const run = await bureau.createRun({
-      agentName: 'default',
-      message: 'Book the 9:40 to Denver.',
-      principal: 'alice', // the run's owner of record, whose partition its memory is written to
-      sessionId: 'session-42', // the memory belongs to the agent, so every chat of Alice's shares it
+    const run = await bureau.tasks.start('default', 'Book the 9:40 to Denver.', {
+      contextId: 'session-42',
+      principal: 'alice',
       requestContext: {
         authority: {
           principalId: 'user:alice',
@@ -159,11 +158,7 @@ describe('documented Bureau memory limits', () => {
       memory,
     });
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'Remember this.',
-        sessionId: 'session-1',
-      });
+      const run = await bureau.tasks.start('default', 'Remember this.', { contextId: 'session-1' });
       await waitForTaskState(bureau, run.id);
       const [stored] = await memory.list(auditorFor(BUREAU_ID, LOCAL_OWNER), {
         collection: DEFAULT_AGENT,
@@ -180,7 +175,7 @@ describe('documented Bureau memory limits', () => {
     }
   });
 
-  it('writes a createRun answer with a <runId>:<step> dedupe key under a service principal with id bureau', async () => {
+  it('writes a tasks.start answer with a <runId>:<step> dedupe key under a service principal with id bureau', async () => {
     const { memory } = governedMemory();
     const bureau = await createBureau<AgentDefinitions>({
       id: BUREAU_ID,
@@ -193,11 +188,7 @@ describe('documented Bureau memory limits', () => {
       memory,
     });
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'Remember this.',
-        sessionId: 'session-1',
-      });
+      const run = await bureau.tasks.start('default', 'Remember this.', { contextId: 'session-1' });
       await waitForTaskState(bureau, run.id);
       const [stored] = await memory.list(auditorFor(BUREAU_ID, LOCAL_OWNER), {
         collection: DEFAULT_AGENT,
@@ -247,10 +238,8 @@ describe('documented Bureau memory limits', () => {
         memory,
       });
       try {
-        const run = await bureau.createRun({
-          agentName: 'default',
-          message: 'Remember this.',
-          sessionId: 'session-1',
+        const run = await bureau.tasks.start('default', 'Remember this.', {
+          contextId: 'session-1',
         });
         const settled = await waitForTaskState(bureau, run.id);
         expect(settled.status).toBe('error');
@@ -331,10 +320,10 @@ describe('documented Bureau memory limits', () => {
           requestAuthorityValidator: () => true,
         });
         try {
-          const run = await bureau.createRun({
+          const run = await startTaskFrom(bureau, {
             agentName: 'default',
-            message: 'Remember this.',
-            sessionId: 'session-1',
+            input: 'Remember this.',
+            contextId: 'session-1',
             ...(grant.requestCapabilities === undefined
               ? {}
               : {

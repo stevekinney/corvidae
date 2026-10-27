@@ -41,6 +41,7 @@ import {
   steeringSessionRunTag,
 } from './steering-log';
 import type { AgentDefinitions } from './agent-catalog';
+import { startTaskFrom } from './test/task-start-request.ts';
 
 async function openBureau(path: string) {
   return createBureau<AgentDefinitions>({
@@ -76,18 +77,18 @@ async function durableEnginePrototype() {
 }
 
 async function startRunningSession(bureau: TestBureau, sessionId?: string): Promise<string> {
-  const run = await bureau.createRun({
+  const run = await startTaskFrom(bureau, {
     agentName: 'default',
-    message: 'Wait forever',
+    input: 'Wait forever',
     principal: 'alice',
-    ...(sessionId !== undefined ? { sessionId } : {}),
+    ...(sessionId !== undefined ? { contextId: sessionId } : {}),
   });
   for (let attempt = 0; attempt < 200; attempt += 1) {
-    const session = await bureau.contexts.get(run.sessionId);
-    if (session?.metadata['lastRunStatus'] === 'running') return run.sessionId;
+    const session = await bureau.contexts.get(run.contextId);
+    if (session?.metadata['lastRunStatus'] === 'running') return run.contextId;
     await Bun.sleep(10);
   }
-  throw new Error(`session "${run.sessionId}" never reached running`);
+  throw new Error(`session "${run.contextId}" never reached running`);
 }
 
 function versionOf(outcome: Awaited<ReturnType<TestBureau['contexts']['steer']>>): number {
@@ -289,11 +290,7 @@ describe('durable steering across two Bureau processes', () => {
       // the manual timer's own scale.
       const pollTimers = () => runtime.pendingTimers().filter((timer) => timer.dueAt === 2_000);
       const before = pollTimers().length;
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'go',
-        principal: 'alice',
-      });
+      const run = await bureau.tasks.start('default', 'go', { principal: 'alice' });
       for (let attempt = 0; attempt < 200 && generateCalls === 0; attempt += 1) await Bun.sleep(10);
       // The run's session is polled through the injected timer service, so
       // a host driving time itself drives cross-process steering too.
@@ -390,19 +387,15 @@ describe('durable steering across two Bureau processes', () => {
     let bureauB: TestBureau | undefined;
 
     try {
-      const run = await bureauA.createRun({
-        agentName: 'default',
-        message: 'go',
-        principal: 'alice',
-      });
+      const run = await bureauA.tasks.start('default', 'go', { principal: 'alice' });
       for (let attempt = 0; attempt < 200 && generateCalls === 0; attempt += 1) await Bun.sleep(10);
       const model = (id: string, override: string) =>
         ({ id, principal: 'alice', requestedValue: { target: 'model', override } }) as const;
       expect(
-        versionOf(await bureauA.contexts.steer(run.sessionId, model('k1', 'claude-sonnet-5'))),
+        versionOf(await bureauA.contexts.steer(run.contextId, model('k1', 'claude-sonnet-5'))),
       ).toBe(1);
       expect(
-        versionOf(await bureauA.contexts.steer(run.sessionId, model('k2', 'claude-opus-4-8'))),
+        versionOf(await bureauA.contexts.steer(run.contextId, model('k2', 'claude-opus-4-8'))),
       ).toBe(2);
 
       releaseTool?.();
@@ -414,18 +407,16 @@ describe('durable steering across two Bureau processes', () => {
 
       // A second run keeps the session live (a terminal session answers
       // `session-terminal` before any idempotency check).
-      await bureauA.createRun({
-        agentName: 'default',
-        message: 'again',
+      await bureauA.tasks.start('default', 'again', {
+        contextId: run.contextId,
         principal: 'alice',
-        sessionId: run.sessionId,
       });
       for (let attempt = 0; attempt < 200 && toolCalls < 2; attempt += 1) await Bun.sleep(10);
 
       // The boundary's `applied` event is logged in the background; wait for
       // A itself to report it, then compare with a process that only folds.
       const stateIn = async (bureau: TestBureau, id: string, override: string) => {
-        const outcome = await bureau.contexts.steer(run.sessionId, model(id, override));
+        const outcome = await bureau.contexts.steer(run.contextId, model(id, override));
         if (outcome.outcome !== 'replayed')
           throw new Error(`expected replayed, got ${outcome.outcome}`);
         return outcome.command.state;
@@ -633,12 +624,7 @@ describe('durable steering across two Bureau processes', () => {
 
       expect(
         await throwingRejectionOf(
-          bureau.createRun({
-            agentName: 'default',
-            message: 'again',
-            principal: 'alice',
-            sessionId,
-          }),
+          bureau.tasks.start('default', 'again', { contextId: sessionId, principal: 'alice' }),
         ),
       ).toThrow();
       const after = await bureau.contexts.get(sessionId);
@@ -1213,13 +1199,9 @@ describe('durable steering across two Bureau processes', () => {
       const mine = await startRunningSession(bureau);
       const mineRun = await lastRunIdOf(mine);
       if (typeof mineRun !== 'string') throw new Error('expected a run');
-      const bobsRun = await bureau.createRun({
-        agentName: 'default',
-        message: 'Wait forever',
-        principal: 'bob',
-      });
+      const bobsRun = await bureau.tasks.start('default', 'Wait forever', { principal: 'bob' });
       for (let attempt = 0; attempt < 200; attempt += 1) {
-        const bobs = await bureau.contexts.get(bobsRun.sessionId);
+        const bobs = await bureau.contexts.get(bobsRun.contextId);
         if (bobs?.metadata['lastRunStatus'] === 'running') break;
         await Bun.sleep(10);
       }
@@ -1231,7 +1213,7 @@ describe('durable steering across two Bureau processes', () => {
       });
       expect(decidedHere.outcome).toBe('accepted');
       expect(
-        await bureau.contexts.steer(bobsRun.sessionId, {
+        await bureau.contexts.steer(bobsRun.contextId, {
           id: 'k-mine',
           principal: 'alice',
           requestedValue: { target: 'model', override: 'claude-sonnet-5' },

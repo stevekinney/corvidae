@@ -136,7 +136,7 @@ async function chat(
   message: string,
   sessionId = `chat-${message.slice(0, 12)}`,
 ): Promise<string> {
-  const run = await bureau.createRun({ agentName: 'assistant', principal, sessionId, message });
+  const run = await bureau.tasks.start('assistant', message, { contextId: sessionId, principal });
   await waitForTaskState(bureau, run.id);
   return run.id;
 }

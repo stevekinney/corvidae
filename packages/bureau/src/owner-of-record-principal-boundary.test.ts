@@ -39,25 +39,21 @@ async function openDurableBureau() {
 
 describe('a principal that is not text (COR-718)', () => {
   it.each(NOT_TEXT)(
-    'is refused by createRun, which persists nothing (%s)',
+    'is refused by tasks.start, which persists nothing (%s)',
     async (_label, principal) => {
       const bureau = await openDurableBureau();
       try {
         const plain = await rejectionOf(
-          bureau.createRun({
-            agentName: 'default',
-            message: 'x',
-            sessionId: 'refused',
+          bureau.tasks.start('default', 'x', {
+            contextId: 'refused',
             principal: principal as never,
           }),
         );
         const withReceipt = await rejectionOf(
-          bureau.createRun({
-            agentName: 'default',
-            message: 'x',
-            sessionId: 'refused',
+          bureau.tasks.start('default', 'x', {
+            contextId: 'refused',
             principal: principal as never,
-            runCreationRequestId: 'request-1',
+            commandId: 'request-1',
           }),
         );
 
@@ -134,7 +130,7 @@ describe('a principal that is not text (COR-718)', () => {
         },
       });
       try {
-        const parent = await bureau.createRun({ agentName: 'default', message: 'plan' });
+        const parent = await bureau.tasks.start('default', 'plan');
         const refusal = await rejectionOf(
           bureau.children.dispatch({
             parentRunId: parent.id,
@@ -166,17 +162,12 @@ const RESERVED = [
 
 describe('a principal in a reserved namespace (COR-718)', () => {
   it.each(RESERVED)(
-    'is refused by createRun, which persists nothing (%s)',
+    'is refused by tasks.start, which persists nothing (%s)',
     async (_label, principal) => {
       const bureau = await openDurableBureau();
       try {
         const refusal = await rejectionOf(
-          bureau.createRun({
-            agentName: 'default',
-            message: 'x',
-            sessionId: 'reserved',
-            principal,
-          }),
+          bureau.tasks.start('default', 'x', { contextId: 'reserved', principal }),
         );
 
         expect(refusal).toMatchObject({ code: 'BAD_REQUEST' });
@@ -245,7 +236,7 @@ describe('a principal in a reserved namespace (COR-718)', () => {
         },
       });
       try {
-        const parent = await bureau.createRun({ agentName: 'default', message: 'plan' });
+        const parent = await bureau.tasks.start('default', 'plan');
         const refusal = await rejectionOf(
           bureau.children.dispatch({
             parentRunId: parent.id,
@@ -266,10 +257,8 @@ describe('a principal in a reserved namespace (COR-718)', () => {
   it('still lets the exact local owner create and read a run, as the local handler flow does', async () => {
     const bureau = await openDurableBureau();
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'x',
-        sessionId: 'local',
+      const run = await bureau.tasks.start('default', 'x', {
+        contextId: 'local',
         principal: 'anonymous:local',
       });
 

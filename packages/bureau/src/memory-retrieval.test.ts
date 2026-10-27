@@ -154,10 +154,8 @@ describe('Bureau runs recall through the retrieval plan (COR-771)', () => {
     message: string,
     context: ToolRequestContext = requestContext(),
   ): Promise<Recalled | undefined> {
-    const run = await bureau.createRun({
-      message,
-      sessionId: `session-${recalled.length}`,
-      agentName: 'scout',
+    const run = await bureau.tasks.start('scout', message, {
+      contextId: `session-${recalled.length}`,
       principal: context.authority.ownerId,
       requestContext: context,
     });

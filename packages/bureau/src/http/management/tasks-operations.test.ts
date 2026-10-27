@@ -19,6 +19,7 @@ import {
   parkingUntilAborted,
   rpc,
 } from './management-fixtures.test-support.ts';
+import { startTaskFrom } from '../../test/task-start-request.ts';
 
 async function withBureau<T>(
   options: Parameters<typeof openBureau>[0],
@@ -50,12 +51,12 @@ async function startRun(
   principal: string,
   options: { message?: string; sessionId?: string; agentName?: string } = {},
 ) {
-  const run = await opened.bureau.createRun({
+  const run = await startTaskFrom(opened.bureau, {
     agentName: 'default',
-    message: options.message ?? 'work',
+    input: options.message ?? 'work',
     principal,
     ...(options.agentName === undefined ? {} : { agentName: options.agentName }),
-    ...(options.sessionId === undefined ? {} : { sessionId: options.sessionId }),
+    ...(options.sessionId === undefined ? {} : { contextId: options.sessionId }),
   });
   await waitForCondition(
     () => opened.bureau.tasks.detail(run.id)?.status === 'running',
@@ -251,13 +252,13 @@ describe('bureau.tasks.list', () => {
   it('returns only the tasks of the named context, each carrying that contextId', async () => {
     await withBureau({}, async (opened) => {
       const first = await startRun(opened, OWNER.alice);
-      const second = await startRun(opened, OWNER.alice, { sessionId: first.sessionId });
+      const second = await startRun(opened, OWNER.alice, { sessionId: first.contextId });
       await startRun(opened, OWNER.alice);
 
       const body = await rpc(
         opened.handler,
         'bureau.tasks.list',
-        { contextId: first.sessionId },
+        { contextId: first.contextId },
         'alice-key',
       );
 
@@ -266,28 +267,24 @@ describe('bureau.tasks.list', () => {
           .map((task) => task.id)
           .toSorted(),
       ).toEqual([first.id, second.id].toSorted());
-      expect(tasksOf(body).every((task) => task.contextId === first.sessionId)).toBe(true);
+      expect(tasksOf(body).every((task) => task.contextId === first.contextId)).toBe(true);
     });
   });
 
   it('returns only the current incarnation of a context after it is deleted and recreated', async () => {
     await withBureau({ generate: answering() }, async (opened) => {
-      const before = await opened.bureau.createRun({
-        agentName: 'default',
-        message: 'before',
+      const before = await opened.bureau.tasks.start('default', 'before', {
+        contextId: 'reused-context',
         principal: OWNER.alice,
-        sessionId: 'reused-context',
       });
       await waitForCondition(
         () => opened.bureau.tasks.detail(before.id)?.status === 'completed',
         'before',
       );
       await opened.bureau.contexts.delete('reused-context');
-      const after = await opened.bureau.createRun({
-        agentName: 'default',
-        message: 'after',
+      const after = await opened.bureau.tasks.start('default', 'after', {
+        contextId: 'reused-context',
         principal: OWNER.alice,
-        sessionId: 'reused-context',
       });
       await waitForCondition(
         () => opened.bureau.tasks.detail(after.id)?.status === 'completed',
@@ -307,20 +304,14 @@ describe('bureau.tasks.list', () => {
 
   it('returns exactly the two tasks of a session after two turns, each carrying the contextId', async () => {
     await withBureau({ generate: answering() }, async (opened) => {
-      const first = await opened.bureau.createRun({
-        agentName: 'default',
-        message: 'one',
-        principal: OWNER.alice,
-      });
+      const first = await opened.bureau.tasks.start('default', 'one', { principal: OWNER.alice });
       await waitForCondition(
         () => opened.bureau.tasks.detail(first.id)?.status === 'completed',
         'one',
       );
-      const second = await opened.bureau.createRun({
-        agentName: 'default',
-        message: 'two',
+      const second = await opened.bureau.tasks.start('default', 'two', {
+        contextId: first.contextId,
         principal: OWNER.alice,
-        sessionId: first.sessionId,
       });
       await waitForCondition(
         () => opened.bureau.tasks.detail(second.id)?.status === 'completed',
@@ -330,7 +321,7 @@ describe('bureau.tasks.list', () => {
       const body = await rpc(
         opened.handler,
         'bureau.tasks.list',
-        { contextId: first.sessionId },
+        { contextId: first.contextId },
         'alice-key',
       );
 
@@ -340,7 +331,7 @@ describe('bureau.tasks.list', () => {
           .map((task) => task.id)
           .toSorted(),
       ).toEqual([first.id, second.id].toSorted());
-      expect(tasksOf(body).every((task) => task.contextId === first.sessionId)).toBe(true);
+      expect(tasksOf(body).every((task) => task.contextId === first.contextId)).toBe(true);
       // A task id is the run id, and no `RunRef.runId` of the form `${sessionId}:${sequence}` appears.
       expect(tasksOf(body).every((task) => !task.id.includes(':'))).toBe(true);
     });
@@ -362,7 +353,7 @@ describe('bureau.tasks.get', () => {
 
       expect(own.result).toMatchObject({
         id: run.id,
-        contextId: run.sessionId,
+        contextId: run.contextId,
         owner: OWNER.alice,
         status: 'working',
         agentName: 'default',
@@ -474,7 +465,7 @@ describe('bureau.tasks.cancel', () => {
       for (const body of [writerOnly, repeat]) {
         expect(Object.keys(body.result ?? {}).toSorted()).toEqual(['receipt', 'taskId']);
         expect(JSON.stringify(body)).not.toContain(OWNER.alice);
-        expect(JSON.stringify(body)).not.toContain(run.sessionId);
+        expect(JSON.stringify(body)).not.toContain(run.contextId);
       }
       expect(owner.result).toHaveProperty('task');
       expect(operator.result).toHaveProperty('task');
@@ -530,11 +521,7 @@ describe('bureau.tasks.cancel', () => {
 
   it('rejects a task that finished without being canceled, applying nothing', async () => {
     await withBureau({ generate: answering() }, async (opened) => {
-      const run = await opened.bureau.createRun({
-        agentName: 'default',
-        message: 'quick',
-        principal: OWNER.alice,
-      });
+      const run = await opened.bureau.tasks.start('default', 'quick', { principal: OWNER.alice });
       await waitForCondition(
         () => opened.bureau.tasks.detail(run.id)?.status === 'completed',
         'finish',

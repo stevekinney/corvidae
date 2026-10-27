@@ -33,11 +33,7 @@ async function withBureau<T>(body: (opened: OpenedBureau) => Promise<T>): Promis
 }
 
 async function liveSession(opened: OpenedBureau) {
-  const run = await opened.bureau.createRun({
-    message: 'work',
-    agentName: 'picker',
-    principal: OWNER.alice,
-  });
+  const run = await opened.bureau.tasks.start('picker', 'work', { principal: OWNER.alice });
   await waitForCondition(
     () => opened.bureau.tasks.detail(run.id)?.status === 'running',
     'run started',
@@ -53,7 +49,7 @@ describe('bureau.contexts.get model and configVersion', () => {
     await withBureau(async (opened) => {
       const run = await liveSession(opened);
 
-      const body = await getContext(opened, run.sessionId);
+      const body = await getContext(opened, run.contextId);
 
       expect(body.result).toMatchObject({ model: null, configVersion: 0 });
     });
@@ -65,17 +61,17 @@ describe('bureau.contexts.get model and configVersion', () => {
       await rpc(
         opened.handler,
         'bureau.contexts.steer',
-        { contextId: run.sessionId, commandId: 'first', override: OPUS_5 },
+        { contextId: run.contextId, commandId: 'first', override: OPUS_5 },
         'alice-key',
       );
       await rpc(
         opened.handler,
         'bureau.contexts.steer',
-        { contextId: run.sessionId, commandId: 'second', override: OPUS_5_5 },
+        { contextId: run.contextId, commandId: 'second', override: OPUS_5_5 },
         'alice-key',
       );
 
-      const body = await getContext(opened, run.sessionId);
+      const body = await getContext(opened, run.contextId);
 
       expect(body.result).toMatchObject({
         model: { provider: 'anthropic', model: 'claude-opus-5-5' },
@@ -91,14 +87,14 @@ describe('bureau.contexts.get model and configVersion', () => {
         opened.handler,
         'bureau.contexts.steer',
         {
-          contextId: run.sessionId,
+          contextId: run.contextId,
           commandId: 'refused',
           override: { provider: 'openai', model: 'gpt-4.1' },
         },
         'alice-key',
       );
 
-      const body = await getContext(opened, run.sessionId);
+      const body = await getContext(opened, run.contextId);
 
       expect(body.result).toMatchObject({ model: null, configVersion: 0 });
     });
@@ -107,19 +103,19 @@ describe('bureau.contexts.get model and configVersion', () => {
   it('reports the version expectedRevision is compared against, which an agent change still waiting for the next run advances', async () => {
     await withBureau(async (opened) => {
       const run = await liveSession(opened);
-      await opened.bureau.contexts.steer(run.sessionId, {
+      await opened.bureau.contexts.steer(run.contextId, {
         id: 'identity',
         principal: OWNER.alice,
         requestedValue: { target: 'agent-identity', override: 'picker' },
       });
 
-      const read = await getContext(opened, run.sessionId);
+      const read = await getContext(opened, run.contextId);
       const version = read.result?.['configVersion'] as number;
       const withVersion = await rpc(
         opened.handler,
         'bureau.contexts.steer',
         {
-          contextId: run.sessionId,
+          contextId: run.contextId,
           commandId: 'fenced',
           override: OPUS_5,
           expectedRevision: version,
@@ -152,7 +148,7 @@ describe('bureau.contexts.get model and configVersion', () => {
       const body = await rpc(
         opened.handler,
         'bureau.contexts.get',
-        { contextId: run.sessionId },
+        { contextId: run.contextId },
         'bob-key',
       );
 

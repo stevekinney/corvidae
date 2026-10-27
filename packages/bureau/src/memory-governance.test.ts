@@ -370,18 +370,14 @@ describe('createBureau with governed memory (COR-41)', () => {
     });
     try {
       expect(bureau.memory).toBe(memory);
-      const first = await bureau.createRun({
-        agentName: 'default',
-        message: 'Summarize deployment approvals.',
-        sessionId: 'session-9',
+      const first = await bureau.tasks.start('default', 'Summarize deployment approvals.', {
+        contextId: 'session-9',
         principal: 'owner-a',
         requestContext: requestContext(),
       });
       await waitForTaskState(bureau, first.id);
-      const second = await bureau.createRun({
-        agentName: 'default',
-        message: 'Are deployments approved?',
-        sessionId: 'session-10',
+      const second = await bureau.tasks.start('default', 'Are deployments approved?', {
+        contextId: 'session-10',
         principal: 'owner-a',
         requestContext: requestContext(),
       });

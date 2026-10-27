@@ -81,11 +81,9 @@ async function openBureau() {
 type PaintingBureau = Awaited<ReturnType<typeof openBureau>>['bureau'];
 
 async function paint(bureau: PaintingBureau, sessionId: string) {
-  const created = await bureau.createRun({
-    message: 'Draw',
-    agentName: 'painter',
+  const created = await bureau.tasks.start('painter', 'Draw', {
+    contextId: sessionId,
     principal: alice.id,
-    sessionId,
   });
   await waitForTaskState(bureau, created.id);
   for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();

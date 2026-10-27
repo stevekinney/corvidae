@@ -99,10 +99,10 @@ describe('a run of a file agent', () => {
     await edit(harness, 'Two.\n');
     const { bureau } = harness;
 
-    const created = await bureau.createRun({ message: 'hello', agentName: 'researcher' });
+    const created = await bureau.tasks.start('researcher', 'hello');
     await waitForTaskState(bureau, created.id);
 
-    const session = await bureau.contexts.get(created.sessionId);
+    const session = await bureau.contexts.get(created.contextId);
     expect(session?.metadata['lastAgentRevision']).toBe(2);
   });
 });

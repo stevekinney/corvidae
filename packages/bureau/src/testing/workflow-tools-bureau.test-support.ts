@@ -20,6 +20,7 @@ import { WORKFLOW_TOOL_NAMES } from '../workflow-tools.ts';
 import { agentFileText, KNOWN_MODEL } from './agent-file-fixtures.test-support.ts';
 import { agentFileDirectory } from '../sources/agent-file-directory';
 import { workflowFileDirectory } from '../sources/workflow-file-directory';
+import { startTaskFrom } from '../test/task-start-request.ts';
 
 /** Wait, by the clock and not by a count of turns, until a session run is no longer running. */
 async function settledRun(bureau: Bureau<AgentDefinitions>, runId: string): Promise<void> {
@@ -131,8 +132,8 @@ export async function startWorkflowToolsBureau(
       captured = undefined;
       let runId: string;
       if (callOptions.via === 'session') {
-        const created = await bureau.createRun({
-          message: 'go',
+        const created = await startTaskFrom(bureau, {
+          input: 'go',
           agentName: callOptions.agent ?? 'scribe',
           ...(callOptions.principal === undefined ? {} : { principal: callOptions.principal }),
         });

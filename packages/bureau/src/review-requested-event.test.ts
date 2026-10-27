@@ -55,11 +55,7 @@ describe('review.requested', () => {
       durable: true,
     });
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'park-me',
-        principal: 'api-key:tester',
-      });
+      const run = await bureau.tasks.start('default', 'park-me', { principal: 'api-key:tester' });
       await waitForCondition(
         () => bureau.reviews.list().some((review) => review.runId === run.id),
         'expected the run to park',
@@ -130,11 +126,7 @@ describe('review.requested', () => {
       durable: true,
     });
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'charge',
-        principal: 'api-key:tester',
-      });
+      const run = await bureau.tasks.start('default', 'charge', { principal: 'api-key:tester' });
       await waitForCondition(
         () => bureau.reviews.list().some((review) => review.runId === run.id),
         'expected the approval to be pending',

@@ -95,7 +95,10 @@ async function chat(
   bureau: Bureau<AgentDefinitions>,
   request: { agentName: string; sessionId: string; principal?: string; message: string },
 ): Promise<void> {
-  const run = await bureau.createRun(request);
+  const run = await bureau.tasks.start(request.agentName, request.message, {
+    contextId: request.sessionId,
+    ...(request.principal === undefined ? {} : { principal: request.principal }),
+  });
   await waitForTaskState(bureau, run.id);
 }
 

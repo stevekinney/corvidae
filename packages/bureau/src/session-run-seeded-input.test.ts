@@ -77,12 +77,11 @@ describe.each([
       return retain(...args);
     });
 
-    const created = await bureau.createRun({
-      appendMessages: rowReferencing(admission.assetId),
-      agentName: 'echo',
-      principal: alice.id,
-      sessionId: 'chat',
-    });
+    const created = await bureau.tasks.start(
+      'echo',
+      { append: rowReferencing(admission.assetId) },
+      { contextId: 'chat', principal: alice.id },
+    );
     const state = await waitForTaskState(bureau, created.id);
     for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
 
@@ -93,11 +92,9 @@ describe.each([
     expect(entries.some((entry) => entry.sessionId === 'chat')).toBe(true);
 
     failing = false;
-    const other = await bureau.createRun({
-      message: 'Hello',
-      agentName: 'echo',
+    const other = await bureau.tasks.start('echo', 'Hello', {
+      contextId: 'other',
       principal: alice.id,
-      sessionId: 'other',
     });
     await waitForTaskState(bureau, other.id);
     for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
