@@ -126,7 +126,7 @@ describe.each(EXECUTIONS)('a run that stops at its step limit, %s (COR-1627)', (
   it('reports the run as failed in its run report', async () => {
     const bureau = await openStepLimitBureau(options);
     const reported: string[] = [];
-    bureau.subscribeLiveFrames((frame) => {
+    bureau.frames((frame) => {
       if (frame.type === 'run-envelope' && frame.frame.type === 'run-finished') {
         reported.push(frame.frame.report.status);
       }

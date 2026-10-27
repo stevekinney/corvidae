@@ -165,7 +165,7 @@ describe('the history of an expired session (COR-718)', () => {
     try {
       await settled(bureau, ALICE, 'audited');
       expect(await expireEverything(bureau)).toBe(1);
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
 
       const trusted = await read(bureau, 'audited');
       expect(trusted).toMatchObject({ outcome: 'deleted-aggregate' });
@@ -184,7 +184,7 @@ describe('the history of an expired session (COR-718)', () => {
       const [entry] =
         (await bureau.internals.auditTrail?.query({ runId, type: 'session.deleted' })) ?? [];
       expect(entry?.detail).toMatchObject({ sessionId: 'audited', owner: ALICE });
-      expect(await bureau.getOwner({ kind: 'audit', runId, detail: entry?.detail })).toBe(ALICE);
+      expect(await bureau.ownerOf({ kind: 'audit', runId, detail: entry?.detail })).toBe(ALICE);
       await waitForCondition(async () => {
         const remaining = await bureau.internals.kv?.list(SIDE_RECORD_PREFIX);
         return remaining?.length === 0;
@@ -319,7 +319,7 @@ async function expiryDuringRun(open: (generate: GenerateFunction) => Promise<Any
     const session = await bureau.contexts.get('shared');
     expect(session?.incarnation).toBe(bobIncarnation);
     expect(JSON.stringify(session)).not.toContain('ALICE-SECRET');
-    expect(await bureau.getOwner({ kind: 'session', id: 'shared' })).toBe(BOB);
+    expect(await bureau.ownerOf({ kind: 'session', id: 'shared' })).toBe(BOB);
     expect(bureau.tasks.detail(aliceRun.id)?.status).toBe('aborted');
   } finally {
     release.resolve();

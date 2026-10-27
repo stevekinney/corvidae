@@ -89,7 +89,7 @@ describe('a run Bureau recovers after the engine failed it', () => {
       onDiagnostic: () => undefined,
     });
     try {
-      await bureau.waitForRecovery?.();
+      await bureau.recovery();
       await waitForCondition(async () => {
         const session = await bureau.contexts.get(sessionId);
         return session?.metadata['lastRunStatus'] !== 'running';

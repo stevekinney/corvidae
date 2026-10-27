@@ -197,7 +197,7 @@ async function recoveredRunCompleted(bureau: Bureau, runId: string): Promise<boo
   await waitForBureauState([bureau], () => bureau.tasks.detail(runId)?.status === 'completed', {
     runIds: [runId],
   });
-  await bureau.waitForRecovery?.();
+  await bureau.recovery();
   return true;
 }
 
@@ -345,7 +345,7 @@ async function abortSiblingScenario(backend: Backend, scope: ScenarioScope): Pro
       toolbox: createToolbox([createNextTool()]),
     });
     const shutdown = scenario.onCleanup(() => bureau.shutdown());
-    await bureau.waitForRecovery?.();
+    await bureau.recovery();
 
     await waitForBureauState(
       [bureau],

@@ -190,7 +190,7 @@ describe('the identity of every request', () => {
     await run.result();
     const [session] = await host.bureau.contexts.list();
     if (session === undefined) throw new Error('Expected the run to create a session.');
-    expect(await host.bureau.getOwner({ kind: 'session', id: session.id })).toBe('anonymous:local');
+    expect(await host.bureau.ownerOf({ kind: 'session', id: session.id })).toBe('anonymous:local');
   });
 });
 

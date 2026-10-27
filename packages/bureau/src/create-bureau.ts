@@ -816,7 +816,7 @@ export async function resolveWaitForDurableRun(
     throw new BureauError(
       `waitForDurableRun("${runId}") cannot wait under maintenance: 'manual', ` +
         `where nothing re-reads the durable store between maintenance passes; call ` +
-        `runDurableMaintenance() and then getDurableRun() instead`,
+        `maintain() and then getDurableRun() instead`,
       'UNSUPPORTED_CAPABILITY',
     );
   }
@@ -2517,7 +2517,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
               workflows: () => workflowRuntime?.workflows,
               runIdentity: async (runId) => ({
                 agent: runAttribution.get(runId)?.agentName,
-                owner: await getOwner({ kind: 'run', id: runId }),
+                owner: await ownerOf({ kind: 'run', id: runId }),
               }),
             }),
           };
@@ -2561,6 +2561,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       selectorAvailable: true,
       files: fileAgents?.files,
       snapshots: fileAgents?.snapshots,
+      descriptors: () => models.catalog().descriptors,
     });
     // COR-1527: the workflow files. The directory is scanned and the engine told about the documents
     // in `start()`, at the end of construction and before the engine recovers; the `agent` step runs
@@ -4171,7 +4172,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   // COR-1421 — `engine.recoverAll()` resumes recovered workflows without
   // awaiting them, so recovered runs emit live frames while the rest of boot
   // still awaits, before `createBureau()` returns and a caller can subscribe.
-  // Until the FIRST `subscribeLiveFrames` listener attaches, frames are
+  // Until the FIRST `frames` listener attaches, frames are
   // therefore retained: every frame emitted while a recovery pass runs (no
   // per-run attribution, so anything the pass starts is covered), and after the
   // pass the frames of the runs it reattached. Ordinary runs outside a pass are
@@ -4321,7 +4322,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   }
 
   function emitLiveFrame(frame: ServerFrame): void {
-    // AB-96 codex review — a throwing `subscribeLiveFrames` listener must not
+    // AB-96 codex review — a throwing `frames` listener must not
     // abort the caller. `emitLiveFrame` is invoked synchronously from run-setup
     // call sites (e.g. the `run-started` frame fires BEFORE `store.register` and
     // the terminal listeners are installed), so an unguarded throw here would
@@ -4356,7 +4357,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       diagnose({
         level: 'error',
         scope: 'live-frames',
-        message: `[bureau] subscribeLiveFrames listener threw on a "${frame.type}" frame:`,
+        message: `[bureau] frames listener threw on a "${frame.type}" frame:`,
         cause: error,
       });
     }
@@ -4809,7 +4810,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
    * COR-1622 — whether the Bureau's own maintenance timer runs, and so sweeps expired reviews: the
    * same rule that starts it below. A Bureau without one (no durable engine, memory or audit
    * retention to drive) would never expire an approval it holds, so it keeps a timer of its own
-   * for as long as it holds one. A `'manual'` host drives the sweep with `runDurableMaintenance`.
+   * for as long as it holds one. A `'manual'` host drives the sweep with `maintain`.
    */
   const automaticMaintenanceRuns =
     needsAutomaticMaintenance({
@@ -10095,7 +10096,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     return session === undefined ? undefined : resolveSessionOwner(session.metadata);
   }
 
-  async function getOwner(resource: OwnedResource): Promise<string | undefined> {
+  async function ownerOf(resource: OwnedResource): Promise<string | undefined> {
     switch (resource.kind) {
       case 'run':
         return runOwner(resource.id);
@@ -10944,7 +10945,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   // acknowledged and removed. Three drivers all call this same function
   // (never a separate implementation each): the best-effort
   // `SessionOutboxAppendedEvent` trigger above (promptness only), the
-  // durable maintenance pass below (`runDurableMaintenance`, on the
+  // durable maintenance pass below (`maintain`, on the
   // runtime clock), and boot recovery (`recoverDurableRuns`, so a crash
   // between a commit and its own drain is caught up before this bureau
   // serves reads).
@@ -11275,7 +11276,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
    * (default `'forever'`, a no-op). References `auditTrailInstance` and
    * `eventHistoryInstance`, both declared further down this factory
    * function — safe because this function is only ever CALLED (from
-   * `runDurableMaintenance` below, or from the automatic-profile interval)
+   * `maintain` below, or from the automatic-profile interval)
    * after the whole factory body, including both of those assignments, has
    * already run; see `pruneStaleRunOwnership`'s own forward-reference to
    * `eventHistoryInstance` for the identical, already-established pattern.
@@ -11858,7 +11859,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   // AB-388 (Codex review, PR #597, "Await manual pruning before storage
   // teardown"): `automaticRunOwnershipPruneCurrentPass` below only tracks
   // the AUTOMATIC-profile timer's own tick. A caller invoking
-  // `runDurableMaintenance()` directly (the manual/serverless profile's own
+  // `maintain()` directly (the manual/serverless profile's own
   // alarm/Cron trigger) has no equivalent tracking, so `shutdown()` could
   // dispose storage while such a call's `pruneStaleRunOwnership()`/
   // `pruneAuditTrail()` sub-passes were still listing, deleting, or writing
@@ -11872,7 +11873,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   // shutdown starts"): closed SYNCHRONOUSLY (no `await` in between) as the
   // very first step of the "stop background work" section of `shutdown()`
   // below, strictly BEFORE that section takes its `manualDurableMaintenancePasses`
-  // snapshot. Without this, a `runDurableMaintenance()` call arriving after
+  // snapshot. Without this, a `maintain()` call arriving after
   // the snapshot but before `backgroundShutdownController.abort()` (e.g.
   // during the automatic pass's own await, which yields control) could add
   // itself to the set too late to be captured by that snapshot, and still
@@ -12231,7 +12232,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   const maintenanceMemoryAuthority = createMaintenanceMemoryAuthority(runtime.memory, bureauId);
 
   // The sweep in flight, shared by every caller. The automatic timer and a manual
-  // `runDurableMaintenance()` can overlap, and two concurrent sweeps can each open a receipt for the
+  // `maintain()` can overlap, and two concurrent sweeps can each open a receipt for the
   // same expired record, so a caller that arrives while one runs waits for it instead of starting
   // another. Within one Bureau this is the whole guard, as `automaticRunOwnershipPruneCurrentPass`
   // is for the timer's own passes.
@@ -12289,7 +12290,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     await runtime.memory?.processDeletionPropagation();
   }
 
-  async function runDurableMaintenance(now?: number): Promise<true | undefined> {
+  async function maintain(now?: number): Promise<true | undefined> {
     if (maintenanceAdmissionClosed) {
       throw new BureauError('Cannot run durable maintenance: bureau is shutting down', 'CONFLICT');
     }
@@ -12495,7 +12496,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   }
 
   // AB-363 — Codex review PR #568, "Run ownership pruning in the automatic
-  // maintenance profile": `runDurableMaintenance()` above is the ONLY
+  // maintenance profile": `maintain()` above is the ONLY
   // caller of `pruneStaleRunOwnership()`, but that wrapper is documented
   // (`BureauOptions.maintenance`) as something only a
   // manual/serverless host calls on its own alarm/Cron trigger. The
@@ -12509,7 +12510,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   // fleet-feed floor.
   //
   // This timer calls `pruneStaleRunOwnership()` ONLY, never the
-  // `runDurableMaintenance()` wrapper — that wrapper also calls
+  // `maintain()` wrapper — that wrapper also calls
   // `runtime.durable.engine.runMaintenance()`, which the automatic profile
   // is ALREADY running on its own schedule; calling it again here would
   // double-drive Weft's engine maintenance.
@@ -12603,7 +12604,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       // all except via the post-commit trigger, which is best-effort by
       // design (a missed dispatch, or a process that crashes before it
       // fires, would otherwise never get a second chance until an operator
-      // manually calls `runDurableMaintenance()`).
+      // manually calls `maintain()`).
       //
       // AB-388: the same guarded, awaited pass now also prunes the durable
       // audit trail (`options.retention?.audit`) — never a second, separate
@@ -17334,12 +17335,12 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         await automaticRunOwnershipPruneCurrentPass;
       }
       if (taskResyncBootPass) await taskResyncBootPass;
-      // AB-388: drain any manual `runDurableMaintenance()` call(s) still in
+      // AB-388: drain any manual `maintain()` call(s) still in
       // flight — see `manualDurableMaintenancePasses`'s own doc comment
       // above. `allSettled` (never `all`): a rejection here is either
       // already diagnosed by the pass's own sub-pass try/catch, or is a
       // re-thrown `engineMaintenanceError` the ORIGINAL caller of
-      // `runDurableMaintenance()` observes directly — `shutdown()` must
+      // `maintain()` observes directly — `shutdown()` must
       // still complete backend teardown either way. Drained in the SAME
       // place, and for the SAME reason, as the automatic pass's own await
       // just above: both must settle before the shared signal aborts and
@@ -17700,7 +17701,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
    * that cannot be paged by a stranger cannot be tailed by one either.
    *
    * Each kind compares the caller with that kind's owner of record, read the way
-   * {@link Bureau.getOwner} reads it (COR-718), and fails closed when there is
+   * {@link Bureau.ownerOf} reads it (COR-718), and fails closed when there is
    * none to read, so an id cannot be probed:
    *
    * - run: the owner `runAttribution` records for it (`anonymous:local` for a
@@ -17720,7 +17721,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   async function ownerReadableBy(owner: DurableEventOwner, principal: string): Promise<boolean> {
     switch (owner.kind) {
       case 'run':
-        // Read the way `getOwner` reads it, and closed for a run that no longer exists.
+        // Read the way `ownerOf` reads it, and closed for a run that no longer exists.
         return (await runOwner(owner.id)) === principal;
       case 'goal':
         return (await goalsComposition.goals.get(owner.id, { principal })) !== undefined;
@@ -18754,7 +18755,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
 
   const audit = createAudit({
     trail: () => auditTrailInstance,
-    ownerOf: ({ runId, detail }) => getOwner({ kind: 'audit', runId, detail }),
+    ownerOf: ({ runId, detail }) => ownerOf({ kind: 'audit', runId, detail }),
     refusal: (message, code) => new BureauError(message, code),
   });
 
@@ -18811,9 +18812,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     get assets(): AssetService | undefined {
       return assetServiceInstance;
     },
-    getOwner,
+    ownerOf,
     durableEngine,
-    runDurableMaintenance,
+    maintain,
     setRequestAuthorityValidator(validator) {
       requestAuthorityValidator = validator;
       runtime.setRequestAuthorityValidator(validator);
@@ -18850,10 +18851,10 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         void recovery.then(() => trackCatalogAssetRelease(reconcileAssetClaims()));
       }
     },
-    waitForRecovery() {
+    recovery() {
       return durableRecoveryBarrier;
     },
-    subscribeLiveFrames(listener) {
+    frames(listener) {
       let active = true;
       const unsubscribe = () => {
         active = false;

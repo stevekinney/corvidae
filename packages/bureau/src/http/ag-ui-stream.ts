@@ -57,7 +57,7 @@ import {
 import { type AgUiErrorCode, type EventStamp, stamp } from './ag-ui-vocabulary.ts';
 
 /** What a stream reads from the Bureau. */
-export type AgUiStreamBureau = Pick<Bureau, 'subscribeLiveFrames' | 'children' | 'surfaces'> & {
+export type AgUiStreamBureau = Pick<Bureau, 'frames' | 'children' | 'surfaces'> & {
   readonly tasks: Pick<
     BureauTasks,
     'detail' | 'snapshot' | 'wait' | 'workflow' | 'events' | 'subscribeEvents'
@@ -618,7 +618,7 @@ export function openRunStream(
   // The stream listens before it reads anything, so nothing falls between the
   // recorded history and the live tail; the buffered frames the history already
   // held are dropped by sequence.
-  unsubscribeFrames = bureau.subscribeLiveFrames((frame) => {
+  unsubscribeFrames = bureau.frames((frame) => {
     const relevant =
       (frame.type === 'event' || frame.type === 'stream:text-delta') &&
       frame.runId === request.nativeRunId;
@@ -772,7 +772,7 @@ export function openRunStream(
 
   const open = async (): Promise<void> => {
     if (request.child !== undefined) {
-      // The route authorized the run id on the owner `getOwner` reports, which reads run attribution
+      // The route authorized the run id on the owner `ownerOf` reports, which reads run attribution
       // before the child record. A child id can be chosen by whoever dispatches it, so the record
       // located under an authorized id can be another owner's; refuse it as a missing run.
       if (!runIsOwnedBy(request.child, request.owner)) {

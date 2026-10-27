@@ -1,6 +1,6 @@
 /**
  * COR-1588 — one reader of a run's owner. The mount authorizes an attach by run on the owner
- * `Bureau.getOwner` reports, and the stream then refuses a held run whose own `principal` is not
+ * `Bureau.ownerOf` reports, and the stream then refuses a held run whose own `principal` is not
  * that owner, so the two must agree for every run a Bureau holds.
  */
 import { EventType } from '@ag-ui/core';
@@ -33,7 +33,7 @@ describe('attaching by run to a task', () => {
     try {
       const handler = createBureauHandler(bureau, { authentication, publish: [], agUi: {} });
       const run = await bureau.tasks.start('plain', 'hi', { principal: 'api-key:alice' });
-      expect(await bureau.getOwner({ kind: 'run', id: run.id })).toBe('api-key:alice');
+      expect(await bureau.ownerOf({ kind: 'run', id: run.id })).toBe('api-key:alice');
 
       const stranger = await readAgUiStream(await handler(attachRunRequest(run.id, as('bob-key'))));
       const owner = new FrameReader(await handler(attachRunRequest(run.id, as('alice-key'))));

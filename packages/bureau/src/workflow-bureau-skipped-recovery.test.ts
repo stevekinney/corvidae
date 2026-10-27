@@ -73,7 +73,7 @@ describe('a Bureau over a store with a run of a workflow type it has no trace of
     diagnostics.length = 0;
 
     const second = await startWorkflowBureau({ directory: workflows, overrides });
-    const report = await second.bureau.waitForRecovery?.();
+    const report = await second.bureau.recovery();
     expect(report?.outcome).toBe('partial');
     expect(report?.skippedRuns).toEqual([{ runId: 'stranded-run', type: 'stranded' }]);
     expect(report?.perRunFailures).toEqual([]);
@@ -99,7 +99,7 @@ describe('a Bureau over a store with a run of a workflow type it has no trace of
     await writeFile(join(workflows, 'stranded.json'), strandedText);
     const third = await startWorkflowBureau({ directory: workflows, overrides });
     cleanups.push(() => third.dispose());
-    expect(await third.bureau.waitForRecovery?.()).toEqual({
+    expect(await third.bureau.recovery()).toEqual({
       outcome: 'clean',
       perRunFailures: [],
       skippedRuns: [],
@@ -177,7 +177,7 @@ describe('a Bureau started without workflowSource over a store with workflow ins
     });
     cleanups.push(() => recovering.dispose());
 
-    const report = await recovering.waitForRecovery?.();
+    const report = await recovering.recovery();
     expect(report?.outcome).toBe('partial');
     expect(report?.batchFailure).toBeUndefined();
     expect(report?.skippedRuns).toEqual([{ runId: 'digest-run', type: 'digest' }]);

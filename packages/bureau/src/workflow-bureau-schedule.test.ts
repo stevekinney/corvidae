@@ -52,9 +52,9 @@ describe('bureau.schedules on a workflow’s schedule', () => {
     const all = await harness.bureau.schedules.list();
     expect(await statusOf(harness, id)).toBe('active');
     expect(all?.items.map((entry) => entry.id)).toEqual([id]);
-    expect(await harness.bureau.getOwner({ kind: 'schedule', id })).toBe('anonymous:local');
+    expect(await harness.bureau.ownerOf({ kind: 'schedule', id })).toBe('anonymous:local');
     expect(
-      await harness.bureau.getOwner({ kind: 'schedule', id: 'schedule-nobody' }),
+      await harness.bureau.ownerOf({ kind: 'schedule', id: 'schedule-nobody' }),
     ).toBeUndefined();
   });
 
@@ -114,7 +114,7 @@ describe('bureau.schedules on a workflow’s schedule', () => {
     await harness.putWorkflow('digest', HOURLY);
     expect(await statusOf(harness, 'bureau-workflow-schedule:digest:2')).toBe('active');
     expect(
-      await harness.bureau.getOwner({ kind: 'schedule', id: 'bureau-workflow-schedule:digest:2' }),
+      await harness.bureau.ownerOf({ kind: 'schedule', id: 'bureau-workflow-schedule:digest:2' }),
     ).toBe('anonymous:local');
   });
 

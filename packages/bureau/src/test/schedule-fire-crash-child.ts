@@ -6,7 +6,7 @@
  * Stands up a real durable Bureau whose engine timers are driven by hand
  * (`maintenance: 'manual'`), registers a recurring interval
  * schedule, and drives it to its first occurrence with
- * `bureau.runDurableMaintenance(occurrence)`, which is `engine.scheduler.tick`
+ * `bureau.maintain(occurrence)`, which is `engine.scheduler.tick`
  * under the hood. No real time elapses and no poller runs.
  *
  * The fire's agent body is the kill point. Once it is inside `generate`, so the
@@ -88,7 +88,7 @@ if (created === undefined || firstOccurrence === null || firstOccurrence === und
 scheduleId = created.id;
 occurrence = firstOccurrence;
 
-await bureau.runDurableMaintenance(firstOccurrence);
+await bureau.maintain(firstOccurrence);
 
 // The tick launches the fire and returns before its body runs. The process now
 // waits to be killed from inside `generate`; if no fire is in flight the event

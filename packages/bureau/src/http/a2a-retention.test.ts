@@ -63,8 +63,8 @@ describe('the A2A record’s lifetime', () => {
 
       runtime.setTime(Date.parse(ORIGIN) + 3 * DAY_MS);
       // The first pass sweeps the run-creation binding; the next deletes the task it held.
-      await bureau.runDurableMaintenance();
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
+      await bureau.maintain();
 
       expect(bureau.tasks.detail(body.result.task.id)).toBeUndefined();
       expect(await bureau.internals.kv?.get(key)).toBeNull();

@@ -213,8 +213,8 @@ async function withService(
       runtime: bureauRuntime,
       retireEarlierTasks: async () => {
         await bureauRuntime.advance(TASK_AGE_MILLISECONDS + 1);
-        await opened.bureau.runDurableMaintenance();
-        await opened.bureau.runDurableMaintenance();
+        await opened.bureau.maintain();
+        await opened.bureau.maintain();
       },
       records,
       bureau: opened.bureau,

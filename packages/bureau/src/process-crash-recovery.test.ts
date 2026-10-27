@@ -164,8 +164,7 @@ async function recoveryScenario(backend: Backend, scope: ScenarioScope): Promise
     const [b, c] = racers as [Racer, Racer];
 
     for (const racer of racers) {
-      const report = await racer.bureau.waitForRecovery?.();
-      if (report === undefined) throw new Error('waitForRecovery is unavailable');
+      const report = await racer.bureau.recovery();
       expect(report.outcome).toBe('clean');
       expect(report.perRunFailures).toEqual([]);
     }

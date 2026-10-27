@@ -1086,7 +1086,7 @@ describe('who reaches the human wait of a bureau.run() run, through a real Burea
   it('shows a run with no principal to an operator and to the local caller, and to no other key', async () => {
     const { bureau, run, id } = await parkedCatalogRun(undefined);
     try {
-      expect(await bureau.getOwner({ kind: 'review', id })).toBe('anonymous:local');
+      expect(await bureau.ownerOf({ kind: 'review', id })).toBe('anonymous:local');
       const keyed = createBureauHandler(bureau, { authentication: authenticationFor });
       const local = createBureauHandler(bureau, { unauthenticatedAccess: 'allow' });
 

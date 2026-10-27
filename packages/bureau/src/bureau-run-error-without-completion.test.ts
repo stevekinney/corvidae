@@ -118,7 +118,7 @@ describe('a durable run that fails and then loses its checkpoint compare-and-swa
     });
     try {
       const frames: RunFrame[] = [];
-      bureau.subscribeLiveFrames((frame) => {
+      bureau.frames((frame) => {
         if (frame.type === 'run-envelope') frames.push(frame.frame);
       });
       const run = await bureau.tasks.start('default', 'Go.');

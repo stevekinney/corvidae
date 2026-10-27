@@ -415,7 +415,7 @@ describe('owner strings and reserved namespaces', () => {
       const listed = await call(handler, 'bureau.reviews.list', {}, 'any');
 
       expect(reviewIds(listed)).toHaveLength(1);
-      expect(await bureau.getOwner({ kind: 'run', id: run.id })).toBe('api-key:ops%20user%2F1%3Aa');
+      expect(await bureau.ownerOf({ kind: 'run', id: run.id })).toBe('api-key:ops%20user%2F1%3Aa');
     } finally {
       await bureau.dispose();
     }
@@ -732,7 +732,7 @@ describe('the local caller under allow', () => {
       });
 
       expect(resolved.result).toMatchObject({ id: reviewId, receipt: 'applied' });
-      expect(await bureau.getOwner({ kind: 'run', id: run.id })).toBe('anonymous:local');
+      expect(await bureau.ownerOf({ kind: 'run', id: run.id })).toBe('anonymous:local');
       const entries = await bureau.internals.auditTrail?.query({ runId: run.id });
       expect(
         entries
@@ -757,7 +757,7 @@ describe('the local caller under allow', () => {
       expect(reviewIds(listedByOne)).toEqual([first.reviewId, second.reviewId].toSorted());
       expect(reviewIds(listedByTwo)).toEqual(reviewIds(listedByOne));
       for (const { run } of [first, second]) {
-        expect(await bureau.getOwner({ kind: 'run', id: run.id })).toBe('anonymous:local');
+        expect(await bureau.ownerOf({ kind: 'run', id: run.id })).toBe('anonymous:local');
       }
     } finally {
       await bureau.dispose();
@@ -1200,7 +1200,7 @@ describe('the AG-UI routes owner predicate', () => {
       };
       const mount = createAgUiMount(
         harness.bureau,
-        { mayAccess: counting, ownerOf: (resource) => harness.bureau.getOwner(resource) },
+        { mayAccess: counting, ownerOf: (resource) => harness.bureau.ownerOf(resource) },
         ['assistant'],
         {},
       );

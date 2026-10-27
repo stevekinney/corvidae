@@ -46,8 +46,8 @@ describe('the owner of a run and of its session (COR-718)', () => {
       const session = await bureau.contexts.get(run.contextId);
       expect(session?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('api-key:alice');
       expect(session?.metadata['lastRunOwningPrincipals']).toEqual({ [run.id]: 'api-key:alice' });
-      expect(await bureau.getOwner({ kind: 'run', id: run.id })).toBe('api-key:alice');
-      expect(await bureau.getOwner({ kind: 'session', id: run.contextId })).toBe('api-key:alice');
+      expect(await bureau.ownerOf({ kind: 'run', id: run.id })).toBe('api-key:alice');
+      expect(await bureau.ownerOf({ kind: 'session', id: run.contextId })).toBe('api-key:alice');
     } finally {
       await bureau.dispose();
     }
@@ -63,7 +63,7 @@ describe('the owner of a run and of its session (COR-718)', () => {
       expect(bureau.tasks.detail(run.id)?.liveness.owner).toBe('anonymous:local');
       const session = await bureau.contexts.get(run.contextId);
       expect(session?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('anonymous:local');
-      expect(await bureau.getOwner({ kind: 'run', id: run.id })).toBe('anonymous:local');
+      expect(await bureau.ownerOf({ kind: 'run', id: run.id })).toBe('anonymous:local');
     } finally {
       await bureau.dispose();
     }
@@ -73,7 +73,7 @@ describe('the owner of a run and of its session (COR-718)', () => {
     const bureau = await openBureau();
     try {
       for (const kind of ['run', 'session', 'goal', 'schedule', 'review'] as const) {
-        expect(await bureau.getOwner({ kind, id: 'missing' })).toBeUndefined();
+        expect(await bureau.ownerOf({ kind, id: 'missing' })).toBeUndefined();
       }
     } finally {
       await bureau.dispose();
@@ -119,7 +119,7 @@ describe('the owner of a run and of its session (COR-718)', () => {
 
       const session = await bureau.contexts.get(first.contextId);
       expect(session?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('api-key:alice');
-      expect(await bureau.getOwner({ kind: 'run', id: second.id })).toBe('api-key:alice');
+      expect(await bureau.ownerOf({ kind: 'run', id: second.id })).toBe('api-key:alice');
     } finally {
       await bureau.dispose();
     }
@@ -216,11 +216,11 @@ describe('the owner of a catalog run (COR-718)', () => {
         const owned = await bureau.tasks.start('worker', 'work', { principal: 'api-key:alice' });
         const unowned = await bureau.tasks.start('worker', 'work');
 
-        expect([durable, await bureau.getOwner({ kind: 'run', id: owned.id })]).toEqual([
+        expect([durable, await bureau.ownerOf({ kind: 'run', id: owned.id })]).toEqual([
           durable,
           'api-key:alice',
         ]);
-        expect([durable, await bureau.getOwner({ kind: 'run', id: unowned.id })]).toEqual([
+        expect([durable, await bureau.ownerOf({ kind: 'run', id: unowned.id })]).toEqual([
           durable,
           'anonymous:local',
         ]);

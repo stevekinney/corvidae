@@ -812,7 +812,7 @@ describe('the audit trail', () => {
 
   it('files an entry under an owner the deployment can resolve, so an operator and the owner read it', async () => {
     const served = await serve();
-    expect(await served.bureau.getOwner({ kind: 'audit', runId: 'agent:researcher' })).toBe(
+    expect(await served.bureau.ownerOf({ kind: 'audit', runId: 'agent:researcher' })).toBe(
       'anonymous:local',
     );
   });

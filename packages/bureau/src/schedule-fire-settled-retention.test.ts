@@ -109,7 +109,7 @@ describe('the boot pass after event retention removed a fire’s settled event',
       const at = ORIGIN + round * 8 * DAY;
       // Event retention (7 days) passes; task retention (30 days) does not.
       current.runtime.setTime(at);
-      await current.bureau.runDurableMaintenance(ORIGIN);
+      await current.bureau.maintain(ORIGIN);
       expect(await settledEventsOf(current.bureau, fireId)).toHaveLength(0);
       const view = await current.bureau.internals.taskRegistry.get(fireId);
       expect(view?.status).toBe('completed');

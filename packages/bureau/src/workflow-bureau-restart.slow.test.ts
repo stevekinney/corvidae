@@ -103,7 +103,7 @@ for (const [label, ownership] of OWNERSHIPS) {
 
       const second = await startWorkflowBureau({ directory: workflows, overrides });
       cleanups.push(() => second.dispose());
-      const report = await second.bureau.waitForRecovery?.();
+      const report = await second.bureau.recovery();
       expect(report?.perRunFailures).toEqual([]);
       expect(report?.outcome).toBe('clean');
 

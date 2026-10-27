@@ -251,7 +251,7 @@ export async function waitForBureauState(
   };
 
   for (const bureau of bureaus) {
-    subscriptions.push({ unsubscribe: bureau.subscribeLiveFrames(notify) });
+    subscriptions.push({ unsubscribe: bureau.frames(notify) });
     const eventSubscription: Subscription = bureau.toObservable().subscribe(notify);
     subscriptions.push(eventSubscription);
   }

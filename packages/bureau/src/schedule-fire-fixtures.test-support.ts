@@ -1,6 +1,6 @@
 /**
  * Fixtures for the tests of a schedule fire's reviews (COR-1596): a durable Bureau whose engine
- * timers are driven by hand, a fire that is one `runDurableMaintenance` tick away, and the tools
+ * timers are driven by hand, a fire that is one `maintain` tick away, and the tools
  * and models a fire asks a human with. Each test file calls `harness.dispose` after each test.
  */
 
@@ -210,7 +210,7 @@ export async function fireOnce(
   if (created === undefined || occurrence === null || occurrence === undefined) {
     throw new Error('The schedule has no first occurrence.');
   }
-  await bureau.runDurableMaintenance(occurrence);
+  await bureau.maintain(occurrence);
   const fireId = await pollUntil(async () => {
     const schedule = await bureau.schedules.get(created.id);
     return schedule?.currentWorkflowId;

@@ -365,13 +365,13 @@ async function relaunchRecover(): Promise<void> {
       workflowClaimRenewIntervalMs: CLAIM_RENEW_MS,
     },
   });
-  const report = await bureau.waitForRecovery?.();
+  const report = await bureau.recovery();
   await pollUntil('the relaunched run to reach a terminal status', async () => {
     const durable = await bureau.tasks.workflow(runId);
     if (durable !== null && durable !== undefined && TERMINAL_STATUSES.has(durable.status)) {
       return true;
     }
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
     return false;
   });
   const durable = await bureau.tasks.workflow(runId);
@@ -411,7 +411,7 @@ async function verify(): Promise<void> {
     toolbox: createChargeToolbox(directory, async () => 'ok', { cache, wrap: true }),
     memory: governed.memory,
   });
-  const report = await bureau.waitForRecovery?.();
+  const report = await bureau.recovery();
   const runningRuns = await bureau.tasks.workflows({ status: 'running' });
   const running = runningRuns?.items.length;
   writeMarker({ recoveryOutcome: report?.outcome, running });

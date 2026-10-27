@@ -128,8 +128,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
     expect(bureau.agents.list().map((listing) => listing.id)).toEqual(['edited']);
 
     const recovering = bureau;
-    const report = await scope.phase('recovery', async () => recovering.waitForRecovery?.());
-    if (report === undefined) throw new Error('waitForRecovery is unavailable');
+    const report = await scope.phase('recovery', async () => recovering.recovery());
     expect(report.perRunFailures).toEqual([]);
     expect(report.outcome).toBe('clean');
 
@@ -224,7 +223,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
         bureau.agents.revisions('edited'),
       ]);
       expect(before.map((revisions) => revisions.length)).toEqual([1, 1]);
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
       const after = await Promise.all([
         bureau.agents.revisions('gone'),
         bureau.agents.revisions('edited'),

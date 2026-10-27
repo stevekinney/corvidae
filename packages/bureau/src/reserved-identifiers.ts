@@ -25,7 +25,7 @@ export const EVENT_OWNER_WORKFLOW_ID_PREFIXES: readonly string[] = [
 
 /**
  * The audit trail files entries that belong to no run under a synthetic owner `runId`
- * (`agent:<id>`, `schedule:<id>`, `session:<id>`), and `getOwner` resolves that prefix without a
+ * (`agent:<id>`, `schedule:<id>`, `session:<id>`), and `ownerOf` resolves that prefix without a
  * run. A child run named `agent:researcher` would have its own audit entries attributed to the
  * deployment owner instead of its principal, so these prefixes are refused too.
  */

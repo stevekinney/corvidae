@@ -293,7 +293,7 @@ export interface BureauRetentionOptions {
    * the Weft fleet feed's own retention floor — audit evidence always
    * outlives the durable events it describes, even when `olderThan` would
    * otherwise have allowed pruning it sooner. Pruning runs inside the
-   * existing durable maintenance pass: {@link Bureau.runDurableMaintenance}
+   * existing durable maintenance pass: {@link Bureau.maintain}
    * for a `'manual'` host's own alarm/Cron trigger, and — under the
    * default `'automatic'` profile — the same background interval that
    * already prunes stale run ownership (AB-374). It is never driven on a
@@ -375,10 +375,10 @@ export interface BureauRetentionOptions {
    * running task, and a terminal one not yet older than the window, is never
    * removed. Only tasks in this process's run store are candidates, so a
    * terminal run from before a restart is not removed. The pass runs from
-   * {@link Bureau.runDurableMaintenance} and from the automatic maintenance timer,
+   * {@link Bureau.maintain} and from the automatic maintenance timer,
    * which starts only for a durable bureau or one with KV-backed audit
    * retention; an ephemeral bureau with neither keeps its terminal tasks until
-   * something calls `runDurableMaintenance`. A task is also kept for as long as its run-creation binding
+   * something calls `maintain`. A task is also kept for as long as its run-creation binding
    * ({@link BureauRetentionOptions.receipts}) is stored, so an
    * exact retry of the request that created it always finds its task.
    * `olderThan` must be a finite, non-negative number; otherwise
@@ -523,7 +523,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * Select how the durable engine's periodic maintenance is driven. The
    * default `'automatic'` profile uses in-process intervals. Cloudflare
    * Durable Objects and other serverless hosts should use `'manual'`, then
-   * call {@link Bureau.runDurableMaintenance} from each alarm or Cron wake-up.
+   * call {@link Bureau.maintain} from each alarm or Cron wake-up.
    */
   maintenance?: 'automatic' | 'manual';
   /**
@@ -570,7 +570,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * says, nor to a child run, a goal attempt, or a workflow-file agent step. An agent file's
    * `tools:` list does not gate it. The tool is bound to that run's OWN event emitter and its real
    * `ctx.services` object — the only wiring under which a `HumanWaitParkedEvent` the tool
-   * dispatches actually reaches `subscribeLiveFrames`/`store` listeners (including AB-13's
+   * dispatches actually reaches `frames`/`store` listeners (including AB-13's
    * flow-control `markParked`) and `reviews.list` (AB-20). The park is a `human-wait`
    * review: a task's carries its context's id as `sessionId`, and `runId` is the task's id. The agent
    * must stop on the call (`stopWhen.toolCalled('requestHumanInput')`) for the run to park.
@@ -634,7 +634,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * generator runs, so a second process racing to resume the same workflow
    * fails closed instead of double-executing it.
    *
-   * Under `'workflow-lease'`, run-ownership pruning (`runDurableMaintenance()`
+   * Under `'workflow-lease'`, run-ownership pruning (`maintain()`
    * and the automatic maintenance timer) also skips any run whose workflow
    * claim is currently live on any process; under `'none'` pruning is
    * unchanged.
@@ -718,7 +718,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * would miss. It receives every event the emitter dispatches for the life of
    * the Bureau, in dispatch order. A throwing listener, or an async one that rejects, is
    * reported through {@link onDiagnostic} and does not affect the Bureau. Live frames have no
-   * such option: `subscribeLiveFrames` replays the frames emitted during
+   * such option: `frames` replays the frames emitted during
    * recovery to its first subscriber.
    */
   onEvent?: (event: BureauEventMap[BureauEventType]) => void | Promise<void>;
@@ -1051,7 +1051,7 @@ export interface BureauShutdownReport {
 }
 
 /**
- * Returned by {@link Bureau.waitForRecovery}, modeled on
+ * Returned by {@link Bureau.recovery}, modeled on
  * {@link BureauShutdownReport}'s shape rather than a new report vocabulary
  * (AB-242's decision record). Aggregates one boot recovery pass's outcome so
  * a caller who wants to know whether recovery actually succeeded has a
@@ -1229,7 +1229,7 @@ export type AuditQuery = {
 export type BureauAuditQueryOptions = {
   /**
    * Only records about resources this owner owns (the `api-key:<subject>` or `anonymous:local`
-   * string `getOwner` returns). A record about a resource with no owner is never returned for an
+   * string `ownerOf` returns). A record about a resource with no owner is never returned for an
    * owner. Omitted, every record is returned: an in-process caller is the host itself.
    */
   readonly owner?: string | undefined;
@@ -1610,7 +1610,7 @@ export interface BureauSchedules {
    * schedule, when it is a workflow file's schedule (which runs no agent of its own), or when no
    * durable engine is composed. It is read from the schedule's stored input and is the only part
    * of that input this returns: never its text or its session. It does not check who may see the
-   * schedule, so a caller answers to {@link Bureau.getOwner} first.
+   * schedule, so a caller answers to {@link Bureau.ownerOf} first.
    */
   agentName(scheduleId: string): Promise<string | undefined>;
 
@@ -1620,7 +1620,7 @@ export interface BureauSchedules {
    * schedule, when it is a workflow file's, when its input holds no text, or when no durable engine
    * is composed. It reads the stored input beside {@link BureauSchedules.agentName}, never its
    * session, and does not check who may see the schedule, so a caller answers to
-   * {@link Bureau.getOwner} first.
+   * {@link Bureau.ownerOf} first.
    */
   inputPreview(scheduleId: string): Promise<string | undefined>;
 
@@ -2131,7 +2131,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    *   live session, which may be gone or recreated under another owner. An entry
    *   without one, such as a deletion that bypassed Bureau, has no owner.
    */
-  getOwner(resource: OwnedResource): Promise<string | undefined>;
+  ownerOf(resource: OwnedResource): Promise<string | undefined>;
 
   /**
    * The durable Weft engine this bureau composed, or `undefined` when none is composed. It is the
@@ -2182,7 +2182,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * a fully ephemeral bureau, because it did maintain something; one that
    * removed none there still resolves `undefined`.
    */
-  runDurableMaintenance(now?: number): Promise<true | undefined>;
+  maintain(now?: number): Promise<true | undefined>;
 
   /**
    * Installs the host-owned authority freshness check used immediately before
@@ -2195,7 +2195,9 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
 
   /**
    * Waits for boot durable recovery to finish and resolves a typed
-   * {@link BureauRecoveryReport} describing its outcome.
+   * {@link BureauRecoveryReport} describing its outcome. A Bureau with no durable engine has
+   * no runs to recover, so with nothing recorded to sweep this resolves
+   * `{ outcome: 'clean', perRunFailures: [], skippedRuns: [] }` immediately.
    *
    * `createBureau()` returns once boot recovery has STARTED — `recoverAll()`
    * has begun resuming recovered handles and each owned run has been
@@ -2205,15 +2207,15 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * listeners, and the like) is ready.
    *
    * That timing is DIFFERENT on the two paths this method covers, so what
-   * `await waitForRecovery()` buys a caller is different too:
+   * `await recovery()` buys a caller is different too:
    *
    * - **Recovery not deferred** (the common case: `requestAuthorityValidator`
    *   is set in `BureauOptions`, or no persisted session has an in-flight run
    *   under transport-issued authority). `createBureau()` itself already
    *   awaits this same barrier before resolving, so by the time a caller HAS
-   *   a `bureau` to call `waitForRecovery()` on, recovery classification is
+   *   a `bureau` to call `recovery()` on, recovery classification is
    *   already done and any recovered run may already be advancing. Calling
-   *   `waitForRecovery()` here reports that (already-settled) fact; it
+   *   `recovery()` here reports that (already-settled) fact; it
    *   cannot retroactively delay a recovered run's already-dispatched first
    *   step. A caller with post-boot dependency wiring that a recovered run
    *   will need must finish that wiring BEFORE calling `createBureau()` (or
@@ -2228,12 +2230,12 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    *   starting recovery, and recovery does not start at all until
    *   `setRequestAuthorityValidator()` is called with a validator, so a
    *   caller that finishes its dependency wiring before or immediately after
-   *   that call, then `await`s `waitForRecovery()`, genuinely gates on
+   *   that call, then `await`s `recovery()`, genuinely gates on
    *   recovery's classification/reattachment pass completing.
-   *   `waitForRecovery()` is the only way to observe when that deferred pass
+   *   `recovery()` is the only way to observe when that deferred pass
    *   finishes.
    */
-  waitForRecovery?(): Promise<BureauRecoveryReport>;
+  recovery(): Promise<BureauRecoveryReport>;
 
   /**
    * Subscribe to every live frame. The FIRST subscriber is also replayed, in
@@ -2245,7 +2247,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * subscribers receive only new frames. Emitter listeners get
    * no such replay; register them through {@link BureauOptions.onEvent}.
    */
-  subscribeLiveFrames(listener: (frame: ServerFrame) => void): () => void;
+  frames(listener: (frame: ServerFrame) => void): () => void;
 
   addEventListener<K extends keyof BureauEventMap & string>(
     type: K,
@@ -2421,7 +2423,7 @@ export interface AbortingRun {
   readonly since: number;
 }
 
-/** A resource whose owner of record {@link Bureau.getOwner} reads. */
+/** A resource whose owner of record {@link Bureau.ownerOf} reads. */
 export type OwnedResource =
   | { readonly kind: 'run' | 'session' | 'goal' | 'schedule' | 'review'; readonly id: string }
   | {
@@ -2472,11 +2474,11 @@ export interface RunSummary {
    * The owner of record of the run: the principal it was created with
    * (e.g. `api-key:<id>`), from the run's attribution, or the owner its
    * liveness snapshot reports when no attribution was recorded (one
-   * reader, shared with {@link Bureau.getOwner}). A run reattached after
+   * reader, shared with {@link Bureau.ownerOf}). A run reattached after
    * durable recovery keeps it: it is rehydrated from the owning session's
    * `lastRunOwningPrincipals` (AB-359). A run created with no principal reads
    * `undefined` on the direct branch and `anonymous:local` on the durable one;
-   * {@link Bureau.getOwner} and the AG-UI mount read both as `anonymous:local`
+   * {@link Bureau.ownerOf} and the AG-UI mount read both as `anonymous:local`
    * through the same default.
    */
   principal: string | undefined;

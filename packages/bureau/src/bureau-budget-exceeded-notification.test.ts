@@ -6,7 +6,7 @@
  * decides when a run's frame forwarder stops listening. A test that hands
  * `createRunFrameForwarder` a bare `ActiveRun` cannot see that decision, so
  * these tests drive the whole Bureau lifecycle and read the frames a
- * `subscribeLiveFrames` listener receives, for both run drivers. A run that a
+ * `frames` listener receives, for both run drivers. A run that a
  * restarted Bureau reattaches replays its memoized steps and dispatches no step
  * events, so it is covered separately below.
  */
@@ -73,7 +73,7 @@ async function collectRunFrames(
   });
   try {
     const frames: RunFrame[] = [];
-    const unsubscribe = bureau.subscribeLiveFrames((frame) => {
+    const unsubscribe = bureau.frames((frame) => {
       if (frame.type === 'run-envelope') frames.push(frame.frame);
     });
     const summary = await bureau.tasks.start('default', 'Go.');
@@ -216,7 +216,7 @@ describe.each(failureShapes)(
         });
         bureauB = reattached;
         const frames: RunFrame[] = [];
-        reattached.subscribeLiveFrames((frame) => {
+        reattached.frames((frame) => {
           if (frame.type === 'run-envelope' && frame.runId === run.id) frames.push(frame.frame);
         });
         await replayed.reached;

@@ -224,7 +224,7 @@ describe('a session run the durable engine resumes after a restart', () => {
       scripts: { 'claude-opus-5-5': () => 'resumed' },
       overrides,
     });
-    const report = await second.bureau.waitForRecovery?.();
+    const report = await second.bureau.recovery();
 
     expect(report?.perRunFailures).toEqual([]);
     const resumed = revisionBuiltFor(buildsOf(built, 'researcher'), 'Version two.');

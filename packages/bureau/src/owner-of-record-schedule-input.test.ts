@@ -56,9 +56,9 @@ describe('the owner of a schedule that is not an agent schedule (COR-718)', () =
         durableOwnership: { ownership: 'none' },
       });
       try {
-        expect(await bureau.getOwner({ kind: 'schedule', id: 'heartbeat' })).toBeUndefined();
+        expect(await bureau.ownerOf({ kind: 'schedule', id: 'heartbeat' })).toBeUndefined();
         expect(
-          await bureau.getOwner({ kind: 'audit', runId: 'schedule:heartbeat' }),
+          await bureau.ownerOf({ kind: 'audit', runId: 'schedule:heartbeat' }),
         ).toBeUndefined();
         // Nor does it run an agent that can be named: only a valid agent schedule does.
         expect(await bureau.schedules.agentName('heartbeat')).toBeUndefined();

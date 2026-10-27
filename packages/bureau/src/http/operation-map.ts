@@ -123,9 +123,8 @@ export const OPERATION_MAP = {
   'bureau.audit.query': { member: 'audit.query' },
 
   'bureau.agents.list': { member: 'agents.list' },
-  // Describes one catalog agent against the models catalog; no member does that yet, so the row
-  // names the lookup it starts from. `agents.models` replaces it when it is added in-process.
-  'bureau.agents.models': { member: 'agents.find' },
+  // Describes one catalog agent against the models catalog (COR-1708).
+  'bureau.agents.models': { member: 'agents.models' },
   'bureau.agents.definitions.create': { member: 'agents.create' },
   'bureau.agents.definitions.update': { member: 'agents.update' },
   'bureau.agents.definitions.delete': { member: 'agents.delete' },
