@@ -1,9 +1,10 @@
 import { $, Glob } from 'bun';
+import { relative, resolve } from 'node:path';
 
+import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 // Bun parses `bunfig.toml` natively when imported, so `coveragePathIgnorePatterns`
 // stays a single source of truth (no hand-rolled TOML parse that could drift). The
 // path resolves relative to THIS file, so it holds regardless of the invocation cwd.
-import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import bunfig from '../bunfig.toml';
 // The package manifest supplies the `test` script's own exclusions, for the same reason
 // `bunfig.toml` supplies the instrumentation ignores: one list, read where it is written.
@@ -214,6 +215,23 @@ function isGeneratedCoverageArtifact(filePath: string): boolean {
   }
 
   return false;
+}
+
+const PACKAGE_ROOT = resolve(import.meta.dir, '..');
+const REPOSITORY_ROOT = resolve(PACKAGE_ROOT, '../..');
+
+/**
+ * Whether an LCOV path is another workspace's source, such as `@lostgradient/testing`'s hang
+ * guard, which Weft's tests import. Bun records it relative to the coverage-run CWD, as a `../`
+ * path. Each workspace gates its own source, so this gate leaves those records to their owners.
+ */
+export function isOtherWorkspaceSource(filePath: string): boolean {
+  if (!filePath.startsWith('../')) return false;
+  const fromRepository = relative(REPOSITORY_ROOT, resolve(PACKAGE_ROOT, filePath));
+  return (
+    /^(?:applications|components|packages|testing|internal)\//.test(fromRepository) &&
+    !fromRepository.startsWith('packages/weft/')
+  );
 }
 
 function createLineSet(startLine: number, endLine: number): Set<number> {
@@ -2034,7 +2052,7 @@ export function parseLcovFiles(content: string): Map<string, FileCoverageResult>
       return;
     }
 
-    if (isGeneratedCoverageArtifact(currentFile)) {
+    if (isGeneratedCoverageArtifact(currentFile) || isOtherWorkspaceSource(currentFile)) {
       return;
     }
 
@@ -2079,7 +2097,7 @@ export function parseLcovFiles(content: string): Map<string, FileCoverageResult>
       continue;
     }
 
-    if (isGeneratedCoverageArtifact(currentFile)) {
+    if (isGeneratedCoverageArtifact(currentFile) || isOtherWorkspaceSource(currentFile)) {
       continue;
     } else if (line.startsWith('FNF:')) {
       fileFunctionTotal += parseInt(line.slice(4), 10);

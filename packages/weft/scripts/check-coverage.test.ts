@@ -10,6 +10,7 @@ import {
   CORVIDAE_COVERAGE_ALLOWANCES,
   COVERAGE_ALLOWANCES,
   formatCoverageFailureReason,
+  isOtherWorkspaceSource,
   listCoverageTestFiles,
   memoryFootprintUncoveredOutsideDarwin,
   parseLcov,
@@ -190,6 +191,34 @@ describe('parseLcov', () => {
 
     expect(coverage.covered).toBe(true);
     expect(coverage.lines).toEqual({ total: 1, hit: 1, missed: 0 });
+  });
+
+  it("leaves another workspace's source to that workspace's own gate", () => {
+    const coverage = parseLcov(
+      [
+        'SF:../../testing/testing/src/hang-guard.ts',
+        'FNF:4',
+        'FNH:1',
+        'DA:10,0',
+        'end_of_record',
+        'SF:src/example.ts',
+        'FNF:0',
+        'FNH:0',
+        'DA:1,1',
+        'end_of_record',
+      ].join('\n'),
+    );
+
+    expect(coverage.covered).toBe(true);
+    expect(coverage.lines).toEqual({ total: 1, hit: 1, missed: 0 });
+    expect(coverage.functions).toEqual({ total: 0, hit: 0, missed: 0 });
+  });
+
+  it('still gates a path outside every workspace', () => {
+    expect(isOtherWorkspaceSource('../../testing/testing/src/hang-guard.ts')).toBe(true);
+    expect(isOtherWorkspaceSource('../../packages/weft/src/index.ts')).toBe(false);
+    expect(isOtherWorkspaceSource('../../../../private/tmp/unknown-fixture.ts')).toBe(false);
+    expect(isOtherWorkspaceSource('src/example.ts')).toBe(false);
   });
 
   it('ignores generated temporary workflow artifacts', () => {
