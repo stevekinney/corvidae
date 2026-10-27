@@ -55,6 +55,7 @@ import {
   createDurableAssetStorage,
   resolveProviderGenerate,
   type Bureau,
+  type SettingsOptions,
 } from '@lostgradient/bureau';
 import { agentFileDirectory, workflowFileDirectory } from '@lostgradient/bureau/sources';
 import { typesafeJev, type GenerateFunction } from '@lostgradient/operative';
@@ -175,6 +176,12 @@ export type HostOptions = {
   readonly resolveProviderGenerate?: typeof resolveProviderGenerate;
   /** Receives the host's startup warnings. Defaults to `console.warn`. */
   readonly warn?: (message: string) => void;
+  /**
+   * Which runtime settings the Bureau holds to their code options (`settings.locked`), so the
+   * settings page shows them read-only. A person's host locks none; the end-to-end host locks one,
+   * so the page's locked state is exercised against the real Bureau.
+   */
+  readonly settings?: SettingsOptions;
 };
 
 export type Host = {
@@ -356,6 +363,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // Workflow files: JSON files in Bungalow's `workflows/` directory are agent-authored
       // workflows (COR-1527), registered with the Bureau's engine and run on their schedules.
       workflowSource: workflowFileDirectory(workflowDirectory),
+      ...(options.settings === undefined ? {} : { settings: options.settings }),
     });
     held.bureau = bureau;
     if (options.seed !== false) {

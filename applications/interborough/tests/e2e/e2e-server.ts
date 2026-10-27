@@ -41,6 +41,7 @@ import {
   E2E_CANCELLATION_GRACE_PERIOD_MS,
   E2E_DEPLOYMENT_NAME,
   E2E_JOURNEY_PORT,
+  E2E_LOCKED_SETTING,
   E2E_LONG_POLL_BUILD_ID,
   E2E_LONG_POLL_DEPLOYMENT_NAME,
   E2E_LONG_POLL_QUEUE,
@@ -131,6 +132,9 @@ const host = await startHost({
   },
   environment: { INTERBOROUGH_HOME: home },
   resolveProviderGenerate: provider.resolver,
+  // One setting the deployment holds to its code option, so the settings page's locked state is
+  // exercised against the real Bureau (`38-settings.spec.ts`). It is a `restart` key nothing else reads.
+  settings: { locked: [E2E_LOCKED_SETTING] },
   port: E2E_PORT,
   buildDirectory,
   createConsoleEngine: async () => {

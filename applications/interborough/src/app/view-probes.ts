@@ -6,6 +6,7 @@ import { queryAudit } from '../lib/bureau-audit.ts';
 import { callBureau, listAgents, listContexts } from '../lib/bureau-client.ts';
 import { listGoals } from '../lib/bureau-goals.ts';
 import { listBureauReviews } from '../lib/bureau-reviews.ts';
+import { getSettings } from '../lib/bureau-settings.ts';
 import { listTasks } from '../lib/bureau-tasks.ts';
 import { DEFAULT_AGENT } from '../lib/default-agent.ts';
 import { classifyFault } from '../lib/faults.ts';
@@ -191,6 +192,13 @@ export function probeFor(
       };
     case 'audit':
       return probeAudit;
+    case 'settings':
+      // The settings always have something to show: every key is listed, with a value or without.
+      // Asking for them settles whether the caller may read them and whether the Bureau answers.
+      return async () => {
+        await getSettings();
+        return { empty: false };
+      };
     case 'goals':
       return probeGoals;
     case 'agent-editor': {
