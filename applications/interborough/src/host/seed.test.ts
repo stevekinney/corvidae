@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { awakeTurns, quietFor } from '@lostgradient/testing/wait-until';
 import { startHost, type Host } from './host.ts';
 import {
   ECHO_NOTHING_TO_REPEAT,
@@ -243,9 +244,9 @@ describe('the seeded schedule and goal', () => {
 
   test('the goal passes its validator', async () => {
     const host = await start();
-    const deadline = Date.now() + 5_000;
     let status = await goalStatus(host);
-    while (status !== 'succeeded' && Date.now() < deadline) {
+    for await (const _ of awakeTurns()) {
+      if (!(status !== 'succeeded')) break;
       await Bun.sleep(25);
       status = await goalStatus(host);
     }
@@ -267,18 +268,21 @@ describe('the seeded schedule and goal', () => {
       const goal = await host.bureau.goals.get('goal-that-never-passes');
       return goal?.status;
     };
-    // The agent answers at once, and then the validator is what the goal waits on.
-    const deadline = Date.now() + 5_000;
-    while ((await statusOf()) !== 'evaluating' && Date.now() < deadline) await Bun.sleep(25);
+    for await (const _ of awakeTurns()) {
+      if (!((await statusOf()) !== 'evaluating')) break;
+      await Bun.sleep(25);
+    }
     expect(await statusOf()).toBe('evaluating');
-    await Bun.sleep(400);
+    await quietFor(400);
     expect(await statusOf()).toBe('evaluating');
 
     const cancelled = await host.bureau.goals.cancel('goal-that-never-passes');
 
     expect(['canceled', 'cancellation-pending']).toContain(cancelled.outcome);
-    const endBy = Date.now() + 5_000;
-    while ((await statusOf()) !== 'canceled' && Date.now() < endBy) await Bun.sleep(25);
+    for await (const _ of awakeTurns()) {
+      if (!((await statusOf()) !== 'canceled')) break;
+      await Bun.sleep(25);
+    }
     expect(await statusOf()).toBe('canceled');
   });
 
@@ -298,7 +302,7 @@ describe('the seeded schedule and goal', () => {
 });
 
 async function waitForReview(host: Host, runId: string) {
-  for (let attempt = 0; attempt < 400; attempt += 1) {
+  for await (const _ of awakeTurns()) {
     const review = host.bureau.reviews.list().find((candidate) => candidate.runId === runId);
     if (review !== undefined) return review;
     await Bun.sleep(5);

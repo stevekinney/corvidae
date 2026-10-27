@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import {
   BARRIER_AGENT_NAME,
   BARRIER_FIRST_REPLY,
@@ -40,8 +41,7 @@ afterEach(async () => {
 });
 
 async function waitFor(condition: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 400 && !condition(); attempt += 1) await Bun.sleep(10);
-  expect(condition()).toBe(true);
+  await waitUntil(condition, { message: 'waitFor' });
 }
 
 /** Starts a run and returns the stream's text once it has ended. */

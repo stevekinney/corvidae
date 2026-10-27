@@ -13,35 +13,12 @@ import { getMessages } from 'conversationalist';
 
 import { createBureau } from './create-bureau';
 import type { AgentDefinitions } from './agent-catalog';
-
-// ---------------------------------------------------------------------------
-// D6 scheduled-fire E2E (#109)
-//
-// These are the assertions that were missing: every prior scheduling test only
-// checked that a schedule was *registered*, never that a native timer tick
-// actually *ran an agent*. Here we register a real weft schedule, let the engine
-// poller fire it on real elapsed time, and assert an `agentRun` body executed
-// with the right prompt and the right session semantics.
-//
-// TIMING: weft's scheduler poll interval defaults to 1000ms and there is no
-// fake-timer path for `engine.schedule` ticks — the poller runs on real wall
-// clock. So these tests use a real-time poll and a raised per-test timeout. This
-// is real elapsed time, NOT a masked hang.
-// ---------------------------------------------------------------------------
-
-const FIRE_TIMEOUT_MS = 20_000;
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 /** Real-wall-clock poll — `engine.schedule` ticks fire on actual elapsed time. */
-async function waitForReal(
-  condition: () => boolean | Promise<boolean>,
-  timeoutMs: number,
-): Promise<boolean> {
-  const start = performance.now();
-  while (performance.now() - start < timeoutMs) {
-    if (await condition()) return true;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  return condition();
+async function waitForReal(condition: () => boolean | Promise<boolean>): Promise<true> {
+  await waitUntil(condition, { message: 'waitForReal' });
+  return true;
 }
 
 interface RecordedCall {
@@ -79,193 +56,177 @@ function createEmptyToolbox(): Toolbox {
 }
 
 describe('D6 scheduled-fire path (#109)', () => {
-  it(
-    'fires a stateless interval schedule and runs the agent with a fresh session per fire',
-    async () => {
-      const calls: RecordedCall[] = [];
-      const bureau = await createBureau<AgentDefinitions>({
-        agents: {
-          default: createAgent({
-            generate: createRecordingGenerate(calls),
-            toolbox: createEmptyToolbox(),
-            instructions: 'You are a scheduled agent.',
-            stopWhen: stopWhen.noToolCalls(),
-          }),
-        },
-        storage: { type: 'memory' },
-        durable: true,
+  it('fires a stateless interval schedule and runs the agent with a fresh session per fire', async () => {
+    const calls: RecordedCall[] = [];
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createRecordingGenerate(calls),
+          toolbox: createEmptyToolbox(),
+          instructions: 'You are a scheduled agent.',
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
+      storage: { type: 'memory' },
+      durable: true,
+    });
+
+    try {
+      // A bare duration shorthand ('1s') is registered as an interval
+      // ({ every: '1s' }), not cron — see toScheduleSpec.
+      const summary = await bureau.schedules.create({
+        agentName: 'default',
+        input: 'stateless tick prompt',
+        spec: '1s',
       });
+      expect(summary).toBeDefined();
 
-      try {
-        // A bare duration shorthand ('1s') is registered as an interval
-        // ({ every: '1s' }), not cron — see toScheduleSpec.
-        const summary = await bureau.schedules.create({
-          agentName: 'default',
-          input: 'stateless tick prompt',
-          spec: '1s',
-        });
-        expect(summary).toBeDefined();
+      const fired = await waitForReal(() => calls.length >= 1);
+      // Stop further fires before asserting so the count is stable.
+      await bureau.schedules.cancel(summary!.id);
 
-        const fired = await waitForReal(() => calls.length >= 1, FIRE_TIMEOUT_MS);
-        // Stop further fires before asserting so the count is stable.
-        await bureau.schedules.cancel(summary!.id);
+      expect(fired).toBe(true);
+      // The agent body actually ran with the scheduled prompt.
+      expect(calls[0]!.userPrompts).toContain('stateless tick prompt');
+      // A fresh per-fire session still seeds the bureau systemPrompt, exactly as
+      // a normal run into a new session does: [system, user].
+      expect(calls[0]!.systemPrompts).toContain('You are a scheduled agent.');
+      expect(calls[0]!.roles).toEqual(['system', 'user']);
+      // Each stateless fire mints its own session id, so no two fires collide.
+      const ids = calls.map((call) => call.conversationId);
+      expect(new Set(ids).size).toBe(ids.length);
+      expect(ids[0]!.startsWith('sched-')).toBe(true);
+    } finally {
+      bureau.dispose();
+    }
+  });
 
-        expect(fired).toBe(true);
-        // The agent body actually ran with the scheduled prompt.
-        expect(calls[0]!.userPrompts).toContain('stateless tick prompt');
-        // A fresh per-fire session still seeds the bureau systemPrompt, exactly as
-        // a normal run into a new session does: [system, user].
-        expect(calls[0]!.systemPrompts).toContain('You are a scheduled agent.');
-        expect(calls[0]!.roles).toEqual(['system', 'user']);
-        // Each stateless fire mints its own session id, so no two fires collide.
-        const ids = calls.map((call) => call.conversationId);
-        expect(new Set(ids).size).toBe(ids.length);
-        expect(ids[0]!.startsWith('sched-')).toBe(true);
-      } finally {
-        bureau.dispose();
-      }
-    },
-    FIRE_TIMEOUT_MS,
-  );
+  it('fires a recurring schedule into a fixed session and accumulates conversation across fires', async () => {
+    const sessionId = 'daily-digest';
+    const calls: RecordedCall[] = [];
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createRecordingGenerate(calls),
+          toolbox: createEmptyToolbox(),
+          instructions: 'You are a scheduled agent.',
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
+      storage: { type: 'memory' },
+      durable: true,
+    });
 
-  it(
-    'fires a recurring schedule into a fixed session and accumulates conversation across fires',
-    async () => {
-      const sessionId = 'daily-digest';
-      const calls: RecordedCall[] = [];
-      const bureau = await createBureau<AgentDefinitions>({
-        agents: {
-          default: createAgent({
-            generate: createRecordingGenerate(calls),
-            toolbox: createEmptyToolbox(),
-            instructions: 'You are a scheduled agent.',
-            stopWhen: stopWhen.noToolCalls(),
-          }),
-        },
-        storage: { type: 'memory' },
-        durable: true,
+    try {
+      const summary = await bureau.schedules.create({
+        agentName: 'default',
+        input: 'digest prompt',
+        spec: '1s',
+        sessionId,
       });
+      expect(summary).toBeDefined();
 
-      try {
-        const summary = await bureau.schedules.create({
-          agentName: 'default',
-          input: 'digest prompt',
-          spec: '1s',
-          sessionId,
-        });
-        expect(summary).toBeDefined();
+      const recurringCalls = () => calls.filter((call) => call.conversationId === sessionId);
+      const firedTwice = await waitForReal(() => recurringCalls().length >= 2);
+      await bureau.schedules.cancel(summary!.id);
 
-        const recurringCalls = () => calls.filter((call) => call.conversationId === sessionId);
-        const firedTwice = await waitForReal(() => recurringCalls().length >= 2, FIRE_TIMEOUT_MS);
-        await bureau.schedules.cancel(summary!.id);
+      expect(firedTwice).toBe(true);
 
-        expect(firedTwice).toBe(true);
+      // The FIRST fire into a not-yet-existing recurring session seeds the bureau
+      // systemPrompt, exactly as a normal run into a new session does.
+      const fires = recurringCalls();
+      expect(fires[0]!.systemPrompts).toContain('You are a scheduled agent.');
+      // Fire 2's agent body saw fire 1's turn — context accumulated, proving the
+      // recurring (session-given) semantics, not a fresh session per fire.
+      expect(fires[1]!.messageCount).toBeGreaterThan(fires[0]!.messageCount);
 
-        // The FIRST fire into a not-yet-existing recurring session seeds the bureau
-        // systemPrompt, exactly as a normal run into a new session does.
-        const fires = recurringCalls();
-        expect(fires[0]!.systemPrompts).toContain('You are a scheduled agent.');
-        // Fire 2's agent body saw fire 1's turn — context accumulated, proving the
-        // recurring (session-given) semantics, not a fresh session per fire.
-        expect(fires[1]!.messageCount).toBeGreaterThan(fires[0]!.messageCount);
-
-        // The durable proof: the session itself accumulated both fires' user turns,
-        // and the systemPrompt was seeded ONCE (not re-appended on the second fire).
-        const session = await bureau.contexts.get(sessionId);
-        expect(session).not.toBeNull();
-        const messages = getMessages(session!.conversationHistory);
-        const userTurns = messages.filter((message) => message.role === 'user');
-        expect(userTurns.length).toBeGreaterThanOrEqual(2);
-        expect(messages.filter((message) => message.role === 'system')).toHaveLength(1);
-      } finally {
-        bureau.dispose();
-      }
-    },
-    FIRE_TIMEOUT_MS,
-  );
+      // The durable proof: the session itself accumulated both fires' user turns,
+      // and the systemPrompt was seeded ONCE (not re-appended on the second fire).
+      const session = await bureau.contexts.get(sessionId);
+      expect(session).not.toBeNull();
+      const messages = getMessages(session!.conversationHistory);
+      const userTurns = messages.filter((message) => message.role === 'user');
+      expect(userTurns.length).toBeGreaterThanOrEqual(2);
+      expect(messages.filter((message) => message.role === 'system')).toHaveLength(1);
+    } finally {
+      bureau.dispose();
+    }
+  });
 });
 
 describe('AB-223: schedule definition and fire-terminal lifecycle events', () => {
-  it(
-    'dispatches SchedulePausedEvent/ScheduleResumedEvent/ScheduleCancelledEvent from bureau.schedules.pause/resume/cancel',
-    async () => {
-      const bureau = await createBureau<AgentDefinitions>({
-        agents: {
-          default: createAgent({
-            generate: createRecordingGenerate([]),
-            toolbox: createEmptyToolbox(),
-          }),
-        },
-        storage: { type: 'memory' },
-        durable: true,
+  it('dispatches SchedulePausedEvent/ScheduleResumedEvent/ScheduleCancelledEvent from Bureau.schedules.pause/resumeSchedule/cancelSchedule', async () => {
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createRecordingGenerate([]),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
+      storage: { type: 'memory' },
+      durable: true,
+    });
+
+    try {
+      const paused: SchedulePausedEvent[] = [];
+      const resumed: ScheduleResumedEvent[] = [];
+      const cancelled: ScheduleCancelledEvent[] = [];
+      bureau.addEventListener(SchedulePausedEvent.type, (event) => paused.push(event));
+      bureau.addEventListener(ScheduleResumedEvent.type, (event) => resumed.push(event));
+      bureau.addEventListener(ScheduleCancelledEvent.type, (event) => cancelled.push(event));
+
+      const summary = await bureau.schedules.create({
+        agentName: 'default',
+        input: 'paused forever',
+        spec: '1h',
       });
+      expect(summary).toBeDefined();
 
-      try {
-        const paused: SchedulePausedEvent[] = [];
-        const resumed: ScheduleResumedEvent[] = [];
-        const cancelled: ScheduleCancelledEvent[] = [];
-        bureau.addEventListener(SchedulePausedEvent.type, (event) => paused.push(event));
-        bureau.addEventListener(ScheduleResumedEvent.type, (event) => resumed.push(event));
-        bureau.addEventListener(ScheduleCancelledEvent.type, (event) => cancelled.push(event));
+      await bureau.schedules.pause(summary!.id);
+      await bureau.schedules.resume(summary!.id);
+      await bureau.schedules.cancel(summary!.id);
 
-        const summary = await bureau.schedules.create({
-          agentName: 'default',
-          input: 'paused forever',
-          spec: '1h',
-        });
-        expect(summary).toBeDefined();
+      expect(paused.map((event) => event.scheduleId)).toEqual([summary!.id]);
+      expect(resumed.map((event) => event.scheduleId)).toEqual([summary!.id]);
+      expect(cancelled.map((event) => event.scheduleId)).toEqual([summary!.id]);
+    } finally {
+      bureau.dispose();
+    }
+  });
 
-        await bureau.schedules.pause(summary!.id);
-        await bureau.schedules.resume(summary!.id);
-        await bureau.schedules.cancel(summary!.id);
+  it('dispatches AgentScheduledEvent (schedule.created) exactly once from Bureau.schedules.create, carrying scheduleId and the definition summary (AB-298)', async () => {
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createRecordingGenerate([]),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
+      storage: { type: 'memory' },
+      durable: true,
+    });
 
-        expect(paused.map((event) => event.scheduleId)).toEqual([summary!.id]);
-        expect(resumed.map((event) => event.scheduleId)).toEqual([summary!.id]);
-        expect(cancelled.map((event) => event.scheduleId)).toEqual([summary!.id]);
-      } finally {
-        bureau.dispose();
-      }
-    },
-    FIRE_TIMEOUT_MS,
-  );
+    try {
+      const created: AgentScheduledEvent[] = [];
+      bureau.addEventListener(AgentScheduledEvent.type, (event) => created.push(event));
 
-  it(
-    'dispatches AgentScheduledEvent (schedule.created) exactly once from bureau.schedules.create, carrying scheduleId and the definition summary (AB-298)',
-    async () => {
-      const bureau = await createBureau<AgentDefinitions>({
-        agents: {
-          default: createAgent({
-            generate: createRecordingGenerate([]),
-            toolbox: createEmptyToolbox(),
-          }),
-        },
-        storage: { type: 'memory' },
-        durable: true,
+      const summary = await bureau.schedules.create({
+        agentName: 'default',
+        input: 'daily digest',
+        spec: '1h',
+        sessionId: 'daily-digest',
       });
+      expect(summary).toBeDefined();
 
-      try {
-        const created: AgentScheduledEvent[] = [];
-        bureau.addEventListener(AgentScheduledEvent.type, (event) => created.push(event));
-
-        const summary = await bureau.schedules.create({
-          agentName: 'default',
-          input: 'daily digest',
-          spec: '1h',
-          sessionId: 'daily-digest',
-        });
-        expect(summary).toBeDefined();
-
-        expect(created.map((event) => event.type)).toEqual(['schedule.created']);
-        expect(created[0]).toMatchObject({
-          agentName: 'default',
-          scheduleId: summary!.id,
-          spec: { every: '1h' },
-          sessionId: 'daily-digest',
-        });
-      } finally {
-        bureau.dispose();
-      }
-    },
-    FIRE_TIMEOUT_MS,
-  );
+      expect(created.map((event) => event.type)).toEqual(['schedule.created']);
+      expect(created[0]).toMatchObject({
+        agentName: 'default',
+        scheduleId: summary!.id,
+        spec: { every: '1h' },
+        sessionId: 'daily-digest',
+      });
+    } finally {
+      bureau.dispose();
+    }
+  });
 });

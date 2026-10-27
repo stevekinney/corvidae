@@ -11,6 +11,7 @@ import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { DURABLE_HISTORY_GAP_KIND } from '../durable-event-history.ts';
 import type { TaskView } from '../task-registry.ts';
 import { type A2AStreamBureau, followTask } from './a2a-task-stream.ts';
+import { waitUntil, yieldEventLoopTurn } from '@lostgradient/testing/wait-until';
 
 const VIEW: TaskView = {
   id: 'task-1',
@@ -83,6 +84,8 @@ function standIn(
     change: (view: TaskView) => changed?.(view),
     deliver: (event: DurableEventEnvelope) => deliver?.(event),
     close: (error: unknown) => closed?.(error),
+    /** Whether the stream has subscribed to the tail, so a delivered event reaches it. */
+    attached: () => deliver !== undefined,
   };
 }
 
@@ -126,13 +129,13 @@ async function drain(stream: AsyncGenerator<StreamResponse>): Promise<StreamResp
 
 describe('followTask', () => {
   it('closes, rather than thinning, a stream whose reader falls behind its buffer', async () => {
-    const { bureau, deliver } = standIn();
+    const { bureau, deliver, attached } = standIn();
     const stream = follow(bureau, 2);
     const opening = await stream.next();
     expect(opening.value?.payload?.$case).toBe('task');
     // The reader asks for one more event, which subscribes the tail, then stops reading.
     const second = stream.next();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitUntil(attached, { message: 'the stream to subscribe to the tail' });
 
     // Five review transitions arrive before the reader reads any of them.
     for (let sequence = 1; sequence <= 5; sequence += 1) {
@@ -142,7 +145,7 @@ describe('followTask', () => {
         }),
       );
     }
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await yieldEventLoopTurn();
 
     const read = await second;
     const rest = await drain(stream);
@@ -153,18 +156,17 @@ describe('followTask', () => {
   });
 
   it('closes, rather than skipping, when retention overtakes the next cursor', async () => {
-    const { bureau, deliver } = standIn();
+    const { bureau, deliver, attached } = standIn();
     const stream = follow(bureau);
     await stream.next();
     const second = stream.next();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitUntil(attached, { message: 'the stream to subscribe to the tail' });
 
     deliver(envelope(1, 'review.requested', { reviewId: 'review-1' }));
     deliver(
       envelope(7, DURABLE_HISTORY_GAP_KIND, { requestedCursor: '1', firstRetainedCursor: '9' }),
     );
     deliver(envelope(9, 'review.approved', { reviewId: 'review-1' }));
-    await new Promise((resolve) => setTimeout(resolve, 10));
 
     const read = await second;
     const rest = await drain(stream);
@@ -216,16 +218,15 @@ describe('followTask', () => {
   });
 
   it('sends every event before the one that ends the task, however fast they arrive', async () => {
-    const { bureau, deliver } = standIn({ getDelayMs: 20 });
+    const { bureau, deliver, attached } = standIn({ getDelayMs: 20 });
     const stream = follow(bureau);
     await stream.next();
     const second = stream.next();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitUntil(attached, { message: 'the stream to subscribe to the tail' });
 
     deliver(envelope(1, 'review.requested', { reviewId: 'review-1' }));
     deliver(envelope(2, 'review.approved', { reviewId: 'review-1' }));
     deliver(envelope(3, 'run.error', { message: 'boom' }));
-    await new Promise((resolve) => setTimeout(resolve, 100));
 
     const read = await second;
     const rest = await drain(stream);
@@ -259,11 +260,11 @@ describe('followTask', () => {
   });
 
   it('fails the stream when its history subscription closes on an error', async () => {
-    const { bureau, close } = standIn();
+    const { bureau, close, attached } = standIn();
     const stream = follow(bureau);
     await stream.next();
     const second = stream.next();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitUntil(attached, { message: 'the stream to subscribe to the tail' });
     close(new Error('the history failed'));
     expect(((await rejectionOf(second)) as Error).message).toBe('the history failed');
   });

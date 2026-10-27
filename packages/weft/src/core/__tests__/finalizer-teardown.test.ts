@@ -80,7 +80,6 @@ async function waitForRecordedState(engine: Engine, workflowId: string): Promise
     async () => (await engine.storage.get(KEYS.finalizerState(workflowId))) !== null,
     {
       label: `workflow ${workflowId} recorded finalizer state and parked`,
-      timeoutMs: 2000,
       intervalMs: 5,
     },
   );
@@ -96,7 +95,6 @@ async function waitForParked(engine: Engine, workflowId: string): Promise<void> 
     async () => (await engine.storage.get(KEYS.checkpoint(workflowId))) !== null,
     {
       label: `workflow ${workflowId} parked on waitForSignal (checkpoint committed)`,
-      timeoutMs: 2000,
       intervalMs: 5,
     },
   );

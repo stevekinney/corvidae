@@ -1,3 +1,4 @@
+import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import { describe, expect, it, mock } from 'bun:test';
 
 import {
@@ -9,6 +10,7 @@ import {
   waitForCondition,
   waitForRunState,
 } from '../src/test/index';
+import { WAIT_HANG_GUARD_MILLISECONDS } from '../src/test/wait';
 import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 
 describe('createMockScratchpad', () => {
@@ -41,13 +43,28 @@ describe('waitForCondition', () => {
     expect(count).toBeGreaterThanOrEqual(3);
   });
 
-  it('throws the failure message when the condition is never met', async () => {
+  it('throws the failure message when the condition is never met within the hang guard', async () => {
     const neverTrue = () => false;
     expect(
       await throwingRejectionOf(
-        waitForCondition(neverTrue, 'expected failure message', 3, async () => {}, 0),
+        // hang-guard-self-test: the condition is never true, so no load can satisfy it in time
+        waitForCondition(neverTrue, 'expected failure message', { hangGuardMilliseconds: 20 }),
       ),
     ).toThrow('expected failure message');
+  });
+
+  it('keeps waiting across more turns than any fixed cap would allow', async () => {
+    let turns = 0;
+    await waitForCondition(() => turns >= 5_000, 'never fails', {
+      yieldTurn: async () => {
+        turns += 1;
+      },
+    });
+    expect(turns).toBe(5_000);
+  });
+
+  it('pins its hang guard to the repository hang guard', () => {
+    expect(WAIT_HANG_GUARD_MILLISECONDS).toBe(HANG_GUARD_MILLISECONDS);
   });
 
   it('uses a custom yield function between attempts', async () => {
@@ -59,8 +76,7 @@ describe('waitForCondition', () => {
         return count >= 2;
       },
       'never fails',
-      10,
-      customYield,
+      { yieldTurn: customYield },
     );
     // At least one yield occurred between attempts
     expect(customYield).toHaveBeenCalled();
@@ -103,7 +119,10 @@ describe('waitForRunState', () => {
     };
     expect(
       await throwingRejectionOf(
-        waitForRunState({ getRun: store.getRun }, 'run-never', (r) => r.status === 'completed', 0),
+        // hang-guard-self-test: the run never completes, so no load can satisfy the wait in time
+        waitForRunState({ getRun: store.getRun }, 'run-never', (r) => r.status === 'completed', {
+          hangGuardMilliseconds: 20,
+        }),
       ),
     ).toThrow('run-never');
   });

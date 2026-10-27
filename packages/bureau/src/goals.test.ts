@@ -36,6 +36,7 @@ import {
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import { spyOnPrune } from './testing/prune-spy.test-support';
 import type { Bureau } from './types';
+import { quietFor } from '@lostgradient/testing/wait-until';
 
 const open: Bureau[] = [];
 
@@ -699,7 +700,7 @@ describe('bureau.goals', () => {
 
       validating.release();
       await verdictDelivered.promise;
-      await pollUntil(() => false, 10);
+      await quietFor(50);
       expect(await bureau.goals.get('g1')).toEqual(canceled);
       expect(canceled?.attempts.map((attempt) => attempt.status)).toEqual(['aborted']);
       expect(canceled?.attempts[0]?.validation).toBeUndefined();

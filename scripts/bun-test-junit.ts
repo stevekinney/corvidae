@@ -10,7 +10,8 @@
  *
  * Usage: `bun <path>/scripts/bun-test-junit.ts [--report-name=<name>] <bun test arguments>`
  * The report name defaults to `fast`. The previous report of that name is
- * removed first, so a run that dies early cannot leave a stale file behind.
+ * removed first, so a run that dies early cannot leave a stale file behind. It also passes the
+ * repository's per-test deadline (`scripts/test-deadlines.ts`).
  */
 
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
@@ -23,6 +24,7 @@ import {
 } from './affected-tests-manifest.ts';
 import { budgetFailures, readAllowlist } from './check-test-durations.ts';
 import { rootScriptEnvironment } from './environment-configuration.ts';
+import { TEST_TIMEOUT_ARGUMENT } from './test-deadlines.ts';
 
 export const JUNIT_DIRECTORY = join('test-output', 'junit');
 
@@ -83,7 +85,14 @@ async function main(): Promise<number> {
   }
   const bunTestArguments = narrowed;
   const child = Bun.spawn(
-    ['bun', 'test', ...bunTestArguments, '--reporter=junit', `--reporter-outfile=${reportPath}`],
+    [
+      'bun',
+      'test',
+      TEST_TIMEOUT_ARGUMENT,
+      ...bunTestArguments,
+      '--reporter=junit',
+      `--reporter-outfile=${reportPath}`,
+    ],
     { stdout: 'inherit', stderr: 'inherit', stdin: 'inherit' },
   );
   const exitCode = await child.exited;

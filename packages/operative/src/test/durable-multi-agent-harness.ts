@@ -11,13 +11,7 @@ import {
 import { createCheckpointStore } from '../durable/checkpoint-store';
 import { createRunEngine, type RunEngine } from '../durable/create-run-engine';
 import { createRunWorkflow } from '../durable/run-workflow';
-
-/**
- * The maximum number of event-loop yields before a `waitForCondition` or
- * `waitForSuspend` call gives up. Matches the cap used across other test helpers
- * in this monorepo so tests fail with a clear assertion rather than an infinite hang.
- */
-const MAX_WAIT_ATTEMPTS = 50;
+import { type WaitForConditionOptions, waitForCondition as waitUntilCondition } from './wait';
 
 /**
  * Statuses that indicate the workflow has reached a terminal state —
@@ -103,8 +97,8 @@ export interface DurableMultiAgentHarness {
    *
    * Uses `handle.snapshot()` and `yieldToPortableEventLoop` — no real
    * timers — so the test stays deterministic even on a busy CI host.
-   * Throws after {@link MAX_WAIT_ATTEMPTS} yields if the workflow does not
-   * leave the `'pending'` state, or if it terminates without ever parking.
+   * Throws if the workflow terminates without ever parking, or, after the
+   * awake-time hang guard, if it never leaves the `'pending'` state.
    *
    * @param runId - The durable workflow id to poll.
    */
@@ -118,17 +112,17 @@ export interface DurableMultiAgentHarness {
    * specific number of child runs have started, or until a shared counter
    * reaches a value.
    *
-   * Throws after {@link MAX_WAIT_ATTEMPTS} yields if the condition is
-   * never satisfied.
+   * Throws after the awake-time hang guard if the condition is never
+   * satisfied; a count of turns never ends the wait.
    *
    * @param condition - Synchronous or async predicate to poll.
    * @param failureMessage - Message to include in the thrown error.
-   * @param maximumAttempts - Override the default attempt cap.
+   * @param options - Overrides for the turn between checks and the hang guard.
    */
   waitForCondition(
     condition: () => boolean | Promise<boolean>,
     failureMessage: string,
-    maximumAttempts?: number,
+    options?: WaitForConditionOptions,
   ): Promise<void>;
 
   /**
@@ -272,14 +266,12 @@ export async function createDurableMultiAgentHarness(
   async function waitForCondition(
     condition: () => boolean | Promise<boolean>,
     failureMessage: string,
-    maximumAttempts = MAX_WAIT_ATTEMPTS,
+    options?: WaitForConditionOptions,
   ): Promise<void> {
-    for (let attempt = 0; attempt < maximumAttempts; attempt++) {
-      if (await condition()) return;
-      await yieldToPortableEventLoop();
-    }
-    throw new Error(
-      `createDurableMultiAgentHarness.waitForCondition: ${failureMessage} (gave up after ${maximumAttempts} yields)`,
+    await waitUntilCondition(
+      condition,
+      `createDurableMultiAgentHarness.waitForCondition: ${failureMessage}`,
+      options,
     );
   }
 

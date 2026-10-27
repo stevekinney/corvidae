@@ -17,6 +17,7 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
+import { quietFor } from '@lostgradient/testing/wait-until';
 import type { ConversationHistory, Message, MessageRole } from './conversation-model.ts';
 
 setupHappyDom();
@@ -489,7 +490,7 @@ describe('history prepend at scrollTop=0 (#1237)', () => {
 
       rejectLoad?.(new Error('failed before prepending'));
       await tick();
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await quietFor(20);
       await tick();
 
       // `captureHistoryScroll` nulls the retained snapshot, so the newly-added
@@ -550,7 +551,7 @@ describe('history prepend at scrollTop=0 (#1237)', () => {
 
       resolveLoad?.({ hasMore: true });
       await tick();
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await waitFor(() => expect(layout.triggerHeight()).toBe(50));
       await tick();
 
       // The trigger really did swap back to its idle height, so a retained
@@ -612,7 +613,7 @@ describe('history prepend at scrollTop=0 (#1237)', () => {
 
       resolveLoad?.({ hasMore: true });
       await tick();
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await waitFor(() => expect(layout.triggerHeight()).toBe(50));
       await tick();
 
       expect(layout.triggerHeight()).toBe(50);
@@ -671,7 +672,7 @@ describe('history prepend at scrollTop=0 (#1237)', () => {
 
       resolveLoad?.({ hasMore: true });
       await tick();
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await waitFor(() => expect(layout.triggerHeight()).toBe(50));
       await tick();
 
       // The trigger swapped back to idle (a real 20px height change above the
@@ -742,7 +743,7 @@ describe('stick-to-bottom vs history prepend (#1237)', () => {
       layout.relayout(conversation.ids);
       await rerender({ id: 'prepend-stick-chat', conversation });
       await tick();
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await quietFor(50);
 
       // The prepend must not be treated as an append: no scroll to the
       // bottom, and no scroll at all (nothing was pending to restore).

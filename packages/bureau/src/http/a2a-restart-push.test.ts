@@ -36,6 +36,7 @@ import { eventually, type Json, Receiver, SIGNING_SECRET } from './a2a-push.test
 import { A2A_PUSH_CHECKPOINT_KEY_PREFIX } from './a2a-push-checkpoint.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
 import { authentication } from './management/management-fixtures.test-support.ts';
+import { quietFor, yieldEventLoopTurn } from '@lostgradient/testing/wait-until';
 
 /** Parks a task whose first message says `park` on a human wait once; answers anything else. */
 const parksOnRequest: GenerateFunction = async ({ conversation }) => {
@@ -274,7 +275,7 @@ describe('push Create before start-up recovery has reached the task', () => {
       settled = true;
     });
     // Recovery is held on its first read of the push store, and Create waits behind it.
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await quietFor(100);
     expect(settled).toBe(false);
 
     held.open();
@@ -283,7 +284,7 @@ describe('push Create before start-up recovery has reached the task', () => {
     expect(created.result.id).toBe('after');
     const listed = await served.call('ListTaskPushNotificationConfigs', { taskId });
     expect(listed.result.configs.map((config: Json) => config.id)).toEqual(['before', 'after']);
-  }, 15_000);
+  });
 });
 
 /** A live parked task on a withdrawn agent's mount, with a Bureau whose recovery is held. */
@@ -316,7 +317,8 @@ describe('a task that ends around a Create on a withdrawn agent’s mount', () =
       id: 'late',
       ...webhook(world.receiver),
     });
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // The request is admitted within a few turns of this process, however busy the host is.
+    for (let turn = 0; turn < 3; turn += 1) await yieldEventLoopTurn();
     await cancelAndAwait(served, taskId);
     held.open();
 
@@ -330,7 +332,7 @@ describe('a task that ends around a Create on a withdrawn agent’s mount', () =
     );
     expect(checkpoints ?? []).toEqual([]);
     expect(world.receiver.requests).toEqual([]);
-  }, 15_000);
+  });
 
   it('delivers the terminal event to the new webhook when the task ends after the cursor', async () => {
     let reached: () => void = () => undefined;
@@ -359,5 +361,5 @@ describe('a task that ends around a Create on a withdrawn agent’s mount', () =
     const created = await pending;
     expect(created.error).toBeUndefined();
     await eventually(() => world.receiver.kinds().includes('status:TASK_STATE_CANCELED'));
-  }, 15_000);
+  });
 });

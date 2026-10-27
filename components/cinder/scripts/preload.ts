@@ -2,7 +2,12 @@ import { plugin } from 'bun';
 import { afterEach } from 'bun:test';
 import { resolve } from 'node:path';
 
-import { registerGlobalCleanup, setupHappyDom, sveltePlugin } from '@lostgradient/testing';
+import {
+  configureAsyncUtilityDeadline,
+  registerGlobalCleanup,
+  setupHappyDom,
+  sveltePlugin,
+} from '@lostgradient/testing';
 
 const sourceDirectory = resolve(import.meta.dir, '../src').replaceAll('\\', '/');
 
@@ -40,3 +45,6 @@ await plugin(sveltePlugin({ generate: 'client', allowStyleBlock: allowCinderTest
 // every component test's render() is unmounted without each file needing its
 // own cleanup boilerplate. See register-global-cleanup.ts for the full why.
 await registerGlobalCleanup(afterEach);
+
+// Testing Library's asynchronous utilities wait up to the hang guard, not one second.
+await configureAsyncUtilityDeadline();

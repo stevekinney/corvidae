@@ -20,6 +20,7 @@ import { dirname, join, resolve } from 'node:path';
 
 import { rejectionOf } from '@lostgradient/testing';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import {
   assertCleanBuild,
   assertSafeOutputDirectory,
@@ -582,7 +583,7 @@ describe('the build process entry', () => {
     expect(exits).toEqual([0]);
 
     closeInput();
-    await Bun.sleep(10);
+    await waitUntil(() => exits.length >= 2, { message: 'the second exit' });
     expect(exits).toEqual([0, 1]);
   });
 
@@ -595,7 +596,7 @@ describe('the build process entry', () => {
       },
     });
     exitWhenStandardInputCloses(input, (code) => void exits.push(code));
-    await Bun.sleep(10);
+    await waitUntil(() => exits.length >= 1, { message: 'the exit' });
     expect(exits).toEqual([1]);
   });
 });

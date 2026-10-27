@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import {
   OWNER,
   readFrames,
+  type SseFrame,
   subscribeRequest,
 } from './http/management/management-fixtures.test-support.ts';
 import {
@@ -25,8 +26,10 @@ import {
   pollUntil,
   reviewOf,
   reviewsOf,
+  followedBy,
 } from './schedule-fire-fixtures.test-support';
 import { expireReviews } from './testing/expired-reviews.test-support';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 const harness = createScheduleFireHarness();
 
@@ -64,7 +67,7 @@ describe('a peer answers a fire’s human wait', () => {
       });
       const { fireId } = await fireOnce(holder, OWNER.alice, sessionId);
       const review = await reviewOf(holder, fireId);
-      await sleep(150);
+      await followedBy(holder, fireId);
       const peer = await harness.open({ ...options, storage: await harness.sqliteStorage(path) });
       // The peer does not hold the fire, so it does not list the wait, but it can answer it.
       expect(reviewsOf(peer, fireId)).toEqual([]);
@@ -77,14 +80,10 @@ describe('a peer answers a fire’s human wait', () => {
       });
 
       expect(resolved).toMatchObject({ id: review.id, kind: 'human-wait', decision: 'approve' });
-      await pollUntil(
-        async () => {
-          await sleep(10);
-          return (await durableStatus(holder, fireId)) === 'completed' ? true : undefined;
-        },
-        'the fire to complete',
-        500,
-      );
+      await pollUntil(async () => {
+        await sleep(10);
+        return (await durableStatus(holder, fireId)) === 'completed' ? true : undefined;
+      }, 'the fire to complete');
       expect(seen.join('')).toContain('staging');
     });
   }
@@ -125,13 +124,16 @@ describe('a peer closing a fire’s last review ends the stream another instance
 
   it('when the peer decides it, for a subscriber that connected while it waited', async () => {
     const { holder, peer, fireId, review, peerCharges } = await holderAndPeer();
+    const live: SseFrame[] = [];
     const reading = readFrames(
       await handlerOf(holder)(
         subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
       ),
-      { timeoutMs: 10_000 },
+      { into: live },
     );
-    await sleep(100);
+    await waitUntil(() => live.length >= 1, {
+      message: 'the subscriber to receive its first frame',
+    });
 
     await peer.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice });
     const frames = await reading;
@@ -147,13 +149,16 @@ describe('a peer closing a fire’s last review ends the stream another instance
 
   it('when the peer’s sweep expires it', async () => {
     const { holder, peer, fireId } = await holderAndPeer();
+    const live: SseFrame[] = [];
     const reading = readFrames(
       await handlerOf(holder)(
         subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
       ),
-      { timeoutMs: 10_000 },
+      { into: live },
     );
-    await sleep(100);
+    await waitUntil(() => live.length >= 1, {
+      message: 'the subscriber to receive its first frame',
+    });
 
     expect(await expireReviews(peer, Date.now() + 60 * 60 * 1000)).toBe(1);
     const frames = await reading;

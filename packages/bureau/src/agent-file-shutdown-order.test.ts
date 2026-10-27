@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { startFileBureau } from './testing/agent-file-bureau.test-support.ts';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support.ts';
+import { quietFor } from '@lostgradient/testing/wait-until';
 
 const failures: unknown[] = [];
 const onRejection = (reason: unknown): void => {
@@ -50,7 +51,7 @@ describe('disposing a Bureau while the agent directory is being scanned', () => 
       });
       await harness.bureau.dispose();
       await scan;
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await quietFor(50);
       expect(failures).toEqual([]);
       expect(reported.filter((line) => /could not be recorded|finalized/i.test(line))).toEqual([]);
       expect(scanFailure).not.toMatch(/finalized|closed database/i);

@@ -5,6 +5,7 @@
  */
 import { expect, test } from 'bun:test';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { createRebuildScheduler } from './rebuild-scheduler.ts';
 
 function deferred() {
@@ -119,7 +120,7 @@ test('closing clears a pending debounced rebuild before it can run', async () =>
 
   scheduler.schedule();
   scheduler.close();
-  await Bun.sleep(60);
+  await quietFor(60);
 
   expect(builds).toBe(0);
 });

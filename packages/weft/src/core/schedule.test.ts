@@ -2637,7 +2637,6 @@ describe('recurring schedules', () => {
       const tickPromise = engine.scheduler.tick(clock.now);
       void tickPromise.catch(() => {});
       await waitForCondition(() => postMessageCount >= 1, {
-        timeoutMs: 100,
         label: 'initial queued inline workflow start',
       });
       await flushMicrotasks();

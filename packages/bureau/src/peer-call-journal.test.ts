@@ -30,9 +30,9 @@ const ORIGIN = 'https://agents.example.test';
 const databasePaths: string[] = [];
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const peers: OpenedBureau[] = [];
-/** `waitForCondition` with room for a loaded host: these waits cross sqlite, HTTP and a restart. */
+/** `waitForCondition`, which waits on the hang guard: these waits cross sqlite, HTTP and a restart. */
 const eventually = (condition: () => boolean | Promise<boolean>, failureMessage: string) =>
-  waitForCondition(condition, failureMessage, 2_000);
+  waitForCondition(condition, failureMessage);
 /** Writes held open to stand in for a process dying inside them; released so teardown can finish. */
 const heldWrites: Array<() => void> = [];
 

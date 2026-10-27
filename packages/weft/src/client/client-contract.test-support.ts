@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'bun:test';
+import { HANG_GUARD_MILLISECONDS } from '../../scripts/lib/hang-guard.ts';
+import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 import type { ActivityContext, WorkflowContext } from '../core/types.ts';
 import { activity, signal } from '../core/types.ts';
 import { workflow } from '../core/types/workflow-function.ts';
@@ -163,8 +165,9 @@ export const clientContractAsyncActivityWorkflow = workflow({
 export async function waitForQueryReadyForTesting(
   client: WeftClient,
   workflowId: string,
+  options: { hangGuardMilliseconds?: number } = {},
 ): Promise<void> {
-  for (let attempt = 0; attempt < 5; attempt++) {
+  for await (const _turn of awakeTurns(options)) {
     if ((await client.query(workflowId, 'ready')) === true) {
       return;
     }
@@ -176,14 +179,14 @@ export async function waitForQueryReadyForTesting(
 }
 
 /**
- * Resolve when the workflow emits `type`, or reject if the deadline passes.
- * The deadline doubles as a regression guard: a value well under the old
- * 2-second poll interval proves events are delivered push-based, not polled.
+ * Resolve when the workflow emits `type`, or reject once `timeoutMs` has passed. The default is the
+ * awake-time hang guard: an event that must arrive waits for it, however slow the host is. Only a
+ * test of this helper shortens it.
  */
 export function waitForHandleEventForTesting(
   handle: { addEventListener: (type: string, listener: (event: Event) => void) => void },
   type: string,
-  timeoutMs: number,
+  timeoutMs: number = HANG_GUARD_MILLISECONDS,
 ): Promise<Event> {
   return new Promise<Event>((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -209,11 +212,11 @@ export function runWeftClientContractTests(options: ClientContractTestOptions): 
       await waitForRunning?.(handle.id);
       await waitForQueryReadyForTesting(client, handle.id);
 
-      // A 1-second budget is comfortably under the 2-second poll cadence the
-      // old HttpHandle used, so this fails loudly if streaming regresses to
-      // polling. Attach the listener, wait for the stream to be live (so no
-      // event is missed in the connect window), then signal.
-      const completed = waitForHandleEventForTesting(handle, 'workflow:completed', 1000);
+      // Attach the listener, wait for the stream to be live (so no event is
+      // missed in the connect window), then signal. The wait ends on the event;
+      // its only deadline is the hang guard, since a latency bound here would
+      // measure the host.
+      const completed = waitForHandleEventForTesting(handle, 'workflow:completed');
       await handle.whenConnected();
       await handle.signal('continue', 'done');
       const event = await completed;

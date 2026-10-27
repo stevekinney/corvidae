@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { createCheckpointStore } from '../../src/durable/checkpoint-store';
 import { createRunEngine } from '../../src/durable/index';
 import { createRunWorkflow } from '../../src/durable/run-workflow';
@@ -840,8 +841,8 @@ function createMockGenerateOnce(content: string): GenerateFunction {
   return createMockGenerate([textResponse(content)]);
 }
 
-async function waitFor(check: () => boolean, attempts = 50): Promise<void> {
-  for (let i = 0; i < attempts; i++) {
+async function waitFor(check: () => boolean): Promise<void> {
+  for await (const _turn of awakeTurns()) {
     if (check()) return;
     // Yield a macrotask (MessageChannel via Weft's portable helper) rather than a
     // fixed wall-clock sleep: the durable engine schedules inline launches on

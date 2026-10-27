@@ -34,6 +34,7 @@ import { createBureau } from '../create-bureau';
 import type { SteeringCommandRequest } from '../steering';
 import { createAgent } from '@lostgradient/operative';
 import type { AgentDefinitions } from '../agent-catalog';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 
 const COMMANDS = {
   pause: { id: 'crash-cmd-1', principal: 'alice', requestedValue: { target: 'pause' } },
@@ -106,7 +107,7 @@ if (mode === 'retry') {
   runId = run.id;
   // Poll rather than sleep: the run must actually be live before a pause is
   // admissible, and a fixed delay would either be flaky or slow.
-  for (let attempt = 0; attempt < 200; attempt += 1) {
+  for await (const _turn of awakeTurns()) {
     const session = await bureau.contexts.get(sessionId);
     if (session?.metadata['lastRunStatus'] === 'running') break;
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, 10));

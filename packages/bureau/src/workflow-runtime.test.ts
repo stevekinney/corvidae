@@ -26,6 +26,7 @@ import {
 import { createWorkflowDocumentHost, type AgentStepRequest } from './workflow-host';
 import { createWorkflowSnapshotStore } from './workflow-snapshot-store';
 import { workflowFileText } from './testing/workflow-file-fixtures.test-support';
+import { awakeTurns, waitUntil } from '@lostgradient/testing/wait-until';
 import { workflowFileDirectory } from './sources/workflow-file-directory';
 
 const cleanups: Array<() => Promise<void> | void> = [];
@@ -115,7 +116,7 @@ async function versionOf(engine: Engine, workflowId: string): Promise<string | u
 }
 
 async function parkedOnSignal(engine: Engine, workflowId: string): Promise<void> {
-  for (let attempt = 0; attempt < 500; attempt += 1) {
+  for await (const _turn of awakeTurns()) {
     const timeline = await engine.getTimeline(workflowId);
     if (timeline.some((entry) => entry.operationType === 'wait-signal')) return;
     await Bun.sleep(5);
@@ -357,7 +358,13 @@ describe('retention (step two)', () => {
 
     // Once the instance ends and the cutoff passes it, the old revision goes too.
     await engine.signal('run-a', 'go', null);
-    await Bun.sleep(50);
+    await waitUntil(
+      async () => {
+        const state = await engine.get('run-a');
+        return state?.status === 'completed';
+      },
+      { message: 'the instance to end' },
+    );
     expect(await runtime.pruneSnapshots(Date.parse('2099-01-01T00:00:00.000Z'))).toBe(1);
     expect(await snapshots.snapshotsOf('digest')).toHaveLength(1);
   });

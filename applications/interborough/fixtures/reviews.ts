@@ -9,6 +9,7 @@
  * `fixtures/workflows.ts` for the append-only contract this file
  * participates in.
  */
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { workflow, type SubmitReviewOptions, type WorkflowHandle } from '@lostgradient/weft';
 
 interface ContentReviewInput {
@@ -67,7 +68,6 @@ const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 // looks at it.
 const NEAR_TIMEOUT_MS = 20 * 60 * 1000;
 
-const REVIEW_PERSISTENCE_POLL_ATTEMPTS = 5;
 const REVIEW_PERSISTENCE_POLL_DELAY_MS = 20;
 
 /**
@@ -84,19 +84,14 @@ async function waitForPendingReview(
   engine: ReviewsEngine,
   workflowId: string,
 ): Promise<{ reviewId: string }> {
-  for (let attempt = 1; attempt <= REVIEW_PERSISTENCE_POLL_ATTEMPTS; attempt++) {
+  for await (const _ of awakeTurns()) {
     const [pendingReview] = await engine.listReviews({ workflowId });
     if (pendingReview !== undefined) {
       return pendingReview;
     }
-    if (attempt < REVIEW_PERSISTENCE_POLL_ATTEMPTS) {
-      await Bun.sleep(REVIEW_PERSISTENCE_POLL_DELAY_MS);
-    }
+    await Bun.sleep(REVIEW_PERSISTENCE_POLL_DELAY_MS);
   }
-  throw new Error(
-    `seedReviews: expected a pending review for workflow ${workflowId} within ` +
-      `${REVIEW_PERSISTENCE_POLL_ATTEMPTS} attempts — got none`,
-  );
+  throw new Error(`seedReviews: expected a pending review for workflow ${workflowId} — got none`);
 }
 
 /**

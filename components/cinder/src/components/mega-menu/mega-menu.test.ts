@@ -779,10 +779,12 @@ describe('MegaMenu', () => {
     const second = getTriggerByLabel(container, 'Resources');
     if (!menu) throw new Error('Missing menu element.');
     menu.style.direction = 'ltr';
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    first.focus();
-    await fireEvent.keyDown(first, { key: 'ArrowRight' });
-    expect(document.activeElement).toBe(second);
+    // The mutation is observed asynchronously: retry the key until the new direction has applied.
+    await waitFor(async () => {
+      first.focus();
+      await fireEvent.keyDown(first, { key: 'ArrowRight' });
+      expect(document.activeElement === second).toBe(true);
+    });
   });
 
   test('repositions an open indicator after the resolved direction changes', async () => {

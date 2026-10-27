@@ -783,7 +783,6 @@ describe('ctx.setFinalizerState() (#446)', () => {
       async () => (await storage.get(KEYS.finalizerState('finalizer-durable-1'))) !== null,
       {
         label: 'finalizer state committed after ctx.run checkpoint',
-        timeoutMs: 400,
         intervalMs: 5,
       },
     );
@@ -822,7 +821,6 @@ describe('ctx.setFinalizerState() (#446)', () => {
       async () => (await storage.get(KEYS.finalizerState('finalizer-park-1'))) !== null,
       {
         label: 'finalizer state committed after the workflow parks',
-        timeoutMs: 400,
         intervalMs: 5,
       },
     );
@@ -881,7 +879,6 @@ describe('ctx.setFinalizerState() (#446)', () => {
     const handle = await engine.start('finalizer-atomic', null, { id: 'finalizer-atomic-1' });
     await waitForCondition(async () => (await storage.get(finalizerKey)) !== null, {
       label: 'finalizer state committed atomically',
-      timeoutMs: 400,
       intervalMs: 5,
     });
 

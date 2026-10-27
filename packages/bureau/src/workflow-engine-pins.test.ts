@@ -12,6 +12,7 @@ import {
   type WorkflowDocument,
 } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 
 const host: DocumentWorkflowHost = {
   activities: { echo: ({ input }) => input },
@@ -28,7 +29,7 @@ const document: WorkflowDocument = {
 };
 
 async function untilParked(engine: Engine, workflowId: string): Promise<void> {
-  for (let attempt = 0; attempt < 500; attempt += 1) {
+  for await (const _turn of awakeTurns()) {
     const timeline = await engine.getTimeline(workflowId);
     if (timeline.some((entry) => entry.operationType === 'wait-signal')) return;
     await Bun.sleep(5);

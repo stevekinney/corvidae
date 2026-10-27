@@ -11,6 +11,7 @@ import {
 } from '../src/integrations/mcp';
 import type { Tool } from '../src/is-tool';
 import { createStoreDouble, deferred, rpc } from './fixtures/mcp-task-harness';
+import { waitUntil } from './fixtures/wait-until';
 
 /**
  * The raw-JSON-RPC consumer: `fromMcpEndpointTools` against a `createMCP`
@@ -205,7 +206,13 @@ describe('fromMcpEndpointTools', () => {
 
   it('sends tasks/cancel when the call is aborted', async () => {
     const waiting = deferred<void>();
-    const harness = await fixture({ delay: () => waiting.promise });
+    let polling = false;
+    const harness = await fixture({
+      delay: () => {
+        polling = true;
+        return waiting.promise;
+      },
+    });
     const controller = new AbortController();
 
     const outcome = toolNamed(harness, 'slow')
@@ -214,7 +221,8 @@ describe('fromMcpEndpointTools', () => {
         () => undefined,
         (error: unknown) => error,
       );
-    await Bun.sleep(20);
+    // The call is waiting on its task, so the abort has a task to cancel.
+    await waitUntil(() => polling);
     controller.abort(new Error('caller gave up'));
     await outcome;
     await harness.mcp.executionLifecycle.whenIdle();
@@ -245,20 +253,21 @@ describe('fromMcpEndpointTools', () => {
   it('cancels the MCP task when the call is aborted while waiting for an elicitation answer', async () => {
     const harness = await fixture(patient);
     const controller = new AbortController();
+    let asked = false;
     const outcome = toolNamed(harness, 'asks')
       .execute({}, {
         signal: controller.signal,
         // Never answers: the user has walked away.
-        elicit: () => new Promise(() => undefined),
+        elicit: () => {
+          asked = true;
+          return new Promise(() => undefined);
+        },
       } as never)
       .then(
         () => undefined,
         (error: unknown) => error,
       );
-    for (let attempt = 0; attempt < 200 && !harness.requests.includes('tasks/get'); attempt += 1) {
-      await Bun.sleep(1);
-    }
-    await Bun.sleep(30);
+    await waitUntil(() => asked);
 
     controller.abort(new Error('caller gave up'));
     const failure = await outcome;
@@ -311,9 +320,7 @@ describe('fromMcpEndpointTools', () => {
           () => undefined,
           (error: unknown) => error as Error,
         );
-      for (let attempt = 0; attempt < 100 && harness.taskIds.length === 0; attempt += 1) {
-        await Bun.sleep(1);
-      }
+      await waitUntil(() => harness.taskIds.length > 0);
       await act(harness.taskIds[0]!);
       return started;
     };

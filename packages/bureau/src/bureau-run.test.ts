@@ -29,6 +29,7 @@ import { z } from 'zod';
 import { BureauError, createBureau } from './create-bureau';
 import type { BureauRunOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 
 const runtime = createDefaultRuntimeServices();
 
@@ -1224,7 +1225,8 @@ describe('every Bureau hook hand-off is a merge (COR-1265 criterion 3)', () => {
 
     try {
       const run = await bureau.createRun({ agentName: 'default', message: 'hi' });
-      for (let attempt = 0; attempt < 50 && seen.length === 0; attempt += 1) {
+      for await (const _turn of awakeTurns()) {
+        if (!(seen.length === 0)) break;
         await waitOneTimerTurn();
       }
       expect(bureau.getRun(run.id)).toBeDefined();

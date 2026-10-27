@@ -136,6 +136,7 @@ import {
 } from './testing/run-retirement.test-support';
 import { storageOverTextStore } from './testing/text-store-storage.test-support';
 import { expireReviews } from './testing/expired-reviews.test-support';
+import { waitUntil, awakeTurns, quietFor } from '@lostgradient/testing/wait-until';
 
 function createTextStoreProxy(
   backingStore: ConditionalTextValueStore,
@@ -295,12 +296,9 @@ async function waitForRunSettled(bureau: Bureau, runId: string): Promise<void> {
  * cap would itself flake on a loaded host. A `check` that resolves earlier returns
  * immediately, so the generous cap costs nothing on the happy path.
  */
-async function pollUntil(check: () => boolean | Promise<boolean>, attempts = 20): Promise<boolean> {
-  for (let i = 0; i < attempts; i++) {
-    if (await check()) return true;
-    await yieldToPortableEventLoop();
-  }
-  return check();
+async function pollUntil(check: () => boolean | Promise<boolean>): Promise<true> {
+  await waitUntil(check, { message: 'pollUntil' });
+  return true;
 }
 
 // Drain Weft's deferred inline-launch queue between tests — a pending setTimeout(0)
@@ -1462,8 +1460,7 @@ describe('createBureau', () => {
         return session?.metadata['lastRunStatus'] === 'completed';
       },
       'completed session metadata was not persisted after retry',
-      50,
-      advancingTurn(runtime),
+      { yieldTurn: advancingTurn(runtime) },
     );
 
     const session = await bureau.contexts.get(run.sessionId);
@@ -2789,7 +2786,7 @@ describe('createBureau', () => {
     try {
       // Nobody subscribes until the recovered runs have finished, so their
       // frames overflow the 1024-frame boot buffer.
-      expect(await pollUntil(() => runsSettled(), 20_000)).toBe(true);
+      expect(await pollUntil(() => runsSettled())).toBe(true);
       const frames: ServerFrame[] = [];
       bureau.subscribeLiveFrames((frame) => {
         frames.push(frame);
@@ -4897,7 +4894,7 @@ describe('createBureau', () => {
     // injected failure (1), plus the three session commits `deleteRun` retries (3), plus the claim
     // and the acknowledgement of each of those three outbox entries (6). So the assertion waits
     // for the outbox to empty and then counts every batch.
-    for (let turn = 0; turn < 200; turn++) {
+    for await (const _turn of awakeTurns()) {
       const pending = await bureau.internals.sessionStore!.outbox.pending();
       if (pending.length === 0) break;
       await yieldToPortableEventLoop();
@@ -5873,7 +5870,7 @@ describe('createBureau scheduler-origin crash semantics (#25)', () => {
           const tagged = await bureau.getDurableRun(runId);
           const legacy = await bureau.getDurableRun(legacyRunId);
           return tagged?.status === 'cancelled' && legacy?.status === 'cancelled';
-        }, 50);
+        });
         expect(swept).toBe(true);
         const taggedFinal = await bureau.getDurableRun(runId);
         const legacyFinal = await bureau.getDurableRun(legacyRunId);
@@ -6995,7 +6992,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
         await pollUntil(async () => {
           const session = await bureauA.contexts.get(runA.sessionId);
           return session?.metadata['lastRunStatus'] === 'running';
-        }, 200),
+        }),
       ).toBe(true);
       const runB = await bureauB.createRun({
         agentName: 'default',
@@ -7018,7 +7015,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
             !(runB.id in authorities) &&
             runA.id in authorities
           );
-        }, 200),
+        }),
       ).toBe(true);
       expect(bureauA.getRun(runA.id)?.status).toBe('running');
 
@@ -13337,11 +13334,8 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
       // (maintenance: 'manual'), nothing can advance the durable
       // timer without an explicit tick — polling WITHOUT ticking must never
       // observe completion, and the continuation step must never run.
-      const firedWithoutTick = await pollUntil(
-        () => bureau.getRun(run.id)?.status === 'completed',
-        5,
-      );
-      expect(firedWithoutTick).toBe(false);
+      await quietFor(50);
+      expect(bureau.getRun(run.id)?.status).not.toBe('completed');
       expect(bureau.getRun(run.id)?.status).not.toBe('completed');
       expect(generate.callCount).toBe(1);
 
@@ -13399,11 +13393,8 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
 
       // Genuine park proof, same as config 3: no tick is issued in this
       // process, so completion must never be observed here.
-      const firedInBureauA = await pollUntil(
-        () => bureauA.getRun(run.id)?.status === 'completed',
-        5,
-      );
-      expect(firedInBureauA).toBe(false);
+      await quietFor(50);
+      expect(bureauA.getRun(run.id)?.status).not.toBe('completed');
       // AB-207: deliberately NOT disposed here — `dispose()`/`shutdown()`'s
       // `'abort'` policy aborts every active run it still tracks, including
       // one durably parked on a `scheduleWakeup` wait, which calls
@@ -21528,9 +21519,11 @@ describe('AB-389 — session commit outbox', () => {
       if ('outcome' in page) throw new Error(`expected a page, got outcome "${page.outcome}"`);
       expect(page.events.map((event) => event.kind)).toEqual(['session.created']);
 
-      // Attaching a validator now lets the deferred recovery proceed.
+      // Attaching a validator now lets the deferred recovery proceed. (A wait here for `getRun` to
+      // report the run used to follow, and its `false` result was ignored: bureauA, never disposed,
+      // still holds the run, so bureauB does not reattach it in this process, and the wait never
+      // held.)
       bureauB.setRequestAuthorityValidator(() => true);
-      await pollUntil(() => bureauB.getRun(run.id) !== undefined);
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();

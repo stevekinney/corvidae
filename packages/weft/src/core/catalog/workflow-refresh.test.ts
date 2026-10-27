@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { waitUntil } from '../../../scripts/lib/wait-until.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { rejectionOf, throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { buildWorkflowContract } from '../contract/build.ts';
@@ -492,7 +493,9 @@ describe('WorkflowRefreshCoordinator', () => {
     });
 
     coordinator.startPolling();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitUntil(() => coordinator.diagnostics('checkout')[0]?.state === 'failed', {
+      message: 'the refresh failure to be recorded',
+    });
     expect(coordinator.diagnostics('checkout')[0]?.state).toBe('failed');
     await coordinator[Symbol.asyncDispose]();
   });

@@ -12,24 +12,16 @@ import {
   startWorkflowBureau,
   type WorkflowBureauHarness,
 } from './testing/workflow-bureau.test-support';
-
-const WALL_CLOCK_TIMEOUT_MS = 30_000;
+import { waitUntil, quietFor } from '@lostgradient/testing/wait-until';
 const harnesses: WorkflowBureauHarness[] = [];
 
 afterEach(async () => {
   for (const harness of harnesses.splice(0)) await harness.dispose();
 });
 
-async function waitForReal(
-  condition: () => boolean | Promise<boolean>,
-  timeoutMs = 20_000,
-): Promise<boolean> {
-  const started = performance.now();
-  while (performance.now() - started < timeoutMs) {
-    if (await condition()) return true;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  return condition();
+async function waitForReal(condition: () => boolean | Promise<boolean>): Promise<true> {
+  await waitUntil(condition, { message: 'waitForReal' });
+  return true;
 }
 
 /** A writer whose first call waits for `release()`, so an instance can be held mid-step. */
@@ -75,97 +67,85 @@ async function allCompleted(harness: WorkflowBureauHarness, workflow: string): P
 }
 
 describe('a workflow’s schedule firing', () => {
-  it(
-    'starts one instance with the fire as its trigger, which the agent step sends as a labelled block',
-    async () => {
-      const harness = await startWorkflowBureau({ replies: { writer: () => 'tick answer' } });
-      harnesses.push(harness);
-      await harness.put(
-        'digest.json',
-        workflowFileText('digest', {
-          trigger: { kind: 'schedule', spec: '1s' },
-          steps: [AGENT_STEP],
-        }),
-      );
-      await harness.bureau.workflows?.refresh();
+  it('starts one instance with the fire as its trigger, which the agent step sends as a labelled block', async () => {
+    const harness = await startWorkflowBureau({ replies: { writer: () => 'tick answer' } });
+    harnesses.push(harness);
+    await harness.put(
+      'digest.json',
+      workflowFileText('digest', {
+        trigger: { kind: 'schedule', spec: '1s' },
+        steps: [AGENT_STEP],
+      }),
+    );
+    await harness.bureau.workflows?.refresh();
 
-      expect(await waitForReal(() => harness.calls.length >= 1)).toBe(true);
-      // Stop further fires before looking, so the count is stable.
-      const hash = harness.bureau.workflows!.list()[0]!.hash!;
-      await harness.bureau.workflows!.pause('digest', { expectedHash: hash });
+    expect(await waitForReal(() => harness.calls.length >= 1)).toBe(true);
+    // Stop further fires before looking, so the count is stable.
+    const hash = harness.bureau.workflows!.list()[0]!.hash!;
+    await harness.bureau.workflows!.pause('digest', { expectedHash: hash });
 
-      const message = harness.calls[0]!.message;
-      expect(message.startsWith('Write the digest\n\nTrigger:\n```json\n')).toBe(true);
-      expect(message).toContain('"kind": "schedule"');
-      expect(message).toContain('"scheduleId": "bureau-workflow-schedule:digest:1"');
-      const instances = await instancesOf(harness, 'digest');
-      expect(instances.length).toBeGreaterThanOrEqual(1);
-      const first = await harness.bureau.workflows!.getRun(instances.at(-1)!.id);
-      expect(first?.trigger).toEqual({
-        kind: 'schedule',
-        scheduleId: 'bureau-workflow-schedule:digest:1',
-      });
-    },
-    WALL_CLOCK_TIMEOUT_MS,
-  );
+    const message = harness.calls[0]!.message;
+    expect(message.startsWith('Write the digest\n\nTrigger:\n```json\n')).toBe(true);
+    expect(message).toContain('"kind": "schedule"');
+    expect(message).toContain('"scheduleId": "bureau-workflow-schedule:digest:1"');
+    const instances = await instancesOf(harness, 'digest');
+    expect(instances.length).toBeGreaterThanOrEqual(1);
+    const first = await harness.bureau.workflows!.getRun(instances.at(-1)!.id);
+    expect(first?.trigger).toEqual({
+      kind: 'schedule',
+      scheduleId: 'bureau-workflow-schedule:digest:1',
+    });
+  });
 
-  it(
-    'starts nothing new once the workflow is paused, while an instance already running completes',
-    async () => {
-      const gated = gatedFirstCall();
-      const harness = await startWorkflowBureau({ replies: { writer: gated.reply } });
-      harnesses.push(harness);
-      await harness.put(
-        'digest.json',
-        workflowFileText('digest', { trigger: EVERY_SECOND, steps: [AGENT_STEP] }),
-      );
-      await harness.bureau.workflows?.refresh();
-      // The first fire is held in the agent step.
-      expect(await waitForReal(() => harness.calls.length >= 1)).toBe(true);
+  it('starts nothing new once the workflow is paused, while an instance already running completes', async () => {
+    const gated = gatedFirstCall();
+    const harness = await startWorkflowBureau({ replies: { writer: gated.reply } });
+    harnesses.push(harness);
+    await harness.put(
+      'digest.json',
+      workflowFileText('digest', { trigger: EVERY_SECOND, steps: [AGENT_STEP] }),
+    );
+    await harness.bureau.workflows?.refresh();
+    // The first fire is held in the agent step.
+    expect(await waitForReal(() => harness.calls.length >= 1)).toBe(true);
 
-      const hash = harness.bureau.workflows!.list()[0]!.hash!;
-      await harness.bureau.workflows!.pause('digest', { expectedHash: hash });
-      const before = await instanceCount(harness, 'digest');
+    const hash = harness.bureau.workflows!.list()[0]!.hash!;
+    await harness.bureau.workflows!.pause('digest', { expectedHash: hash });
+    const before = await instanceCount(harness, 'digest');
 
-      // Three more seconds: with `overlap: 'allow'` a live schedule would have fired about three times.
-      await new Promise((resolve) => setTimeout(resolve, 3_000));
-      expect(await instanceCount(harness, 'digest')).toBe(before);
+    // Three more seconds: with `overlap: 'allow'` a live schedule would have fired about three times.
+    await quietFor(3_000);
+    expect(await instanceCount(harness, 'digest')).toBe(before);
 
-      gated.release();
-      expect(
-        await waitForReal(async () => {
-          const items = await instancesOf(harness, 'digest');
-          return items.length === before && items.every((item) => item.status === 'completed');
-        }),
-      ).toBe(true);
-    },
-    WALL_CLOCK_TIMEOUT_MS,
-  );
+    gated.release();
+    expect(
+      await waitForReal(async () => {
+        const items = await instancesOf(harness, 'digest');
+        return items.length === before && items.every((item) => item.status === 'completed');
+      }),
+    ).toBe(true);
+  });
 
-  it(
-    'starts nothing once the file is deleted, cancels the schedule, and lets a running instance complete',
-    async () => {
-      const gated = gatedFirstCall();
-      const harness = await startWorkflowBureau({ replies: { writer: gated.reply } });
-      harnesses.push(harness);
-      await harness.put(
-        'digest.json',
-        workflowFileText('digest', { trigger: EVERY_SECOND, steps: [AGENT_STEP] }),
-      );
-      await harness.bureau.workflows?.refresh();
-      expect(await waitForReal(() => harness.calls.length >= 1)).toBe(true);
+  it('starts nothing once the file is deleted, cancels the schedule, and lets a running instance complete', async () => {
+    const gated = gatedFirstCall();
+    const harness = await startWorkflowBureau({ replies: { writer: gated.reply } });
+    harnesses.push(harness);
+    await harness.put(
+      'digest.json',
+      workflowFileText('digest', { trigger: EVERY_SECOND, steps: [AGENT_STEP] }),
+    );
+    await harness.bureau.workflows?.refresh();
+    expect(await waitForReal(() => harness.calls.length >= 1)).toBe(true);
 
-      const hash = harness.bureau.workflows!.list()[0]!.hash!;
-      await harness.bureau.workflows!.delete('digest', { expectedHash: hash });
-      expect(await scheduleStatus(harness, 'bureau-workflow-schedule:digest:1')).toBe('cancelled');
-      const before = await instanceCount(harness, 'digest');
+    const hash = harness.bureau.workflows!.list()[0]!.hash!;
+    await harness.bureau.workflows!.delete('digest', { expectedHash: hash });
+    expect(await scheduleStatus(harness, 'bureau-workflow-schedule:digest:1')).toBe('cancelled');
+    const before = await instanceCount(harness, 'digest');
 
-      await new Promise((resolve) => setTimeout(resolve, 3_000));
-      expect(await instanceCount(harness, 'digest')).toBe(before);
+    await quietFor(3_000);
+    expect(await instanceCount(harness, 'digest')).toBe(before);
 
-      gated.release();
-      expect(await waitForReal(() => allCompleted(harness, 'digest'))).toBe(true);
-    },
-    WALL_CLOCK_TIMEOUT_MS,
-  );
+    gated.release();
+    expect(await waitForReal(() => allCompleted(harness, 'digest'))).toBe(true);
+  });
 });

@@ -25,7 +25,7 @@ describe('depictHighlighter', () => {
     // `background-color:#fff` is what github-light bakes in; its presence
     // means the theme option did not take effect.
     expect(html.toLowerCase()).not.toContain('#fff');
-  }, 30_000);
+  });
 
   it('still resolves language grammars (curated theme loaders must not empty the language registry)', async () => {
     // Regression: passing only `themeLoaders` to the /curated adapter entry
@@ -35,12 +35,12 @@ describe('depictHighlighter', () => {
 
     expect(html).not.toContain('shiki-plaintext');
     expect(html).toContain('<span');
-  }, 30_000);
+  });
 
   it('resolves Shiki language aliases the same way the bundled adapter does', async () => {
     const html = await depictHighlighter('SELECT 1;', 'sql');
     expect(html).not.toContain('shiki-plaintext');
-  }, 30_000);
+  });
 });
 
 describe('depictInlineHighlighter', () => {

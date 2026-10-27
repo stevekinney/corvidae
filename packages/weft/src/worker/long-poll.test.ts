@@ -651,9 +651,7 @@ describe('LongPollWorker', () => {
     // does not race a still-in-flight disposition read and report a
     // spurious "still unacknowledged" warning for a result the server
     // already durably applied.
-    await waitForCondition(() => worker.unacknowledgedResultCount === 0, {
-      timeoutMs: LONG_POLL_TEST_TIMEOUT_MS,
-    });
+    await waitForCondition(() => worker.unacknowledgedResultCount === 0);
     await worker.stop();
 
     // Should have reported the unknown activity as a failure
@@ -732,9 +730,7 @@ describe('LongPollWorker', () => {
       LONG_POLL_TEST_TIMEOUT_MS,
       'retried result delivery reaching the server',
     );
-    await waitForCondition(() => worker.unacknowledgedResultCount === 0, {
-      timeoutMs: LONG_POLL_TEST_TIMEOUT_MS,
-    });
+    await waitForCondition(() => worker.unacknowledgedResultCount === 0);
     expect(resultAttempts).toBeGreaterThanOrEqual(2);
 
     await worker.stop();
@@ -818,9 +814,7 @@ describe('LongPollWorker', () => {
     // reaching 0 after the server has already answered with the correlated
     // rejection means the entry was actually DROPPED, not merely "not yet
     // delivered" (which is what a 0 BEFORE any attempt would prove nothing).
-    await waitForCondition(() => worker.unacknowledgedResultCount === 0, {
-      timeoutMs: LONG_POLL_TEST_TIMEOUT_MS,
-    });
+    await waitForCondition(() => worker.unacknowledgedResultCount === 0);
     const attemptsAtDrop = resultAttempts;
 
     await worker.stop();
@@ -893,7 +887,7 @@ describe('LongPollWorker', () => {
     // Wait for the first (failing) delivery attempt to land before stopping,
     // so stop() observes a genuinely unacknowledged result rather than
     // racing the very first send.
-    await waitForCondition(() => resultAttempts >= 1, { timeoutMs: LONG_POLL_TEST_TIMEOUT_MS });
+    await waitForCondition(() => resultAttempts >= 1);
 
     const stopped = await worker.stop();
     expect(stopped.unacknowledgedResults).toBe(1);
@@ -909,9 +903,7 @@ describe('LongPollWorker', () => {
       LONG_POLL_TEST_TIMEOUT_MS,
       'resumed result delivery',
     );
-    await waitForCondition(() => worker.unacknowledgedResultCount === 0, {
-      timeoutMs: LONG_POLL_TEST_TIMEOUT_MS,
-    });
+    await waitForCondition(() => worker.unacknowledgedResultCount === 0);
     expect(resultAttempts).toBeGreaterThan(attemptsAtStop);
 
     await worker.stop();

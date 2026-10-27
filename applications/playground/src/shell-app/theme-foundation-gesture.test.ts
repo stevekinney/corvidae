@@ -4,6 +4,7 @@ import { flushSync, mount, tick, unmount } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { cinderThemeBase } from './theme-builder-base.ts';
 import { catalogueRowByPath } from './theme-builder-catalogue.ts';
 import { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
@@ -91,7 +92,7 @@ describe('a slider gesture', () => {
     wrapper.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowLeft', bubbles: true }));
     for (let wait = 0; wait < 150 && entries(controller) === 0; wait += 1) await pause(20);
     // Give a misplaced end every chance to land after the commit.
-    await pause(100);
+    await quietFor(100);
     await settle();
     expect(entries(controller)).toBe(1);
     expect(controller.history!.gesture).toBeNull();

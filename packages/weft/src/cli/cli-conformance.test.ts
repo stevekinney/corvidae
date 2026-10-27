@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { HANG_GUARD_MILLISECONDS } from '../../scripts/lib/hang-guard.ts';
 import { createRegisterCheck } from '../conformance/run-conformance.ts';
 import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
 import { executeConformance } from './index.ts';
@@ -39,6 +40,7 @@ describe('createRegisterCheck', () => {
 // module scope, off Bun's five-second per-test clock; its test rethrows the outcome.
 
 const scenario1 = await outcomeOf(async () => {
+  // load-proof: the worker command is empty, so the run ends before any process starts
   const result = await executeConformance({
     timeoutMs: 500,
     json: false,
@@ -51,7 +53,7 @@ const scenario1 = await outcomeOf(async () => {
 
 const scenario2 = await outcomeOf(async () => {
   const result = await executeConformance({
-    timeoutMs: 3_000,
+    timeoutMs: HANG_GUARD_MILLISECONDS,
     json: true,
     workerCommand: ['bun', './src/cli/__fixtures__/conformance-worker.ts'],
   });
@@ -75,7 +77,7 @@ const scenario2 = await outcomeOf(async () => {
 
 const scenario3 = await outcomeOf(async () => {
   const result = await executeConformance({
-    timeoutMs: 3_000,
+    timeoutMs: HANG_GUARD_MILLISECONDS,
     json: false,
     workerCommand: ['bun', './src/cli/__fixtures__/conformance-worker.ts'],
   });
@@ -86,6 +88,7 @@ const scenario3 = await outcomeOf(async () => {
 });
 
 const scenario4 = await outcomeOf(async () => {
+  // load-proof: the broken worker never registers, so the run ends on the register wait whatever the load, and the assertions hold for it
   const result = await executeConformance({
     timeoutMs: 500,
     json: true,
@@ -99,6 +102,7 @@ const scenario4 = await outcomeOf(async () => {
 });
 
 const scenario5 = await outcomeOf(async () => {
+  // load-proof: the broken worker never registers, so the run ends on the register wait whatever the load, and the assertions hold for it
   const result = await executeConformance({
     timeoutMs: 500,
     json: false,
@@ -111,7 +115,7 @@ const scenario5 = await outcomeOf(async () => {
 
 const scenario6 = await outcomeOf(async () => {
   const result = await executeConformance({
-    timeoutMs: 750,
+    timeoutMs: HANG_GUARD_MILLISECONDS,
     json: true,
     workerCommand: ['bun', './src/cli/__fixtures__/conformance-wrong-activities-worker.ts'],
   });
@@ -135,7 +139,7 @@ const scenario6 = await outcomeOf(async () => {
 
 const scenario7 = await outcomeOf(async () => {
   const result = await executeConformance({
-    timeoutMs: 1_000,
+    timeoutMs: HANG_GUARD_MILLISECONDS,
     json: true,
     workerCommand: ['bun', './src/cli/__fixtures__/conformance-register-exit-worker.ts'],
   });
@@ -152,8 +156,10 @@ const scenario7 = await outcomeOf(async () => {
 });
 
 const scenario8 = await outcomeOf(async () => {
+  // The failure is event-driven: the replacement disconnects while the run waits for it to go idle,
+  // and the run reports that disconnect at once. No wait here is meant to expire, so none is short.
   const result = await executeConformance({
-    timeoutMs: 1_000,
+    timeoutMs: HANG_GUARD_MILLISECONDS,
     json: true,
     workerCommand: [
       'env',
@@ -173,8 +179,11 @@ const scenario8 = await outcomeOf(async () => {
 });
 
 const scenario9 = await outcomeOf(async () => {
+  // This worker resolves attempt 1 in place, so the wait for a reassignment past attempt 1 can never
+  // be met and ends only by expiring. That wait alone is short; no load can satisfy it early.
   const result = await executeConformance({
-    timeoutMs: 1_000,
+    timeoutMs: HANG_GUARD_MILLISECONDS,
+    settleTimeoutMs: 1_000,
     json: true,
     workerCommand: [
       'env',

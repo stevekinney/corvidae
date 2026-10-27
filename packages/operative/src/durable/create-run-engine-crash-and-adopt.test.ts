@@ -1,6 +1,7 @@
-import { MemoryStorage, workflow, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { MemoryStorage, workflow } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createRunEngine } from './create-run-engine';
 
 /** A manually advanced clock for `createRunEngine({ getNow })`. */
@@ -15,15 +16,8 @@ function createManualClock(startTime = 1_000_000) {
     },
   };
 }
-
-// Generously-bounded poll: yield the portable event loop until `predicate` holds.
-const POLL_UNTIL_MAX_ATTEMPTS = 1000;
 async function pollUntil(predicate: () => boolean | Promise<boolean>): Promise<void> {
-  for (let attempt = 0; attempt < POLL_UNTIL_MAX_ATTEMPTS; attempt++) {
-    if (await predicate()) return;
-    await yieldToPortableEventLoop();
-  }
-  throw new Error('pollUntil exceeded its attempt bound before the condition held');
+  await waitUntil(predicate, { message: 'pollUntil' });
 }
 
 /**

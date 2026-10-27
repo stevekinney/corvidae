@@ -14,6 +14,7 @@ import {
 } from '@lostgradient/weft/a2a';
 import { describe, expect, it } from 'bun:test';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createChildRunRegistry } from './child-run';
 import {
   createPeerCallTool,
@@ -203,7 +204,7 @@ describe('a durable peer call', () => {
       write: () => new Promise<never>(() => {}),
     };
     void toolOver(first.client, hanging).call({ message: 'find it' }, { durableOperationKey: KEY });
-    await Bun.sleep(5);
+    await waitUntil(() => first.sends.length >= 1, { message: 'the first process to send' });
 
     const restarted = fakePeer();
     await toolOver(restarted.client, memoryJournal()).call(

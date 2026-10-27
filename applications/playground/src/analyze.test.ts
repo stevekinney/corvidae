@@ -309,7 +309,7 @@ describe('analyzeAll', () => {
   it('returns at least 21 entries', async () => {
     const manifests = await analyzeAll(COMPONENTS_DIR);
     expect(manifests.length).toBeGreaterThanOrEqual(21);
-  }, 20_000);
+  });
 
   it('all entries have a non-empty file path', async () => {
     const manifests = await analyzeAll(COMPONENTS_DIR);

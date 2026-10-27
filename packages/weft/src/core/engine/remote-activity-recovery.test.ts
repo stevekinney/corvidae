@@ -95,7 +95,7 @@ describe('remote activity recovery (COR-152)', () => {
         const record = await readOnlyTaskLedgerRecord(engine!);
         return record !== null && record.state === 'queued';
       },
-      { timeoutMs: 2_000, intervalMs: 10, label: 'task to reach durable queued state' },
+      { intervalMs: 10, label: 'task to reach durable queued state' },
     );
 
     // "Durably queued" is not a dead end once infrastructure DOES appear —
@@ -179,7 +179,7 @@ describe('remote activity recovery (COR-152)', () => {
         }
         return false;
       },
-      { timeoutMs: 2_000, intervalMs: 10, label: 'task to reach durable queued state' },
+      { intervalMs: 10, label: 'task to reach durable queued state' },
     );
     if (queuedOperationId === undefined) throw new Error('expected a queued operationId');
 
@@ -263,7 +263,7 @@ describe('remote activity recovery (COR-152)', () => {
         const record = await readOnlyTaskLedgerRecord(engine!);
         return record !== null && record.state === 'queued';
       },
-      { timeoutMs: 2_000, intervalMs: 10, label: 'task to reach durable queued state' },
+      { intervalMs: 10, label: 'task to reach durable queued state' },
     );
 
     const resultBeforeDispose = handle.result();

@@ -20,6 +20,7 @@
 
 import { describe, expect, it } from 'bun:test';
 
+import { HANG_GUARD_MILLISECONDS } from '../../scripts/lib/hang-guard.ts';
 import {
   REMOTE_WORKER_PROTOCOL_VERSION,
   REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS,
@@ -71,7 +72,7 @@ import { executeConformance } from './index.ts';
  */
 const scenario1 = await outcomeOf(async () => {
   const result = await executeConformance({
-    timeoutMs: 3_000,
+    timeoutMs: HANG_GUARD_MILLISECONDS,
     json: true,
     workerCommand: ['bun', './src/cli/__fixtures__/conformance-lost-ack-worker.ts'],
   });
@@ -100,7 +101,7 @@ describe('conformance command — lost acknowledgement resend (COR-233)', () => 
 
 const scenario2 = await outcomeOf(async () => {
   const result = await executeConformance({
-    timeoutMs: 3_000,
+    timeoutMs: HANG_GUARD_MILLISECONDS,
     json: true,
     workerCommand: ['bun', './src/cli/__fixtures__/conformance-worker.ts'],
   });
@@ -116,6 +117,7 @@ const scenario2 = await outcomeOf(async () => {
 });
 
 const scenario3 = await outcomeOf(async () => {
+  // load-proof: registration is rejected, so no worker ever appears and no load can end the wait early
   const result = await executeConformance({
     timeoutMs: 1_000,
     json: true,

@@ -188,7 +188,7 @@ describe('the shared shell bundle (CIN-588 preservation)', () => {
     const curatedGrammars = grammarsOf(curated);
     expect(curatedGrammars.size).toBeGreaterThan(0);
     expect([...grammarsOf(shell)].filter((grammar) => !curatedGrammars.has(grammar))).toEqual([]);
-  }, 60_000);
+  });
 });
 
 describe('namedCinderImports and barrelModules', () => {

@@ -196,7 +196,7 @@ describe.skipIf(!browserSmokeEnabled)('IndexedDBStorage — real Chromium durabi
     } finally {
       await page.close();
     }
-  }, 30_000);
+  });
 
   // ─── 2. put/get/keys/count/deletePrefix round-trip ──────────────────────
 
@@ -244,7 +244,7 @@ describe.skipIf(!browserSmokeEnabled)('IndexedDBStorage — real Chromium durabi
     } finally {
       await page.close();
     }
-  }, 30_000);
+  });
 
   // ─── 3. Durability across reload ─────────────────────────────────────────
 
@@ -292,7 +292,7 @@ describe.skipIf(!browserSmokeEnabled)('IndexedDBStorage — real Chromium durabi
     } finally {
       await page.close();
     }
-  }, 30_000);
+  });
 
   // ─── 4. Prefix scan ordering ─────────────────────────────────────────────
 
@@ -330,7 +330,7 @@ describe.skipIf(!browserSmokeEnabled)('IndexedDBStorage — real Chromium durabi
     } finally {
       await page.close();
     }
-  }, 30_000);
+  });
 
   it('keys() with reverse:true yields keys in descending order in a real IDB', async () => {
     const page = await openPage();
@@ -361,7 +361,7 @@ describe.skipIf(!browserSmokeEnabled)('IndexedDBStorage — real Chromium durabi
     } finally {
       await page.close();
     }
-  }, 30_000);
+  });
 
   // ─── 5. batch() atomicity ────────────────────────────────────────────────
 
@@ -413,7 +413,7 @@ describe.skipIf(!browserSmokeEnabled)('IndexedDBStorage — real Chromium durabi
     } finally {
       await page.close();
     }
-  }, 30_000);
+  });
 
   // ─── 6. conditionalBatch() compare-and-swap ──────────────────────────────
 
@@ -470,7 +470,7 @@ describe.skipIf(!browserSmokeEnabled)('IndexedDBStorage — real Chromium durabi
     } finally {
       await page.close();
     }
-  }, 30_000);
+  });
 
   // ─── 7. Multi-page scans with a consumer that yields to the event loop ───
 
@@ -524,6 +524,6 @@ describe.skipIf(!browserSmokeEnabled)('IndexedDBStorage — real Chromium durabi
       } finally {
         await page.close();
       }
-    }, 60_000);
+    });
   }
 });

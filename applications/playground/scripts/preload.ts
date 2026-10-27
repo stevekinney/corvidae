@@ -1,4 +1,4 @@
-import { setupHappyDom, sveltePlugin } from '@lostgradient/testing';
+import { configureAsyncUtilityDeadline, setupHappyDom, sveltePlugin } from '@lostgradient/testing';
 import { plugin } from 'bun';
 
 // Playground tests that render `.svelte` files need the shared DOM setup and
@@ -6,3 +6,6 @@ import { plugin } from 'bun';
 setupHappyDom();
 
 await plugin(sveltePlugin({ generate: 'client' }));
+
+// Testing Library's asynchronous utilities wait up to the hang guard, not one second.
+await configureAsyncUtilityDeadline();

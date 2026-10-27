@@ -29,6 +29,7 @@ import { AGENT_STEP, workflowFileText } from './testing/workflow-file-fixtures.t
 import { startWorkflowBureau } from './testing/workflow-bureau.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauOptions } from './types';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const harness = createScheduleFireHarness();
@@ -40,12 +41,8 @@ afterEach(async () => {
   await harness.dispose();
 });
 
-async function pollUntil(check: () => boolean, attempts = 400): Promise<void> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (check()) return;
-    await yieldToPortableEventLoop();
-  }
-  throw new Error('Condition was not met.');
+async function pollUntil(check: () => boolean): Promise<void> {
+  await waitUntil(check, { message: 'the condition' });
 }
 
 /** The tool names offered at each step an agent took. */

@@ -5,6 +5,7 @@ import { flushSync, mount, tick, unmount } from 'svelte';
 import { setupHappyDom } from '@lostgradient/testing';
 
 import { buildThemeSources, evaluateThemeProperties } from '@lostgradient/cinder/tokens/runtime';
+import { waitUntil, yieldEventLoopTurn } from '@lostgradient/testing/wait-until';
 import { cinderThemeBase } from './theme-builder-base.ts';
 import {
   catalogueRowByPath,
@@ -97,7 +98,7 @@ const settle = async () => {
 
 /** Poll a condition the app settles asynchronously; the 5 s test budget bounds the wait. */
 async function until(done: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 400 && !done(); attempt += 1) await settle();
+  await waitUntil(done, { message: 'until' });
 }
 
 async function open(path: string) {
@@ -348,7 +349,7 @@ describe('dependent roles', () => {
         onFollow: (path: string) => followed.push(path),
       },
     });
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await yieldEventLoopTurn();
     flushSync();
     await press('Dependent roles');
     await until(() => target.querySelector('[data-testid="color-dependents"] button') !== null);

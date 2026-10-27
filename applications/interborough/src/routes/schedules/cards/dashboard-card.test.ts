@@ -118,11 +118,8 @@ describe('Schedules dashboard card', () => {
     const client = new HttpClient({ baseUrl: 'http://127.0.0.1:1' });
 
     const { container } = render(DashboardCardHarness, { props: { client } });
-    await waitFor(
-      () => {
-        expect(container.querySelector('.weft-dashboard-card__error')).not.toBeNull();
-      },
-      { timeout: 3000 },
-    );
+    await waitFor(() => {
+      expect(container.querySelector('.weft-dashboard-card__error')).not.toBeNull();
+    });
   });
 });

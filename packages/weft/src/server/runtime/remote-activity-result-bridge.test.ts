@@ -59,7 +59,7 @@ describe('bridgeRemoteActivityResult — lost race between the pending check and
         const stored = await readOnlyTaskLedgerRecord(engine!);
         return stored !== null && stored.state === 'queued';
       },
-      { timeoutMs: 2_000, intervalMs: 10, label: 'task to reach durable queued state' },
+      { intervalMs: 10, label: 'task to reach durable queued state' },
     );
     const record = await readOnlyTaskLedgerRecord(engine);
     const operationId = record!.operationId;
@@ -111,7 +111,7 @@ describe('bridgeRemoteActivityResult — lost race between the pending check and
         const stored = await readOnlyTaskLedgerRecord(engine!);
         return stored !== null && stored.state === 'queued';
       },
-      { timeoutMs: 2_000, intervalMs: 10, label: 'task to reach durable queued state' },
+      { intervalMs: 10, label: 'task to reach durable queued state' },
     );
     const record = await readOnlyTaskLedgerRecord(engine);
     const operationId = record!.operationId;

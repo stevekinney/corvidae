@@ -59,5 +59,5 @@ describe('Resource leaks', () => {
     const MAX_GROWTH_BYTES = 2 * 1024 * 1024;
 
     expect(growth).toBeLessThan(MAX_GROWTH_BYTES);
-  }, 30_000); // generous timeout for 1000 iterations
+  }); // generous timeout for 1000 iterations
 });

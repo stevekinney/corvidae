@@ -2,6 +2,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 setupHappyDom();
 
@@ -207,7 +208,9 @@ describe('overflowFadeEdges (chat local copy)', () => {
       node.dispatchEvent(new Event('scroll'));
       // The fallback schedules via a real window.setTimeout — let it actually
       // fire (covers the nested `() => callback(performance.now())` closure).
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await waitUntil(() => node.hasAttribute('data-cinder-overflows'), {
+        message: 'the fallback timer to fire',
+      });
       expect(node.hasAttribute('data-cinder-overflows')).toBe(true);
 
       // Exercise the cancelFrame fallback too: teardown while a fallback

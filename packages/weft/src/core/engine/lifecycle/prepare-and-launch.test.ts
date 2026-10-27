@@ -12,6 +12,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { awakeTurns } from '../../../../scripts/lib/wait-until.ts';
 import {
   KEYS,
   type BatchOperation,
@@ -147,7 +148,7 @@ describe('engine.prepare() / handle.launch() / handle.abandon() (COR-75)', () =>
     // in-memory baseline for it; launch() must prime one from storage.
     forgetCommittedCheckpointBytes(internals, prepared.id);
     await prepared.launch();
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    for await (const _turn of awakeTurns()) {
       if (internals.parkedInlineWorkflows.has(prepared.id)) break;
       await new Promise((resolve) => setImmediate(resolve));
     }

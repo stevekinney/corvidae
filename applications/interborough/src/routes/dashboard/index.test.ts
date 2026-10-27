@@ -169,7 +169,7 @@ describe('Dashboard', () => {
 
     const { findByText, queryByText } = render(DashboardIndexHarness, { props: { client } });
 
-    await findByText('2 dead-lettered tasks', undefined, { timeout: 3_000 });
+    await findByText('2 dead-lettered tasks', undefined);
     expect(queryByText(/lease contested/i)).toBeNull();
     const requestBodies = scripted.calls.map((call) =>
       typeof call.init?.body === 'string' ? call.init.body : '',

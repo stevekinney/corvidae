@@ -506,7 +506,7 @@ async function teardown(held: Held): Promise<void> {
   };
   await step(held.publicServer && (() => held.publicServer?.stop(true)));
   await step(held.server && (() => held.server?.stop()));
-  await step(held.bureau && (() => held.bureau?.shutdown()));
+  await step(held.bureau && (() => held.bureau?.shutdown({ policy: 'detach' })));
   await step(held.replacementEngine && (() => held.replacementEngine?.[Symbol.asyncDispose]()));
   await step(held.storage && (() => held.storage?.[Symbol.dispose]()));
   await step(() => held.bungalow.close());

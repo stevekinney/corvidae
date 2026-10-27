@@ -1,3 +1,4 @@
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { BEHAVIOR_CASES, runCell, type CellResult } from './conformance-cases.test-support.ts';
 import {
   check,
@@ -7,15 +8,6 @@ import {
 } from './conformance.test-support.ts';
 
 const SESSIONS_MEASURED = 6;
-/**
- * The most event-loop turns the runtime gets to finish releasing descriptors. A socket's descriptor
- * is closed by a native thread after the JavaScript close event, so the count can still be one
- * high on the turn a session ends, and no event announces the release. A descriptor that is still
- * held after this many turns is a leak.
- */
-const MAXIMUM_RELEASE_TURNS = 1_000;
-
-/** Turns of the event loop until the descriptor count is back at `baseline`, or the bound is spent. */
 const BASELINE_SAMPLES = 5;
 
 /**
@@ -32,17 +24,26 @@ export async function stableDescriptorBaseline(): Promise<number> {
   return lowest;
 }
 
+/**
+ * Event-loop turns until the descriptor count is back at `baseline`. A socket's descriptor is
+ * closed by a native thread after the JavaScript close event, so the count can still be one high on
+ * the turn a session ends, and no event announces the release; the wait ends when the count drops,
+ * or on the hang guard, which is a leak. A caller that is proving the wait cannot hide a descriptor
+ * that is held passes `maximumTurns`, because that descriptor is never released.
+ */
 export async function settledDescriptorCount(
   baseline: number,
-  maximumTurns = MAXIMUM_RELEASE_TURNS,
+  maximumTurns?: number,
 ): Promise<{ count: number; turns: number }> {
   let turns = 0;
-  let count: number;
-  do {
+  let count = openDescriptorCount();
+  // load-proof: the caller that passes maximumTurns holds the descriptor, so it is never released
+  for await (const _turn of awakeTurns()) {
     await Bun.sleep(0);
     count = openDescriptorCount();
     turns += 1;
-  } while (count > baseline && turns < maximumTurns);
+    if (count <= baseline || (maximumTurns !== undefined && turns >= maximumTurns)) break;
+  }
   return { count, turns };
 }
 
