@@ -955,6 +955,7 @@ export class Engine<
                 if (!getInternals(this).disposed) {
                   this.dispatchEvent(new StorageSizeReportedEvent(sizeBytes));
                 }
+                return sizeBytes;
               })
               .catch(() => {});
           }, resolvedOptions.storageSizeReportIntervalMs)

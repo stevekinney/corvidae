@@ -17,11 +17,9 @@ import type {
 } from './services-resolution.ts';
 import type { WorkflowLogRecord } from './workflow-log.ts';
 import type { WorkflowVisibilityIndexOptions } from './workflow-visibility-index-options.ts';
-
 // ---------------------------------------------------------------------------
 // Start options for engine.start()
 // ---------------------------------------------------------------------------
-
 /**
  * Options accepted by `engine.start(type, input, options?)`.
  *
@@ -412,11 +410,7 @@ export interface EngineOptions<TServices = unknown>
    * poller without waiting a full real poll cycle.
    */
   schedulerPollIntervalMs?: number;
-  /**
-   * Interval for reporting native storage size to alerting and observers.
-   * Defaults to 60 seconds; `0` disables reporting. Backends without the
-   * optional `Storage.sizeBytes()` capability produce no report.
-   */
+  /** Native storage-size report interval in ms; defaults to 60s, `0` disables. */
   storageSizeReportIntervalMs?: number;
   /** Enable BroadcastChannel for cross-worker event coordination. Default: false. */
   broadcastEvents?: boolean;

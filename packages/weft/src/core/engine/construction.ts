@@ -38,6 +38,7 @@ import {
   resolveRevisionRealmExecutionForMode,
 } from './revision-realm-execution-construction.ts';
 import { resolvePayloadValidation, resolveSchemaPolicy } from './schema-policy.ts';
+import { normalizeStorageSizeReportInterval } from './storage-size-report.ts';
 import { declaredMapFields } from './used-activities.ts';
 import {
   normalizeHistoryPolicy,
@@ -45,7 +46,6 @@ import {
   normalizeRetentionDuration,
   normalizeRetentionPolicy,
 } from './validation.ts';
-
 export type KnownWorkflowNames<TWorkflows extends object> = Extract<keyof TWorkflows, string>;
 declare const emptyWorkflowDefinitions: unique symbol;
 declare const emptyActivityDefinitions: unique symbol;
@@ -63,7 +63,6 @@ export type EngineCreateRuntimeOptions = EngineConstructorOptions & {
   startScheduler?: boolean | undefined;
   onRecoveredWorkflow?: RecoverAllOptions['onRecoveredWorkflow'] | undefined;
 };
-
 export type NormalizedWorkerExecutionConfiguration =
   | { mode: 'inline'; workerExecution: null }
   | {
@@ -77,13 +76,11 @@ export type NormalizedWorkerExecutionConfiguration =
       requireProtocolVersion: true;
       discardOnCancel: true;
     };
-
 export function definitionEntries<TDefinition extends object>(
   definitions: Record<string, TDefinition> | undefined,
 ): Array<[string, TDefinition]> {
   return Object.entries(definitions ?? {});
 }
-
 export function typedEngineView(engine: object): never {
   // Cycle-breaking workaround. The runtime instance is the same Engine; the
   // declared return type is `never` so this module does not need to import
@@ -97,9 +94,7 @@ export function typedEngineView(engine: object): never {
   // other context.
   return engine as never;
 }
-
 let didWarnOnMemoryStorageFallback = false;
-
 export function readEnvironmentVariableFromSources(
   name: string,
   sources: {
@@ -115,7 +110,6 @@ export function readEnvironmentVariableFromSources(
   }
   return undefined;
 }
-
 /**
  * Whether to warn when an `Engine` falls back to {@link MemoryStorage}. Gated
  * to development so production never logs it: the explicit `development: true`
@@ -248,7 +242,7 @@ export function resolveNumericDefaults(
         'options.schedulerPollIntervalMs',
         DEFAULT_POLL_INTERVAL_MS,
       ) ?? DEFAULT_POLL_INTERVAL_MS,
-    storageSizeReportIntervalMs: normalizeNonNegativeSafeIntegerOption(
+    storageSizeReportIntervalMs: normalizeStorageSizeReportInterval(
       options?.storageSizeReportIntervalMs,
       'options.storageSizeReportIntervalMs',
       60_000,
@@ -442,18 +436,6 @@ function normalizePositiveSafeIntegerOption(
   if (value === undefined) return defaultValue;
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
     throw new Error(`${fieldName} must be a positive safe integer when provided`);
-  }
-  return value;
-}
-
-function normalizeNonNegativeSafeIntegerOption(
-  value: unknown,
-  fieldName: string,
-  defaultValue: number,
-): number {
-  if (value === undefined) return defaultValue;
-  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
-    throw new Error(`${fieldName} must be a non-negative safe integer when provided`);
   }
   return value;
 }

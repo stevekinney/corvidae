@@ -21,12 +21,10 @@ import {
   WORKFLOW_RECORD_KEYS_CORE,
   WORKFLOW_RECORD_KEYS_EXTENDED,
 } from './workflow-record-keys.ts';
-
 export { assertDurableStorageForRecovery, requireStorageCapability } from './capabilities.ts';
 export type { GatedStorageCapabilityKey, StorageCapabilities } from './capabilities.ts';
 export { DEFAULT_SCOPE } from './default-scope.ts';
 export { WEFT_RESERVED_KEY_PREFIXES } from './key-prefixes.ts';
-
 /**
  * A single KV operation in a batch.
  *
@@ -177,7 +175,7 @@ export interface ScanOptions {
  * ```
  */
 export interface Storage extends Disposable {
-  /** Return the backend's total physical size in bytes when natively supported. */
+  /** Native physical size in bytes, when supported. */
   sizeBytes?(): Promise<number>;
   /**
    * Self-report the backend's consistency and feature guarantees. Required on
