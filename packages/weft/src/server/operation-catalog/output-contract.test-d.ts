@@ -77,6 +77,7 @@ const transformedSubscription = defineOperation({
   outputSchema: z.object({ id: z.string() }),
   eventSchema: transformedSubscriptionEventSchema,
   invoke: async () => ({
+    subscriptionId: 'sub-internal',
     envelope: { id: 'sub' },
     iterable: (async function* () {
       yield { raw: 'event' };
