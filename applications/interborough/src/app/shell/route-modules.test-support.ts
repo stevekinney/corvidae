@@ -11,10 +11,22 @@
  */
 import { routes } from '../routes.ts';
 
-/** Every route's component, in the order of `routes`, loaded before any test imports the harness. */
-export const routeComponents = await Promise.all(
-  routes.map(async (route) => {
+/**
+ * Every route's component, in the order of `routes`, loaded before any test imports the harness.
+ *
+ * The loads run one at a time, never through `Promise.all`. Several routes share a component (the
+ * placeholder serves three patterns, the chat screen two), and importing a not-yet-evaluated module
+ * from several places at once leaves Bun's coverage report without that file at all, which failed
+ * `test:coverage` on the placeholder area's floor. Awaiting each import in turn evaluates a module
+ * once and hands every later route the cached one.
+ */
+async function loadRouteComponents(): Promise<unknown[]> {
+  const components: unknown[] = [];
+  for (const route of routes) {
     const loaded = await route.load();
-    return loaded.default;
-  }),
-);
+    components.push(loaded.default);
+  }
+  return components;
+}
+
+export const routeComponents = await loadRouteComponents();
