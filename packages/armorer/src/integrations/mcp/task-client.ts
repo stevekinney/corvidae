@@ -133,8 +133,13 @@ export async function fromMcpEndpointTools(options: FromMcpEndpointToolsOptions)
     return message.result ?? {};
   };
 
-  const listed = await send('tools/list', {}, {});
-  const mcpTools = (listed['tools'] ?? []) as MCPToolSource[];
+  const mcpTools: MCPToolSource[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await send('tools/list', cursor === undefined ? {} : { cursor }, {});
+    mcpTools.push(...((page['tools'] ?? []) as MCPToolSource[]));
+    cursor = typeof page['nextCursor'] === 'string' ? page['nextCursor'] : undefined;
+  } while (cursor !== undefined);
 
   return fromMcpTools(mcpTools, {
     ...(options.formatResult ? { formatResult: options.formatResult } : {}),

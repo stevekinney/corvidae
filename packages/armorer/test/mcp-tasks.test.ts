@@ -301,6 +301,39 @@ describe('creating and completing an MCP task', () => {
     expect(task['status']).toBe('completed');
   });
 
+  it('applies back-to-back progress messages in call order', async () => {
+    const store = createStoreDouble();
+    const latch = deferred<void>();
+    // Batch 1 is the create; batch 2 is the first progress write, held while the second is issued.
+    store.hold(2, latch.promise);
+    const gate = deferred<string>();
+    const chatty = createTool({
+      name: 'render-report',
+      description: 'reports twice in a row',
+      input: z.object({ title: z.string() }),
+      metadata: { mcp: { taskBacked: true } },
+      async execute(_input, context) {
+        context.progress({ message: 'first' });
+        context.progress({ message: 'second' });
+        return gate.promise;
+      },
+    });
+    const harness = await startHarness({ toolbox: [chatty] }, store);
+    const taskId = await createMcpTask(harness);
+
+    await Bun.sleep(30);
+    latch.resolve();
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      if (storedRecord(store, taskId)?.statusMessage === 'second') break;
+      await Bun.sleep(1);
+    }
+    await Bun.sleep(20);
+
+    expect(storedRecord(store, taskId)?.statusMessage).toBe('second');
+    gate.resolve('');
+    await harness.mcp.shutdown();
+  });
+
   it('answers synchronously without the extension, on 2025-11-25, and for a tool that did not opt in', async () => {
     const harness = await startHarness();
     harness.release('!');
@@ -547,17 +580,35 @@ describe('durability', () => {
 
   it('fails an orphaned working record from a second instance, and the first instance loses its settle', async () => {
     const store = createStoreDouble();
-    const first = await startHarness({}, store);
+    const firstReported: unknown[] = [];
+    const first = await startHarness(
+      {
+        resources: (server) => {
+          Object.assign(server.server, {
+            onerror: (error: unknown) => firstReported.push(error),
+          });
+        },
+      },
+      store,
+    );
     const second = await startHarness({}, store);
     const taskId = await createMcpTask(first);
 
     const task = expectResult(await getMcpTask(second.mcp, taskId));
     expect(task).toMatchObject({ status: 'failed', error: { code: INTERNAL_ERROR } });
+    // The first instance was never shut down: its tool settles after the recovery.
     first.release('!');
-    await first.mcp.shutdown();
+    await first.mcp.executionLifecycle.whenIdle();
+    await Bun.sleep(20);
 
-    expect(storedRecord(store, taskId)?.status).toBe('failed');
+    expect(storedRecord(store, taskId)).toMatchObject({
+      status: 'failed',
+      error: { code: INTERNAL_ERROR },
+    });
+    expect(storedRecord(store, taskId)?.result).toBeUndefined();
+    expect(firstReported).toEqual([]);
     expect(second.started()).toBe(0);
+    await first.mcp.shutdown();
   });
 
   it('acknowledges tasks/update and tasks/cancel on an orphan, then reads it as failed', async () => {
@@ -600,10 +651,42 @@ describe('durability', () => {
       });
       expect(response.error?.code).toBe(INTERNAL_ERROR);
     }
+    // Reported by the three tasks/* handlers, before the tool has settled.
+    expect(reported).toHaveLength(3);
+    for (const error of reported) expect(error).toBeInstanceOf(MCPTaskRecordVersionError);
     harness.release('!');
     await harness.mcp.shutdown();
-    expect(reported.length).toBeGreaterThan(0);
-    expect(reported[0]).toBeInstanceOf(MCPTaskRecordVersionError);
+  });
+
+  it('treats a completed MCP task as unknown after ttlMs and deletes its record', async () => {
+    const clock = { now: 1_000_000 };
+    const harness = await startHarness({ tasks: { ttlMs: 5_000, now: () => clock.now } });
+    const taskId = await createMcpTask(harness);
+    harness.release('!');
+    const finished = await settled(harness.mcp, taskId);
+    expect(finished['status']).toBe('completed');
+    expect(storedRecord(harness.store, taskId)).toBeDefined();
+
+    clock.now += 5_001;
+    const lookup = await getMcpTask(harness.mcp, taskId);
+
+    expect(lookup.error?.code).toBe(INVALID_PARAMS);
+    expect(storedRecord(harness.store, taskId)).toBeUndefined();
+  });
+
+  it('answers -32602, not failed, for an orphaned record past ttlMs', async () => {
+    const clock = { now: 1_000_000 };
+    const store = createStoreDouble();
+    const first = await startHarness({ tasks: { ttlMs: 5_000, now: () => clock.now } }, store);
+    const second = await startHarness({ tasks: { ttlMs: 5_000, now: () => clock.now } }, store);
+    const taskId = await createMcpTask(first);
+
+    clock.now += 5_001;
+    const lookup = await getMcpTask(second.mcp, taskId);
+
+    expect(lookup.error?.code).toBe(INVALID_PARAMS);
+    expect(storedRecord(store, taskId)).toBeUndefined();
+    await first.mcp.shutdown();
   });
 
   it('persists every documented record field', async () => {

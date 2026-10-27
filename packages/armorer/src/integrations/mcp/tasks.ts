@@ -177,6 +177,8 @@ type LiveMcpTask = {
   abort: (reason: unknown) => void;
   expired: boolean;
   abortWrite: Promise<unknown> | undefined;
+  /** Orders this MCP task's writes: each waits for the one before it. */
+  writes: Promise<unknown>;
 };
 
 const MAXIMUM_WRITE_ATTEMPTS = 100;
@@ -221,6 +223,11 @@ export function createMcpTaskRuntime(options: {
   };
   const report = (work: Promise<unknown>): void => {
     void track(work.catch(onError));
+  };
+  /** Runs a write after every earlier write of the same MCP task, so they apply in call order. */
+  const enqueue = (entry: LiveMcpTask, write: () => Promise<unknown>): Promise<unknown> => {
+    entry.writes = entry.writes.then(write).catch(onError);
+    return track(entry.writes);
   };
   const timestamp = () => new Date(now()).toISOString();
   const keyOf = (taskId: string) => `${MCP_TASK_KEY_PREFIX}${taskId}`;
@@ -273,6 +280,22 @@ export function createMcpTaskRuntime(options: {
       return { ...rest, status, ...extra };
     };
 
+  /** Deletes the record by compare-and-set on the value read, never over a newer write. */
+  const deleteWhatIsStored = async (taskId: string): Promise<void> => {
+    for (let attempt = 0; attempt < MAXIMUM_WRITE_ATTEMPTS; attempt += 1) {
+      const raw = await store.get(keyOf(taskId));
+      if (raw === null) return;
+      if (
+        await store.conditionalBatch(
+          [{ key: keyOf(taskId), expectedValue: raw }],
+          [{ type: 'delete', key: keyOf(taskId) }],
+        )
+      ) {
+        return;
+      }
+    }
+  };
+
   const interrupted = (message: string): MCPTaskError => ({
     code: ProtocolErrorCode.InternalError,
     message,
@@ -284,6 +307,14 @@ export function createMcpTaskRuntime(options: {
       const raw = await store.get(keyOf(taskId));
       if (raw === null) throw unknownMcpTask();
       const record = parse(taskId, raw);
+      if (Date.parse(record.createdAt) + record.ttlMs <= now()) {
+        // `ttlMs` is a lifetime from creation whatever the status: the id is now unknown.
+        await store.conditionalBatch(
+          [{ key: keyOf(taskId), expectedValue: raw }],
+          [{ type: 'delete', key: keyOf(taskId) }],
+        );
+        throw unknownMcpTask();
+      }
       if (record.clientId !== clientId) throw unknownMcpTask();
       if (isTerminal(record.status) || record.ownerId === ownerId) return record;
       const failed: MCPTaskRecord = {
@@ -334,6 +365,7 @@ export function createMcpTaskRuntime(options: {
       return await work();
     } catch (error) {
       if (error instanceof MCPTaskRecordVersionError) {
+        onError(error);
         throw new ProtocolError(ProtocolErrorCode.InternalError, error.message);
       }
       throw error;
@@ -351,13 +383,15 @@ export function createMcpTaskRuntime(options: {
         }
         if (outcome.kind === 'complete') {
           const result: Record<string, unknown> = { ...outcome.result, resultType: 'complete' };
-          await mutate(taskId, finish('completed', { result }));
+          await enqueue(entry, () => mutate(taskId, finish('completed', { result })));
           return;
         }
         const inputRequests: InputRequests = {
           [MCP_ELICITATION_INPUT_KEY]: outcome.pending.inputRequest,
         };
-        await mutate(taskId, (record) => ({ ...record, status: 'input_required', inputRequests }));
+        await enqueue(entry, () =>
+          mutate(taskId, (record) => ({ ...record, status: 'input_required', inputRequests })),
+        );
       }
     } catch (error) {
       onError(error);
@@ -369,14 +403,16 @@ export function createMcpTaskRuntime(options: {
   const abortOutcome = (entry: LiveMcpTask, request: MCPTaskExecution) => {
     if (entry.expired) return;
     const source = request.abortSource();
-    entry.abortWrite = mutate(
-      entry.taskId,
-      source === 'caller'
-        ? finish('cancelled')
-        : finish('failed', {
-            error: interrupted('The MCP task was aborted by a server shutdown.'),
-          }),
-    ).catch(onError);
+    entry.abortWrite = enqueue(entry, () =>
+      mutate(
+        entry.taskId,
+        source === 'caller'
+          ? finish('cancelled')
+          : finish('failed', {
+              error: interrupted('The MCP task was aborted by a server shutdown.'),
+            }),
+      ),
+    );
   };
 
   return {
@@ -430,15 +466,18 @@ export function createMcpTaskRuntime(options: {
         abort: request.abort,
         expired: false,
         abortWrite: undefined,
+        writes: Promise.resolve(),
       };
       live.set(taskId, entry);
       const unsubscribe = request.subscribeProgress((message) => {
-        report(mutate(taskId, (current) => ({ ...current, statusMessage: message })));
+        void enqueue(entry, () =>
+          mutate(taskId, (current) => ({ ...current, statusMessage: message })),
+        );
       });
       const timer = setTimeout(() => {
         entry.expired = true;
         request.abort(new Error('The MCP task expired.'));
-        report(store.delete(keyOf(taskId)));
+        report(deleteWhatIsStored(taskId));
       }, ttlMs);
       (timer as { unref?: () => void }).unref?.();
       request.signal.addEventListener('abort', () => abortOutcome(entry, request), { once: true });

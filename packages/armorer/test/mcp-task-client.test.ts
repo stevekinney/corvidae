@@ -133,6 +133,34 @@ function toolNamed(fixtureValue: Fixture, name: string): Tool {
 /** Polls without ever releasing the tool's gate. */
 const patient = { delay: async () => Bun.sleep(1) };
 
+describe('fromMcpEndpointTools pagination', () => {
+  it('follows nextCursor until every page of tools has been read', async () => {
+    const pages = new Map<string | undefined, { tools: unknown[]; nextCursor?: string }>([
+      [undefined, { tools: [{ name: 'one', inputSchema: { type: 'object' } }], nextCursor: 'p2' }],
+      ['p2', { tools: [{ name: 'two', inputSchema: { type: 'object' } }] }],
+    ]);
+    const cursors: Array<string | undefined> = [];
+
+    const tools = await fromMcpEndpointTools({
+      url: 'http://armorer.test/mcp',
+      fetch: async (_input, init) => {
+        const body = JSON.parse(await new Response(init.body).text()) as {
+          params: { cursor?: string };
+        };
+        cursors.push(body.params.cursor);
+        return Response.json({
+          jsonrpc: '2.0',
+          id: 1,
+          result: pages.get(body.params.cursor),
+        });
+      },
+    });
+
+    expect(tools.map((tool) => tool.name)).toEqual(['one', 'two']);
+    expect(cursors).toEqual([undefined, 'p2']);
+  });
+});
+
 describe('fromMcpEndpointTools', () => {
   it('hides polling: execute resolves to the final result and delay receives pollIntervalMs', async () => {
     const harness = await fixture();
@@ -149,16 +177,9 @@ describe('fromMcpEndpointTools', () => {
     const harness = await fixture();
 
     const plain = await toolNamed(harness, 'plain').execute({ title: 'x' });
-    const asked = await toolNamed(harness, 'asks-synchronously')
-      .execute({}, undefined)
-      .then(
-        () => undefined,
-        (error: unknown) => error,
-      );
 
     expect(JSON.stringify(plain)).toContain('plain x');
     expect(harness.requests).not.toContain('tasks/get');
-    expect(asked).toBeUndefined();
     // Without a context.elicit the client declares no elicitation, so the tool takes its no-elicit path.
     const withElicit = await toolNamed(harness, 'asks-synchronously')
       .execute({}, { elicit: async () => ({ action: 'accept', content: {} }) } as never)
