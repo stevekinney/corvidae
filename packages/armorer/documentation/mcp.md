@@ -101,7 +101,7 @@ Accepted form answers are validated against the requested schema in both eras be
 
 ## MCP tasks
 
-A tool can run as an *MCP task*, the 2026-07-28 Tasks extension (`io.modelcontextprotocol/tasks`): `tools/call` returns a handle right away and the client polls `tasks/get` until the result is ready, answers questions with `tasks/update`, and stops the work with `tasks/cancel`. An MCP task is unrelated to Armorer's own execution tasks (`createExecutionTask`); the name always carries the "MCP".
+A tool can run as an _MCP task_, the 2026-07-28 Tasks extension (`io.modelcontextprotocol/tasks`): `tools/call` returns a handle right away and the client polls `tasks/get` until the result is ready, answers questions with `tasks/update`, and stops the work with `tasks/cancel`. An MCP task is unrelated to Armorer's own execution tasks (`createExecutionTask`); the name always carries the "MCP".
 
 Opting in is per tool, with `taskBacked: true` in `metadata.mcp` or in what the `toolConfiguration()` callback returns. The default stays synchronous, and `createMCP` needs a durable store for the records:
 
