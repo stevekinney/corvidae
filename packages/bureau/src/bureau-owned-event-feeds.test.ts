@@ -48,7 +48,7 @@ describe('a bureau’s own event feed', () => {
       await bureau.createRun({ agentName: 'default', message: 'hello' });
 
       const seen: BureauEventEnvelope[] = [];
-      for await (const envelope of bureau.eventFeed.feed.replay()) seen.push(envelope);
+      for await (const envelope of bureau.internals.eventFeed.feed.replay()) seen.push(envelope);
 
       expect(seen.length).toBeGreaterThan(0);
       expect(seen.map((envelope) => envelope.kind)).toContain('run.registered');
@@ -92,7 +92,8 @@ describe('a bureau’s own event feed', () => {
     const seen: string[] = [];
     let ended = false;
     const reading = (async () => {
-      for await (const envelope of bureau.eventFeed.feed.subscribe()) seen.push(envelope.kind);
+      for await (const envelope of bureau.internals.eventFeed.feed.subscribe())
+        seen.push(envelope.kind);
       ended = true;
     })();
     // Wait for the subscription to finish replay and reach the live phase —
@@ -127,7 +128,7 @@ describe('the run feeds a bureau owns', () => {
       const summary = await bureau.createRun({ agentName: 'default', message: 'hello' });
       await waitForRunState(bureau, summary.id);
 
-      const runFeed = bureau.runEventFeeds.get(summary.id);
+      const runFeed = bureau.internals.runEventFeeds.get(summary.id);
       expect(runFeed).toBeDefined();
 
       const seen: string[] = [];
@@ -153,7 +154,10 @@ describe('the run feeds a bureau owns', () => {
     try {
       bureau.addEventListener('run.registered', (event) => {
         const { runId } = event;
-        observed.push({ runId, feedPresent: bureau.runEventFeeds.get(runId) !== undefined });
+        observed.push({
+          runId,
+          feedPresent: bureau.internals.runEventFeeds.get(runId) !== undefined,
+        });
       });
 
       await bureau.createRun({ agentName: 'default', message: 'hello' });
@@ -176,7 +180,7 @@ describe('the run feeds a bureau owns', () => {
       const summary = await bureau.createRun({ agentName: 'default', message: 'hello' });
       await waitForRunState(bureau, summary.id);
 
-      const runFeed = bureau.runEventFeeds.get(summary.id);
+      const runFeed = bureau.internals.runEventFeeds.get(summary.id);
       expect(runFeed).toBeDefined();
 
       const replayed = await collect(runFeed!.feed.replay());
@@ -210,7 +214,7 @@ describe('the run feeds a bureau owns', () => {
       const summary = await bureau.createRun({ agentName: 'default', message: 'hello' });
       await waitForRunState(bureau, summary.id);
 
-      const runFeed = bureau.runEventFeeds.get(summary.id);
+      const runFeed = bureau.internals.runEventFeeds.get(summary.id);
       expect(runFeed).toBeDefined();
 
       const replayed = await collect(runFeed!.feed.replay());
@@ -228,7 +232,7 @@ describe('the run feeds a bureau owns', () => {
     try {
       const summary = await bureau.createRun({ agentName: 'default', message: 'hello' });
       await waitForRunState(bureau, summary.id);
-      const runFeed = bureau.runEventFeeds.get(summary.id);
+      const runFeed = bureau.internals.runEventFeeds.get(summary.id);
       expect(runFeed).toBeDefined();
 
       let ended = false;
@@ -246,7 +250,7 @@ describe('the run feeds a bureau owns', () => {
       // times out instead of failing.
       await reading;
       expect(ended).toBe(true);
-      expect(bureau.runEventFeeds.get(summary.id)).toBeUndefined();
+      expect(bureau.internals.runEventFeeds.get(summary.id)).toBeUndefined();
     } finally {
       await bureau.dispose();
     }
@@ -260,16 +264,16 @@ describe('the run feeds a bureau owns', () => {
     try {
       const summary = await bureau.createRun({ agentName: 'default', message: 'hello' });
       await waitForRunState(bureau, summary.id);
-      const runFeed = bureau.runEventFeeds.get(summary.id);
+      const runFeed = bureau.internals.runEventFeeds.get(summary.id);
 
       const envelopes = [];
       for await (const envelope of runFeed!.feed.replay()) envelopes.push(envelope);
 
       expect(envelopes.length).toBeGreaterThan(0);
       expect(JSON.stringify(envelopes)).not.toContain(CANARY);
-      expect(JSON.stringify([...(await collect(bureau.eventFeed.feed.replay()))])).not.toContain(
-        CANARY,
-      );
+      expect(
+        JSON.stringify([...(await collect(bureau.internals.eventFeed.feed.replay()))]),
+      ).not.toContain(CANARY);
     } finally {
       await bureau.dispose();
     }
@@ -295,7 +299,7 @@ describe('the event-feed pump’s isolation', () => {
     try {
       // The pump reads `publish` off this object on every dispatch, so
       // replacing it here is enough — no need to reach inside `createBureau`.
-      (bureau.eventFeed as unknown as { publish: () => never }).publish = () => {
+      (bureau.internals.eventFeed as unknown as { publish: () => never }).publish = () => {
         throw new Error('feed exploded');
       };
 
@@ -303,7 +307,7 @@ describe('the event-feed pump’s isolation', () => {
       await waitForRunState(bureau, summary.id);
 
       // The run still ran, and the failure was reported rather than swallowed.
-      expect(bureau.store.getRun(summary.id)?.status).not.toBe('running');
+      expect(bureau.internals.store.getRun(summary.id)?.status).not.toBe('running');
       expect(diagnostics.some((entry) => entry.scope === 'event-feed')).toBe(true);
     } finally {
       await bureau.dispose();
@@ -332,7 +336,7 @@ describe('the event-feed pump’s isolation', () => {
       // then, and the feed would never be asked to record anything.
       let poisoned = false;
       bureau.addEventListener('run.registered', (event) => {
-        const feed = bureau.runEventFeeds.get(event.runId);
+        const feed = bureau.internals.runEventFeeds.get(event.runId);
         if (feed === undefined) return;
         // The listener reads `publish` off this object on every event.
         (feed as unknown as { publish: () => never }).publish = () => {

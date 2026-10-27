@@ -58,7 +58,7 @@ describe('a catalog task', () => {
       const run = opened.bureau.run('holder', 'work', { principal: OWNER.alice });
       try {
         await waitForCondition(
-          async () => (await opened.bureau.tasks.get(run.id)) !== undefined,
+          async () => (await opened.bureau.internals.taskRegistry.get(run.id)) !== undefined,
           'the dispatch was never recorded as a task',
         );
 
@@ -83,7 +83,7 @@ describe('a catalog task', () => {
       const run = opened.bureau.run('answerer', 'question', { principal: OWNER.alice });
       await run.result();
       await waitForCondition(async () => {
-        const task = await opened.bureau.tasks.get(run.id);
+        const task = await opened.bureau.internals.taskRegistry.get(run.id);
         return task?.status === 'completed';
       }, 'the task never settled as completed');
 
@@ -106,13 +106,13 @@ describe('a catalog task', () => {
     await withBureau({ agents: { holder } }, async (opened) => {
       const run = opened.bureau.run('holder', 'work', { principal: OWNER.alice });
       await waitForCondition(async () => {
-        const task = await opened.bureau.tasks.get(run.id);
+        const task = await opened.bureau.internals.taskRegistry.get(run.id);
         return task !== undefined;
       }, 'the dispatch was never recorded as a task');
       run.abort('stopped by its owner');
       const acknowledgement = await run.closed();
       await waitForCondition(async () => {
-        const task = await opened.bureau.tasks.get(run.id);
+        const task = await opened.bureau.internals.taskRegistry.get(run.id);
         return task?.status === 'canceled';
       }, 'the task never settled as canceled');
 
@@ -134,7 +134,7 @@ describe('a catalog task', () => {
     await withBureau({ agents: { asker } }, async (opened) => {
       const run = opened.bureau.run('asker', 'which one?', { principal: OWNER.alice });
       await waitForCondition(
-        () => opened.bureau.listPendingReviews().some((review) => review.runId === run.id),
+        () => opened.bureau.reviews.list().some((review) => review.runId === run.id),
         'the run never parked',
       );
 

@@ -144,15 +144,16 @@ describe('createBureauHandler options', () => {
 
   it('refuses to serve A2A over a task retention shorter than a send binding is kept (COR-903)', async () => {
     await withBureau({}, (bureau) => {
-      const retaining = (taskRetention: TestBureau['taskRetention']) => () =>
+      const retaining = (taskRetention: TestBureau['internals']['taskRetention']) => () =>
         createBureauHandler(
           Object.create(bureau, {
-            taskRetention: { value: taskRetention },
-            hasDurableEngine: { value: true },
+            internals: {
+              value: { ...bureau.internals, taskRetention, hasDurableEngine: true },
+            },
           }) as TestBureau,
           { unauthenticatedAccess: 'allow', publicUrl: 'https://example.test' },
         );
-      expect(bureau.taskRetention).toEqual({ olderThan: 30 * 86_400_000 });
+      expect(bureau.internals.taskRetention).toEqual({ olderThan: 30 * 86_400_000 });
       expect(retaining({ olderThan: 86_399_999 })).toThrow(/retention.tasks window to be at least/);
       expect(retaining({ olderThan: 86_400_000 })).not.toThrow();
       expect(retaining('forever')).not.toThrow();
@@ -403,8 +404,8 @@ describe('createBureauHandler bureau id', () => {
 describe('createBureauHandler persistence', () => {
   it('throws when the Bureau persists without an explicit id', async () => {
     await withBureau({ persist: true }, (bureau) => {
-      expect(bureau.kv).toBeDefined();
-      expect(bureau.hasExplicitId).toBe(false);
+      expect(bureau.internals.kv).toBeDefined();
+      expect(bureau.internals.hasExplicitId).toBe(false);
       expect(() => createBureauHandler(bureau, { unauthenticatedAccess: 'allow' })).toThrow(
         /without an explicit `id`/,
       );
@@ -413,7 +414,7 @@ describe('createBureauHandler persistence', () => {
 
   it('serves a persistent Bureau that has an explicit id', async () => {
     await withBureau({ persist: true, id: 'persistent-bureau' }, (bureau) => {
-      expect(bureau.hasExplicitId).toBe(true);
+      expect(bureau.internals.hasExplicitId).toBe(true);
       expect(typeof createBureauHandler(bureau, { unauthenticatedAccess: 'allow' })).toBe(
         'function',
       );
@@ -422,8 +423,8 @@ describe('createBureauHandler persistence', () => {
 
   it('serves an ephemeral Bureau without an explicit id', async () => {
     await withBureau({}, (bureau) => {
-      expect(bureau.kv).toBeUndefined();
-      expect(bureau.hasExplicitId).toBe(false);
+      expect(bureau.internals.kv).toBeUndefined();
+      expect(bureau.internals.hasExplicitId).toBe(false);
       expect(typeof createBureauHandler(bureau, { unauthenticatedAccess: 'allow' })).toBe(
         'function',
       );
@@ -618,7 +619,7 @@ describe('createBureauHandler catalog', () => {
 
   it('streams bureau.events over Server-Sent Events from the Bureau itself', async () => {
     await withBureau({ id: 'events-bureau' }, async (bureau) => {
-      bureau.eventFeed.publish(new RunRegisteredEvent('run-1'));
+      bureau.internals.eventFeed.publish(new RunRegisteredEvent('run-1'));
       const handler = createBureauHandler(bureau, { authentication: allScopes });
 
       const response = await handler(
@@ -636,7 +637,7 @@ describe('createBureauHandler catalog', () => {
         if (done) break;
         text += decoder.decode(value, { stream: true });
       }
-      bureau.eventFeed.publish(new RunRemovedEvent('run-1'));
+      bureau.internals.eventFeed.publish(new RunRemovedEvent('run-1'));
       while (!text.includes('event: run.removed')) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -674,7 +675,7 @@ describe('createBureauHandler catalog', () => {
     try {
       const run = await bureau.createRun({ agentName: 'default', message: 'hello' });
       await waitForCondition(
-        () => bureau.runEventFeeds.get(run.id) !== undefined,
+        () => bureau.internals.runEventFeeds.get(run.id) !== undefined,
         'expected the bureau to create the run feed',
       );
       const handler = createBureauHandler(bureau, { authentication: allScopes });

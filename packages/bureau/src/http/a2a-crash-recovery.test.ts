@@ -234,7 +234,7 @@ describe('a command retried after a crash before its receipt, on a process that 
         service.restart();
         const retried = await service.send(message);
 
-        const listed = await service.bureau.tasks.enumerate({
+        const listed = await service.bureau.internals.taskRegistry.enumerate({
           agentName: 'asker',
           limit: 50,
           offset: 0,
@@ -268,7 +268,7 @@ describe('a command retried after a crash before its receipt, on a process that 
         // what the message referenced.
         const retried = await service.send(message);
 
-        const listed = await service.bureau.tasks.enumerate({
+        const listed = await service.bureau.internals.taskRegistry.enumerate({
           agentName: 'asker',
           limit: 50,
           offset: 0,
@@ -294,7 +294,7 @@ describe('a command retried after a crash before its receipt, on a process that 
           state: 'expired',
           reason: 'deadline-exceeded',
         });
-        const listed = await service.bureau.tasks.enumerate({
+        const listed = await service.bureau.internals.taskRegistry.enumerate({
           agentName: 'asker',
           limit: 50,
           offset: 0,
@@ -396,7 +396,7 @@ describe('a command retried after a crash before its receipt, on a process that 
       service.crashNextComplete();
       await rejectionOf(service.send(answer));
       await waitForCondition(async () => {
-        const view = await service.bureau.tasks.get(parked.id);
+        const view = await service.bureau.internals.taskRegistry.get(parked.id);
         return view?.status === 'completed';
       }, 'the answered task never completed');
       service.restart();
@@ -452,7 +452,7 @@ describe('a completed task’s reply, after a restart that pruned its history', 
         const first = await service.start(userMessage('m-retained', 'ask'));
         expect(JSON.stringify(first.history)).toContain('the retained reply');
         await waitForCondition(async () => {
-          const view = await service.bureau.tasks.get(first.id);
+          const view = await service.bureau.internals.taskRegistry.get(first.id);
           return view?.status === 'completed';
         }, 'the task never completed');
         // The record holds the reply once the task settled, on the instance that ran it.

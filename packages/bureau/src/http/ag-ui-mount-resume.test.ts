@@ -312,12 +312,12 @@ describe('resuming a tool approval', () => {
 
         expect(blank).toHaveLength(1);
         expect(blank[0]!.event).toMatchObject({ code: 'INVALID_INPUT' });
-        expect(bureau.listPendingReviews()).toHaveLength(1);
+        expect(bureau.reviews.list()).toHaveLength(1);
         const denied = await readAgUiStream(
           await handler(resumeRequest([resolved(id, { decision: 'deny', reason: 'Too much' })])),
         );
         expect(denied.at(-1)!.event.type).toBe(EventType.RUN_FINISHED);
-        const audit = JSON.stringify(await bureau.auditTrail?.query({}));
+        const audit = JSON.stringify(await bureau.internals.auditTrail?.query({}));
         expect(audit).toContain('Too much');
       },
     );
@@ -343,7 +343,7 @@ describe('a resume that is refused applies nothing', () => {
           code: 'INTERRUPTS_UNADDRESSED',
           message: expect.stringContaining(first.interruptIds[1]!),
         });
-        expect(bureau.listPendingReviews()).toHaveLength(2);
+        expect(bureau.reviews.list()).toHaveLength(2);
         expect(charges).toEqual([]);
       },
     );
@@ -373,7 +373,7 @@ describe('a resume that is refused applies nothing', () => {
 
         expect(unknown[0]!.event).toMatchObject({ code: 'INTERRUPT_NOT_FOUND' });
         expect(otherThread[0]!.event).toMatchObject({ code: 'INTERRUPT_NOT_FOUND' });
-        expect(bureau.listPendingReviews()).toHaveLength(1);
+        expect(bureau.reviews.list()).toHaveLength(1);
       },
     );
   });
@@ -393,7 +393,7 @@ describe('a resume that is refused applies nothing', () => {
 
         expect(stranger[0]!.event).toMatchObject({ code: 'INTERRUPT_NOT_FOUND' });
         expect(random[0]!.event).toMatchObject({ code: 'INTERRUPT_NOT_FOUND' });
-        expect(bureau.listPendingReviews()).toHaveLength(1);
+        expect(bureau.reviews.list()).toHaveLength(1);
       },
     );
   });
@@ -412,7 +412,7 @@ describe('a duplicate resume', () => {
         const first = await startUntilInterrupted(handler);
         const entries = [resolved(first.interruptIds[0]!)];
         const original = await readAgUiStream(await handler(resumeRequest(entries)));
-        const resolve = spyOn(bureau, 'resolveReview');
+        const resolve = spyOn(bureau.reviews, 'resolve');
         const runsBefore = bureau.listRuns().length;
 
         // A client that mints a fresh runId for its retry is still a retry.
@@ -447,7 +447,7 @@ describe('a duplicate resume', () => {
       async ({ handler, bureau }) => {
         const first = await startUntilInterrupted(handler);
         const entries = [resolved(first.interruptIds[0]!)];
-        const resolve = spyOn(bureau, 'resolveReview');
+        const resolve = spyOn(bureau.reviews, 'resolve');
 
         const [left, right] = await Promise.all([
           handler(resumeRequest(entries)),
@@ -582,7 +582,7 @@ describe('a resume that did not finish', () => {
       },
       async ({ handler, bureau }) => {
         const first = await startUntilInterrupted(handler);
-        const resolve = spyOn(bureau, 'resolveReview').mockRejectedValueOnce(
+        const resolve = spyOn(bureau.reviews, 'resolve').mockRejectedValueOnce(
           new Error('session store unavailable'),
         );
 
@@ -617,7 +617,7 @@ describe('a resume that did not finish', () => {
         const first = await startUntilInterrupted(harness.handler);
         const entries = [resolved(first.interruptIds[0]!)];
         // The first process claims the resume and dies before it resolves anything.
-        const resolve = spyOn(harness.bureau, 'resolveReview').mockImplementationOnce(() =>
+        const resolve = spyOn(harness.bureau.reviews, 'resolve').mockImplementationOnce(() =>
           never(),
         );
         void harness.handler(resumeRequest(entries));
@@ -653,7 +653,7 @@ describe('a resume that did not finish', () => {
         void harness.handler(resumeRequest(entries));
         await waitForCondition(() => createRun.mock.calls.length === 1, 'the run never started');
         createRun.mockRestore();
-        expect(harness.bureau.listPendingReviews()).toHaveLength(0);
+        expect(harness.bureau.reviews.list()).toHaveLength(0);
         await living.advance(DEFAULT_AG_UI_LEASE_MS);
 
         const retry = await readAgUiStream(
@@ -687,7 +687,7 @@ describe('a resume that cannot write the approval’s outcome into the conversat
       },
       async ({ handler, bureau }) => {
         const first = await startUntilInterrupted(handler);
-        const store = bureau.sessionStore!;
+        const store = bureau.internals.sessionStore!;
         const update = store.update.bind(store);
         const failing = spyOn(store, 'update').mockImplementation((id, updater, options) =>
           update(
@@ -754,7 +754,7 @@ describe('cancelling a run that is settled with an approval pending', () => {
         expect(cancelled.status).toBe(200);
         expect(busy[0]!.event).toMatchObject({ type: EventType.RUN_ERROR, code: 'THREAD_BUSY' });
         expect(answered.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
-        expect(bureau.listPendingReviews()).toEqual([]);
+        expect(bureau.reviews.list()).toEqual([]);
         expect(freed.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
       },
     );
@@ -774,7 +774,7 @@ describe('the resume ledger’s retention', () => {
       async ({ handler, bureau }) => {
         const first = await startUntilInterrupted(handler);
         await readAgUiStream(await handler(resumeRequest([resolved(first.interruptIds[0]!)])));
-        const keys = () => bureau.kv!.list('command-ledger:ag-ui-resume:v1:entry:');
+        const keys = () => bureau.internals.kv!.list('command-ledger:ag-ui-resume:v1:entry:');
         expect(await keys()).toHaveLength(1);
 
         await runtime.advance(25 * 60 * 60 * 1000);
@@ -1067,8 +1067,8 @@ describe('a resume that another process is applying', () => {
         const first = await startUntilInterrupted(harness.handler);
         const entries = [resolved(first.interruptIds[0]!)];
         const held = barrier();
-        const real = harness.bureau.resolveReview.bind(harness.bureau);
-        const resolve = spyOn(harness.bureau, 'resolveReview');
+        const real = harness.bureau.reviews.resolve.bind(harness.bureau);
+        const resolve = spyOn(harness.bureau.reviews, 'resolve');
         resolve.mockImplementationOnce(async (input) => {
           held.reach();
           await held.released;
@@ -1111,8 +1111,8 @@ describe('a resume that another process is applying', () => {
         const first = await startUntilInterrupted(harness.handler);
         const entries = [resolved(first.interruptIds[0]!)];
         const held = barrier();
-        const real = harness.bureau.resolveReview.bind(harness.bureau);
-        spyOn(harness.bureau, 'resolveReview').mockImplementationOnce(async (input) => {
+        const real = harness.bureau.reviews.resolve.bind(harness.bureau);
+        spyOn(harness.bureau.reviews, 'resolve').mockImplementationOnce(async (input) => {
           held.reach();
           await held.released;
           return real(input);
@@ -1159,8 +1159,8 @@ describe('a resume applied by another Bureau over the same store', () => {
         try {
           const held = barrier();
           const reached = barrier();
-          const real = harness.bureau.resolveReview.bind(harness.bureau);
-          spyOn(harness.bureau, 'resolveReview').mockImplementationOnce(async (input) => {
+          const real = harness.bureau.reviews.resolve.bind(harness.bureau);
+          spyOn(harness.bureau.reviews, 'resolve').mockImplementationOnce(async (input) => {
             reached.reach();
             await held.released;
             return real(input);
@@ -1279,9 +1279,9 @@ describe('a resume through the route of another published agent', () => {
       async ({ handler, bureau }) => {
         const first = await startUntilInterrupted(handler);
         const entries = [resolved(first.interruptIds[0]!)];
-        const getReview = bureau.getReview.bind(bureau);
+        const getReview = bureau.reviews.get.bind(bureau.reviews);
         // A review read back without its agent, as one rebuilt from an older record is.
-        spyOn(bureau, 'getReview').mockImplementation(async (id) => {
+        spyOn(bureau.reviews, 'get').mockImplementation(async (id) => {
           const review = await getReview(id);
           return review === undefined ? undefined : { ...review, agentName: undefined };
         });
@@ -1307,8 +1307,8 @@ describe('a resume through the route of another published agent', () => {
       async ({ handler, bureau }) => {
         const first = await startUntilInterrupted(handler);
         const entries = [resolved(first.interruptIds[0]!)];
-        const getReview = bureau.getReview.bind(bureau);
-        spyOn(bureau, 'getReview').mockImplementation(async (id) => {
+        const getReview = bureau.reviews.get.bind(bureau.reviews);
+        spyOn(bureau.reviews, 'get').mockImplementation(async (id) => {
           const review = await getReview(id);
           return review === undefined ? undefined : { ...review, agentName: undefined };
         });
@@ -1328,7 +1328,7 @@ describe('a resume through the route of another published agent', () => {
 
         expect(failed).toBe(1);
         expect(refused[0]!.event).toMatchObject({ code: 'INTERRUPT_NOT_FOUND' });
-        expect(bureau.listPendingReviews()).toHaveLength(1);
+        expect(bureau.reviews.list()).toHaveLength(1);
         expect(charges).toEqual([]);
       },
     );
@@ -1384,10 +1384,10 @@ describe('a resume whose lease was taken over before it resolved anything', () =
       async (harness) => {
         const first = await startUntilInterrupted(harness.handler);
         const entries = [resolved(first.interruptIds[0]!)];
-        const resolve = spyOn(harness.bureau, 'resolveReview');
+        const resolve = spyOn(harness.bureau.reviews, 'resolve');
         // The claimant is held where it renews its leases before it resolves: the
         // first read of the command's lease is its claim, the second is that renewal.
-        const kv = harness.bureau.kv!;
+        const kv = harness.bureau.internals.kv!;
         const get = kv.get.bind(kv);
         const reached = barrier();
         const held = barrier();
@@ -1438,13 +1438,13 @@ describe('a resume whose approvals are only partly applied', () => {
       async ({ handler, bureau }) => {
         const first = await startUntilInterrupted(handler);
         const entries = first.interruptIds.map((id) => resolved(id));
-        const resolve = spyOn(bureau, 'resolveReview').mockRejectedValueOnce(
+        const resolve = spyOn(bureau.reviews, 'resolve').mockRejectedValueOnce(
           new Error('session store unavailable'),
         );
 
         const partial = await readAgUiStream(await handler(resumeRequest(entries)));
         resolve.mockRestore();
-        const pendingAfterPartial = bureau.listPendingReviews().length;
+        const pendingAfterPartial = bureau.reviews.list().length;
         const runsAfterPartial = bureau.listRuns().length;
         const retry = await readAgUiStream(
           await handler(resumeRequest(entries, {}, 'client-run-3')),
@@ -1474,7 +1474,7 @@ describe('a resume that loses its ledger claim after it took effect', () => {
       },
       async ({ handler, bureau }) => {
         const first = await startUntilInterrupted(handler);
-        const kv = bureau.kv!;
+        const kv = bureau.internals.kv!;
         const batch = kv.conditionalBatch.bind(kv);
         // The completion of the resume's ledger entry finds the entry changed.
         const lost = spyOn(kv, 'conditionalBatch').mockImplementation((conditions, operations) =>
@@ -1504,7 +1504,7 @@ describe('a resume that loses its ledger claim after it took effect', () => {
 describe('a resume retried after an attempt whose outcome was not written', () => {
   /** The first attempt resolves the approval, cannot write its outcome, and never gets to release its claim. */
   async function deadAttempt(harness: Harness, entries: ResumeEntry[]) {
-    const store = harness.bureau.sessionStore!;
+    const store = harness.bureau.internals.sessionStore!;
     const update = store.update.bind(store);
     const failingWrite = spyOn(store, 'update').mockImplementation((id, updater, options) =>
       update(
@@ -1523,7 +1523,7 @@ describe('a resume retried after an attempt whose outcome was not written', () =
         options,
       ),
     );
-    const kv = harness.bureau.kv!;
+    const kv = harness.bureau.internals.kv!;
     const batch = kv.conditionalBatch.bind(kv);
     const reached = barrier();
     const dying = spyOn(kv, 'conditionalBatch').mockImplementation((conditions, operations) => {
@@ -1614,8 +1614,8 @@ describe('a tool approval of a run that is still going', () => {
         const start = new FrameReader(await handler(startRequest(runAgentInput())));
         await start.until(EventType.STEP_STARTED);
         await generate.reached('next-step');
-        await waitForCondition(() => bureau.listPendingReviews().length === 1, 'no review listed');
-        const pendingId = bureau.listPendingReviews()[0]!.id;
+        await waitForCondition(() => bureau.reviews.list().length === 1, 'no review listed');
+        const pendingId = bureau.reviews.list()[0]!.id;
 
         const attach = new FrameReader(await handler(attachThreadRequest('thread-1')));
         const opening = await attach.until(EventType.STATE_SNAPSHOT);
@@ -1643,7 +1643,7 @@ describe('a tool approval of a run that is still going', () => {
 
 /** The states of the resume ledger's entries, with the mode a completed one answered in. */
 async function ledgerStates(bureau: Harness['bureau']): Promise<string[]> {
-  const kv = bureau.kv!;
+  const kv = bureau.internals.kv!;
   const states: string[] = [];
   for (const key of await kv.list('command-ledger:ag-ui-resume:v1:entry:')) {
     const raw = await kv.get(key);
@@ -1684,7 +1684,7 @@ describe('an approval no run can continue from', () => {
           () => bureau.getRun(bureau.listRuns()[0]!.id)?.status === 'completed',
           'run did not settle',
         );
-        const id = bureau.listPendingReviews()[0]!.id;
+        const id = bureau.reviews.list()[0]!.id;
         const entry: ResumeEntry =
           payload === undefined ? { interruptId: id, status: 'cancelled' } : resolved(id, payload);
 
@@ -1717,7 +1717,7 @@ describe('an approval no run can continue from', () => {
           type: EventType.RUN_FINISHED,
           outcome: { type: 'success' },
         });
-        expect(bureau.listPendingReviews()).toEqual([]);
+        expect(bureau.reviews.list()).toEqual([]);
         expect(next.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
         expect(charges).toEqual([]);
       });
@@ -1738,16 +1738,16 @@ describe('an approval no run can continue from', () => {
           'run did not settle',
         );
         const entries = [
-          { interruptId: bureau.listPendingReviews()[0]!.id, status: 'cancelled' as const },
+          { interruptId: bureau.reviews.list()[0]!.id, status: 'cancelled' as const },
         ];
         // The claimant refuses the approval and dies before it says so.
-        const resolve = bureau.resolveReview.bind(bureau);
-        spyOn(bureau, 'resolveReview').mockImplementationOnce(async (input) => {
+        const resolve = bureau.reviews.resolve.bind(bureau.reviews);
+        spyOn(bureau.reviews, 'resolve').mockImplementationOnce(async (input) => {
           await resolve(input);
           return never();
         });
         void handler(resumeRequest(entries));
-        await waitForCondition(() => bureau.listPendingReviews().length === 0, 'never refused');
+        await waitForCondition(() => bureau.reviews.list().length === 0, 'never refused');
         await living.advance(DEFAULT_AG_UI_LEASE_MS);
 
         const retry = await readAgUiStream(
@@ -1763,14 +1763,14 @@ describe('an approval no run can continue from', () => {
         // The retry completed the command: its entry is done, and asking again resolves
         // and starts nothing more.
         expect(await ledgerStates(bureau)).toEqual(['completed:superseded']);
-        const resolveCalls = (bureau.resolveReview as unknown as { mock: { calls: unknown[] } })
+        const resolveCalls = (bureau.reviews.resolve as unknown as { mock: { calls: unknown[] } })
           .mock.calls.length;
         const again = await readAgUiStream(
           await harness.remount({ runtime: living })(resumeRequest(entries, {}, 'client-run-4')),
         );
         expect(again.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
         expect(
-          (bureau.resolveReview as unknown as { mock: { calls: unknown[] } }).mock.calls.length,
+          (bureau.reviews.resolve as unknown as { mock: { calls: unknown[] } }).mock.calls.length,
         ).toBe(resolveCalls);
         expect(bureau.listRuns()).toHaveLength(1);
       },
@@ -1790,7 +1790,7 @@ describe('an approval no run can continue from', () => {
           () => bureau.getRun(bureau.listRuns()[0]!.id)?.status === 'completed',
           'run did not settle',
         );
-        const id = bureau.listPendingReviews()[0]!.id;
+        const id = bureau.reviews.list()[0]!.id;
         // The claimant holds the command and dies inside the check that decides whether
         // a run can continue, before it has refused or resolved anything.
         const getSession = bureau.getSession.bind(bureau);
@@ -1814,7 +1814,7 @@ describe('an approval no run can continue from', () => {
 
         expect(retry[0]!.event).toMatchObject({ code: 'CONTINUATION_UNAVAILABLE' });
         expect(charges).toEqual([]);
-        expect(bureau.listPendingReviews().map((review) => review.id)).toEqual([id]);
+        expect(bureau.reviews.list().map((review) => review.id)).toEqual([id]);
         expect(bureau.listRuns()).toHaveLength(1);
         // The refusal released the command, so the way out is still open.
         const cancelled = await readAgUiStream(
@@ -1823,7 +1823,7 @@ describe('an approval no run can continue from', () => {
           ),
         );
         expect(cancelled.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
-        expect(bureau.listPendingReviews()).toEqual([]);
+        expect(bureau.reviews.list()).toEqual([]);
       },
     );
   });
@@ -1836,7 +1836,7 @@ describe('an approval no run can continue from', () => {
         () => bureau.getRun(bureau.listRuns()[0]!.id)?.status === 'completed',
         'run did not settle',
       );
-      const id = bureau.listPendingReviews()[0]!.id;
+      const id = bureau.reviews.list()[0]!.id;
 
       const refused = await readAgUiStream(await handler(resumeRequest([resolved(id)])));
 
@@ -1927,7 +1927,7 @@ describe('a step that asks a human and calls a gated tool', () => {
           expect(approved.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
           expect(charges).toEqual([500]);
           expect(bureau.listRuns()).toHaveLength(2);
-          expect(bureau.listPendingReviews()).toEqual([]);
+          expect(bureau.reviews.list()).toEqual([]);
           const seen = JSON.stringify(generate.calls.at(-1)!.context.conversation.getMessages());
           expect(seen).toContain('visa');
           expect(seen).toContain('charged');
@@ -1952,7 +1952,7 @@ describe('a step that asks a human and calls a gated tool', () => {
           () => bureau.getRun(bureau.listRuns()[0]!.id)?.status === 'completed',
           'run did not settle',
         );
-        const id = bureau.listPendingReviews()[0]!.id;
+        const id = bureau.reviews.list()[0]!.id;
         const entries = [resolved(id)];
 
         const refused = await readAgUiStream(await handler(resumeRequest(entries)));
@@ -1969,7 +1969,7 @@ describe('a step that asks a human and calls a gated tool', () => {
         // The entry was released, so a retry gets the same answer rather than "in progress".
         expect(again[0]!.event).toMatchObject({ code: 'CONTINUATION_UNAVAILABLE' });
         expect(charges).toEqual([]);
-        expect(bureau.listPendingReviews().map((review) => review.id)).toEqual([id]);
+        expect(bureau.reviews.list().map((review) => review.id)).toEqual([id]);
         expect(bureau.listRuns()).toHaveLength(1);
       },
     );
@@ -2061,7 +2061,7 @@ describe('the human’s answer, streamed under the id the run commits it by', ()
         const first = await startUntilInterrupted(harness.handler);
         const entries = [answerOf(first.interruptIds[0]!, 'yes')];
         // The first attempt delivers the answer and dies before it completes its claim.
-        const kv = harness.bureau.kv!;
+        const kv = harness.bureau.internals.kv!;
         const batch = kv.conditionalBatch.bind(kv);
         const completing = barrier();
         const dying = spyOn(kv, 'conditionalBatch').mockImplementation((conditions, operations) => {
@@ -2118,7 +2118,7 @@ describe('the human’s answer, streamed under the id the run commits it by', ()
       async ({ handler, bureau, generate }) => {
         const first = await startUntilInterrupted(handler);
         const entries = [answerOf(first.interruptIds[0]!, 'yes')];
-        const resolve = spyOn(bureau, 'resolveReview');
+        const resolve = spyOn(bureau.reviews, 'resolve');
         withTranscriptHidden(bureau);
 
         const applying = handler(resumeRequest(entries));

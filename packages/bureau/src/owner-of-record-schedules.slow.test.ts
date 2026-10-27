@@ -99,7 +99,10 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
         [fire.runId]: 'api-key:alice',
       });
 
-      const fired = await bureau.auditTrail?.query({ runId: fire.runId, type: 'schedule.fired' });
+      const fired = await bureau.internals.auditTrail?.query({
+        runId: fire.runId,
+        type: 'schedule.fired',
+      });
       expect(fired).toHaveLength(1);
       expect(fired?.[0]?.principal).toBe('system:scheduler');
       expect(await bureau.getOwner({ kind: 'audit', runId: fire.runId })).toBe('api-key:alice');
@@ -157,7 +160,10 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
 
       // The refused fire is still a fire: it is audited once, and its run is Alice's.
       const refusedRunId = failed[0]!;
-      const fired = await bureau.auditTrail?.query({ runId: refusedRunId, type: 'schedule.fired' });
+      const fired = await bureau.internals.auditTrail?.query({
+        runId: refusedRunId,
+        type: 'schedule.fired',
+      });
       expect(fired?.map((entry) => entry.principal)).toEqual(['system:scheduler']);
       expect(await bureau.getOwner({ kind: 'run', id: refusedRunId })).toBe('api-key:alice');
       expect(await bureau.getOwner({ kind: 'audit', runId: refusedRunId })).toBe('api-key:alice');
@@ -275,7 +281,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
   it('records a fire refused because its session belongs to a goal, with its owner and audit entry', async () => {
     const bureau = await openBureau();
     try {
-      await bureau.sessionStore?.save(
+      await bureau.internals.sessionStore?.save(
         createAgentSession({
           id: 'plain-session-with-goal',
           agentName: 'default',
@@ -297,7 +303,10 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       await bureau.cancelSchedule(summary!.id);
 
       const refusedRunId = failed[0]!;
-      const fired = await bureau.auditTrail?.query({ runId: refusedRunId, type: 'schedule.fired' });
+      const fired = await bureau.internals.auditTrail?.query({
+        runId: refusedRunId,
+        type: 'schedule.fired',
+      });
       expect(fired?.map((entry) => entry.principal)).toEqual(['system:scheduler']);
       expect(await bureau.getOwner({ kind: 'run', id: refusedRunId })).toBe('api-key:alice');
     } finally {

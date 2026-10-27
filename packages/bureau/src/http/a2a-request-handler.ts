@@ -88,7 +88,7 @@ import {
 import { BureauError } from '../create-bureau.ts';
 import { TaskListingTokenError } from '../task-list-snapshots.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
-import type { Bureau } from '../types.ts';
+import type { Bureau, BureauReviews } from '../types.ts';
 import { A2UI_EXTENSION_URI, supportedCatalogIdsOf } from '../a2ui/catalogs.ts';
 import { surfaceActionOf } from './a2a-surface-actions.ts';
 import { declaredExtensionsOf } from './a2a-agent-card.ts';
@@ -132,7 +132,12 @@ import { bearsSettlement } from '../task-resync.ts';
 import type { A2APushCaller, A2APushCheckpoints } from './a2a-push-checkpoint.ts';
 import type { A2APushDelivery, A2APushProjector } from './a2a-push-projector.ts';
 import { INPUT_FORM_SUBMIT_EVENT } from '../a2ui/input-form.ts';
-import { formsOf, formSurfaceId, type WaitForm } from './a2a-input-forms.ts';
+import {
+  type FormsAuditInternals,
+  formsOf,
+  formSurfaceId,
+  type WaitForm,
+} from './a2a-input-forms.ts';
 import { createTaskReader } from './a2a-task-reader.ts';
 import { ownerOfPrincipal } from './owner-predicate.ts';
 
@@ -268,24 +273,25 @@ export type A2ABureau = Pick<
   | 'getOwner'
   | 'submitSessionInput'
   | 'eventHistory'
-  | 'getReview'
   | 'subscribeEventHistory'
   | 'addEventListener'
   | 'removeEventListener'
   | 'assets'
   | 'surfaces'
-> & {
-  readonly tasks: Pick<
-    TaskRegistry,
-    | 'get'
-    | 'record'
-    | 'cancel'
-    | 'list'
-    | 'onSettled'
-    | 'onChanged'
-    | 'recordAdmission'
-    | 'recordSettled'
-  >;
+> & { readonly reviews: Pick<BureauReviews, 'get'> } & {
+  readonly internals: FormsAuditInternals & {
+    readonly taskRegistry: Pick<
+      TaskRegistry,
+      | 'get'
+      | 'record'
+      | 'cancel'
+      | 'list'
+      | 'onSettled'
+      | 'onChanged'
+      | 'recordAdmission'
+      | 'recordSettled'
+    >;
+  };
 };
 
 /** What {@link createBureauA2ARequestHandler} needs. */
@@ -762,7 +768,7 @@ export function createBureauA2ARequestHandler(
   /** The caller's task on this agent, or the not-found answer a denial shares with absence. */
   async function ownTask(taskId: string, owner: Owner): Promise<TaskView> {
     if (taskId === '') throw invalid('A task id is required.');
-    const view = await bureau.tasks.get(taskId);
+    const view = await bureau.internals.taskRegistry.get(taskId);
     if (view === undefined || view.owner !== owner || view.agentName !== agentName) {
       throw taskNotFound(taskId);
     }
@@ -874,7 +880,7 @@ export function createBureauA2ARequestHandler(
     if (retained === undefined) return true;
     if (retained.events.some((event) => bearsSettlement(event))) return true;
     if (retained.events.length > 0) return false;
-    const stored = await bureau.tasks.record(taskId);
+    const stored = await bureau.internals.taskRegistry.record(taskId);
     return stored?.resyncPending !== true;
   }
 
@@ -902,13 +908,13 @@ export function createBureauA2ARequestHandler(
       changed = true;
       wake?.();
     };
-    const stopSettled = bureau.tasks.onSettled(taskId, notify);
-    const stopChanged = bureau.tasks.onChanged(taskId, notify);
+    const stopSettled = bureau.internals.taskRegistry.onSettled(taskId, notify);
+    const stopChanged = bureau.internals.taskRegistry.onChanged(taskId, notify);
     signal?.addEventListener('abort', notify, { once: true });
     try {
       for (;;) {
         changed = false;
-        const view = await bureau.tasks.get(taskId);
+        const view = await bureau.internals.taskRegistry.get(taskId);
         if (view === undefined) throw taskNotFound(taskId);
         if (isSettled(view.status) || signal?.aborted === true) return view;
         if (changed) continue;
@@ -977,7 +983,7 @@ export function createBureauA2ARequestHandler(
       }
     }
     for (const referenced of message.referenceTaskIds) {
-      const view = await bureau.tasks.get(referenced);
+      const view = await bureau.internals.taskRegistry.get(referenced);
       if (view === undefined || view.owner !== owner || view.agentName !== agentName) {
         throw invalid(
           `referenceTaskIds names '${referenced}', which is not your task on this agent.`,
@@ -1071,7 +1077,7 @@ export function createBureauA2ARequestHandler(
       throw error;
     }
     onEffect();
-    const admitted = await bureau.tasks.record(run.id);
+    const admitted = await bureau.internals.taskRegistry.record(run.id);
     await records.create({
       recordVersion: 1,
       taskId: run.id,
@@ -1097,10 +1103,10 @@ export function createBureauA2ARequestHandler(
       stop?.();
       await reader.recordSettled(view).catch(() => undefined);
     };
-    stop = bureau.tasks.onSettled(taskId, record);
+    stop = bureau.internals.taskRegistry.onSettled(taskId, record);
     // A task that settled before the listener was added is not announced.
     void (async () => {
-      const view = await bureau.tasks.get(taskId);
+      const view = await bureau.internals.taskRegistry.get(taskId);
       if (view !== undefined && isTerminal(view.status)) await record(view);
     })().catch(() => undefined);
   }
@@ -1127,14 +1133,14 @@ export function createBureauA2ARequestHandler(
       .join('')}`;
     // A retry after a failed step resumes it: each step below is skipped once it has happened.
     // The task's own record keeps the message, so there is no side record to outlive its retention.
-    const existing = await bureau.tasks.get(taskId);
+    const existing = await bureau.internals.taskRegistry.get(taskId);
     // A retry that finds its task finishes it: what the message referenced is not checked again.
     if (!(resuming && existing !== undefined)) await checkNewTask(message, owner);
     // From here the task may exist: a failure later keeps the claim, so a retry finishes this
     // task instead of claiming afresh.
     onEffect();
     if (existing === undefined) {
-      await bureau.tasks.recordAdmission({
+      await bureau.internals.taskRegistry.recordAdmission({
         taskId,
         contextId:
           message.contextId === '' ? runtime.identifiers.next('session') : message.contextId,
@@ -1145,7 +1151,7 @@ export function createBureauA2ARequestHandler(
       });
     }
     if (existing === undefined || !['completed', 'failed', 'canceled'].includes(existing.status)) {
-      await bureau.tasks.recordSettled(taskId, {
+      await bureau.internals.taskRegistry.recordSettled(taskId, {
         at: new Date(runtime.clock.now()).toISOString(),
         status: 'failed',
         finishReason: 'deadline-exceeded',
@@ -1167,7 +1173,7 @@ export function createBureauA2ARequestHandler(
     }
     // A context deleted and created again under the same id is a new one: a task of the earlier
     // incarnation does not continue in it, whatever state the task is in.
-    const stored = await bureau.tasks.record(view.id);
+    const stored = await bureau.internals.taskRegistry.record(view.id);
     if (stored !== undefined && stored.incarnation !== '') {
       const session = await bureau.getSession(view.contextId);
       if ((session?.incarnation ?? '') !== stored.incarnation) {
@@ -1195,7 +1201,7 @@ export function createBureauA2ARequestHandler(
   ) {
     // The incarnation the continuation was checked against travels with it: a context deleted and
     // created again between the check and the admission is not given this message.
-    const stored = await bureau.tasks.record(view.id);
+    const stored = await bureau.internals.taskRegistry.record(view.id);
     const outcome = await bureau.submitSessionInput(view.contextId, {
       id: message.messageId,
       principal: owner,
@@ -1307,7 +1313,7 @@ export function createBureauA2ARequestHandler(
         ? undefined
         : { ...current, history: [...current.history, entry] };
     if ((await records.update(view.id, append)) !== undefined) return;
-    const stored = await bureau.tasks.record(view.id);
+    const stored = await bureau.internals.taskRegistry.record(view.id);
     const created = await records.create({
       recordVersion: 1,
       taskId: view.id,
@@ -1815,7 +1821,7 @@ export function createBureauA2ARequestHandler(
         const { taskId, shape, receipt, deadline } = await admitOnce(params, context);
         const view =
           params.configuration?.returnImmediately === true
-            ? await bureau.tasks.get(taskId)
+            ? await bureau.internals.taskRegistry.get(taskId)
             : await settledUntil(taskId, context, deadline, receipt.commandId);
         if (view === undefined) throw taskNotFound(taskId);
         return await respondWith(view, shape, receipt);
@@ -1866,12 +1872,12 @@ export function createBureauA2ARequestHandler(
       if (isTerminal(view.status)) {
         throw new TaskNotCancelableError(`Task '${view.id}' is ${view.status}.`);
       }
-      const outcome = await bureau.tasks.cancel(view.id, cancelWait);
+      const outcome = await bureau.internals.taskRegistry.cancel(view.id, cancelWait);
       if (outcome === undefined) throw taskNotFound(view.id);
       if (outcome.reason === 'already-terminal') {
         throw new TaskNotCancelableError(`Task '${view.id}' finished before it could be canceled.`);
       }
-      const current = (await bureau.tasks.get(view.id)) ?? view;
+      const current = (await bureau.internals.taskRegistry.get(view.id)) ?? view;
       return respondWith(current, { includeArtifacts: true, activated });
     },
 
@@ -1910,7 +1916,7 @@ export function createBureauA2ARequestHandler(
       };
       let page;
       try {
-        page = await bureau.tasks.list({
+        page = await bureau.internals.taskRegistry.list({
           principal: owner,
           owner,
           agentName,

@@ -111,7 +111,7 @@ describe('a fire canceled with a committed approval, then a crash before the can
       expect(
         await auditRecordsOf(restarted, fireId, 'review.tool-approval.canceled', review.id),
       ).toHaveLength(1);
-      const closed = await restarted.getReview(review.id);
+      const closed = await restarted.reviews.get(review.id);
       expect(closed?.status).toBe('canceled');
       await pollUntil(async () => {
         const kinds = await historyKinds(restarted, fireId);
@@ -166,7 +166,7 @@ describe('a fire canceled while parked on a human wait', () => {
     expect(
       await auditRecordsOf(bureau, fireId, 'review.human-wait.canceled', review.id),
     ).toHaveLength(1);
-    const closed = await bureau.getReview(review.id);
+    const closed = await bureau.reviews.get(review.id);
     expect(closed?.status).toBe('canceled');
   });
 
@@ -267,7 +267,7 @@ describe('a fire approval’s session prune commits before its in-memory state i
     );
     expect(reviewsOf(bureau, fireId)).toEqual([]);
     const refusal = await rejectionOf(
-      bureau.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice }),
+      bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice }),
     );
     expect((refusal as BureauError).code).toBe('NOT_FOUND');
     const state = scheduledFireReviewStateOf(bureau);
@@ -281,7 +281,7 @@ describe('a fire approval’s session prune commits before its in-memory state i
     await runtime.advance(60_001);
     await pollUntil(async () => {
       await bureau.runDurableMaintenance();
-      return (await bureau.tasks.record(fireId)) === undefined ? true : undefined;
+      return (await bureau.internals.taskRegistry.record(fireId)) === undefined ? true : undefined;
     }, 'the fire’s task to leave retention');
 
     const after = await bureau.getSession(SESSION);

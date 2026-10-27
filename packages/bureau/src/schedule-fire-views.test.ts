@@ -63,7 +63,7 @@ describe('a task stream resumed at the snapshot cursor', () => {
       await handler(subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key', '-1')),
       { timeoutMs: 10_000 },
     );
-    await bureau.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
+    await bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice });
     const frames = await reading;
 
     expect(frames.map((frame) => (frame.data as { status?: string }).status)).toEqual([

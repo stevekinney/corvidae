@@ -148,7 +148,7 @@ describe('a tool approval', () => {
         ]);
         expect(types).toContain(EventType.TOOL_CALL_RESULT);
         // The review is the same one the management plane lists.
-        expect(bureau.listPendingReviews().map((review) => review.id)).toEqual([
+        expect(bureau.reviews.list().map((review) => review.id)).toEqual([
           `approval:${nativeRunId}:call-1`,
         ]);
         // Nothing the approval is signed with, and no arguments the interrupt does not need.
@@ -167,7 +167,7 @@ describe('a tool approval', () => {
       { script: [chargeCard], toolbox: approvalToolbox([]) },
       async ({ handler, bureau }) => {
         await readAgUiStream(await handler(startRequest(runAgentInput())));
-        const [review] = bureau.listPendingReviews();
+        const [review] = bureau.reviews.list();
 
         const frames = await readAgUiStream(await handler(attachThreadRequest('thread-1')));
 
@@ -283,7 +283,7 @@ describe('cancelling a run that settled with an approval pending', () => {
       async ({ handler, bureau }) => {
         const first = await readAgUiStream(await handler(startRequest(runAgentInput())));
         const nativeRunId = String(bureauMetadata(first[0]!.event)['runId']);
-        const [review] = bureau.listPendingReviews();
+        const [review] = bureau.reviews.list();
         const next = () =>
           handler(
             startRequest(
@@ -335,7 +335,7 @@ describe('a human wait', () => {
           EventType.STEP_FINISHED,
           EventType.RUN_FINISHED,
         ]);
-        const [review] = bureau.listPendingReviews();
+        const [review] = bureau.reviews.list();
         expect(review).toMatchObject({ kind: 'human-wait', runId: nativeRunId });
         expect(frames.at(-1)!.event).toMatchObject({
           outcome: {
@@ -371,11 +371,8 @@ describe('a human wait', () => {
       async ({ handler, bureau }) => {
         const started = new FrameReader(await handler(startRequest(runAgentInput())));
         await started.rest();
-        await waitForCondition(
-          () => bureau.listPendingReviews().length === 1,
-          'the run never parked',
-        );
-        const nativeRunId = bureau.listPendingReviews()[0]!.runId;
+        await waitForCondition(() => bureau.reviews.list().length === 1, 'the run never parked');
+        const nativeRunId = bureau.reviews.list()[0]!.runId;
 
         const frames = await readAgUiStream(await handler(attachRunRequest(nativeRunId)));
 

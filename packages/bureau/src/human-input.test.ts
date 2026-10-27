@@ -21,7 +21,7 @@
 //   AB-336 names, reproduced by this file's own recovery test below BEFORE
 //   the fix and green after it. A run recovered AFTER the park's own step
 //   already committed hits a third, narrower gap — bureau's own
-//   `listPendingReviews()` never reconstructed the pending review from a
+//   `reviews.list()` never reconstructed the pending review from a
 //   dead process's lost in-memory action log — covered separately.
 //
 // Every test here deliberately omits `stopWhen.toolCalled('requestHumanInput')`
@@ -118,7 +118,7 @@ describe('requestHumanInput park is observable on a fresh dispatch (AB-336)', ()
       const run = await bureau.createRun({ agentName: 'default', message: 'park-me' });
 
       await waitForCondition(
-        () => bureau.listPendingReviews().some((review) => review.runId === run.id),
+        () => bureau.reviews.list().some((review) => review.runId === run.id),
         'expected requestHumanInput to park and surface a pending review',
       );
 
@@ -127,7 +127,7 @@ describe('requestHumanInput park is observable on a fresh dispatch (AB-336)', ()
       expect(calls).toBe(1);
 
       // Durable-run surface: the review is present and correctly shaped.
-      const reviews = bureau.listPendingReviews();
+      const reviews = bureau.reviews.list();
       expect(reviews).toHaveLength(1);
       const [review] = reviews;
       expect(review?.kind).toBe('human-wait');
@@ -201,14 +201,14 @@ describe('requestHumanInput park is observable on a fresh dispatch (AB-336)', ()
       const run = await bureau.createRun({ agentName: 'default', message: 'park-me' });
 
       await waitForCondition(
-        () => bureau.listPendingReviews().some((review) => review.runId === run.id),
+        () => bureau.reviews.list().some((review) => review.runId === run.id),
         'expected requestHumanInput to park and surface a pending review',
       );
       expect(calls).toBe(1);
       expect(bureau.getRun(run.id)?.liveness.status).toBe('waiting');
 
-      const [review] = bureau.listPendingReviews();
-      const result = await bureau.resolveReview({
+      const [review] = bureau.reviews.list();
+      const result = await bureau.reviews.resolve({
         id: review!.id,
         decision: 'approve',
         principal: 'test-operator',
@@ -231,7 +231,7 @@ describe('requestHumanInput park is observable on a fresh dispatch (AB-336)', ()
       expect(finalRun?.liveness.status).toBe('terminal');
       expect(finalRun?.liveness.declaredWait).toBeUndefined();
 
-      expect(bureau.listPendingReviews()).toHaveLength(0);
+      expect(bureau.reviews.list()).toHaveLength(0);
     } finally {
       bureau.dispose();
     }
@@ -277,7 +277,7 @@ describe('requestHumanInput park survives a process restart while still parked (
 
     const run = await bureauA.createRun({ agentName: 'default', message: 'park-me' });
     await waitForCondition(
-      () => bureauA.listPendingReviews().some((review) => review.runId === run.id),
+      () => bureauA.reviews.list().some((review) => review.runId === run.id),
       'expected bureau A to park on requestHumanInput before the simulated crash',
     );
     expect(aCalls).toBe(1);
@@ -303,17 +303,17 @@ describe('requestHumanInput park survives a process restart while still parked (
     });
 
     try {
-      // Root cause this proves fixed: `listPendingReviews()`'s human-wait
+      // Root cause this proves fixed: `reviews.list()`'s human-wait
       // branch derived entirely from the live action log, which a
       // freshly `store.register`ed recovered run starts EMPTY — nothing
       // replayed the park bureau A's dead process recorded. Without the
       // checkpoint-reconstruction fix, this would time out.
       await waitForCondition(
-        () => bureauB.listPendingReviews().some((review) => review.runId === run.id),
+        () => bureauB.reviews.list().some((review) => review.runId === run.id),
         'expected bureau B to reconstruct the pending human-wait review after recovery',
       );
 
-      const reviews = bureauB.listPendingReviews();
+      const reviews = bureauB.reviews.list();
       expect(reviews).toHaveLength(1);
       const [review] = reviews;
       expect(review?.kind).toBe('human-wait');
@@ -325,7 +325,7 @@ describe('requestHumanInput park survives a process restart while still parked (
       // the recovered run is genuinely still parked, not looping.
       expect(bCalls).toBe(0);
 
-      const result = await bureauB.resolveReview({
+      const result = await bureauB.reviews.resolve({
         id: review.id,
         decision: 'approve',
         principal: 'test-operator',
@@ -340,7 +340,7 @@ describe('requestHumanInput park survives a process restart while still parked (
 
       const finalRun = bureauB.getRun(run.id);
       expect(finalRun?.status).toBe('completed');
-      expect(bureauB.listPendingReviews()).toHaveLength(0);
+      expect(bureauB.reviews.list()).toHaveLength(0);
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();
@@ -351,7 +351,7 @@ describe('requestHumanInput park survives a process restart while still parked (
 
 describe('a resolved human-wait review stays resolved across a restart (COR-106)', () => {
   it('does not resurface a park whose resolved id was persisted before the crash', async () => {
-    // resolveReview delivered the signal and persisted the park's id, then the
+    // reviews.resolve delivered the signal and persisted the park's id, then the
     // process died before the run committed a step past the park. On recovery
     // the last checkpointed step is still the park, so it is re-synthesized;
     // its id must equal the persisted one or it would show as pending again.
@@ -386,15 +386,15 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
 
     const run = await bureauA.createRun({ agentName: 'default', message: 'park-me' });
     await waitForCondition(
-      () => bureauA.listPendingReviews().some((review) => review.runId === run.id),
+      () => bureauA.reviews.list().some((review) => review.runId === run.id),
       'expected bureau A to park on requestHumanInput before the simulated crash',
     );
-    const parkedId = bureauA.listPendingReviews()[0]!.id;
+    const parkedId = bureauA.reviews.list()[0]!.id;
     // The real delivery: the signal reaches the engine, so the resumed run
     // moves on to its next (never-completing) step.
     await bureauA.signalSession(run.sessionId, 'human-response');
     await waitForCondition(() => aCalls === 2, 'expected bureau A to resume past the park');
-    await bureauA.sessionStore!.update(run.sessionId, (session) => ({
+    await bureauA.internals.sessionStore!.update(run.sessionId, (session) => ({
       ...session!,
       metadata: { ...session!.metadata, resolvedReviewIds: [parkedId] },
     }));
@@ -417,12 +417,12 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
       // The park must have been reconstructed into the live action log.
       await waitForCondition(
         () =>
-          bureauB.store
+          bureauB.internals.store
             .getRun(run.id)
             ?.actions.some((action) => action.type === HumanWaitParkedEvent.type) === true,
         'expected bureau B to reconstruct the park action',
       );
-      expect(bureauB.listPendingReviews()).toHaveLength(0);
+      expect(bureauB.reviews.list()).toHaveLength(0);
 
       // Settle the recovered run before disposing, or its aborted-state write
       // lands after the SQLite handle is finalized.
@@ -475,16 +475,16 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
     for (let ordinal = 0; ordinal < 2; ordinal++) {
       await waitForCondition(
         () =>
-          bureauA
-            .listPendingReviews()
+          bureauA.reviews
+            .list()
             .some((review) => review.runId === run.id && !resolvedIds.includes(review.id)),
         `expected bureau A to park (${ordinal})`,
       );
-      const pending = bureauA
-        .listPendingReviews()
+      const pending = bureauA.reviews
+        .list()
         .find((review) => review.runId === run.id && !resolvedIds.includes(review.id))!;
       expect(pending.id.endsWith(`:human-response:${ordinal}`)).toBe(true);
-      await bureauA.resolveReview({ id: pending.id, decision: 'approve', principal: 'op' });
+      await bureauA.reviews.resolve({ id: pending.id, decision: 'approve', principal: 'op' });
       resolvedIds.push(pending.id);
     }
     await waitForCondition(() => aCalls === 4, 'expected bureau A to reach the hanging step');
@@ -521,16 +521,16 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
 
     try {
       await waitForCondition(
-        () => bureauB.listPendingReviews().some((review) => review.runId === run.id),
+        () => bureauB.reviews.list().some((review) => review.runId === run.id),
         'expected the re-park after recovery to surface as a pending review',
       );
       expect(bureauB.getRun(run.id)?.liveness.status).toBe('waiting');
-      const reviews = bureauB.listPendingReviews();
+      const reviews = bureauB.reviews.list();
       expect(reviews).toHaveLength(1);
       expect(reviews[0]!.id.endsWith(':human-response:2')).toBe(true);
       expect(resolvedIds).not.toContain(reviews[0]!.id);
 
-      await bureauB.resolveReview({ id: reviews[0]!.id, decision: 'approve', principal: 'op' });
+      await bureauB.reviews.resolve({ id: reviews[0]!.id, decision: 'approve', principal: 'op' });
       await waitForCondition(
         () => bureauB.getRun(run.id)?.status === 'completed',
         'expected bureau B to finish the recovered run before disposal',
@@ -578,12 +578,12 @@ describe('a re-park after a resolved park and a crash before the next commit (CO
 
     const run = await bureauA.createRun({ agentName: 'default', message: 'park-resume-crash' });
     await waitForCondition(
-      () => bureauA.listPendingReviews().some((review) => review.runId === run.id),
+      () => bureauA.reviews.list().some((review) => review.runId === run.id),
       'expected bureau A to park',
     );
-    const first = bureauA.listPendingReviews()[0]!;
+    const first = bureauA.reviews.list()[0]!;
     expect(first.id.endsWith(':human-response:0')).toBe(true);
-    await bureauA.resolveReview({ id: first.id, decision: 'approve', principal: 'op' });
+    await bureauA.reviews.resolve({ id: first.id, decision: 'approve', principal: 'op' });
     await waitForCondition(() => aCalls === 2, 'expected bureau A to resume into the hanging step');
     // Not disposing bureauA: this is the crash.
 
@@ -618,16 +618,16 @@ describe('a re-park after a resolved park and a crash before the next commit (CO
 
     try {
       await waitForCondition(
-        () => bureauB.listPendingReviews().some((review) => review.runId === run.id),
+        () => bureauB.reviews.list().some((review) => review.runId === run.id),
         'expected the re-park after recovery to surface as a pending review',
       );
       expect(bureauB.getRun(run.id)?.liveness.status).toBe('waiting');
-      const reviews = bureauB.listPendingReviews();
+      const reviews = bureauB.reviews.list();
       expect(reviews).toHaveLength(1);
       expect(reviews[0]!.id.endsWith(':human-response:1')).toBe(true);
       expect(reviews[0]!.id).not.toBe(first.id);
 
-      await bureauB.resolveReview({ id: reviews[0]!.id, decision: 'approve', principal: 'op' });
+      await bureauB.reviews.resolve({ id: reviews[0]!.id, decision: 'approve', principal: 'op' });
       await waitForCondition(
         () => bureauB.getRun(run.id)?.status === 'completed',
         'expected bureau B to finish the recovered run before disposal',
@@ -666,7 +666,7 @@ describe('resolving a recovered run re-park leaves no phantom review (COR-106)',
       message: 'park-crash-repark-resolve',
     });
     await waitForCondition(
-      () => bureauA.listPendingReviews().some((review) => review.runId === run.id),
+      () => bureauA.reviews.list().some((review) => review.runId === run.id),
       'expected bureau A to park',
     );
     // Not disposing bureauA: this is the crash.
@@ -685,8 +685,8 @@ describe('resolving a recovered run re-park leaves no phantom review (COR-106)',
       }),
     );
     const pendingIds = (): string[] =>
-      bureauB
-        .listPendingReviews()
+      bureauB.reviews
+        .list()
         .filter((review) => review.runId === run.id)
         .map((review) => review.id);
 
@@ -694,14 +694,14 @@ describe('resolving a recovered run re-park leaves no phantom review (COR-106)',
       await waitForCondition(() => pendingIds().length === 1, 'expected the reconstructed park');
       const reconstructed = pendingIds()[0]!;
       expect(reconstructed.endsWith(':human-response:0')).toBe(true);
-      await bureauB.resolveReview({ id: reconstructed, decision: 'approve', principal: 'op' });
+      await bureauB.reviews.resolve({ id: reconstructed, decision: 'approve', principal: 'op' });
       await waitForCondition(
         () => pendingIds().length === 1 && pendingIds()[0] !== reconstructed,
         'expected the re-park to surface',
       );
       const repark = pendingIds()[0]!;
       expect(repark.endsWith(':human-response:1')).toBe(true);
-      await bureauB.resolveReview({ id: repark, decision: 'approve', principal: 'op' });
+      await bureauB.reviews.resolve({ id: repark, decision: 'approve', principal: 'op' });
       await waitForCondition(() => bCalls >= 2, 'expected the run to resume into its next step');
       // Let any replayed park marker land before asserting: a bounded real
       // window, observed through the runtime timers, because SQLite replay can
@@ -750,21 +750,21 @@ describe('parallel same-signal parks keep review ids stable across a restart (CO
     });
     const run = await bureauA.createRun({ agentName: 'default', message: 'parallel-park-crash' });
     const pendingA = (): string[] =>
-      bureauA
-        .listPendingReviews()
+      bureauA.reviews
+        .list()
         .filter((review) => review.runId === run.id)
         .map((review) => review.id);
     await waitForCondition(() => pendingA().length === 1, 'expected the first park');
     const first = pendingA()[0]!;
     expect(first.endsWith(':human-response:0')).toBe(true);
-    await bureauA.resolveReview({ id: first, decision: 'approve', principal: 'op' });
+    await bureauA.reviews.resolve({ id: first, decision: 'approve', principal: 'op' });
     await waitForCondition(
       () => pendingA().length === 1 && pendingA()[0] !== first,
       'expected the re-park to surface',
     );
     const second = pendingA()[0]!;
     expect(second.endsWith(':human-response:1')).toBe(true);
-    await bureauA.resolveReview({ id: second, decision: 'approve', principal: 'op' });
+    await bureauA.reviews.resolve({ id: second, decision: 'approve', principal: 'op' });
     await waitForCondition(() => aCalls >= 3, 'expected the run to resume into step 3');
     // Not disposing bureauA: this is the crash.
 
@@ -796,7 +796,7 @@ describe('parallel same-signal parks keep review ids stable across a restart (CO
       // take more than one event-loop turn.
       await settleReplayWindow();
       expect(bureauB.getRun(run.id)?.status).toBe('running');
-      expect(bureauB.listPendingReviews().filter((review) => review.runId === run.id)).toEqual([]);
+      expect(bureauB.reviews.list().filter((review) => review.runId === run.id)).toEqual([]);
     } finally {
       releaseNextStep();
       await waitForCondition(
@@ -888,7 +888,7 @@ describe('a run recovered mid-step whose replay reaches requestHumanInput actual
 
     try {
       await waitForCondition(
-        () => bureauB.listPendingReviews().some((review) => review.runId === run.id),
+        () => bureauB.reviews.list().some((review) => review.runId === run.id),
         'expected bureau B to actually park on requestHumanInput during replay, not loop past it',
       );
 
@@ -899,7 +899,7 @@ describe('a run recovered mid-step whose replay reaches requestHumanInput actual
       // or maximumSteps).
       expect(bCalls).toBe(1);
 
-      const reviews = bureauB.listPendingReviews();
+      const reviews = bureauB.reviews.list();
       expect(reviews).toHaveLength(1);
       const [review] = reviews;
       expect(review?.kind).toBe('human-wait');
@@ -908,7 +908,7 @@ describe('a run recovered mid-step whose replay reaches requestHumanInput actual
       expect(review.signalName).toBe('human-response');
       expect(bureauB.getRun(run.id)?.liveness.status).toBe('waiting');
 
-      const result = await bureauB.resolveReview({
+      const result = await bureauB.reviews.resolve({
         id: review.id,
         decision: 'approve',
         principal: 'test-operator',
@@ -923,7 +923,7 @@ describe('a run recovered mid-step whose replay reaches requestHumanInput actual
 
       const finalRun = bureauB.getRun(run.id);
       expect(finalRun?.status).toBe('completed');
-      expect(bureauB.listPendingReviews()).toHaveLength(0);
+      expect(bureauB.reviews.list()).toHaveLength(0);
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();
@@ -1009,12 +1009,12 @@ describe("combineToolboxes forwards the base toolbox's approval gating to a huma
       const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
 
       await waitForCondition(
-        () => bureau.listPendingReviews().some((review) => review.runId === run.id),
+        () => bureau.reviews.list().some((review) => review.runId === run.id),
         'expected the needs_approval tool call to produce a pending review',
       );
 
       expect(charges).toEqual([]);
-      const reviews = bureau.listPendingReviews();
+      const reviews = bureau.reviews.list();
       expect(reviews).toHaveLength(1);
       const [review] = reviews;
       expect(review?.kind).toBe('tool-approval');
@@ -1023,7 +1023,7 @@ describe("combineToolboxes forwards the base toolbox's approval gating to a huma
 
       // Approving resumes the call — proving the review this run produced
       // was a genuine, resumable armorer approval, not a coincidental stall.
-      const result = await bureau.resolveReview({
+      const result = await bureau.reviews.resolve({
         id: review.id,
         decision: 'approve',
         principal: 'test-operator',
@@ -1084,9 +1084,7 @@ describe("combineToolboxes forwards the base toolbox's approval gating to a huma
       await waitForCondition(() => charges.length > 0, 'expected the tool call to execute');
 
       expect(charges).toEqual([4200]);
-      expect(bureau.listPendingReviews().filter((review) => review.runId === run.id)).toHaveLength(
-        0,
-      );
+      expect(bureau.reviews.list().filter((review) => review.runId === run.id)).toHaveLength(0);
       // Proof the grant was actually consumed by the combined toolbox
       // (armorer's own `grant.used` toolbox event, which bureau does not
       // forward): the SAME grantStateStore reference `combineToolboxes`
@@ -1165,11 +1163,11 @@ describe('the first park request in a step is honored and the rest are refused (
     });
     const run = await bureau.createRun({ agentName: 'default', message: 'park-twice' });
     const reviews = () =>
-      bureau
-        .listPendingReviews()
+      bureau.reviews
+        .list()
         .filter((review) => review.runId === run.id && review.kind === 'human-wait');
     const parkSignals = () =>
-      bureau.store
+      bureau.internals.store
         .getRun(run.id)!
         .actions.filter((action) => action.type === HumanWaitParkedEvent.type)
         .map((action) => (action.detail as { signalName: string }).signalName);
@@ -1184,7 +1182,7 @@ describe('the first park request in a step is honored and the rest are refused (
     started: Awaited<ReturnType<typeof startStep>>,
     calls: ParkCall[],
   ) {
-    const checkpoints = createCheckpointStore(started.bureau.kv!);
+    const checkpoints = createCheckpointStore(started.bureau.internals.kv!);
     await waitForCondition(async () => {
       const committed = await checkpoints.loadSteps(started.run.id);
       return committed.length >= 1;
@@ -1314,7 +1312,7 @@ describe('the first park request in a step is honored and the rest are refused (
     const started = await startStep(calls);
     try {
       const { honored, refused } = await firstStepOutcomes(started, calls);
-      await started.bureau.resolveReview({
+      await started.bureau.reviews.resolve({
         id: started.reviews()[0]!.id,
         decision: 'approve',
         principal: 'operator',
@@ -1338,7 +1336,7 @@ describe('the first park request in a step is honored and the rest are refused (
     const started = await startStep(calls, ask('call-c', 'c'));
     try {
       await firstStepOutcomes(started, calls);
-      await started.bureau.resolveReview({
+      await started.bureau.reviews.resolve({
         id: started.reviews()[0]!.id,
         decision: 'approve',
         principal: 'operator',

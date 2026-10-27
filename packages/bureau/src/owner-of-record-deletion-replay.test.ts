@@ -68,17 +68,20 @@ async function settled(bureau: FirstBureau, principal: string, sessionId: string
 }
 
 async function deletionEntries(
-  bureau: { auditTrail: FirstBureau['auditTrail'] },
+  bureau: { internals: { auditTrail: FirstBureau['internals']['auditTrail'] } },
   sessionId: string,
 ) {
-  const entries = await bureau.auditTrail?.query({
+  const entries = await bureau.internals.auditTrail?.query({
     runId: `session:${sessionId}`,
     type: 'session.deleted',
   });
   return entries ?? [];
 }
 
-async function deletionCount(bureau: { auditTrail: FirstBureau['auditTrail'] }, sessionId: string) {
+async function deletionCount(
+  bureau: { internals: { auditTrail: FirstBureau['internals']['auditTrail'] } },
+  sessionId: string,
+) {
   const entries = await deletionEntries(bureau, sessionId);
   return entries.length;
 }

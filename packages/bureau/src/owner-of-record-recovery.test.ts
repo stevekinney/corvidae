@@ -82,10 +82,16 @@ describe('a run recovered after a restart (COR-718)', () => {
       expect(await recovered.getOwner({ kind: 'run', id: run.id })).toBe('api-key:alice');
       expect(recovered.getRun(run.id)?.principal).toBe('api-key:alice');
       await waitForCondition(async () => {
-        const entries = await recovered.auditTrail?.query({ runId: run.id, type: 'run.recovered' });
+        const entries = await recovered.internals.auditTrail?.query({
+          runId: run.id,
+          type: 'run.recovered',
+        });
         return entries?.length === 1;
       }, 'run.recovered was never recorded');
-      const entries = await recovered.auditTrail?.query({ runId: run.id, type: 'run.recovered' });
+      const entries = await recovered.internals.auditTrail?.query({
+        runId: run.id,
+        type: 'run.recovered',
+      });
       expect(entries?.map((entry) => entry.principal)).toEqual(['system:recovery']);
       expect(await recovered.getOwner({ kind: 'audit', runId: run.id })).toBe('api-key:alice');
     } finally {
@@ -98,7 +104,10 @@ describe('a run recovered after a restart (COR-718)', () => {
     try {
       expect(await recovered.getOwner({ kind: 'run', id: run.id })).toBe('anonymous:local');
       await waitForCondition(async () => {
-        const entries = await recovered.auditTrail?.query({ runId: run.id, type: 'run.recovered' });
+        const entries = await recovered.internals.auditTrail?.query({
+          runId: run.id,
+          type: 'run.recovered',
+        });
         return entries?.length === 1;
       }, 'run.recovered was never recorded');
     } finally {

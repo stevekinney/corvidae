@@ -143,7 +143,7 @@ describe('the seeded agents', () => {
     // A catalog run has no session; the run id addresses its review.
     expect(review.sessionId).toBeUndefined();
 
-    await host.bureau.resolveReview({
+    await host.bureau.reviews.resolve({
       id: review.id,
       decision: 'approve',
       principal: 'anonymous:local',
@@ -151,7 +151,7 @@ describe('the seeded agents', () => {
     });
     const result = await run.result();
     expect(result.content).toBe('Thanks, the release will go to the environment you named.');
-    expect(host.bureau.listPendingReviews()).toEqual([]);
+    expect(host.bureau.reviews.list()).toEqual([]);
   });
 
   test('tool-runner looks the order up, then stops on a refund waiting for approval', async () => {
@@ -299,7 +299,7 @@ describe('the seeded schedule and goal', () => {
 
 async function waitForReview(host: Host, runId: string) {
   for (let attempt = 0; attempt < 400; attempt += 1) {
-    const review = host.bureau.listPendingReviews().find((candidate) => candidate.runId === runId);
+    const review = host.bureau.reviews.list().find((candidate) => candidate.runId === runId);
     if (review !== undefined) return review;
     await Bun.sleep(5);
   }
@@ -324,7 +324,7 @@ describe('the seeded agents through session runs', () => {
       prompt: HUMAN_INPUT_PROMPT,
     });
 
-    await host.bureau.resolveReview({
+    await host.bureau.reviews.resolve({
       id: review.id,
       decision: 'approve',
       principal: 'anonymous:local',
@@ -332,7 +332,7 @@ describe('the seeded agents through session runs', () => {
     });
     const finished = await host.bureau.waitForDurableRun(run.id);
     expect(finished?.status).toBe('completed');
-    expect(host.bureau.listPendingReviews()).toEqual([]);
+    expect(host.bureau.reviews.list()).toEqual([]);
   });
 
   test('tool-runner raises its refund approval under the session run, and approving runs it', async () => {
@@ -350,13 +350,13 @@ describe('the seeded agents through session runs', () => {
     if (review.kind !== 'tool-approval') throw new Error('unreachable');
     expect(review.approval.toolName).toBe('issue-refund');
 
-    const resolved = await host.bureau.resolveReview({
+    const resolved = await host.bureau.reviews.resolve({
       id: review.id,
       decision: 'approve',
       principal: 'anonymous:local',
     });
     expect(resolved).toMatchObject({ id: review.id, kind: 'tool-approval', decision: 'approve' });
-    expect(host.bureau.listPendingReviews()).toEqual([]);
+    expect(host.bureau.reviews.list()).toEqual([]);
   });
 
   test('a second session run starts from the first response again', async () => {

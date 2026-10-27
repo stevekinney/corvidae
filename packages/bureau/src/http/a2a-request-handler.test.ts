@@ -118,7 +118,7 @@ describe('a continuation whose receipt could not be recorded', () => {
       expect((failed as Error).message).toBe('the ledger write failed');
       // The answer took effect: the task finishes.
       await waitForCondition(async () => {
-        const view = await opened.bureau.tasks.get(parked.id);
+        const view = await opened.bureau.internals.taskRegistry.get(parked.id);
         return view?.status === 'completed';
       }, 'the answered task never completed');
 

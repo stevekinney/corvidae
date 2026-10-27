@@ -416,7 +416,7 @@ describe('bureau.children over an ephemeral bureau', () => {
     });
 
     try {
-      await bureau.kv?.set('bureau-child:record:garbled', '{"schemaVersion":2}');
+      await bureau.internals.kv?.set('bureau-child:record:garbled', '{"schemaVersion":2}');
 
       expect(
         await bureau.children.get({ parentRunId: 'anyone', childRunId: 'garbled' }),
@@ -657,7 +657,7 @@ describe('bureau.children over a durable bureau', () => {
         onDiagnostic,
       });
       try {
-        const records = await second.auditTrail?.query({ runId: 'disposed-child' });
+        const records = await second.internals.auditTrail?.query({ runId: 'disposed-child' });
         const aborted = records?.filter((record) => record.type === 'child.aborted');
         expect(aborted).toHaveLength(1);
         expect(
@@ -899,7 +899,7 @@ describe('bureau.children across a process restart', () => {
         // Resumed at the checkpointed step 1 — never restarted from step 0.
         expect(childSteps).toEqual([1, 2]);
 
-        const audit = await bureauB.auditTrail?.query({ runId: childRunId });
+        const audit = await bureauB.internals.auditTrail?.query({ runId: childRunId });
         expect(audit?.map((record) => record.type)).toEqual([
           'child.started',
           'child.reattached',
@@ -926,7 +926,7 @@ describe('bureau.children across a process restart', () => {
           status: 'completed',
           outcome: { content: 'finished after the restart' },
         });
-        const audit = await bureauC.auditTrail?.query({ runId: childRunId });
+        const audit = await bureauC.internals.auditTrail?.query({ runId: childRunId });
         expect(audit?.filter((record) => record.type === 'child.aborted')).toEqual([]);
       } finally {
         await bureauC.dispose();
@@ -968,7 +968,7 @@ describe('bureau.children across a process restart', () => {
           outcome: 'settled',
           child: { status: 'completed', outcome: { content: 'finished with nobody watching' } },
         });
-        const audit = await bureauB.auditTrail?.query({ runId: childRunId });
+        const audit = await bureauB.internals.auditTrail?.query({ runId: childRunId });
         expect(audit?.filter((record) => record.type === 'child.completed')).toHaveLength(1);
       } finally {
         await bureauB.dispose();
@@ -1012,7 +1012,7 @@ describe('bureau.children across a process restart', () => {
           status: 'aborted',
           outcome: { reason: expect.stringContaining('invalid-signature') },
         });
-        const audit = await bureauB.auditTrail?.query({ runId: childRunId });
+        const audit = await bureauB.internals.auditTrail?.query({ runId: childRunId });
         expect(
           audit
             ?.map((record) => record.type)

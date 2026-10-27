@@ -3,7 +3,7 @@
  *
  * An interrupt carries the review's own id, verbatim, so the interrupt a client
  * shows and the item `bureau.reviews.*` lists are one identifier and a resume
- * entry's `interruptId` is what `resolveReview` takes. It carries no tool
+ * entry's `interruptId` is what `reviews.resolve` takes. It carries no tool
  * arguments, no approval token, and no binding: the arguments were streamed as
  * `TOOL_CALL_ARGS`, and resolving goes through the id.
  *

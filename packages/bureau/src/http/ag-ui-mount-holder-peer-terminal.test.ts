@@ -139,7 +139,7 @@ function watchSessionWrite(holder: Harness, status: string, runId: string): () =
  * resolves once a save finishes, and rejects when the run ends without one starting.
  */
 function recordOf(holder: Harness, runId: string): Promise<void> {
-  const recorded = holder.bureau.whenRunRecorded(runId);
+  const recorded = holder.bureau.internals.whenTaskRecorded(runId);
   recorded.catch(() => undefined);
   return recorded;
 }

@@ -74,16 +74,19 @@ describe('a new task’s receipt over a durable history', () => {
     const opened = await open();
     // An earlier, non-terminal append failed and its repair has not landed: the mark stays set.
     const marked = Object.create(opened.bureau, {
-      tasks: {
-        value: new Proxy(opened.bureau.tasks, {
-          get(target, property) {
-            if (property !== 'record') return Reflect.get(target, property, target);
-            return async (id: string) => {
-              const record = await target.record(id);
-              return record === undefined ? undefined : { ...record, resyncPending: true };
-            };
-          },
-        }),
+      internals: {
+        value: {
+          ...opened.bureau.internals,
+          taskRegistry: new Proxy(opened.bureau.internals.taskRegistry, {
+            get(target, property) {
+              if (property !== 'record') return Reflect.get(target, property, target);
+              return async (id: string) => {
+                const record = await target.record(id);
+                return record === undefined ? undefined : { ...record, resyncPending: true };
+              };
+            },
+          }),
+        },
       },
     });
     const handler = createBureauHandler(marked, {

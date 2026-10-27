@@ -25,7 +25,7 @@ import { z } from 'zod';
 
 import { BureauError, BureauShuttingDownError } from '../../create-bureau.ts';
 import type { SteeringCommandAdmissionOutcome, SteeringCommandSnapshot } from '../../steering.ts';
-import type { Bureau } from '../../types.ts';
+import type { Bureau, BureauInternals } from '../../types.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
 import {
   resourceNotFound,
@@ -35,7 +35,9 @@ import {
 
 /** What `bureau.contexts.steer` reads from the handler's `host`. */
 export type BureauContextsSteerOperationHost = BureauOwnershipHost & {
-  readonly contexts: Pick<Bureau, 'getSession' | 'submitSteeringCommand' | 'sessionStore'>;
+  readonly contexts: Pick<Bureau, 'getSession' | 'submitSteeringCommand'> & {
+    readonly internals: Pick<BureauInternals, 'sessionStore'>;
+  };
 };
 
 const contextsSteerInput = z.object({
@@ -190,7 +192,7 @@ export const contextsSteerOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     const { contextId } = input;
-    if (host.contexts.sessionStore === undefined) {
+    if (host.contexts.internals.sessionStore === undefined) {
       throw {
         code: 'UnsupportedCapability',
         message: 'This Bureau keeps no sessions, so it has no contexts to steer',

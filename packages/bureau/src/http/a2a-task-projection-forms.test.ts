@@ -72,19 +72,21 @@ describe('waitingMessage form surfaces', () => {
 
 describe('the previous form of a run (COR-1674)', () => {
   // The audit record of a closed wait, as `buildReviewDecisionAuditRecord` writes it: the review
-  // without its schema, and an `inputForm` marker. `getReview` returns a resolved review with no
+  // without its schema, and an `inputForm` marker. `reviews.get` returns a resolved review with no
   // schema too, so only the marker can say the wait showed a form.
   const record = (id: string, inputForm: boolean) => ({
     type: 'review.human-wait.approved',
     detail: { review: { kind: 'human-wait', id }, ...(inputForm ? { inputForm: true } : {}) },
   });
   const bureau = {
-    getReview: async () => undefined,
-    auditTrail: {
-      query: async () => [
-        record('human-wait:run-1:deploy:0', true),
-        record('human-wait:run-1:note:1', false),
-      ],
+    reviews: { get: async () => undefined },
+    internals: {
+      auditTrail: {
+        query: async () => [
+          record('human-wait:run-1:deploy:0', true),
+          record('human-wait:run-1:note:1', false),
+        ],
+      },
     },
   } as never;
   const form = {

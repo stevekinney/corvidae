@@ -383,10 +383,12 @@ describe('a run that reported an error and was then abandoned without a save', (
       opened.generate.release('hold');
       await opened.generate.reached('second');
       opened.storage.arm();
-      const recorded = opened.bureau.whenRunRecorded(opened.bureau.listRuns()[0]!.id).then(
-        () => 'resolved',
-        (error: unknown) => (error instanceof Error ? error.name : 'rejected'),
-      );
+      const recorded = opened.bureau.internals
+        .whenTaskRecorded(opened.bureau.listRuns()[0]!.id)
+        .then(
+          () => 'resolved',
+          (error: unknown) => (error instanceof Error ? error.name : 'rejected'),
+        );
       opened.generate.release('second');
       await stream.rest();
 
@@ -456,7 +458,7 @@ describe('the other ways a run that took input can end without its end being rec
     await opened.generate.reached('second');
     const runId = opened.bureau.listRuns()[0]!.id;
     // Disposing ends the run, and the save of its end settles the record: it does not stay pending.
-    const recorded = opened.bureau.whenRunRecorded(runId).then(
+    const recorded = opened.bureau.internals.whenTaskRecorded(runId).then(
       () => 'settled',
       () => 'settled',
     );

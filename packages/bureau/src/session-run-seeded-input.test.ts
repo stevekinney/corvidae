@@ -89,7 +89,7 @@ describe.each([
     // The run took its step; only the drain's claim failed, and it left its entry pending.
     expect(state.status).toBe('completed');
     expect(state.steps).toBe(1);
-    const entries = await bureau.sessionStore!.outbox.pending();
+    const entries = await bureau.internals.sessionStore!.outbox.pending();
     expect(entries.some((entry) => entry.sessionId === 'chat')).toBe(true);
 
     failing = false;

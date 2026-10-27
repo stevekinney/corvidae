@@ -437,7 +437,7 @@ describe('a durable run recovered by a restarted Bureau (COR-771)', () => {
       requestContext,
     });
     await waitForCondition(
-      () => crashed.listPendingReviews().some((review) => review.runId === run.id),
+      () => crashed.reviews.list().some((review) => review.runId === run.id),
       'the run never parked',
     );
     if (changePolicyWhileParked) await activateNextPolicy(memory);
@@ -445,11 +445,11 @@ describe('a durable run recovered by a restarted Bureau (COR-771)', () => {
     const restarted = await open();
     await restarted.waitForRecovery?.();
     await waitForCondition(
-      () => restarted.listPendingReviews().some((review) => review.runId === run.id),
+      () => restarted.reviews.list().some((review) => review.runId === run.id),
       'the recovered run never parked again',
     );
-    const [review] = restarted.listPendingReviews().filter((item) => item.runId === run.id);
-    await restarted.resolveReview({
+    const [review] = restarted.reviews.list().filter((item) => item.runId === run.id);
+    await restarted.reviews.resolve({
       id: review!.id,
       decision: 'approve',
       principal: 'owner-a',

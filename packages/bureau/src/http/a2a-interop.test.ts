@@ -99,7 +99,7 @@ describe('the A2A mount with the @a2a-js/sdk client', () => {
       const canceled = await waiter.cancelTask({ tenant: '', id: running.id, metadata: undefined });
       expect(canceled.id).toBe(running.id);
       await waitForCondition(async () => {
-        const view = await opened.bureau.tasks.get(running.id);
+        const view = await opened.bureau.internals.taskRegistry.get(running.id);
         return view?.status === 'canceled';
       }, 'the task never read as canceled');
       const after = await waiter.getTask({ tenant: '', id: running.id });

@@ -130,7 +130,7 @@ export type InteractiveSurfaceActionIntent = 'answer' | 'submit' | 'approve' | '
 
 /**
  * How an admitted action continues its task: through the review it decides
- * (`resolveReview`), or through the signal it sends the task's session
+ * (`reviews.resolve`), or through the signal it sends the task's session
  * (`signalSession`). `approve` and `deny` decide a review. `answer` and
  * `submit` send a signal, or answer a held `human-wait` review with the
  * action's value as its payload, which is how a run with no session (a

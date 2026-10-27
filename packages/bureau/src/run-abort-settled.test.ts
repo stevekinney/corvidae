@@ -1,7 +1,7 @@
 /**
  * `run.abort-settled` is the signal that an aborted run's teardown has finished. `abortRun` returns
  * first, and the run's terminal status can precede `activeRun.closed()` settling, so nothing else
- * announces the moment `listAbortingRuns()` empties.
+ * announces the moment `internals.abortingTasks()` empties.
  */
 import { stopWhen, createAgent } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
@@ -32,7 +32,10 @@ it('announces that an aborted run has left listAbortingRuns()', async () => {
     await generating.promise;
     const settled = Promise.withResolvers<{ runId: string; stillAborting: number }>();
     bureau.addEventListener(RunAbortSettledEvent.type, (event) => {
-      settled.resolve({ runId: event.runId, stillAborting: bureau.listAbortingRuns().length });
+      settled.resolve({
+        runId: event.runId,
+        stillAborting: bureau.internals.abortingTasks().length,
+      });
     });
 
     expect(bureau.abortRun(run.id).status).toBe('aborting');

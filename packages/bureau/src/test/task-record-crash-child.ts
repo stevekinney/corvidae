@@ -104,7 +104,7 @@ if (mode === 'settlement') {
     sessionId: CONTEXT_ID,
   });
   for (;;) {
-    if (held && bureau.listPendingReviews().some((review) => review.runId === run.id)) {
+    if (held && bureau.reviews.list().some((review) => review.runId === run.id)) {
       kill(run.id);
     }
     await sleep(10);

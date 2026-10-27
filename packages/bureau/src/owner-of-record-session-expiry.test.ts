@@ -75,7 +75,7 @@ const sequences = (events: readonly DurableEventEnvelope[]) =>
 
 /** Expires every session, whatever its age: a negative age keeps nothing. */
 async function expireEverything(bureau: OpenBureau): Promise<number> {
-  return bureau.sessionStore!.cleanup({ olderThan: -60_000 });
+  return bureau.internals.sessionStore!.cleanup({ olderThan: -60_000 });
 }
 
 describe('the task history of an expired session (COR-1481)', () => {
@@ -83,14 +83,17 @@ describe('the task history of an expired session (COR-1481)', () => {
     const { bureau, directory } = await openBureau();
     try {
       const run = await settled(bureau, ALICE, 'expiring-context');
-      const before = await bureau.tasks.history(run.id);
+      const before = await bureau.internals.taskRegistry.history(run.id);
       expect(before?.map((message) => message.text)).toEqual(['hello']);
 
       expect(await expireEverything(bureau)).toBe(1);
 
-      expect(await bureau.sessionStore!.load('expiring-context')).toBeUndefined();
-      expect(await bureau.tasks.history(run.id)).toEqual([]);
-      expect(await bureau.tasks.get(run.id)).toMatchObject({ id: run.id, owner: ALICE });
+      expect(await bureau.internals.sessionStore!.load('expiring-context')).toBeUndefined();
+      expect(await bureau.internals.taskRegistry.history(run.id)).toEqual([]);
+      expect(await bureau.internals.taskRegistry.get(run.id)).toMatchObject({
+        id: run.id,
+        owner: ALICE,
+      });
     } finally {
       await bureau.dispose();
       await rm(directory, { recursive: true, force: true });
@@ -107,7 +110,7 @@ describe('the history of an expired session (COR-718)', () => {
       const lastFormer = Math.max(...sequences(former));
 
       expect(await expireEverything(bureau)).toBe(1);
-      expect(await bureau.sessionStore!.load('expired')).toBeUndefined();
+      expect(await bureau.internals.sessionStore!.load('expired')).toBeUndefined();
 
       await settled(bureau, BOB, 'expired');
       const asBob = eventsOf(await read(bureau, 'expired', { principal: BOB }));
@@ -177,14 +180,18 @@ describe('the history of an expired session (COR-718)', () => {
 
       const runId = 'session:audited';
       await waitForCondition(async () => {
-        const entries = await bureau.auditTrail?.query({ runId, type: 'session.deleted' });
+        const entries = await bureau.internals.auditTrail?.query({
+          runId,
+          type: 'session.deleted',
+        });
         return entries?.length === 1;
       }, 'the audit trail never held the expiry');
-      const [entry] = (await bureau.auditTrail?.query({ runId, type: 'session.deleted' })) ?? [];
+      const [entry] =
+        (await bureau.internals.auditTrail?.query({ runId, type: 'session.deleted' })) ?? [];
       expect(entry?.detail).toMatchObject({ sessionId: 'audited', owner: ALICE });
       expect(await bureau.getOwner({ kind: 'audit', runId, detail: entry?.detail })).toBe(ALICE);
       await waitForCondition(async () => {
-        const remaining = await bureau.kv?.list(SIDE_RECORD_PREFIX);
+        const remaining = await bureau.internals.kv?.list(SIDE_RECORD_PREFIX);
         return remaining?.length === 0;
       }, 'the side record outlived the audit entry');
     } finally {
@@ -197,7 +204,7 @@ describe('the history of an expired session (COR-718)', () => {
     const { bureau, directory } = await openBureau();
     try {
       await settled(bureau, ALICE, 'kept');
-      const kv = bureau.kv!;
+      const kv = bureau.internals.kv!;
       const originalSet = kv.set.bind(kv);
       kv.set = async (key: string, value: string) => {
         if (key.startsWith(SIDE_RECORD_PREFIX)) throw new Error('injected: owner store down');
@@ -206,14 +213,14 @@ describe('the history of an expired session (COR-718)', () => {
 
       const refusal = await rejectionOf(expireEverything(bureau));
       expect(refusal).toBeInstanceOf(Error);
-      expect(await bureau.sessionStore!.load('kept')).toBeDefined();
-      const pending = await bureau.sessionStore!.outbox.pending();
+      expect(await bureau.internals.sessionStore!.load('kept')).toBeDefined();
+      const pending = await bureau.internals.sessionStore!.outbox.pending();
       expect(pending.filter((entry) => entry.kind === 'session.deleted')).toEqual([]);
 
       // Once the store is back, the same expiry goes through.
       kv.set = originalSet;
       expect(await expireEverything(bureau)).toBe(1);
-      expect(await bureau.sessionStore!.load('kept')).toBeUndefined();
+      expect(await bureau.internals.sessionStore!.load('kept')).toBeUndefined();
     } finally {
       await bureau.dispose();
       await rm(directory, { recursive: true, force: true });
@@ -224,15 +231,15 @@ describe('the history of an expired session (COR-718)', () => {
     const { bureau, directory } = await openBureau();
     try {
       const run = await settled(bureau, ALICE, 'stamped');
-      const live = await bureau.sessionStore!.load('stamped');
+      const live = await bureau.internals.sessionStore!.load('stamped');
       // `Store.recordAction` is the one way a `session.*` action reaches the
       // durable producer today; the action's detail is what it knows about the
       // session, so the incarnation comes from there or not at all.
-      bureau.store.recordAction(run.id, 'session.loaded', {
+      bureau.internals.store.recordAction(run.id, 'session.loaded', {
         sessionId: 'stamped',
         agentName: 'agent',
       });
-      bureau.store.recordAction(run.id, 'session.loaded', {
+      bureau.internals.store.recordAction(run.id, 'session.loaded', {
         sessionId: 'stamped',
         agentName: 'agent',
         incarnation: live!.incarnation,
@@ -292,10 +299,10 @@ async function expiryDuringRun(open: (generate: GenerateFunction) => Promise<Any
       principal: ALICE,
     });
     await reached.promise;
-    const aliceIncarnation = (await bureau.sessionStore!.load('shared'))!.incarnation;
+    const aliceIncarnation = (await bureau.internals.sessionStore!.load('shared'))!.incarnation;
 
     // The session store knows nothing of runs: the expiry is Bureau's to handle.
-    expect(await bureau.sessionStore!.cleanup({ olderThan: -60_000 })).toBe(1);
+    expect(await bureau.internals.sessionStore!.cleanup({ olderThan: -60_000 })).toBe(1);
     const bobRun = await bureau.createRun({
       agentName: 'default',
       message: 'bob prompt',
@@ -306,7 +313,7 @@ async function expiryDuringRun(open: (generate: GenerateFunction) => Promise<Any
       () => bureau.getRun(bobRun.id)?.status !== 'running',
       'bob never settled',
     );
-    const bobIncarnation = (await bureau.sessionStore!.load('shared'))!.incarnation;
+    const bobIncarnation = (await bureau.internals.sessionStore!.load('shared'))!.incarnation;
     expect(bobIncarnation).not.toBe(aliceIncarnation);
 
     release.resolve();
@@ -316,7 +323,7 @@ async function expiryDuringRun(open: (generate: GenerateFunction) => Promise<Any
     );
     // Alice's terminal save, if one was started, was queued on the store before her
     // run left `running`; this update lands behind it.
-    await bureau.sessionStore!.update('shared', (session) => session);
+    await bureau.internals.sessionStore!.update('shared', (session) => session);
 
     const session = await bureau.getSession('shared');
     expect(session?.incarnation).toBe(bobIncarnation);

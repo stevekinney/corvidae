@@ -8,12 +8,12 @@
  *   review queue). The deep link points at the run detail page
  *   (`/runs/:id`) since there is no review-queue item to link to.
  * - `approval-pending` — a NEW `tool-approval` item appeared in
- *   {@link Bureau.listPendingReviews}. Synthesized here (armorer emits no
+ *   {@link Bureau.reviews.list}. Synthesized here (armorer emits no
  *   discrete bubble event for "pending approval"; it is a derived read of
- *   `step.completed` results), detected by diffing `listPendingReviews()`
+ *   `step.completed` results), detected by diffing `reviews.list()`
  *   against the ids already notified.
  * - `human-wait.parked` — a NEW `human-wait` item appeared in
- *   `listPendingReviews()` (backed by operative's `HumanWaitParkedEvent`).
+ *   `reviews.list()` (backed by operative's `HumanWaitParkedEvent`).
  * - `eval.threshold-breached` — fired out-of-band via {@link WebhookNotifier.notify}
  *   rather than derived from the action stream (there is no bureau event for
  *   it). AB-53's online eval sampler is the only current caller: a judge's
@@ -916,7 +916,7 @@ export function createWebhookNotifier<D extends AgentDefinitions = AgentDefiniti
       return;
     }
     if (action.type === 'step.completed' || action.type === 'multiagent.human-wait.parked') {
-      for (const review of bureau.listPendingReviews()) {
+      for (const review of bureau.reviews.list()) {
         if (review.runId !== action.runId) continue;
         fireReview(review);
       }

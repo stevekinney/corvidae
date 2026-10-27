@@ -62,7 +62,7 @@ function parksThenAnswers(): GenerateFunction {
 async function parkedRun(opened: OpenedBureau, principal = OWNER.alice) {
   const run = await opened.bureau.createRun({ agentName: 'default', message: 'park', principal });
   await waitForCondition(
-    () => opened.bureau.listPendingReviews().some((review) => review.runId === run.id),
+    () => opened.bureau.reviews.list().some((review) => review.runId === run.id),
     'the run never parked',
   );
   await waitForCondition(async () => {
@@ -183,7 +183,7 @@ describe('bureau.tasks.events', () => {
         stop: (frames) => statuses(frames).includes('completed'),
       });
 
-      const [review] = opened.bureau.listPendingReviews();
+      const [review] = opened.bureau.reviews.list();
       const answered = await rpc(
         opened.handler,
         'bureau.tasks.respond',
@@ -229,7 +229,7 @@ describe('bureau.tasks.events', () => {
           principal: OWNER.alice,
         });
         await waitForCondition(
-          () => opened.bureau.listPendingReviews().some((review) => review.runId === run.id),
+          () => opened.bureau.reviews.list().some((review) => review.runId === run.id),
           'the approval never became pending',
         );
         await waitForCondition(async () => {

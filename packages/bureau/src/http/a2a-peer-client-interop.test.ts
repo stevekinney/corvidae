@@ -128,7 +128,7 @@ describe('the peer client against a Bureau A2A mount', () => {
         expect(outcome.cancelConfirmed).toBe(false);
         expect(outcome.cancelError).toContain('working');
         await waitForCondition(async () => {
-          const view = await opened.bureau.tasks.get(task.taskId);
+          const view = await opened.bureau.internals.taskRegistry.get(task.taskId);
           return view?.status === 'canceled';
         }, 'the Bureau task never stopped');
       },

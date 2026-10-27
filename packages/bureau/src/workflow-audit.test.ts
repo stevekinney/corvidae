@@ -15,7 +15,7 @@ import {
   startWorkflowToolsBureau,
   type WorkflowToolsHarness,
 } from './testing/workflow-tools-bureau.test-support';
-import type { Bureau } from './types';
+import type { BureauInternals } from './types';
 
 const harnesses: WorkflowToolsHarness[] = [];
 const cleanups: Array<() => Promise<void>> = [];
@@ -29,8 +29,12 @@ const STEPS = [
   { kind: 'activity', handler: 'agent', input: { agent: 'scribe', message: 'Write the digest' } },
 ];
 
-async function trail(bureau: Pick<Bureau, 'auditTrail'>, id: string) {
-  const entries = (await bureau.auditTrail?.query({ runId: auditTrailWorkflowOwnerId(id) })) ?? [];
+async function trail(
+  bureau: { readonly internals: Pick<BureauInternals, 'auditTrail'> },
+  id: string,
+) {
+  const entries =
+    (await bureau.internals.auditTrail?.query({ runId: auditTrailWorkflowOwnerId(id) })) ?? [];
   return entries.map((entry) => ({
     type: entry.type,
     principal: entry.principal,
@@ -185,7 +189,8 @@ describe('a write made over HTTP', () => {
       id: 'digest',
       definition: { agent: 'writer', trigger: TRIGGER, steps: STEPS },
     });
-    const [entry] = (await served.bureau.auditTrail?.query({ runId: 'workflow:digest' })) ?? [];
+    const [entry] =
+      (await served.bureau.internals.auditTrail?.query({ runId: 'workflow:digest' })) ?? [];
     expect(entry?.type).toBe('workflow.created');
     const resourceOwner = await served.bureau.getOwner({
       kind: 'audit',

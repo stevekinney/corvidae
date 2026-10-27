@@ -81,7 +81,7 @@ import { createA2APushProjector } from './a2a-push-projector.ts';
 import { type A2ATaskRecords, createA2ATaskRecords } from './a2a-task-record.ts';
 import { mediaInputModesOf, mediaOutputModesOf } from './a2a-agent-card.ts';
 import { createTaskReader } from './a2a-task-reader.ts';
-import type { Bureau } from '../types.ts';
+import type { Bureau, BureauReviews, BureauInternals } from '../types.ts';
 import { bureauReviewsOperations } from './bureau-reviews-operations.ts';
 import { bureauRunEventsSubscriptionOperation } from './bureau-run-events-operation.ts';
 import { createAssetsMount } from './assets-mount.ts';
@@ -178,21 +178,11 @@ import {
 export type BureauHandlerSource = Pick<
   Bureau,
   | 'id'
-  | 'hasExplicitId'
   | 'runtimeServices'
-  | 'taskRetention'
-  | 'kv'
-  | 'eventFeed'
-  | 'runEventFeeds'
-  | 'listPendingReviews'
-  | 'getReview'
-  | 'resolveReview'
-  | 'pendingHumanWaitsOfRun'
   | 'durableEngine'
   | 'getOwner'
   | 'getScheduleAgentName'
   | 'getScheduleInputPreview'
-  | 'tasks'
   | 'lifecycle'
   | 'eventHistory'
   | 'subscribeEventHistory'
@@ -202,7 +192,6 @@ export type BureauHandlerSource = Pick<
   | 'forkSession'
   | 'deleteSession'
   | 'listSessions'
-  | 'sessionStore'
   | 'waitForRecovery'
   | 'createRun'
   | 'getRun'
@@ -210,14 +199,12 @@ export type BureauHandlerSource = Pick<
   | 'listRuns'
   | 'subscribeLiveFrames'
   | 'subscribeRunSnapshot'
-  | 'hasDurableEngine'
   | 'locateRunCreationReceipt'
   | 'children'
   | 'getDurableRun'
   | 'waitForDurableRun'
   | 'cancelDurableRun'
   | 'models'
-  | 'auditTrail'
   | 'workflows'
   | 'createSchedule'
   | 'getSchedule'
@@ -229,13 +216,26 @@ export type BureauHandlerSource = Pick<
   | 'goals'
   | 'memory'
   | 'submitSessionInput'
-  | 'whenRunRecorded'
   | 'sessionInputsDeliveredBy'
   | 'assets'
   | 'surfaces'
   | 'addEventListener'
   | 'removeEventListener'
-> & {
+> & { readonly reviews: Pick<BureauReviews, 'list' | 'get' | 'resolve' | 'pendingOf'> } & {
+  readonly internals: Pick<
+    BureauInternals,
+    | 'hasExplicitId'
+    | 'taskRetention'
+    | 'kv'
+    | 'eventFeed'
+    | 'runEventFeeds'
+    | 'taskRegistry'
+    | 'sessionStore'
+    | 'hasDurableEngine'
+    | 'auditTrail'
+    | 'whenTaskRecorded'
+  >;
+} & {
   readonly agents: {
     has(name: string): boolean;
     find(name: string): AgentDescription | undefined;
@@ -509,7 +509,7 @@ function assertAgUi(bureau: BureauHandlerSource, options: BureauHandlerOptions):
       fail(`agUi.${name} must be a positive integer`);
     }
   }
-  if (!bureau.hasDurableEngine) {
+  if (!bureau.internals.hasDurableEngine) {
     fail(
       'agUi needs a Bureau with a durable engine: its human-wait parks and run-creation receipts ' +
         'both depend on one. Configure storage and `durable` on createBureau',
@@ -554,7 +554,7 @@ function assertA2A(bureau: BureauHandlerSource, options: BureauHandlerOptions): 
     }
   }
   if (options.discoveryUrl !== undefined) assertA2AUrl('discoveryUrl', options.discoveryUrl);
-  if (!bureau.hasDurableEngine) {
+  if (!bureau.internals.hasDurableEngine) {
     fail(
       'publicUrl needs a Bureau with a durable engine: every A2A send creates its task through a ' +
         'run-creation receipt, which only a durable engine keeps. Configure storage and ' +
@@ -564,7 +564,7 @@ function assertA2A(bureau: BureauHandlerSource, options: BureauHandlerOptions): 
   // An exact retry of a send resolves through its binding to the task it created, so the task
   // has to outlive the binding: a binding left pointing at a removed task would answer a retry
   // with not-found, or start the work again.
-  const retention = bureau.taskRetention;
+  const retention = bureau.internals.taskRetention;
   if (
     retention !== 'forever' &&
     retention.olderThan < COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS
@@ -602,7 +602,7 @@ function assertBureauId(bureau: BureauHandlerSource): void {
 }
 
 function assertPersistence(bureau: BureauHandlerSource): void {
-  if (bureau.kv !== undefined && !bureau.hasExplicitId) {
+  if (bureau.internals.kv !== undefined && !bureau.internals.hasExplicitId) {
     fail(
       'this Bureau persists to storage but was created without an explicit `id`. A generated ' +
         'identifier changes on every restart and would orphan what the storage holds. Pass `id` to createBureau',
@@ -830,7 +830,7 @@ function createA2AMount(
   host: BureauHandlerHost,
 ): OperationHandlerMount {
   const publish = options.publish ?? [];
-  const kv = bureau.kv ?? textValueStore(new MemoryStorage());
+  const kv = bureau.internals.kv ?? textValueStore(new MemoryStorage());
   const records = createA2ATaskRecords(kv);
   const push = createPushSupport(bureau, options, kv, records);
   // A record whose removal failed holds message text for a task that is gone, so the removal is
@@ -849,7 +849,7 @@ function createA2AMount(
     }
   }
   void records
-    .sweep(async (taskId) => (await bureau.tasks.get(taskId)) !== undefined)
+    .sweep(async (taskId) => (await bureau.internals.taskRegistry.get(taskId)) !== undefined)
     .catch(() => undefined);
   bureau.addEventListener('run.removed', (event) => {
     void removeRecords(event.runId);
@@ -883,7 +883,7 @@ function createA2AMount(
     // came through Bureau's other surfaces, never gets a tombstone.
     hasTasks: async (agentName) => {
       for (let offset = 0; ; offset += TOMBSTONE_SCAN_PAGE) {
-        const page = await bureau.tasks.enumerate({
+        const page = await bureau.internals.taskRegistry.enumerate({
           agentName,
           limit: TOMBSTONE_SCAN_PAGE,
           offset,
@@ -965,7 +965,7 @@ const TOMBSTONE_SCAN_PAGE = 50;
 function createRespondLedger(bureau: BureauHandlerSource): TasksRespondLedger {
   return createPrunedLedger<TasksRespondClaim, TasksRespondResult>(
     // An ephemeral Bureau keeps the ledger in memory: a receipt then lives as long as the process does.
-    bureau.kv ?? textValueStore(new MemoryStorage()),
+    bureau.internals.kv ?? textValueStore(new MemoryStorage()),
     TASKS_RESPOND_LEDGER_KEY_PREFIX,
     'respond-conflict',
     bureau.runtimeServices,
@@ -1010,14 +1010,22 @@ export function buildBureauHandlerHost(
   const operations = describeOperations(BUREAU_HANDLER_OPERATIONS);
   return {
     // A Bureau owns exactly one feed, so the registry answers for its id alone.
-    bureauFeeds: { get: (bureauId) => (bureauId === bureau.id ? bureau.eventFeed : undefined) },
-    runFeeds: bureau.runEventFeeds,
-    reviews: bureau,
+    bureauFeeds: {
+      get: (bureauId) => (bureauId === bureau.id ? bureau.internals.eventFeed : undefined),
+    },
+    runFeeds: bureau.internals.runEventFeeds,
+    reviews: {
+      list: () => bureau.reviews.list(),
+      get: (id) => bureau.reviews.get(id),
+      resolve: (input) => bureau.reviews.resolve(input),
+      pendingOf: (taskId) => bureau.reviews.pendingOf(taskId),
+      durableEngine: () => bureau.durableEngine(),
+    },
     ownership: {
       runOwner: (runId) => bureau.getOwner({ kind: 'run', id: runId }),
       mayAccess: mayAccessOwnedResource,
     },
-    tasks: bureau.tasks,
+    tasks: bureau.internals.taskRegistry,
     inspection: {
       liveness: (runId) => bureau.getRun(runId)?.liveness,
       children: (runId) => bureau.children.list(runId),
@@ -1037,7 +1045,7 @@ export function buildBureauHandlerHost(
       publishesCodeAgent: (id) => publish.includes(id),
       models: () => bureau.models.catalog().descriptors,
       audit: async (entry) => {
-        await bureau.auditTrail?.record(entry);
+        await bureau.internals.auditTrail?.record(entry);
       },
     },
     workflows: bureau.workflows,
@@ -1058,7 +1066,7 @@ export function buildBureauHandlerHost(
     memory: { governed: bureau.memory, tenantId: bureau.id },
     audit: {
       get trail() {
-        return bureau.auditTrail;
+        return bureau.internals.auditTrail;
       },
       ownerOf: ({ runId, detail }) => bureau.getOwner({ kind: 'audit', runId, detail }),
     },

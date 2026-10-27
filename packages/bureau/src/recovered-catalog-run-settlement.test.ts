@@ -21,7 +21,7 @@ import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
-import type { Bureau } from './types';
+import type { Bureau, BureauInternals } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 
 const PRINCIPAL = 'api-key:alice';
@@ -41,18 +41,21 @@ async function temporaryDirectory(): Promise<string> {
 
 /** The run's snapshot reference: `undefined` when it has none; `settledAt` is absent while it holds the snapshot. */
 async function referenceOf(
-  bureau: Pick<Bureau, 'kv'>,
+  bureau: { readonly internals: Pick<BureauInternals, 'kv'> },
   runId: string,
 ): Promise<{ readonly settledAt?: string } | undefined> {
-  const raw = await bureau.kv?.get(`${AGENT_RUN_REFERENCE_KEY_PREFIX}${runId}`);
+  const raw = await bureau.internals.kv?.get(`${AGENT_RUN_REFERENCE_KEY_PREFIX}${runId}`);
   return raw === null || raw === undefined
     ? undefined
     : (JSON.parse(raw) as { settledAt?: string });
 }
 
 /** The status of a run's task, or `undefined` when it has none. */
-async function taskStatusOf(bureau: Pick<Bureau, 'tasks'>, runId: string) {
-  const task = await bureau.tasks.get(runId);
+async function taskStatusOf(
+  bureau: { readonly internals: Pick<BureauInternals, 'taskRegistry'> },
+  runId: string,
+) {
+  const task = await bureau.internals.taskRegistry.get(runId);
   return task?.status;
 }
 
@@ -94,7 +97,7 @@ describe('a recovered file-agent run', () => {
     await first.bureau.agents.refresh();
     const run = first.bureau.run('researcher', 'long question', { principal: PRINCIPAL });
     await waitForCondition(
-      async () => (await first.bureau.tasks.record(run.id)) !== undefined,
+      async () => (await first.bureau.internals.taskRegistry.record(run.id)) !== undefined,
       'the task is recorded',
       ATTEMPTS,
     );
@@ -182,7 +185,7 @@ describe('a recovered file-agent run', () => {
     const held = await referenceOf(third.bureau, runId);
     expect(held).toBeDefined();
     expect(held?.settledAt).toBeUndefined();
-    expect(await third.bureau.tasks.cancel(runId, 0)).toMatchObject({
+    expect(await third.bureau.internals.taskRegistry.cancel(runId, 0)).toMatchObject({
       receipt: expect.stringMatching(/^(cancel-requested|cleanup-pending|cleaned-up|canceled)$/u),
     });
     await waitForCondition(
@@ -253,7 +256,7 @@ describe('a recovered child run', () => {
       principal: PRINCIPAL,
     });
     await waitForCondition(
-      () => first.listPendingReviews().some((review) => review.runId === parent.id),
+      () => first.reviews.list().some((review) => review.runId === parent.id),
       'the parent parks',
       ATTEMPTS,
     );
@@ -281,9 +284,9 @@ describe('a recovered child run', () => {
       ATTEMPTS,
     );
     // Let the settlement the run's end published reach its subscribers.
-    await second.tasks.idle();
-    expect(await second.tasks.record('agent-run-child')).toBeUndefined();
-    const listed = await second.tasks.enumerate({ limit: 50, offset: 0 });
+    await second.internals.taskRegistry.idle();
+    expect(await second.internals.taskRegistry.record('agent-run-child')).toBeUndefined();
+    const listed = await second.internals.taskRegistry.enumerate({ limit: 50, offset: 0 });
     expect(listed.tasks.map((task) => task.id)).not.toContain('agent-run-child');
   });
 });

@@ -48,10 +48,12 @@ describe('a Bureau started over a store with an instance it cannot register', ()
     // revision the parked instance is pinned to.
     await first.put('stranded.json', workflowFileText('stranded', parked('stranded edited')));
     await first.bureau.workflows?.refresh();
-    for (const key of await first.bureau.kv!.list('bureau-workflow-snapshot:v1:stranded:')) {
-      const stored = JSON.parse((await first.bureau.kv!.get(key)) ?? '{}');
+    for (const key of await first.bureau.internals.kv!.list(
+      'bureau-workflow-snapshot:v1:stranded:',
+    )) {
+      const stored = JSON.parse((await first.bureau.internals.kv!.get(key)) ?? '{}');
       if (stored.document?.steps?.[1]?.input?.message === 'stranded question') {
-        await first.bureau.kv!.set(key, '{"schemaVersion":1}');
+        await first.bureau.internals.kv!.set(key, '{"schemaVersion":1}');
       }
     }
     await first.dispose();

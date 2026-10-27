@@ -86,7 +86,7 @@ async function propose(
 ) {
   const surfaces = harness.bureau.surfaces;
   if (surfaces === undefined) throw new Error('a persistent Bureau has surfaces');
-  const record = await harness.bureau.tasks.record(taskId);
+  const record = await harness.bureau.internals.taskRegistry.record(taskId);
   if (record === undefined) throw new Error('the run is a task with a record');
   const surfaceId = options.surfaceId ?? 'panel';
   const receipt = await createA2uiAdapter({ surfaces }).apply(
@@ -288,7 +288,7 @@ describe('A2UI surfaces on the AG-UI stream', () => {
           baseRevision: 1,
           reason: 'dismissed',
         },
-        { principal: (await harness.bureau.tasks.record(taskId))!.owner },
+        { principal: (await harness.bureau.internals.taskRegistry.record(taskId))!.owner },
       );
       expect(closed.outcome).toBe('accepted');
       const gone = await nextActivity(reader);

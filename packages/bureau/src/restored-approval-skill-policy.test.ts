@@ -70,8 +70,8 @@ describe('a restored approval keeps the skill policy it was requested under', ()
     });
     const restored = await reviewOf(restarted, fireId);
     expect(restored.id).toBe(review.id);
-    await restarted
-      .resolveReview({ id: restored.id, decision: 'approve', principal: OWNER.alice })
+    await restarted.reviews
+      .resolve({ id: restored.id, decision: 'approve', principal: OWNER.alice })
       .catch(() => undefined);
 
     expect(charges).toEqual([]);
@@ -96,7 +96,7 @@ describe('a restored approval keeps the skill policy it was requested under', ()
       principal: OWNER.alice,
     });
     const review = await pollUntil(
-      () => first.listPendingReviews().find((candidate) => candidate.runId === run.id),
+      () => first.reviews.list().find((candidate) => candidate.runId === run.id),
       'the session run’s approval',
     );
     await pollForTime(
@@ -112,11 +112,11 @@ describe('a restored approval keeps the skill policy it was requested under', ()
       toolbox: approvalToolbox(charges),
     });
     const restored = await pollUntil(
-      () => restarted.listPendingReviews().find((candidate) => candidate.id === review.id),
+      () => restarted.reviews.list().find((candidate) => candidate.id === review.id),
       'the restored approval',
     );
-    await restarted
-      .resolveReview({ id: restored.id, decision: 'approve', principal: OWNER.alice })
+    await restarted.reviews
+      .resolve({ id: restored.id, decision: 'approve', principal: OWNER.alice })
       .catch(() => undefined);
 
     expect(charges).toEqual([]);
@@ -145,7 +145,7 @@ describe('the control: without the skill, the same restored approval runs', () =
       principal: OWNER.alice,
     });
     const review = await pollUntil(
-      () => first.listPendingReviews().find((candidate) => candidate.runId === run.id),
+      () => first.reviews.list().find((candidate) => candidate.runId === run.id),
       'the session run’s approval',
     );
     const charges: number[] = [];
@@ -155,11 +155,11 @@ describe('the control: without the skill, the same restored approval runs', () =
       toolbox: approvalToolbox(charges),
     });
     await pollUntil(
-      () => restarted.listPendingReviews().find((candidate) => candidate.id === review.id),
+      () => restarted.reviews.list().find((candidate) => candidate.id === review.id),
       'the restored approval',
     );
 
-    await restarted.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
+    await restarted.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice });
 
     expect(charges).toEqual([4242]);
   });

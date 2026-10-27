@@ -183,8 +183,8 @@ async function open(
 
 /** The review a process lists for a run, once it does. */
 async function listed(bureau: Bureau<AgentDefinitions>, runId: string): Promise<PendingReview> {
-  await pollUntil(() => bureau.listPendingReviews().some((review) => review.runId === runId));
-  return bureau.listPendingReviews().find((review) => review.runId === runId)!;
+  await pollUntil(() => bureau.reviews.list().some((review) => review.runId === runId));
+  return bureau.reviews.list().find((review) => review.runId === runId)!;
 }
 
 /** B's derived review of a run A holds, once the park has committed. */
@@ -194,7 +194,7 @@ async function derived(
 ): Promise<PendingHumanWaitReview> {
   let found: PendingHumanWaitReview | undefined;
   await pollUntil(async () => {
-    [found] = await bureau.pendingHumanWaitsOfRun(runId);
+    [found] = await bureau.reviews.pendingOf(runId);
     return found !== undefined;
   });
   return found!;
@@ -289,7 +289,7 @@ describe('the by-run derivation (COR-1579)', () => {
     for (const runId of [sessionRun.id, catalogRun.id]) {
       const local = (await listed(a.bureau, runId)) as PendingHumanWaitReview;
       const peer = await derived(b.bureau, runId);
-      expect(await b.bureau.pendingHumanWaitsOfRun(runId)).toHaveLength(1);
+      expect(await b.bureau.reviews.pendingOf(runId)).toHaveLength(1);
       expect(peer).toMatchObject({
         kind: 'human-wait',
         id: local.id,
@@ -303,12 +303,12 @@ describe('the by-run derivation (COR-1579)', () => {
 
     for (const runId of [sessionRun.id, catalogRun.id]) {
       const local = await listed(a.bureau, runId);
-      await a.bureau.resolveReview({ id: local.id, decision: 'approve', principal: 'alice' });
+      await a.bureau.reviews.resolve({ id: local.id, decision: 'approve', principal: 'alice' });
     }
     await catalogRun.result();
     await a.bureau.waitForDurableRun(sessionRun.id);
-    expect(await b.bureau.pendingHumanWaitsOfRun(sessionRun.id)).toEqual([]);
-    expect(await b.bureau.pendingHumanWaitsOfRun(catalogRun.id)).toEqual([]);
+    expect(await b.bureau.reviews.pendingOf(sessionRun.id)).toEqual([]);
+    expect(await b.bureau.reviews.pendingOf(catalogRun.id)).toEqual([]);
   });
 });
 
@@ -316,14 +316,14 @@ describe('a session human wait another process holds (COR-1579)', () => {
   it("resolves a peer's parked session human wait", async () => {
     const { a, b, run, review, seenByA } = await sessionParkedInA();
 
-    expect(await b.bureau.getReview(review.id)).toMatchObject({
+    expect(await b.bureau.reviews.get(review.id)).toMatchObject({
       id: review.id,
       kind: 'human-wait',
       sessionId: run.sessionId,
       status: 'pending',
     });
     expect(
-      await b.bureau.resolveReview({
+      await b.bureau.reviews.resolve({
         id: review.id,
         decision: 'approve',
         principal: 'alice',
@@ -341,13 +341,13 @@ describe('a session human wait another process holds (COR-1579)', () => {
     const { a, b, run, review, seenByA } = await sessionParkedInA(2);
     const heldA = a.seam.holdRead(readsDecisionRecord);
     const heldB = b.seam.holdRead(readsDecisionRecord);
-    const fromA = a.bureau.resolveReview({
+    const fromA = a.bureau.reviews.resolve({
       id: review.id,
       decision: 'approve',
       principal: 'alice',
       payload: { environment: 'from-a' },
     });
-    const fromB = b.bureau.resolveReview({
+    const fromB = b.bureau.reviews.resolve({
       id: review.id,
       decision: 'deny',
       principal: 'alice',
@@ -368,7 +368,7 @@ describe('a session human wait another process holds (COR-1579)', () => {
     // The run consumed one signal and parked again on the same name, and no buffered second
     // payload is waiting to answer that park.
     const second = `human-wait:${run.id}:answer:1`;
-    await pollUntil(() => a.bureau.listPendingReviews().some(({ id }) => id === second));
+    await pollUntil(() => a.bureau.reviews.list().some(({ id }) => id === second));
     expect(seenByA.resumed).toHaveLength(1);
     expect(seenByA.resumed[0]).toContain(winner === 'approve' ? 'from-a' : '__abDenied');
     expect(await bufferedSignals(a.real, run.id)).toEqual([]);
@@ -384,22 +384,22 @@ describe('a session human wait another process holds (COR-1579)', () => {
       payload: { environment: 'production' },
     } as const;
     const failing = a.seam.failWrites(buffersSignal, new Error('the signal write was lost'));
-    const failed = await rejectionOf(a.bureau.resolveReview(decision));
+    const failed = await rejectionOf(a.bureau.reviews.resolve(decision));
     failing.stop();
 
     expect((failed as Error).message).toContain('the signal write was lost');
     expect(await a.real.get(reviewDecisionKey(review.id, 0))).not.toBeNull();
     const different = await rejectionOf(
-      b.bureau.resolveReview({ id: review.id, decision: 'deny', principal: 'alice' }),
+      b.bureau.reviews.resolve({ id: review.id, decision: 'deny', principal: 'alice' }),
     );
     expect(codeOf(different)).toBe('CONFLICT');
 
-    expect(await b.bureau.resolveReview(decision)).toMatchObject({
+    expect(await b.bureau.reviews.resolve(decision)).toMatchObject({
       id: review.id,
       decision: 'approve',
     });
     const second = `human-wait:${run.id}:answer:1`;
-    await pollUntil(() => a.bureau.listPendingReviews().some(({ id }) => id === second));
+    await pollUntil(() => a.bureau.reviews.list().some(({ id }) => id === second));
     expect(seenByA.resumed).toHaveLength(1);
     expect(seenByA.resumed[0]).toContain('production');
     expect(await bufferedSignals(a.real, run.id)).toEqual([]);
@@ -433,7 +433,7 @@ describe('a session human wait another process holds (COR-1579)', () => {
 
     for (const peer of [b, stale]) {
       const refusal = await rejectionOf(
-        peer.bureau.resolveReview({
+        peer.bureau.reviews.resolve({
           id: review.id,
           decision: 'approve',
           principal: 'alice',
@@ -445,9 +445,9 @@ describe('a session human wait another process holds (COR-1579)', () => {
     // Nothing was delivered or claimed, and the run is still parked.
     expect(await a.real.get(reviewDecisionKey(review.id, 0))).toBeNull();
     expect(await bufferedSignals(a.real, run.id)).toEqual([]);
-    const stillPending = await b.bureau.pendingHumanWaitsOfRun(run.id);
+    const stillPending = await b.bureau.reviews.pendingOf(run.id);
     expect(stillPending.map(({ id }) => id)).toEqual([review.id]);
-    expect(a.bureau.listPendingReviews().map(({ id }) => id)).toEqual([review.id]);
+    expect(a.bureau.reviews.list().map(({ id }) => id)).toEqual([review.id]);
     expect(seenByA.resumed).toEqual([]);
   });
 });
@@ -459,10 +459,10 @@ describe('a tool approval two processes hold (COR-1579)', () => {
       const charges = newCharges();
       const { a, b, review } = await settledApproval(charges);
       const heldB = b.seam.holdWrite(writesDecisionRecord);
-      const fromB = b.bureau.resolveReview({ id: review.id, decision: 'deny', principal: 'bob' });
+      const fromB = b.bureau.reviews.resolve({ id: review.id, decision: 'deny', principal: 'bob' });
       await heldB.reached;
       expect(
-        await a.bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'alice' }),
+        await a.bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'alice' }),
       ).toMatchObject({ id: review.id, decision: 'approve' });
       heldB.release();
       expect(codeOf(await rejectionOf(fromB))).toBe('CONFLICT');
@@ -477,14 +477,14 @@ describe('a tool approval two processes hold (COR-1579)', () => {
       const charges = newCharges();
       const { a, b, review } = await settledApproval(charges);
       const heldA = a.seam.holdWrite(writesDecisionRecord);
-      const fromA = a.bureau.resolveReview({
+      const fromA = a.bureau.reviews.resolve({
         id: review.id,
         decision: 'approve',
         principal: 'alice',
       });
       await heldA.reached;
       expect(
-        await b.bureau.resolveReview({ id: review.id, decision: 'deny', principal: 'bob' }),
+        await b.bureau.reviews.resolve({ id: review.id, decision: 'deny', principal: 'bob' }),
       ).toMatchObject({ id: review.id, decision: 'deny' });
       heldA.release();
       expect(codeOf(await rejectionOf(fromA))).toBe('CONFLICT');
@@ -497,16 +497,16 @@ describe('a tool approval two processes hold (COR-1579)', () => {
     const { a, b, review } = await settledApproval(charges);
     const decision = { id: review.id, decision: 'approve', principal: 'alice' } as const;
     const heldPersistence = a.seam.holdWrite(persistsResolution);
-    const fromA = a.bureau.resolveReview(decision);
+    const fromA = a.bureau.reviews.resolve(decision);
     await heldPersistence.reached;
 
-    const early = await rejectionOf(b.bureau.resolveReview(decision));
+    const early = await rejectionOf(b.bureau.reviews.resolve(decision));
     expect(codeOf(early)).toBe('CONFLICT');
     expect((early as Error).message).toContain('already being resolved');
 
     heldPersistence.release();
     expect(await fromA).toMatchObject({ id: review.id, decision: 'approve' });
-    expect(await b.bureau.resolveReview(decision)).toMatchObject({
+    expect(await b.bureau.reviews.resolve(decision)).toMatchObject({
       id: review.id,
       decision: 'approve',
     });
@@ -518,21 +518,21 @@ describe('a tool approval two processes hold (COR-1579)', () => {
     const { a, review } = await settledApproval(charges);
     charges.regate = true;
 
-    const resolved = await a.bureau.resolveReview({
+    const resolved = await a.bureau.reviews.resolve({
       id: review.id,
       decision: 'approve',
       principal: 'alice',
     });
 
     expect(resolved).toMatchObject({ id: review.id, superseded: true });
-    expect(a.bureau.listPendingReviews()).toMatchObject([{ id: review.id, round: 1 }]);
+    expect(a.bureau.reviews.list()).toMatchObject([{ id: review.id, round: 1 }]);
     expect(await a.real.get(reviewDecisionKey(review.id, 0))).toBeNull();
     // B is opened after the re-gate: it restores the round at boot.
     const b = await open(charging(), charges);
     const reopened = (await listed(b.bureau, review.runId)) as PendingToolApprovalReview;
     expect(reopened).toMatchObject({ id: review.id, round: 1 });
     expect(
-      await b.bureau.resolveReview({ id: review.id, decision: 'deny', principal: 'bob' }),
+      await b.bureau.reviews.resolve({ id: review.id, decision: 'deny', principal: 'bob' }),
     ).toMatchObject({ id: review.id, decision: 'deny' });
     expect(charges.charged).toHaveLength(0);
   });
@@ -543,8 +543,8 @@ describe('a tool approval two processes hold (COR-1579)', () => {
       const charges = newCharges();
       const { a, b, review } = await settledApproval(charges);
       charges.regate = true;
-      await a.bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'alice' });
-      expect(a.bureau.listPendingReviews()).toMatchObject([{ id: review.id, round: 1 }]);
+      await a.bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'alice' });
+      expect(a.bureau.reviews.list()).toMatchObject([{ id: review.id, round: 1 }]);
       charges.regate = false;
       return { b, review, charges };
     }
@@ -553,7 +553,12 @@ describe('a tool approval two processes hold (COR-1579)', () => {
       const { b, review, charges } = await regatedByA();
 
       const stale = await rejectionOf(
-        b.bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'bob', round: 0 }),
+        b.bureau.reviews.resolve({
+          id: review.id,
+          decision: 'approve',
+          principal: 'bob',
+          round: 0,
+        }),
       );
       expect(stale).toBeInstanceOf(ReviewRoundChangedError);
       expect(codeOf(stale)).toBe('CONFLICT');
@@ -561,7 +566,7 @@ describe('a tool approval two processes hold (COR-1579)', () => {
 
       // The refusal caught this process up, so the round the caller reads next decides.
       expect(
-        await b.bureau.resolveReview({
+        await b.bureau.reviews.resolve({
           id: review.id,
           decision: 'deny',
           principal: 'bob',
@@ -575,7 +580,7 @@ describe('a tool approval two processes hold (COR-1579)', () => {
       const { b, review, charges } = await regatedByA();
 
       expect(
-        await b.bureau.resolveReview({
+        await b.bureau.reviews.resolve({
           id: review.id,
           decision: 'deny',
           principal: 'bob',
@@ -589,7 +594,7 @@ describe('a tool approval two processes hold (COR-1579)', () => {
       const { b, review } = await regatedByA();
 
       const ahead = await rejectionOf(
-        b.bureau.resolveReview({ id: review.id, decision: 'deny', principal: 'bob', round: 5 }),
+        b.bureau.reviews.resolve({ id: review.id, decision: 'deny', principal: 'bob', round: 5 }),
       );
       expect(ahead).toBeInstanceOf(ReviewRoundChangedError);
     });
@@ -598,7 +603,7 @@ describe('a tool approval two processes hold (COR-1579)', () => {
       const { b, review } = await regatedByA();
 
       const unfenced = await rejectionOf(
-        b.bureau.resolveReview({ id: review.id, decision: 'deny', principal: 'bob' }),
+        b.bureau.reviews.resolve({ id: review.id, decision: 'deny', principal: 'bob' }),
       );
       expect(codeOf(unfenced)).toBe('CONFLICT');
       expect(unfenced).not.toBeInstanceOf(ReviewRoundChangedError);
@@ -611,13 +616,13 @@ describe('a tool approval two processes hold (COR-1579)', () => {
     charges.refuseOnResume = true;
 
     const refused = await rejectionOf(
-      a.bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'alice' }),
+      a.bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'alice' }),
     );
 
     expect(codeOf(refused)).toBe('CONFLICT');
     expect(await a.real.get(reviewDecisionKey(review.id, 0))).toBeNull();
     expect(
-      await b.bureau.resolveReview({ id: review.id, decision: 'deny', principal: 'bob' }),
+      await b.bureau.reviews.resolve({ id: review.id, decision: 'deny', principal: 'bob' }),
     ).toMatchObject({ id: review.id, decision: 'deny' });
     expect(charges.charged).toHaveLength(0);
   });
@@ -660,8 +665,8 @@ describe('a Bureau with no key-value store (COR-1579)', () => {
         payload: { environment: 'staging' },
       } as const;
 
-      const first = bureau.resolveReview(decision);
-      const concurrent = await rejectionOf(bureau.resolveReview(decision));
+      const first = bureau.reviews.resolve(decision);
+      const concurrent = await rejectionOf(bureau.reviews.resolve(decision));
       expect(await first).toMatchObject({ id: review.id, decision: 'approve' });
 
       expect(codeOf(concurrent)).toBe('CONFLICT');

@@ -75,8 +75,8 @@ function hostOver(
   ledger: ReturnType<typeof newLedger>,
   options: {
     openWaits: readonly (typeof openWait | typeof approvalWait)[];
-    getReview: BureauTasksRespondOperationHost['reviews']['getReview'];
-    resolveReview?: BureauTasksRespondOperationHost['reviews']['resolveReview'];
+    getReview: BureauTasksRespondOperationHost['reviews']['get'];
+    resolveReview?: BureauTasksRespondOperationHost['reviews']['resolve'];
     /** The task has no record any more, as after task retention. */
     taskGone?: boolean;
   },
@@ -102,8 +102,8 @@ function hostOver(
       ? { get: async () => undefined, ownerOf: async () => undefined }
       : { get: async () => task, ownerOf: async () => owner },
     reviews: {
-      getReview: options.getReview,
-      resolveReview:
+      get: options.getReview,
+      resolve:
         options.resolveReview ??
         (async () => {
           throw new Error('resolveReview must not be reached');

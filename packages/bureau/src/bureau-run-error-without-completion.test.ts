@@ -128,7 +128,7 @@ describe('a durable run that fails and then loses its checkpoint compare-and-swa
 
       // The scenario this test exists for: the run reported an error and no terminal event.
       const kinds: string[] = [];
-      for await (const envelope of bureau.runEventFeeds.get(run.id)!.feed.replay()) {
+      for await (const envelope of bureau.internals.runEventFeeds.get(run.id)!.feed.replay()) {
         kinds.push(envelope.kind);
       }
       expect(kinds).toContain('run.error');

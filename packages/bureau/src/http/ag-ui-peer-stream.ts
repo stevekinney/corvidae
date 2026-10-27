@@ -19,7 +19,7 @@
  * sends the conversation as it stands, and the terminal event.
  *
  * A run parked on a human wait ends the stream with a `STATE_SNAPSHOT` naming its interrupt, and
- * then the interrupt, read from `Bureau.pendingHumanWaitsOfRun` (COR-1615). Nothing durable that a
+ * then the interrupt, read from `Bureau.reviews.pendingOf` (COR-1615). Nothing durable that a
  * peer can tail marks a park: the holder saves no session for it, the run's durable history records
  * only its terminal events, and Weft's `signal:waiting` fires on the holder's engine alone. So the
  * stream reads the run's waits again on each durable `session.saved`, and otherwise every
@@ -43,6 +43,7 @@ import type {
   PendingHumanWaitReview,
   PendingReview,
   PendingToolApprovalReview,
+  BureauReviews,
 } from '../types.ts';
 import { toInterrupt } from './ag-ui-interrupts.ts';
 import { type AnswerRow, snapshotMessages, snapshotMessagesWithAnswers } from './ag-ui-messages.ts';
@@ -73,13 +74,8 @@ export const PEER_PARK_RECHECK_INTERVAL_MS = 500;
 /** What a peer's stream reads from the Bureau. */
 export type PeerStreamBureau = Pick<
   Bureau,
-  | 'getSession'
-  | 'getDurableRun'
-  | 'eventHistory'
-  | 'pendingHumanWaitsOfRun'
-  | 'waitForDurableRun'
-  | 'subscribeEventHistory'
->;
+  'getSession' | 'getDurableRun' | 'eventHistory' | 'waitForDurableRun' | 'subscribeEventHistory'
+> & { readonly reviews: Pick<BureauReviews, 'pendingOf'> };
 
 /** The terminal a peer learned, and whether it came from the run's durable history. */
 type PeerTerminal = NativeTerminal & { readonly cursor?: string | undefined };
@@ -191,7 +187,7 @@ class Changes {
 /**
  * The tool approvals a settled run's session still holds for it, as reviews: the entries of
  * `pendingApprovalOverrides` whose resolution has not started and whose binding has not expired,
- * with the round the session recorded. The rule `listPendingReviews` restores them by.
+ * with the round the session recorded. The rule `reviews.list` restores them by.
  */
 export function sessionApprovalsOf(
   session: AgentSession | undefined,
@@ -314,8 +310,8 @@ export async function openPeerStream(
 
 /** The human waits the run is parked on, less the ones a resume just answered. */
 async function humanWaitsOf(context: PeerStreamContext): Promise<PendingHumanWaitReview[]> {
-  const waits = await context.bureau
-    .pendingHumanWaitsOfRun(context.nativeRunId)
+  const waits = await context.bureau.reviews
+    .pendingOf(context.nativeRunId)
     .catch((): PendingHumanWaitReview[] => []);
   return waits.filter((review) => !context.answered.has(review.id));
 }

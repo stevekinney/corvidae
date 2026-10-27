@@ -73,20 +73,20 @@ describe('a session-run approval whose approve is in flight', () => {
       principal: OWNER.alice,
     });
     const review = await pollUntil(
-      () => bureau.listPendingReviews().find((candidate) => candidate.runId === run.id),
+      () => bureau.reviews.list().find((candidate) => candidate.runId === run.id),
       'the approval',
     );
 
-    const first = bureau.resolveReview({
+    const first = bureau.reviews.resolve({
       id: review.id,
       decision: 'approve',
       principal: OWNER.alice,
     });
     await started.promise;
 
-    expect(bureau.listPendingReviews().some((candidate) => candidate.id === review.id)).toBe(true);
+    expect(bureau.reviews.list().some((candidate) => candidate.id === review.id)).toBe(true);
     const second = await rejectionOf(
-      bureau.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice }),
+      bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice }),
     );
     expect((second as BureauError).code).toBe('CONFLICT');
     expect((second as Error).message).toContain('already being resolved');

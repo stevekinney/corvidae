@@ -218,7 +218,7 @@ export async function fireOnce(
 }
 
 export const reviewsOf = (bureau: Bureau, runId: string): PendingReview[] =>
-  bureau.listPendingReviews().filter((review) => review.runId === runId);
+  bureau.reviews.list().filter((review) => review.runId === runId);
 
 export async function reviewOf(bureau: Bureau, runId: string): Promise<PendingReview> {
   return pollUntil(() => reviewsOf(bureau, runId)[0], `a pending review of run ${runId}`);
@@ -414,7 +414,7 @@ export async function auditRecordsOf(
   type: string,
   reviewId?: string,
 ) {
-  const records = (await bureau.auditTrail?.query({ runId, type })) ?? [];
+  const records = (await bureau.internals.auditTrail?.query({ runId, type })) ?? [];
   return records.filter((record) => {
     if (reviewId === undefined) return true;
     const detail = record.detail as { review?: { id?: string } } | undefined;

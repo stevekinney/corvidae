@@ -237,7 +237,7 @@ export interface BureauTestHarness<D extends AgentDefinitions = AgentDefinitions
     definition: DurableScheduleDefinition,
   ): Promise<ScheduleSummary | undefined>;
 
-  /** Thin wrapper over `Bureau.resolveReview`. */
+  /** Thin wrapper over `Bureau.reviews.resolve`. */
   resolveReview(input: ResolveReviewInput): Promise<ResolveReviewResult>;
 
   /** Thin wrapper over `Bureau.signalSession` — the signal-wait lifecycle surface. */
@@ -473,7 +473,7 @@ export async function createBureauTestHarness<D extends AgentDefinitions = Agent
     },
 
     resolveReview(input) {
-      return readyBureau.resolveReview(input);
+      return readyBureau.reviews.resolve(input);
     },
 
     deliverSignal(sessionId, name, payload) {

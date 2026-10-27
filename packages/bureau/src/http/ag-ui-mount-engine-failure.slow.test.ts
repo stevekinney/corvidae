@@ -76,8 +76,8 @@ describe('a refused workflow-state or event-history write (COR-1626)', () => {
             expect(typesOf(stream.received)).not.toContain(EventType.RUN_FINISHED);
             const runId = bureau.listRuns()[0]!.id;
             // A run that reports its own error ends its stream before the session has saved the
-            // run's end, so wait for that save: `whenRunRecorded` is what a stuck run never reached.
-            await bureau.whenRunRecorded(runId);
+            // run's end, so wait for that save: `internals.whenTaskRecorded` is what a stuck run never reached.
+            await bureau.internals.whenTaskRecorded(runId);
             expect(bureau.listRuns()[0]?.status).toBe('error');
             const session = await bureau.getSession('thread-1');
             expect(session?.metadata['lastRunStatus']).toBe('error');
@@ -135,7 +135,7 @@ describe('a completion that landed and then met refused retries (COR-1626)', () 
       expect(last?.event.type).toBe(EventType.RUN_FINISHED);
       expect(last?.event).not.toMatchObject({ code: 'STREAM_DEADLINE' });
       const runId = bureau.listRuns()[0]!.id;
-      await bureau.whenRunRecorded(runId);
+      await bureau.internals.whenTaskRecorded(runId);
       expect(bureau.listRuns()[0]?.status).toBe('completed');
       const session = await bureau.getSession('thread-1');
       expect(session?.metadata['lastRunStatus']).toBe('completed');

@@ -126,7 +126,7 @@ describe('a re-gated fire approval with a task stream open', () => {
     await settleAtApproval(bureau, fireId);
     const stream = subscribe === 'before' ? await followTask(bureau, fireId) : undefined;
     if (stream !== undefined) await sleep(100);
-    const outcome = await bureau.resolveReview({
+    const outcome = await bureau.reviews.resolve({
       id: review.id,
       decision: 'approve',
       principal: OWNER.alice,
@@ -148,7 +148,7 @@ describe('a re-gated fire approval with a task stream open', () => {
 
       expect(stream.ended).toBe(false);
       expect(reviewsOf(bureau, fireId).map((listed) => listed.id)).toEqual([review.id]);
-      const denied = await bureau.resolveReview({
+      const denied = await bureau.reviews.resolve({
         id: review.id,
         decision: 'deny',
         principal: OWNER.alice,
@@ -170,7 +170,7 @@ describe('a re-gated fire approval with a task stream open', () => {
     const { fireId } = await fireOnce(holder, OWNER.alice, 'regate-peer-session');
     const review = await reviewOf(holder, fireId);
     await settleAtApproval(holder, fireId);
-    const outcome = await holder.resolveReview({
+    const outcome = await holder.reviews.resolve({
       id: review.id,
       decision: 'approve',
       principal: OWNER.alice,
@@ -188,7 +188,7 @@ describe('a re-gated fire approval with a task stream open', () => {
 
     expect(stream.ended).toBe(false);
     expect(reviewsOf(peer, fireId).map((listed) => listed.id)).toEqual([review.id]);
-    const denied = await peer.resolveReview({
+    const denied = await peer.reviews.resolve({
       id: review.id,
       decision: 'deny',
       principal: OWNER.alice,
@@ -239,7 +239,7 @@ describe('the automatic sweep and a decision in flight', () => {
     const review = await reviewOf(bureau, fireId);
     await settleAtApproval(bureau, fireId);
 
-    const deciding = bureau.resolveReview({
+    const deciding = bureau.reviews.resolve({
       id: review.id,
       decision: 'approve',
       principal: OWNER.alice,
@@ -252,13 +252,13 @@ describe('the automatic sweep and a decision in flight', () => {
 
     expect(swept).toBe(0);
     expect(charges).toEqual([4242]);
-    const records = (await bureau.auditTrail?.query({ runId: fireId })) ?? [];
+    const records = (await bureau.internals.auditTrail?.query({ runId: fireId })) ?? [];
     const terminal = records
       .filter((record) => record.type.startsWith('review.tool-approval.'))
       .map((record) => record.type)
       .filter((type) => type !== 'review.tool-approval.requested');
     expect(terminal).toEqual(['review.tool-approval.approved']);
-    const decided = await bureau.getReview(review.id);
+    const decided = await bureau.reviews.get(review.id);
     expect(decided?.status).toBe('approved');
   });
 });
@@ -342,7 +342,7 @@ describe('a re-gated fire approval that is canceled', () => {
       const { fireId } = await fireOnce(bureau, OWNER.alice, 'regate-cancel-session');
       const review = await reviewOf(bureau, fireId);
       await sleep(50);
-      const outcome = await bureau.resolveReview({
+      const outcome = await bureau.reviews.resolve({
         id: review.id,
         decision: 'approve',
         principal: OWNER.alice,
@@ -360,7 +360,7 @@ describe('a re-gated fire approval that is canceled', () => {
       expect(records).toHaveLength(1);
       const detail = records[0]?.detail as { review?: { round?: number } } | undefined;
       expect(detail?.review?.round).toBe(1);
-      const closed = await bureau.getReview(review.id);
+      const closed = await bureau.reviews.get(review.id);
       expect(closed?.status).toBe('canceled');
       const kinds = await historyKinds(bureau, fireId);
       expect(kinds.filter((kind) => kind === 'review.canceled')).toHaveLength(1);
@@ -384,7 +384,7 @@ describe('a re-gated fire approval that is canceled', () => {
     const { fireId } = await fireOnce(first, OWNER.alice, 'regate-boot-session');
     const review = await reviewOf(first, fireId);
     await sleep(50);
-    await first.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
+    await first.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice });
     hold.arm();
     void first.durableEngine()?.cancel(fireId);
     await Promise.race([hold.reached, sleep(3000)]);
@@ -439,7 +439,7 @@ describe('a canceled approval whose process died between its record and its prun
       const review = await reviewOf(first, fireId);
       await sleep(50);
       for (let index = 0; index < filler; index += 1) {
-        await first.auditTrail?.record({
+        await first.internals.auditTrail?.record({
           runId: fireId,
           type: 'test.filler',
           detail: { index },
@@ -521,7 +521,7 @@ describe('a fire approval this process expires, with a task stream open', () => 
     failing.on = false;
 
     const refusal = await rejectionOf(
-      bureau.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice }),
+      bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice }),
     );
     expect((refusal as BureauError).code).toBe('NOT_FOUND');
     const state = scheduledFireReviewStateOf(bureau);

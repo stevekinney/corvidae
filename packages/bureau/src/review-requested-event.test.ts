@@ -61,10 +61,10 @@ describe('review.requested', () => {
         principal: 'api-key:tester',
       });
       await waitForCondition(
-        () => bureau.listPendingReviews().some((review) => review.runId === run.id),
+        () => bureau.reviews.list().some((review) => review.runId === run.id),
         'expected the run to park',
       );
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       await waitForCondition(async () => {
         const events = await runEvents(bureau, run.id);
         return events.some((event) => event.kind === 'review.requested');
@@ -136,10 +136,10 @@ describe('review.requested', () => {
         principal: 'api-key:tester',
       });
       await waitForCondition(
-        () => bureau.listPendingReviews().some((review) => review.runId === run.id),
+        () => bureau.reviews.list().some((review) => review.runId === run.id),
         'expected the approval to be pending',
       );
-      const [review] = bureau.listPendingReviews();
+      const [review] = bureau.reviews.list();
       await waitForCondition(async () => {
         const events = await runEvents(bureau, run.id);
         return events.some((event) => event.kind === 'review.requested');

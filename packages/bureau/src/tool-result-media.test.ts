@@ -122,7 +122,7 @@ describe.each([false, true])('a tool-returned image through Bureau (durable: %p)
 
     // Neither the conversation nor the audit trail holds the bytes.
     expect(JSON.stringify(result.conversation.current)).not.toContain(snapshotBase64);
-    const audit = (await bureau.auditTrail?.query({ runId: run.id })) ?? [];
+    const audit = (await bureau.internals.auditTrail?.query({ runId: run.id })) ?? [];
     expect(JSON.stringify(audit)).not.toContain(snapshotBase64);
 
     expect(await run.closed()).toEqual({ status: 'completed' });
@@ -175,9 +175,9 @@ describe('a tool-returned image through an approved review', () => {
     });
     await waitForRunState(bureau, run.id);
     for (let turn = 0; turn < 10; turn++) await yieldToPortableEventLoop();
-    const [review] = bureau.listPendingReviews();
+    const [review] = bureau.reviews.list();
     expect(review?.kind).toBe('tool-approval');
-    await bureau.resolveReview({ id: review!.id, decision: 'approve', principal: alice.id });
+    await bureau.reviews.resolve({ id: review!.id, decision: 'approve', principal: alice.id });
 
     const session = await bureau.getSession(run.sessionId);
     const history = session!.conversationHistory;

@@ -42,10 +42,10 @@ async function createdSession(
 async function deletionEntries(bureau: OpenBureau, sessionId: string, count: number) {
   const runId = `session:${sessionId}`;
   await waitForCondition(async () => {
-    const entries = await bureau.auditTrail?.query({ runId, type: 'session.deleted' });
+    const entries = await bureau.internals.auditTrail?.query({ runId, type: 'session.deleted' });
     return entries?.length === count;
   }, `the audit trail never held ${count} session.deleted entries for ${sessionId}`);
-  return (await bureau.auditTrail?.query({ runId, type: 'session.deleted' })) ?? [];
+  return (await bureau.internals.auditTrail?.query({ runId, type: 'session.deleted' })) ?? [];
 }
 
 const SIDE_RECORD_PREFIX = 'session-deletion-owner:v1:';
@@ -109,7 +109,7 @@ describe('the owner of a deleted session’s audit entry (COR-718)', () => {
       await deletionEntries(bureau, 'tidy-session', 1);
 
       await waitForCondition(async () => {
-        const remaining = await bureau.kv?.list(SIDE_RECORD_PREFIX);
+        const remaining = await bureau.internals.kv?.list(SIDE_RECORD_PREFIX);
         return remaining?.length === 0;
       }, 'the side record outlived the audit entry');
     } finally {
@@ -121,7 +121,7 @@ describe('the owner of a deleted session’s audit entry (COR-718)', () => {
     const bureau = await openBureau();
     try {
       await createdSession(bureau, 'api-key:alice', 'retained-session');
-      const kv = bureau.kv!;
+      const kv = bureau.internals.kv!;
       const originalSet = kv.set.bind(kv);
       kv.set = async (key: string, value: string) => {
         if (key.startsWith(SIDE_RECORD_PREFIX)) throw new Error('injected: owner store down');
@@ -131,9 +131,11 @@ describe('the owner of a deleted session’s audit entry (COR-718)', () => {
       const refusal = await rejectionOf(bureau.deleteSession('retained-session'));
       expect(String(refusal)).toContain('injected');
       expect(await bureau.getSession('retained-session')).toBeDefined();
-      const pending = await bureau.sessionStore!.outbox.pending();
+      const pending = await bureau.internals.sessionStore!.outbox.pending();
       expect(pending.filter((entry) => entry.kind === 'session.deleted')).toEqual([]);
-      expect(await bureau.auditTrail?.query({ runId: 'session:retained-session' })).toEqual([]);
+      expect(
+        await bureau.internals.auditTrail?.query({ runId: 'session:retained-session' }),
+      ).toEqual([]);
 
       kv.set = originalSet;
       await bureau.deleteSession('retained-session');
@@ -149,7 +151,7 @@ describe('the owner of a deleted session’s audit entry (COR-718)', () => {
     const bureau = await openBureau();
     try {
       await createdSession(bureau, 'api-key:alice', 'bypassed-session');
-      await bureau.sessionStore?.delete('bypassed-session');
+      await bureau.internals.sessionStore?.delete('bypassed-session');
       await bureau.runDurableMaintenance();
 
       const [entry] = await deletionEntries(bureau, 'bypassed-session', 1);

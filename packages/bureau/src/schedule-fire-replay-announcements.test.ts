@@ -102,8 +102,8 @@ describe('a replay of a step that raised an approval', () => {
     const { recovered, fireId } = await crashThenRecover((attempt) => `charge-${attempt}`);
 
     const events = await reviewEvents(recovered, fireId);
-    const pending = recovered
-      .listPendingReviews()
+    const pending = recovered.reviews
+      .list()
       .filter((review) => review.runId === fireId)
       .map((review) => review.id);
 
@@ -121,8 +121,8 @@ describe('a replay of a step that raised an approval', () => {
     const { recovered, fireId } = await crashThenRecover(() => 'charge-same');
 
     const events = await reviewEvents(recovered, fireId);
-    const pending = recovered
-      .listPendingReviews()
+    const pending = recovered.reviews
+      .list()
       .filter((review) => review.runId === fireId)
       .map((review) => review.id);
 

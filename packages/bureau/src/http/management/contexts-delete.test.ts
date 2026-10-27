@@ -219,15 +219,15 @@ describe('bureau.contexts.delete receipts', () => {
   it('empties the originating messages of the deleted context’s tasks and keeps their status and cleanup', async () => {
     await withBureau({}, async (opened) => {
       const run = await startRun(opened, { message: 'REMEMBER-ME-NOT' });
-      const before = await opened.bureau.tasks.history(run.id);
+      const before = await opened.bureau.internals.taskRegistry.history(run.id);
       expect(before?.map((message) => message.text)).toEqual(['REMEMBER-ME-NOT']);
 
       await deleteContext(opened, run.sessionId, 'alice-key', 2_000);
 
-      expect(await opened.bureau.tasks.history(run.id)).toEqual([]);
-      expect(JSON.stringify(await opened.bureau.tasks.record(run.id))).not.toContain(
-        'REMEMBER-ME-NOT',
-      );
+      expect(await opened.bureau.internals.taskRegistry.history(run.id)).toEqual([]);
+      expect(
+        JSON.stringify(await opened.bureau.internals.taskRegistry.record(run.id)),
+      ).not.toContain('REMEMBER-ME-NOT');
       const task = await rpc(opened.handler, 'bureau.tasks.get', { taskId: run.id }, 'alice-key');
       expect(task.result).toMatchObject({ status: 'canceled', cleanup: 'cleaned-up' });
     });
@@ -486,7 +486,7 @@ describe('the fence around a context being deleted', () => {
       expect((refused as BureauError).code).toBe('NOT_FOUND');
       expect(opened.bureau.listRuns()).toEqual([]);
       expect(await opened.bureau.getSession('overtaken')).toBeUndefined();
-      const tasks = await opened.bureau.tasks.enumerate({ limit: 50, offset: 0 });
+      const tasks = await opened.bureau.internals.taskRegistry.enumerate({ limit: 50, offset: 0 });
       expect(tasks.tasks).toEqual([]);
     } finally {
       await opened.dispose();
@@ -520,7 +520,7 @@ describe('erasing the originating messages of a deleted context', () => {
       });
       await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'completed', 'finish');
       await waitForCondition(async () => {
-        const task = await opened.bureau.tasks.get(run.id);
+        const task = await opened.bureau.internals.taskRegistry.get(run.id);
         return task?.status === 'completed';
       }, 'the task never settled');
 
@@ -533,7 +533,7 @@ describe('erasing the originating messages of a deleted context', () => {
       const retried = await deleteContext(opened, run.sessionId, 'alice-key');
       expect(retried.result).toMatchObject({ receipt: 'applied' });
       expect(await opened.bureau.getSession(run.sessionId)).toBeUndefined();
-      expect(await opened.bureau.tasks.history(run.id)).toEqual([]);
+      expect(await opened.bureau.internals.taskRegistry.history(run.id)).toEqual([]);
     } finally {
       await opened.dispose();
       await fixture.dispose();
@@ -610,7 +610,9 @@ describe('a context id that is reused while a request for it is in flight', () =
   it('does not report bob’s running task as the activity of the context alice was authorized for', async () => {
     await withContextReusedAfterTheFirstRead(async ({ opened, contextId, recreate, bobsRun }) => {
       await waitForCondition(async () => {
-        const opening = await opened.bureau.tasks.get(opened.bureau.listRuns()[0]!.id);
+        const opening = await opened.bureau.internals.taskRegistry.get(
+          opened.bureau.listRuns()[0]!.id,
+        );
         return opening?.status !== 'working';
       }, 'alice’s opening has finished');
       recreate();
@@ -636,7 +638,7 @@ describe('a context id that is reused while a request for it is in flight', () =
       // The incarnation check in the Bureau comes before anything is cancelled or erased.
       const bob = bobsRun();
       expect(opened.bureau.getRun(bob.id)?.status).toBe('running');
-      const history = await opened.bureau.tasks.history(bob.id);
+      const history = await opened.bureau.internals.taskRegistry.history(bob.id);
       expect(history?.map((message) => message.text)).toEqual(['BOB-PRIVATE-OPENING']);
     });
   });

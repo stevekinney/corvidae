@@ -140,7 +140,7 @@ function kitOf(opened: OpenedBureau) {
       text?: string;
     } = {},
   ) => {
-    const record = await opened.bureau.tasks.record(taskId);
+    const record = await opened.bureau.internals.taskRegistry.record(taskId);
     if (record === undefined) throw new Error('no record');
     commands += 1;
     const surfaceId = options.surfaceId ?? 'panel';
@@ -193,7 +193,7 @@ function kitOf(opened: OpenedBureau) {
   const stream = (headers: Record<string, string>, extra: Json = {}) =>
     opened.handler(rpc('SendStreamingMessage', { message: message('start', extra) }, headers));
   const owner = async (taskId: string) => {
-    const record = await opened.bureau.tasks.record(taskId);
+    const record = await opened.bureau.internals.taskRegistry.record(taskId);
     return record?.owner;
   };
   return { opened, park, apply, remove, answer, subscribe, stream, surfaces, owner };
@@ -425,7 +425,7 @@ describe('SubscribeToTask with a surface', () => {
       // held here until the stream has ended.
       const settled = Promise.withResolvers<void>();
       let released = false;
-      const tasks = kit.opened.bureau.tasks;
+      const tasks = kit.opened.bureau.internals.taskRegistry;
       const onSettled = tasks.onSettled.bind(tasks);
       const get = tasks.get.bind(tasks);
       tasks.onSettled = (id, listener) =>

@@ -63,7 +63,7 @@ createBureauHandler(bureau, { limits: {} });
 createBureauHandler(bureau);
 
 // `Bureau.hasExplicitId` is a readonly boolean.
-export const explicit: boolean = bureau.hasExplicitId;
+export const explicit: boolean = bureau.internals.hasExplicitId;
 // @ts-expect-error -- readonly
 bureau.hasExplicitId = true;
 
