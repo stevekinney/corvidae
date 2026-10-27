@@ -15,6 +15,7 @@ import {
 } from './testing/goal-fixtures.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { AgentDefinitions } from './agent-catalog';
+import { listHeldTasks } from './test';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 const NOT_TEXT = [
@@ -39,31 +40,27 @@ async function openDurableBureau() {
 
 describe('a principal that is not text (COR-718)', () => {
   it.each(NOT_TEXT)(
-    'is refused by createRun, which persists nothing (%s)',
+    'is refused by tasks.start, which persists nothing (%s)',
     async (_label, principal) => {
       const bureau = await openDurableBureau();
       try {
         const plain = await rejectionOf(
-          bureau.createRun({
-            agentName: 'default',
-            message: 'x',
-            sessionId: 'refused',
+          bureau.tasks.start('default', 'x', {
+            contextId: 'refused',
             principal: principal as never,
           }),
         );
         const withReceipt = await rejectionOf(
-          bureau.createRun({
-            agentName: 'default',
-            message: 'x',
-            sessionId: 'refused',
+          bureau.tasks.start('default', 'x', {
+            contextId: 'refused',
             principal: principal as never,
-            runCreationRequestId: 'request-1',
+            commandId: 'request-1',
           }),
         );
 
         expect(plain).toMatchObject({ code: 'BAD_REQUEST' });
         expect(withReceipt).toMatchObject({ code: 'BAD_REQUEST' });
-        expect(bureau.listRuns()).toEqual([]);
+        expect(listHeldTasks(bureau)).toEqual([]);
         expect(await bureau.contexts.get('refused')).toBeUndefined();
       } finally {
         await bureau.dispose();
@@ -111,14 +108,15 @@ describe('a principal that is not text (COR-718)', () => {
     },
   );
 
-  it.each(NOT_TEXT)('is refused by bureau.run (%s)', async (_label, principal) => {
+  it.each(NOT_TEXT)('is refused by tasks.start (%s)', async (_label, principal) => {
     const bureau = await createBureau({
       agents: { worker: createAgent({ name: 'worker', generate }) },
     });
     try {
-      expect(() => bureau.run('worker', 'work', { principal: principal as never })).toThrow(
-        '"options.principal" must be a string',
+      const error = await rejectionOf(
+        bureau.tasks.start('worker', 'work', { principal: principal as never }),
       );
+      expect((error as Error).message).toContain('principal');
     } finally {
       await bureau.dispose();
     }
@@ -134,7 +132,7 @@ describe('a principal that is not text (COR-718)', () => {
         },
       });
       try {
-        const parent = await bureau.createRun({ agentName: 'default', message: 'plan' });
+        const parent = await bureau.tasks.start('default', 'plan');
         const refusal = await rejectionOf(
           bureau.children.dispatch({
             parentRunId: parent.id,
@@ -166,21 +164,16 @@ const RESERVED = [
 
 describe('a principal in a reserved namespace (COR-718)', () => {
   it.each(RESERVED)(
-    'is refused by createRun, which persists nothing (%s)',
+    'is refused by tasks.start, which persists nothing (%s)',
     async (_label, principal) => {
       const bureau = await openDurableBureau();
       try {
         const refusal = await rejectionOf(
-          bureau.createRun({
-            agentName: 'default',
-            message: 'x',
-            sessionId: 'reserved',
-            principal,
-          }),
+          bureau.tasks.start('default', 'x', { contextId: 'reserved', principal }),
         );
 
         expect(refusal).toMatchObject({ code: 'BAD_REQUEST' });
-        expect(bureau.listRuns()).toEqual([]);
+        expect(listHeldTasks(bureau)).toEqual([]);
         expect(await bureau.contexts.get('reserved')).toBeUndefined();
       } finally {
         await bureau.dispose();
@@ -223,13 +216,14 @@ describe('a principal in a reserved namespace (COR-718)', () => {
     },
   );
 
-  it.each(RESERVED)('is refused by bureau.run (%s)', async (_label, principal) => {
+  it.each(RESERVED)('is refused by tasks.start (%s)', async (_label, principal) => {
     const bureau = await createBureau({
       agents: { worker: createAgent({ name: 'worker', generate }) },
     });
     try {
-      expect(() => bureau.run('worker', 'work', { principal })).toThrow(/reserved/);
-      expect(bureau.listRuns()).toEqual([]);
+      const error = await rejectionOf(bureau.tasks.start('worker', 'work', { principal }));
+      expect((error as Error).message).toMatch(/reserved/);
+      expect(listHeldTasks(bureau)).toEqual([]);
     } finally {
       await bureau.dispose();
     }
@@ -245,7 +239,7 @@ describe('a principal in a reserved namespace (COR-718)', () => {
         },
       });
       try {
-        const parent = await bureau.createRun({ agentName: 'default', message: 'plan' });
+        const parent = await bureau.tasks.start('default', 'plan');
         const refusal = await rejectionOf(
           bureau.children.dispatch({
             parentRunId: parent.id,
@@ -266,14 +260,12 @@ describe('a principal in a reserved namespace (COR-718)', () => {
   it('still lets the exact local owner create and read a run, as the local handler flow does', async () => {
     const bureau = await openDurableBureau();
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'x',
-        sessionId: 'local',
+      const run = await bureau.tasks.start('default', 'x', {
+        contextId: 'local',
         principal: 'anonymous:local',
       });
 
-      expect(bureau.getRun(run.id)?.principal).toBe('anonymous:local');
+      expect(bureau.tasks.detail(run.id)?.principal).toBe('anonymous:local');
       expect(await bureau.getOwner({ kind: 'run', id: run.id })).toBe('anonymous:local');
       expect(await bureau.getOwner({ kind: 'session', id: 'local' })).toBe('anonymous:local');
     } finally {

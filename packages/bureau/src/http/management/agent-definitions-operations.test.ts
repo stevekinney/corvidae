@@ -36,6 +36,7 @@ import {
 } from './agent-definitions-fixtures.test-support.ts';
 import { rpc } from './management-fixtures.test-support.ts';
 import { createMemoryAssetStorage } from '../../assets/storage';
+import { runTask } from '../../test';
 
 afterEach(disposeServed);
 
@@ -406,7 +407,7 @@ describe('results', () => {
         'revisions',
       ).length,
     ).toBe(1);
-    await served.bureau.run('researcher', 'again').result();
+    await runTask(served.bureau, 'researcher', 'again');
     const revisions = listOf(
       await callAs(served.owner, 'bureau.agents.definitions.revisions', { id: 'researcher' }),
       'revisions',

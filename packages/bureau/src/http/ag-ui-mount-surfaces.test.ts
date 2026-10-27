@@ -322,8 +322,8 @@ describe('A2UI surfaces on the AG-UI stream', () => {
     await withHarness(async (harness) => {
       const { reader, taskId } = await startHeld(harness);
       const live = new Set<object>();
-      const subscribe = harness.bureau.subscribeEventHistory.bind(harness.bureau);
-      const subscribeSpy = spyOn(harness.bureau, 'subscribeEventHistory').mockImplementation(
+      const subscribe = harness.bureau.tasks.subscribeEvents.bind(harness.bureau.tasks);
+      const subscribeSpy = spyOn(harness.bureau.tasks, 'subscribeEvents').mockImplementation(
         (...args: Parameters<typeof subscribe>) => {
           const subscription = subscribe(...args);
           live.add(subscription);
@@ -336,13 +336,13 @@ describe('A2UI surfaces on the AG-UI stream', () => {
           };
         },
       );
-      const history = harness.bureau.eventHistory.bind(harness.bureau);
+      const history = harness.bureau.tasks.events.bind(harness.bureau.tasks);
       let reading: (() => void) | undefined;
       let release!: () => void;
       const gate = new Promise<void>((resolve) => {
         release = resolve;
       });
-      const readSpy = spyOn(harness.bureau, 'eventHistory').mockImplementation(
+      const readSpy = spyOn(harness.bureau.tasks, 'events').mockImplementation(
         async (...args: Parameters<typeof history>) => {
           reading?.();
           await gate;

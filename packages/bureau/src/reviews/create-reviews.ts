@@ -8,7 +8,7 @@ export type ReviewsDependencies = {
   /** The reviews of the sessions this process holds (tool approvals and session human waits). */
   readonly listSessionReviews: () => PendingReview[];
   /**
-   * The human waits of the `bureau.run()` runs this process holds (COR-1577). They join the
+   * The human waits of the sessionless runs this process holds (COR-1577). They join the
    * session reviews in {@link BureauReviews.list}.
    */
   readonly listRunHumanWaits: () => PendingReview[];

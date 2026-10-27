@@ -49,12 +49,8 @@ describe('bureau.tasks.events below the retention floor', () => {
     });
     try {
       const handler = createBureauHandler(bureau, { authentication });
-      const first = await bureau.createRun({
-        agentName: 'default',
-        message: 'first',
-        principal: OWNER.alice,
-      });
-      await waitForCondition(() => bureau.getRun(first.id)?.status === 'completed', 'first');
+      const first = await bureau.tasks.start('default', 'first', { principal: OWNER.alice });
+      await waitForCondition(() => bureau.tasks.detail(first.id)?.status === 'completed', 'first');
       await runtime.deferred.drain();
 
       const whole = await readFrames(
@@ -66,12 +62,11 @@ describe('bureau.tasks.events below the retention floor', () => {
       // task's events sit above the floor the maintenance pass leaves.
       runtime.setTime(Date.parse(ORIGIN) + 7 * DAY_MS + 1);
       await bureau.runDurableMaintenance();
-      const second = await bureau.createRun({
-        agentName: 'default',
-        message: 'second',
-        principal: OWNER.alice,
-      });
-      await waitForCondition(() => bureau.getRun(second.id)?.status === 'completed', 'second');
+      const second = await bureau.tasks.start('default', 'second', { principal: OWNER.alice });
+      await waitForCondition(
+        () => bureau.tasks.detail(second.id)?.status === 'completed',
+        'second',
+      );
       await runtime.deferred.drain();
 
       const resumed = await readFrames(
@@ -135,18 +130,14 @@ describe('bureau.tasks.events below the retention floor', () => {
     });
     try {
       const handler = createBureauHandler(bureau, { authentication });
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'park',
-        principal: OWNER.alice,
-      });
+      const run = await bureau.tasks.start('default', 'park', { principal: OWNER.alice });
       await waitForCondition(
         () => bureau.reviews.list().some((review) => review.runId === run.id),
         'the run never parked',
       );
       await runtime.deferred.drain();
       await waitForCondition(async () => {
-        const page = await bureau.eventHistory({ kind: 'run', id: run.id });
+        const page = await bureau.tasks.events(run.id);
         return 'events' in page && page.events.some((event) => event.kind === 'review.requested');
       }, 'review.requested never reached the history');
 
@@ -160,7 +151,10 @@ describe('bureau.tasks.events below the retention floor', () => {
         principal: OWNER.alice,
         payload: 'yes',
       });
-      await waitForCondition(() => bureau.getRun(run.id)?.status === 'completed', 'completion');
+      await waitForCondition(
+        () => bureau.tasks.detail(run.id)?.status === 'completed',
+        'completion',
+      );
       await runtime.deferred.drain();
 
       const frames = await readFrames(
@@ -219,17 +213,13 @@ describe('bureau.tasks.events below the retention floor', () => {
     });
     try {
       const handler = createBureauHandler(bureau, { authentication });
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'charge',
-        principal: OWNER.alice,
-      });
+      const run = await bureau.tasks.start('default', 'charge', { principal: OWNER.alice });
       await waitForCondition(
         () => bureau.reviews.list().some((review) => review.runId === run.id),
         'the approval never became pending',
       );
       await waitForCondition(async () => {
-        const page = await bureau.eventHistory({ kind: 'run', id: run.id });
+        const page = await bureau.tasks.events(run.id);
         return 'events' in page && page.events.some((event) => event.kind === 'run.completed');
       }, 'run.completed never reached the history');
       await runtime.deferred.drain();
@@ -240,12 +230,11 @@ describe('bureau.tasks.events below the retention floor', () => {
       const [review] = bureau.reviews.list();
       await bureau.reviews.resolve({ id: review!.id, decision: 'deny', principal: OWNER.alice });
       await waitForCondition(async () => {
-        let page = await bureau.eventHistory({ kind: 'run', id: run.id });
+        let page = await bureau.tasks.events(run.id);
         if ('outcome' in page && page.outcome === 'gap') {
-          page = await bureau.eventHistory(
-            { kind: 'run', id: run.id },
-            { since: String(page.firstRetainedSequence - 1) },
-          );
+          page = await bureau.tasks.events(run.id, {
+            since: String(page.firstRetainedSequence - 1),
+          });
         }
         return 'events' in page && page.events.some((event) => event.kind === 'review.denied');
       }, 'review.denied never reached the history');

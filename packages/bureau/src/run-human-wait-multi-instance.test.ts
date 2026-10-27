@@ -142,7 +142,7 @@ async function parkedInA(parks = 1) {
   const seenByA: Seen = { resumed: [] };
   const b = await open({ resumed: [] }, parks);
   const a = await open(seenByA, parks);
-  const run = a.bureau.run('asker', 'deploy', { principal: OWNER });
+  const run = await a.bureau.tasks.start('asker', 'deploy', { principal: OWNER });
   const review = await localReview(a.bureau, run.id);
   await peerReview(b.bureau, run.id);
   return { a, b, run, review, seenByA };

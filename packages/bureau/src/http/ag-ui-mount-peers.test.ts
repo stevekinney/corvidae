@@ -233,7 +233,7 @@ async function waitsOn(harness: Harness, runId: string): Promise<number> {
 }
 
 async function durableStatus(harness: Harness, runId: string): Promise<string | undefined> {
-  const state = await harness.bureau.getDurableRun(runId);
+  const state = await harness.bureau.tasks.workflow(runId);
   return state?.status;
 }
 

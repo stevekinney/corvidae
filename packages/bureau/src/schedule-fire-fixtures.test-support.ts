@@ -234,7 +234,7 @@ export async function reviewOf(bureau: Bureau, runId: string): Promise<PendingRe
 }
 
 export async function durableStatus(bureau: Bureau, runId: string): Promise<string | undefined> {
-  const run = await bureau.getDurableRun(runId);
+  const run = await bureau.tasks.workflow(runId);
   return run?.status;
 }
 
@@ -433,7 +433,7 @@ export async function auditRecordsOf(
 
 /** The `review.*` kinds a run's durable history holds, oldest first. */
 export async function historyKinds(bureau: Bureau, runId: string): Promise<string[]> {
-  const page = await bureau.eventHistory({ kind: 'run', id: runId });
+  const page = await bureau.tasks.events(runId);
   if (!('events' in page)) return [];
   return page.events.filter((event) => event.kind.startsWith('review.')).map((event) => event.kind);
 }

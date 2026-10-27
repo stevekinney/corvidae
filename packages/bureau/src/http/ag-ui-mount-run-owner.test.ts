@@ -1,12 +1,10 @@
 /**
  * COR-1588 — one reader of a run's owner. The mount authorizes an attach by run on the owner
  * `Bureau.getOwner` reports, and the stream then refuses a held run whose own `principal` is not
- * that owner, so the two must agree for every run a Bureau holds. A hand-written agent run through
- * `bureau.run()` on the direct dispatch branch records no attribution; its owner is the one its
- * handle's liveness snapshot carries.
+ * that owner, so the two must agree for every run a Bureau holds.
  */
 import { EventType } from '@ag-ui/core';
-import { createAgent, type RunnableAgent } from '@lostgradient/operative';
+import { createAgent } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from '../create-bureau.ts';
@@ -15,7 +13,7 @@ import { createBureauHandler } from './create-bureau-handler.ts';
 import { FrameReader, readAgUiStream } from './ag-ui-stream.test-support.ts';
 import { createMemoryAssetStorage } from '../assets/storage';
 
-describe('attaching by run to a bureau.run() run of a hand-written agent', () => {
+describe('attaching by run to a task', () => {
   it('streams it to its owner, and answers another owner as a missing run', async () => {
     let release: () => void = () => {};
     const gate = new Promise<void>((resolve) => {
@@ -25,22 +23,16 @@ describe('attaching by run to a bureau.run() run of a hand-written agent', () =>
       await gate;
       return { content: 'Done.', toolCalls: [] };
     };
-    // No `OPERATIVE_RESOLVE_RUN_OPTIONS`: a durable Bureau falls back to the direct branch.
-    const handWritten: RunnableAgent = {
-      name: 'plain',
-      hasOutput: false,
-      run: (input, context) => createAgent({ generate }).run(input, context),
-    };
     const bureau = await createBureau({
       assets: { storage: createMemoryAssetStorage() },
       id: 'ag-ui-run-owner',
-      agents: { plain: handWritten },
+      agents: { plain: createAgent({ generate }) },
       storage: { type: 'memory' },
       durable: true,
     });
     try {
       const handler = createBureauHandler(bureau, { authentication, publish: [], agUi: {} });
-      const run = bureau.run('plain', 'hi', { principal: 'api-key:alice' });
+      const run = await bureau.tasks.start('plain', 'hi', { principal: 'api-key:alice' });
       expect(await bureau.getOwner({ kind: 'run', id: run.id })).toBe('api-key:alice');
 
       const stranger = await readAgUiStream(await handler(attachRunRequest(run.id, as('bob-key'))));

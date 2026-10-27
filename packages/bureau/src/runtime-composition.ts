@@ -3725,17 +3725,6 @@ async function buildRuntimeComposition(
     agentName?: string,
   ): Promise<DurableRunDeps> {
     const message = session.metadata['lastUserMessage'];
-    // Recover the per-request token cap persisted by create-bureau's saveSession
-    // call. Without this, recovered generate calls receive maximumTokens:undefined
-    // and may produce more output than the original client cap allowed, changing
-    // cost and output length after a process crash (PRRT_kwDORvupsc6MZEri).
-    const maximumTokensRaw = session.metadata['lastMaximumTokens'];
-    const maximumTokens = typeof maximumTokensRaw === 'number' ? maximumTokensRaw : undefined;
-    // Restore the per-request step cap from session metadata so a recovered run
-    // honours the caller's original maximumSteps rather than the bureau default
-    // (PRRT_kwDORvupsc6MZfl5). Absent that, the named agent's cap, then the default
-    // `maximumSteps` closure value (COR-1577).
-    const maximumStepsRaw = session.metadata['lastMaximumSteps'];
     // Rehydrate the active skill set from the last-written snapshot so the
     // recovered toolbox is aware of skills activated in completed pre-crash steps.
     // Completed steps are memoized by Weft and do not re-run their tool executions,
@@ -3865,10 +3854,9 @@ async function buildRuntimeComposition(
           sessionAgent,
           mediaOptionsFor(resolveSessionOwner(session.metadata), 'session'),
         ),
-        maximumSteps:
-          typeof maximumStepsRaw === 'number'
-            ? maximumStepsRaw
-            : (sessionAgent?.options.maximumSteps ?? maximumSteps),
+        // COR-1707: the caps are the named agent's, as when the run started; a run carries none of
+        // its own.
+        maximumSteps: sessionAgent?.options.maximumSteps ?? maximumSteps,
         stopWhen: sessionAgent?.options.stopWhen ?? options.stopWhen,
         // COR-1269 — stamped onto this run's hook-plan observations.
         sessionId: session.id,
@@ -3888,13 +3876,9 @@ async function buildRuntimeComposition(
         // pre-crash run (C3 parity). Without them, recovered runs emit blank ids.
         ...(agentName !== undefined ? { agentName } : {}),
         ...(runId !== undefined ? { runId } : {}),
-        // Restore the per-request token cap so recovered steps honour the same
-        // maximumTokens constraint as the original run (PRRT_kwDORvupsc6MZEri).
-        ...(maximumTokens !== undefined
-          ? { maximumTokens }
-          : sessionAgent?.options.maximumTokens !== undefined
-            ? { maximumTokens: sessionAgent.options.maximumTokens }
-            : {}),
+        ...(sessionAgent?.options.maximumTokens !== undefined
+          ? { maximumTokens: sessionAgent.options.maximumTokens }
+          : {}),
       },
     };
     if (wantsHumanInput || wantsWakeup) {

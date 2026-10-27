@@ -1,4 +1,8 @@
-import type { Bureau, BureauSchedules } from '../types.ts';
+import type {
+  BureauSchedules,
+  DurableEventHistoryRead,
+  DurableEventHistorySubscribe,
+} from '../types.ts';
 
 /**
  * What {@link createSchedules} composes `bureau.schedules` from: the Bureau's own schedule
@@ -25,9 +29,9 @@ export type SchedulesDependencies = {
   /** {@link BureauSchedules.inputPreview}. */
   readonly inputPreview: BureauSchedules['inputPreview'];
   /** The Bureau's durable event history read, which {@link BureauSchedules.events} narrows to the schedule owner. */
-  readonly eventHistory: Bureau['eventHistory'];
+  readonly eventHistory: DurableEventHistoryRead;
   /** The Bureau's durable event history subscription, which {@link BureauSchedules.subscribeEvents} narrows to the schedule owner. */
-  readonly subscribeEventHistory: Bureau['subscribeEventHistory'];
+  readonly subscribeEventHistory: DurableEventHistorySubscribe;
 };
 
 /**

@@ -61,14 +61,14 @@ describe('COR-1716 shutdown readiness baseline', () => {
     });
     bureaus.push(bureau);
 
-    const run = await bureau.createRun({ agentName: 'asker', message: 'park me' });
+    const run = await bureau.tasks.start('asker', 'park me');
     await waitForReview(bureau, run.id);
-    const durableRun = await bureau.getDurableRun(run.id);
+    const durableRun = await bureau.tasks.workflow(run.id);
     expect(durableRun?.status).toBe('running');
 
     const report = await bureau.shutdown();
     expect(report.policy).toBe('abort');
-    expect(bureau.getRun(run.id)?.status).toBe('aborted');
+    expect(bureau.tasks.detail(run.id)?.status).toBe('aborted');
 
     const restarted = await createBureau<AgentDefinitions>({
       agents: {},
@@ -78,12 +78,12 @@ describe('COR-1716 shutdown readiness baseline', () => {
     });
     bureaus.push(restarted);
     await restarted.waitForRecovery?.();
-    const cancelled = await restarted.getDurableRun(run.id);
+    const cancelled = await restarted.tasks.workflow(run.id);
     expect(cancelled).toMatchObject({ status: 'cancelled' });
     expect(restarted.reviews.list()).toEqual([]);
   });
 
-  test('default shutdown aborts a process-local run and closed() settles', async () => {
+  test('default shutdown aborts a process-local task and its result settles', async () => {
     const generating = Promise.withResolvers<void>();
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
@@ -101,13 +101,12 @@ describe('COR-1716 shutdown readiness baseline', () => {
     });
     bureaus.push(bureau);
 
-    const run = bureau.run('default', 'hold me');
+    const run = await bureau.tasks.start('default', 'hold me');
     await generating.promise;
     await bureau.shutdown();
 
     const result = await run.result();
     expect(result.finishReason).toBe('aborted');
-    expect(await run.closed()).toBeDefined();
   });
 
   test('detach leaves a durable parked run recoverable and reports it separately', async () => {
@@ -135,13 +134,13 @@ describe('COR-1716 shutdown readiness baseline', () => {
       durableOwnership: { ownership: 'none' },
     });
     bureaus.push(bureau);
-    const run = await bureau.createRun({ agentName: 'asker', message: 'park me' });
+    const run = await bureau.tasks.start('asker', 'park me');
     await waitForReview(bureau, run.id);
 
     const report = await bureau.shutdown({ policy: 'detach' });
     expect(report).toMatchObject({ policy: 'detach', detached: 1 });
     expect(report.owners).toContainEqual({ kind: 'durable-engine', outcome: 'completed' });
-    expect(bureau.getRun(run.id)?.status).not.toBe('aborted');
+    expect(bureau.tasks.detail(run.id)?.status).not.toBe('aborted');
 
     const restarted = await createBureau<AgentDefinitions>({
       agents: { asker: createAsker() },
@@ -206,19 +205,16 @@ describe('COR-1716 shutdown readiness baseline', () => {
     });
     bureaus.push(bureau);
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'finish during shutdown',
-      });
+      const run = await bureau.tasks.start('default', 'finish during shutdown');
       await started.promise;
       const shutdown = bureau.shutdown({ policy: 'detach', timeoutMilliseconds: 50 });
       for (let tick = 0; tick < 20; tick += 1) await Promise.resolve();
       release.resolve();
       for await (const _turn of awakeTurns()) {
-        if (bureau.getRun(run.id)?.status !== 'running') break;
+        if (bureau.tasks.detail(run.id)?.status !== 'running') break;
         await yieldToPortableEventLoop();
       }
-      expect(bureau.getRun(run.id)?.status).toBe('completed');
+      expect(bureau.tasks.detail(run.id)?.status).toBe('completed');
       await runtime.advance(50);
       const report = await shutdown;
       expect(report.detached).toBe(0);
@@ -229,7 +225,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
     }
   });
 
-  test('detach aborts a process-local run and still settles closed()', async () => {
+  test('detach aborts a process-local task and its result still settles', async () => {
     const generating = Promise.withResolvers<void>();
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
@@ -246,42 +242,72 @@ describe('COR-1716 shutdown readiness baseline', () => {
       },
     });
     bureaus.push(bureau);
-    const run = bureau.run('default', 'hold me');
+    const run = await bureau.tasks.start('default', 'hold me');
     await generating.promise;
 
     const report = await bureau.shutdown({ policy: 'detach' });
     expect(report.detached).toBe(0);
     const result = await run.result();
     expect(result.finishReason).toBe('aborted');
-    expect(await run.closed()).toBeDefined();
   });
 
-  test('detach retains abort behavior for catalog runs', async () => {
-    const generating = Promise.withResolvers<void>();
+  test('detach retains abort behavior for catalog runs: it aborts a child a task dispatched', async () => {
+    const parentGenerating = Promise.withResolvers<void>();
+    const childGenerating = Promise.withResolvers<void>();
+    const childAborted = Promise.withResolvers<void>();
+    const diagnostics: string[] = [];
+    const hang =
+      (generating: PromiseWithResolvers<void>, aborted?: PromiseWithResolvers<void>) =>
+      ({ signal }: { readonly signal?: AbortSignal | undefined }) => {
+        generating.resolve();
+        return new Promise<never>((_resolve, reject) => {
+          signal?.addEventListener(
+            'abort',
+            () => {
+              aborted?.resolve();
+              reject(signal.reason);
+            },
+            { once: true },
+          );
+        });
+      };
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
-        default: createAgent({
-          generate: ({ signal }) => {
-            generating.resolve();
-            return new Promise<never>((_resolve, reject) => {
-              signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
-            });
-          },
+        planner: createAgent({
+          generate: hang(parentGenerating),
+          toolbox: createToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+        worker: createAgent({
+          generate: hang(childGenerating, childAborted),
           toolbox: createToolbox([]),
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
       storage: { type: 'memory' },
       durable: true,
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
     bureaus.push(bureau);
-    const run = bureau.run('default', 'catalog hold');
-    await generating.promise;
+    const parent = await bureau.tasks.start('planner', 'plan');
+    await parentGenerating.promise;
+    expect(
+      await bureau.children.dispatch({
+        parentRunId: parent.id,
+        agentName: 'worker',
+        input: 'catalog hold',
+        childRunId: 'detach-catalog-child',
+        parentCancellation: 'detach',
+      }),
+    ).toMatchObject({ outcome: 'started' });
+    await childGenerating.promise;
 
     const report = await bureau.shutdown({ policy: 'detach' });
-    expect(report.detached).toBe(0);
-    const result = await run.result();
-    expect(result.finishReason).toBe('aborted');
+    // The parent task is the one durable caller-owned run left for recovery; the child is aborted.
+    expect(report.detached).toBe(1);
+    await childAborted.promise;
+    // Shutdown waited for the aborted child's settlement, so the audit trail was open to take it.
+    expect(diagnostics.filter((message) => message.includes('audit trail'))).toEqual([]);
   });
 
   test('detach does not count a pending tool approval as a detached run', async () => {
@@ -311,7 +337,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
       durable: true,
     });
     bureaus.push(bureau);
-    const run = await bureau.createRun({ agentName: 'default', message: 'approve it' });
+    const run = await bureau.tasks.start('default', 'approve it');
     await waitForReview(bureau, run.id);
     expect(bureau.reviews.list()[0]?.kind).toBe('tool-approval');
 
@@ -358,7 +384,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
       durable: true,
     });
     bureaus.push(bureau);
-    await bureau.createRun({ agentName: 'default', message: 'abort the tool' });
+    await bureau.tasks.start('default', 'abort the tool');
     await started.promise;
 
     const shutdown = bureau.shutdown({ policy: 'detach' });

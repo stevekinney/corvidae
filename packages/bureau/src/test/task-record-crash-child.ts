@@ -7,10 +7,11 @@
  * for ever, then kills the process with SIGKILL once the durable state has gone as far as the
  * crash window needs:
  *
- * - `settlement`: a session run finishes, and its durable workflow is `completed`, while the
- *   write that records its settlement on the task is still held.
- * - `admission`: a durable `bureau.run()` run parks on a human wait, while the write that
- *   records its task is still held.
+ * - `settlement`: a task finishes, and its durable workflow is `completed`, while the write that
+ *   records its settlement on the task is still held.
+ * - `admission`: a task of an asking agent, in a named context, is started while the write that
+ *   records its admission is held. `tasks.start` writes that record before anything of the run
+ *   starts, so the start waits on it; the task's id is read from the held write's key.
  *
  * No `dispose()`, no `shutdown()`, no flush: whatever the next process finds was on disk
  * before this one died. Not a test file: it is spawned by `task-record-crash.slow.test.ts`.
@@ -28,15 +29,19 @@ import type { AgentDefinitions } from '../agent-catalog';
 const [mode, storagePath, markerPath] = process.argv.slice(2);
 
 if (
-  (mode !== 'settlement' && mode !== 'admission') ||
+  (mode !== 'settlement' && mode !== 'admission' && mode !== 'parked') ||
   storagePath === undefined ||
   markerPath === undefined
 ) {
-  process.stderr.write('usage: task-record-crash-child <settlement|admission> <path> <marker>\n');
+  process.stderr.write(
+    'usage: task-record-crash-child <settlement|admission|parked> <path> <marker>\n',
+  );
   process.exit(2);
 }
 
 let held = false;
+/** The held write's arguments as text, once it is held. */
+let heldText: string | undefined;
 const CONTEXT_ID = 'crash-context';
 /** The arguments of a storage call as text, values (stored as bytes) decoded. */
 const textOf = (args: readonly unknown[]): string =>
@@ -45,7 +50,7 @@ const textOf = (args: readonly unknown[]): string =>
   );
 const holdsThisWrite = (args: readonly unknown[]): boolean => {
   const text = textOf(args);
-  if (!text.includes('bureau-task:v1:')) return false;
+  if (mode === 'parked' || !text.includes('bureau-task:v1:')) return false;
   return mode === 'settlement' ? text.includes('\\"settled\\"') : text.includes('\\"history\\"');
 };
 
@@ -57,6 +62,7 @@ const storage = new Proxy(raw, {
     return (...args: unknown[]) => {
       if (typeof property === 'string' && !held && holdsThisWrite(args)) {
         held = true;
+        heldText = textOf(args);
         return new Promise<never>(() => undefined);
       }
       return (member as (...a: unknown[]) => unknown).apply(target, args);
@@ -88,25 +94,37 @@ const kill = (runId: string): never => {
 };
 
 if (mode === 'settlement') {
-  const run = await bureau.createRun({
-    agentName: 'default',
-    message: 'finish me',
-    principal: 'api-key:alice',
-  });
+  const run = await bureau.tasks.start('default', 'finish me', { principal: 'api-key:alice' });
   for (;;) {
-    const durable = await bureau.getDurableRun(run.id);
+    const durable = await bureau.tasks.workflow(run.id);
     if (held && durable?.status === 'completed') kill(run.id);
     await sleep(10);
   }
-} else {
-  const run = bureau.run('asker', 'which environment?', {
+} else if (mode === 'parked') {
+  // Holds no write: the task parks on its human wait, and the process dies there.
+  const run = await bureau.tasks.start('asker', 'which environment?', {
     principal: 'api-key:alice',
-    sessionId: CONTEXT_ID,
+    contextId: CONTEXT_ID,
   });
   for (;;) {
-    if (held && bureau.reviews.list().some((review) => review.runId === run.id)) {
-      kill(run.id);
-    }
+    if (bureau.reviews.list().some((review) => review.runId === run.id)) kill(run.id);
+    await sleep(10);
+  }
+} else {
+  // Not awaited: the start waits on the held admission write for ever.
+  void bureau.tasks.start('asker', 'which environment?', {
+    principal: 'api-key:alice',
+    contextId: CONTEXT_ID,
+  });
+  for (;;) {
+    // The held write is this task's admission: it names the context and carries the message.
+    const admission =
+      heldText?.includes(CONTEXT_ID) === true && heldText.includes('which environment?')
+        ? heldText
+        : undefined;
+    const taskId =
+      admission === undefined ? undefined : /bureau-task:v1:([^"\\]+)/u.exec(admission)?.[1];
+    if (taskId !== undefined) kill(taskId);
     await sleep(10);
   }
 }

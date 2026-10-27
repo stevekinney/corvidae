@@ -69,11 +69,7 @@ describe('every kind of resource keeps its owner across a restart (COR-718)', ()
     const first = await openBureau(path);
     let reopened: Awaited<ReturnType<typeof openBureau>> | undefined;
     try {
-      const run = await first.createRun({
-        agentName: 'default',
-        message: 'park',
-        principal: ALICE,
-      });
+      const run = await first.tasks.start('default', 'park', { principal: ALICE });
       await waitForCondition(
         () => first.reviews.list().some((review) => review.runId === run.id),
         'the run never parked on a human wait',
@@ -115,7 +111,7 @@ describe('every kind of resource keeps its owner across a restart (COR-718)', ()
         principal: 'api-key:reviewer',
       });
       await waitForCondition(
-        () => first.getRun(run.id)?.status !== 'running',
+        () => first.tasks.detail(run.id)?.status !== 'running',
         'the approved run never finished',
       );
       await first.dispose();
@@ -125,8 +121,8 @@ describe('every kind of resource keeps its owner across a restart (COR-718)', ()
       const owner = (resource: Parameters<typeof second.getOwner>[0]) => second.getOwner(resource);
 
       expect(await owner({ kind: 'run', id: run.id })).toBe(ALICE);
-      expect(await owner({ kind: 'session', id: run.sessionId })).toBe(ALICE);
-      const session = await second.contexts.get(run.sessionId);
+      expect(await owner({ kind: 'session', id: run.contextId })).toBe(ALICE);
+      const session = await second.contexts.get(run.contextId);
       expect(session?.metadata[SESSION_OWNER_METADATA_KEY]).toBe(ALICE);
       expect(await owner({ kind: 'run', id: 'owner-child' })).toBe(ALICE);
       expect(await owner({ kind: 'goal', id: 'g-owned' })).toBe(ALICE);

@@ -90,11 +90,7 @@ describe('expired review state under the automatic maintenance profile', () => {
 
     const { fireId } = await fireOnce(bureau, OWNER.alice, 'maintenance-session');
     const fireReview = await reviewOf(bureau, fireId);
-    const run = await bureau.createRun({
-      agentName: 'default',
-      message: 'charge',
-      principal: OWNER.alice,
-    });
+    const run = await bureau.tasks.start('default', 'charge', { principal: OWNER.alice });
     const runReview = await pollUntil(
       () => bureau.reviews.list().find((review) => review.runId === run.id),
       'the session run’s approval',
@@ -182,11 +178,7 @@ describe('expired review state of a Bureau with no maintenance timer of its own'
     // Nothing is held, so no timer keeps the process alive.
     expect(runtime.pendingTimers()).toEqual([]);
 
-    const run = await bureau.createRun({
-      agentName: 'default',
-      message: 'charge',
-      principal: OWNER.alice,
-    });
+    const run = await bureau.tasks.start('default', 'charge', { principal: OWNER.alice });
     const review = await pollUntil(
       () => bureau.reviews.list().find((listed) => listed.runId === run.id),
       'the session run’s approval',
@@ -224,11 +216,7 @@ describe('expired review state of a Bureau with no maintenance timer of its own'
       runtime,
     });
     bureaus.push(bureau);
-    const run = await bureau.createRun({
-      agentName: 'default',
-      message: 'charge',
-      principal: OWNER.alice,
-    });
+    const run = await bureau.tasks.start('default', 'charge', { principal: OWNER.alice });
     const review = await pollUntil(
       () => bureau.reviews.list().find((listed) => listed.runId === run.id),
       'the approval',
@@ -286,11 +274,7 @@ describe('expired review state of a Bureau with no maintenance timer of its own'
       runtime,
     });
     bureaus.push(bureau);
-    const run = await bureau.createRun({
-      agentName: 'default',
-      message: 'charge',
-      principal: OWNER.alice,
-    });
+    const run = await bureau.tasks.start('default', 'charge', { principal: OWNER.alice });
     const review = await pollUntil(
       () => bureau.reviews.list().find((listed) => listed.runId === run.id),
       'the approval',
@@ -332,11 +316,7 @@ describe('expired review state of a Bureau with no maintenance timer of its own'
       runtime,
     });
     bureaus.push(bureau);
-    const run = await bureau.createRun({
-      agentName: 'default',
-      message: 'charge',
-      principal: OWNER.alice,
-    });
+    const run = await bureau.tasks.start('default', 'charge', { principal: OWNER.alice });
     const review = await pollUntil(
       () => bureau.reviews.list().find((listed) => listed.runId === run.id),
       'the session run’s approval',

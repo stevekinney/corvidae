@@ -18,7 +18,7 @@
  * `policyRef` resolution through the selector (AB-200); retargeting an
  * active provider request or applying a plan mid-call (ABP-11 non-goals).
  * `createBureau` does not automatically attach a `SelectionGate` to every
- * `bureau.run()` call — that wiring is a later issue's to make; this module
+ * task — that wiring is a later issue's to make; this module
  * only exposes the planning surface and the gate factory `RunOptions.selection`
  * is built from.
  */

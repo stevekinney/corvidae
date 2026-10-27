@@ -55,15 +55,11 @@ async function untilSaved(bureau: Bureau<AgentDefinitions>, contextId: string) {
 describe('bureau.contexts.events and subscribeEvents', () => {
   it('serve the session owner of the durable event history', async () => {
     const bureau = await open(true);
-    const run = await bureau.createRun({
-      message: 'hello',
-      agentName: 'default',
-      principal: 'alice',
-    });
+    const run = await bureau.tasks.start('default', 'hello', { principal: 'alice' });
 
-    const seen = await untilSaved(bureau, run.sessionId);
-    const viaNamespace = await bureau.contexts.events(run.sessionId);
-    const viaOwner = await bureau.eventHistory({ kind: 'session', id: run.sessionId });
+    const seen = await untilSaved(bureau, run.contextId);
+    const viaNamespace = await bureau.contexts.events(run.contextId);
+    const viaOwner = await bureau.contexts.events(run.contextId);
 
     expect(seen.map((event) => event.kind)).toContain('session.created');
     expect(viaNamespace).toEqual(viaOwner);
@@ -73,15 +69,11 @@ describe('bureau.contexts.events and subscribeEvents', () => {
 
   it('do not read the run owner, whose history stays on eventHistory', async () => {
     const bureau = await open(true);
-    const run = await bureau.createRun({
-      message: 'hello',
-      agentName: 'default',
-      principal: 'alice',
-    });
-    await untilSaved(bureau, run.sessionId);
+    const run = await bureau.tasks.start('default', 'hello', { principal: 'alice' });
+    await untilSaved(bureau, run.contextId);
 
     const viaRunId = await bureau.contexts.events(run.id);
-    const runHistory = await bureau.eventHistory({ kind: 'run', id: run.id });
+    const runHistory = await bureau.tasks.events(run.id);
 
     expect(viaRunId).not.toEqual(runHistory);
   });

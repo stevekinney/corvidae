@@ -35,7 +35,7 @@ import {
   createRunMemoryAuthority,
   DEFAULT_RUN_MEMORY_CAPABILITIES,
 } from './runtime-composition';
-import { waitForRunState } from './test';
+import { waitForTaskState } from './test';
 import type { Bureau } from './types';
 
 const BUREAU_ID = 'retention-bureau';
@@ -419,13 +419,11 @@ describe('a full collection accepts writes again after a maintenance pass (COR-1
     await built.runtime.advance(91 * DAY);
 
     const chat = async (sessionId: string) => {
-      const run = await bureau.createRun({
-        agentName: 'alpha',
-        sessionId,
+      const run = await bureau.tasks.start('alpha', 'Anything new?', {
+        contextId: sessionId,
         principal: 'api-key:alice',
-        message: 'Anything new?',
       });
-      await waitForRunState(bureau, run.id);
+      await waitForTaskState(bureau, run.id);
     };
 
     await chat('chat-1');

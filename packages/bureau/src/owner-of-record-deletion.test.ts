@@ -5,6 +5,7 @@ import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { AgentDefinitions } from './agent-catalog';
+import { startTaskFrom } from './test/task-start-request.ts';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 
@@ -25,14 +26,14 @@ async function createdSession(
   principal: string | undefined,
   sessionId: string,
 ) {
-  const run = await bureau.createRun({
+  const run = await startTaskFrom(bureau, {
     agentName: 'default',
-    message: 'hello',
-    sessionId,
+    input: 'hello',
+    contextId: sessionId,
     ...(principal === undefined ? {} : { principal }),
   });
   await waitForCondition(
-    () => bureau.getRun(run.id)?.status !== 'running',
+    () => bureau.tasks.detail(run.id)?.status !== 'running',
     `run ${run.id} never settled`,
   );
   return run;

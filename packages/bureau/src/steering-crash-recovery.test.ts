@@ -165,12 +165,8 @@ const outcomes = {
 
       // The key is bureau-wide: the same key sent to another session is a
       // `session-mismatch`, though that session's own log never saw it.
-      const other = await bureau.createRun({
-        agentName: 'default',
-        message: 'Wait forever',
-        principal: 'alice',
-      });
-      const elsewhere = await bureau.contexts.steer(other.sessionId, {
+      const other = await bureau.tasks.start('default', 'Wait forever', { principal: 'alice' });
+      const elsewhere = await bureau.contexts.steer(other.contextId, {
         id: 'crash-cmd-2',
         principal: 'alice',
         requestedValue: { target: 'model', override: 'claude-sonnet-5' },
@@ -265,7 +261,7 @@ const outcomes = {
     });
     try {
       await recovering.waitForRecovery?.();
-      await recovering.waitForDurableRun(runId);
+      await recovering.tasks.wait(runId);
       expect(generateCalls).toBeGreaterThan(0);
     } finally {
       await recovering.dispose();
@@ -275,12 +271,7 @@ const outcomes = {
     const reader = await openBureau(directory);
     try {
       await reader.waitForRecovery?.();
-      await reader.createRun({
-        agentName: 'default',
-        message: 'again',
-        principal: 'alice',
-        sessionId,
-      });
+      await reader.tasks.start('default', 'again', { contextId: sessionId, principal: 'alice' });
       const outcome = await reader.contexts.steer(sessionId, {
         id: 'crash-cmd-2',
         principal: 'alice',
@@ -337,8 +328,8 @@ const outcomes = {
       });
       try {
         await recovering.waitForRecovery?.();
-        await recovering.waitForDurableRun(runId).catch(() => {});
-        const recovered = await recovering.getDurableRun(runId);
+        await recovering.tasks.wait(runId).catch(() => {});
+        const recovered = await recovering.tasks.workflow(runId);
         expect(recovered?.status).toBe('failed');
         expect(generateCalls).toBe(0);
       } finally {
@@ -384,8 +375,8 @@ const outcomes = {
       });
       try {
         await recovering.waitForRecovery?.();
-        await recovering.waitForDurableRun(runId).catch(() => {});
-        const recovered = await recovering.getDurableRun(runId);
+        await recovering.tasks.wait(runId).catch(() => {});
+        const recovered = await recovering.tasks.workflow(runId);
         expect(recovered?.status).toBe('failed');
         expect(generateCalls).toBe(0);
       } finally {

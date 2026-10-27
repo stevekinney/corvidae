@@ -39,12 +39,12 @@ import { isDurableRunUnsettled } from '../create-bureau.ts';
 import { ownerOrLocal } from '../owner-of-record.ts';
 import { resolvePersistedRunOwningPrincipal } from '../session-authority.ts';
 import type {
-  Bureau,
   PendingHumanWaitReview,
   PendingReview,
   PendingToolApprovalReview,
   BureauContexts,
   BureauReviews,
+  BureauTasks,
 } from '../types.ts';
 import { toInterrupt } from './ag-ui-interrupts.ts';
 import { type AnswerRow, snapshotMessages, snapshotMessagesWithAnswers } from './ag-ui-messages.ts';
@@ -73,10 +73,9 @@ export const PEER_SESSION_SETTLE_GRACE_MS = 2000;
 export const PEER_PARK_RECHECK_INTERVAL_MS = 500;
 
 /** What a peer's stream reads from the Bureau. */
-export type PeerStreamBureau = Pick<
-  Bureau,
-  'getDurableRun' | 'eventHistory' | 'waitForDurableRun' | 'subscribeEventHistory'
-> & { readonly reviews: Pick<BureauReviews, 'pendingOf'> } & {
+export type PeerStreamBureau = {
+  readonly tasks: Pick<BureauTasks, 'workflow' | 'wait' | 'events' | 'subscribeEvents'>;
+} & { readonly reviews: Pick<BureauReviews, 'pendingOf'> } & {
   readonly contexts: Pick<BureauContexts, 'get' | 'subscribeEvents'>;
 };
 
@@ -364,18 +363,15 @@ async function tail(
     };
     context.onDispose(() => decide(undefined));
     let tripwire = false;
-    const runSubscription = bureau.subscribeEventHistory(
-      { kind: 'run', id: nativeRunId },
-      (event) => {
-        if (event.kind === RECORDED.runTripwire) tripwire = true;
-        const outcome = HISTORY_TERMINAL[event.kind];
-        if (outcome === undefined) return;
-        decide({
-          kind: 'terminal',
-          terminal: { outcome, detail: event.payload, tripwire, cursor: event.cursor },
-        });
-      },
-    );
+    const runSubscription = bureau.tasks.subscribeEvents(nativeRunId, (event) => {
+      if (event.kind === RECORDED.runTripwire) tripwire = true;
+      const outcome = HISTORY_TERMINAL[event.kind];
+      if (outcome === undefined) return;
+      decide({
+        kind: 'terminal',
+        terminal: { outcome, detail: event.payload, tripwire, cursor: event.cursor },
+      });
+    });
     context.onDispose(() => runSubscription.unsubscribe());
 
     const fromStatus = (state: WorkflowState | null | undefined): void => {
@@ -387,7 +383,7 @@ async function tail(
     else {
       // Under `maintenance: 'manual'` the wait is refused, and the history's terminal
       // and the stream's deadline are what end the stream.
-      bureau.waitForDurableRun(nativeRunId).then(fromStatus, () => undefined);
+      bureau.tasks.wait(nativeRunId).then(fromStatus, () => undefined);
     }
 
     // A park writes nothing this process can subscribe to (see the module doc), so the waits are
@@ -467,7 +463,7 @@ async function endParked(
   context: PeerStreamContext,
   waits: ReadonlyArray<PendingHumanWaitReview>,
 ): Promise<void> {
-  const durable = await context.bureau.getDurableRun(context.nativeRunId).catch(() => undefined);
+  const durable = await context.bureau.tasks.workflow(context.nativeRunId).catch(() => undefined);
   if (context.isEnded()) return;
   context.writeEvents(await context.surfaceEvents());
   if (context.isEnded()) return;
@@ -553,10 +549,7 @@ async function historyTerminal(
   let tripwire = false;
   let first: Omit<PeerTerminal, 'tripwire'> | undefined;
   for (;;) {
-    const page = await bureau.eventHistory(
-      { kind: 'run', id: runId },
-      since === undefined ? {} : { since },
-    );
+    const page = await bureau.tasks.events(runId, since === undefined ? {} : { since });
     if (!('events' in page)) break;
     for (const event of page.events) {
       if (event.kind === RECORDED.runTripwire) tripwire = true;

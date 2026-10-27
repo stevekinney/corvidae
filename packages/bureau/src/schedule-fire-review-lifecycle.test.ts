@@ -850,7 +850,7 @@ describe('a fire’s review is announced', () => {
     const review = await reviewOf(approval, fireId);
 
     const announced = await pollUntil(async () => {
-      const page = await approval.eventHistory({ kind: 'run', id: fireId });
+      const page = await approval.tasks.events(fireId);
       if (!('events' in page)) return undefined;
       const events = page.events.filter((event) => event.kind === 'review.requested');
       return events.length > 0 ? events : undefined;
@@ -886,7 +886,7 @@ describe('a fire’s review is announced', () => {
     const review = await reviewOf(bureau, fireId);
 
     const announced = await pollUntil(async () => {
-      const page = await bureau.eventHistory({ kind: 'run', id: fireId });
+      const page = await bureau.tasks.events(fireId);
       if (!('events' in page)) return undefined;
       const events = page.events.filter((event) => event.kind === 'review.requested');
       return events.length > 0 ? events : undefined;
@@ -959,11 +959,11 @@ describe('a bureau.run() run stays off the store scan (COR-1302)', () => {
     });
     const bureau = await open({ agents: { asker: agent } });
 
-    const run = bureau.run('asker', 'go', { principal: OWNER.alice });
+    const run = await bureau.tasks.start('asker', 'go', { principal: OWNER.alice });
     await reviewOf(bureau, run.id);
     // The run is on the store while it lives, which is what the guard keeps the scan off. A
     // `bureau.run()` approval never reaches the scan either way, so the wait is what shows it.
-    expect(bureau.getRun(run.id)).toBeDefined();
+    expect(bureau.tasks.detail(run.id)).toBeDefined();
 
     // One entry: a scan of the store for this run would list the wait a second time.
     expect(reviewsOf(bureau, run.id).map((review) => review.kind)).toEqual(['human-wait']);

@@ -4,6 +4,7 @@
  * the reviews its entries answer and opens a new stream, on the same native run
  * for a human wait and on a fresh one for a tool approval.
  */
+import type { TaskHandle } from '../types.ts';
 import { type Event, EventType, type ResumeEntry } from '@ag-ui/core';
 import { createDefaultRuntimeServices, createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { stopWhen, type Toolbox, waitForCondition } from '@lostgradient/operative';
@@ -32,6 +33,7 @@ import {
   readAgUiStream,
   typesOf,
 } from './ag-ui-stream.test-support.ts';
+import { listHeldTasks } from '../test';
 
 const SECRET = 'ag-ui-resume-secret';
 
@@ -221,7 +223,7 @@ describe('resuming a tool approval', () => {
           outcome: { type: 'success' },
         });
         expect(charges).toEqual([500]);
-        expect(bureau.listRuns()).toHaveLength(2);
+        expect(listHeldTasks(bureau)).toHaveLength(2);
         // The conversation the new run ended with answers the call once.
         const session = await bureau.contexts.get('thread-1');
         const history = session?.conversationHistory;
@@ -415,7 +417,7 @@ describe('a duplicate resume', () => {
         const entries = [resolved(first.interruptIds[0]!)];
         const original = await readAgUiStream(await handler(resumeRequest(entries)));
         const resolve = spyOn(bureau.reviews, 'resolve');
-        const runsBefore = bureau.listRuns().length;
+        const runsBefore = listHeldTasks(bureau).length;
 
         // A client that mints a fresh runId for its retry is still a retry.
         const retry = await readAgUiStream(
@@ -423,7 +425,7 @@ describe('a duplicate resume', () => {
         );
 
         expect(resolve).not.toHaveBeenCalled();
-        expect(bureau.listRuns()).toHaveLength(runsBefore);
+        expect(listHeldTasks(bureau)).toHaveLength(runsBefore);
         expect(charges).toEqual([500]);
         expect(retry[0]!.event).toMatchObject({
           type: EventType.RUN_STARTED,
@@ -462,7 +464,7 @@ describe('a duplicate resume', () => {
 
         expect(resolve).toHaveBeenCalledTimes(1);
         expect(charges).toEqual([500]);
-        expect(bureau.listRuns()).toHaveLength(2);
+        expect(listHeldTasks(bureau)).toHaveLength(2);
         expect(leftFrames.at(-1)!.event.type).toBe(EventType.RUN_FINISHED);
         expect(rightFrames.at(-1)!.event.type).toBe(EventType.RUN_FINISHED);
         expect(bureauMetadata(leftFrames[0]!.event)['runId']).toBe(
@@ -502,7 +504,7 @@ describe('a resume after a supersession', () => {
       async ({ handler, bureau }) => {
         const first = await startUntilInterrupted(handler);
         const id = first.interruptIds[0]!;
-        const runsBefore = bureau.listRuns().length;
+        const runsBefore = listHeldTasks(bureau).length;
 
         const secondRound = await readAgUiStream(await handler(resumeRequest([resolved(id)])));
         const thirdRound = await readAgUiStream(
@@ -529,7 +531,7 @@ describe('a resume after a supersession', () => {
           expect(bureauMetadata(frames[0]!.event)['runId']).toBe(first.nativeRunId);
           expect(typesOf(frames)).toContain(EventType.TOOL_CALL_RESULT);
         }
-        expect(bureau.listRuns()).toHaveLength(runsBefore);
+        expect(listHeldTasks(bureau)).toHaveLength(runsBefore);
         expect(charges).toEqual([]);
       },
     );
@@ -673,12 +675,14 @@ describe('a resume whose run cannot start', () => {
       { script: [chargeOnce, say('Charged, and carrying on.')], toolbox: approvalToolbox(charges) },
       async ({ handler, bureau }) => {
         const first = await startUntilInterrupted(handler);
-        const createRun = spyOn(bureau, 'createRun').mockRejectedValueOnce(new Error('disk full'));
+        const startTask = spyOn(bureau.tasks, 'start').mockRejectedValueOnce(
+          new Error('disk full'),
+        );
 
         const failed = await readAgUiStream(
           await handler(resumeRequest([resolved(first.interruptIds[0]!)])),
         );
-        createRun.mockRestore();
+        startTask.mockRestore();
         const next = await readAgUiStream(
           await handler(
             startRequest(
@@ -781,10 +785,12 @@ describe('a resume that did not finish', () => {
       async (harness) => {
         const first = await startUntilInterrupted(harness.handler);
         const entries = [resolved(first.interruptIds[0]!)];
-        const createRun = spyOn(harness.bureau, 'createRun').mockImplementationOnce(() => never());
+        const startTask = spyOn(harness.bureau.tasks, 'start').mockImplementationOnce(() =>
+          never<TaskHandle>(),
+        );
         void harness.handler(resumeRequest(entries));
-        await waitForCondition(() => createRun.mock.calls.length === 1, 'the run never started');
-        createRun.mockRestore();
+        await waitForCondition(() => startTask.mock.calls.length === 1, 'the run never started');
+        startTask.mockRestore();
         expect(harness.bureau.reviews.list()).toHaveLength(0);
         await living.advance(DEFAULT_AG_UI_LEASE_MS);
 
@@ -798,7 +804,7 @@ describe('a resume that did not finish', () => {
 
         expect(retry.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
         expect(charges).toEqual([500]);
-        expect(harness.bureau.listRuns()).toHaveLength(2);
+        expect(listHeldTasks(harness.bureau)).toHaveLength(2);
         expect(bureauMetadata(again[0]!.event)['runId']).toBe(
           bureauMetadata(retry[0]!.event)['runId'],
         );
@@ -838,7 +844,7 @@ describe('a resume that cannot write the approval’s outcome into the conversat
             options,
           ),
         );
-        const runsBefore = bureau.listRuns().length;
+        const runsBefore = listHeldTasks(bureau).length;
 
         const frames = await readAgUiStream(
           await handler(resumeRequest([resolved(first.interruptIds[0]!)])),
@@ -851,7 +857,7 @@ describe('a resume that cannot write the approval’s outcome into the conversat
           code: 'RUN_FAILED',
           message: expect.stringContaining('not written'),
         });
-        expect(bureau.listRuns()).toHaveLength(runsBefore);
+        expect(listHeldTasks(bureau)).toHaveLength(runsBefore);
         expect(charges).toEqual([500]);
         // The Bureau says why, through its own diagnostics, and not on the console.
         expect(diagnostics).toEqual([expect.stringContaining('into session "thread-1"')]);
@@ -964,10 +970,10 @@ describe('the resume command ledger', () => {
         expect(ran).toBe(true);
         expect(diagnostics).toEqual([]);
         // The receipt for the run the first start created is still there.
-        const located = await bureau.locateRunCreationReceipt({
+        const located = await bureau.tasks.receipt({
           principal: 'anonymous:local',
+          commandId: 'client-run-1',
           agentName: 'assistant',
-          runCreationRequestId: 'client-run-1',
         });
         expect(located.status).toBe('recorded');
       },
@@ -1001,7 +1007,7 @@ describe('resuming a human wait', () => {
           content: '[signal:human-response] "yes"',
         });
         // The run's own conversation holds the answer under the id the stream gave it.
-        expect(bureau.getRun(first.nativeRunId)!.transcript!.ids).toContain(id);
+        expect(bureau.tasks.detail(first.nativeRunId)!.transcript!.ids).toContain(id);
       },
     );
   });
@@ -1018,7 +1024,7 @@ describe('resuming a human wait', () => {
         const first = await startUntilInterrupted(handler);
         const threadId = String((first.frames[0]!.event as { threadId?: unknown }).threadId);
         const id = `${first.nativeRunId}:signal:human-response:0`;
-        expect(bureau.getRun(first.nativeRunId)?.transcript?.ids ?? []).not.toContain(id);
+        expect(bureau.tasks.detail(first.nativeRunId)?.transcript?.ids ?? []).not.toContain(id);
 
         const frames = await readAgUiStream(
           openRunStream(
@@ -1077,7 +1083,7 @@ describe('resuming a human wait', () => {
           type: EventType.RUN_FINISHED,
           outcome: { type: 'success' },
         });
-        expect(bureau.listRuns()).toHaveLength(1);
+        expect(listHeldTasks(bureau)).toHaveLength(1);
         // The model was given the human's answer on the continuation.
         const continuation = generate.calls.at(-1)!.context.conversation;
         expect(JSON.stringify(continuation.getMessages())).toContain('yes');
@@ -1125,7 +1131,7 @@ describe('a human wait answered by a caller who may write but not read', () => {
       }
       // The answer was delivered: the run went on with it.
       await waitForCondition(
-        () => bureau.getRun(first.nativeRunId)?.status === 'completed',
+        () => bureau.tasks.detail(first.nativeRunId)?.status === 'completed',
         'the run did not continue',
       );
       const continuation = generate.calls.at(-1)!.context.conversation;
@@ -1313,8 +1319,8 @@ describe('a resume applied by another Bureau over the same store', () => {
           expect(early[0]!.event).toMatchObject({ type: EventType.RUN_ERROR, code: 'RUN_FAILED' });
           expect(charges).toEqual([500]);
           expect(takenOver.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
-          expect(peer.bureau.listRuns()).toHaveLength(1);
-          expect(harness.bureau.listRuns()).toHaveLength(1);
+          expect(listHeldTasks(peer.bureau)).toHaveLength(1);
+          expect(listHeldTasks(harness.bureau)).toHaveLength(1);
           // The claimant is let go only to clean up. A call that outlives its lease, as
           // this one does, is the residual the leases cannot fence (see ag-ui-lease.ts).
           held.release();
@@ -1354,7 +1360,7 @@ describe('two requests that answer the same interrupts differently at once', () 
           code: 'RESUME_CONFLICT',
         });
         expect(charges).toEqual([500]);
-        expect(bureau.listRuns()).toHaveLength(2);
+        expect(listHeldTasks(bureau)).toHaveLength(2);
       },
     );
   });
@@ -1395,7 +1401,10 @@ describe('a resume through the route of another published agent', () => {
         // The agent that raised the interrupt still answers it, once.
         expect(own.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
         expect(charges).toEqual([500]);
-        expect(bureau.listRuns().map((run) => run.agentName)).toEqual(['assistant', 'assistant']);
+        expect(listHeldTasks(bureau).map((run) => run.agentName)).toEqual([
+          'assistant',
+          'assistant',
+        ]);
       },
     );
   });
@@ -1481,12 +1490,12 @@ describe('a resume through the route of another published agent', () => {
       async (harness) => {
         const first = await startUntilInterrupted(harness.handler);
         const entries = [resolved(first.interruptIds[0]!)];
-        const createRun = spyOn(harness.bureau, 'createRun').mockImplementationOnce(
-          () => new Promise(() => {}),
+        const startTask = spyOn(harness.bureau.tasks, 'start').mockImplementationOnce(
+          () => new Promise<TaskHandle>(() => {}),
         );
         void harness.handler(resumeRequest(entries));
-        await waitForCondition(() => createRun.mock.calls.length === 1, 'the run never started');
-        createRun.mockRestore();
+        await waitForCondition(() => startTask.mock.calls.length === 1, 'the run never started');
+        startTask.mockRestore();
         await living.advance(DEFAULT_AG_UI_LEASE_MS);
 
         const retried = await readAgUiStream(
@@ -1494,7 +1503,7 @@ describe('a resume through the route of another published agent', () => {
         );
 
         expect(retried[0]!.event).toMatchObject({ code: 'INTERRUPT_NOT_FOUND' });
-        expect(harness.bureau.listRuns().map((run) => run.agentName)).toEqual(['assistant']);
+        expect(listHeldTasks(harness.bureau).map((run) => run.agentName)).toEqual(['assistant']);
         expect(charges).toEqual([500]);
       },
     );
@@ -1577,7 +1586,7 @@ describe('a resume whose approvals are only partly applied', () => {
         const partial = await readAgUiStream(await handler(resumeRequest(entries)));
         resolve.mockRestore();
         const pendingAfterPartial = bureau.reviews.list().length;
-        const runsAfterPartial = bureau.listRuns().length;
+        const runsAfterPartial = listHeldTasks(bureau).length;
         const retry = await readAgUiStream(
           await handler(resumeRequest(entries, {}, 'client-run-3')),
         );
@@ -1589,7 +1598,7 @@ describe('a resume whose approvals are only partly applied', () => {
         expect(runsAfterPartial).toBe(1);
         expect(retry.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
         expect(charges.toSorted((left, right) => left - right)).toEqual([500, 700]);
-        expect(bureau.listRuns()).toHaveLength(2);
+        expect(listHeldTasks(bureau)).toHaveLength(2);
       },
     );
   });
@@ -1627,7 +1636,7 @@ describe('a resume that loses its ledger claim after it took effect', () => {
 
         expect(frames.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
         expect(charges).toEqual([500]);
-        expect(bureau.listRuns()).toHaveLength(2);
+        expect(listHeldTasks(bureau)).toHaveLength(2);
       },
     );
   });
@@ -1697,7 +1706,7 @@ describe('a resume retried after an attempt whose outcome was not written', () =
             .map((id) => stored.messages[id]!)
             .find((message) => message.toolResult?.callId === 'call-1');
           expect(row?.toolResult?.outcome).toBe('action_required');
-          const runsBefore = harness.bureau.listRuns().length;
+          const runsBefore = listHeldTasks(harness.bureau).length;
           await living.advance(DEFAULT_AG_UI_LEASE_MS);
 
           const survivor =
@@ -1715,8 +1724,8 @@ describe('a resume retried after an attempt whose outcome was not written', () =
               type: EventType.RUN_ERROR,
               code: 'RUN_FAILED',
             });
-            if (how === 'remount') expect(harness.bureau.listRuns()).toHaveLength(runsBefore);
-            else expect(survivor.bureau.listRuns()).toHaveLength(0);
+            if (how === 'remount') expect(listHeldTasks(harness.bureau)).toHaveLength(runsBefore);
+            else expect(listHeldTasks(survivor.bureau)).toHaveLength(0);
             expect(charges).toEqual([500]);
           } finally {
             if (how === 'restart') await survivor.dispose();
@@ -1767,7 +1776,7 @@ describe('a tool approval of a run that is still going', () => {
           code: 'INTERRUPT_NOT_FOUND',
         });
         expect(charges).toEqual([]);
-        expect(bureau.listRuns()).toHaveLength(1);
+        expect(listHeldTasks(bureau)).toHaveLength(1);
       },
     );
   });
@@ -1813,7 +1822,7 @@ describe('an approval no run can continue from', () => {
       await withHarness(await settledWithApproval(charges), async ({ handler, bureau }) => {
         await readAgUiStream(await handler(startRequest(runAgentInput())));
         await waitForCondition(
-          () => bureau.getRun(bureau.listRuns()[0]!.id)?.status === 'completed',
+          () => bureau.tasks.detail(listHeldTasks(bureau)[0]!.id)?.status === 'completed',
           'run did not settle',
         );
         const id = bureau.reviews.list()[0]!.id;
@@ -1866,7 +1875,7 @@ describe('an approval no run can continue from', () => {
         const { handler, bureau } = harness;
         await readAgUiStream(await handler(startRequest(runAgentInput())));
         await waitForCondition(
-          () => bureau.getRun(bureau.listRuns()[0]!.id)?.status === 'completed',
+          () => bureau.tasks.detail(listHeldTasks(bureau)[0]!.id)?.status === 'completed',
           'run did not settle',
         );
         const entries = [
@@ -1890,7 +1899,7 @@ describe('an approval no run can continue from', () => {
           type: EventType.RUN_FINISHED,
           outcome: { type: 'success' },
         });
-        expect(bureau.listRuns()).toHaveLength(1);
+        expect(listHeldTasks(bureau)).toHaveLength(1);
         expect(charges).toEqual([]);
         // The retry completed the command: its entry is done, and asking again resolves
         // and starts nothing more.
@@ -1904,7 +1913,7 @@ describe('an approval no run can continue from', () => {
         expect(
           (bureau.reviews.resolve as unknown as { mock: { calls: unknown[] } }).mock.calls.length,
         ).toBe(resolveCalls);
-        expect(bureau.listRuns()).toHaveLength(1);
+        expect(listHeldTasks(bureau)).toHaveLength(1);
       },
     );
   });
@@ -1919,7 +1928,7 @@ describe('an approval no run can continue from', () => {
         const { handler, bureau } = harness;
         await readAgUiStream(await handler(startRequest(runAgentInput())));
         await waitForCondition(
-          () => bureau.getRun(bureau.listRuns()[0]!.id)?.status === 'completed',
+          () => bureau.tasks.detail(listHeldTasks(bureau)[0]!.id)?.status === 'completed',
           'run did not settle',
         );
         const id = bureau.reviews.list()[0]!.id;
@@ -1947,7 +1956,7 @@ describe('an approval no run can continue from', () => {
         expect(retry[0]!.event).toMatchObject({ code: 'CONTINUATION_UNAVAILABLE' });
         expect(charges).toEqual([]);
         expect(bureau.reviews.list().map((review) => review.id)).toEqual([id]);
-        expect(bureau.listRuns()).toHaveLength(1);
+        expect(listHeldTasks(bureau)).toHaveLength(1);
         // The refusal released the command, so the way out is still open.
         const cancelled = await readAgUiStream(
           await harness.remount({ runtime: living })(
@@ -1965,7 +1974,7 @@ describe('an approval no run can continue from', () => {
     await withHarness(await settledWithApproval(charges), async ({ handler, bureau }) => {
       await readAgUiStream(await handler(startRequest(runAgentInput())));
       await waitForCondition(
-        () => bureau.getRun(bureau.listRuns()[0]!.id)?.status === 'completed',
+        () => bureau.tasks.detail(listHeldTasks(bureau)[0]!.id)?.status === 'completed',
         'run did not settle',
       );
       const id = bureau.reviews.list()[0]!.id;
@@ -2054,11 +2063,11 @@ describe('a step that asks a human and calls a gated tool', () => {
           expect(interruptsOf(pending).map((i) => i.reason)).toEqual(['tool-approval']);
           // (a) after the answer the run settles on the approval, and nothing has been charged.
           expect(interruptsOf(answered).map((i) => i.reason)).toEqual(['tool-approval']);
-          expect(bureau.listRuns()[0]!.status).toBe('completed');
+          expect(listHeldTasks(bureau)[0]!.status).toBe('completed');
           // (b) approving runs the tool once and continues from the answer.
           expect(approved.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
           expect(charges).toEqual([500]);
-          expect(bureau.listRuns()).toHaveLength(2);
+          expect(listHeldTasks(bureau)).toHaveLength(2);
           expect(bureau.reviews.list()).toEqual([]);
           const seen = JSON.stringify(generate.calls.at(-1)!.context.conversation.getMessages());
           expect(seen).toContain('visa');
@@ -2081,7 +2090,7 @@ describe('a step that asks a human and calls a gated tool', () => {
       async ({ handler, bureau }) => {
         const start = await readAgUiStream(await handler(startRequest(runAgentInput())));
         await waitForCondition(
-          () => bureau.getRun(bureau.listRuns()[0]!.id)?.status === 'completed',
+          () => bureau.tasks.detail(listHeldTasks(bureau)[0]!.id)?.status === 'completed',
           'run did not settle',
         );
         const id = bureau.reviews.list()[0]!.id;
@@ -2102,7 +2111,7 @@ describe('a step that asks a human and calls a gated tool', () => {
         expect(again[0]!.event).toMatchObject({ code: 'CONTINUATION_UNAVAILABLE' });
         expect(charges).toEqual([]);
         expect(bureau.reviews.list().map((review) => review.id)).toEqual([id]);
-        expect(bureau.listRuns()).toHaveLength(1);
+        expect(listHeldTasks(bureau)).toHaveLength(1);
       },
     );
   });
@@ -2233,8 +2242,8 @@ describe('the human’s answer, streamed under the id the run commits it by', ()
    * it was (COR-1632).
    */
   const withTranscriptHidden = (bureau: Harness['bureau']) => {
-    const getRun = bureau.getRun.bind(bureau);
-    return spyOn(bureau, 'getRun').mockImplementation((runId) => {
+    const getRun = bureau.tasks.detail.bind(bureau.tasks);
+    return spyOn(bureau.tasks, 'detail').mockImplementation((runId) => {
       const detail = getRun(runId);
       return detail === undefined ? detail : { ...detail, transcript: undefined };
     });
@@ -2327,8 +2336,8 @@ describe('the human’s answer, streamed under the id the run commits it by', ()
         generate.release('after-answer');
         await answering.rest();
 
-        const committed = bureau
-          .getRun(first.nativeRunId)!
+        const committed = bureau.tasks
+          .detail(first.nativeRunId)!
           .transcript!.ids.filter((id) => id.includes(':signal:'));
         expect(committed).toHaveLength(1);
         expect(userTextRows(opening)).toEqual([]);

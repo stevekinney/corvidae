@@ -115,7 +115,7 @@ function configurationOf(state: GoalState): string {
 
 export function createBureauGoals<TName extends string = string>(
   dependencies: BureauGoalsDependencies,
-): BureauGoals<TName> {
+): Omit<BureauGoals<TName>, 'events' | 'subscribeEvents'> {
   const {
     store,
     catalog,

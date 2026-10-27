@@ -54,7 +54,7 @@ import {
   type TaskRegistry,
   type TaskView,
 } from '../../task-registry.ts';
-import type { Bureau } from '../../types.ts';
+import type { BureauTasks } from '../../types.ts';
 import { type BureauOwnershipHost } from '../owner-predicate.ts';
 import { resourceNotFound, taskStateSchema } from './management-schemas.ts';
 import { mayAccessTask } from './tasks-operations.ts';
@@ -386,7 +386,7 @@ export function createTaskEventProjector(
 /** What the operation reads from the handler's `host`. */
 export type BureauTaskEventsOperationHost = BureauOwnershipHost & {
   readonly tasks: Pick<TaskRegistry, 'get' | 'ownerOf' | 'record' | 'onSettled' | 'onChanged'>;
-  readonly taskHistory: Pick<Bureau, 'eventHistory' | 'subscribeEventHistory'>;
+  readonly taskHistory: Pick<BureauTasks, 'events' | 'subscribeEvents'>;
   readonly runtime?: Pick<RuntimeServices, 'identifiers' | 'clock'>;
 };
 
@@ -536,8 +536,8 @@ function followScheduleFire(
         // fire settled by this process. A Bureau with no persistent storage has no second process,
         // and its subscription never delivers. The history is replayed from its start, so an end
         // recorded before this point is read, and a repeat of one already read is a no-op.
-        historySubscription = host.taskHistory.subscribeEventHistory(
-          { kind: 'run', id: taskId },
+        historySubscription = host.taskHistory.subscribeEvents(
+          taskId,
           (event) => {
             // The end itself, or a gap: retention overtook the subscription, so events were lost,
             // possibly the end. Either way the record says whether the fire is over.
@@ -695,11 +695,10 @@ export const tasksEventsOperation = defineOperation<
       answer === undefined
         ? null
         : { artifactId: `${taskId}:result`, text: answer.text, truncated: answer.truncated };
-    const owner = { kind: 'run', id: taskId } as const;
     const history = host.taskHistory;
     // A resume is probed here, so a Bureau with no durable history to follow answers
     // before a stream is opened, and a cursor below the retention floor is known.
-    const probe = await history.eventHistory(owner, {
+    const probe = await history.events(taskId, {
       ...(input.fromCursor === undefined ? {} : { since: input.fromCursor }),
       limit: 1,
     });
@@ -760,7 +759,7 @@ export const tasksEventsOperation = defineOperation<
       let since: string | undefined;
       for (;;) {
         if (controller.signal.aborted) return;
-        const page = await history.eventHistory(owner, {
+        const page = await history.events(taskId, {
           ...(since === undefined ? {} : { since }),
           limit: REPLAY_PAGE_LIMIT,
         });
@@ -810,8 +809,8 @@ export const tasksEventsOperation = defineOperation<
         queue.end();
         return;
       }
-      subscription = history.subscribeEventHistory(
-        owner,
+      subscription = history.subscribeEvents(
+        taskId,
         (event) => {
           const element = projector.project(event);
           if (element !== undefined) queue.push(element);

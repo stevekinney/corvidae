@@ -135,14 +135,16 @@ type Captured = { owner: string; subscription: { readonly closed: boolean } };
 /** Records each history subscription a Bureau's streams open. */
 function captureSubscriptions(bureau: Bureau): Captured[] {
   const captured: Captured[] = [];
-  const original = bureau.subscribeEventHistory.bind(bureau);
-  (bureau as { subscribeEventHistory: Bureau['subscribeEventHistory'] }).subscribeEventHistory = (
-    owner,
-    listener,
-    options,
-  ) => {
-    const subscription = original(owner, listener, options);
-    captured.push({ owner: `${owner.kind}:${owner.id}`, subscription });
+  const tasks = bureau.tasks.subscribeEvents.bind(bureau.tasks);
+  bureau.tasks.subscribeEvents = (taskId, listener, options) => {
+    const subscription = tasks(taskId, listener, options);
+    captured.push({ owner: `run:${taskId}`, subscription });
+    return subscription;
+  };
+  const contexts = bureau.contexts.subscribeEvents.bind(bureau.contexts);
+  bureau.contexts.subscribeEvents = (contextId, listener, options) => {
+    const subscription = contexts(contextId, listener, options);
+    captured.push({ owner: `session:${contextId}`, subscription });
     return subscription;
   };
   return captured;

@@ -66,9 +66,9 @@ describe('the owner of a schedule that is not an agent schedule (COR-718)', () =
         expect(await bureau.schedules.inputPreview('heartbeat')).toBeUndefined();
         expect(await bureau.schedules.inputPreview('no-such-schedule')).toBeUndefined();
         for (const principal of ['anonymous:local', 'api-key:alice']) {
-          expect(
-            await bureau.eventHistory({ kind: 'schedule', id: 'heartbeat' }, { principal }),
-          ).toEqual({ outcome: 'not-found' });
+          expect(await bureau.schedules.events('heartbeat', { principal })).toEqual({
+            outcome: 'not-found',
+          });
         }
       } finally {
         await bureau.dispose();

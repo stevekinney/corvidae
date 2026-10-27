@@ -18,7 +18,7 @@ async function runEvents(
   bureau: Awaited<ReturnType<typeof createBureau>>,
   runId: string,
 ): Promise<HistoryEvent[]> {
-  const page = await bureau.eventHistory({ kind: 'run', id: runId });
+  const page = await bureau.tasks.events(runId);
   if (!('events' in page)) throw new Error(`no event page: ${JSON.stringify(page)}`);
   return page.events.map((event) => ({ kind: event.kind, payload: event.payload }));
 }
@@ -55,11 +55,7 @@ describe('review.requested', () => {
       durable: true,
     });
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'park-me',
-        principal: 'api-key:tester',
-      });
+      const run = await bureau.tasks.start('default', 'park-me', { principal: 'api-key:tester' });
       await waitForCondition(
         () => bureau.reviews.list().some((review) => review.runId === run.id),
         'expected the run to park',
@@ -130,11 +126,7 @@ describe('review.requested', () => {
       durable: true,
     });
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'charge',
-        principal: 'api-key:tester',
-      });
+      const run = await bureau.tasks.start('default', 'charge', { principal: 'api-key:tester' });
       await waitForCondition(
         () => bureau.reviews.list().some((review) => review.runId === run.id),
         'expected the approval to be pending',

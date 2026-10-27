@@ -65,12 +65,12 @@ export const OPERATION_MAP = {
   'operative.runs.events': { exempt: 'a transport subscription over a run’s event feed' },
   'bureau.agents.catalog': { exempt: 'composed from the catalog, the publication, and the models' },
 
-  'bureau.tasks.list': { member: 'internals.taskRegistry.list' },
-  'bureau.tasks.get': { member: 'internals.taskRegistry.get' },
-  'bureau.tasks.cancel': { member: 'internals.taskRegistry.cancel' },
-  'bureau.tasks.inspect': { member: 'getRun' },
-  'bureau.tasks.events': { member: 'eventHistory' },
-  'bureau.tasks.respond': { member: 'reviews.resolve' },
+  'bureau.tasks.list': { member: 'tasks.list' },
+  'bureau.tasks.get': { member: 'tasks.get' },
+  'bureau.tasks.cancel': { member: 'tasks.cancel' },
+  'bureau.tasks.inspect': { member: 'tasks.inspect' },
+  'bureau.tasks.events': { member: 'tasks.events' },
+  'bureau.tasks.respond': { member: 'tasks.respond' },
 
   'bureau.contexts.list': { member: 'contexts.list' },
   'bureau.contexts.get': { member: 'contexts.get' },

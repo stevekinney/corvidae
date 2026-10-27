@@ -97,7 +97,7 @@ describe('the agUi option on createBureauHandler', () => {
         publish: [AGENT_NAME],
         agUi: {},
       });
-      const run = await bureau.createRun({ agentName: 'default', message: 'hold' });
+      const run = await bureau.tasks.start('default', 'hold');
       const requests = mountRequests('/ag-ui', run.id);
 
       const cancel = await handler(requests['cancel'] as Request);

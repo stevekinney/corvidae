@@ -105,11 +105,7 @@ async function example(console: Recorder, databasePath: string): Promise<void> {
 
   // The handler starts no run of its own except through its AG-UI mount, so the host starts this
   // one. `principal` is the owner of record: an API-key caller `alice` owns as `api-key:alice`.
-  const run = await bureau.createRun({
-    agentName: 'releaser',
-    message: 'Release it.',
-    principal: 'api-key:alice',
-  });
+  const run = await bureau.tasks.start('releaser', 'Release it.', { principal: 'api-key:alice' });
   await waitForCondition(
     () => bureau.reviews.list().some((review) => review.runId === run.id),
     'the run did not park on its question',
@@ -284,8 +280,8 @@ describe('the limits the documentation names', () => {
   it('answers bureau.tasks.events with UnsupportedCapability when there is no persistent storage', async () => {
     const { bureau, handler } = await servedBureau(answers);
     try {
-      const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
-      await waitForCondition(() => bureau.getRun(run.id)?.status === 'completed', 'finish');
+      const run = await bureau.tasks.start('default', 'Hello');
+      await waitForCondition(() => bureau.tasks.detail(run.id)?.status === 'completed', 'finish');
 
       const stream = await handler(
         new Request(
@@ -307,11 +303,14 @@ describe('the limits the documentation names', () => {
   it('answers bureau.contexts.input with Unavailable when the Bureau has no durable mailbox', async () => {
     const { bureau, handler } = await servedBureau(never);
     try {
-      const run = await bureau.createRun({ agentName: 'default', message: 'Hello' });
-      await waitForCondition(() => bureau.getRun(run.id)?.status === 'running', 'the run began');
+      const run = await bureau.tasks.start('default', 'Hello');
+      await waitForCondition(
+        () => bureau.tasks.detail(run.id)?.status === 'running',
+        'the run began',
+      );
 
       const answer = await localCall(handler, 'bureau.contexts.input', {
-        contextId: run.sessionId,
+        contextId: run.contextId,
         input: { id: 'input-1', payload: 'More.' },
       });
 

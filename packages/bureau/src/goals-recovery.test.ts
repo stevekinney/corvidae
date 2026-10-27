@@ -619,7 +619,7 @@ describe('a cancellation that a process died in the middle of', () => {
     await status(bureau, 'running');
 
     // Someone cancels the controller's workflow directly, not through the goal.
-    expect(await bureau.cancelDurableRun('goal:g1')).toEqual({ status: 'requested' });
+    await bureau.durableEngine()!.cancel('goal:g1');
     expect(await goalStatus(bureau, 'g1')).toBe('running');
 
     // The controller's finalizer stops the attempt in the background, so recovery
@@ -1025,7 +1025,7 @@ describe('the attempt behind a running goal', () => {
       goalAttempt: { goalRunId: 'g1', attemptIndex: 0 },
     });
     await view.store.create(pendingGoal());
-    expect(await bureau.getDurableRun('goal-g1-a0')).toBeNull();
+    expect(await bureau.tasks.workflow('goal-g1-a0')).toBeNull();
 
     expect(await bureau.goals.recover('g1')).toMatchObject({
       goals: [{ goalRunId: 'g1', outcome: 'started' }],

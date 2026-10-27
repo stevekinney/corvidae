@@ -1,4 +1,8 @@
-import type { Bureau, BureauContexts } from '../types.ts';
+import type {
+  BureauContexts,
+  DurableEventHistoryRead,
+  DurableEventHistorySubscribe,
+} from '../types.ts';
 
 /**
  * What {@link createContexts} composes `bureau.contexts` from: the Bureau's own context
@@ -26,9 +30,9 @@ export type ContextsDependencies = {
   /** {@link BureauContexts.fork}. */
   readonly fork: BureauContexts['fork'];
   /** The Bureau's durable event history read, which {@link BureauContexts.events} narrows to the session owner. */
-  readonly eventHistory: Bureau['eventHistory'];
+  readonly eventHistory: DurableEventHistoryRead;
   /** The Bureau's durable event history subscription, which {@link BureauContexts.subscribeEvents} narrows to the session owner. */
-  readonly subscribeEventHistory: Bureau['subscribeEventHistory'];
+  readonly subscribeEventHistory: DurableEventHistorySubscribe;
 };
 
 /**

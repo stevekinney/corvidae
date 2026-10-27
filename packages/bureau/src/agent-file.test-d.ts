@@ -1,12 +1,11 @@
-// Type-level tripwire (COR-1524): `bureau.run` keeps its precise per-key type for a code-defined
+// Type-level tripwire (COR-1524): `bureau.tasks.start` keeps its precise per-key type for a code-defined
 // agent's literal key, and takes any string for an agent only known at run time (a file agent),
 // answering with an untyped handle.
 
-import type { AgentRun } from '@lostgradient/operative';
 import { createAgent, createMockGenerate } from '@lostgradient/operative';
 import { z } from 'zod';
 
-import type { Bureau } from './types';
+import type { Bureau, TaskHandle } from './types';
 
 const agents = {
   plain: createAgent({ generate: createMockGenerate([]), name: 'plain' }),
@@ -24,10 +23,10 @@ type Equals<A, B> =
 function expectEquals<A, B>(..._args: Equals<A, B> extends true ? [] : [never]): void {}
 
 // A literal key of the code-defined map keeps its precise type.
-const precise = bureau.run('schema', 'hello');
-expectEquals<Awaited<ReturnType<typeof precise.unwrap>>, { a: string }>();
+const precise = await bureau.tasks.start('schema', 'hello');
+expectEquals<typeof precise, TaskHandle<{ a: string }>>();
 
 // A name only known at run time takes the string overload and an untyped handle.
 declare const runtimeName: string;
-const untyped = bureau.run(runtimeName, 'hello');
-expectEquals<typeof untyped, AgentRun<unknown, boolean>>();
+const untyped = await bureau.tasks.start(runtimeName, 'hello');
+expectEquals<typeof untyped, TaskHandle>();
