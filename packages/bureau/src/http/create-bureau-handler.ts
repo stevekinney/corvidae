@@ -59,7 +59,6 @@ import {
 } from '../agent-catalog.ts';
 import { agentExamplesSchema } from '../agent-examples.ts';
 import { readFileAgentBinding } from '../agent-file-catalog.ts';
-import { describeAgentModels } from '../agent-models.ts';
 import {
   COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS,
   createPrunedCommandLedger,
@@ -182,10 +181,10 @@ export type BureauHandlerSource = Pick<
   | 'id'
   | 'runtimeServices'
   | 'durableEngine'
-  | 'getOwner'
+  | 'ownerOf'
   | 'lifecycle'
-  | 'waitForRecovery'
-  | 'subscribeLiveFrames'
+  | 'recovery'
+  | 'frames'
   | 'children'
   | 'models'
   | 'workflows'
@@ -259,6 +258,7 @@ export type BureauHandlerSource = Pick<
     BureauAgentCatalog<AgentDefinitions>,
     | 'list'
     | 'detail'
+    | 'models'
     | 'tools'
     | 'revisions'
     | 'create'
@@ -719,9 +719,9 @@ function createApiKeyAuthenticate(authentication: AuthConfig): OperationHandlerA
 
 /** How long a recovery that has not finished is waited for before it reads as pending. */
 async function recoveryOf(bureau: BureauHandlerSource): Promise<DeploymentRecovery> {
-  if (bureau.waitForRecovery === undefined) return { status: 'not-applicable', failedRunCount: 0 };
+  if (bureau.recovery === undefined) return { status: 'not-applicable', failedRunCount: 0 };
   const pending = Symbol('pending');
-  const report = await Promise.race([bureau.waitForRecovery(), Promise.resolve(pending)]);
+  const report = await Promise.race([bureau.recovery(), Promise.resolve(pending)]);
   if (report === pending) return { status: 'pending', failedRunCount: 0 };
   return { status: report.outcome, failedRunCount: report.perRunFailures.length };
 }
@@ -998,7 +998,7 @@ export function buildBureauHandlerHost(
       durableEngine: () => bureau.durableEngine(),
     },
     ownership: {
-      runOwner: (runId) => bureau.getOwner({ kind: 'run', id: runId }),
+      runOwner: (runId) => bureau.ownerOf({ kind: 'run', id: runId }),
       mayAccess: mayAccessOwnedResource,
     },
     tasks: bureau.internals.taskRegistry,
@@ -1018,12 +1018,7 @@ export function buildBureauHandlerHost(
       internals: bureau.internals,
     },
     agentModels: {
-      describe: (agentName) => {
-        const agent = bureau.agents.find(agentName);
-        return agent === undefined
-          ? undefined
-          : describeAgentModels(agent, bureau.models.catalog().descriptors);
-      },
+      describe: (agentName) => bureau.agents.models(agentName),
     },
     agentDefinitions: {
       agents: bureau.agents,
@@ -1042,7 +1037,7 @@ export function buildBureauHandlerHost(
       resume: bureau.schedules.resume,
       cancel: bureau.schedules.cancel,
       update: bureau.schedules.update,
-      owner: (scheduleId) => bureau.getOwner({ kind: 'schedule', id: scheduleId }),
+      owner: (scheduleId) => bureau.ownerOf({ kind: 'schedule', id: scheduleId }),
       agentName: bureau.schedules.agentName,
       inputPreview: bureau.schedules.inputPreview,
       hasAgent: (name) => bureau.agents.find(name) !== undefined,
@@ -1125,7 +1120,7 @@ export function createBureauHandler(
               bureau,
               {
                 mayAccess: host.ownership.mayAccess,
-                ownerOf: (resource) => bureau.getOwner(resource),
+                ownerOf: (resource) => bureau.ownerOf(resource),
               },
               createPublication(bureau, options.publish ?? []),
               options.agUi,

@@ -128,7 +128,7 @@ describe('a resolved fire approval leaves nothing of its own in the session', ()
 
     await pollUntil(async () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
-      await bureau.runDurableMaintenance(Date.now());
+      await bureau.maintain(Date.now());
       return (await bureau.internals.taskRegistry.record(fireId)) === undefined ? true : undefined;
     }, 'the fire’s task to leave retention');
 
@@ -592,7 +592,7 @@ describe('a fire’s approval is fenced across Bureau processes by the durable d
     // The task leaves retention, and the session's own record of the decision goes with it.
     await pollUntil(async () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
-      await first.runDurableMaintenance(Date.now());
+      await first.maintain(Date.now());
       return (await first.internals.taskRegistry.record(fireId)) === undefined ? true : undefined;
     }, 'the fire’s task to leave retention');
     const metadata = await sessionMetadata(first, 'fenced-session');
@@ -642,7 +642,7 @@ describe('a fire’s task stream ends when its last review closes', () => {
       spec: '1m',
       principal: OWNER.alice,
     });
-    await bureau.runDurableMaintenance(created?.nextFireAt ?? 0);
+    await bureau.maintain(created?.nextFireAt ?? 0);
     await entered.promise;
     const fireId = await pollUntil(async () => {
       const schedule = await bureau.schedules.get(created?.id ?? '');
@@ -735,7 +735,7 @@ describe('a fire’s task stream ends when its last review closes', () => {
       spec: '1m',
       principal: OWNER.alice,
     });
-    await bureau.runDurableMaintenance(created?.nextFireAt ?? 0);
+    await bureau.maintain(created?.nextFireAt ?? 0);
     await entered.promise;
     const fireId = await pollUntil(async () => {
       const schedule = await bureau.schedules.get(created?.id ?? '');

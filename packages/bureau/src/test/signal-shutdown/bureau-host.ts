@@ -123,13 +123,13 @@ async function recover(): Promise<never> {
   const { runId } = JSON.parse(readFileSync(join(directory, 'bureau-started.json'), 'utf8')) as {
     runId: string;
   };
-  const report = await bureau.waitForRecovery?.();
+  const report = await bureau.recovery();
   // The previous process may have died holding the run's claim; maintenance
   // adopts it once the claim lapses.
   for await (const _turn of awakeTurns()) {
     const durable = await bureau.tasks.workflow(runId);
     if (durable?.status !== undefined && TERMINAL_STATUSES.has(durable.status)) break;
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, POLL_DELAY_MS));
   }
   const durable = await bureau.tasks.workflow(runId);

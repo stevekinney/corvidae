@@ -61,7 +61,7 @@ describe('a Bureau started over a store with an instance it cannot register', ()
 
     const second = await startWorkflowBureau({ directory: workflows, overrides });
     cleanups.push(() => second.dispose());
-    const report = await second.bureau.waitForRecovery?.();
+    const report = await second.bureau.recovery();
     expect(report?.outcome).toBe('clean');
     expect(report?.perRunFailures).toEqual([]);
 

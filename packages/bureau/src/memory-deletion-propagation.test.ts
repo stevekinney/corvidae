@@ -1,7 +1,7 @@
 /**
  * COR-1546 — governed memory runs nothing on a timer, so a deletion's bounded-async targets settle
  * only when something calls `processDeletionPropagation()`. Bureau's maintenance pass, the manual
- * `runDurableMaintenance()` and the automatic timer both, is that caller.
+ * `maintain()` and the automatic timer both, is that caller.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
@@ -119,7 +119,7 @@ describe('a memory deletion across Bureau maintenance (COR-1546)', () => {
     expect(await statusOf(memory, receipt, 'external-processors')).toBe('pending');
     expect(await statusOf(memory, receipt, 'durable-snapshots')).toBe('pending');
 
-    expect(await bureau.runDurableMaintenance()).toBe(true);
+    expect(await bureau.maintain()).toBe(true);
 
     expect(processor.attempts()).toBe(2);
     expect(await statusOf(memory, receipt, 'external-processors')).toBe('completed');
@@ -154,7 +154,7 @@ describe('a memory deletion across Bureau maintenance (COR-1546)', () => {
     const { bureau, diagnostics } = await start(served, runtime);
     expect(memory).not.toBe(served);
 
-    expect(await bureau.runDurableMaintenance()).toBe(true);
+    expect(await bureau.maintain()).toBe(true);
 
     expect(
       diagnostics.some(

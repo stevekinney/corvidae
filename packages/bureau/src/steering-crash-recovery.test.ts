@@ -149,7 +149,7 @@ const outcomes = {
 
     const bureau = await openBureau(directory);
     try {
-      await bureau.waitForRecovery?.();
+      await bureau.recovery();
       const differentTarget = await bureau.contexts.steer(sessionId, {
         id: 'crash-cmd-2',
         principal: 'alice',
@@ -197,7 +197,7 @@ const outcomes = {
 
     const bureau = await openBureau(directory);
     try {
-      await bureau.waitForRecovery?.();
+      await bureau.recovery();
       const again = await bureau.contexts.steer(first.sessionId, {
         id: 'after-two-restarts',
         principal: 'alice',
@@ -260,7 +260,7 @@ const outcomes = {
       durableOwnership: CLAIM_OPTIONS,
     });
     try {
-      await recovering.waitForRecovery?.();
+      await recovering.recovery();
       await recovering.tasks.wait(runId);
       expect(generateCalls).toBeGreaterThan(0);
     } finally {
@@ -270,7 +270,7 @@ const outcomes = {
     // A process that only folds the log sees the command applied.
     const reader = await openBureau(directory);
     try {
-      await reader.waitForRecovery?.();
+      await reader.recovery();
       await reader.tasks.start('default', 'again', { contextId: sessionId, principal: 'alice' });
       const outcome = await reader.contexts.steer(sessionId, {
         id: 'crash-cmd-2',
@@ -327,7 +327,7 @@ const outcomes = {
         durableOwnership: CLAIM_OPTIONS,
       });
       try {
-        await recovering.waitForRecovery?.();
+        await recovering.recovery();
         await recovering.tasks.wait(runId).catch(() => {});
         const recovered = await recovering.tasks.workflow(runId);
         expect(recovered?.status).toBe('failed');
@@ -374,7 +374,7 @@ const outcomes = {
         durableOwnership: CLAIM_OPTIONS,
       });
       try {
-        await recovering.waitForRecovery?.();
+        await recovering.recovery();
         await recovering.tasks.wait(runId).catch(() => {});
         const recovered = await recovering.tasks.workflow(runId);
         expect(recovered?.status).toBe('failed');
@@ -400,7 +400,7 @@ const outcomes = {
     await kv.close();
 
     const bureau = await openBureau(directory);
-    await bureau.waitForRecovery?.();
+    await bureau.recovery();
     await bureau.dispose();
 
     const after = await resolveStorage({ type: 'sqlite', path });

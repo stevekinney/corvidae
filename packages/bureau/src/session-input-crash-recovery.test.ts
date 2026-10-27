@@ -115,7 +115,7 @@ function recoveredScenario(backend: Backend): ReturnType<typeof settleScenario> 
         durableOwnership: CLAIM_OPTIONS,
       });
       try {
-        await recovering.waitForRecovery?.();
+        await recovering.recovery();
         await recovering.tasks.wait(runId);
         // Step 0 was checkpointed by the child, so only step 1 generates again,
         // and it sees each input exactly once, oldest first.
@@ -192,7 +192,7 @@ function cancelledScenario(backend: Backend): ReturnType<typeof settleScenario> 
         durableOwnership: CLAIM_OPTIONS,
       });
       try {
-        await recovering.waitForRecovery?.();
+        await recovering.recovery();
         expect(generations).toBe(0);
         expect(listHeldTasks(recovering)).toHaveLength(0);
       } finally {

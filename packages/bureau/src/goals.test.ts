@@ -759,8 +759,8 @@ describe('bureau.goals', () => {
       // A principal sees its own goals. A goal created with no principal is owned by anonymous:local.
       expect(await listedIds(bureau, { principal: 'alice' })).toEqual(['g1']);
       expect(await listedIds(bureau, { principal: 'anonymous:local' })).toEqual(['g3']);
-      expect(await bureau.getOwner({ kind: 'goal', id: 'g1' })).toBe('alice');
-      expect(await bureau.getOwner({ kind: 'goal', id: 'g3' })).toBe('anonymous:local');
+      expect(await bureau.ownerOf({ kind: 'goal', id: 'g1' })).toBe('alice');
+      expect(await bureau.ownerOf({ kind: 'goal', id: 'g3' })).toBe('anonymous:local');
       // Omitting the principal is a trusted, internal call.
       expect(await listedIds(bureau)).toEqual(['g1', 'g2', 'g3']);
       // And the denied cancel changed nothing.

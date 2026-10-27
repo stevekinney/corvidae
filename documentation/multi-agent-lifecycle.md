@@ -269,7 +269,7 @@ Bureau recovery never starts a child workflow. At boot it loads every running ch
 - Otherwise, when the parent was cancelled or cannot be recovered, the child's `parentCancellation` applies: a `'cascade'` child is cancelled and a `'detach'` child is reattached. Under an unrecoverable parent, only a `'detach'` child without a grant is left running.
 - A recovered child whose grant is missing, unreadable, tampered with, revoked, or expired is denied. Bureau writes `delegation.rejected` and cancels the child. A child that has a grant is also denied when the restarted Bureau has no `children.delegation` configured.
 
-Recovery needs the same persistent `storage` (for example SQLite or LMDB) with durable execution enabled, the same agent names, the same signal contracts, and the same delegation secret. A Bureau without storage keeps its topology in memory, so there is nothing to recover. Call `await bureau.waitForRecovery()` before presenting recovered state.
+Recovery needs the same persistent `storage` (for example SQLite or LMDB) with durable execution enabled, the same agent names, the same signal contracts, and the same delegation secret. A Bureau without storage keeps its topology in memory, so there is nothing to recover. Call `await bureau.recovery()` before presenting recovered state.
 
 ## Forking a session at a completed run
 

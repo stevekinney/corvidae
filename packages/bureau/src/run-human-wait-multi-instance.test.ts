@@ -235,9 +235,9 @@ describe('the park of a bureau.run() run another process holds (COR-1579)', () =
   it("names the owner of a peer's catalog run", async () => {
     const { a, b, run } = await parkedInA();
 
-    expect(await b.bureau.getOwner({ kind: 'run', id: run.id })).toBe(OWNER);
-    expect(await b.bureau.getOwner({ kind: 'run', id: run.id })).toBe(
-      await a.bureau.getOwner({ kind: 'run', id: run.id }),
+    expect(await b.bureau.ownerOf({ kind: 'run', id: run.id })).toBe(OWNER);
+    expect(await b.bureau.ownerOf({ kind: 'run', id: run.id })).toBe(
+      await a.bureau.ownerOf({ kind: 'run', id: run.id }),
     );
   });
 

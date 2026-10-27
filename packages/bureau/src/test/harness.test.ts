@@ -481,7 +481,7 @@ describe('two concurrent harnesses are fully isolated', () => {
       // hooks above.
       beforeAll(async () => {
         eventsSeenByA = [];
-        const unsubscribeA = harnessA.bureau.subscribeLiveFrames((frame) => {
+        const unsubscribeA = harnessA.bureau.frames((frame) => {
           eventsSeenByA.push(frame.type);
         });
         // try/finally: if startSession or waitForTerminalSnapshot throws, this

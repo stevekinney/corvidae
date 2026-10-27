@@ -323,7 +323,7 @@ describe('a task across a restart', () => {
       { viewer: viewer([], new Promise<void>(() => {})) },
       durable,
     );
-    await second.waitForRecovery?.();
+    await second.recovery();
     const report = await pastTheFloor(environment, second);
 
     expect(report.expired).not.toContain(assetIdOf(image));

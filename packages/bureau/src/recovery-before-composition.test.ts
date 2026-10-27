@@ -125,7 +125,7 @@ describe('a run reclaimed while the bureau is still being composed (COR-1509)', 
     compositionHeld.resolve();
     const bureau = await successor;
     bureaus.push(bureau);
-    const report = await bureau.waitForRecovery?.();
+    const report = await bureau.recovery();
     expect(report?.outcome).toBe('clean');
 
     const state = await bureau.tasks.workflow(run.id);

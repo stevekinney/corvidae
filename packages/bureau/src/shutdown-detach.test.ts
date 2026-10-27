@@ -77,7 +77,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
       durableOwnership: { ownership: 'none' },
     });
     bureaus.push(restarted);
-    await restarted.waitForRecovery?.();
+    await restarted.recovery();
     const cancelled = await restarted.tasks.workflow(run.id);
     expect(cancelled).toMatchObject({ status: 'cancelled' });
     expect(restarted.reviews.list()).toEqual([]);
@@ -149,7 +149,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
       durableOwnership: { ownership: 'none' },
     });
     bureaus.push(restarted);
-    await restarted.waitForRecovery?.();
+    await restarted.recovery();
     const review = restarted.reviews.list().find((candidate) => candidate.runId === run.id);
     expect(review).toBeDefined();
     if (review === undefined) throw new Error('Expected the detached review to survive.');

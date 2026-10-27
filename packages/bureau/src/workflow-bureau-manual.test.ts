@@ -67,9 +67,9 @@ describe('an agent step that a restart runs again', () => {
       replies: { writer: async () => (await Bun.sleep(300), 'answered') },
     });
     cleanups.push(() => second.dispose());
-    await second.bureau.waitForRecovery?.();
+    await second.bureau.recovery();
     for await (const _turn of awakeTurns()) {
-      await second.bureau.runDurableMaintenance();
+      await second.bureau.maintain();
       const state = await second.bureau.tasks.workflow('midstep-run');
       if (state?.status !== 'running' && state?.status !== 'pending') break;
       await Bun.sleep(25);

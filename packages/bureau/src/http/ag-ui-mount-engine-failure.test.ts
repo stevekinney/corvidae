@@ -153,7 +153,7 @@ describe('a durable run that fails after it committed a step (COR-1587)', () => 
     try {
       // The run's report: the usage of the step that committed, before the write that was refused.
       const reportedUsage: number[] = [];
-      bureau.subscribeLiveFrames((frame) => {
+      bureau.frames((frame) => {
         if (frame.type === 'run-envelope' && frame.frame.type === 'run-finished') {
           reportedUsage.push(frame.frame.report.usage.total);
         }

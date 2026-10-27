@@ -103,7 +103,7 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
       durable: false,
     });
     try {
-      await second.runDurableMaintenance();
+      await second.maintain();
       await waitForCondition(
         async () => (await deletionCount(second, 'replayed')) === 1,
         'the replayed deletion never reached the audit trail',
@@ -138,7 +138,7 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
       durable: false,
     });
     try {
-      await second.runDurableMaintenance();
+      await second.maintain();
       await waitForCondition(
         async () => (await deletionCount(second, 'reused')) === 2,
         'the replayed deletions never reached the audit trail',
@@ -193,7 +193,7 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
       expect(await base.list(SIDE_RECORD_PREFIX)).toHaveLength(1);
 
       reading.fails = false;
-      await second.runDurableMaintenance();
+      await second.maintain();
       await waitForCondition(
         async () => (await deletionCount(second, 'retried')) === 1,
         'the retried deletion never reached the audit trail',
@@ -229,7 +229,7 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
       // Another session's deletion queues behind the poisoned one.
       await settled(second, 'api-key:bob', 'later');
       await second.contexts.delete('later');
-      await second.runDurableMaintenance();
+      await second.maintain();
       await waitForCondition(
         async () => (await deletionCount(second, 'later')) === 1,
         'a later deletion never reached the audit trail behind the poisoned record',
@@ -275,7 +275,7 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
       expect(await base.list(SIDE_RECORD_PREFIX)).toHaveLength(1);
 
       reading.fails = false;
-      await second.runDurableMaintenance();
+      await second.maintain();
       await waitForCondition(
         async () => (await deletionCount(second, 'unreachable')) === 1,
         'the deletion never reached the audit trail once the store recovered',

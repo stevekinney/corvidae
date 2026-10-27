@@ -86,7 +86,7 @@ describe('a schedule fire is a task of the schedule’s owner', () => {
     });
     const awaited6 = await opened.bureau.internals.taskRegistry.record(task.id);
     expect(awaited6?.actor).toBe('system:scheduler');
-    expect(await opened.bureau.getOwner({ kind: 'run', id: task.id })).toBe(OWNER.alice);
+    expect(await opened.bureau.ownerOf({ kind: 'run', id: task.id })).toBe(OWNER.alice);
 
     // Read.
     const read = await rpc(opened.handler, 'bureau.tasks.get', { taskId: task.id }, 'alice-key');

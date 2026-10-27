@@ -163,7 +163,7 @@ describe('a run resumed after a restart', () => {
       scripts: { 'claude-opus-5-5': () => 'resumed' },
       overrides,
     });
-    await second.bureau.waitForRecovery?.();
+    await second.bureau.recovery();
 
     const resumedAgents = built.mock.calls
       .map(

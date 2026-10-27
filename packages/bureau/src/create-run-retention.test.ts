@@ -246,11 +246,11 @@ describe.each(BACKENDS)('run-creation retention over %s', (_backend, factory) =>
         ).toBeInstanceOf(BureauLedgerConflictError);
 
         runtime.setTime(ORIGIN_MS + DAY_MS - 1);
-        expect(await bureau.runDurableMaintenance()).toBe(true);
+        expect(await bureau.maintain()).toBe(true);
         expect(await bureau.tasks.receipt(LOCATE)).toEqual(recorded(created.receipt));
 
         runtime.setTime(ORIGIN_MS + DAY_MS);
-        expect(await bureau.runDurableMaintenance()).toBe(true);
+        expect(await bureau.maintain()).toBe(true);
         expect(await bureau.tasks.receipt(LOCATE)).toEqual({
           status: 'not-found',
           requestId: 'request-1',

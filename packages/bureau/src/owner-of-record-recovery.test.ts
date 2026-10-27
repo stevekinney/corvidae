@@ -80,7 +80,7 @@ describe('a run recovered after a restart (COR-718)', () => {
   it('keeps its owner, and records recovery as the actor, once', async () => {
     const { run, recovered, cleanup } = await crashAndRecover('api-key:alice');
     try {
-      expect(await recovered.getOwner({ kind: 'run', id: run.id })).toBe('api-key:alice');
+      expect(await recovered.ownerOf({ kind: 'run', id: run.id })).toBe('api-key:alice');
       expect(recovered.tasks.detail(run.id)?.principal).toBe('api-key:alice');
       await waitForCondition(async () => {
         const entries = await recovered.internals.auditTrail?.query({
@@ -94,7 +94,7 @@ describe('a run recovered after a restart (COR-718)', () => {
         type: 'run.recovered',
       });
       expect(entries?.map((entry) => entry.principal)).toEqual(['system:recovery']);
-      expect(await recovered.getOwner({ kind: 'audit', runId: run.id })).toBe('api-key:alice');
+      expect(await recovered.ownerOf({ kind: 'audit', runId: run.id })).toBe('api-key:alice');
     } finally {
       await cleanup();
     }
@@ -103,7 +103,7 @@ describe('a run recovered after a restart (COR-718)', () => {
   it('keeps anonymous:local as the owner of a run that was created with no principal', async () => {
     const { run, recovered, cleanup } = await crashAndRecover(undefined);
     try {
-      expect(await recovered.getOwner({ kind: 'run', id: run.id })).toBe('anonymous:local');
+      expect(await recovered.ownerOf({ kind: 'run', id: run.id })).toBe('anonymous:local');
       await waitForCondition(async () => {
         const entries = await recovered.internals.auditTrail?.query({
           runId: run.id,

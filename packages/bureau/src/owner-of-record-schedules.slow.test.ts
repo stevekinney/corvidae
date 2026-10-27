@@ -59,9 +59,9 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
         spec: '1h',
       });
 
-      expect(await bureau.getOwner({ kind: 'schedule', id: owned!.id })).toBe('api-key:alice');
-      expect(await bureau.getOwner({ kind: 'schedule', id: unowned!.id })).toBe('anonymous:local');
-      expect(await bureau.getOwner({ kind: 'audit', runId: `schedule:${owned!.id}` })).toBe(
+      expect(await bureau.ownerOf({ kind: 'schedule', id: owned!.id })).toBe('api-key:alice');
+      expect(await bureau.ownerOf({ kind: 'schedule', id: unowned!.id })).toBe('anonymous:local');
+      expect(await bureau.ownerOf({ kind: 'audit', runId: `schedule:${owned!.id}` })).toBe(
         'api-key:alice',
       );
       await bureau.schedules.cancel(owned!.id);
@@ -87,9 +87,9 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       await bureau.schedules.cancel(summary!.id);
       const fire = completed[0]!;
 
-      expect(await bureau.getOwner({ kind: 'run', id: fire.runId })).toBe('api-key:alice');
+      expect(await bureau.ownerOf({ kind: 'run', id: fire.runId })).toBe('api-key:alice');
       const sessionId = `sched-${summary!.id}-${fire.runId}`;
-      expect(await bureau.getOwner({ kind: 'session', id: sessionId })).toBe('api-key:alice');
+      expect(await bureau.ownerOf({ kind: 'session', id: sessionId })).toBe('api-key:alice');
       const session = await bureau.contexts.get(sessionId);
       expect(session?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('api-key:alice');
       expect(session?.metadata['lastRunOwningPrincipals']).toEqual({
@@ -102,7 +102,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       });
       expect(fired).toHaveLength(1);
       expect(fired?.[0]?.principal).toBe('system:scheduler');
-      expect(await bureau.getOwner({ kind: 'audit', runId: fire.runId })).toBe('api-key:alice');
+      expect(await bureau.ownerOf({ kind: 'audit', runId: fire.runId })).toBe('api-key:alice');
     } finally {
       await bureau.dispose();
     }
@@ -122,7 +122,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       expect(await waitForReal(() => completed.length >= 1)).toBe(true);
       await bureau.schedules.cancel(summary!.id);
 
-      expect(await bureau.getOwner({ kind: 'run', id: completed[0]!.runId })).toBe(
+      expect(await bureau.ownerOf({ kind: 'run', id: completed[0]!.runId })).toBe(
         'anonymous:local',
       );
     } finally {
@@ -158,8 +158,8 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
         type: 'schedule.fired',
       });
       expect(fired?.map((entry) => entry.principal)).toEqual(['system:scheduler']);
-      expect(await bureau.getOwner({ kind: 'run', id: refusedRunId })).toBe('api-key:alice');
-      expect(await bureau.getOwner({ kind: 'audit', runId: refusedRunId })).toBe('api-key:alice');
+      expect(await bureau.ownerOf({ kind: 'run', id: refusedRunId })).toBe('api-key:alice');
+      expect(await bureau.ownerOf({ kind: 'audit', runId: refusedRunId })).toBe('api-key:alice');
       // And it tells Alice only that the session was not found, never that Bob owns it.
       const refused = await bureau.tasks.workflow(refusedRunId);
       expect(refused?.error).toContain('was not found');
@@ -202,12 +202,12 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       await first.dispose();
 
       second = await open();
-      expect(await second.getOwner({ kind: 'run', id: fireRunId })).toBe('api-key:alice');
-      expect(await second.getOwner({ kind: 'schedule', id: summary!.id })).toBe('api-key:alice');
+      expect(await second.ownerOf({ kind: 'run', id: fireRunId })).toBe('api-key:alice');
+      expect(await second.ownerOf({ kind: 'schedule', id: summary!.id })).toBe('api-key:alice');
       expect(
-        await second.getOwner({ kind: 'session', id: `sched-${summary!.id}-${fireRunId}` }),
+        await second.ownerOf({ kind: 'session', id: `sched-${summary!.id}-${fireRunId}` }),
       ).toBe('api-key:alice');
-      expect(await second.getOwner({ kind: 'audit', runId: fireRunId })).toBe('api-key:alice');
+      expect(await second.ownerOf({ kind: 'audit', runId: fireRunId })).toBe('api-key:alice');
     } finally {
       await second?.dispose();
       await rm(directory, { recursive: true, force: true });
@@ -299,7 +299,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
         type: 'schedule.fired',
       });
       expect(fired?.map((entry) => entry.principal)).toEqual(['system:scheduler']);
-      expect(await bureau.getOwner({ kind: 'run', id: refusedRunId })).toBe('api-key:alice');
+      expect(await bureau.ownerOf({ kind: 'run', id: refusedRunId })).toBe('api-key:alice');
     } finally {
       await bureau.dispose();
     }

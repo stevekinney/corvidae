@@ -1,6 +1,6 @@
 // Type-level tripwire (COR-718): the in-process entry points that create a
 // resource take its owner as an optional `principal` string, and
-// `Bureau.getOwner` names the kinds whose owner it reads. If this file stops
+// `Bureau.ownerOf` names the kinds whose owner it reads. If this file stops
 // compiling, an owner entry point or the closed list of owned kinds changed.
 
 import type { ScheduledAgentRunInput } from '@lostgradient/operative';
@@ -51,8 +51,8 @@ export const scheduledInput: ScheduledAgentRunInput = {
 // The goal request's existing `principal` is the goal's owner: there is no second field.
 export const goalOwner: BureauGoalRequest<'worker'>['principal'] = 'api-key:alice';
 
-// `getOwner` reads a closed list of kinds, and answers text or nothing.
-export const owner: Promise<string | undefined> = bureau.getOwner({ kind: 'run', id: 'run-1' });
+// `ownerOf` reads a closed list of kinds, and answers text or nothing.
+export const owner: Promise<string | undefined> = bureau.ownerOf({ kind: 'run', id: 'run-1' });
 export const audited: OwnedResource = { kind: 'audit', runId: 'schedule:schedule-1' };
 export const deleted: OwnedResource = {
   kind: 'audit',
@@ -60,6 +60,6 @@ export const deleted: OwnedResource = {
   detail: { owner: 'api-key:alice' },
 };
 // @ts-expect-error -- a delivery record has no owner of record
-bureau.getOwner({ kind: 'delivery', id: 'delivery-1' });
+bureau.ownerOf({ kind: 'delivery', id: 'delivery-1' });
 // @ts-expect-error -- an audit entry is named by its run id
-bureau.getOwner({ kind: 'audit', id: 'run-1' });
+bureau.ownerOf({ kind: 'audit', id: 'run-1' });

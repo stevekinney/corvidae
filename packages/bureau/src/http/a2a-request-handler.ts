@@ -269,7 +269,7 @@ export class BureauA2AUser implements User {
 /** The part of a Bureau the request handler reads. */
 export type A2ABureau = Pick<
   Bureau,
-  'getOwner' | 'addEventListener' | 'removeEventListener' | 'assets' | 'surfaces'
+  'ownerOf' | 'addEventListener' | 'removeEventListener' | 'assets' | 'surfaces'
 > & {
   readonly tasks: Pick<BureauTasks, 'detail' | 'receipt' | 'events' | 'subscribeEvents' | 'start'>;
 } & {
@@ -1029,7 +1029,7 @@ export function createBureauA2ARequestHandler(
   /** The checks a message that starts a task passes before anything is admitted. Resolves its text. */
   async function checkNewTask(message: Message, owner: Owner): Promise<string> {
     if (message.contextId !== '') {
-      const contextOwner = await bureau.getOwner({ kind: 'session', id: message.contextId });
+      const contextOwner = await bureau.ownerOf({ kind: 'session', id: message.contextId });
       // A context another caller owns is answered as if it did not exist, before anything loads it.
       if (contextOwner !== undefined && contextOwner !== owner) {
         throw new TaskNotFoundError(`Context '${message.contextId}' was not found.`);

@@ -275,7 +275,7 @@ function bureauStateOf(finished: InvocationEvent): BureauState {
  * invocation inherits a cancelled run instead of a parked one. Bureau's
  * durable engine schedules its timers on the wall clock (it takes no
  * `getNow`), so the virtual clock for these invocations starts at the wall
- * time; only `runDurableMaintenance(now)` reads it.
+ * time; only `maintain(now)` reads it.
  */
 const bureauCancelled = await scenario(async ({ directory, invoke }) => {
   const startedAt = Date.now();

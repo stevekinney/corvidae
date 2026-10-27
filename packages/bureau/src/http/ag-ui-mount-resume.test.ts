@@ -965,7 +965,7 @@ describe('the resume command ledger', () => {
         const first = await startUntilInterrupted(handler);
         await readAgUiStream(await handler(resumeRequest([resolved(first.interruptIds[0]!)])));
 
-        const ran = await bureau.runDurableMaintenance();
+        const ran = await bureau.maintain();
 
         expect(ran).toBe(true);
         expect(diagnostics).toEqual([]);

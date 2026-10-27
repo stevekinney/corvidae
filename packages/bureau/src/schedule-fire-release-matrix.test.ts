@@ -143,7 +143,7 @@ const stopped = {
     }
     await pollUntil(async () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
-      await bureau.runDurableMaintenance(Date.now());
+      await bureau.maintain(Date.now());
       return (await bureau.internals.taskRegistry.record(fireId)) === undefined ? true : undefined;
     }, 'the fire’s task to leave retention');
   },

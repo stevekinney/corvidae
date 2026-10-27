@@ -328,7 +328,7 @@ describe('a restored fire approval whose snapshot names another fire', () => {
     if (created?.nextFireAt === null || created?.nextFireAt === undefined) {
       throw new Error('The schedule has no first occurrence.');
     }
-    await first.runDurableMaintenance(created.nextFireAt);
+    await first.maintain(created.nextFireAt);
     const fireId = await pollUntil(async () => {
       const current = await first.schedules.get(created.id);
       return current?.currentWorkflowId;
@@ -349,7 +349,7 @@ describe('a restored fire approval whose snapshot names another fire', () => {
     if (schedule?.nextFireAt === null || schedule?.nextFireAt === undefined) {
       throw new Error('The schedule has no second occurrence.');
     }
-    await first.runDurableMaintenance(schedule.nextFireAt);
+    await first.maintain(schedule.nextFireAt);
     const newer = await pollUntil(async () => {
       const current = await first.schedules.get(created.id);
       const id = current?.currentWorkflowId;
@@ -581,7 +581,7 @@ describe('a restored approval of a run that never activated a skill', () => {
     if (created?.nextFireAt === null || created?.nextFireAt === undefined) {
       throw new Error('The schedule has no first occurrence.');
     }
-    await first.runDurableMaintenance(created.nextFireAt);
+    await first.maintain(created.nextFireAt);
     const fireId = await pollUntil(async () => {
       const current = await first.schedules.get(created.id);
       return current?.currentWorkflowId;
@@ -596,7 +596,7 @@ describe('a restored approval of a run that never activated a skill', () => {
     if (schedule?.nextFireAt === null || schedule?.nextFireAt === undefined) {
       throw new Error('The schedule has no second occurrence.');
     }
-    await first.runDurableMaintenance(schedule.nextFireAt);
+    await first.maintain(schedule.nextFireAt);
     const newer = await pollUntil(async () => {
       const current = await first.schedules.get(created.id);
       const id = current?.currentWorkflowId;

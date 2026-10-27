@@ -187,7 +187,7 @@ describe('a run that ended in a process that died before it released', () => {
     }, 'the run never claimed its input');
     const before = await holders();
 
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
 
     // The task's context holds its input row.
     expect(before).toEqual([expect.stringContaining(`session-row:${run.contextId}:`)]);
@@ -345,7 +345,7 @@ describe('a session deleted while its claims are being taken', () => {
     await bureau.internals.sessionStore!.delete('session-1');
     expect(await holdersOf(bureau, assetId)).toHaveLength(1);
 
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
 
     expect(await holdersOf(bureau, assetId)).toEqual([]);
   });

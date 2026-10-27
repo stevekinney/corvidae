@@ -114,8 +114,7 @@ async function humanWaitScenario(
       toolbox: createToolbox([]),
     });
     const bureau = recoverer;
-    const report = await bureau.waitForRecovery?.();
-    if (report === undefined) throw new Error('waitForRecovery is unavailable');
+    const report = await bureau.recovery();
     expect(report.outcome).toBe('clean');
     expect(report.perRunFailures).toEqual([]);
 

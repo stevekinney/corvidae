@@ -202,8 +202,8 @@ describe('a withdrawn agent with tasks', () => {
 
     served.advance(31 * 86_400_000);
     // The first pass expires the task's creation binding, which holds the task; the second removes it.
-    await served.harness.bureau.runDurableMaintenance();
-    await served.harness.bureau.runDurableMaintenance();
+    await served.harness.bureau.maintain();
+    await served.harness.bureau.maintain();
 
     const response = await rpc(served, 'GetTask', { id: finished.id });
     expect(response.status).toBe(404);

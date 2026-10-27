@@ -215,7 +215,7 @@ describe('a schedule fire’s human wait after a restart', () => {
       prompt: 'Which environment?',
       sessionId: original.sessionId,
     });
-    expect(await restarted.getOwner({ kind: 'review', id: restored.id })).toBe(OWNER.alice);
+    expect(await restarted.ownerOf({ kind: 'review', id: restored.id })).toBe(OWNER.alice);
     const inbox = await rpc(handlerOf(restarted), 'bureau.reviews.list', {}, 'alice-key');
     expect(inbox.result?.['reviews']).toEqual([
       expect.objectContaining({ id: original.id, runId: fireId, sessionId: original.sessionId }),
@@ -268,7 +268,7 @@ describe('a schedule fire’s tool approval after a restart', () => {
       sessionId: original.sessionId,
       status: 'pending',
     });
-    expect(await restarted.getOwner({ kind: 'review', id: restored.id })).toBe(OWNER.alice);
+    expect(await restarted.ownerOf({ kind: 'review', id: restored.id })).toBe(OWNER.alice);
     const approved = await rpc(
       handlerOf(restarted),
       'bureau.reviews.resolve',

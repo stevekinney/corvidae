@@ -266,8 +266,8 @@ describe('a principal in a reserved namespace (COR-718)', () => {
       });
 
       expect(bureau.tasks.detail(run.id)?.principal).toBe('anonymous:local');
-      expect(await bureau.getOwner({ kind: 'run', id: run.id })).toBe('anonymous:local');
-      expect(await bureau.getOwner({ kind: 'session', id: 'local' })).toBe('anonymous:local');
+      expect(await bureau.ownerOf({ kind: 'run', id: run.id })).toBe('anonymous:local');
+      expect(await bureau.ownerOf({ kind: 'session', id: 'local' })).toBe('anonymous:local');
     } finally {
       await bureau.dispose();
     }

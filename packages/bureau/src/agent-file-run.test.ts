@@ -130,7 +130,7 @@ describe('tasks.start of a file agent', () => {
     await bureau.agents.refresh();
     expect(bureau.agents.find('researcher')).toBeUndefined();
 
-    await bureau.runDurableMaintenance(occurrence);
+    await bureau.maintain(occurrence);
     const status = await pollUntil(async () => {
       const page = await bureau.tasks.workflows();
       const fire = page?.items.find((item) => item.status !== 'running');

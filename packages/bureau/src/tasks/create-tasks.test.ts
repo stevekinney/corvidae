@@ -78,7 +78,7 @@ async function open(
         }),
   });
   bureaus.push(bureau);
-  await bureau.waitForRecovery?.();
+  await bureau.recovery();
   return { bureau, release: gate.release, fixture };
 }
 

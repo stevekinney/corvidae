@@ -72,7 +72,7 @@ describe('a task recovered after a restart (COR-718)', () => {
           );
         }, 'the recovered runs never completed');
 
-        const owners = await Promise.all(runIds.map((id) => second.getOwner({ kind: 'run', id })));
+        const owners = await Promise.all(runIds.map((id) => second.ownerOf({ kind: 'run', id })));
         expect(owners.toSorted((left, right) => String(left).localeCompare(String(right)))).toEqual(
           ['anonymous:local', 'api-key:alice'],
         );
