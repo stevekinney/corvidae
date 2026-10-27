@@ -136,6 +136,20 @@ describe('fileVerdict', () => {
     );
   });
 
+  test('branch: a regression beside an existing main failure in the same file is not hidden', () => {
+    const both = ['existing', 'regression'];
+    expect(
+      fileVerdict(result([row('candidate', 1, both), row('base', 1, ['existing'])]), both),
+    ).toBe('branch');
+  });
+
+  test('main: every failing test the head shows also fails on main', () => {
+    const both = ['existing', 'other'];
+    expect(
+      fileVerdict(result([row('candidate', 1, ['existing']), row('base', 1, both)]), both),
+    ).toBe('main');
+  });
+
   test('unreproduced: it passes alone on both trees', () => {
     expect(
       fileVerdict(

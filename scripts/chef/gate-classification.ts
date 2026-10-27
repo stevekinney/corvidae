@@ -3,7 +3,8 @@
 // belong to, builds the command that runs one such file alone, and turns a control run (that command
 // on the pull request's head and on `origin/<default>`, from `gate-run.ts control`) into a verdict:
 //
-//   - branch:        the file fails alone on the head the way the gate saw, and not on `main`;
+//   - branch:        a test the gate saw failing fails alone on the head and not on `main`, even
+//                    when another test in the same file fails on `main` too;
 //   - main:          it fails the same way on `main` too (whether or not the head failed this time);
 //   - unreproduced:  it passes alone on both, so the gate failure was load or a flake;
 //   - indeterminate: it fails alone, but never the way the gate saw (it cannot run alone with this
@@ -121,6 +122,14 @@ export function fileVerdict(control: ControlResult, expected: string[]): FileVer
         (expected.length === 0 || row.failingTests.some((name) => expected.includes(name))),
     ).length;
   const failsAtAll = control.rows.some((row) => row.exitCode !== 0);
+  // Per test, not per file: a test the head fails and `main` never does is the branch's, and it
+  // outranks a different test in the same file that `main` fails too.
+  const failedOn = (tree: 'candidate' | 'base', name: string): boolean =>
+    control.rows.some(
+      (row) => row.tree === tree && row.exitCode !== 0 && row.failingTests.includes(name),
+    );
+  if (expected.some((name) => failedOn('candidate', name) && !failedOn('base', name)))
+    return 'branch';
   if (reproduces('base') > 0) return 'main';
   if (reproduces('candidate') > 0) return 'branch';
   return failsAtAll ? 'indeterminate' : 'unreproduced';
