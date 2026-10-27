@@ -237,7 +237,7 @@ describe('bureau.contexts.list', () => {
   it('never returns Bureau-internal session metadata: request authorities and skill snapshots', async () => {
     await withBureau(catalog, async (opened) => {
       const run = await finishedSession(opened, { principal: OWNER.alice, message: 'secrets' });
-      await opened.bureau.sessionStore!.updateMetadata(run.sessionId, {
+      await opened.bureau.internals.sessionStore!.updateMetadata(run.sessionId, {
         lastRequestAuthorities: { 'api-key:alice': 'AUTHORITY-SENTINEL' },
         skillSnapshots: { revision: 'SKILL-SNAPSHOT-SENTINEL' },
       });
@@ -265,7 +265,7 @@ describe('bureau.contexts origin', () => {
   it('reads a chat for a context that records no origin, as every context made before origins existed', async () => {
     await withBureau(catalog, async (opened) => {
       const run = await finishedSession(opened, { principal: OWNER.alice, message: 'a chat' });
-      const stored = await opened.bureau.sessionStore!.load(run.sessionId);
+      const stored = await opened.bureau.internals.sessionStore!.load(run.sessionId);
       // A person's chat writes no origin: the default is what the record reads as, not a stored value.
       expect(stored?.metadata['sessionOrigin']).toBeUndefined();
 
@@ -287,7 +287,7 @@ describe('bureau.contexts origin', () => {
       const goal = await finishedSession(opened, { principal: OWNER.alice, message: 'goal' });
       const fire = await finishedSession(opened, { principal: OWNER.alice, message: 'fire' });
       const garbled = await finishedSession(opened, { principal: OWNER.alice, message: 'odd' });
-      const store = opened.bureau.sessionStore!;
+      const store = opened.bureau.internals.sessionStore!;
       await store.updateMetadata(goal.sessionId, { sessionOrigin: 'goal' });
       await store.updateMetadata(fire.sessionId, { sessionOrigin: 'schedule' });
       await store.updateMetadata(garbled.sessionId, { sessionOrigin: 'cron' });
@@ -306,7 +306,7 @@ describe('bureau.contexts origin', () => {
       const chat = await finishedSession(opened, { principal: OWNER.alice, message: 'the chat' });
       const goal = await finishedSession(opened, { principal: OWNER.alice, message: 'goal' });
       const fire = await finishedSession(opened, { principal: OWNER.alice, message: 'fire' });
-      const store = opened.bureau.sessionStore!;
+      const store = opened.bureau.internals.sessionStore!;
       await store.updateMetadata(goal.sessionId, { sessionOrigin: 'goal' });
       await store.updateMetadata(fire.sessionId, { sessionOrigin: 'schedule' });
 
@@ -394,7 +394,7 @@ describe('bureau.contexts.list activity', () => {
         'running',
       );
       await waitForCondition(
-        () => opened.bureau.listPendingReviews().some((review) => review.runId === waiting.id),
+        () => opened.bureau.reviews.list().some((review) => review.runId === waiting.id),
         'the run never parked',
       );
 
@@ -418,12 +418,15 @@ describe('bureau.contexts.list activity', () => {
       }
       let queries = 0;
       const counting = Object.create(opened.bureau, {
-        tasks: {
+        internals: {
           value: {
-            ...opened.bureau.tasks,
-            activityOf: (contextIds: readonly string[]) => {
-              queries += 1;
-              return opened.bureau.tasks.activityOf(contextIds);
+            ...opened.bureau.internals,
+            taskRegistry: {
+              ...opened.bureau.internals.taskRegistry,
+              activityOf: (contextIds: readonly string[]) => {
+                queries += 1;
+                return opened.bureau.internals.taskRegistry.activityOf(contextIds);
+              },
             },
           },
         },

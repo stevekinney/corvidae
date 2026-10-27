@@ -107,20 +107,23 @@ describe('a refused continuation’s history slot', () => {
             submitSessionInput: {
               value: () => Promise.resolve({ outcome: 'session-terminal' }),
             },
-            kv: {
-              value: hooked(
-                opened.bureau.kv!,
-                (operations) =>
-                  operations.some(
-                    (operation) =>
-                      operation.type === 'delete' &&
-                      operation.key.startsWith(A2A_SEND_LEDGER_KEY_PREFIX),
-                  ),
-                async () => {
-                  retried = await send(opened, 'asker', sent, activated);
-                  return false;
-                },
-              ),
+            internals: {
+              value: {
+                ...opened.bureau.internals,
+                kv: hooked(
+                  opened.bureau.internals.kv!,
+                  (operations) =>
+                    operations.some(
+                      (operation) =>
+                        operation.type === 'delete' &&
+                        operation.key.startsWith(A2A_SEND_LEDGER_KEY_PREFIX),
+                    ),
+                  async () => {
+                    retried = await send(opened, 'asker', sent, activated);
+                    return false;
+                  },
+                ),
+              },
             },
           }),
           { authentication, publish: ['asker'], publicUrl: PUBLIC_URL },
@@ -131,7 +134,7 @@ describe('a refused continuation’s history slot', () => {
 
       expect(refused.body.error).toBeDefined();
       expect(retried.body.error).toBeUndefined();
-      const stored = await createA2ATaskRecords(opened.bureau.kv!).read(started.id);
+      const stored = await createA2ATaskRecords(opened.bureau.internals.kv!).read(started.id);
       expect(JSON.stringify(stored?.history)).toContain('the retried input');
       run.release();
       await waitForCondition(async () => {
@@ -167,18 +170,21 @@ describe('a reservation whose write committed with its response lost', () => {
         ...opened,
         handler: createBureauHandler(
           Object.create(opened.bureau, {
-            kv: {
-              value: hooked(
-                opened.bureau.kv!,
-                (operations) =>
-                  operations.some(
-                    (operation) =>
-                      operation.type === 'set' &&
-                      operation.key.startsWith(A2A_TASK_RECORD_KEY_PREFIX) &&
-                      operation.value.includes(continued.messageId),
-                  ),
-                async () => true,
-              ),
+            internals: {
+              value: {
+                ...opened.bureau.internals,
+                kv: hooked(
+                  opened.bureau.internals.kv!,
+                  (operations) =>
+                    operations.some(
+                      (operation) =>
+                        operation.type === 'set' &&
+                        operation.key.startsWith(A2A_TASK_RECORD_KEY_PREFIX) &&
+                        operation.value.includes(continued.messageId),
+                    ),
+                  async () => true,
+                ),
+              },
             },
           }),
           { authentication, publish: ['seer'], publicUrl: PUBLIC_URL },
@@ -193,7 +199,7 @@ describe('a reservation whose write committed with its response lost', () => {
       );
 
       expect(lost.body.error).toBeDefined();
-      const stored = await createA2ATaskRecords(opened.bureau.kv!).read(started.id);
+      const stored = await createA2ATaskRecords(opened.bureau.internals.kv!).read(started.id);
       const entry: Json = stored?.history.find((held) => held['messageId'] === continued.messageId);
       const url: string = entry.parts.find((part: Json) => part.url !== undefined).url;
       const assetId = decodeURIComponent(

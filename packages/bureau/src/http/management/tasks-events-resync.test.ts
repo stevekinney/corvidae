@@ -181,7 +181,7 @@ async function park(opened: OpenedBureau, faults: Faults, failing: number) {
     principal: OWNER.alice,
   });
   await waitForCondition(
-    () => opened.bureau.listPendingReviews().some((review) => review.runId === run.id),
+    () => opened.bureau.reviews.list().some((review) => review.runId === run.id),
     'the run never parked',
   );
   return run;
@@ -343,7 +343,7 @@ describe('the repair of a lost end', () => {
       principal: OWNER.alice,
     });
     await waitForCondition(
-      () => opened.bureau.listPendingReviews().some((review) => review.runId === run.id),
+      () => opened.bureau.reviews.list().some((review) => review.runId === run.id),
       'the approval never became pending',
     );
     await opened.bureau.runDurableMaintenance();

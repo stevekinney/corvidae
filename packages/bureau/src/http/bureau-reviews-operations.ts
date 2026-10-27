@@ -1,8 +1,8 @@
 /**
  * `bureau.reviews.*`: the review queue as catalog operations.
  *
- * Three operations over `Bureau.listPendingReviews`, `Bureau.getReview`, and
- * `Bureau.resolveReview`, served by `createBureauHandler` over JSON-RPC HTTP.
+ * Three operations over `Bureau.reviews.list`, `Bureau.reviews.get`, and
+ * `Bureau.reviews.resolve`, served by `createBureauHandler` over JSON-RPC HTTP.
  *
  * Each is declared `authenticated`, because a review belongs to its run's owner
  * (the decision document's "the requester") and the owner needs no scope to
@@ -35,18 +35,24 @@ import {
   BureauError,
   ReviewRoundChangedError,
 } from '../create-bureau.ts';
-import type { Bureau, PendingReview, PendingToolApprovalReview, ReviewStatus } from '../types.ts';
+import type {
+  Bureau,
+  PendingReview,
+  PendingToolApprovalReview,
+  ReviewStatus,
+  BureauReviews,
+} from '../types.ts';
 import type { BureauScope } from './bureau-scopes.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from './owner-predicate.ts';
 
 /** What the reviews operations read from the handler's `host`. */
 export type BureauReviewsOperationHost = {
-  readonly reviews: Pick<Bureau, 'listPendingReviews' | 'getReview' | 'resolveReview'> &
+  readonly reviews: Pick<BureauReviews, 'list' | 'get' | 'resolve'> &
     /**
      * COR-1579: what the list reads to add the parks of runs another process holds. A host that
      * provides neither lists this process's reviews alone.
      */
-    Partial<Pick<Bureau, 'pendingHumanWaitsOfRun' | 'durableEngine'>>;
+    Partial<Pick<BureauReviews, 'pendingOf'> & Pick<Bureau, 'durableEngine'>>;
 } & BureauOwnershipHost;
 
 /** How many running agent runs one `engine.list` page reads. */
@@ -60,9 +66,9 @@ const RUNNING_RUNS_PAGE_SIZE = 100;
 async function pendingReviewsOfEveryProcess(
   reviews: BureauReviewsOperationHost['reviews'],
 ): Promise<PendingReview[]> {
-  const local = reviews.listPendingReviews();
+  const local = reviews.list();
   const engine = reviews.durableEngine?.();
-  const derive = reviews.pendingHumanWaitsOfRun;
+  const derive = reviews.pendingOf;
   if (engine === undefined || derive === undefined) return local;
   const merged = [...local];
   const seen = new Set(local.map((review) => review.id));
@@ -405,7 +411,7 @@ export const reviewsGetOperation = defineOperation<
   transports,
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
-    const review = await host.reviews.getReview(input.id);
+    const review = await host.reviews.get(input.id);
     if (
       review === undefined ||
       !(await mayAccessReview(host, principal, review.runId, 'bureau.reviews:read'))
@@ -486,7 +492,7 @@ export const reviewsResolveOperation = defineOperation<
     // The decision is checked before anything is resolved, and a caller who may
     // not resolve this review is told exactly what a caller naming a missing id
     // is told. Resolving writes the audit entry, so a denial writes none.
-    const review = await host.reviews.getReview(input.id);
+    const review = await host.reviews.get(input.id);
     if (
       review === undefined ||
       !(await mayAccessReview(host, principal, review.runId, 'bureau.reviews:resolve'))
@@ -507,7 +513,7 @@ export const reviewsResolveOperation = defineOperation<
       throw fault;
     }
     try {
-      const result = await host.reviews.resolveReview({
+      const result = await host.reviews.resolve({
         id: input.id,
         decision: input.decision,
         principal: actor,

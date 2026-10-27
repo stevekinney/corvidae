@@ -78,7 +78,7 @@ describe('memory over storage needs an explicit id', () => {
   it('accepts memory without storage and without an id', async () => {
     const bureau = await createBureau({ memory: governedMemory() });
     bureaus.push(bureau);
-    expect(bureau.hasExplicitId).toBe(false);
+    expect(bureau.internals.hasExplicitId).toBe(false);
   });
 });
 

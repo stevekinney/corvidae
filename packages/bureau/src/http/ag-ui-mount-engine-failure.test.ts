@@ -165,7 +165,7 @@ describe('a durable run that fails after it committed a step (COR-1587)', () => 
       await reachedStepOne;
       refusing.refuseWritesUnder(DURABLE_RUN_RECORD);
       release();
-      await bureau.whenRunRecorded(summary.id);
+      await bureau.internals.whenTaskRecorded(summary.id);
 
       expect(bureau.listRuns().find((run) => run.id === summary.id)?.status).toBe('error');
       expect(reportedUsage).toEqual([15]);
@@ -239,7 +239,7 @@ describe('a durable run that fails after it committed a step (COR-1587)', () => 
         message: 'Go.',
         sessionId: 'thread-1',
       });
-      await bureau.whenRunRecorded(summary.id);
+      await bureau.internals.whenTaskRecorded(summary.id);
 
       expect(bureau.listRuns().find((run) => run.id === summary.id)?.status).toBe('error');
       // The breaker ends the run at step 1's checkpoint, and the engine settles the run only after
@@ -373,7 +373,7 @@ describe('a durable run ended while its step is being committed (COR-1597)', () 
       // The cancel is committed and the settle has had every chance to read: the write is still held.
       await macrotasks(50);
       holding.release();
-      await bureau.whenRunRecorded(runId);
+      await bureau.internals.whenTaskRecorded(runId);
       await stream.rest();
 
       expect(await transcriptOf(bureau)).toEqual(expect.arrayContaining(['assistant:First.']));

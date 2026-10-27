@@ -142,7 +142,7 @@ describe('durable steering across two Bureau processes', () => {
       // B pauses A's run. A learns of it from its own log poll, which the
       // test observes as A reading the pause's log entry; only then does the
       // tool return and the run reach its boundary.
-      const kvA = bureauA.kv;
+      const kvA = bureauA.internals.kv;
       if (kvA === undefined) throw new Error('expected a durable store');
       const readsByA = spyOn(kvA, 'get');
       const paused = await bureauB.submitSteeringCommand(run.sessionId, {
@@ -151,7 +151,7 @@ describe('durable steering across two Bureau processes', () => {
       });
       expect(paused.outcome).toBe('accepted');
       const sessionA = await bureauA.getSession(run.sessionId);
-      const kvB = bureauB.kv;
+      const kvB = bureauB.internals.kv;
       if (sessionA === undefined || kvB === undefined) throw new Error('expected the session');
       const pauseHead = await readSteeringLogHead(kvB, run.sessionId, sessionA.incarnation);
       const pauseSequence = pauseHead.sequence;

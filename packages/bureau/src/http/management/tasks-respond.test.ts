@@ -58,24 +58,27 @@ function parksThenAnswers(signalName = 'human-response'): GenerateFunction {
 async function parkedRun(opened: OpenedBureau, principal = OWNER.alice) {
   const run = await opened.bureau.createRun({ agentName: 'default', message: 'park', principal });
   await waitForCondition(
-    () => opened.bureau.listPendingReviews().some((review) => review.runId === run.id),
+    () => opened.bureau.reviews.list().some((review) => review.runId === run.id),
     'the run never parked',
   );
   return run;
 }
 
-/** The same Bureau, with every `resolveReview` it receives recorded. */
+/** The same Bureau, with every `reviews.resolve` it receives recorded. */
 function recording(opened: OpenedBureau) {
   const resolved: ResolveReviewInput[] = [];
   /** The resolutions the Bureau accepted: what was delivered to a run. */
   const delivered: ResolveReviewInput[] = [];
   const source = Object.create(opened.bureau, {
-    resolveReview: {
-      value: async (input: ResolveReviewInput) => {
-        resolved.push(input);
-        const result = await opened.bureau.resolveReview(input);
-        delivered.push(input);
-        return result;
+    reviews: {
+      value: {
+        ...opened.bureau.reviews,
+        resolve: async (input: ResolveReviewInput) => {
+          resolved.push(input);
+          const result = await opened.bureau.reviews.resolve(input);
+          delivered.push(input);
+          return result;
+        },
       },
     },
   }) as BureauHandlerSource;
@@ -85,7 +88,7 @@ function recording(opened: OpenedBureau) {
 async function parkedApproval(opened: OpenedBureau, principal = OWNER.alice) {
   const run = await opened.bureau.createRun({ agentName: 'default', message: 'charge', principal });
   await waitForCondition(
-    () => opened.bureau.listPendingReviews().some((review) => review.runId === run.id),
+    () => opened.bureau.reviews.list().some((review) => review.runId === run.id),
     'the approval never became pending',
   );
   return run;
@@ -509,9 +512,7 @@ describe('bureau.tasks.respond deciding a tool approval', () => {
           JSON.stringify(missing).replaceAll('run-no-such-task', '<id>'),
         );
         expect(charges).toEqual([]);
-        expect(opened.bureau.listPendingReviews().some((review) => review.runId === run.id)).toBe(
-          true,
-        );
+        expect(opened.bureau.reviews.list().some((review) => review.runId === run.id)).toBe(true);
       },
     );
   });
@@ -522,7 +523,7 @@ describe('bureau.tasks.respond deciding a tool approval', () => {
       { generate: chargesOnce, toolbox: approvalToolbox(charges), stopAtApproval: true },
       async (opened) => {
         const run = await parkedApproval(opened);
-        const [review] = opened.bureau.listPendingReviews();
+        const [review] = opened.bureau.reviews.list();
         const host = buildBureauHandlerHost(opened.bureau, []);
         const handler = createOperationHandler({
           operations: BUREAU_HANDLER_OPERATIONS,
@@ -542,7 +543,7 @@ describe('bureau.tasks.respond deciding a tool approval', () => {
           digestCommandPayload({ decision: 'approve' }),
           { reviewId: review!.id },
         );
-        await opened.bureau.resolveReview({
+        await opened.bureau.reviews.resolve({
           id: review!.id,
           decision: 'approve',
           principal: OWNER.alice,
@@ -573,8 +574,8 @@ describe('bureau.tasks.respond deciding a tool approval', () => {
       { generate: chargesOnce, toolbox: approvalToolbox(charges), stopAtApproval: true },
       async (opened) => {
         const run = await parkedApproval(opened);
-        const [review] = opened.bureau.listPendingReviews();
-        await opened.bureau.resolveReview({
+        const [review] = opened.bureau.reviews.list();
+        await opened.bureau.reviews.resolve({
           id: review!.id,
           decision: 'approve',
           principal: OWNER.alice,

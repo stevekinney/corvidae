@@ -63,8 +63,10 @@ describe('a Bureau over a store with a run of a workflow type it has no trace of
     await engine.start('stranded', null, { id: 'stranded-run' });
     await engine.start('healthy', null, { id: 'healthy-run' });
     // The last trace of `stranded` goes: its stored revisions, with its file.
-    for (const key of await first.bureau.kv!.list('bureau-workflow-snapshot:v1:stranded:')) {
-      await first.bureau.kv!.delete(key);
+    for (const key of await first.bureau.internals.kv!.list(
+      'bureau-workflow-snapshot:v1:stranded:',
+    )) {
+      await first.bureau.internals.kv!.delete(key);
     }
     await first.dispose();
     await unlink(join(workflows, 'stranded.json'));

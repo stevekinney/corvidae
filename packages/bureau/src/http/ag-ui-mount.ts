@@ -7,7 +7,7 @@
  *
  * | Route                           | Body            | Answer | On a process that does not hold the run |
  * | ------------------------------- | --------------- | ------ | --------------------------------------- |
- * | `POST <p>/agents/<name>/run`    | `RunAgentInput` | An event stream. `resume` absent or empty starts a run; `resume` present resumes one. | A start is admitted or refused `THREAD_BUSY` from durable state alone, the same in every process. A resume of a human wait another process holds is delivered through `resolveReview` (fenced by the review's decision record), and its stream is the peer stream: the snapshot (holding the answer), the run's status, then the run's next interrupt or its outcome. |
+ * | `POST <p>/agents/<name>/run`    | `RunAgentInput` | An event stream. `resume` absent or empty starts a run; `resume` present resumes one. | A start is admitted or refused `THREAD_BUSY` from durable state alone, the same in every process. A resume of a human wait another process holds is delivered through `reviews.resolve` (fenced by the review's decision record), and its stream is the peer stream: the snapshot (holding the answer), the run's status, then the run's next interrupt or its outcome. |
  * | `GET <p>/threads/<threadId>/run`| none            | A stream attached to the thread's most recent root run, while it is live, parked on a human wait, or settled with a tool approval pending. Otherwise a one-event `RUN_NOT_FOUND` stream. | The thread's run is the session's `lastRunId`, attachable while the session says `running` and its durable run is unsettled, or while the session holds an unexpired approval for it. The peer stream (`ag-ui-peer-stream.ts`): `RUN_STARTED`, `MESSAGES_SNAPSHOT`, a `STATE_SNAPSHOT` with the durable run's status, then the run's outcome after a second `MESSAGES_SNAPSHOT`, or its interrupt. No step, tool, or text-delta event. |
  * | `GET <p>/runs/<runId>`          | none            | The same, for that run by native id, or a child run's stream by its own id. | The same, for a run whose durable record exists and whose session (from the durable run's input) says it is attachable. Its owner of record is the one the session recorded for it. |
  * | `GET <p>/threads/<threadId>/messages` | none      | JSON `{ threadId, messages }`: the thread's conversation as AG-UI messages, whether or not a run is going. A thread the caller may not read is a `NotFound` fault, as a missing one is. | The same: it reads only the session. |
@@ -72,7 +72,7 @@ import { createConversationHistory } from 'conversationalist';
 import { AssetNotFoundError } from '../assets/errors.ts';
 import { BureauLedgerConflictError } from '../command-ledger.ts';
 import { BureauError, isDurableRunUnsettled } from '../create-bureau.ts';
-import type { Bureau } from '../types.ts';
+import type { Bureau, BureauReviews, BureauInternals } from '../types.ts';
 import { managedAssetIdsOf, rowsAddedBy, snapshotMessages } from './ag-ui-messages.ts';
 import { createAgUiLeases, releaseQuietly } from './ag-ui-lease.ts';
 import { settledOutcomeOf } from './ag-ui-peer-stream.ts';
@@ -140,13 +140,11 @@ export type AgUiBureau = AgUiStreamBureau &
     | 'cancelDurableRun'
     | 'createRun'
     | 'listRuns'
-    | 'hasDurableEngine'
     | 'locateRunCreationReceipt'
-    | 'getReview'
-    | 'resolveReview'
-    | 'kv'
     | 'assets'
-  >;
+  > & { readonly reviews: Pick<BureauReviews, 'get' | 'resolve'> } & {
+    readonly internals: Pick<BureauInternals, 'hasDurableEngine' | 'kv'>;
+  };
 
 /**
  * The owner predicate the mount decides with, and where an owner of record comes from. A session's
@@ -231,7 +229,7 @@ export function createAgUiMount(
   }
 
   const leases = createAgUiLeases({
-    kv: bureau.kv!,
+    kv: bureau.internals.kv!,
     runtime,
     leaseMs: options.leaseDurationMs,
   });
@@ -269,8 +267,8 @@ export function createAgUiMount(
     if (latest !== undefined) return latest.id;
     const lastRunId = authorized.session.metadata['lastRunId'];
     if (typeof lastRunId !== 'string') return undefined;
-    const pending = bureau
-      .listPendingReviews()
+    const pending = bureau.reviews
+      .list()
       .some((review) => review.runId === lastRunId && review.kind === 'tool-approval');
     if (pending || bureau.getRun(lastRunId) !== undefined) return pending ? lastRunId : undefined;
     // A run another process holds, or settled with an approval no process restored: the
@@ -318,7 +316,7 @@ export function createAgUiMount(
    *   approval is gated and removes it in the same write as the resolution, whichever
    *   process resolves it and however (this mount, `bureau.reviews.resolve`, after a
    *   restart); an entry whose binding has expired is not pending, by the rule
-   *   `listPendingReviews` uses, so an unanswerable approval cannot hold a thread.
+   *   `reviews.list` uses, so an unanswerable approval cannot hold a thread.
    *   (`lastRequestAuthorities` is not cleared when the resolving process does not
    *   hold the run, and the conversation's `action_required` row is not rewritten by
    *   an expiry, so neither can stand for this.)
@@ -363,7 +361,7 @@ export function createAgUiMount(
     runId: string,
   ): Promise<{ sessionId: string; runId: string } | undefined> {
     const detail = bureau.getRun(runId);
-    const pending = bureau.listPendingReviews().filter((review) => review.runId === runId);
+    const pending = bureau.reviews.list().filter((review) => review.runId === runId);
     const live = detail?.status === 'running' || detail?.status === 'aborting';
     if (!live && !pending.some((review) => review.kind === 'tool-approval')) return undefined;
     const sessionId = detail?.sessionId ?? pending[0]?.sessionId;
@@ -823,7 +821,7 @@ export function createAgUiMount(
 /**
  * Whether a session holds an unexpired tool approval for `runId` in `pendingApprovalOverrides`.
  * Bureau persists the entry when an approval is gated and removes it in the same write as the
- * resolution; an entry whose binding has expired is not pending, by the rule `listPendingReviews`
+ * resolution; an entry whose binding has expired is not pending, by the rule `reviews.list`
  * uses.
  */
 function holdsPendingApproval(

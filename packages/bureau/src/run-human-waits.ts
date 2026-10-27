@@ -1,7 +1,7 @@
 /**
  * The human-wait reviews of runs that have no session (COR-1577): a `bureau.run()` run that
- * calls `requestHumanInput` parks on a signal, appears in `listPendingReviews()` as a review
- * addressed by its run id, and resumes after `resolveReview`.
+ * calls `requestHumanInput` parks on a signal, appears in `reviews.list()` as a review
+ * addressed by its run id, and resumes after `reviews.resolve`.
  *
  * Bureau's session reviews keep their state in session metadata, which a catalog run does not
  * have, so this module adds no persisted state of its own. The engine already holds it:
@@ -538,7 +538,7 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
         throw dependencies.durableNotConfigured();
       }
       // The engine, not this map, says whether the run is still parked: the map can be stale
-      // after a signal sent outside `resolveReview`, and is empty of anything resolved elsewhere.
+      // after a signal sent outside `reviews.resolve`, and is empty of anything resolved elsewhere.
       const state = await engine.get(review.runId);
       if (settled(state)) {
         forget(review.runId);

@@ -17,7 +17,7 @@ import { A2UI_EXTENSION_URI } from '../a2ui/catalogs.ts';
 import { parseClientMessage, toActionRequest } from '../a2ui/client-actions.ts';
 import { INTERACTIVE_SURFACE_CONTRACT_VERSION } from '../interactive-surface/types.ts';
 import type { TaskView } from '../task-registry.ts';
-import type { Bureau } from '../types.ts';
+import type { Bureau, BureauReviews } from '../types.ts';
 import type { TasksRespondInput } from './management/tasks-respond-operation.ts';
 
 /**
@@ -52,7 +52,7 @@ function firstDataPart(message: Message): unknown {
  * surfaces (so the ordinary answer paths read it).
  */
 export async function surfaceActionOf(options: {
-  readonly bureau: Pick<Bureau, 'surfaces' | 'getReview'>;
+  readonly bureau: Pick<Bureau, 'surfaces'> & { readonly reviews: Pick<BureauReviews, 'get'> };
   readonly message: Message;
   readonly view: TaskView;
   readonly activated: ReadonlySet<string>;
@@ -142,7 +142,7 @@ export async function surfaceActionOf(options: {
     // A re-gated approval keeps its id and advances its round: a surface declared for an earlier
     // round must not decide the new one.
     if (continuation.round !== undefined) {
-      const review = await bureau.getReview(wait.reviewId);
+      const review = await bureau.reviews.get(wait.reviewId);
       if (review?.kind === 'tool-approval' && review.round !== continuation.round) {
         return {
           ok: false,

@@ -353,13 +353,13 @@ describe('bureau.run() run identity (COR-1302)', () => {
     try {
       const run = bureau.run('echo', 'hi', { principal: 'alice' });
       await run.result();
-      await bureau.onlineEvalSampler?.flush();
+      await bureau.internals.onlineEvalSampler?.flush();
 
       // The run was on the run store while it ran, but none of its actions,
       // nor its registration or release, reached a bureau listener, so the
       // online-eval judge (a model call in production) never ran for it.
       expect(observedRunIds.has(run.id)).toBe(false);
-      expect(bureau.onlineEvalSampler?.observedCount()).toBe(0);
+      expect(bureau.internals.onlineEvalSampler?.observedCount()).toBe(0);
       expect(judged).toBe(0);
     } finally {
       bureau.removeEventListener('action', recordAction);

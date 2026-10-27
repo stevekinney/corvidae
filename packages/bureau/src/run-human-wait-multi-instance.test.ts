@@ -118,8 +118,8 @@ async function open(seen: Seen, parks = 1): Promise<OpenedProcess> {
 
 /** A's own review of its parked run. */
 async function localReview(bureau: Bureau<AgentDefinitions>, runId: string) {
-  await pollUntil(() => bureau.listPendingReviews().some((review) => review.runId === runId));
-  const review = bureau.listPendingReviews().find((candidate) => candidate.runId === runId);
+  await pollUntil(() => bureau.reviews.list().some((review) => review.runId === runId));
+  const review = bureau.reviews.list().find((candidate) => candidate.runId === runId);
   if (review?.kind !== 'human-wait') throw new Error('expected a human wait');
   return review;
 }
@@ -131,7 +131,7 @@ async function peerReview(
 ): Promise<PendingHumanWaitReview> {
   let found: PendingHumanWaitReview | undefined;
   await pollUntil(async () => {
-    [found] = await bureau.pendingHumanWaitsOfRun(runId);
+    [found] = await bureau.reviews.pendingOf(runId);
     return found !== undefined;
   });
   return found!;
@@ -178,8 +178,11 @@ describe('the park of a bureau.run() run another process holds (COR-1579)', () =
     // the decision B delivered.
     const host = {
       ...b.bureau,
-      resolveReview: (input: ResolveReviewInput) =>
-        b.bureau.resolveReview({ ...input, payload: { environment: 'from-b' } }),
+      reviews: {
+        ...b.bureau.reviews,
+        resolve: (input: ResolveReviewInput) =>
+          b.bureau.reviews.resolve({ ...input, payload: { environment: 'from-b' } }),
+      },
     };
     const handler = createBureauHandler(host, { authentication });
 
@@ -203,7 +206,7 @@ describe('the park of a bureau.run() run another process holds (COR-1579)', () =
     expect(seenByA.resumed[0]).toContain('from-b');
     const result = await run.result();
     expect(result.finishReason).not.toBe('error');
-    expect(a.bureau.listPendingReviews()).toEqual([]);
+    expect(a.bureau.reviews.list()).toEqual([]);
   });
 
   it("hides a peer's parked catalog run from a stranger", async () => {
@@ -223,9 +226,9 @@ describe('the park of a bureau.run() run another process holds (COR-1579)', () =
     // Nothing was delivered: no claim, no buffered signal, and the run is still parked.
     expect(await b.real.get(reviewDecisionKey(review.id, 0))).toBeNull();
     expect(await bufferedSignals(b.real, run.id)).toEqual([]);
-    const stillPending = await b.bureau.pendingHumanWaitsOfRun(run.id);
+    const stillPending = await b.bureau.reviews.pendingOf(run.id);
     expect(stillPending.map(({ id }) => id)).toEqual([review.id]);
-    expect(a.bureau.listPendingReviews().map(({ id }) => id)).toEqual([review.id]);
+    expect(a.bureau.reviews.list().map(({ id }) => id)).toEqual([review.id]);
     expect(seenByA.resumed).toEqual([]);
   });
 
@@ -244,13 +247,13 @@ describe('the park of a bureau.run() run another process holds (COR-1579)', () =
     // the decision record, so both have found the park pending before either claims it.
     const heldA = a.seam.holdRead(readsDecisionRecord);
     const heldB = b.seam.holdRead(readsDecisionRecord);
-    const fromA = a.bureau.resolveReview({
+    const fromA = a.bureau.reviews.resolve({
       id: review.id,
       decision: 'approve',
       principal: OWNER,
       payload: { environment: 'from-a' },
     });
-    const fromB = b.bureau.resolveReview({
+    const fromB = b.bureau.reviews.resolve({
       id: review.id,
       decision: 'deny',
       principal: OWNER,
@@ -285,8 +288,8 @@ describe('the park of a bureau.run() run another process holds (COR-1579)', () =
     } as const;
     const heldA = a.seam.holdRead(readsDecisionRecord);
     const heldB = b.seam.holdRead(readsDecisionRecord);
-    const fromA = a.bureau.resolveReview(decision);
-    const fromB = b.bureau.resolveReview(decision);
+    const fromA = a.bureau.reviews.resolve(decision);
+    const fromB = b.bureau.reviews.resolve(decision);
     await Promise.all([heldA.reached, heldB.reached]);
     heldA.release();
     heldB.release();
@@ -296,7 +299,7 @@ describe('the park of a bureau.run() run another process holds (COR-1579)', () =
     // Delivered once: the run resumed once, parked again on the same signal, and nothing is left
     // buffered to answer that second park.
     const second = `human-wait:${run.id}:answer:1`;
-    await pollUntil(() => a.bureau.listPendingReviews().some(({ id }) => id === second));
+    await pollUntil(() => a.bureau.reviews.list().some(({ id }) => id === second));
     expect(seenByA.resumed).toHaveLength(1);
     expect(seenByA.resumed[0]).toContain('staging');
     expect(await bufferedSignals(a.real, run.id)).toEqual([]);
@@ -312,7 +315,7 @@ describe('the park of a bureau.run() run another process holds (COR-1579)', () =
       payload: { environment: 'production' },
     } as const;
     const failing = a.seam.failWrites(buffersSignal, new Error('the signal write was lost'));
-    const failed = await rejectionOf(a.bureau.resolveReview(decision));
+    const failed = await rejectionOf(a.bureau.reviews.resolve(decision));
     failing.stop();
 
     expect((failed as Error).message).toContain('the signal write was lost');
@@ -326,16 +329,16 @@ describe('the park of a bureau.run() run another process holds (COR-1579)', () =
     expect(await reviewAuditEntries(a.bureau, run.id, review.id)).toHaveLength(0);
 
     const different = await rejectionOf(
-      b.bureau.resolveReview({ id: review.id, decision: 'deny', principal: OWNER }),
+      b.bureau.reviews.resolve({ id: review.id, decision: 'deny', principal: OWNER }),
     );
     expect(conflictCode(different)).toBe('CONFLICT');
 
-    expect(await b.bureau.resolveReview(decision)).toMatchObject({
+    expect(await b.bureau.reviews.resolve(decision)).toMatchObject({
       id: review.id,
       decision: 'approve',
     });
     const second = `human-wait:${run.id}:answer:1`;
-    await pollUntil(() => a.bureau.listPendingReviews().some(({ id }) => id === second));
+    await pollUntil(() => a.bureau.reviews.list().some(({ id }) => id === second));
     expect(seenByA.resumed).toHaveLength(1);
     expect(seenByA.resumed[0]).toContain('production');
     expect(await bufferedSignals(a.real, run.id)).toEqual([]);

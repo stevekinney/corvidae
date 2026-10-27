@@ -36,7 +36,7 @@ import { z } from 'zod';
 
 import { BureauError, BureauShuttingDownError } from '../../create-bureau.ts';
 import { SessionForkRefusedError } from '../../session-fork.ts';
-import type { Bureau } from '../../types.ts';
+import type { Bureau, BureauInternals } from '../../types.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
 import { projectSteeringOutcome, steeringOutcomeSchema } from './contexts-steer-operation.ts';
 import {
@@ -47,7 +47,9 @@ import {
 
 /** What `bureau.contexts.fork` reads from the handler's `host`. */
 export type BureauContextsForkOperationHost = BureauOwnershipHost & {
-  readonly contexts: Pick<Bureau, 'getSession' | 'forkSession' | 'sessionStore'>;
+  readonly contexts: Pick<Bureau, 'getSession' | 'forkSession'> & {
+    readonly internals: Pick<BureauInternals, 'sessionStore'>;
+  };
 };
 
 const contextsForkInput = z.object({
@@ -104,7 +106,7 @@ export const contextsForkOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     const { contextId } = input;
-    if (host.contexts.sessionStore === undefined) {
+    if (host.contexts.internals.sessionStore === undefined) {
       throw {
         code: 'UnsupportedCapability',
         message: 'This Bureau keeps no sessions, so it has no contexts to branch',

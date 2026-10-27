@@ -267,7 +267,7 @@ describe('an expiring session', () => {
     const [assetId] = await assetIdsOf(opened, 'old');
 
     await opened.runtime.advance(5_000);
-    expect(await opened.bureau.sessionStore!.cleanup({ olderThan: -60_000 })).toBe(1);
+    expect(await opened.bureau.internals.sessionStore!.cleanup({ olderThan: -60_000 })).toBe(1);
     for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
     const report = await collect(opened);
 
@@ -283,7 +283,7 @@ describe('a session saved with a copied history (a goal retry, a session fork)',
     const trunk = loaded!;
     const [assetId] = await assetIdsOf(opened, 'trunk');
 
-    await opened.bureau.sessionStore!.save(
+    await opened.bureau.internals.sessionStore!.save(
       createAgentSession({
         id: 'retry',
         agentName: trunk.agentName,
@@ -338,13 +338,13 @@ describe('a claim that fails when its commit is replayed', () => {
     await paint(opened, 'supplied', { appendMessages: rows });
 
     // The claim failed, so the commit's entry is still there for a later drain to retry.
-    const pending = await opened.bureau.sessionStore!.outbox.pending();
+    const pending = await opened.bureau.internals.sessionStore!.outbox.pending();
     expect(pending.some((entry) => entry.sessionId === 'supplied')).toBe(true);
 
     // The service recovers, and a later commit wakes the drain, which now claims the first commit's rows.
     failing = false;
     await paint(opened, 'other');
-    expect(await opened.bureau.sessionStore!.outbox.pending()).toEqual([]);
+    expect(await opened.bureau.internals.sessionStore!.outbox.pending()).toEqual([]);
     await opened.runtime.advance(5_000);
     const report = await collect(opened);
     expect(report.expired).not.toContain(assetId);

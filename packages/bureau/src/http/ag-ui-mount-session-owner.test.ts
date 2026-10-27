@@ -172,7 +172,7 @@ describe('a thread whose session is another owner’s than the one authorized', 
         listRuns: () => [scene.bobLiveRun],
       });
       // Another start holds the thread: a caller who may not use the thread must not learn that.
-      const leases = createAgUiLeases({ kv: scene.harness.bureau.kv!, runtime });
+      const leases = createAgUiLeases({ kv: scene.harness.bureau.internals.kv!, runtime });
       const held = await leases.acquire('thread', ALICE_THREAD);
       expect(held).toBeDefined();
       try {
@@ -260,10 +260,10 @@ describe('a run stream over a session or run that is another owner’s than the 
       // bob's, and the run names a row of it as one it took from its client.
       const bureau: AgUiStreamBureau = {
         ...scene.harness.bureau,
+        internals: { ...scene.harness.bureau.internals, whenTaskRecorded: async () => undefined },
         getRun: () => undefined,
         getSession: async () => scene.bobSession,
         sessionInputsDeliveredBy: async () => [BOB_MESSAGE],
-        whenRunRecorded: async () => undefined,
       };
 
       const response = openRunStream(environmentFor(bureau), {

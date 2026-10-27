@@ -75,7 +75,7 @@ function standIn(initial: DurableEventEnvelope[] = []) {
   let getFailures = 0;
   const bureau: A2APushBureau = {
     lifecycle: 'ready',
-    getReview: async () => undefined,
+    reviews: { get: async () => undefined },
     eventHistory: (async (_owner: unknown, options?: { since?: string; limit?: number }) => {
       if (options?.limit !== 1 && beforeReplay !== undefined) {
         const hook = beforeReplay;
@@ -105,19 +105,21 @@ function standIn(initial: DurableEventEnvelope[] = []) {
     }) as never,
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
-    tasks: {
-      record: async () => undefined,
-      get: async (taskId: string) => {
-        if (getFailures > 0) {
-          getFailures -= 1;
-          throw new Error('registry fault');
-        }
-        return taskId === 'task-1' ? view : undefined;
-      },
-      onSettled: () => () => undefined,
-      onChanged: (_taskId: string, listener: (view: TaskView) => void) => {
-        changeListeners.push(listener);
-        return () => undefined;
+    internals: {
+      taskRegistry: {
+        record: async () => undefined,
+        get: async (taskId: string) => {
+          if (getFailures > 0) {
+            getFailures -= 1;
+            throw new Error('registry fault');
+          }
+          return taskId === 'task-1' ? view : undefined;
+        },
+        onSettled: () => () => undefined,
+        onChanged: (_taskId: string, listener: (view: TaskView) => void) => {
+          changeListeners.push(listener);
+          return () => undefined;
+        },
       },
     },
   };
@@ -614,7 +616,7 @@ describe('the push projector', () => {
         { kind: 'human-wait', reviewId: 'human-wait:task-1:deploy:0', signalName: 'deploy' },
       ],
     });
-    (fixture.bureau as { getReview: unknown }).getReview = async () => ({
+    (fixture.bureau.reviews as { get: unknown }).get = async () => ({
       kind: 'human-wait',
       id: 'human-wait:task-1:deploy:0',
       prompt: 'Where should this deploy?',

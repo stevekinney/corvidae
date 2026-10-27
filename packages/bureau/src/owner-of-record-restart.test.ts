@@ -75,10 +75,10 @@ describe('every kind of resource keeps its owner across a restart (COR-718)', ()
         principal: ALICE,
       });
       await waitForCondition(
-        () => first.listPendingReviews().some((review) => review.runId === run.id),
+        () => first.reviews.list().some((review) => review.runId === run.id),
         'the run never parked on a human wait',
       );
-      const [review] = first.listPendingReviews();
+      const [review] = first.reviews.list();
 
       const dispatched = await first.children.dispatch({
         parentRunId: run.id,
@@ -109,7 +109,7 @@ describe('every kind of resource keeps its owner across a restart (COR-718)', ()
       });
       if (schedule === undefined) throw new Error('expected a schedule');
 
-      await first.resolveReview({
+      await first.reviews.resolve({
         id: review!.id,
         decision: 'approve',
         principal: 'api-key:reviewer',
@@ -136,7 +136,7 @@ describe('every kind of resource keeps its owner across a restart (COR-718)', ()
       expect(await owner({ kind: 'audit', runId: `schedule:${schedule.id}` })).toBe(ALICE);
 
       // The actor on the review's audit entry is whoever resolved it, not the owner.
-      const decisions = await second.auditTrail?.query({ runId: run.id });
+      const decisions = await second.internals.auditTrail?.query({ runId: run.id });
       expect(
         decisions
           ?.filter((entry) => entry.type.startsWith('review.'))

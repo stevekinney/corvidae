@@ -317,7 +317,7 @@ describe('createBureauTestHarness', () => {
       });
       await waitForRunState(harness.bureau, summary.id);
 
-      const reviews = harness.bureau.listPendingReviews();
+      const reviews = harness.bureau.reviews.list();
       expect(reviews).toHaveLength(1);
 
       const outcome = await harness.resolveReview({
@@ -327,7 +327,7 @@ describe('createBureauTestHarness', () => {
       });
 
       expect(outcome.decision).toBe('deny');
-      expect(harness.bureau.listPendingReviews()).toHaveLength(0);
+      expect(harness.bureau.reviews.list()).toHaveLength(0);
     });
   });
 

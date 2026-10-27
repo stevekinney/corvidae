@@ -4,7 +4,7 @@
  *
  * The schema is configured on the Bureau (`humanInput: { inputSchemas }`, COR-1674), so the park
  * carries it from the real tool with nothing injected; the answer then travels the real path: the
- * A2A continuation, `bureau.tasks.respond`, `resolveReview`, and the engine's signal.
+ * A2A continuation, `bureau.tasks.respond`, `reviews.resolve`, and the engine's signal.
  */
 import { RequestMalformedError } from '@a2a-js/sdk/errors';
 import { describe, expect, it } from 'bun:test';
@@ -65,7 +65,7 @@ describe('an INPUT_REQUIRED task whose wait carries an input schema', () => {
       const task = await fixture.start();
       await fixture.send(userMessage('m-first', task.id, { data: { environment: 'staging' } }));
       await waitForCondition(async () => {
-        const view = await fixture.bureau.tasks.get(task.id);
+        const view = await fixture.bureau.internals.taskRegistry.get(task.id);
         return (
           view?.status === 'input-required' &&
           view.openWaits.some((wait) => wait.kind === 'human-wait' && wait.signalName === 'region')
@@ -184,7 +184,7 @@ describe('an INPUT_REQUIRED task whose wait carries an input schema', () => {
         );
         expect(refusal).toBeInstanceOf(RequestMalformedError);
       }
-      const view = await fixture.bureau.tasks.get(task.id);
+      const view = await fixture.bureau.internals.taskRegistry.get(task.id);
       expect(view?.status).toBe('input-required');
     } finally {
       await fixture.opened.dispose();
@@ -226,7 +226,7 @@ describe('an INPUT_REQUIRED task whose wait carries an input schema', () => {
         expect(refusal).toBeInstanceOf(RequestMalformedError);
       }
 
-      const view = await fixture.bureau.tasks.get(task.id);
+      const view = await fixture.bureau.internals.taskRegistry.get(task.id);
       expect(view?.status).toBe('input-required');
       expect(fixture.seen.resumed).toEqual([]);
     } finally {

@@ -57,7 +57,7 @@ describe('a schedule fire’s human wait', () => {
       status: 'pending',
     });
     // The session is the fire's own: the task names it as its context.
-    const task = await bureau.tasks.record(fireId);
+    const task = await bureau.internals.taskRegistry.record(fireId);
     expect(review.sessionId).toBe(task?.contextId);
     expect(review.sessionId).toBeTruthy();
 
@@ -96,7 +96,7 @@ describe('a schedule fire’s human wait', () => {
       'the fire to complete',
     );
     expect(seen.join('')).toContain('staging');
-    expect(bureau.listPendingReviews()).toEqual([]);
+    expect(bureau.reviews.list()).toEqual([]);
   });
 });
 
@@ -121,7 +121,7 @@ describe('a schedule fire’s tool approval', () => {
       runId: fireId,
       status: 'pending',
     });
-    const task = await bureau.tasks.record(fireId);
+    const task = await bureau.internals.taskRegistry.record(fireId);
     expect(review.sessionId).toBe(task?.contextId);
     expect(review.sessionId).toBeTruthy();
 
@@ -156,7 +156,7 @@ describe('a schedule fire’s tool approval', () => {
       .find((message) => message?.toolResult?.callId === 'charge-1');
     expect(row?.toolResult?.outcome).toBe('success');
 
-    expect(bureau.listPendingReviews()).toEqual([]);
+    expect(bureau.reviews.list()).toEqual([]);
     const released = await rpc(handler, 'bureau.tasks.get', { taskId: fireId }, 'alice-key');
     expect(released.result?.['status']).not.toBe('input-required');
   });
@@ -175,10 +175,10 @@ describe('a schedule fire’s tool approval', () => {
     const { fireId } = await fireOnce(bureau);
     const review = await reviewOf(bureau, fireId);
 
-    await bureau.resolveReview({ id: review.id, decision: 'deny', principal: OWNER.alice });
+    await bureau.reviews.resolve({ id: review.id, decision: 'deny', principal: OWNER.alice });
 
     expect(charges).toEqual([]);
-    expect(bureau.listPendingReviews()).toEqual([]);
+    expect(bureau.reviews.list()).toEqual([]);
   });
 
   it('leaves a bureau.run() approval unlisted, as COR-1302 requires', async () => {
@@ -196,7 +196,7 @@ describe('a schedule fire’s tool approval', () => {
     const run = bureau.run('payer', 'charge it', { principal: OWNER.alice });
     await run.result();
 
-    expect(bureau.listPendingReviews()).toEqual([]);
+    expect(bureau.reviews.list()).toEqual([]);
     expect(charges).toEqual([]);
   });
 });
@@ -252,7 +252,7 @@ describe('a schedule fire’s human wait after a restart', () => {
       'the recovered fire to complete',
     );
     expect(seen.join('')).toContain('prod');
-    expect(restarted.listPendingReviews()).toEqual([]);
+    expect(restarted.reviews.list()).toEqual([]);
   });
 });
 
@@ -297,7 +297,7 @@ describe('a schedule fire’s tool approval after a restart', () => {
     expect(approved.error).toBeUndefined();
     expect(after).toEqual([4242]);
     expect(before).toEqual([]);
-    expect(restarted.listPendingReviews()).toEqual([]);
+    expect(restarted.reviews.list()).toEqual([]);
     // Decided after the restart, the fire's authority and round leave its session as they do live.
     const session = await restarted.getSession(restored.sessionId ?? '');
     expect(Object.keys(session?.metadata['lastRequestAuthorities'] ?? {})).toEqual([]);
@@ -321,7 +321,7 @@ describe('a schedule fire’s reviews end with the fire', () => {
     await bureau.durableEngine()!.cancel(fireId);
 
     await pollUntil(
-      () => (bureau.listPendingReviews().length === 0 ? true : undefined),
+      () => (bureau.reviews.list().length === 0 ? true : undefined),
       'the canceled fire’s wait to leave the list',
     );
   });
@@ -342,7 +342,7 @@ describe('a schedule fire’s reviews end with the fire', () => {
       async () => ((await durableStatus(bureau, fireId)) === 'completed' ? true : undefined),
       'the fire to end',
     );
-    expect(bureau.listPendingReviews()).toEqual([]);
+    expect(bureau.reviews.list()).toEqual([]);
   });
 });
 

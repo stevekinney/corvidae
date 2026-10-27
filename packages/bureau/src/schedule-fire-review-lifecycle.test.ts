@@ -84,7 +84,7 @@ describe('a resolved fire approval leaves nothing of its own in the session', ()
     for (let count = 0; count < 3; count += 1) {
       const { fireId } = await fireOnce(bureau, OWNER.alice, 'recurring-session');
       const review = await reviewOf(bureau, fireId);
-      await bureau.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
+      await bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice });
       await pollUntil(
         async () => ((await durableStatus(bureau, fireId)) === 'completed' ? true : undefined),
         'the fire to complete',
@@ -116,7 +116,7 @@ describe('a resolved fire approval leaves nothing of its own in the session', ()
     });
     const { fireId } = await fireOnce(bureau, OWNER.alice, 'retained-session');
     const review = await reviewOf(bureau, fireId);
-    await bureau.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
+    await bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice });
     await pollUntil(
       async () => ((await durableStatus(bureau, fireId)) === 'completed' ? true : undefined),
       'the fire to complete',
@@ -127,7 +127,7 @@ describe('a resolved fire approval leaves nothing of its own in the session', ()
     await pollUntil(async () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
       await bureau.runDurableMaintenance(Date.now());
-      return (await bureau.tasks.record(fireId)) === undefined ? true : undefined;
+      return (await bureau.internals.taskRegistry.record(fireId)) === undefined ? true : undefined;
     }, 'the fire’s task to leave retention');
 
     const after = await sessionMetadata(bureau, 'retained-session');
@@ -174,7 +174,7 @@ describe('an unanswered fire approval expires', () => {
     expect(charges).toEqual([]);
     expect(await expireReviews(bureau, Date.now() + 2 * 60 * 60 * 1000)).toBe(0);
     const refused = await rejectionOf(
-      bureau.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice }),
+      bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice }),
     );
     expect((refused as BureauError).code).toBe('NOT_FOUND');
   });
@@ -264,7 +264,7 @@ describe('the audit record of an expired fire approval', () => {
     const { fireId } = await fireOnce(bureau, OWNER.alice, 'rounds-session');
     const review = await reviewOf(bureau, fireId);
     // Approving it gates the call again: the tool does not run, and the review is at round 1.
-    const superseded = await bureau.resolveReview({
+    const superseded = await bureau.reviews.resolve({
       id: review.id,
       decision: 'approve',
       principal: OWNER.alice,
@@ -274,7 +274,7 @@ describe('the audit record of an expired fire approval', () => {
 
     expect(await expireReviews(bureau, Date.now() + 60 * 60 * 1000)).toBe(1);
 
-    const records = await bureau.auditTrail?.query({ runId: fireId });
+    const records = await bureau.internals.auditTrail?.query({ runId: fireId });
     const expired = records?.find((record) => record.type === 'review.tool-approval.expired');
     const detail = expired?.detail as { review?: { round?: number } } | undefined;
     expect(detail?.review?.round).toBe(1);
@@ -333,13 +333,13 @@ describe('a crash between a fire step’s session write and its commit', () => {
     ]);
     const metadata = await sessionMetadata(restarted, 'crash-session');
     expect(keysOf(metadata['pendingApprovalOverrides'])).toEqual([`approval:${fireId}:charge-B`]);
-    await restarted.resolveReview({
+    await restarted.reviews.resolve({
       id: `approval:${fireId}:charge-B`,
       decision: 'approve',
       principal: OWNER.alice,
     });
     expect(charges).toEqual([200]);
-    expect(restarted.listPendingReviews()).toEqual([]);
+    expect(restarted.reviews.list()).toEqual([]);
 
     // never released: this process is dead
   });
@@ -510,7 +510,7 @@ describe('a crash between a fire step’s session write and its commit', () => {
     await reached;
     const review = await reviewOf(first, fireId);
     // Decided in the window: the tool ran, and the step that raised the approval never commits.
-    await first.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
+    await first.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice });
     expect(firstCharges).toEqual([4242]);
 
     // The replay makes the same call under the same id.
@@ -586,18 +586,18 @@ describe('a fire’s approval is fenced across Bureau processes by the durable d
     });
     await reviewOf(peer, fireId);
 
-    await first.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
+    await first.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice });
     // The task leaves retention, and the session's own record of the decision goes with it.
     await pollUntil(async () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
       await first.runDurableMaintenance(Date.now());
-      return (await first.tasks.record(fireId)) === undefined ? true : undefined;
+      return (await first.internals.taskRegistry.record(fireId)) === undefined ? true : undefined;
     }, 'the fire’s task to leave retention');
     const metadata = await sessionMetadata(first, 'fenced-session');
     expect(keysOf(metadata['resolvedReviewDecisions'])).toEqual([]);
 
     const refusal = await rejectionOf(
-      peer.resolveReview({ id: review.id, decision: 'deny', principal: OWNER.bob }),
+      peer.reviews.resolve({ id: review.id, decision: 'deny', principal: OWNER.bob }),
     );
 
     expect((refusal as BureauError).code).toBe('CONFLICT');
@@ -658,7 +658,7 @@ describe('a fire’s task stream ends when its last review closes', () => {
 
   const closings = {
     decided: async (bureau: Bureau, reviewId: string) => {
-      await bureau.resolveReview({ id: reviewId, decision: 'approve', principal: OWNER.alice });
+      await bureau.reviews.resolve({ id: reviewId, decision: 'approve', principal: OWNER.alice });
     },
     expired: async (bureau: Bureau) => {
       expect(await expireReviews(bureau, Date.now() + 60 * 60 * 1000)).toBe(1);
@@ -747,7 +747,7 @@ describe('a fire’s task stream ends when its last review closes', () => {
     // Let the stream hear the park before the answer, so its order is the task's.
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    await bureau.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
+    await bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice });
     const frames = await reading;
 
     expect(statusesOf(frames)).toEqual(['working', 'input-required', 'working', 'completed']);
@@ -817,7 +817,7 @@ describe('a fire still going when its process restarts', () => {
       .toSorted();
     expect(ids).toEqual([`approval:${fireId}:charge-X`, `approval:${fireId}:charge-Y`]);
     for (const id of ids) {
-      await restarted.resolveReview({ id, decision: 'approve', principal: OWNER.alice });
+      await restarted.reviews.resolve({ id, decision: 'approve', principal: OWNER.alice });
     }
     expect(charges.toSorted((left, right) => left - right)).toEqual([100, 200]);
   });
@@ -919,7 +919,7 @@ describe('a fire that continues past an approval', () => {
     await secondStepReached.promise;
 
     const failure = await rejectionOf(
-      bureau.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice }),
+      bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice }),
     );
     secondStep.resolve();
 

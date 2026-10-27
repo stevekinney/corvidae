@@ -44,8 +44,10 @@ function createStubBureau(pendingReviews: PendingReview[] = []): {
     removeEventListener(_type: string, listener: ActionListener) {
       listeners.delete(listener);
     },
-    listPendingReviews(): PendingReview[] {
-      return reviews;
+    reviews: {
+      list(): PendingReview[] {
+        return reviews;
+      },
     },
   } as unknown as Bureau;
 

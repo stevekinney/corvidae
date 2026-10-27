@@ -141,7 +141,7 @@ describe('bureau.tasks.events below the retention floor', () => {
         principal: OWNER.alice,
       });
       await waitForCondition(
-        () => bureau.listPendingReviews().some((review) => review.runId === run.id),
+        () => bureau.reviews.list().some((review) => review.runId === run.id),
         'the run never parked',
       );
       await runtime.deferred.drain();
@@ -153,8 +153,8 @@ describe('bureau.tasks.events below the retention floor', () => {
       // The request for input falls out of the window, and the answer arrives after it.
       runtime.setTime(Date.parse(ORIGIN) + 7 * DAY_MS + 1);
       await bureau.runDurableMaintenance();
-      const [review] = bureau.listPendingReviews();
-      await bureau.resolveReview({
+      const [review] = bureau.reviews.list();
+      await bureau.reviews.resolve({
         id: review!.id,
         decision: 'approve',
         principal: OWNER.alice,
@@ -225,7 +225,7 @@ describe('bureau.tasks.events below the retention floor', () => {
         principal: OWNER.alice,
       });
       await waitForCondition(
-        () => bureau.listPendingReviews().some((review) => review.runId === run.id),
+        () => bureau.reviews.list().some((review) => review.runId === run.id),
         'the approval never became pending',
       );
       await waitForCondition(async () => {
@@ -237,8 +237,8 @@ describe('bureau.tasks.events below the retention floor', () => {
       // The request and the settlement fall out of the window; the decision comes after it.
       runtime.setTime(Date.parse(ORIGIN) + 2_000);
       await bureau.runDurableMaintenance();
-      const [review] = bureau.listPendingReviews();
-      await bureau.resolveReview({ id: review!.id, decision: 'deny', principal: OWNER.alice });
+      const [review] = bureau.reviews.list();
+      await bureau.reviews.resolve({ id: review!.id, decision: 'deny', principal: OWNER.alice });
       await waitForCondition(async () => {
         let page = await bureau.eventHistory({ kind: 'run', id: run.id });
         if ('outcome' in page && page.outcome === 'gap') {
@@ -250,7 +250,7 @@ describe('bureau.tasks.events below the retention floor', () => {
         return 'events' in page && page.events.some((event) => event.kind === 'review.denied');
       }, 'review.denied never reached the history');
       await runtime.deferred.drain();
-      const task = await bureau.tasks.get(run.id);
+      const task = await bureau.internals.taskRegistry.get(run.id);
 
       const frames = await readFrames(
         await handler(subscribeRequest('bureau.tasks.events', { taskId: run.id }, 'alice-key')),

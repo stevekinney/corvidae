@@ -352,7 +352,7 @@ describe('SubscribeToTask', () => {
       await stream.next();
       await stream.cancel();
 
-      const view = await opened.bureau.tasks.get(task.id);
+      const view = await opened.bureau.internals.taskRegistry.get(task.id);
       expect(view?.status).toBe('working');
     });
   });

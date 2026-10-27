@@ -67,10 +67,10 @@ export function parksThenAnswers(
 }
 
 export async function statusOf(
-  bureau: { tasks: { get(id: string): Promise<TaskView | undefined> } },
+  bureau: { internals: { taskRegistry: { get(id: string): Promise<TaskView | undefined> } } },
   id: string,
 ): Promise<string | undefined> {
-  const view = await bureau.tasks.get(id);
+  const view = await bureau.internals.taskRegistry.get(id);
   return view?.status;
 }
 

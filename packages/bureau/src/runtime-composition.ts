@@ -2086,7 +2086,7 @@ export interface RuntimeComposition {
   sessionStore: SessionStore | undefined;
   /**
    * The bureau's canonical toolbox (`options.toolbox`, or an internally
-   * created one). `resolveReview` calls `resumeApproval()` on this instance to
+   * created one). `reviews.resolve` calls `resumeApproval()` on this instance to
    * resume a signed pending tool approval — `resumeApproval` re-invokes the
    * tool by name/callId, so any toolbox sharing the original `approvalSecret`
    * and tool set can resume it, not only the specific per-run `.extend()` clone
@@ -5258,7 +5258,7 @@ async function buildRuntimeComposition(
     durableStorage,
     memory,
     sessionStore,
-    // Exposed so the review queue (`resolveReview`) can call `resumeApproval()`
+    // Exposed so the review queue (`reviews.resolve`) can call `resumeApproval()`
     // on the SAME toolbox instance (or any `.extend()` clone of it, which
     // preserves `approvalSecret` — see armorer's `extend()`) that executed the
     // original tool call. `resumeApproval` re-invokes the tool by name/callId,

@@ -133,7 +133,7 @@ async function parkAfterStepZero(): Promise<void> {
     },
   });
 
-  const auditTrail = bureau.auditTrail;
+  const auditTrail = bureau.internals.auditTrail;
   if (auditTrail === undefined) {
     process.stderr.write('child: the bureau has no audit trail\n');
     process.exit(4);
@@ -336,23 +336,23 @@ async function humanWaitParked(twoCalls = false): Promise<void> {
     principal: 'alice',
   });
   await pollUntil('the run to surface its human-wait review', () =>
-    bureau.listPendingReviews().some((review) => review.runId === run.id),
+    bureau.reviews.list().some((review) => review.runId === run.id),
   );
   // Read through the Bureau's own store: a second handle on a live LMDB path
   // can deadlock against the Bureau's (see `storage-fixtures.ts`).
-  if (bureau.kv === undefined) {
+  if (bureau.internals.kv === undefined) {
     process.stderr.write('child: the bureau has no durable key-value store\n');
     process.exit(4);
   }
-  const checkpoints = createCheckpointStore(bureau.kv);
+  const checkpoints = createCheckpointStore(bureau.internals.kv);
   await pollUntil('the run cursor to advance past the parked step', async () => {
     const cursor = await checkpoints.loadCursor(run.id);
     return cursor !== null && cursor.step >= 1;
   });
   // The signal the step honored, as the live review names it: the parent compares the recovered
   // review with it, without assuming which of the two parallel calls arrived first.
-  const honored = bureau
-    .listPendingReviews()
+  const honored = bureau.reviews
+    .list()
     .find((review) => review.runId === run.id && review.kind === 'human-wait');
   writeMarker({
     runId: run.id,

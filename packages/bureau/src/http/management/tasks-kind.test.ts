@@ -55,7 +55,7 @@ describe('a task view’s kind', () => {
         'the session run never started',
       );
       const catalog = opened.bureau.run('holder', 'work', { principal: OWNER.alice });
-      await opened.bureau.tasks.recordAdmission({
+      await opened.bureau.internals.taskRegistry.recordAdmission({
         taskId: 'fire-1',
         contextId: 'fire-session',
         incarnation: '',
@@ -67,7 +67,7 @@ describe('a task view’s kind', () => {
       });
       try {
         await waitForCondition(
-          async () => (await opened.bureau.tasks.get(catalog.id)) !== undefined,
+          async () => (await opened.bureau.internals.taskRegistry.get(catalog.id)) !== undefined,
           'the dispatch was never recorded as a task',
         );
 

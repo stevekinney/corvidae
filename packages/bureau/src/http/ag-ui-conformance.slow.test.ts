@@ -607,7 +607,7 @@ describe('interrupt and resume', () => {
         expect(result.messageId).toBe(`${firstRunId}:step:0:result:call-1`);
         expect(charges).toEqual([500]);
         expect(agent.pendingInterrupts).toHaveLength(0);
-        expect(harness.bureau.listPendingReviews()).toHaveLength(0);
+        expect(harness.bureau.reviews.list()).toHaveLength(0);
       },
     );
   });
@@ -658,7 +658,7 @@ describe('interrupt and resume', () => {
           }),
         );
         expect(unknown[0]!.event).toMatchObject({ code: 'INTERRUPT_NOT_FOUND' });
-        expect(harness.bureau.listPendingReviews()).toHaveLength(1);
+        expect(harness.bureau.reviews.list()).toHaveLength(1);
 
         await agent.runAgent({
           runId: 'run-c',
@@ -667,7 +667,7 @@ describe('interrupt and resume', () => {
           }),
         });
         expect(charges).toEqual([]);
-        expect(harness.bureau.listPendingReviews()).toHaveLength(0);
+        expect(harness.bureau.reviews.list()).toHaveLength(0);
         await observer.frames();
       },
     );
@@ -679,7 +679,7 @@ describe('interrupt and resume', () => {
       async ({ served, harness }) => {
         const observer = observed();
         await agentFor(served, observer).runAgent({ runId: 'run-a' });
-        const [review] = harness.bureau.listPendingReviews();
+        const [review] = harness.bureau.reviews.list();
 
         const events = await follow(pipeline(`${served.base}/ag-ui/threads/thread-1/run`)).events;
         await observer.frames();
@@ -725,7 +725,7 @@ describe('interrupt and resume', () => {
           served,
           runAgentInput({ runId: 'run-b', messages: [], resume: entries }),
         );
-        const resolve = spyOn(harness.bureau, 'resolveReview');
+        const resolve = spyOn(harness.bureau.reviews, 'resolve');
 
         const retry = await rawPost(
           served,

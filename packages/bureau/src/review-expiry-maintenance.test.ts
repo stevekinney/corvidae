@@ -96,18 +96,18 @@ describe('expired review state under the automatic maintenance profile', () => {
       principal: OWNER.alice,
     });
     const runReview = await pollUntil(
-      () => bureau.listPendingReviews().find((review) => review.runId === run.id),
+      () => bureau.reviews.list().find((review) => review.runId === run.id),
       'the session run’s approval',
     );
 
     // Both approvals expire, and one maintenance interval passes. No host call sweeps them.
     await runtime.advance(1500);
-    expect(bureau.listPendingReviews()).toEqual([]);
+    expect(bureau.reviews.list()).toEqual([]);
     await runtime.advance(300_000);
 
     await pollUntil(async () => {
-      const fire = await bureau.getReview(fireReview.id);
-      const sessionRun = await bureau.getReview(runReview.id);
+      const fire = await bureau.reviews.get(fireReview.id);
+      const sessionRun = await bureau.reviews.get(runReview.id);
       return fire?.status === 'expired' && sessionRun?.status === 'expired' ? true : undefined;
     }, 'the maintenance pass to expire both approvals');
     await pollUntil(
@@ -188,17 +188,17 @@ describe('expired review state of a Bureau with no maintenance timer of its own'
       principal: OWNER.alice,
     });
     const review = await pollUntil(
-      () => bureau.listPendingReviews().find((listed) => listed.runId === run.id),
+      () => bureau.reviews.list().find((listed) => listed.runId === run.id),
       'the session run’s approval',
     );
     expect(runtime.pendingTimers()).toHaveLength(1);
 
     // The approval's binding runs out, and one sweep interval passes. No host call sweeps it.
     await runtime.advance(1500);
-    expect(bureau.listPendingReviews()).toEqual([]);
+    expect(bureau.reviews.list()).toEqual([]);
     await runtime.advance(EXPIRY_SWEEP_INTERVAL_MILLISECONDS);
     await pollUntil(async () => {
-      const expired = await bureau.getReview(review.id);
+      const expired = await bureau.reviews.get(review.id);
       return expired?.status === 'expired' ? true : undefined;
     }, 'the sweep to expire the approval');
 
@@ -230,12 +230,12 @@ describe('expired review state of a Bureau with no maintenance timer of its own'
       principal: OWNER.alice,
     });
     const review = await pollUntil(
-      () => bureau.listPendingReviews().find((listed) => listed.runId === run.id),
+      () => bureau.reviews.list().find((listed) => listed.runId === run.id),
       'the approval',
     );
     expect(runtime.pendingTimers()).toHaveLength(1);
 
-    await bureau.resolveReview({ id: review.id, decision: 'deny', principal: OWNER.alice });
+    await bureau.reviews.resolve({ id: review.id, decision: 'deny', principal: OWNER.alice });
 
     // The last approval left, so the timer is gone now, not at the next tick.
     expect(runtime.pendingTimers()).toEqual([]);
@@ -292,10 +292,10 @@ describe('expired review state of a Bureau with no maintenance timer of its own'
       principal: OWNER.alice,
     });
     const review = await pollUntil(
-      () => bureau.listPendingReviews().find((listed) => listed.runId === run.id),
+      () => bureau.reviews.list().find((listed) => listed.runId === run.id),
       'the approval',
     );
-    const deciding = bureau.resolveReview({
+    const deciding = bureau.reviews.resolve({
       id: review.id,
       decision: 'approve',
       principal: OWNER.alice,
@@ -338,7 +338,7 @@ describe('expired review state of a Bureau with no maintenance timer of its own'
       principal: OWNER.alice,
     });
     const review = await pollUntil(
-      () => bureau.listPendingReviews().find((listed) => listed.runId === run.id),
+      () => bureau.reviews.list().find((listed) => listed.runId === run.id),
       'the session run’s approval',
     );
     // A manual host runs no timer of the Bureau's.
@@ -347,7 +347,7 @@ describe('expired review state of a Bureau with no maintenance timer of its own'
     await runtime.advance(1500);
     await bureau.runDurableMaintenance();
 
-    const expired = await bureau.getReview(review.id);
+    const expired = await bureau.reviews.get(review.id);
     expect(expired?.status).toBe('expired');
   });
 });

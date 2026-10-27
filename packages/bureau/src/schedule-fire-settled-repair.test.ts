@@ -41,7 +41,7 @@ const statusesOf = (frames: readonly { data?: unknown }[]) =>
 
 async function settled(bureau: Bureau, fireId: string): Promise<void> {
   await pollUntil(async () => {
-    const view = await bureau.tasks.get(fireId);
+    const view = await bureau.internals.taskRegistry.get(fireId);
     return view?.status === 'completed' ? true : undefined;
   }, 'the settlement to be readable');
 }
@@ -155,7 +155,7 @@ describe('a fire cancelled by a process that holds no run for it', () => {
     await advanceFeedPoll();
     expect(stream.ended).toBe(false);
 
-    const receipt = await canceller.tasks.cancel(fireId, 0);
+    const receipt = await canceller.internals.taskRegistry.cancel(fireId, 0);
     expect(receipt).toEqual({ receipt: 'canceled' });
     await driveUntil(() => stream.ended, 'the watcher stream to end');
     const frames = await stream.frames;

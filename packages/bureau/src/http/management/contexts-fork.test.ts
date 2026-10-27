@@ -253,7 +253,7 @@ describe('bureau.contexts.fork refusals', () => {
         ...host,
         contexts: {
           getSession: opened.bureau.getSession,
-          sessionStore: opened.bureau.sessionStore,
+          internals: { sessionStore: opened.bureau.internals.sessionStore },
           forkSession: fork,
         } as never,
       },

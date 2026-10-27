@@ -103,7 +103,7 @@ function gatedAfterFirstStep(gate: Promise<void>): GenerateFunction {
 
 async function waitForBound(opened: OpenedBureau, taskId: string): Promise<void> {
   await waitForReal(async () => {
-    const record = await opened.bureau.tasks.record(taskId);
+    const record = await opened.bureau.internals.taskRegistry.record(taskId);
     return record !== undefined && record.incarnation !== '' ? true : undefined;
   }, 'the fire to be bound to its session');
 }
@@ -114,7 +114,7 @@ describe('the event stream of a schedule fire', () => {
     async () => {
       const opened = await serve(parkingUntilAborted);
       const task = await firstFire(opened);
-      const unbound = await opened.bureau.tasks.record(task.id);
+      const unbound = await opened.bureau.internals.taskRegistry.record(task.id);
       expect(unbound?.incarnation).toBe('');
 
       const frames = observe(opened, task.id);

@@ -128,7 +128,7 @@ describe('a Bureau run narrowed by an active skill (COR-1628)', () => {
     expect(executions).toEqual([]);
     const settled = await pollUntil(async () => {
       const records =
-        (await bureau.auditTrail?.query({ runId: run.id, type: 'tool.settled' })) ?? [];
+        (await bureau.internals.auditTrail?.query({ runId: run.id, type: 'tool.settled' })) ?? [];
       return records.find((record) => JSON.stringify(record.detail).includes('ping-1'));
     }, 'the refused call to be audited as settled');
     expect(JSON.stringify(settled.detail)).toContain('error');

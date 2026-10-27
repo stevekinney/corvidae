@@ -153,7 +153,7 @@ export interface InteractiveSurfaces {
   /**
    * Admits or denies an action. An admitted action is recorded in the task's
    * history and returned with its continuation, which the caller runs
-   * (`resolveReview` or `signalSession`); a denied one commits nothing.
+   * (`reviews.resolve` or `signalSession`); a denied one commits nothing.
    */
   act(
     request: InteractiveSurfaceActionRequest,
