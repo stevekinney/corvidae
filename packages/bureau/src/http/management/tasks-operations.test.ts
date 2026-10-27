@@ -166,8 +166,19 @@ describe('bureau.tasks.list', () => {
         expect(typeof firstPage.result?.['nextPageToken']).toBe('string');
         expect(tasksOf(secondPage)).toHaveLength(1);
         expect(secondPage.result?.['nextPageToken']).toBeNull();
+        // Listing order is most recent status change first, then id ascending. Three runs started
+        // back to back can share a millisecond, so read the order from the tasks, not from the
+        // order they started in.
+        const updatedAt = new Map<string, number>();
+        for (const id of ids) {
+          const view = await opened.bureau.internals.taskRegistry.get(id);
+          updatedAt.set(id, Date.parse(view?.updatedAt ?? ''));
+        }
         expect([...tasksOf(firstPage), ...tasksOf(secondPage)].map((task) => task.id)).toEqual(
-          ids.toReversed(),
+          ids.toSorted(
+            (left, right) =>
+              (updatedAt.get(right) ?? 0) - (updatedAt.get(left) ?? 0) || left.localeCompare(right),
+          ),
         );
         expect(tasksOf(working)).toHaveLength(3);
         expect(tasksOf(completed)).toEqual([]);

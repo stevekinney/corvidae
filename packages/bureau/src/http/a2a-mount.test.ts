@@ -449,9 +449,7 @@ describe('CancelTask', () => {
       const finished = await sendForTask(opened, 'done', { message: message('x') });
       const late = await call(opened, 'done', 'CancelTask', { id: finished.id });
 
-      expect(['TASK_STATE_WORKING', 'TASK_STATE_CANCELED']).toContain(
-        taskOf(canceled.body).status.state,
-      );
+      expect(taskOf(canceled.body).status.state).toBe('TASK_STATE_CANCELED');
       expect([again.body.error.code, late.body.error.code]).toEqual([-32002, -32002]);
     });
   });
