@@ -150,8 +150,8 @@ async function runConformanceChecks(
   command: readonly string[],
   timeoutMs: number,
   serve: ConformanceServe,
-  replacementTimeoutMs: number = timeoutMs,
-  replacementStarted: () => Promise<void> = () => Promise.resolve(),
+  replacementTimeoutMs: number,
+  replacementStarted: () => Promise<void>,
 ): Promise<ConformanceCheck[]> {
   const storage = new MemoryStorage();
   const engine = new Engine({ storage });
@@ -361,8 +361,8 @@ export async function runConformanceReport(
         options.command,
         options.timeoutMs,
         options.serve,
-        options.replacementTimeoutMs,
-        options.replacementStarted,
+        options.replacementTimeoutMs ?? options.timeoutMs,
+        options.replacementStarted ?? (() => Promise.resolve()),
       ),
     );
   } catch (error) {
