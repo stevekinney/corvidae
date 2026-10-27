@@ -238,10 +238,11 @@ export type InputRoundRegistry = ReturnType<typeof createInputRoundRegistry>;
 export function deliverInputResponse(
   execution: SuspendableExecution,
   responses: Record<string, unknown> | undefined,
+  key: string = MCP_ELICITATION_INPUT_KEY,
 ): boolean {
   const pending = execution.pendingInput();
   if (!pending) return true;
-  const view = inputResponse(responses, MCP_ELICITATION_INPUT_KEY);
+  const view = inputResponse(responses, key);
   if (view.kind === 'missing') return false;
   if (view.kind !== 'elicit') {
     execution.answer(() => {
