@@ -834,6 +834,10 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       // others, and an allowance for it failed the gate whenever it was covered.
       // `worker-fault-injection.test.ts` now passes over a buffered message on every run, so
       // the line is deterministically covered.
+      //
+      // Line 307, the rejection inside `waitForServerMessage`'s timeout callback, is allowed: the
+      // callers that once passed `timeoutMs` and let it elapse no longer set a wall-clock budget
+      // (load-proof tests), so no suite runs the callback.
       {
         reason:
           'Transport disconnect and concurrency exits are behaviorally tested, but Bun does not deterministically attribute these residual paths.',
@@ -841,11 +845,11 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
         lines: new Set([
           100, 115, 116, 117, 118, 126, 127, 128, 159, 160, 161, 162, 163, 164, 165, 166, 171, 172,
           173, 174, 217, 218, 219, 220, 244, 250, 256, 257, 258, 259, 260, 265, 266, 267, 305, 306,
-          313, 314, 315, 316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329, 330,
-          331, 332, 333, 334, 335, 336, 337, 338, 339, 340, 341, 342, 343, 344, 345, 346, 347, 348,
-          349, 350, 351, 352, 371, 372, 379, 383, 397, 398, 404, 409, 410, 417, 418, 419, 420, 421,
-          422, 423, 424, 425, 426, 427, 428, 429, 431, 440, 441, 447, 448, 453, 454, 467, 468, 469,
-          470, 471, 472, 476, 477, 478, 479, 480, 484, 485, 486, 487, 488,
+          307, 313, 314, 315, 316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329,
+          330, 331, 332, 333, 334, 335, 336, 337, 338, 339, 340, 341, 342, 343, 344, 345, 346, 347,
+          348, 349, 350, 351, 352, 371, 372, 379, 383, 397, 398, 404, 409, 410, 417, 418, 419, 420,
+          421, 422, 423, 424, 425, 426, 427, 428, 429, 431, 440, 441, 447, 448, 453, 454, 467, 468,
+          469, 470, 471, 472, 476, 477, 478, 479, 480, 484, 485, 486, 487, 488,
         ]),
         requireUncoveredLines: true,
       },
