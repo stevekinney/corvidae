@@ -101,7 +101,7 @@ async function admissions(opened: OpenedBureau): Promise<number> {
 
 /** The one user row a task's context holds: its row id follows from the whole command. */
 async function userRowOf(opened: OpenedBureau, contextId: string): Promise<Json> {
-  const session = await opened.bureau.getSession(contextId);
+  const session = await opened.bureau.contexts.get(contextId);
   const rows = Object.values(session!.conversationHistory.messages).filter(
     (row) => row.role === 'user',
   );
@@ -487,11 +487,11 @@ describe('a message to a working task', () => {
       async (opened) => {
         const assetId = await admit(opened, png());
         const submitted: Json[] = [];
-        const original = opened.bureau.submitSessionInput.bind(opened.bureau);
-        opened.bureau.submitSessionInput = ((sessionId: string, request: Json) => {
+        const original = opened.bureau.contexts.input.bind(opened.bureau);
+        opened.bureau.contexts.input = ((sessionId: string, request: Json) => {
           submitted.push(request);
           return original(sessionId, request);
-        }) as typeof opened.bureau.submitSessionInput;
+        }) as typeof opened.bureau.contexts.input;
 
         const working = await send(opened, 'asker', messageWith([{ text: 'start' }]), undefined, {
           configuration: { returnImmediately: true },
@@ -687,9 +687,9 @@ describe('a retry completes from the claim', () => {
         configuration: { returnImmediately: true },
       });
       const taskId = (working.result.task ?? working.result).id;
-      const real = opened.bureau.submitSessionInput.bind(opened.bureau);
+      const real = opened.bureau.contexts.input.bind(opened.bureau);
       let failures = 1;
-      opened.bureau.submitSessionInput = async (sessionId: string, request: Json) => {
+      opened.bureau.contexts.input = async (sessionId: string, request: Json) => {
         const outcome = await real(sessionId, request);
         if (failures > 0) {
           failures -= 1;
@@ -808,9 +808,9 @@ describe('a retry of a URL-only input', () => {
         configuration: { returnImmediately: true },
       });
       const taskId = (working.result.task ?? working.result).id;
-      const real = opened.bureau.submitSessionInput.bind(opened.bureau);
+      const real = opened.bureau.contexts.input.bind(opened.bureau);
       let failures = 1;
-      opened.bureau.submitSessionInput = async (sessionId: string, request: Json) => {
+      opened.bureau.contexts.input = async (sessionId: string, request: Json) => {
         const outcome = await real(sessionId, request);
         if (failures > 0) {
           failures -= 1;

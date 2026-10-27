@@ -78,7 +78,7 @@ describe('durable steering across two Bureau processes', () => {
       for (let attempt = 0; attempt < 200 && generateCalls === 0; attempt += 1) await Bun.sleep(10);
       // B deletes the session; A learns of it from its poll and aborts the
       // run as its own deletion would, rather than letting it keep working.
-      await bureauB.deleteSession(run.sessionId);
+      await bureauB.contexts.delete(run.sessionId);
       for (let attempt = 0; attempt < 1_000; attempt += 1) {
         if (bureauA.getRun(run.id)?.status !== 'running') break;
         await Bun.sleep(10);
@@ -86,7 +86,7 @@ describe('durable steering across two Bureau processes', () => {
       expect(bureauA.getRun(run.id)?.status).toBe('aborted');
       expect(generateCalls).toBe(1);
       await bureauA.waitForDurableRun(run.id).catch(() => {});
-      expect(await bureauB.getSession(run.sessionId)).toBeUndefined();
+      expect(await bureauB.contexts.get(run.sessionId)).toBeUndefined();
     } finally {
       releaseTool?.();
       await bureauA.dispose();
@@ -145,12 +145,12 @@ describe('durable steering across two Bureau processes', () => {
       const kvA = bureauA.internals.kv;
       if (kvA === undefined) throw new Error('expected a durable store');
       const readsByA = spyOn(kvA, 'get');
-      const paused = await bureauB.submitSteeringCommand(run.sessionId, {
+      const paused = await bureauB.contexts.steer(run.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'pause' },
       });
       expect(paused.outcome).toBe('accepted');
-      const sessionA = await bureauA.getSession(run.sessionId);
+      const sessionA = await bureauA.contexts.get(run.sessionId);
       const kvB = bureauB.internals.kv;
       if (sessionA === undefined || kvB === undefined) throw new Error('expected the session');
       const pauseHead = await readSteeringLogHead(kvB, run.sessionId, sessionA.incarnation);
@@ -171,7 +171,7 @@ describe('durable steering across two Bureau processes', () => {
       expect(generateCalls).toBe(1);
 
       // B resumes it; A's waiting run is released by the next poll.
-      const resumed = await bureauB.submitSteeringCommand(run.sessionId, {
+      const resumed = await bureauB.contexts.steer(run.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'resume' },
       });
@@ -239,7 +239,7 @@ describe('durable steering across two Bureau processes', () => {
         principal: 'alice',
       });
       for (let attempt = 0; attempt < 200 && generateCalls === 0; attempt += 1) await Bun.sleep(10);
-      const paused = await bureauA.submitSteeringCommand(run.sessionId, {
+      const paused = await bureauA.contexts.steer(run.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'pause' },
       });
@@ -252,7 +252,7 @@ describe('durable steering across two Bureau processes', () => {
 
       // B deletes the session. Nothing in B knows A's run; A sees the
       // deletion from the paused run's own watch and releases it.
-      await bureauB.deleteSession(run.sessionId);
+      await bureauB.contexts.delete(run.sessionId);
       for (let attempt = 0; attempt < 1_000; attempt += 1) {
         if (bureauA.getRun(run.id)?.status !== 'running') break;
         await Bun.sleep(10);
@@ -261,7 +261,7 @@ describe('durable steering across two Bureau processes', () => {
       expect(generateCalls).toBe(2);
       // Its terminal save is fenced to the deleted incarnation.
       await bureauA.waitForDurableRun(run.id);
-      expect(await bureauB.getSession(run.sessionId)).toBeUndefined();
+      expect(await bureauB.contexts.get(run.sessionId)).toBeUndefined();
 
       // A paused run that is aborted instead stops its watch with the wait.
       const intervals = spyOn(globalThis, 'setInterval');
@@ -273,7 +273,7 @@ describe('durable steering across two Bureau processes', () => {
           principal: 'alice',
         });
         for (let attempt = 0; attempt < 200 && generateCalls < 3; attempt += 1) await Bun.sleep(10);
-        const pausedAgain = await bureauA.submitSteeringCommand(second.sessionId, {
+        const pausedAgain = await bureauA.contexts.steer(second.sessionId, {
           principal: 'alice',
           requestedValue: { target: 'pause' },
         });

@@ -112,15 +112,18 @@ describe('a resume that reads a session another owner created under the threadâ€
           created = true;
           return run;
         },
-        getSession: async (id) => {
-          const session = await bureau.getSession(id);
-          if (!created || session === undefined) return session;
-          return bobsCopyOf(session, (messages) => {
-            for (const row of Object.values(messages)) {
-              if (row.toolCall !== undefined)
-                Object.assign(row.toolCall, { arguments: { cents: 424242 } });
-            }
-          });
+        contexts: {
+          ...bureau.contexts,
+          get: async (id) => {
+            const session = await bureau.contexts.get(id);
+            if (!created || session === undefined) return session;
+            return bobsCopyOf(session, (messages) => {
+              for (const row of Object.values(messages)) {
+                if (row.toolCall !== undefined)
+                  Object.assign(row.toolCall, { arguments: { cents: 424242 } });
+              }
+            });
+          },
         },
       });
 
@@ -145,9 +148,12 @@ describe('a resume that reads a session another owner created under the threadâ€
             return found === undefined ? undefined : { ...found, agentName: undefined };
           },
         },
-        getSession: async (id) => {
-          const session = await bureau.getSession(id);
-          return session === undefined ? undefined : bobsCopyOf(session);
+        contexts: {
+          ...bureau.contexts,
+          get: async (id) => {
+            const session = await bureau.contexts.get(id);
+            return session === undefined ? undefined : bobsCopyOf(session);
+          },
         },
       });
 
@@ -167,9 +173,12 @@ describe('a resume that reads a session another owner created under the threadâ€
       const { bureau } = harness;
       const handler = aliceHandlerOver({
         ...bureau,
-        getSession: async (id) => {
-          const session = await bureau.getSession(id);
-          return session === undefined ? undefined : bobsCopyOf(session);
+        contexts: {
+          ...bureau.contexts,
+          get: async (id) => {
+            const session = await bureau.contexts.get(id);
+            return session === undefined ? undefined : bobsCopyOf(session);
+          },
         },
       });
 
@@ -200,16 +209,19 @@ describe('a resume that reads a session another owner created under the threadâ€
             return outcome;
           },
         },
-        getSession: async (id) => {
-          const session = await bureau.getSession(id);
-          if (!resolved || session === undefined) return session;
-          return bobsCopyOf(session, (messages) => {
-            for (const row of Object.values(messages)) {
-              if (row.toolResult !== undefined) {
-                Object.assign(row.toolResult, { outcome: 'action_required' });
+        contexts: {
+          ...bureau.contexts,
+          get: async (id) => {
+            const session = await bureau.contexts.get(id);
+            if (!resolved || session === undefined) return session;
+            return bobsCopyOf(session, (messages) => {
+              for (const row of Object.values(messages)) {
+                if (row.toolResult !== undefined) {
+                  Object.assign(row.toolResult, { outcome: 'action_required' });
+                }
               }
-            }
-          });
+            });
+          },
         },
       });
 

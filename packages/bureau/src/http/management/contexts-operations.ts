@@ -28,7 +28,7 @@ import {
   type TaskCleanupState,
   type TaskRegistry,
 } from '../../task-registry.ts';
-import type { Bureau, BureauInternals } from '../../types.ts';
+import type { Bureau, BureauContexts, BureauInternals } from '../../types.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
 import {
   DEFAULT_PAGE_LIMIT,
@@ -43,17 +43,10 @@ import { holdsScope } from './tasks-operations.ts';
 
 /** What the context operations read from the handler's `host`. */
 export type BureauContextsOperationHost = BureauOwnershipHost & {
-  readonly contexts: Pick<
-    Bureau,
-    | 'getSession'
-    | 'deleteSession'
-    | 'getOwner'
-    | 'lifecycle'
-    | 'listSessions'
-    | 'getSessionSteering'
-  > & {
-    readonly internals: Pick<BureauInternals, 'sessionStore'>;
-  };
+  readonly contexts: Pick<BureauContexts, 'get' | 'delete' | 'list' | 'steering'> &
+    Pick<Bureau, 'lifecycle'> & {
+      readonly internals: Pick<BureauInternals, 'sessionStore'>;
+    };
   readonly tasks: Pick<TaskRegistry, 'settleCleanup' | 'activityOf'>;
 };
 
@@ -134,7 +127,7 @@ export const contextsDeleteOperation = defineOperation<
     }
     // Missing, a catalog run's id, and not the caller's all answer alike. The one session
     // loaded here is the one authorized and the one deleted.
-    const session = await host.contexts.getSession(contextId);
+    const session = await host.contexts.get(contextId);
     if (
       session === undefined ||
       !mayAccessLoadedContext(host, principal, session, 'bureau.contexts:write')
@@ -155,7 +148,7 @@ export const contextsDeleteOperation = defineOperation<
         ...named([]),
       };
     }
-    const report = await host.contexts.deleteSession(contextId, {
+    const report = await host.contexts.delete(contextId, {
       incarnation: session.incarnation,
     });
     // The id holds another incarnation now (or none): the context authorized is gone.
@@ -291,7 +284,7 @@ export const contextsListOperation = defineOperation<
     const limit = input.limit ?? DEFAULT_PAGE_LIMIT;
     const offset = input.offset ?? 0;
     // One row past the page says whether another page follows.
-    const rows = await host.contexts.listSessions({
+    const rows = await host.contexts.list({
       ...(owner === undefined ? {} : { owner }),
       ...(input.agentName === undefined ? {} : { agentName: input.agentName }),
       ...(input.origin === undefined ? {} : { origin: input.origin }),
@@ -334,7 +327,7 @@ export const contextsGetOperation = defineOperation<
   invoke: async ({ input, host, principal }) => {
     const { contextId } = input;
     if (host.contexts.internals.sessionStore === undefined) throw noSessions();
-    const session = await host.contexts.getSession(contextId);
+    const session = await host.contexts.get(contextId);
     if (
       session === undefined ||
       !mayAccessLoadedContext(host, principal, session, 'bureau.contexts:read')
@@ -347,7 +340,7 @@ export const contextsGetOperation = defineOperation<
       new Map([[contextId, session.incarnation]]),
     );
     // A context deleted while its steering was read is as missing as one that never was.
-    const steering = await host.contexts.getSessionSteering(contextId);
+    const steering = await host.contexts.steering(contextId);
     if (steering === undefined) throw resourceNotFound('context', contextId);
     return {
       ...projectContext(summarizeSession(session), activity.get(contextId)),

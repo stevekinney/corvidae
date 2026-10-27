@@ -89,7 +89,7 @@ async function start(
 }
 
 async function replies(bureau: Bureau<AgentDefinitions>, sessionId: string): Promise<string[]> {
-  const session = await bureau.getSession(sessionId);
+  const session = await bureau.contexts.get(sessionId);
   if (session === undefined) throw new Error(`Expected session "${sessionId}".`);
   return getMessages(session.conversationHistory)
     .filter((message) => message.role === 'assistant')
@@ -223,7 +223,7 @@ describe('an agent that is not in the catalog', () => {
     expect(refusal).toBeInstanceOf(BureauError);
     expect((refusal as BureauError).code).toBe('NOT_FOUND');
     expect(bureau.listRuns()).toEqual([]);
-    expect(await bureau.listSessions()).toEqual([]);
+    expect(await bureau.contexts.list()).toEqual([]);
   });
 
   it('is refused for an unnamed run on a session whose stored agent is gone', async () => {
@@ -244,7 +244,7 @@ describe('an agent that is not in the catalog', () => {
         conversationHistory: createConversationHistory({ id: 'session-orphan' }),
       }),
     );
-    const before = await bureau.getSession('session-orphan');
+    const before = await bureau.contexts.get('session-orphan');
 
     const refusal = await rejectionOf(
       bureau.createRun({ message: 'hello', sessionId: 'session-orphan' } as CreateRunRequest),
@@ -252,7 +252,7 @@ describe('an agent that is not in the catalog', () => {
 
     expect((refusal as BureauError).code).toBe('NOT_FOUND');
     expect(bureau.listRuns()).toEqual([]);
-    expect(await bureau.getSession('session-orphan')).toEqual(before);
+    expect(await bureau.contexts.get('session-orphan')).toEqual(before);
   });
 });
 
@@ -291,7 +291,7 @@ describe('a session’s agent', () => {
     );
 
     expect((promotion as BureauError).code).toBe('BAD_REQUEST');
-    const stored = await bureau.getSession(first.sessionId);
+    const stored = await bureau.contexts.get(first.sessionId);
     expect(stored?.agentName).toBe('default');
   });
 
@@ -391,7 +391,7 @@ describe('two runs creating one new session', () => {
 
     // Only the winner's run exists, the session is bound to the winner, and the loser never ran.
     expect(bureau.listRuns()).toHaveLength(1);
-    const stored = await bureau.getSession('shared-session');
+    const stored = await bureau.contexts.get('shared-session');
     expect(stored?.agentName).toBe(winnerName);
     expect(calls[winnerName]).toBe(1);
     expect(calls[loserName]).toBe(0);

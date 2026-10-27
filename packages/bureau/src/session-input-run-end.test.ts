@@ -109,7 +109,7 @@ async function receiptState(
 }
 
 async function incarnationOf(bureau: Bureau, sessionId: string): Promise<string> {
-  const session = await bureau.getSession(sessionId);
+  const session = await bureau.contexts.get(sessionId);
   if (session === undefined) throw new Error(`session ${sessionId} is gone`);
   return session.incarnation;
 }
@@ -140,7 +140,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
         maximumSteps: 1,
       });
       await stepZeroStarted.promise;
-      const admitted = await bureau.submitSessionInput(run.sessionId, input('input-x', 'late'));
+      const admitted = await bureau.contexts.input(run.sessionId, input('input-x', 'late'));
       expect(admitted.outcome).toBe('admitted');
       if (admitted.outcome === 'admitted') expect(admitted.receipt.state).toBe('accepted');
       const incarnation = await incarnationOf(bureau, run.sessionId);
@@ -180,16 +180,13 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
         principal: 'alice',
       });
       await stepZeroStarted.promise;
-      const admitted = await bureau.submitSessionInput(
-        run.sessionId,
-        input('input-x', 'never seen'),
-      );
+      const admitted = await bureau.contexts.input(run.sessionId, input('input-x', 'never seen'));
       expect(admitted.outcome).toBe('admitted');
       const incarnation = await incarnationOf(bureau, run.sessionId);
       releaseStepZero.resolve();
 
       await pollUntil(async () => {
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'error';
       });
       await pollUntil(
@@ -249,7 +246,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
         principal: 'alice',
       });
       await stepZeroStarted.promise;
-      await bureau.submitSessionInput(first.sessionId, input('input-a', 'first'));
+      await bureau.contexts.input(first.sessionId, input('input-a', 'first'));
       const incarnation = await incarnationOf(bureau, first.sessionId);
       releaseStepZero.resolve();
       await stepOneStarted.promise;
@@ -294,7 +291,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
         principal: 'alice',
       });
       await stepZeroStarted.promise;
-      await bureau.submitSessionInput(first.sessionId, input('input-a', 'first'));
+      await bureau.contexts.input(first.sessionId, input('input-a', 'first'));
       const incarnation = await incarnationOf(bureau, first.sessionId);
       releaseStepZero.resolve();
       await stepOneStarted.promise;
@@ -306,7 +303,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
         'canceled',
       );
       await pollUntil(async () => {
-        const session = await bureau.getSession(first.sessionId);
+        const session = await bureau.contexts.get(first.sessionId);
         return session?.metadata['lastRunStatus'] === 'aborted';
       });
       await bureau.runDurableMaintenance();
@@ -345,7 +342,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
           principal: 'alice',
         });
         await stepZeroStarted.promise;
-        await bureau.submitSessionInput(first.sessionId, input('input-x', 'please answer this'));
+        await bureau.contexts.input(first.sessionId, input('input-x', 'please answer this'));
         const incarnation = await incarnationOf(bureau, first.sessionId);
         releaseStepZero.resolve();
         await stepOneStarted.promise;
@@ -362,7 +359,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
           bureau.abortRun(first.id);
         }
         await pollUntil(async () => {
-          const session = await bureau.getSession(first.sessionId);
+          const session = await bureau.contexts.get(first.sessionId);
           return session?.metadata['lastRunStatus'] === 'aborted';
         });
         await bureau.runDurableMaintenance();
@@ -376,7 +373,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
             'please answer this',
           ),
         ).toBe('promoted');
-        const session = await bureau.getSession(first.sessionId);
+        const session = await bureau.contexts.get(first.sessionId);
         const transcript = new Conversation(session!.conversationHistory).getMessages();
         expect(
           transcript.some(
@@ -417,12 +414,12 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
         principal: 'alice',
       });
       await stepZeroStarted.promise;
-      await bureau.submitSessionInput(first.sessionId, input('input-a', 'please answer this'));
+      await bureau.contexts.input(first.sessionId, input('input-a', 'please answer this'));
       const incarnation = await incarnationOf(bureau, first.sessionId);
       releaseStepZero.resolve();
 
       await pollUntil(async () => {
-        const session = await bureau.getSession(first.sessionId);
+        const session = await bureau.contexts.get(first.sessionId);
         return session?.metadata['lastRunStatus'] === 'error';
       });
       await bureau.runDurableMaintenance();
@@ -482,7 +479,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
         sessionId: first.sessionId,
       });
       await started[1]!.promise;
-      const admitted = await bureau.submitSessionInput(
+      const admitted = await bureau.contexts.input(
         first.sessionId,
         input('input-x', 'for whoever'),
       );
@@ -537,7 +534,7 @@ describe('a run that ends over a lease a gone holder left behind (COR-1476)', ()
         maximumSteps: 1,
       });
       await stepZeroStarted.promise;
-      await bureau.submitSessionInput(run.sessionId, input('input-x', 'late'));
+      await bureau.contexts.input(run.sessionId, input('input-x', 'late'));
       const incarnation = await incarnationOf(bureau, run.sessionId);
       // A gate in a process that then died claims it, on the same clock.
       const deadHolder = createSessionInputMailbox(storage, run.sessionId, incarnation, 100, () =>
@@ -594,7 +591,7 @@ describe('a run whose start fails after its promotion (COR-1476)', () => {
       });
       await bureau.waitForDurableRun(first.id);
       await pollUntil(async () => {
-        const session = await bureau.getSession(first.sessionId);
+        const session = await bureau.contexts.get(first.sessionId);
         return session?.metadata['lastRunStatus'] === 'completed';
       });
 
@@ -664,7 +661,7 @@ describe('a cancellation that reaches a run after it appended the turn (COR-1476
         maximumSteps: 3,
       });
       await stepZeroStarted.promise;
-      await bureau.submitSessionInput(run.sessionId, input('input-x', 'delivered'));
+      await bureau.contexts.input(run.sessionId, input('input-x', 'delivered'));
       const incarnation = await incarnationOf(bureau, run.sessionId);
       releaseStepZero.resolve();
       await stepOneStarted.promise;
@@ -742,7 +739,7 @@ describe('a promoted input whose command was never acknowledged (COR-1476)', () 
         maximumSteps: 2,
       });
       await stepZeroStarted.promise;
-      await bureau.submitSessionInput(run.sessionId, input('input-x', 'delivered'));
+      await bureau.contexts.input(run.sessionId, input('input-x', 'delivered'));
       const incarnation = await incarnationOf(bureau, run.sessionId);
       // The run's settlement reads the marker only after it has decided what
       // to cancel: held there, it shows what it left alone.
@@ -770,7 +767,7 @@ describe('a promoted input whose command was never acknowledged (COR-1476)', () 
       expect(await state()).toBe('accepted');
       atMarkerRead.release();
       await pollUntil(async () => {
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'completed';
       });
       expect(await markers(real)).toHaveLength(1);
@@ -824,7 +821,7 @@ describe('what the retry loop must not hold (COR-1476)', () => {
         principal: 'alice',
       });
       await stepZeroStarted.promise;
-      await bureau.submitSessionInput(run.sessionId, input('input-a', 'first'));
+      await bureau.contexts.input(run.sessionId, input('input-a', 'first'));
       const incarnation = await incarnationOf(bureau, run.sessionId);
       releaseStepZero.resolve();
       await stepOneStarted.promise;
@@ -842,7 +839,7 @@ describe('what the retry loop must not hold (COR-1476)', () => {
       const cancelling = bureau.cancelDurableRun(run.id);
       await pollUntil(() => failing.attempts() >= 2);
       await pollUntil(async () => {
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'aborted';
       });
       expect(await state()).not.toBe('claimed');
@@ -930,7 +927,7 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
         maximumSteps: 1,
       });
       await stepZeroStarted.promise;
-      await bureau.submitSessionInput(run.sessionId, input('input-x', 'late'));
+      await bureau.contexts.input(run.sessionId, input('input-x', 'late'));
       const incarnation = await incarnationOf(bureau, run.sessionId);
       releaseStepZero.resolve();
 
@@ -1032,7 +1029,7 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
       await stepZeroStarted.promise;
       releaseStepZero.resolve();
       await stepOneStarted.promise;
-      await bureau.submitSessionInput(run.sessionId, input('input-x', 'open'));
+      await bureau.contexts.input(run.sessionId, input('input-x', 'open'));
       const incarnation = await incarnationOf(bureau, run.sessionId);
 
       // The cancellation's settlement cannot write `run-ended`; after its first
@@ -1092,7 +1089,7 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
       });
       sessionId = run.sessionId;
       await stepZeroStarted.promise;
-      await first.submitSessionInput(run.sessionId, input('input-x', 'late'));
+      await first.contexts.input(run.sessionId, input('input-x', 'late'));
       incarnation = await incarnationOf(first, run.sessionId);
       const mailboxReads = seam.countReads(readsMailbox);
       releaseStepZero.resolve();
@@ -1181,7 +1178,7 @@ describe('a run promoted but never started (COR-1476)', () => {
       { runtime, maintenance: 'manual' },
     );
     try {
-      const admitted = await bureau.submitSessionInput('ghost-session', input('input-x', 'hello'));
+      const admitted = await bureau.contexts.input('ghost-session', input('input-x', 'hello'));
       expect(admitted.outcome).toBe('admitted');
       // Still within the run's start window: the run counts as starting, so
       // neither the admission nor the sweep cancels the input.
@@ -1227,7 +1224,7 @@ describe("a deleted session's input mailbox (COR-1476)", () => {
         principal: 'alice',
       });
       await stepZeroStarted.promise;
-      await bureau.submitSessionInput(run.sessionId, input('input-x', 'delivered'));
+      await bureau.contexts.input(run.sessionId, input('input-x', 'delivered'));
       const incarnation = await incarnationOf(bureau, run.sessionId);
       const mailbox = createSessionInputMailbox(storage, run.sessionId, incarnation, 100, () =>
         runtime.clock.now(),
@@ -1242,7 +1239,7 @@ describe("a deleted session's input mailbox (COR-1476)", () => {
         return receipt?.state === 'applied';
       });
       await pollUntil(async () => {
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'completed';
       });
       await bureau.runDurableMaintenance();
@@ -1250,7 +1247,7 @@ describe("a deleted session's input mailbox (COR-1476)", () => {
 
       // Deletion marks the incarnation again, for the sweep to retire its
       // mailbox: no run will ever maintain it.
-      await bureau.deleteSession(run.sessionId);
+      await bureau.contexts.delete(run.sessionId);
       expect(await markers(storage)).toHaveLength(1);
       await runtime.advance(SESSION_INPUT_TERMINAL_RETENTION_MS + 3_600_000);
       await bureau.runDurableMaintenance();
@@ -1292,8 +1289,8 @@ describe('shutdown releases open input (COR-1476)', () => {
       principal: 'alice',
     });
     await stepZeroStarted.promise;
-    await first.submitSessionInput(run.sessionId, input('input-a', 'first'));
-    await first.submitSessionInput(run.sessionId, input('input-b', 'second'));
+    await first.contexts.input(run.sessionId, input('input-a', 'first'));
+    await first.contexts.input(run.sessionId, input('input-b', 'second'));
     const incarnation = await incarnationOf(first, run.sessionId);
     releaseStepZero.resolve();
     // Step 1's boundary has claimed both inputs; they are in no transcript yet.

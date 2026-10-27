@@ -41,7 +41,7 @@ describe('a run that delivered session input', () => {
         const stream = new FrameReader(await handler(startRequest(runAgentInput())));
         await stream.until(EventType.STEP_STARTED);
         await generate.reached('hold');
-        const admitted = await bureau.submitSessionInput('thread-1', {
+        const admitted = await bureau.contexts.input('thread-1', {
           id: 'follow-up-1',
           principal: 'anonymous:local',
           deliveryMode: 'steer',

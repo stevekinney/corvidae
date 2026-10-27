@@ -850,7 +850,7 @@ describe('the reviews operations against a real Bureau', () => {
       });
 
       expect(resolved.result).toMatchObject({ decision: 'approve', receipt: 'applied' });
-      const session = await bureau.getSession(run.sessionId);
+      const session = await bureau.contexts.get(run.sessionId);
       const history = session?.conversationHistory;
       const row = history?.ids
         .map((id) => history.messages[id])

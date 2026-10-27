@@ -52,7 +52,7 @@ async function assistantReplies(
   bureau: Bureau<AgentDefinitions>,
   sessionId: string,
 ): Promise<string[]> {
-  const session = await bureau.getSession(sessionId);
+  const session = await bureau.contexts.get(sessionId);
   if (session === undefined) throw new Error(`Expected session "${sessionId}".`);
   return getMessages(session.conversationHistory)
     .filter((message) => message.role === 'assistant')
@@ -131,7 +131,7 @@ describe('a named session run after a restart', () => {
       scribe: async ({ step }) => ({ content: `scribe resumed at ${step}`, toolCalls: [] }),
     });
     await pollUntil(async () => {
-      const session = await restarted.getSession(run.sessionId);
+      const session = await restarted.contexts.get(run.sessionId);
       return session?.metadata['lastRunStatus'] === 'completed';
     });
 
@@ -147,11 +147,11 @@ describe('a named session run after a restart', () => {
 
     const restarted = await bureauOver(databasePath, {});
     await pollUntil(async () => {
-      const session = await restarted.getSession(run.sessionId);
+      const session = await restarted.contexts.get(run.sessionId);
       return session?.metadata['lastRunStatus'] !== 'running';
     });
 
-    const session = await restarted.getSession(run.sessionId);
+    const session = await restarted.contexts.get(run.sessionId);
     expect(session?.metadata['lastRunStatus']).toBe('error');
     const lastError = session?.metadata['lastError'];
     expect(typeof lastError === 'string' ? lastError : '').toContain('no longer in the catalog');
@@ -168,7 +168,7 @@ describe('a named session run after a restart', () => {
       warnings,
     });
     await pollUntil(async () => {
-      const session = await restarted.getSession(run.sessionId);
+      const session = await restarted.contexts.get(run.sessionId);
       return session?.metadata['lastRunStatus'] === 'completed';
     });
 

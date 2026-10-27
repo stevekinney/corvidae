@@ -104,7 +104,7 @@ describe('bureau.contexts.get model and configVersion', () => {
   it('reports the version expectedRevision is compared against, which an agent change still waiting for the next run advances', async () => {
     await withBureau(async (opened) => {
       const run = await liveSession(opened);
-      await opened.bureau.submitSteeringCommand(run.sessionId, {
+      await opened.bureau.contexts.steer(run.sessionId, {
         id: 'identity',
         principal: OWNER.alice,
         requestedValue: { target: 'agent-identity', override: 'picker' },

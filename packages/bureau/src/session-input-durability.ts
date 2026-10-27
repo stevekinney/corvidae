@@ -644,7 +644,7 @@ export interface SessionInputAdmissionAttempt {
 }
 
 /**
- * What one admission attempt reports: `Bureau.submitSessionInput`'s outcomes
+ * What one admission attempt reports: `Bureau.contexts.input`'s outcomes
  * once a mailbox is composed (`admitted`, `replayed`, `conflict`,
  * `backlog-exhausted`), with an `admitted` outcome also naming the mailbox
  * command it created, which the caller needs to cancel the input it just
@@ -662,7 +662,7 @@ export type SessionInputAdmissionAttemptOutcome =
 /**
  * Runs one admission attempt against the mailbox-plus-identity-index scheme
  * the module doc describes. Returns exactly the outcomes
- * `Bureau.submitSessionInput` contracts for once a mailbox is composed:
+ * `Bureau.contexts.input` contracts for once a mailbox is composed:
  * `admitted`, `replayed`, `conflict`, `backlog-exhausted`.
  */
 export async function admitSessionInput(

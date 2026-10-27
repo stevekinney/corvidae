@@ -15,7 +15,7 @@ import type { AgentSession } from '@lostgradient/operative';
 
 import { ownerOrLocal } from '../owner-of-record.ts';
 import { resolveSessionOwner } from '../session-authority.ts';
-import type { Bureau } from '../types.ts';
+import type { BureauContexts } from '../types.ts';
 
 /** A session, and the owner of record the session itself names. */
 export type OwnedSession = { readonly session: AgentSession; readonly owner: string };
@@ -32,11 +32,11 @@ export function ownedSession(session: AgentSession | undefined): OwnedSession | 
  * created under the same id is a missing one.
  */
 export async function readSessionOwnedBy(
-  bureau: Pick<Bureau, 'getSession'>,
+  bureau: { readonly contexts: Pick<BureauContexts, 'get'> },
   threadId: string,
   owner: string,
 ): Promise<AgentSession | undefined> {
-  const loaded = ownedSession(await bureau.getSession(threadId));
+  const loaded = ownedSession(await bureau.contexts.get(threadId));
   return loaded?.owner === owner ? loaded.session : undefined;
 }
 

@@ -104,8 +104,11 @@ describe('a refused continuation’s history slot', () => {
         ...opened,
         handler: createBureauHandler(
           Object.create(opened.bureau, {
-            submitSessionInput: {
-              value: () => Promise.resolve({ outcome: 'session-terminal' }),
+            contexts: {
+              value: {
+                ...opened.bureau.contexts,
+                input: () => Promise.resolve({ outcome: 'session-terminal' }),
+              },
             },
             internals: {
               value: {

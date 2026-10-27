@@ -223,7 +223,7 @@ describe('resuming a tool approval', () => {
         expect(charges).toEqual([500]);
         expect(bureau.listRuns()).toHaveLength(2);
         // The conversation the new run ended with answers the call once.
-        const session = await bureau.getSession('thread-1');
+        const session = await bureau.contexts.get('thread-1');
         const history = session?.conversationHistory;
         const rows = history?.ids.map((id) => history.messages[id]!) ?? [];
         expect(rows.filter((row) => row.toolResult?.callId === 'call-1')).toHaveLength(1);
@@ -290,7 +290,7 @@ describe('resuming a tool approval', () => {
 
         expect(charges).toEqual([]);
         expect(frames.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
-        const session = await bureau.getSession('thread-1');
+        const session = await bureau.contexts.get('thread-1');
         const history = session?.conversationHistory;
         const row = history?.ids
           .map((id) => history.messages[id]!)
@@ -1444,9 +1444,9 @@ describe('a resume through the route of another published agent', () => {
           const review = await getReview(id);
           return review === undefined ? undefined : { ...review, agentName: undefined };
         });
-        const getSession = bureau.getSession.bind(bureau);
+        const getSession = bureau.contexts.get.bind(bureau);
         let failed = 0;
-        spyOn(bureau, 'getSession').mockImplementation(async (...args) => {
+        spyOn(bureau.contexts, 'get').mockImplementation(async (...args) => {
           if (failed === 0 && (new Error().stack ?? '').includes('sessionAgent')) {
             failed += 1;
             throw new Error('store unavailable');
@@ -1692,7 +1692,7 @@ describe('a resume retried after an attempt whose outcome was not written', () =
           const first = await startUntilInterrupted(harness.handler);
           const entries = [resolved(first.interruptIds[0]!)];
           await deadAttempt(harness, entries);
-          const stored = (await harness.bureau.getSession('thread-1'))!.conversationHistory;
+          const stored = (await harness.bureau.contexts.get('thread-1'))!.conversationHistory;
           const row = stored.ids
             .map((id) => stored.messages[id]!)
             .find((message) => message.toolResult?.callId === 'call-1');
@@ -1925,9 +1925,9 @@ describe('an approval no run can continue from', () => {
         const id = bureau.reviews.list()[0]!.id;
         // The claimant holds the command and dies inside the check that decides whether
         // a run can continue, before it has refused or resolved anything.
-        const getSession = bureau.getSession.bind(bureau);
+        const getSession = bureau.contexts.get.bind(bureau);
         let hung = 0;
-        spyOn(bureau, 'getSession').mockImplementation(async (...args) => {
+        spyOn(bureau.contexts, 'get').mockImplementation(async (...args) => {
           if (hung === 0 && (new Error().stack ?? '').includes('conversationAnswerable')) {
             hung += 1;
             return never();

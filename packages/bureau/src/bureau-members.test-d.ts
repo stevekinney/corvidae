@@ -1,12 +1,13 @@
-// Type-level tripwire (COR-1703, COR-1704, COR-1705): the flat review and schedule methods and the members
+// Type-level tripwire (COR-1703, COR-1704, COR-1705, COR-1706): the flat review, schedule, and session methods and the members
 // that moved onto `bureau.internals` must not return to `Bureau`'s top level. If this file stops
-// compiling, a member that belongs behind `reviews`, `schedules`, or `internals` was declared on
+// compiling, a member that belongs behind `reviews`, `schedules`, `contexts`, or `internals` was declared on
 // `Bureau` again.
 
 import type { BureauMemberPath } from './http/operation-map.ts';
 import type {
   Bureau,
   BureauAudit,
+  BureauContexts,
   BureauInternals,
   BureauReviews,
   BureauSchedules,
@@ -35,6 +36,20 @@ type RemovedScheduleMembers = Extract<
   | 'getScheduleInputPreview'
 >;
 
+/** The flat session methods that `bureau.contexts` replaced. */
+type RemovedSessionMembers = Extract<
+  keyof Bureau,
+  | 'listSessions'
+  | 'getSession'
+  | 'deleteSession'
+  | 'signalSession'
+  | 'submitSessionInput'
+  | 'sessionInputsDeliveredBy'
+  | 'submitSteeringCommand'
+  | 'getSessionSteering'
+  | 'forkSession'
+>;
+
 /** The members that moved onto `bureau.internals`, by their old top-level names. */
 type MovedToInternals = Extract<
   keyof Bureau,
@@ -56,6 +71,7 @@ type MovedToInternals = Extract<
 
 export type NoFlatReviewMembers = AssertNever<RemovedReviewMembers>;
 export type NoFlatScheduleMembers = AssertNever<RemovedScheduleMembers>;
+export type NoFlatSessionMembers = AssertNever<RemovedSessionMembers>;
 export type NothingMovedStaysOnBureau = AssertNever<MovedToInternals>;
 // `auditTrail` is reachable only as `internals.auditTrail`; `bureau.audit.query` reads it redacted.
 export type NoTopLevelAuditTrail = AssertNever<Extract<keyof Bureau, 'auditTrail'>>;
@@ -63,6 +79,7 @@ export type NoTopLevelAuditTrail = AssertNever<Extract<keyof Bureau, 'auditTrail
 // The replacements are declared, at the types the project document names.
 export type ReviewsAreDeclared = Bureau['reviews'] extends BureauReviews ? true : never;
 export type SchedulesAreDeclared = Bureau['schedules'] extends BureauSchedules ? true : never;
+export type ContextsAreDeclared = Bureau['contexts'] extends BureauContexts ? true : never;
 export type AuditIsDeclared = Bureau['audit'] extends BureauAudit ? true : never;
 export type InternalsAreDeclared = Bureau['internals'] extends BureauInternals ? true : never;
 
@@ -110,6 +127,24 @@ export type SchedulesMembers = AssertNever<
   >
 >;
 
+// `contexts` has exactly the eleven operations.
+export type ContextsMembers = AssertNever<
+  Exclude<
+    keyof BureauContexts,
+    | 'list'
+    | 'get'
+    | 'delete'
+    | 'signal'
+    | 'input'
+    | 'inputsDeliveredBy'
+    | 'steer'
+    | 'steering'
+    | 'fork'
+    | 'events'
+    | 'subscribeEvents'
+  >
+>;
+
 // `audit` has exactly the one operation.
 export type AuditMembers = AssertNever<Exclude<keyof BureauAudit, 'query'>>;
 
@@ -126,3 +161,6 @@ export const flatReviewMethod: BureauMemberPath = 'resolveReview';
 // @ts-expect-error -- the flat schedule method moved to `schedules`
 export const flatScheduleMethod: BureauMemberPath = 'createSchedule';
 export const schedulesCreate: BureauMemberPath = 'schedules.create';
+export const contextsGet: BureauMemberPath = 'contexts.get';
+// @ts-expect-error -- the flat session method moved to `contexts`
+export const flatSessionMethod: BureauMemberPath = 'getSession';

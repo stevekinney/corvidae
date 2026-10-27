@@ -1,6 +1,6 @@
 /**
  * `bureau.contexts.input`: admit one input to a context (a Bureau session) through
- * `Bureau.submitSessionInput`, so a client can follow up on a run that is still going.
+ * `Bureau.contexts.input`, so a client can follow up on a run that is still going.
  *
  * The delivery mode is always `steer`: the input reaches the run at its next step boundary
  * (COR-1476), and a run that ends before delivering it cancels it, so the client resends it.
@@ -33,7 +33,7 @@ import { defineOperation, type OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import { BureauError } from '../../create-bureau.ts';
-import type { Bureau, BureauInternals } from '../../types.ts';
+import type { BureauContexts, BureauInternals } from '../../types.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
 import {
   resourceNotFound,
@@ -43,14 +43,14 @@ import {
 
 /** What `bureau.contexts.input` reads from the handler's `host`. */
 export type BureauContextsInputOperationHost = BureauOwnershipHost & {
-  readonly contexts: Pick<Bureau, 'getSession' | 'submitSessionInput'> & {
+  readonly contexts: Pick<BureauContexts, 'get' | 'input'> & {
     readonly internals: Pick<BureauInternals, 'sessionStore'>;
   };
 };
 
 /**
  * The payload of an input: text, or an ordered list of parts. Its shape is decided by
- * `Bureau.submitSessionInput`, which refuses a payload no run could read.
+ * `Bureau.contexts.input`, which refuses a payload no run could read.
  */
 const inputPayloadSchema = z.union([z.string(), z.array(z.record(z.string(), z.unknown()))]);
 
@@ -162,7 +162,7 @@ export const contextsInputOperation = defineOperation<
     }
     const owner = ownerOfPrincipal(principal);
     // The one session loaded here is the one authorized and the one the input is admitted to.
-    const session = await host.contexts.getSession(contextId);
+    const session = await host.contexts.get(contextId);
     if (
       owner === undefined ||
       session === undefined ||
@@ -176,7 +176,7 @@ export const contextsInputOperation = defineOperation<
     }
     let outcome: SessionInputAdmissionOutcome;
     try {
-      outcome = await host.contexts.submitSessionInput(contextId, {
+      outcome = await host.contexts.input(contextId, {
         id: input.input.id,
         principal: owner,
         deliveryMode: 'steer',

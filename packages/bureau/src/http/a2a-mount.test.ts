@@ -1061,7 +1061,7 @@ describe('the second review pass', () => {
       const task = await sendForTask(opened, 'asker', { message: message('private words') });
       expect(task.history.length).toBeGreaterThan(0);
 
-      await opened.bureau.deleteSession(task.contextId);
+      await opened.bureau.contexts.delete(task.contextId);
       const read = await call(opened, 'asker', 'GetTask', { id: task.id });
 
       expect(read.body.result.history ?? []).toEqual([]);
@@ -1119,7 +1119,7 @@ describe('a context deleted and created again', () => {
       const old = await sendForTask(opened, 'asker', {
         message: message('first life', { contextId: 'ctx-reused' }),
       });
-      await opened.bureau.deleteSession('ctx-reused');
+      await opened.bureau.contexts.delete('ctx-reused');
       const fresh = await sendForTask(opened, 'asker', {
         message: message('second life', { contextId: 'ctx-reused' }),
       });

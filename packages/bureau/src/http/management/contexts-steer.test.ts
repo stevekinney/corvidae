@@ -1,6 +1,6 @@
 /**
  * COR-1559 — `bureau.contexts.steer` switches a context to a model its agent allows, by calling
- * `Bureau.submitSteeringCommand`, and answers with Bureau's own admission outcome as data. Only a
+ * `BureauContexts.steer`, and answers with Bureau's own admission outcome as data. Only a
  * context the caller cannot see, or a request that is malformed, is a fault.
  */
 import { createAgent } from '@lostgradient/operative';
@@ -205,9 +205,9 @@ describe('bureau.contexts.steer over a Bureau with a stubbed admission', () => {
       host: {
         ...host,
         contexts: {
-          getSession: opened.bureau.getSession,
+          get: opened.bureau.contexts.get,
           internals: { sessionStore: opened.bureau.internals.sessionStore },
-          submitSteeringCommand: submit,
+          steer: submit,
         } as never,
       },
       authenticate: async () => ({

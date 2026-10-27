@@ -112,7 +112,7 @@ function builtRows(...inputs: Array<MessageInput & { id: string }>): Message[] {
 }
 
 async function rowsOf({ bureau }: Opened, sessionId: string): Promise<Message[]> {
-  const session = await bureau.getSession(sessionId);
+  const session = await bureau.contexts.get(sessionId);
   const history = session!.conversationHistory;
   return history.ids.map((id) => history.messages[id]!);
 }
@@ -151,7 +151,7 @@ describe('a generated image a session row references', () => {
     expect(report.expired).not.toContain(assetId!);
     expect(await resolves(opened, assetId!)).toBe(true);
 
-    await bureau.deleteSession(created.sessionId);
+    await bureau.contexts.delete(created.sessionId);
     const afterDelete = await collect(opened);
 
     expect(afterDelete.expired).toContain(assetId!);
@@ -200,11 +200,11 @@ describe('a row copied into another session (appendMessages)', () => {
     async (deleted, survivor) => {
       const { opened, assetId } = await trunkAndCopy();
 
-      await opened.bureau.deleteSession(deleted);
+      await opened.bureau.contexts.delete(deleted);
       await opened.runtime.advance(5_000);
       await collect(opened);
 
-      expect(await opened.bureau.getSession(survivor)).toBeDefined();
+      expect(await opened.bureau.contexts.get(survivor)).toBeDefined();
       expect(await resolves(opened, assetId)).toBe(true);
     },
   );
@@ -212,8 +212,8 @@ describe('a row copied into another session (appendMessages)', () => {
   it('expires the shared asset once both sessions are gone', async () => {
     const { opened, assetId } = await trunkAndCopy();
 
-    await opened.bureau.deleteSession('trunk');
-    await opened.bureau.deleteSession('copy');
+    await opened.bureau.contexts.delete('trunk');
+    await opened.bureau.contexts.delete('copy');
     await opened.runtime.advance(5_000);
     const report = await collect(opened);
 
@@ -253,7 +253,7 @@ describe('a supplied image a user row references', () => {
     expect(report.expired).not.toContain(assetId);
     expect(await resolves(opened, assetId)).toBe(true);
 
-    await opened.bureau.deleteSession(created.sessionId);
+    await opened.bureau.contexts.delete(created.sessionId);
     const afterDelete = await collect(opened);
 
     expect(afterDelete.expired).toContain(assetId);
@@ -279,7 +279,7 @@ describe('a session saved with a copied history (a goal retry, a session fork)',
   it('claims the copied rows itself, so deleting the trunk leaves the copy able to resolve them', async () => {
     const opened = await openBureau();
     await paint(opened, 'trunk');
-    const loaded = await opened.bureau.getSession('trunk');
+    const loaded = await opened.bureau.contexts.get('trunk');
     const trunk = loaded!;
     const [assetId] = await assetIdsOf(opened, 'trunk');
 
@@ -294,7 +294,7 @@ describe('a session saved with a copied history (a goal retry, a session fork)',
     );
     for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
 
-    await opened.bureau.deleteSession('trunk');
+    await opened.bureau.contexts.delete('trunk');
     await opened.runtime.advance(5_000);
     await collect(opened);
 
@@ -372,10 +372,10 @@ describe('a session recreated under the id of a deleted one', () => {
       ],
     });
     await paint(opened, 'same-id', { appendMessages: rows });
-    const oldSession = await opened.bureau.getSession('same-id');
+    const oldSession = await opened.bureau.contexts.get('same-id');
     const oldIncarnation = oldSession!.incarnation;
     // The old incarnation is deleted, and a new session takes the id with the same row id and asset.
-    await opened.bureau.deleteSession('same-id');
+    await opened.bureau.contexts.delete('same-id');
     await paint(opened, 'same-id', { appendMessages: rows });
 
     // The old incarnation's release lands late, after the new session claimed.

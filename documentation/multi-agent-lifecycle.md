@@ -203,7 +203,7 @@ In Bureau, register a contract per child agent in `BureauOptions.children.signal
 
 `children.signal` takes `name: string` and `payload: unknown`. Bureau checks them against the contract at runtime, not at compile time. A signal that is sent but unacknowledged when the process dies is lost. After a restart, Bureau opens a new channel for each recovered durable child before its workflow resumes, and the parent can signal it again.
 
-Session-level steering commands (`submitSteeringCommand`, for example a model or effort change) are a separate surface for a session's runs. See [Effective context and steering](./runtime-contracts.md#effective-context-and-steering).
+Session-level steering commands (`bureau.contexts.steer`, for example a model or effort change) are a separate surface for a session's runs. See [Effective context and steering](./runtime-contracts.md#effective-context-and-steering).
 
 ## Budgets and delegated authority
 

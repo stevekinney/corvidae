@@ -175,7 +175,7 @@ async function prepareWithoutLaunching(configuration: StorageConfiguration | Sto
     agentName: 'researcher',
   });
   expect(await durableStatus(crashed, run.id)).toBe('pending');
-  const session = await crashed.getSession(run.sessionId);
+  const session = await crashed.contexts.get(run.sessionId);
   expect(session?.metadata['lastRunStatus']).toBe('running');
   return { ...run, crashed, release: hook.release };
 }
@@ -211,7 +211,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
       async () => (await durableStatus(restarted, run.id)) === 'cancelled',
       'the prepared record was never cancelled',
     );
-    const session = await restarted.getSession(run.sessionId);
+    const session = await restarted.contexts.get(run.sessionId);
     expect(session?.metadata['lastRunStatus']).toBe('aborted');
     expect(session?.metadata['lastFinishReason']).toBe('aborted');
     const lastError: unknown = session?.metadata['lastError'];
@@ -275,7 +275,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
     await restarted.waitForRecovery!();
     get.mockRestore();
 
-    const session = await restarted.getSession(run.sessionId);
+    const session = await restarted.contexts.get(run.sessionId);
     expect(session?.metadata['lastRunId']).toBe('another-run');
     expect(session?.metadata['lastRunStatus']).toBe('running');
   });
@@ -307,13 +307,13 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
     expect(recovery.attempted).toContainEqual([run.id, 'skip']);
     expect(recovery.rejected.filter(([runId]) => runId === run.id)).toEqual([]);
     expect(await durableStatus(restarted, run.id)).toBe('pending');
-    const session = await restarted.getSession(run.sessionId);
+    const session = await restarted.contexts.get(run.sessionId);
     expect(session?.metadata['lastRunStatus']).toBe('running');
 
     // The run is still the held process's: once its hook settles, it ends there.
     run.release();
     await waitForCondition(async () => {
-      const settled = await run.crashed.getSession(run.sessionId);
+      const settled = await run.crashed.contexts.get(run.sessionId);
       return settled?.metadata['lastRunStatus'] !== 'running';
     }, 'the held process never settled its run');
   });

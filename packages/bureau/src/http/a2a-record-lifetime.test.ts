@@ -256,7 +256,7 @@ describe('clearing a deleted context', () => {
     await withBureau(async ({ bureau, handle }) => {
       const handler = handle();
       const before = await sendOn(handler, 'first life');
-      await bureau.deleteSession(before.contextId);
+      await bureau.contexts.delete(before.contextId);
       const reborn = await sendOn(handler, 'second life', { contextId: before.contextId });
       const records = createA2ATaskRecords(bureau.internals.kv as ConditionalTextValueStore);
       const born = await records.read(reborn.id);

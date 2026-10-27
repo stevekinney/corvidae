@@ -119,7 +119,7 @@ describe('a Bureau run narrowed by an active skill (COR-1628)', () => {
 
     const run = await bureau.createRun({ agentName: 'default', message: 'activate, then ping' });
     const recorded = await pollUntil(async () => {
-      const session = await bureau.getSession(run.sessionId);
+      const session = await bureau.contexts.get(run.sessionId);
       const messages = session === undefined ? [] : getMessages(session.conversationHistory);
       return resultOf(messages, 'ping-1');
     }, 'the refusal to be recorded in the session');

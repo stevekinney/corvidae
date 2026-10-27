@@ -188,7 +188,7 @@ describe('the identity of every request', () => {
     const host = await start();
     const run = host.bureau.run('assistant', 'Who am I?');
     await run.result();
-    const [session] = await host.bureau.listSessions();
+    const [session] = await host.bureau.contexts.list();
     if (session === undefined) throw new Error('Expected the run to create a session.');
     expect(await host.bureau.getOwner({ kind: 'session', id: session.id })).toBe('anonymous:local');
   });

@@ -225,7 +225,7 @@ describe('an agent step', () => {
     const page = await harness.bureau.internals.taskRegistry.enumerate({ limit: 100, offset: 0 });
     expect(page.tasks.map((task) => task.id)).not.toContain(stepRunId);
     expect(await harness.bureau.internals.taskRegistry.record(stepRunId)).toBeUndefined();
-    expect(await harness.bureau.getSession(stepRunId)).toBeUndefined();
+    expect(await harness.bureau.contexts.get(stepRunId)).toBeUndefined();
   });
 });
 

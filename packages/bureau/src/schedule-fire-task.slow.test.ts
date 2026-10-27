@@ -162,7 +162,7 @@ describe('a schedule fire is a task of the schedule’s owner', () => {
         return tasksOf(listed).length > 0 ? listed : undefined;
       }, 'the fire to be found by its context');
       expect(tasksOf(filtered).map((task) => task.id)).toContain(done.id);
-      const session = await opened.bureau.getSession(done.contextId);
+      const session = await opened.bureau.contexts.get(done.contextId);
       const awaited7 = await opened.bureau.internals.taskRegistry.record(done.id);
       expect(awaited7?.incarnation).toBe(session?.incarnation);
       expect(session?.incarnation).toBeTruthy();

@@ -212,10 +212,10 @@ describe('the origin of a session a fire creates (COR-1645)', () => {
 
     await settledFire(bureau, created!.id);
 
-    const fires = await bureau.listSessions({ origin: 'schedule' });
+    const fires = await bureau.contexts.list({ origin: 'schedule' });
     expect(fires).toHaveLength(1);
     expect(fires[0]?.metadata['sessionOrigin']).toBe('schedule');
-    expect(await bureau.listSessions({ origin: 'chat' })).toEqual([]);
+    expect(await bureau.contexts.list({ origin: 'chat' })).toEqual([]);
   });
 
   it('leaves a chat’s origin alone when a fire continues it', async () => {
@@ -249,9 +249,9 @@ describe('the origin of a session a fire creates (COR-1645)', () => {
       return chat?.metadata['lastScheduledFireRunId'] === undefined ? undefined : true;
     }, 'the fire to run in the chat');
 
-    const chats = await bureau.listSessions({ origin: 'chat' });
+    const chats = await bureau.contexts.list({ origin: 'chat' });
     expect(chats.map((session) => session.id)).toEqual(['shared-chat']);
-    expect(await bureau.listSessions({ origin: 'schedule' })).toEqual([]);
+    expect(await bureau.contexts.list({ origin: 'schedule' })).toEqual([]);
   });
 });
 
