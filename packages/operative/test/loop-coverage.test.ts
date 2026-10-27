@@ -28,7 +28,7 @@ function runtimeAbortingOnTimer(controller: AbortController, delay: number, reas
     ...base,
     timers: {
       ...base.timers,
-      setTimeout: (callback: () => void, milliseconds: number) => {
+      setTimeout: (callback: () => void, milliseconds?: number) => {
         const handle = base.timers.setTimeout(callback, milliseconds);
         if (milliseconds === delay) queueMicrotask(() => controller.abort(reason));
         return handle;
