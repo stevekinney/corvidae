@@ -36,7 +36,7 @@ describe('attaching by run to a bureau.run() run of a hand-written agent', () =>
       id: 'ag-ui-run-owner',
       agents: { plain: handWritten },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     try {
       const handler = createBureauHandler(bureau, { authentication, publish: [], agUi: {} });

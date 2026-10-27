@@ -88,7 +88,6 @@ type Scene = {
 async function withScene<T>(body: (scene: Scene) => Promise<T>): Promise<T> {
   const harness = await openHarness({
     script: [park, park, park],
-    humanInput: true,
     stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     authentication,
   });

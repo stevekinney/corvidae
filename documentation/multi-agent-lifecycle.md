@@ -164,7 +164,7 @@ A Bureau child's `BureauChildRecord.status` uses the same four values. Every sta
 
 Each record also carries `revision` (starting at `1`, advanced by exactly one on every accepted write), `createdAt`, `updatedAt`, `settledAt`, `reattachedAt`, and `recoveries`. Every write is a compare-and-swap against the stored record, so a stale writer changes nothing.
 
-`record.workflow` says where the child runs. It is `{ kind: 'durable', workflowType: 'agentRun', workflowId }` when Bureau has a durable engine and the catalog agent supports definition resolution (every `createAgent` or `createLazyAgent` result does), and `{ kind: 'process-local' }` otherwise. Bureau has a durable engine when it has persistent `storage`, where durable execution is on by default, or any `storage` with `durableExecution: true`. Only a durable child can be reattached after a restart, and only persistent storage keeps its workflow across one.
+`record.workflow` says where the child runs. It is `{ kind: 'durable', workflowType: 'agentRun', workflowId }` when Bureau has a durable engine and the catalog agent supports definition resolution (every `createAgent` or `createLazyAgent` result does), and `{ kind: 'process-local' }` otherwise. Bureau has a durable engine when it has persistent `storage`, where durable execution is on by default, or any `storage` with `durable: true`. Only a durable child can be reattached after a restart, and only persistent storage keeps its workflow across one.
 
 A signal channel closes once, with the first of `'completed'`, `'failed'`, `'aborted'`, or `'disposed'`. After that, every send resolves as `channel-closed`, and every emit and registration is inert.
 
@@ -293,7 +293,7 @@ An unusable fork point rejects with `ForkThroughRunError` before anything is per
 | Setting | Required for | Notes |
 | --- | --- | --- |
 | `BureauOptions.agents` | Every child | The child's `agentName` must be a key. |
-| Persistent `storage` (for example `{ type: 'sqlite', path }`) with durable execution, the default for persistent storage | Durable children, recovery, and the audit trail | Without a durable engine, children are process-local. `durableExecution: true` over `memory` storage runs children durably, but nothing survives a restart. Without any storage, the topology lives in memory and there is no audit trail. |
+| Persistent `storage` (for example `{ type: 'sqlite', path }`) with durable execution, the default for persistent storage | Durable children, recovery, and the audit trail | Without a durable engine, children are process-local. `durable: true` over `memory` storage runs children durably, but nothing survives a restart. Without any storage, the topology lives in memory and there is no audit trail. |
 | `BureauOptions.children.signals` | `children.signal` | A contract keyed by child agent name. Contracts are code, so they are configured, not persisted. |
 | `BureauOptions.children.delegation.secret` | Delegation grants, and any effect of `authority` | A non-empty string; an empty one is a `BAD_REQUEST` at construction. Without `delegation`, `authority` is ignored. |
 | `BureauOptions.children.delegation.policyVersion` | Optional | Stamped on every grant. Defaults to `'bureau-delegation/1'`. |

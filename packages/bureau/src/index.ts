@@ -32,6 +32,16 @@ export type {
   AgentToolDescription,
 } from './agent-file-catalog';
 export type { AgentFileWriteResult } from './agent-file-writer';
+export type {
+  AgentSource,
+  DefinitionEntry,
+  DefinitionEntryProblem,
+  DefinitionSource,
+  DefinitionSourceChange,
+  DefinitionSourceHost,
+  WorkflowSource,
+} from './sources/definition-source';
+export { hashDefinitionBytes, SourceConflictError } from './sources/definition-source';
 export type { AgentRevision } from './agent-snapshot-store';
 export type {
   WorkflowDetail,
@@ -443,6 +453,8 @@ export type {
   BureauEventType,
   BureauMemoryAuthorityOptions,
   BureauOptions,
+  BureauReceiptRetentionOption,
+  BureauRetentionOptions,
   BureauRecoveryReport,
   BureauRunOptions,
   BureauShutdownOptions,
@@ -539,6 +551,7 @@ export { BUREAU_SCOPES, type BureauScope } from './http/bureau-scopes';
 export {
   RESUME_ATTEMPT_FAILED_MESSAGES,
   RESUME_ATTEMPT_STILL_GOING_MESSAGES,
+  RESUME_ROUND_CHANGED_MESSAGE,
 } from './http/ag-ui-resume-messages';
 export type {
   AbortInteractiveSurfacesCommand,

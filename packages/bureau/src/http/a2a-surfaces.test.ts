@@ -61,7 +61,6 @@ async function open() {
   const opened = await openBureau({
     agents: { asker: createAgent({ name: 'asker', generate: parksThenFinishes() }) },
     publish: ['asker'],
-    humanInput: true,
   });
   let store: InteractiveSurfaces | undefined;
   const bureau = Object.create(opened.bureau, {

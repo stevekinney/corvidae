@@ -38,9 +38,9 @@ async function withManualBureau(
     },
     runtime,
     storage: fixture.configuration,
-    durableExecution: true,
+    durable: true,
     durableOwnership: { ownership: 'none' },
-    durableBackgroundTasks: 'manual',
+    maintenance: 'manual',
     assets: { storage: createMemoryAssetStorage() },
   });
   try {

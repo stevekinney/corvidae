@@ -22,7 +22,9 @@ import {
   runAgentInput,
   startRequest,
 } from './ag-ui-fixtures.test-support.ts';
+import { ReviewRoundChangedError } from '../create-bureau.ts';
 import { DEFAULT_AG_UI_LEASE_MS } from './ag-ui-lease.ts';
+import { RESUME_ROUND_CHANGED_MESSAGE } from './ag-ui-resume-messages.ts';
 import { openRunStream } from './ag-ui-stream.ts';
 import {
   bureauMetadata,
@@ -534,6 +536,136 @@ describe('a resume after a supersession', () => {
   });
 });
 
+/** An entry that names the round of the approval it was made on, as a client that read it sends it. */
+function onRound(entry: ResumeEntry, round: unknown): ResumeEntry {
+  return { ...entry, metadata: { '@lostgradient/bureau': { round } } };
+}
+
+const roundOf = (bureau: Harness['bureau'], id: string) => {
+  const review = bureau.listPendingReviews().find((pending) => pending.id === id);
+  return review?.kind === 'tool-approval' ? review.round : undefined;
+};
+
+describe('a resume made on a round the approval has moved past (COR-1714)', () => {
+  it('decides nothing and says the approval changed, and the current round is still answerable', async () => {
+    const charges: number[] = [];
+    await withHarness(
+      { script: [chargeOnce, say('Never.')], toolbox: regatingToolbox(charges), storage: 'sqlite' },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        const id = first.interruptIds[0]!;
+        // Approved on round 0, and gated again: the same id is at round 1.
+        await readAgUiStream(await handler(resumeRequest([onRound(resolved(id), 0)])));
+        expect(roundOf(bureau, id)).toBe(1);
+        const ledgerBefore = await ledgerStates(bureau);
+        const resolve = spyOn(bureau, 'resolveReview');
+
+        const stale = await readAgUiStream(
+          await handler(resumeRequest([onRound(resolved(id), 0)], {}, 'client-run-3')),
+        );
+        const cancelled = await readAgUiStream(
+          await handler(
+            resumeRequest(
+              [onRound({ interruptId: id, status: 'cancelled' }, 0)],
+              {},
+              'client-run-4',
+            ),
+          ),
+        );
+        const staleCalls = resolve.mock.calls.length;
+        resolve.mockRestore();
+        // Refused before the ledger: neither left an entry of its own.
+        const ledgerAfterStale = await ledgerStates(bureau);
+        const current = await readAgUiStream(
+          await handler(resumeRequest([onRound(resolved(id), 1)], {}, 'client-run-5')),
+        );
+
+        for (const refused of [stale, cancelled]) {
+          expect(refused).toHaveLength(1);
+          expect(refused[0]!.event).toMatchObject({
+            type: EventType.RUN_ERROR,
+            code: 'REVIEW_ROUND_CHANGED',
+            message: RESUME_ROUND_CHANGED_MESSAGE,
+          });
+        }
+        expect(staleCalls).toBe(0);
+        expect(ledgerBefore).toEqual(['completed:superseded']);
+        expect(ledgerAfterStale).toEqual(ledgerBefore);
+        // The round the person read is the one decided: round 1 is answered and gated again.
+        expect(current.at(-1)!.event).toMatchObject({
+          type: EventType.RUN_FINISHED,
+          outcome: { type: 'interrupt' },
+        });
+        expect(roundOf(bureau, id)).toBe(2);
+        expect(charges).toEqual([]);
+      },
+    );
+  });
+
+  it('refuses a decision the fence turns away after the read the same way', async () => {
+    const charges: number[] = [];
+    await withHarness(
+      { script: [chargeOnce, say('Done.')], toolbox: approvalToolbox(charges), storage: 'sqlite' },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        const id = first.interruptIds[0]!;
+        // Gated again between the resume's read of the review and its decision.
+        const resolve = spyOn(bureau, 'resolveReview').mockRejectedValueOnce(
+          new ReviewRoundChangedError('now at round 1'),
+        );
+
+        const frames = await readAgUiStream(
+          await handler(resumeRequest([onRound(resolved(id), 0)])),
+        );
+
+        expect(resolve.mock.calls[0]?.[0]).toMatchObject({ id, round: 0 });
+        resolve.mockRestore();
+        expect(frames).toHaveLength(1);
+        expect(frames[0]!.event).toMatchObject({
+          code: 'REVIEW_ROUND_CHANGED',
+          message: RESUME_ROUND_CHANGED_MESSAGE,
+        });
+        expect(bureau.listPendingReviews()).toHaveLength(1);
+        expect(charges).toEqual([]);
+      },
+    );
+  });
+
+  it('refuses an entry whose round is not a round as INVALID_INPUT', async () => {
+    await withHarness(
+      { script: [chargeOnce, say('Done.')], toolbox: approvalToolbox([]) },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        const id = first.interruptIds[0]!;
+
+        const frames = await readAgUiStream(
+          await handler(resumeRequest([onRound(resolved(id), 'zero')])),
+        );
+
+        expect(frames[0]!.event).toMatchObject({ code: 'INVALID_INPUT' });
+        expect(bureau.listPendingReviews()).toHaveLength(1);
+      },
+    );
+  });
+
+  it('gives a caller who may not answer the interrupt the answer a missing id gets, whatever its round', async () => {
+    await withHarness(
+      { script: [chargeOnce, say('Done.')], toolbox: approvalToolbox([]), authentication },
+      async ({ handler }) => {
+        const first = await startUntilInterrupted(handler, as('alice-key'));
+
+        const stranger = await readAgUiStream(
+          await handler(
+            resumeRequest([onRound(resolved(first.interruptIds[0]!), 7)], as('bob-key')),
+          ),
+        );
+
+        expect(stranger[0]!.event).toMatchObject({ code: 'INTERRUPT_NOT_FOUND' });
+      },
+    );
+  });
+});
+
 describe('a resume whose run cannot start', () => {
   it('says the approvals were applied, and leaves the thread free for a new message', async () => {
     const charges: number[] = [];
@@ -848,7 +980,6 @@ describe('resuming a human wait', () => {
     await withHarness(
       {
         script: [askHuman, say('Thanks for the answer.')],
-        humanInput: true,
         stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
       },
       async ({ handler, bureau }) => {
@@ -879,7 +1010,6 @@ describe('resuming a human wait', () => {
     await withHarness(
       {
         script: [askHuman, say('Thanks.')],
-        humanInput: true,
         stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
       },
       async ({ handler, bureau }) => {
@@ -923,7 +1053,6 @@ describe('resuming a human wait', () => {
     await withHarness(
       {
         script: [askHuman, say('Thanks for the answer.')],
-        humanInput: true,
         stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
       },
       async ({ handler, bureau, generate }) => {
@@ -960,7 +1089,6 @@ describe('resuming a human wait', () => {
 describe('a human wait answered by a caller who may write but not read', () => {
   const options = {
     script: [askHuman, say('Thanks for the answer.')],
-    humanInput: true,
     stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     authentication,
   };
@@ -1901,7 +2029,6 @@ describe('a step that asks a human and calls a gated tool', () => {
         {
           script: [both, say('Waiting for the approval.'), say('Charged.')],
           toolbox: gateOnlyCharges(charges),
-          humanInput: true,
           storage: 'sqlite',
           ...(stop === undefined ? {} : { stopWhen: stop }),
         },
@@ -1996,7 +2123,6 @@ describe('the human’s answer, streamed under the id the run commits it by', ()
     },
   });
   const humanWait = {
-    humanInput: true,
     stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
   };
   const answerOf = (interruptId: string, text: string) =>

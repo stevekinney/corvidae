@@ -69,7 +69,7 @@ describe('a schedule’s fire', () => {
       const first = await createBureau<AgentDefinitions>({
         agents: { worker: createAgent({ generate: worker.generate }) },
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
       const created = await first.createSchedule({
@@ -83,7 +83,7 @@ describe('a schedule’s fire', () => {
       const second = await createBureau<AgentDefinitions>({
         agents: {},
         storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
+        durable: true,
         durableOwnership: { ownership: 'none' },
       });
       bureaus.push(second);
@@ -109,7 +109,7 @@ describe('a schedule’s fire', () => {
     const options = {
       agents: { worker: createAgent({ generate: worker.generate }) },
       storage: { type: 'sqlite', path: databasePath },
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
     } satisfies BureauOptions<AgentDefinitions>;
     try {
@@ -284,7 +284,7 @@ describe('a session or recovered run stored under the implicit "bureau" agent', 
     const diagnostics: string[] = [];
     const runtime = await createRuntimeComposition({
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       onDiagnostic: (event) => diagnostics.push(event.message),
     });
     try {

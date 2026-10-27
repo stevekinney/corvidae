@@ -57,9 +57,8 @@ async function openBureau(path: string) {
     },
     validators: [createCheckValidator()],
     storage: { type: 'sqlite', path },
-    durableExecution: true,
+    durable: true,
     durableOwnership: { ownership: 'none' },
-    humanInput: true,
   });
 }
 

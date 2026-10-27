@@ -56,6 +56,7 @@ import {
   resolveProviderGenerate,
   type Bureau,
 } from '@lostgradient/bureau';
+import { agentFileDirectory, workflowFileDirectory } from '@lostgradient/bureau/sources';
 import type { GenerateFunction } from '@lostgradient/operative';
 import {
   BunSQLiteStorage,
@@ -323,7 +324,6 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       },
       // A session run of a seeded agent is offered `requestHumanInput`, which `request-human-input`
       // calls to park for an operator's answer.
-      humanInput: true,
       validators: createSeededValidators(),
       // A file's `model` is a row of this catalog, so it runs with the key in the secrets.
       models: {
@@ -345,11 +345,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       assets: { storage: createDurableAssetStorage(storage) },
       // Agent files: Markdown files in Bungalow's `agents/` directory are agents (COR-1524). A
       // file's `model` is a row of the `models` catalog.
-      agentDirectory,
+      agentSource: agentFileDirectory(agentDirectory, { tools: createAgentFileTools() }),
       // Workflow files: JSON files in Bungalow's `workflows/` directory are agent-authored
       // workflows (COR-1527), registered with the Bureau's engine and run on their schedules.
-      workflowDirectory,
-      agentTools: createAgentFileTools(),
+      workflowSource: workflowFileDirectory(workflowDirectory),
     });
     held.bureau = bureau;
     if (options.seed !== false) {

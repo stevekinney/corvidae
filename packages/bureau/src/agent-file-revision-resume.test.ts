@@ -30,6 +30,7 @@ import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-s
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
 import type { Bureau } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { agentFileDirectory } from './sources/agent-file-directory';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -139,10 +140,10 @@ describe('a pending approval restored after a restart', () => {
     cleanups.push(() => built.mockRestore());
     const bureau: Bureau = await createBureau<AgentDefinitions>({
       agents: {},
-      agentDirectory: directory,
+      agentSource: agentFileDirectory(directory),
       models: { generate: () => async () => ({ content: 'ok', toolCalls: [] }) },
       storage,
-      durableExecution: true,
+      durable: true,
       onDiagnostic: () => undefined,
     });
     cleanups.push(() => bureau.dispose());
@@ -196,9 +197,9 @@ describe('a session run the durable engine resumes after a restart', () => {
     const storagePath = join(directory, 'bureau.sqlite');
     const hold = new Promise<never>(() => undefined);
     const overrides = {
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' as const },
-      durableBackgroundTasks: 'manual' as const,
+      maintenance: 'manual' as const,
       storage: { type: 'sqlite' as const, path: storagePath },
     };
 

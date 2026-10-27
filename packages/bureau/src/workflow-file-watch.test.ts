@@ -9,13 +9,13 @@ import { join } from 'node:path';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { nodeAgentFileOperations } from './agent-file-operations';
+import { nodeAgentFileOperations } from './sources/agent-file-operations';
 import {
   createWorkflowFileFixture,
   type WorkflowFileFixture,
   workflowFileText,
 } from './testing/workflow-file-fixtures.test-support';
-import { DIRECTORY_POLL_INTERVAL_MILLISECONDS } from './watched-directory';
+import { DIRECTORY_POLL_INTERVAL_MILLISECONDS } from './sources/watched-directory';
 
 const fixtures: WorkflowFileFixture[] = [];
 

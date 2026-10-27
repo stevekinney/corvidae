@@ -22,6 +22,8 @@ import {
   deriveWorkflowIdentifier,
   WORKFLOW_TOOL_NAMES,
 } from './workflow-tools';
+import { agentFileDirectory } from './sources/agent-file-directory';
+import { workflowFileDirectory } from './sources/workflow-file-directory';
 
 const harnesses: WorkflowToolsHarness[] = [];
 afterEach(async () => {
@@ -40,9 +42,10 @@ const STEPS = [
 ];
 
 async function fileOf(harness: WorkflowToolsHarness, id: string): Promise<Record<string, unknown>> {
-  return JSON.parse(
-    await readFile(join(harness.workflowDirectory, `${id}.json`), 'utf8'),
-  ) as Record<string, unknown>;
+  return JSON.parse(await readFile(join(harness.workflowsPath, `${id}.json`), 'utf8')) as Record<
+    string,
+    unknown
+  >;
 }
 
 async function scheduleStatus(harness: WorkflowToolsHarness): Promise<string | undefined> {
@@ -54,18 +57,23 @@ function hashOf(harness: WorkflowToolsHarness, id: string): string {
   return harness.bureau.workflows!.list().find((entry) => entry.id === id)!.hash!;
 }
 
+/** The workflow tools in an offered set: Bureau's own `requestHumanInput` rides beside them. */
+function workflowToolsOf(offered: readonly string[] | undefined): string[] {
+  return (offered ?? []).filter((name) => name.startsWith('workflows-'));
+}
+
 describe('which agents are offered the tools', () => {
   it('offers an agent file the tools it lists, and no others', async () => {
     const harness = await start({ agents: [] });
     await harness.putAgent('lister', ['workflows-list']);
     await harness.putAgent('bare', []);
     await harness.callTool('workflows-list', {}, { agent: 'lister' });
-    const listerOffered = harness.offered.at(-1);
+    const listerOffered = workflowToolsOf(harness.offered.at(-1));
     // The agent that lists none is offered none, so it makes no call, but its model is still asked.
     const bareCall = await harness.callTool('workflows-list', {}, { agent: 'bare' });
     expect(bareCall.outcome).not.toBe('success');
     expect(listerOffered).toEqual(['workflows-list']);
-    expect(harness.offered.at(-1)).toEqual([]);
+    expect(workflowToolsOf(harness.offered.at(-1))).toEqual([]);
   });
 
   it('names the five tools with hyphens, and lists them in the deployment’s tool catalog', async () => {
@@ -78,19 +86,18 @@ describe('which agents are offered the tools', () => {
     ]);
     const harness = await start();
     await harness.callTool('workflows-list', {});
-    expect(harness.offered[0]).toEqual([...WORKFLOW_TOOL_NAMES].toSorted());
+    expect(workflowToolsOf(harness.offered[0])).toEqual([...WORKFLOW_TOOL_NAMES].toSorted());
   });
 
   it('refuses a host tool with one of their names at createBureau, with BAD_REQUEST', async () => {
     for (const name of WORKFLOW_TOOL_NAMES) {
       const error = await createBureau({
         agents: {},
-        agentDirectory: '/nonexistent',
-        workflowDirectory: '/nonexistent-workflows',
+        agentSource: agentFileDirectory('/nonexistent', { tools: { [name]: lookupTool } }),
+        workflowSource: workflowFileDirectory('/nonexistent-workflows'),
         models: { generate: () => async () => ({ content: '', toolCalls: [] }) },
-        agentTools: { [name]: lookupTool },
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
       }).then(
         (bureau) => (bureau.dispose(), undefined),
         (failure: unknown) => failure,
@@ -104,9 +111,10 @@ describe('which agents are offered the tools', () => {
   it('accepts the same host tool name when no workflow directory is set', async () => {
     const bureau = await createBureau({
       agents: {},
-      agentTools: { 'workflows-list': lookupTool },
+      agentSource: agentFileDirectory('/nonexistent', { tools: { 'workflows-list': lookupTool } }),
+      models: { generate: () => async () => ({ content: '', toolCalls: [] }) },
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
     });
     await bureau.dispose();
   });
@@ -397,7 +405,7 @@ describe('workflows-update, workflows-pause, workflows-resume', () => {
 
   it('answers an update that would not load as invalid, and leaves the file as it was', async () => {
     const harness = await seeded();
-    const before = await readFile(join(harness.workflowDirectory, 'digest.json'), 'utf8');
+    const before = await readFile(join(harness.workflowsPath, 'digest.json'), 'utf8');
     const { result } = await harness.callTool('workflows-update', {
       id: 'digest',
       expectedHash: hashOf(harness, 'digest'),
@@ -405,7 +413,7 @@ describe('workflows-update, workflows-pause, workflows-resume', () => {
       steps: STEPS,
     });
     expect(result).toMatchObject({ status: 'invalid', code: 'invalid-document' });
-    expect(await readFile(join(harness.workflowDirectory, 'digest.json'), 'utf8')).toBe(before);
+    expect(await readFile(join(harness.workflowsPath, 'digest.json'), 'utf8')).toBe(before);
   });
 });
 
@@ -419,7 +427,7 @@ describe('workflows-list', () => {
       steps: STEPS,
       paused: true,
     });
-    await Bun.write(join(harness.workflowDirectory, 'broken.json'), '{ not json');
+    await Bun.write(join(harness.workflowsPath, 'broken.json'), '{ not json');
     await harness.bureau.workflows!.refresh();
 
     const { result } = await harness.callTool('workflows-list', {});
@@ -521,7 +529,7 @@ describe('who the tools act for', () => {
   it('lists nothing and answers every write as not-found for a run another principal owns, and changes nothing', async () => {
     const harness = await withWorkflow();
     const principal = 'api-key:alice';
-    const before = await readFile(join(harness.workflowDirectory, 'digest.json'), 'utf8');
+    const before = await readFile(join(harness.workflowsPath, 'digest.json'), 'utf8');
     const hash = hashOf(harness, 'digest');
 
     const listed = await harness.callTool('workflows-list', {}, { principal });
@@ -543,7 +551,7 @@ describe('who the tools act for', () => {
       expect(result, tool).toEqual({ status: 'not-found', id });
     }
 
-    expect(await readFile(join(harness.workflowDirectory, 'digest.json'), 'utf8')).toBe(before);
+    expect(await readFile(join(harness.workflowsPath, 'digest.json'), 'utf8')).toBe(before);
     expect(harness.bureau.workflows!.list().map((entry) => entry.id)).toEqual(['digest']);
   });
 
@@ -601,7 +609,7 @@ describe('a calling agent whose identifier is not an agent identifier', () => {
   it('gets invalid-agent from every tool and writes nothing', async () => {
     const harness = await start();
     await harness.callTool('workflows-create', { name: 'Digest', trigger: TRIGGER, steps: STEPS });
-    const before = await readFile(join(harness.workflowDirectory, 'digest.json'), 'utf8');
+    const before = await readFile(join(harness.workflowsPath, 'digest.json'), 'utf8');
     const hash = hashOf(harness, 'digest');
     const tools = createWorkflowTools({
       workflows: () => harness.bureau.workflows,
@@ -631,7 +639,7 @@ describe('a calling agent whose identifier is not an agent identifier', () => {
       expect(result).toMatchObject({ status: 'invalid', code: 'invalid-agent' });
       expect((result as { issues: unknown[] }).issues.length).toBeGreaterThan(0);
     }
-    expect(await readFile(join(harness.workflowDirectory, 'digest.json'), 'utf8')).toBe(before);
+    expect(await readFile(join(harness.workflowsPath, 'digest.json'), 'utf8')).toBe(before);
     expect(harness.bureau.workflows!.list().map((entry) => entry.id)).toEqual(['digest']);
   });
 });
@@ -640,7 +648,7 @@ describe('a file written by hand', () => {
   it('is listed and can be paused by an agent that did not write it', async () => {
     const harness = await start();
     await Bun.write(
-      join(harness.workflowDirectory, 'by-hand.json'),
+      join(harness.workflowsPath, 'by-hand.json'),
       workflowFileText('by-hand', { agent: 'someone' }),
     );
     await harness.bureau.workflows!.refresh();

@@ -333,6 +333,7 @@ import {
   payloadMaximumBytesOf,
   type WorkflowRuntime,
 } from './workflow-runtime';
+import { validateDefinitionSource } from './sources/validate-definition-source';
 import { collidingWorkflowToolName, createWorkflowTools } from './workflow-tools';
 import { createWorkflowSnapshotStore } from './workflow-snapshot-store';
 import {
@@ -492,6 +493,7 @@ import type {
   ResolveReviewInput,
   ResolveReviewResult,
   RetentionWindowOption,
+  BureauRetentionOptions,
   ReviewStatus,
   RunSummary,
   ServerFrame,
@@ -769,7 +771,7 @@ export interface WaitForDurableRunDependencies {
   getDurableRun: (runId: string) => Promise<WorkflowState | null | undefined>;
   /** Weft's result waiter for the run: resolves, or rejects with the run's own failure or another error. */
   awaitResult: (runId: string) => Promise<void>;
-  /** `durableBackgroundTasks: 'manual'`, where Weft installs no cross-engine poll. */
+  /** `maintenance: 'manual'`, where Weft installs no cross-engine poll. */
   manualBackgroundTasks: boolean;
 }
 
@@ -793,7 +795,7 @@ export async function resolveWaitForDurableRun(
   // bureau completes. Refuse it plainly instead of hanging.
   if (dependencies.manualBackgroundTasks) {
     throw new BureauError(
-      `waitForDurableRun("${runId}") cannot wait under durableBackgroundTasks: 'manual', ` +
+      `waitForDurableRun("${runId}") cannot wait under maintenance: 'manual', ` +
         `where nothing re-reads the durable store between maintenance passes; call ` +
         `runDurableMaintenance() and then getDurableRun() instead`,
       'UNSUPPORTED_CAPABILITY',
@@ -1671,7 +1673,7 @@ function validateSessionInputBacklogLimit(value: number | undefined, optionName:
 
 /**
  * AB-388 (Codex review, PR #597, "Reject non-finite and negative retention
- * durations"): `BureauOptions.auditRetention`'s `{ olderThan }` form feeds
+ * durations"): `BureauRetentionOptions.audit`'s `{ olderThan }` form feeds
  * `pruneAuditTrail`'s cutoff arithmetic (`now - retention.olderThan`)
  * directly — TypeScript's `number` type permits `NaN`, `Infinity`, and
  * negative values, none of which are safe here. `NaN` makes every
@@ -1686,14 +1688,14 @@ function validateSessionInputBacklogLimit(value: number | undefined, optionName:
 function validateAuditRetentionOption(value: { olderThan: number } | 'forever' | undefined): void {
   if (value === undefined || value === 'forever') return;
   if (!Number.isFinite(value.olderThan) || value.olderThan < 0) {
-    toBadRequest('"options.auditRetention.olderThan" must be a finite, non-negative number');
+    toBadRequest('"options.retention.audit.olderThan" must be a finite, non-negative number');
   }
 }
 
 /**
- * COR-1477 — `BureauOptions.eventRetention` and `taskRetention` feed a cutoff
+ * COR-1477 — `BureauRetentionOptions.events` and `retention.tasks` feed a cutoff
  * (`now - olderThan`) that decides what maintenance deletes, so they get the
- * same finite, non-negative rule `auditRetention` gets: `NaN` would compare
+ * same finite, non-negative rule `retention.audit` gets: `NaN` would compare
  * false against every timestamp, and a negative value moves the cutoff into
  * the future.
  */
@@ -1707,19 +1709,31 @@ function validateRetentionWindowOption(
   }
 }
 
-/** COR-1477 — {@link BureauOptions.eventRetention}'s default window: 7 days. */
+/**
+ * COR-1700 — `humanInput` and `wakeup` are on by default for a durable Bureau, so `true` says
+ * nothing and is refused: the only forms are `false`, and for `humanInput` an `inputSchemas` object.
+ */
+function rejectOptInToolOption(name: 'humanInput' | 'wakeup', value: unknown): void {
+  if (value === undefined || value === false) return;
+  if (name === 'humanInput' && typeof value === 'object' && value !== null) return;
+  toBadRequest(
+    `"options.${name}" is on by default for a durable Bureau, so ${value === true ? '`true`' : 'that value'} is not accepted; omit it, or pass \`false\` to turn it off`,
+  );
+}
+
+/** COR-1477 — {@link BureauRetentionOptions.events}'s default window: 7 days. */
 const DEFAULT_EVENT_RETENTION_MS = 7 * 86_400_000;
 
-/** COR-1477 — {@link BureauOptions.taskRetention}'s default window: 30 days. */
+/** COR-1477 — {@link BureauRetentionOptions.tasks}'s default window: 30 days. */
 const DEFAULT_TASK_RETENTION_MS = 30 * 86_400_000;
 
-/** {@link BureauOptions.taskRetention}, or its default window when none was given. */
-function taskRetentionOf(options: { readonly taskRetention?: RetentionWindowOption | undefined }) {
-  return options.taskRetention ?? { olderThan: DEFAULT_TASK_RETENTION_MS };
+/** {@link BureauRetentionOptions.tasks}, or its default window when none was given. */
+function taskRetentionOf(options: { readonly retention?: BureauRetentionOptions | undefined }) {
+  return options.retention?.tasks ?? { olderThan: DEFAULT_TASK_RETENTION_MS };
 }
 
 /**
- * COR-625 — `BureauOptions.checkpointRetention`'s `{ keepLast }` form feeds
+ * COR-625 — `BureauRetentionOptions.checkpoints`'s `{ keepLast }` form feeds
  * weft's `Engine.pruneCheckpoints` (COR-11), whose own contract requires a
  * non-negative integer. Bureau narrows that further to a POSITIVE integer:
  * `keepLast: 0` would discard a terminal run's entire checkpoint history,
@@ -1735,26 +1749,63 @@ function taskRetentionOf(options: { readonly taskRetention?: RetentionWindowOpti
 function validateCheckpointRetentionOption(value: CheckpointRetentionOption | undefined): void {
   if (value === undefined || value === 'keep-all') return;
   if (!Number.isInteger(value.keepLast) || value.keepLast <= 0) {
-    toBadRequest('"options.checkpointRetention.keepLast" must be a positive integer');
+    toBadRequest('"options.retention.checkpoints.keepLast" must be a positive integer');
   }
   const timeout = value.timeoutMilliseconds;
   if (timeout !== undefined && (!Number.isFinite(timeout) || timeout < 0)) {
     toBadRequest(
-      '"options.checkpointRetention.timeoutMilliseconds" must be a finite, non-negative number',
+      '"options.retention.checkpoints.timeoutMilliseconds" must be a finite, non-negative number',
     );
   }
 }
 
 /**
- * COR-424 — `BureauOptions.runCreationTerminalRetentionMs` decides when a
- * run-creation request id may create a second run, so a value that is not a
- * positive integer is a construction-time error, as Weft's mailbox treats its
- * own `terminalRetentionMs`.
+ * COR-424 — `BureauRetentionOptions.receipts` decides when a run-creation request id may create a
+ * second run, so a value that is not a positive integer is a construction-time error, as Weft's
+ * mailbox treats its own `terminalRetentionMs`. COR-1701: only `{ olderThan }` exists. A receipt
+ * is a deduplication ledger entry, and `'forever'` (or any other non-object) is refused rather
+ * than silently reading as the default. The parameter is `unknown` because the type already
+ * forbids what this refuses, and an untyped caller can still pass it.
  */
-function validateRunCreationRetentionOption(value: number | undefined): void {
+function validateReceiptRetentionOption(value: unknown): void {
   if (value === undefined) return;
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    toBadRequest('"options.runCreationTerminalRetentionMs" must be a positive integer');
+  if (typeof value !== 'object' || value === null) {
+    toBadRequest(
+      '"options.retention.receipts" must be { olderThan: number }; run-creation receipts cannot be kept forever',
+    );
+  }
+  const olderThan = (value as { readonly olderThan?: unknown }).olderThan;
+  if (typeof olderThan !== 'number' || !Number.isSafeInteger(olderThan) || olderThan <= 0) {
+    toBadRequest('"options.retention.receipts.olderThan" must be a positive integer');
+  }
+}
+
+/** COR-1701 — validates every window of {@link BureauOptions.retention}, each under its own key. */
+function validateRetentionOptions(retention: BureauRetentionOptions | undefined): void {
+  if (retention !== undefined && (typeof retention !== 'object' || retention === null)) {
+    toBadRequest('"options.retention" must be an object of retention windows');
+  }
+  validateAuditRetentionOption(retention?.audit);
+  validateRetentionWindowOption(retention?.events, 'retention.events');
+  validateRetentionWindowOption(retention?.tasks, 'retention.tasks');
+  validateCheckpointRetentionOption(retention?.checkpoints);
+  validateReceiptRetentionOption(retention?.receipts);
+}
+
+/**
+ * COR-1701: `Bureau.id` is the tenant every run's memory is written under, and the generated
+ * default changes on every start. Over a storage backend a restarted Bureau would therefore read
+ * an empty tenant while the old one sits unread, with nothing to say so. Refused before anything
+ * is composed, so no engine or store is left to release; the handler's `assertPersistence` keeps
+ * the broader check for a Bureau it serves.
+ */
+function assertMemoryTenantIsStable(
+  options: Pick<BureauOptions, 'memory' | 'storage' | 'id'>,
+): void {
+  if (options.memory !== undefined && options.storage !== undefined && options.id === undefined) {
+    toBadRequest(
+      '"options.memory" over "options.storage" needs an explicit "options.id": the memory tenant is the Bureau id, and a generated id changes on every start, so a restarted Bureau would read an empty tenant',
+    );
   }
 }
 
@@ -1913,7 +1964,7 @@ function needsAutomaticMaintenance(composed: {
   );
 }
 
-export async function createBureau<const D extends AgentDefinitions = AgentDefinitions>(
+export async function createBureau<const D extends AgentDefinitions = Record<never, never>>(
   options: BureauOptions<D>,
 ): Promise<Bureau<D>> {
   // AB-194: validated here (BAD_REQUEST at construction time). Admission
@@ -1936,17 +1987,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   const sessionInputPrincipalBacklogLimit =
     options.sessionInput?.principalBacklogLimit ?? DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT;
   // COR-1674: an unacceptable answer schema is a startup error, not a failure on the first park.
+  rejectOptInToolOption('humanInput', options.humanInput);
+  rejectOptInToolOption('wakeup', options.wakeup);
   validateHumanInputOption(options.humanInput);
-  validateAuditRetentionOption(options.auditRetention);
-  validateRetentionWindowOption(options.eventRetention, 'eventRetention');
-  validateRetentionWindowOption(options.taskRetention, 'taskRetention');
-  validateCheckpointRetentionOption(options.checkpointRetention);
-  validateRunCreationRetentionOption(options.runCreationTerminalRetentionMs);
+  validateRetentionOptions(options.retention);
   validateChildrenOption(options.children);
+  assertMemoryTenantIsStable(options);
   // COR-1577: `bureau` names the Bureau-wide default agent on the session path, which is told
   // apart from a catalog agent by name alone, so a catalog entry called `bureau` would be
   // shadowed there and run under another name on `bureau.run()`. Refused before anything is built.
-  if (Object.hasOwn(options.agents, BUREAU_AGENT_NAME)) {
+  if (options.agents !== undefined && Object.hasOwn(options.agents, BUREAU_AGENT_NAME)) {
     throw new BureauError(
       `Agent name "${BUREAU_AGENT_NAME}" is reserved for the Bureau-wide default agent, so a ` +
         `catalog agent cannot use it.`,
@@ -1956,27 +2006,22 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   validateModelsOptions(options.models, toBadRequest);
   // COR-1524: a model written in an agent file has to become a `generate` somehow, and only the
   // host holds the credentials to do it. Refused here rather than leaving every file unusable.
-  if (options.agentDirectory !== undefined) {
-    if (typeof options.agentDirectory !== 'string' || options.agentDirectory.trim() === '') {
-      toBadRequest('"options.agentDirectory" must be a non-empty path');
-    }
+  if (options.agentSource !== undefined) {
+    validateDefinitionSource('agentSource', 'agent', options.agentSource, toBadRequest);
     if (options.models?.generate === undefined) {
       toBadRequest(
-        '"options.models.generate" is required with "options.agentDirectory": it turns a model in the model catalog into the generate an agent file runs with',
+        '"options.models.generate" is required with "options.agentSource": it turns a model in the model catalog into the generate an agent file runs with',
       );
     }
   }
-  // COR-1527: a workflow directory is a path, like the agent directory.
-  if (options.workflowDirectory !== undefined) {
-    if (typeof options.workflowDirectory !== 'string' || options.workflowDirectory.trim() === '') {
-      toBadRequest('"options.workflowDirectory" must be a non-empty path');
-    }
+  if (options.workflowSource !== undefined) {
+    validateDefinitionSource('workflowSource', 'workflow', options.workflowSource, toBadRequest);
     // COR-1529: Bureau adds the workflow tools to the tool catalog itself, so a host tool that
     // already has one of their names would be silently shadowed or shadow them.
-    const colliding = collidingWorkflowToolName(options.agentTools);
+    const colliding = collidingWorkflowToolName(options.agentSource?.tools);
     if (colliding !== undefined) {
       toBadRequest(
-        `"options.agentTools" names a tool "${colliding}", which Bureau provides itself when "options.workflowDirectory" is set`,
+        `"options.agentSource.tools" names a tool "${colliding}", which Bureau provides itself when "options.workflowSource" is set`,
       );
     }
   }
@@ -2075,7 +2120,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // copy preserves key insertion order (the definition-order guarantee)
   // while defeating exactly that window; it does not deep-freeze individual
   // agent values, which is unchanged/out of scope.
-  const agentsSnapshot: D = { ...options.agents };
+  const agentsSnapshot = { ...options.agents } as D;
   // Forward the single resolved instance through `options.runtime` so
   // `createRuntimeComposition`'s own `options.runtime ?? createDefaultRuntimeServices()`
   // resolution (its contract for direct, non-Bureau callers) picks up this
@@ -2235,10 +2280,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   );
   // COR-1527: a workflow file's schedule and instances need the durable engine, so a Bureau
   // without one is refused rather than left with a directory that does nothing.
-  if (options.workflowDirectory !== undefined && !runtime.durable) {
+  if (options.workflowSource !== undefined && !runtime.durable) {
     await shutdownThenRethrow(
       new BureauError(
-        '"options.workflowDirectory" needs a durable engine: configure storage (or durableExecution) so workflow instances and schedules can persist',
+        '"options.workflowSource" needs a durable engine: configure storage (or durable) so workflow instances and schedules can persist',
         'BAD_REQUEST',
       ),
       async () => {
@@ -2362,16 +2407,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // `selector: 'available'` (AB-247/mod-02e's one named mechanism for this
     // transition).
     //
-    // COR-1524: with an `agentDirectory`, the Markdown files in it join the catalog. They are
+    // COR-1524: with an `agentSource`, the definitions in it join the catalog. They are
     // scanned before the catalog is handed out and before boot recovery runs, so the first
     // `bureau.agents.list()` and a resumed run both see the directory as it is now.
     // COR-1529: with a workflow directory the catalog also holds the workflow tools. They read the
     // workflow runtime and the run's identity when called, which is after construction has finished.
     agentToolCatalog =
-      options.workflowDirectory === undefined
-        ? (options.agentTools ?? {})
+      options.workflowSource === undefined
+        ? (options.agentSource?.tools ?? {})
         : {
-            ...options.agentTools,
+            ...options.agentSource?.tools,
             ...createWorkflowTools({
               workflows: () => workflowRuntime?.workflows,
               runIdentity: async (runId) => ({
@@ -2381,11 +2426,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             }),
           };
     fileAgents =
-      options.agentDirectory === undefined || options.models?.generate === undefined
+      options.agentSource === undefined || options.models?.generate === undefined
         ? undefined
         : createFileAgentRuntime({
             files: createAgentFileCatalog({
-              directory: options.agentDirectory,
+              source: options.agentSource,
               reservedIdentifiers: new Set(Object.keys(agentsSnapshot)),
               tools: agentToolCatalog,
               models,
@@ -2425,10 +2470,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // in `start()`, at the end of construction and before the engine recovers; the `agent` step runs
     // through `runWorkflowAgentStep`, defined below with the rest of the run machinery.
     workflowRuntime =
-      options.workflowDirectory === undefined || runtime.durable === undefined
+      options.workflowSource === undefined || runtime.durable === undefined
         ? undefined
         : createWorkflowRuntime({
-            directory: options.workflowDirectory,
+            source: options.workflowSource,
             // The composition's engine type hides `register`; it is the one Weft `Engine`, and
             // registering documents (`registerSource`) is exactly what it is lent out for here.
             engine: runtime.durable.engine as Engine,
@@ -2738,7 +2783,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           kv: runCreationKv,
           clock: runtimeServices.clock,
           identifiers: runtimeServices.identifiers,
-          terminalRetentionMs: options.runCreationTerminalRetentionMs,
+          terminalRetentionMs: options.retention?.receipts?.olderThan,
           observe: async ({ runId }): Promise<RunCreationObservation> => {
             const runState = store.getRun(runId);
             if (runState !== undefined) {
@@ -4068,7 +4113,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // terminal listeners still call the step unconditionally, so the
   // `run.cleanup-settled` audit record exists either way.
   const durableTerminalCleanup =
-    options.checkpointRetention && options.checkpointRetention !== 'keep-all'
+    options.retention?.checkpoints && options.retention?.checkpoints !== 'keep-all'
       ? runTerminalCheckpointCleanup
       : undefined;
   // AB-205/AB-37 — ids `abortRun` has already requested cancellation for
@@ -4671,8 +4716,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       durableEngine: Boolean(runtime.durable),
       memory: runtime.memory !== undefined,
       keyValueStore: Boolean(runtime.kv),
-      activeAuditRetention: Boolean(options.auditRetention && options.auditRetention !== 'forever'),
-    }) && options.durableBackgroundTasks !== 'manual';
+      activeAuditRetention: Boolean(
+        options.retention?.audit && options.retention?.audit !== 'forever',
+      ),
+    }) && options.maintenance !== 'manual';
 
   /**
    * Whether this process holds a tool approval, of a live run or a restored one, counting an
@@ -4714,7 +4761,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    */
   function ensureLazyExpirySweep(): void {
     if (lazyExpirySweepArmed || automaticMaintenanceRuns) return;
-    if (options.durableBackgroundTasks === 'manual' || maintenanceAdmissionClosed) return;
+    if (options.maintenance === 'manual' || maintenanceAdmissionClosed) return;
     lazyExpirySweepArmed = true;
     lazyExpirySweepTimer = runtimeServices.timers.setInterval(() => {
       if (lazyExpirySweepPass !== undefined) return;
@@ -7255,7 +7302,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // literal, silently breaking whichever tool composed first.
       const servicesRef: { current?: DurableRunDeps } = {};
       const wantsHumanInput = humanInputEnabled(options.humanInput) && !!runtime.durable;
-      const wantsWakeup = !!(options.wakeup && runtime.durable);
+      const wantsWakeup = options.wakeup !== false && !!runtime.durable;
       if (wantsHumanInput) {
         humanInputEmitter = new CompletableEventTarget<CombinedOperativeEventMap>();
       }
@@ -7467,7 +7514,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             agentName,
             runId,
           },
-          // Route through the durable engine when one was composed (durableExecution
+          // Route through the durable engine when one was composed (durable
           // + storage). The conversation already carries the seeded user/system
           // messages, so no separate `prompt` is passed — the workflow snapshots it.
           // The run is then checkpointed and resumes from its last step after a crash.
@@ -10199,7 +10246,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       awaitResult: async (id) => {
         await engine.getHandle(id).result();
       },
-      manualBackgroundTasks: options.durableBackgroundTasks === 'manual',
+      manualBackgroundTasks: options.maintenance === 'manual',
     });
   }
 
@@ -11032,7 +11079,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
   }
   /**
-   * AB-388: prunes the durable audit trail per `options.auditRetention`
+   * AB-388: prunes the durable audit trail per `options.retention?.audit`
    * (default `'forever'`, a no-op). References `auditTrailInstance` and
    * `eventHistoryInstance`, both declared further down this factory
    * function — safe because this function is only ever CALLED (from
@@ -11168,7 +11215,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    */
   async function pruneAuditTrail(): Promise<void> {
     if (!auditTrailInstance) return;
-    const retention = options.auditRetention;
+    const retention = options.retention?.audit;
     if (!retention || retention === 'forever') return;
 
     await durableEventProducerInstance?.waitForAllActiveWrites();
@@ -11241,7 +11288,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
   /**
    * COR-1477 — advances the durable event history's retention floor past every
-   * event older than {@link BureauOptions.eventRetention} (default 7 days), so
+   * event older than {@link BureauRetentionOptions.events} (default 7 days), so
    * the history is bounded. A reader resuming below the new floor, or an open
    * subscription it overtakes, receives one gap event. Runs ahead of
    * {@link pruneAuditTrail} in a pass, so that pass already clamps against the
@@ -11256,11 +11303,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * The instant (epoch milliseconds) before which {@link BureauOptions.eventRetention} retires an
+   * The instant (epoch milliseconds) before which {@link BureauRetentionOptions.events} retires an
    * event, or `undefined` when events are kept for ever.
    */
   function eventRetentionCutoff(): number | undefined {
-    const retention = options.eventRetention ?? { olderThan: DEFAULT_EVENT_RETENTION_MS };
+    const retention = options.retention?.events ?? { olderThan: DEFAULT_EVENT_RETENTION_MS };
     return retention === 'forever' ? undefined : runtimeServices.clock.now() - retention.olderThan;
   }
 
@@ -11268,20 +11315,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * COR-1524 — prunes the agent snapshots whose last run settled before the task retention
    * window. A snapshot is kept while any run that references it is retained: a session run's
    * reference goes when its task is deleted (`run.removed`), and any run's goes here once it has
-   * been settled for longer than {@link BureauOptions.taskRetention}, which is also what releases
+   * been settled for longer than {@link BureauRetentionOptions.tasks}, which is also what releases
    * a `bureau.run()` run, since those leave the run store on settling and are never deleted.
    * A run that has not settled keeps its snapshot, because it may still be resumed.
    */
   async function retainWorkflowSnapshots(): Promise<void> {
     if (workflowRuntime === undefined) return;
-    const retention = options.taskRetention ?? { olderThan: DEFAULT_TASK_RETENTION_MS };
+    const retention = options.retention?.tasks ?? { olderThan: DEFAULT_TASK_RETENTION_MS };
     if (retention === 'forever') return;
     await workflowRuntime.pruneSnapshots(runtimeServices.clock.now() - retention.olderThan);
   }
 
   async function retainAgentSnapshots(): Promise<void> {
     if (fileAgents === undefined) return;
-    const retention = options.taskRetention ?? { olderThan: DEFAULT_TASK_RETENTION_MS };
+    const retention = options.retention?.tasks ?? { olderThan: DEFAULT_TASK_RETENTION_MS };
     if (retention === 'forever') return;
     await fileAgents.snapshots.pruneSettledBefore(
       runtimeServices.clock.now() - retention.olderThan,
@@ -11320,7 +11367,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * COR-1477 — removes every terminal task older than {@link BureauOptions.taskRetention}
+   * COR-1477 — removes every terminal task older than {@link BureauRetentionOptions.tasks}
    * (default 30 days) through {@link deleteRun}, which removes the run from the
    * run store, so the store's `run.removed` event fires and Bureau's own
    * `run.removed` follows for dependents to release their state. A running
@@ -11347,7 +11394,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         cause: error,
       });
     }
-    const retention = options.taskRetention ?? { olderThan: DEFAULT_TASK_RETENTION_MS };
+    const retention = options.retention?.tasks ?? { olderThan: DEFAULT_TASK_RETENTION_MS };
     if (retention === 'forever') return 0;
     const cutoff = runtimeServices.clock.now() - retention.olderThan;
     const expired: string[] = [];
@@ -11423,7 +11470,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
   /**
    * COR-625 — the terminal-run cleanup step: one application of
-   * `options.checkpointRetention` to a durable run's weft checkpoint history,
+   * `options.retention?.checkpoints` to a durable run's weft checkpoint history,
    * run exactly once per run id and reported as a {@link RunCleanupAcknowledgement}.
    *
    * Memoized on `runId` in {@link terminalCheckpointCleanups}, which is what
@@ -11519,7 +11566,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // Nothing durable to retain: a process-local run has no checkpoint
     // history, which is this issue's own documented out-of-scope case.
     if (!durable) return { status: 'not-required' };
-    const retention = options.checkpointRetention;
+    const retention = options.retention?.checkpoints;
     if (!retention || retention === 'keep-all') return { status: 'not-required' };
 
     let state: WorkflowState | null;
@@ -11595,10 +11642,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * AB-388 (Codex review, PR #597, "Run audit retention for KV-backed
    * non-durable bureaus" / "Isolate the manual audit-retention sub-pass"):
    * `auditTrailInstance` is built whenever `runtime.kv` exists — a
-   * storage backend with `durableExecution: false` gives it a `kv`
+   * storage backend with `durable: false` gives it a `kv`
    * without ever giving `runtime.durable` a durable engine. Gating this whole
    * function's body on `!runtime.durable` (the ORIGINAL shape) made a
-   * configured `auditRetention` policy unreachable for exactly that
+   * configured `retention.audit` policy unreachable for exactly that
    * configuration — a manual host's own alarm/Cron trigger calling this
    * got an early `undefined` and never pruned anything, growing the
    * durable audit keys without bound. `runtime.durable.engine.runMaintenance()`
@@ -12258,7 +12305,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // AB-363 — Codex review PR #568, "Run ownership pruning in the automatic
   // maintenance profile": `runDurableMaintenance()` above is the ONLY
   // caller of `pruneStaleRunOwnership()`, but that wrapper is documented
-  // (`BureauOptions.durableBackgroundTasks`) as something only a
+  // (`BureauOptions.maintenance`) as something only a
   // manual/serverless host calls on its own alarm/Cron trigger. The
   // DEFAULT `'automatic'` profile instead has Weft run its OWN
   // `engine.runMaintenance()` on in-process intervals it starts and owns
@@ -12323,7 +12370,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   let automaticRunOwnershipPruneCurrentPass: Promise<void> | undefined;
   // AB-388 (Codex review, PR #597, "Run audit retention for KV-backed
   // non-durable bureaus"): widened from `runtime.durable` alone — a
-  // storage backend with `durableExecution: false` gives `runtime.kv` a value (and therefore later
+  // storage backend with `durable: false` gives `runtime.kv` a value (and therefore later
   // builds `auditTrailInstance`, further down this factory function)
   // without ever giving `runtime.durable` a durable engine. Checking
   // `runtime.kv` here rather than `auditTrailInstance` itself: that `let`
@@ -12338,7 +12385,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   //
   // AB-388 (Codex review, PR #597, "Start the KV-only timer only for
   // active retention"): a KV-only bureau (`runtime.kv` truthy, `runtime.durable`
-  // falsy) with no configured `options.auditRetention` (the default,
+  // falsy) with no configured `options.retention?.audit` (the default,
   // `'forever'`) has NOTHING for this timer to do — `pruneStaleRunOwnership()`
   // always no-ops without `eventHistoryInstance` (which requires
   // `runtime.durable`), and `pruneAuditTrail()` returns immediately for a
@@ -12346,7 +12393,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // recurring useless work AND kept the process alive (the interval handle
   // itself) until an operator explicitly called `shutdown()`. A durable
   // bureau (`runtime.durable` truthy) still always starts the timer
-  // regardless of `auditRetention`, since `pruneStaleRunOwnership()` has
+  // regardless of `retention.audit`, since `pruneStaleRunOwnership()` has
   // real work to do there independent of audit retention.
   if (automaticMaintenanceRuns) {
     automaticRunOwnershipPruneTimerStarted = true;
@@ -12367,7 +12414,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // manually calls `runDurableMaintenance()`).
       //
       // AB-388: the same guarded, awaited pass now also prunes the durable
-      // audit trail (`options.auditRetention`) — never a second, separate
+      // audit trail (`options.retention?.audit`) — never a second, separate
       // timer. Each sub-pass has its own try/catch so a failure in one
       // (e.g. a rejected `sessionStore.list()`) never prevents the others
       // from running this tick; each is diagnosed under its own message so
@@ -17170,7 +17217,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // close the raw Storage, and the KV/checkpoint views were created with
         // `disposeUnderlyingStorage: false` — so the explicit `disposeStorage` is
         // what actually releases the file handle (even when no engine was built,
-        // e.g. `durableExecution: false` with sqlite).
+        // e.g. `durable: false` with sqlite).
         try {
           // Observability dispose runs BEFORE engine dispose: it ends still-open
           // spans and unsubscribes the engine lifecycle listeners. If the engine
@@ -17328,7 +17375,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // it needs only `runtime.durable.engine.storage` and `runtimeServices`,
   // both already available here. "A persistent storage backend is
   // configured" (this issue's own acceptance criterion) means more than
-  // "`runtime.durable` exists" — a caller can force `durableExecution:
+  // "`runtime.durable` exists" — a caller can force `durable:
   // true` over `{ type: 'memory' }` storage (several existing shutdown
   // tests do exactly this) and get a real durable engine over genuinely
   // EPHEMERAL storage, which would make restart-durability a lie the
@@ -18074,7 +18121,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       ),
     fileAgents,
     // COR-1577 — `requestHumanInput` for a durable `bureau.run()` run.
-    humanInput: runtime.durable !== undefined ? options.humanInput : undefined,
+    humanInput: runtime.durable !== undefined ? options.humanInput : false,
     // COR-772 — a durable `bureau.run` parent aborted through its own handle
     // is a cancelled parent like any other. Once shutdown has begun, dispose
     // — not the policy — ends every live run, and boot recovery applies the
@@ -18095,12 +18142,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    */
   /**
    * The recorded state of a step's agent run once it has ended. `waitForDurableRun` refuses to wait
-   * under `durableBackgroundTasks: 'manual'`, where nothing re-reads the store between maintenance
+   * under `maintenance: 'manual'`, where nothing re-reads the store between maintenance
    * passes for an outside caller. This caller is the engine's own activity: the run is driven by
    * this engine's recovery, and its handle settles when maintenance drives it.
    */
   async function awaitWorkflowStepRun(runId: string) {
-    if (options.durableBackgroundTasks !== 'manual') return waitForDurableRun(runId);
+    if (options.maintenance !== 'manual') return waitForDurableRun(runId);
     const handle = runtime.durable?.engine.getHandle(runId);
     try {
       await handle?.result();
@@ -19003,7 +19050,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         await bureau.shutdown();
       });
     }
-    if (options.durableBackgroundTasks !== 'manual') runtime.durable?.engine.scheduler.start();
+    if (options.maintenance !== 'manual') runtime.durable?.engine.scheduler.start();
   }
   if (hasDeferredGatewayAuthority) {
     durableRecoveryDeferred = true;

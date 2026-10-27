@@ -45,7 +45,7 @@ async function boot() {
     },
     validators: [createCheckValidator()],
     storage: { type: 'memory' },
-    durableExecution: true,
+    durable: true,
     onDiagnostic: createDiagnostics().onDiagnostic,
   });
   const typed = bureau;

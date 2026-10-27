@@ -70,7 +70,7 @@ async function openBureau(
     agents: { picker },
     storage:
       options.path === undefined ? { type: 'memory' } : { type: 'sqlite', path: options.path },
-    ...(options.durable === false ? {} : { durableExecution: true }),
+    ...(options.durable === false ? {} : { durable: true }),
     ...(options.catalog === undefined ? {} : { models: options.catalog }),
   });
   cleanups.push(() => bureau.dispose());

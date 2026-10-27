@@ -131,7 +131,7 @@ async function openBureau(options: {
       default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
     },
     storage: storage.storage,
-    durableExecution: true,
+    durable: true,
     ...(options.diagnostics === undefined
       ? {}
       : {

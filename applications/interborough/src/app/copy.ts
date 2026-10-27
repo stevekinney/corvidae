@@ -1206,6 +1206,15 @@ export const REVIEWS_COPY = {
     message:
       'The tool ran or was refused as you decided, but its outcome could not be written into the conversation. The chat may show the approval as pending until it is reloaded. Do not decide it again.',
   },
+  /**
+   * The Bureau's answer when the approval was gated again after the row showed it
+   * (`REVIEW_ROUND_CHANGED`): it keeps its id, so the decision would have answered a request the
+   * person never read, and nothing was decided.
+   */
+  roundChanged: {
+    title: 'This review changed while you read it',
+    message: 'it was not decided. Read it again before deciding.',
+  },
   answerFailed: 'The answer was not sent',
   superseded:
     'The approval was gated again, so the tool did not run. A replacement approval is waiting.',

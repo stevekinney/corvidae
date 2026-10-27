@@ -1,7 +1,7 @@
 /**
  * COR-1524 — the child half of the agent file crash test.
  *
- * Usage: `bun agent-file-crash-child.ts <storagePath> <agentDirectory> <markerPath>`
+ * Usage: `bun agent-file-crash-child.ts <storagePath> <agentsPath> <markerPath>`
  *
  * Stands up a durable Bureau over an agent directory that holds `gone.md` and `edited.md`, starts
  * a `bureau.run` run and a session run of each, lets every one commit step 0 (a tool call) and park
@@ -16,12 +16,11 @@ import { createBureau } from '../create-bureau';
 import { lookupTool } from '../testing/agent-file-fixtures.test-support';
 import { CLAIM_RENEW_MS, CLAIM_TTL_MS } from './process-crash-work-integrity-fixtures';
 import type { AgentDefinitions } from '../agent-catalog';
+import { agentFileDirectory } from '../sources/agent-file-directory';
 
-const [storagePath, agentDirectory, markerPath] = process.argv.slice(2);
-if (storagePath === undefined || agentDirectory === undefined || markerPath === undefined) {
-  process.stderr.write(
-    'usage: agent-file-crash-child <storagePath> <agentDirectory> <markerPath>\n',
-  );
+const [storagePath, agentsPath, markerPath] = process.argv.slice(2);
+if (storagePath === undefined || agentsPath === undefined || markerPath === undefined) {
+  process.stderr.write('usage: agent-file-crash-child <storagePath> <agentsPath> <markerPath>\n');
   process.exit(2);
 }
 
@@ -30,8 +29,7 @@ let parked = 0;
 
 const bureau = await createBureau<AgentDefinitions>({
   agents: {},
-  agentDirectory,
-  agentTools: { 'lookup-order': lookupTool },
+  agentSource: agentFileDirectory(agentsPath, { tools: { 'lookup-order': lookupTool } }),
   models: {
     generate:
       () =>
@@ -45,7 +43,7 @@ const bureau = await createBureau<AgentDefinitions>({
       },
   },
   storage: { type: 'sqlite', path: storagePath },
-  durableExecution: true,
+  durable: true,
   durableOwnership: {
     ownership: 'workflow-lease',
     workflowClaimTtlMs: CLAIM_TTL_MS,

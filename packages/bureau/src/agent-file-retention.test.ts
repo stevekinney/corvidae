@@ -35,9 +35,9 @@ async function start(overrides: Partial<BureauOptions<AgentDefinitions>> = {}) {
     overrides: {
       runtime,
       storage: fixture.configuration,
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
-      durableBackgroundTasks: 'manual',
+      maintenance: 'manual',
       ...overrides,
     },
   });
@@ -80,8 +80,8 @@ describe('snapshot retention', () => {
     expect(await revisionCount(harness)).toBe(0);
   });
 
-  it('keeps a snapshot for ever under taskRetention "forever"', async () => {
-    const harness = await start({ taskRetention: 'forever' });
+  it('keeps a snapshot for ever under retention.tasks "forever"', async () => {
+    const harness = await start({ retention: { tasks: 'forever' } });
     await harness.bureau.run('researcher', 'one').result();
     await harness.runtime.deferred.drain();
     harness.at(3650 * DAY_MS);
@@ -168,9 +168,9 @@ async function startGated(answer: Promise<string>) {
     overrides: {
       runtime,
       storage: fixture.configuration,
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
-      durableBackgroundTasks: 'manual',
+      maintenance: 'manual',
     },
   });
   harnesses.push(harness);

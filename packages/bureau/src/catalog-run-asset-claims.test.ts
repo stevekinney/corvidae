@@ -159,7 +159,7 @@ function createEnvironment(): Environment {
 
 async function openBureau(
   environment: Environment,
-  agents: Parameters<typeof createBureau>[0]['agents'],
+  agents: NonNullable<Parameters<typeof createBureau>[0]['agents']>,
   extra: Partial<Parameters<typeof createBureau>[0]> = {},
 ): Promise<Bureau> {
   const bureau = await createBureau({
@@ -261,7 +261,7 @@ function seededConversation(early: MediaContent, last: MediaContent) {
   return history;
 }
 
-const durableEngine = { storage: { type: 'memory' as const }, durableExecution: true };
+const durableEngine = { storage: { type: 'memory' as const }, durable: true };
 
 async function storageDirectory(): Promise<{
   readonly storage: { type: 'sqlite'; path: string };
@@ -469,7 +469,7 @@ describe.each([
 });
 
 describe('a bureau.run() at shutdown', () => {
-  const durable = { durableExecution: true };
+  const durable = { durable: true };
 
   it('releases its claims when the default abort policy cancels it for good, without a diagnostic', async () => {
     const environment = createEnvironment();
@@ -573,7 +573,7 @@ describe('a bureau.run() at shutdown', () => {
 
 describe('a run recovered after a restart', () => {
   const recovering = {
-    durableExecution: true,
+    durable: true,
     durableOwnership: { ownership: 'none' as const },
   };
 
@@ -723,7 +723,7 @@ describe.each([
       agents: { worker },
       validators: [validator],
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       assets: { storage: fixture.storage, policy: { defaultRetentionMilliseconds: 0 } },
       onDiagnostic: () => undefined,
     };
@@ -827,7 +827,7 @@ describe('a goal whose session is deleted before the hand-over claims for it', (
       agents: { worker },
       validators: [validator],
       storage: { type: 'memory' },
-      durableExecution: true,
+      durable: true,
       assets: { storage: fixture.storage, policy: { defaultRetentionMilliseconds: 0 } },
       onDiagnostic: () => undefined,
     });
@@ -922,7 +922,7 @@ describe('a goal attempt across a restart', () => {
       agents: { worker },
       validators: [createCheckValidator()],
       ...location,
-      durableExecution: true,
+      durable: true,
       durableOwnership: { ownership: 'none' },
       assets: { storage: fixture.storage, policy: { defaultRetentionMilliseconds: 0 } },
       onDiagnostic,

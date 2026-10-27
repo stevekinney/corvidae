@@ -17,11 +17,12 @@ import { createBureau } from './create-bureau';
 import * as runtimeCompositionModule from './runtime-composition';
 import {
   createConstructionWindowFixtures,
-  agentDirectoryGenerate,
+  constructionWindowGenerate,
 } from './testing/construction-window.test-support';
 import type { Bureau, BureauDiagnostic } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 import { storageOverTextStore } from './testing/text-store-storage.test-support';
+import { agentFileDirectory } from './sources/agent-file-directory';
 
 const bureaus: Bureau[] = [];
 const fixtures = createConstructionWindowFixtures();
@@ -210,11 +211,11 @@ describe('every listener and timer registered before a top-level await (COR-1585
     const diagnostics: BureauDiagnostic[] = [];
     const building = createBureau<AgentDefinitions>({
       agents: {},
-      agentDirectory: await fixtures.agentDirectoryWithOneFile(),
-      models: { generate: agentDirectoryGenerate },
+      agentSource: agentFileDirectory(await fixtures.directoryWithOneAgentFile()),
+      models: { generate: constructionWindowGenerate },
       storage: storageOverTextStore(persistence),
-      durableExecution: false,
-      auditRetention: { olderThan: 86_400_000 },
+      durable: false,
+      retention: { audit: { olderThan: 86_400_000 } },
       store,
       runtime,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),

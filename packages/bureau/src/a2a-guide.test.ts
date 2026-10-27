@@ -47,7 +47,7 @@ async function example(console: Recorder): Promise<void> {
       private: createAgent({ name: 'private', generate: summarize }),
     },
     storage: { type: 'memory' },
-    durableExecution: true, // A2A needs a durable engine: every send creates its task through it
+    durable: true, // A2A needs a durable engine: every send creates its task through it
     assets: { storage: createMemoryAssetStorage() },
   });
 

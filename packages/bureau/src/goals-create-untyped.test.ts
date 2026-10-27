@@ -26,7 +26,7 @@ async function boot(): Promise<Bureau> {
     agents: { worker: workerAgent(hangUntilAborted) },
     validators: [createCheckValidator()],
     storage: { type: 'memory' },
-    durableExecution: true,
+    durable: true,
     onDiagnostic: createDiagnostics().onDiagnostic,
   });
   const typed = bureau as unknown as Bureau;

@@ -105,7 +105,7 @@ describe('a resolved fire approval leaves nothing of its own in the session', ()
 
   it('retires the fence with the fire’s task, and not before', async () => {
     const bureau = await open({
-      taskRetention: { olderThan: 1 },
+      retention: { tasks: { olderThan: 1 } },
       agents: {
         default: createAgent({
           generate: chargesOnce,
@@ -557,7 +557,7 @@ describe('a fire’s approval is fenced across Bureau processes by the durable d
     const firstCharges: number[] = [];
     const first = await open({
       storage,
-      taskRetention: { olderThan: 1 },
+      retention: { tasks: { olderThan: 1 } },
       agents: {
         default: createAgent({
           generate: chargesOnce,
@@ -716,7 +716,6 @@ describe('a fire’s task stream ends when its last review closes', () => {
       return askingGenerate()(context);
     };
     const bureau = await open({
-      humanInput: true,
       storage: { type: 'sqlite', path: harness.nextDatabasePath() },
       agents: {
         default: createAgent({
@@ -864,7 +863,6 @@ describe('a fire’s review is announced', () => {
 
   it('announces a human wait once, as review.requested, with the signal it waits on', async () => {
     const bureau = await open({
-      humanInput: true,
       storage: { type: 'sqlite', path: harness.nextDatabasePath() },
       agents: {
         default: createAgent({
@@ -948,7 +946,7 @@ describe('a bureau.run() run stays off the store scan (COR-1302)', () => {
       toolbox: createToolbox([]),
       stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     });
-    const bureau = await open({ agents: { asker: agent }, humanInput: true });
+    const bureau = await open({ agents: { asker: agent } });
 
     const run = bureau.run('asker', 'go', { principal: OWNER.alice });
     await reviewOf(bureau, run.id);

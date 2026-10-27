@@ -12,7 +12,7 @@ describe('a recovered catalog run with part input (COR-716)', () => {
     const runtime = await createRuntimeComposition(
       {
         storage: { type: 'memory' },
-        durableExecution: true,
+        durable: true,
         guardrails: { input: { detectors: [], assetSafety: { unknown: 'block' } } },
       },
       {
