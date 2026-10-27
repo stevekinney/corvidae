@@ -79,12 +79,6 @@ type SubscriptionExecution = Promise<
   }>
 >;
 
-function isSubscriptionStartEnvelope(value: unknown): value is SubscriptionStartEnvelope {
-  if (value === null || typeof value !== 'object') return false;
-  if (!('subscriptionId' in value) || !('cursor' in value)) return false;
-  return typeof value.subscriptionId === 'string' && typeof value.cursor === 'string';
-}
-
 function subscriptionResponseEnvelope(
   envelope: unknown,
   subscriptionId: string,
@@ -96,13 +90,6 @@ function subscriptionResponseEnvelope(
 
 function requiresSubscriptionClose(disposed: boolean, signal: AbortSignal): boolean {
   return disposed || signal.aborted;
-}
-
-function hasRequiredSubscriptionEnvelope(
-  envelope: unknown,
-  requiresStartEnvelope: boolean,
-): boolean {
-  return !requiresStartEnvelope || isSubscriptionStartEnvelope(envelope);
 }
 
 function releaseSubscriptionLease(lease: ConnectionLease | undefined): void {
@@ -275,15 +262,6 @@ export function createJsonRpcWebSocketSession(
     };
     if (requiresSubscriptionClose(disposed, controller.signal)) {
       await closeSubscriptionAfterClose(closeOnce);
-      return;
-    }
-    if (!hasRequiredSubscriptionEnvelope(envelope, requiresStartEnvelope)) {
-      await closeSubscriptionAfterClose(closeOnce);
-      emitResponse(request, {
-        jsonrpc: JSON_RPC_VERSION,
-        error: { code: JSON_RPC_ERROR_CODES.INTERNAL_ERROR, message: 'internal error' },
-        id: request.id ?? null,
-      });
       return;
     }
     const lease = acquireSubscriptionLease(acquire);
