@@ -56,11 +56,11 @@ async function boot() {
 const UNOPENABLE = ['.', '..'];
 
 describe('a session id a browser would resolve away', () => {
-  it.each(UNOPENABLE)('may not be the new session %s of createRun', async (sessionId) => {
+  it.each(UNOPENABLE)('may not be the new session %s of tasks.start', async (sessionId) => {
     const bureau = await boot();
 
-    const error = await bureau
-      .createRun({ agentName: 'default', message: 'hello', sessionId })
+    const error = await bureau.tasks
+      .start('default', 'hello', { contextId: sessionId })
       .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(BureauError);
@@ -84,13 +84,9 @@ describe('a session id a browser would resolve away', () => {
   it('is still free when it only contains dots', async () => {
     const bureau = await boot();
 
-    const run = await bureau.createRun({
-      agentName: 'default',
-      message: 'hello',
-      sessionId: '...',
-    });
+    const run = await bureau.tasks.start('default', 'hello', { contextId: '...' });
 
-    expect(run.sessionId).toBe('...');
+    expect(run.contextId).toBe('...');
   });
 });
 
@@ -137,7 +133,7 @@ async function bootOver(storage: Storage) {
 
 describe('a session that already holds an id a browser would resolve away', () => {
   it.each(UNOPENABLE)(
-    'keeps working: createRun and a schedule take the session %s',
+    'keeps working: tasks.start and a schedule take the session %s',
     async (sessionId) => {
       // Such a session can exist: another client, or an earlier version, made it. The refusal is for
       // creating one.
@@ -152,11 +148,7 @@ describe('a session that already holds an id a browser would resolve away', () =
       );
       const bureau = await bootOver(storage);
 
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'hello again',
-        sessionId,
-      });
+      const run = await bureau.tasks.start('default', 'hello again', { contextId: sessionId });
       const schedule = await bureau.schedules.create({
         agentName: 'worker',
         input: 'x',
@@ -164,7 +156,7 @@ describe('a session that already holds an id a browser would resolve away', () =
         sessionId,
       });
 
-      expect(run.sessionId).toBe(sessionId);
+      expect(run.contextId).toBe(sessionId);
       expect(schedule?.id).toBeDefined();
     },
   );

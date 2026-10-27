@@ -139,7 +139,7 @@ async function recoveredAbandonScenario(scope: ScenarioScope): Promise<void> {
       }),
     );
     const bureau = recovering;
-    await scope.phase('recovery', async () => bureau.waitForRecovery?.());
+    await scope.phase('recovery', async () => bureau.recovery());
 
     // No save of the run's end happens here, so nothing will ever record it: the wait says so,
     // while the Bureau is still open and not because it was shut down.

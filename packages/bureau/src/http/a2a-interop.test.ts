@@ -95,7 +95,10 @@ describe('the A2A mount with the @a2a-js/sdk client', () => {
       expect(fetched.status?.state).toBe(TaskState.TASK_STATE_COMPLETED);
 
       const running = asTask(await waiter.sendMessage(send('wait', true)));
-      await waitForCondition(() => opened.bureau.getRun(running.id)?.status === 'running', 'run');
+      await waitForCondition(
+        () => opened.bureau.tasks.detail(running.id)?.status === 'running',
+        'run',
+      );
       const canceled = await waiter.cancelTask({ tenant: '', id: running.id, metadata: undefined });
       expect(canceled.id).toBe(running.id);
       await waitForCondition(async () => {

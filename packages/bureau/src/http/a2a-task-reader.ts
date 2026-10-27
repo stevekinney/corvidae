@@ -10,7 +10,7 @@ import { Message, type Task } from '@a2a-js/sdk';
 
 import type { InteractiveSurface } from '../interactive-surface/types.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
-import type { Bureau, BureauReviews } from '../types.ts';
+import type { Bureau, BureauReviews, BureauTasks } from '../types.ts';
 import { A2UI_EXTENSION_URI } from '../a2ui/catalogs.ts';
 import { type FormsAuditInternals, formsOf, withPreviousForms } from './a2a-input-forms.ts';
 import {
@@ -32,10 +32,9 @@ import type { MultiModalContent } from 'conversationalist';
 import { replyPartsOf } from './a2a-reply-parts.ts';
 
 /** The part of a Bureau the reader needs. */
-export type A2ATaskReaderBureau = Pick<
-  Bureau,
-  'getRun' | 'eventHistory' | 'assets' | 'surfaces'
-> & { readonly reviews: Pick<BureauReviews, 'get'> } & {
+export type A2ATaskReaderBureau = Pick<Bureau, 'assets' | 'surfaces'> & {
+  readonly tasks: Pick<BureauTasks, 'detail' | 'events'>;
+} & { readonly reviews: Pick<BureauReviews, 'get'> } & {
   readonly internals: FormsAuditInternals & { readonly taskRegistry: Pick<TaskRegistry, 'record'> };
 };
 
@@ -91,7 +90,7 @@ export function createTaskReader(options: {
     if (recorded !== undefined && recorded.length > 0) {
       return { parts: recorded, textOnlyFallback: false };
     }
-    const run = bureau.getRun(view.id);
+    const run = bureau.tasks.detail(view.id);
     const final = run?.stepDetails.findLast((step) => step.final);
     if (final !== undefined) {
       const projected = await replyPartsOf(final.parts, context);
@@ -106,10 +105,10 @@ export function createTaskReader(options: {
     let content: string | undefined;
     let held: readonly unknown[] = [];
     for (;;) {
-      const page = await bureau.eventHistory(
-        { kind: 'run', id: view.id },
-        { ...(since === undefined ? {} : { since }), limit: 200 },
-      );
+      const page = await bureau.tasks.events(view.id, {
+        ...(since === undefined ? {} : { since }),
+        limit: 200,
+      });
       if (!('events' in page)) break;
       for (const event of page.events) {
         if (event.kind !== 'run.completed') continue;

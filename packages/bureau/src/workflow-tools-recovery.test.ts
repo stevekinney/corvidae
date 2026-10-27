@@ -55,9 +55,9 @@ it('writes the file as the agent after a restart, for a session run that was in 
   }
 
   const stuck = await open(() => new Promise<never>(() => {}));
-  const created = await stuck.createRun({ message: 'write it', agentName: 'scribe' });
+  const created = await stuck.tasks.start('scribe', 'write it');
   for await (const _turn of awakeTurns()) {
-    if ((await stuck.getDurableRun(created.id)) !== undefined) break;
+    if ((await stuck.tasks.workflow(created.id)) !== undefined) break;
     await Bun.sleep(5);
   }
   // The first process is left as a crash leaves it: the run is in flight in the store, and nothing
@@ -89,8 +89,8 @@ it('writes the file as the agent after a restart, for a session run that was in 
     };
   });
   cleanups.push(() => second.dispose());
-  await second.waitForRecovery?.();
-  await second.waitForDurableRun(created.id);
+  await second.recovery();
+  await second.tasks.wait(created.id);
 
   expect(results).toHaveLength(1);
   expect(results[0]).toMatchObject({ outcome: 'success', content: { status: 'ok', id: 'digest' } });

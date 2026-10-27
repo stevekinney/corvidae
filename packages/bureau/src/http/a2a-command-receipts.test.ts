@@ -200,7 +200,7 @@ describe('the command-receipts extension', () => {
         state: 'expired',
         reason: 'deadline-exceeded',
       });
-      expect(opened.bureau.getRun(late.result.task.id)).toBeUndefined();
+      expect(opened.bureau.tasks.detail(late.result.task.id)).toBeUndefined();
     });
   });
 

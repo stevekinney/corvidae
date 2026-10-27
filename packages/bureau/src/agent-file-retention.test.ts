@@ -7,7 +7,7 @@ import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createSqliteStorageFixture } from './test/storage-fixtures';
-import { waitForRunState } from './test';
+import { runTask, waitForTaskState } from './test';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
 import type { BureauOptions } from './types';
@@ -60,72 +60,72 @@ describe('snapshot retention', () => {
   it('keeps a snapshot until the last bureau.run run on it is past task retention', async () => {
     const harness = await start();
     const { bureau, runtime, at } = harness;
-    await bureau.run('researcher', 'one').result();
+    await runTask(bureau, 'researcher', 'one');
     at(10 * DAY_MS);
-    await bureau.run('researcher', 'two').result();
+    await runTask(bureau, 'researcher', 'two');
     await runtime.deferred.drain();
 
     // 30 days after the first settled but only 20 after the second.
     at(30 * DAY_MS + 1);
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
     expect(await revisionCount(harness)).toBe(1);
 
     // Still inside the window of the second.
     at(40 * DAY_MS);
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
     expect(await revisionCount(harness)).toBe(1);
 
     at(40 * DAY_MS + 1);
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
     expect(await revisionCount(harness)).toBe(0);
   });
 
   it('keeps a snapshot for ever under retention.tasks "forever"', async () => {
     const harness = await start({ retention: { tasks: 'forever' } });
-    await harness.bureau.run('researcher', 'one').result();
+    await runTask(harness.bureau, 'researcher', 'one');
     await harness.runtime.deferred.drain();
     harness.at(3650 * DAY_MS);
-    await harness.bureau.runDurableMaintenance();
+    await harness.bureau.maintain();
     expect(await revisionCount(harness)).toBe(1);
   });
 
   it('releases a session run’s snapshot when its task is deleted, not before', async () => {
     const harness = await start();
     const { bureau, runtime, at } = harness;
-    const first = await bureau.createRun({ message: 'one', agentName: 'researcher' });
-    await waitForRunState(bureau, first.id);
+    const first = await bureau.tasks.start('researcher', 'one');
+    await waitForTaskState(bureau, first.id);
     at(10 * DAY_MS);
-    const second = await bureau.createRun({ message: 'two', agentName: 'researcher' });
-    await waitForRunState(bureau, second.id);
+    const second = await bureau.tasks.start('researcher', 'two');
+    await waitForTaskState(bureau, second.id);
     await runtime.deferred.drain();
 
     // 30 days after the first settled but only 20 after the second: its task goes, the snapshot
     // stays for the second's.
     at(30 * DAY_MS + 1);
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
     await runtime.deferred.drain();
-    expect(bureau.getRun(first.id)).toBeUndefined();
+    expect(bureau.tasks.detail(first.id)).toBeUndefined();
     expect(await revisionCount(harness)).toBe(1);
 
     at(40 * DAY_MS + 1);
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
     await runtime.deferred.drain();
-    expect(bureau.getRun(second.id)).toBeUndefined();
+    expect(bureau.tasks.detail(second.id)).toBeUndefined();
     expect(await revisionCount(harness)).toBe(0);
   });
 
   it('prunes a session run’s snapshot through the same retention pass that deletes its task', async () => {
     const harness = await start();
     const { bureau, runtime, at } = harness;
-    const created = await bureau.createRun({ message: 'one', agentName: 'researcher' });
-    await waitForRunState(bureau, created.id);
+    const created = await bureau.tasks.start('researcher', 'one');
+    await waitForTaskState(bureau, created.id);
     await runtime.deferred.drain();
     expect(await revisionCount(harness)).toBe(1);
 
     at(30 * DAY_MS + 1);
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
     await runtime.deferred.drain();
-    expect(bureau.getRun(created.id)).toBeUndefined();
+    expect(bureau.tasks.detail(created.id)).toBeUndefined();
     expect(await revisionCount(harness)).toBe(0);
   });
 
@@ -133,21 +133,21 @@ describe('snapshot retention', () => {
     const gate = Promise.withResolvers<string>();
     const harness = await startGated(gate.promise);
     const { bureau, runtime, at } = harness;
-    const running = bureau.run('researcher', 'long');
+    const running = await bureau.tasks.start('researcher', 'long');
     await harness.started;
 
     at(365 * DAY_MS);
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
     expect(await revisionCount(harness)).toBe(1);
 
     gate.resolve('done');
     await running.result();
     await runtime.deferred.drain();
     at(366 * DAY_MS);
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
     expect(await revisionCount(harness)).toBe(1);
     at(366 * DAY_MS + 365 * DAY_MS);
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
     expect(await revisionCount(harness)).toBe(0);
   });
 });

@@ -36,6 +36,7 @@ import {
 } from './agent-definitions-fixtures.test-support.ts';
 import { rpc } from './management-fixtures.test-support.ts';
 import { createMemoryAssetStorage } from '../../assets/storage';
+import { runTask } from '../../test';
 
 afterEach(disposeServed);
 
@@ -406,7 +407,7 @@ describe('results', () => {
         'revisions',
       ).length,
     ).toBe(1);
-    await served.bureau.run('researcher', 'again').result();
+    await runTask(served.bureau, 'researcher', 'again');
     const revisions = listOf(
       await callAs(served.owner, 'bureau.agents.definitions.revisions', { id: 'researcher' }),
       'revisions',
@@ -811,7 +812,7 @@ describe('the audit trail', () => {
 
   it('files an entry under an owner the deployment can resolve, so an operator and the owner read it', async () => {
     const served = await serve();
-    expect(await served.bureau.getOwner({ kind: 'audit', runId: 'agent:researcher' })).toBe(
+    expect(await served.bureau.ownerOf({ kind: 'audit', runId: 'agent:researcher' })).toBe(
       'anonymous:local',
     );
   });

@@ -36,7 +36,7 @@ async function waitForReview(host: Host, runId: string) {
 
 async function waitForCompleted(host: Host, runId: string): Promise<void> {
   for await (const _turn of awakeTurns()) {
-    const run = await host.bureau.getDurableRun(runId);
+    const run = await host.bureau.tasks.workflow(runId);
     if (run?.status === 'completed') return;
   }
   throw new Error(`Run "${runId}" did not complete.`);
@@ -51,10 +51,7 @@ describe('a parked run across a clean host restart', () => {
   test('keeps the review and completes after the next host resolves it', async () => {
     const home = await createHome();
     const first = await start(home);
-    const run = await first.bureau.createRun({
-      agentName: 'request-human-input',
-      message: 'Ship the release',
-    });
+    const run = await first.bureau.tasks.start('request-human-input', 'Ship the release');
     const firstReview = await waitForReview(first, run.id);
     expect(firstReview).toMatchObject({
       kind: 'human-wait',

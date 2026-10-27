@@ -26,6 +26,7 @@ import {
   startStream,
 } from './ag-ui-engine-failure.test-support.ts';
 import { FrameReader, typesOf } from './ag-ui-stream.test-support.ts';
+import { listHeldTasks } from '../test';
 
 /** Text no client may ever see: the storage adapter's own, which can name tables and paths. */
 const ADAPTER_TEXT = 'relation "wf_secret_table" violates a constraint at /var/db/store';
@@ -74,18 +75,18 @@ describe('a refused workflow-state or event-history write (COR-1626)', () => {
             // The run's own end, not the stream's deadline.
             expect(last?.event).not.toMatchObject({ code: 'STREAM_DEADLINE' });
             expect(typesOf(stream.received)).not.toContain(EventType.RUN_FINISHED);
-            const runId = bureau.listRuns()[0]!.id;
+            const runId = listHeldTasks(bureau)[0]!.id;
             // A run that reports its own error ends its stream before the session has saved the
             // run's end, so wait for that save: `internals.whenTaskRecorded` is what a stuck run never reached.
             await bureau.internals.whenTaskRecorded(runId);
-            expect(bureau.listRuns()[0]?.status).toBe('error');
+            expect(listHeldTasks(bureau)[0]?.status).toBe('error');
             const session = await bureau.contexts.get('thread-1');
             expect(session?.metadata['lastRunStatus']).toBe('error');
             // The storage adapter's text stays in the operator's logs: no client-facing record
             // (the stream, the saved session, the run record) carries it.
             expect(JSON.stringify(stream.received)).not.toContain('wf_secret_table');
             expect(JSON.stringify(session?.metadata)).not.toContain('wf_secret_table');
-            expect(JSON.stringify(bureau.listRuns())).not.toContain('wf_secret_table');
+            expect(JSON.stringify(listHeldTasks(bureau))).not.toContain('wf_secret_table');
 
             // The thread takes a new message once storage accepts writes again.
             refusing.lift();
@@ -134,9 +135,9 @@ describe('a completion that landed and then met refused retries (COR-1626)', () 
       const last = stream.received.at(-1);
       expect(last?.event.type).toBe(EventType.RUN_FINISHED);
       expect(last?.event).not.toMatchObject({ code: 'STREAM_DEADLINE' });
-      const runId = bureau.listRuns()[0]!.id;
+      const runId = listHeldTasks(bureau)[0]!.id;
       await bureau.internals.whenTaskRecorded(runId);
-      expect(bureau.listRuns()[0]?.status).toBe('completed');
+      expect(listHeldTasks(bureau)[0]?.status).toBe('completed');
       const session = await bureau.contexts.get('thread-1');
       expect(session?.metadata['lastRunStatus']).toBe('completed');
     } finally {

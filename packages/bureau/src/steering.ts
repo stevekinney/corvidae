@@ -750,7 +750,7 @@ export function createSteeringGate(
    * next run's step 0: AB-67's own operation table applies agent, provider,
    * model, route, and effort changes "no earlier than the entry of the next
    * `runStep` call", and only agent-identity carries the extra
-   * next-`bureau.run` deferral (it has to — swapping the agent mid-run
+   * next-task deferral (it has to — swapping the agent mid-run
    * would change the tool set and hook plan underneath a run already in
    * flight, which the four backend coordinates do not).
    *

@@ -1,7 +1,7 @@
 /**
  * COR-1629 — Bureau's maintenance pass sweeps governed memory's retention. A run's collection fills
  * to `maxRecordsPerCollection` and stays full unless something expires its records, and governed
- * memory runs nothing on a timer of its own. The pass, the manual `runDurableMaintenance()` and the
+ * memory runs nothing on a timer of its own. The pass, the manual `maintain()` and the
  * automatic timer both, calls `sweepRetention()` under a `service:bureau` authority before it
  * advances the deletions the sweep opened.
  */
@@ -35,7 +35,7 @@ import {
   createRunMemoryAuthority,
   DEFAULT_RUN_MEMORY_CAPABILITIES,
 } from './runtime-composition';
-import { waitForRunState } from './test';
+import { waitForTaskState } from './test';
 import type { Bureau } from './types';
 
 const BUREAU_ID = 'retention-bureau';
@@ -217,7 +217,7 @@ describe('the maintenance pass sweeps governed memory retention (COR-1629)', () 
     expect(built.calls.slice(0, 2)).toEqual(['sweepRetention', 'processDeletionPropagation']);
   });
 
-  it('deletes nothing under manual background tasks until runDurableMaintenance is called', async () => {
+  it('deletes nothing under manual background tasks until maintain is called', async () => {
     const built = fixture();
     const { bureau, diagnostics } = await start(built);
     await remember(built.memory, 'alice', 'alpha', 'An old answer.');
@@ -227,7 +227,7 @@ describe('the maintenance pass sweeps governed memory retention (COR-1629)', () 
     expect(await contentsOf(built.memory, 'alice', 'alpha')).toEqual(['An old answer.']);
     expect(built.calls).toEqual([]);
 
-    expect(await bureau.runDurableMaintenance()).toBe(true);
+    expect(await bureau.maintain()).toBe(true);
 
     expect(await contentsOf(built.memory, 'alice', 'alpha')).toEqual([]);
     expect(diagnostics.filter((diagnostic) => diagnostic.level === 'error')).toEqual([]);
@@ -245,7 +245,7 @@ describe('the maintenance pass sweeps governed memory retention (COR-1629)', () 
     await remember(built.memory, 'alice', 'alpha', 'Alice alpha, recent.');
     await built.runtime.advance(31 * DAY);
 
-    expect(await bureau.runDurableMaintenance()).toBe(true);
+    expect(await bureau.maintain()).toBe(true);
 
     expect(await contentsOf(built.memory, 'alice', 'alpha')).toEqual(['Alice alpha, recent.']);
     expect(await contentsOf(built.memory, 'alice', 'beta')).toEqual([]);
@@ -259,7 +259,7 @@ describe('the maintenance pass sweeps governed memory retention (COR-1629)', () 
     await remember(built.memory, 'alice', 'alpha', 'An old answer.');
     await built.runtime.advance(91 * DAY);
 
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
 
     expect(built.calls).toEqual(['sweepRetention', 'processDeletionPropagation']);
     // Opening the sweep's deletion attempted its bounded-async target once, which reported
@@ -277,7 +277,7 @@ describe('the maintenance pass sweeps governed memory retention (COR-1629)', () 
     await remember(built.memory, 'alice', 'alpha', 'An old answer.');
     await built.runtime.advance(91 * DAY);
 
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
 
     const [event] = await sweptEvents(built);
     expect(event?.attribution).toMatchObject({
@@ -326,13 +326,13 @@ describe('the maintenance pass sweeps governed memory retention (COR-1629)', () 
     });
     await built.runtime.advance(91 * DAY);
 
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
     // The first pass opened the held record's exempt receipt.
     expect(await sweptEvents(built)).toHaveLength(1);
     const receipts = await built.ledger.listReceipts({ tenantId: BUREAU_ID });
     expect(receipts.filter((receipt) => receipt.awaitingHoldRelease)).toHaveLength(1);
 
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
 
     // Nothing else expired or prunable: the second pass has nothing to say.
     expect(await sweptEvents(built)).toHaveLength(1);
@@ -362,7 +362,7 @@ describe('overlapping maintenance passes share one sweep (COR-1629)', () => {
       async () => built.calls.includes('sweepRetention'),
       'expected the automatic pass to start its sweep',
     );
-    const manual = bureau.runDurableMaintenance();
+    const manual = bureau.maintain();
     await Promise.resolve();
     expect(built.calls.filter((call) => call === 'sweepRetention')).toHaveLength(1);
 
@@ -386,8 +386,8 @@ describe('overlapping maintenance passes share one sweep (COR-1629)', () => {
     });
     const { bureau, diagnostics } = await start(built);
 
-    const first = bureau.runDurableMaintenance();
-    const second = bureau.runDurableMaintenance();
+    const first = bureau.maintain();
+    const second = bureau.maintain();
     await Promise.resolve();
     gate.release();
     expect(await Promise.all([first, second])).toEqual([true, true]);
@@ -398,7 +398,7 @@ describe('overlapping maintenance passes share one sweep (COR-1629)', () => {
     expect(diagnostics.filter((diagnostic) => diagnostic.level === 'error')).toHaveLength(1);
 
     // The sweep is no longer in flight, so the next pass starts a fresh one.
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
     expect(built.calls.filter((call) => call === 'sweepRetention')).toHaveLength(2);
   });
 });
@@ -419,13 +419,11 @@ describe('a full collection accepts writes again after a maintenance pass (COR-1
     await built.runtime.advance(91 * DAY);
 
     const chat = async (sessionId: string) => {
-      const run = await bureau.createRun({
-        agentName: 'alpha',
-        sessionId,
+      const run = await bureau.tasks.start('alpha', 'Anything new?', {
+        contextId: sessionId,
         principal: 'api-key:alice',
-        message: 'Anything new?',
       });
-      await waitForRunState(bureau, run.id);
+      await waitForTaskState(bureau, run.id);
     };
 
     await chat('chat-1');
@@ -441,7 +439,7 @@ describe('a full collection accepts writes again after a maintenance pass (COR-1
       'Two.',
     ]);
 
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
     expect(await contentsOf(built.memory, 'api-key:alice', 'alpha')).toEqual([]);
 
     await chat('chat-2');
@@ -492,8 +490,8 @@ describe('a failing retention sweep is isolated (COR-1629)', () => {
       const built = fixture({ sweep });
       const { bureau, diagnostics } = await start(built);
 
-      expect(await bureau.runDurableMaintenance()).toBe(true);
-      expect(await bureau.runDurableMaintenance()).toBe(true);
+      expect(await bureau.maintain()).toBe(true);
+      expect(await bureau.maintain()).toBe(true);
 
       const errors = diagnostics.filter((diagnostic) => diagnostic.level === 'error');
       expect(errors).toHaveLength(2);
@@ -520,7 +518,7 @@ describe('a Bureau without governed memory (COR-1629)', () => {
     await built.runtime.advance(91 * DAY);
 
     expect(bureau.memory).toBeUndefined();
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
 
     expect(built.calls).toEqual([]);
     expect(await contentsOf(built.memory, 'alice', 'alpha')).toEqual(['An old answer.']);

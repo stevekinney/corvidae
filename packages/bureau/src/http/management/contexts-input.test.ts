@@ -25,8 +25,11 @@ async function withBureau<T>(
 
 /** A session whose run is still going, so it can take input. */
 async function liveSession(opened: OpenedBureau, principal: string = OWNER.alice) {
-  const run = await opened.bureau.createRun({ agentName: 'default', message: 'work', principal });
-  await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'running', 'run started');
+  const run = await opened.bureau.tasks.start('default', 'work', { principal });
+  await waitForCondition(
+    () => opened.bureau.tasks.detail(run.id)?.status === 'running',
+    'run started',
+  );
   return run;
 }
 
@@ -42,14 +45,14 @@ describe('bureau.contexts.input', () => {
     await withBureau({}, async (opened) => {
       const run = await liveSession(opened);
 
-      const body = await send(opened, run.sessionId, 'alice-key');
+      const body = await send(opened, run.contextId, 'alice-key');
 
       expect(body.error).toBeUndefined();
       expect(body.result).toMatchObject({
         outcome: 'admitted',
         receipt: {
           id: 'input-1',
-          sessionId: run.sessionId,
+          sessionId: run.contextId,
           deliveryMode: 'steer',
           state: 'accepted',
         },
@@ -61,8 +64,8 @@ describe('bureau.contexts.input', () => {
     await withBureau({}, async (opened) => {
       const run = await liveSession(opened);
 
-      const first = await send(opened, run.sessionId, 'alice-key');
-      const retry = await send(opened, run.sessionId, 'alice-key');
+      const first = await send(opened, run.contextId, 'alice-key');
+      const retry = await send(opened, run.contextId, 'alice-key');
 
       expect(retry.result).toMatchObject({ outcome: 'replayed' });
       expect(retry.result?.['receipt']).toEqual(first.result?.['receipt']);
@@ -72,9 +75,9 @@ describe('bureau.contexts.input', () => {
   it('answers a different input under a used id as a Conflict with reason input-conflict', async () => {
     await withBureau({}, async (opened) => {
       const run = await liveSession(opened);
-      await send(opened, run.sessionId, 'alice-key');
+      await send(opened, run.contextId, 'alice-key');
 
-      const body = await send(opened, run.sessionId, 'alice-key', {
+      const body = await send(opened, run.contextId, 'alice-key', {
         id: 'input-1',
         payload: 'something else',
       });
@@ -90,14 +93,15 @@ describe('bureau.contexts.input', () => {
 
   it('answers a context that has ended as a Conflict with reason session-terminal', async () => {
     await withBureau({ generate: answering() }, async (opened) => {
-      const run = await opened.bureau.createRun({
-        agentName: 'default',
-        message: 'done soon',
+      const run = await opened.bureau.tasks.start('default', 'done soon', {
         principal: OWNER.alice,
       });
-      await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'completed', 'finish');
+      await waitForCondition(
+        () => opened.bureau.tasks.detail(run.id)?.status === 'completed',
+        'finish',
+      );
 
-      const body = await send(opened, run.sessionId, 'alice-key');
+      const body = await send(opened, run.contextId, 'alice-key');
 
       expect(body.error?.data).toMatchObject({
         httpStatus: 409,
@@ -111,7 +115,7 @@ describe('bureau.contexts.input', () => {
     await withBureau({}, async (opened) => {
       const run = await liveSession(opened);
 
-      const body = await send(opened, run.sessionId, 'alice-key', {
+      const body = await send(opened, run.contextId, 'alice-key', {
         id: 'input-1',
         payload: [{ type: 'not-a-content-part' }],
       });
@@ -131,7 +135,7 @@ describe('bureau.contexts.input', () => {
         opened.handler,
         'bureau.contexts.input',
         {
-          contextId: run.sessionId,
+          contextId: run.contextId,
           input: { id: 'input-1', payload: 'hi', principal: OWNER.bob, deliveryMode: 'queue' },
         },
         'alice-key',
@@ -147,14 +151,14 @@ describe('bureau.contexts.input access', () => {
     await withBureau({}, async (opened) => {
       const run = await liveSession(opened);
 
-      const stranger = await send(opened, run.sessionId, 'bob-key');
-      const operator = await send(opened, run.sessionId, 'contexts-writer-key');
-      const wrongScope = await send(opened, run.sessionId, 'tasks-writer-key');
+      const stranger = await send(opened, run.contextId, 'bob-key');
+      const operator = await send(opened, run.contextId, 'contexts-writer-key');
+      const wrongScope = await send(opened, run.contextId, 'tasks-writer-key');
       const missing = await send(opened, 'no-such-context', 'bob-key');
 
       for (const body of [stranger, operator, wrongScope]) {
         expect(body.error?.data?.httpStatus).toBe(404);
-        expect(JSON.stringify(body).replaceAll(run.sessionId, '<id>')).toBe(
+        expect(JSON.stringify(body).replaceAll(run.contextId, '<id>')).toBe(
           JSON.stringify(missing).replaceAll('no-such-context', '<id>'),
         );
       }
@@ -164,9 +168,9 @@ describe('bureau.contexts.input access', () => {
   it('admits nothing for a caller that is refused, and the owner’s next input is the first', async () => {
     await withBureau({}, async (opened) => {
       const run = await liveSession(opened);
-      await send(opened, run.sessionId, 'bob-key');
+      await send(opened, run.contextId, 'bob-key');
 
-      const owner = await send(opened, run.sessionId, 'alice-key');
+      const owner = await send(opened, run.contextId, 'alice-key');
 
       expect(owner.result).toMatchObject({
         outcome: 'admitted',
@@ -180,8 +184,8 @@ describe('bureau.contexts.input access', () => {
       const alice = await liveSession(opened, OWNER.alice);
       const bob = await liveSession(opened, OWNER.bob);
 
-      const first = await send(opened, alice.sessionId, 'alice-key');
-      const second = await send(opened, bob.sessionId, 'bob-key');
+      const first = await send(opened, alice.contextId, 'alice-key');
+      const second = await send(opened, bob.contextId, 'bob-key');
 
       expect(first.result).toMatchObject({ outcome: 'admitted' });
       expect(second.result).toMatchObject({ outcome: 'admitted' });

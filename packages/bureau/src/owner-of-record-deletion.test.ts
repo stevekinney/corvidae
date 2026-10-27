@@ -5,6 +5,7 @@ import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { AgentDefinitions } from './agent-catalog';
+import { startTaskFrom } from './test/task-start-request.ts';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 
@@ -25,14 +26,14 @@ async function createdSession(
   principal: string | undefined,
   sessionId: string,
 ) {
-  const run = await bureau.createRun({
+  const run = await startTaskFrom(bureau, {
     agentName: 'default',
-    message: 'hello',
-    sessionId,
+    input: 'hello',
+    contextId: sessionId,
     ...(principal === undefined ? {} : { principal }),
   });
   await waitForCondition(
-    () => bureau.getRun(run.id)?.status !== 'running',
+    () => bureau.tasks.detail(run.id)?.status !== 'running',
     `run ${run.id} never settled`,
   );
   return run;
@@ -56,20 +57,20 @@ describe('the owner of a deleted session’s audit entry (COR-718)', () => {
     try {
       await createdSession(bureau, 'api-key:alice', 'deleted-session');
       await bureau.contexts.delete('deleted-session');
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
 
       const [entry] = await deletionEntries(bureau, 'deleted-session', 1);
 
       expect(entry?.detail).toMatchObject({ sessionId: 'deleted-session', owner: 'api-key:alice' });
       expect(
-        await bureau.getOwner({
+        await bureau.ownerOf({
           kind: 'audit',
           runId: 'session:deleted-session',
           detail: entry?.detail,
         }),
       ).toBe('api-key:alice');
       // The session itself is gone, so the answer cannot have come from it.
-      expect(await bureau.getOwner({ kind: 'session', id: 'deleted-session' })).toBeUndefined();
+      expect(await bureau.ownerOf({ kind: 'session', id: 'deleted-session' })).toBeUndefined();
     } finally {
       await bureau.dispose();
     }
@@ -80,16 +81,16 @@ describe('the owner of a deleted session’s audit entry (COR-718)', () => {
     try {
       await createdSession(bureau, 'api-key:alice', 'recreated-session');
       await bureau.contexts.delete('recreated-session');
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
       const [entry] = await deletionEntries(bureau, 'recreated-session', 1);
 
       await createdSession(bureau, 'api-key:bob', 'recreated-session');
 
-      expect(await bureau.getOwner({ kind: 'session', id: 'recreated-session' })).toBe(
+      expect(await bureau.ownerOf({ kind: 'session', id: 'recreated-session' })).toBe(
         'api-key:bob',
       );
       expect(
-        await bureau.getOwner({
+        await bureau.ownerOf({
           kind: 'audit',
           runId: 'session:recreated-session',
           detail: entry?.detail,
@@ -105,7 +106,7 @@ describe('the owner of a deleted session’s audit entry (COR-718)', () => {
     try {
       await createdSession(bureau, 'api-key:alice', 'tidy-session');
       await bureau.contexts.delete('tidy-session');
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
       await deletionEntries(bureau, 'tidy-session', 1);
 
       await waitForCondition(async () => {
@@ -139,7 +140,7 @@ describe('the owner of a deleted session’s audit entry (COR-718)', () => {
 
       kv.set = originalSet;
       await bureau.contexts.delete('retained-session');
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
       const [entry] = await deletionEntries(bureau, 'retained-session', 1);
       expect(entry?.detail).toMatchObject({ owner: 'api-key:alice' });
     } finally {
@@ -152,20 +153,20 @@ describe('the owner of a deleted session’s audit entry (COR-718)', () => {
     try {
       await createdSession(bureau, 'api-key:alice', 'bypassed-session');
       await bureau.internals.sessionStore?.delete('bypassed-session');
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
 
       const [entry] = await deletionEntries(bureau, 'bypassed-session', 1);
 
       expect(entry?.detail).not.toHaveProperty('owner');
       expect(
-        await bureau.getOwner({
+        await bureau.ownerOf({
           kind: 'audit',
           runId: 'session:bypassed-session',
           detail: entry?.detail,
         }),
       ).toBeUndefined();
       expect(
-        await bureau.getOwner({ kind: 'audit', runId: 'session:bypassed-session' }),
+        await bureau.ownerOf({ kind: 'audit', runId: 'session:bypassed-session' }),
       ).toBeUndefined();
     } finally {
       await bureau.dispose();

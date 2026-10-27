@@ -135,7 +135,7 @@ async function open(
 }
 
 const kindsOf = async (opened: OpenedBureau, runId: string): Promise<string[]> => {
-  const page = await opened.bureau.eventHistory({ kind: 'run', id: runId });
+  const page = await opened.bureau.tasks.events(runId);
   return 'events' in page ? page.events.map((event) => event.kind) : [];
 };
 
@@ -176,11 +176,7 @@ async function answer(opened: OpenedBureau, runId: string): Promise<void> {
 async function park(opened: OpenedBureau, faults: Faults, failing: number) {
   // The first append the run makes is the `review.requested` of its wait.
   faults.failAppends = failing;
-  const run = await opened.bureau.createRun({
-    agentName: 'default',
-    message: 'park',
-    principal: OWNER.alice,
-  });
+  const run = await opened.bureau.tasks.start('default', 'park', { principal: OWNER.alice });
   await waitForCondition(
     () => opened.bureau.reviews.list().some((review) => review.runId === run.id),
     'the run never parked',
@@ -198,7 +194,10 @@ describe('task.resynced', () => {
     const kinds = await kindsOf(opened, run.id);
     expect(kinds).not.toContain('review.requested');
     await answer(opened, run.id);
-    await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'completed', 'finish');
+    await waitForCondition(
+      () => opened.bureau.tasks.detail(run.id)?.status === 'completed',
+      'finish',
+    );
 
     const frames = await framesOf(opened, run.id);
     const [resync] = resyncs(frames);
@@ -212,7 +211,7 @@ describe('task.resynced', () => {
     const opened = await open(faulty, parksThenAnswers());
     // The wait's event and the resync that follows it both fail.
     const run = await park(opened, faulty.faults, 2);
-    await opened.bureau.runDurableMaintenance();
+    await opened.bureau.maintain();
     // Settled in the Bureau's own hands: the marked task is repaired by the pass.
     await waitForCondition(
       async () => (await resyncCount(opened, run.id)) > 0,
@@ -220,8 +219,8 @@ describe('task.resynced', () => {
     );
     expect(await resyncCount(opened, run.id)).toBe(1);
 
-    await opened.bureau.runDurableMaintenance();
-    await opened.bureau.runDurableMaintenance();
+    await opened.bureau.maintain();
+    await opened.bureau.maintain();
     expect(await resyncCount(opened, run.id)).toBe(1);
   });
 
@@ -231,15 +230,18 @@ describe('task.resynced', () => {
     const opened = await open(faulty, parksThenAnswers());
     const run = await park(opened, faulty.faults, 2);
     await answer(opened, run.id);
-    await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'completed', 'finish');
-    await opened.bureau.runDurableMaintenance();
+    await waitForCondition(
+      () => opened.bureau.tasks.detail(run.id)?.status === 'completed',
+      'finish',
+    );
+    await opened.bureau.maintain();
     await waitForCondition(
       async () => (await resyncCount(opened, run.id)) > 0,
       'the maintenance pass did not repair the task',
     );
 
     // The resync follows the terminal event it must not contradict, and states the end.
-    const page = await opened.bureau.eventHistory({ kind: 'run', id: run.id });
+    const page = await opened.bureau.tasks.events(run.id);
     const events = 'events' in page ? page.events : [];
     const at = events.findIndex((event) => event.kind === TASK_RESYNCED_EVENT_KIND);
     expect(events.filter((event) => event.kind === TASK_RESYNCED_EVENT_KIND)).toHaveLength(1);
@@ -272,7 +274,10 @@ describe('task.resynced', () => {
     const run = await park(first, faulty.faults, 0);
     await answer(first, run.id);
     await done;
-    await waitForCondition(() => first.bureau.getRun(run.id)?.status === 'completed', 'finish');
+    await waitForCondition(
+      () => first.bureau.tasks.detail(run.id)?.status === 'completed',
+      'finish',
+    );
     // No mark survives the crash: the record is settled and nothing says its end was lost.
     await first.dispose();
     faulty.faults.failAppends = 0;
@@ -291,7 +296,7 @@ describe('task.resynced', () => {
     // Another start finds nothing owed.
     await second.dispose();
     const third = await open(faulty, async () => ({ content: 'unused', toolCalls: [] }));
-    await third.bureau.runDurableMaintenance();
+    await third.bureau.maintain();
     expect(await resyncCount(third, run.id)).toBe(1);
   });
 });
@@ -338,16 +343,12 @@ describe('the repair of a lost end', () => {
     });
     // The approval's event and the repair after it fail; the run's end commits.
     faulty.faults.failAppends = 2;
-    const run = await opened.bureau.createRun({
-      agentName: 'default',
-      message: 'charge',
-      principal: OWNER.alice,
-    });
+    const run = await opened.bureau.tasks.start('default', 'charge', { principal: OWNER.alice });
     await waitForCondition(
       () => opened.bureau.reviews.list().some((review) => review.runId === run.id),
       'the approval never became pending',
     );
-    await opened.bureau.runDurableMaintenance();
+    await opened.bureau.maintain();
     await waitForCondition(async () => (await resyncCount(opened, run.id)) > 0, 'no resync');
 
     const frames = await framesOf(opened, run.id, (seen) => seen.length >= 3);
@@ -431,7 +432,10 @@ describe('the task event projection of task.resynced', () => {
     const run = await park(first, faulty.faults, 0);
     await answer(first, run.id);
     await done;
-    await waitForCondition(() => first.bureau.getRun(run.id)?.status === 'completed', 'finish');
+    await waitForCondition(
+      () => first.bureau.tasks.detail(run.id)?.status === 'completed',
+      'finish',
+    );
     await first.dispose();
     faulty.faults.failAppends = 0;
     await clearMark(faulty, run.id);

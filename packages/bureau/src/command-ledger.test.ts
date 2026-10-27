@@ -17,6 +17,8 @@ import {
   createRunCreationLedger,
   digestCommandPayload,
   digestRunCreationPayload,
+  serializeTaskInput,
+  serializeTaskRequestContext,
   RUN_CREATION_OPERATION_VERSION,
   type RunCreationClaim,
   type RunCreationObservation,
@@ -26,6 +28,14 @@ import { BureauError } from './create-bureau';
 import { createMemoryStorageFixture } from './test/storage-fixtures';
 import { rejectionOf, throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { RunSummary } from './types';
+
+const authority = {
+  principalId: 'alice',
+  tenantId: 'bureau',
+  ownerId: 'researcher',
+  capabilities: ['tools:execute'],
+  authorizationRevision: '1',
+};
 
 const ORIGIN = '2026-10-13T00:00:00.000Z';
 
@@ -94,32 +104,50 @@ describe('digestCommandPayload', () => {
 });
 
 describe('digestRunCreationPayload', () => {
-  it('digests what decides the run', () => {
-    const base = digestRunCreationPayload({ message: 'hi', sessionId: 'session-1' });
-    expect(digestRunCreationPayload({ message: 'hi', sessionId: 'session-2' })).not.toBe(base);
+  const base = {
+    agentName: 'researcher',
+    input: serializeTaskInput('hi'),
+    contextId: 'context-1',
+    requestContext: serializeTaskRequestContext(undefined),
+  };
+
+  it('digests the agent, input, context, and request context', () => {
+    const digest = digestRunCreationPayload(base);
+    expect(digestRunCreationPayload({ ...base, agentName: 'writer' })).not.toBe(digest);
+    expect(digestRunCreationPayload({ ...base, input: serializeTaskInput('bye') })).not.toBe(
+      digest,
+    );
+    expect(digestRunCreationPayload({ ...base, contextId: 'context-2' })).not.toBe(digest);
     expect(
-      digestRunCreationPayload({ message: 'hi', sessionId: 'session-1', systemPrompt: 'x' }),
-    ).not.toBe(base);
-    expect(
-      digestRunCreationPayload({ message: 'hi', sessionId: 'session-1', maximumSteps: 3 }),
-    ).not.toBe(base);
-    expect(
-      digestRunCreationPayload({ message: 'hi', sessionId: 'session-1', maximumTokens: 10 }),
-    ).not.toBe(base);
+      digestRunCreationPayload({
+        ...base,
+        requestContext: serializeTaskRequestContext({ authority, audience: 'tenant' }),
+      }),
+    ).not.toBe(digest);
   });
 
-  it('ignores fields that are not the payload, such as who asked and how they authenticated', () => {
-    const request = {
-      message: 'hi',
-      sessionId: 'session-1',
-      principal: 'alice',
-      agentName: 'bureau',
-      runCreationRequestId: 'request-1',
-      requestContext: undefined,
-    };
-    expect(digestRunCreationPayload(request)).toBe(
-      digestRunCreationPayload({ message: 'hi', sessionId: 'session-1' }),
-    );
+  it('ignores the per-attempt fields of a request context', () => {
+    const first = serializeTaskRequestContext({
+      authority,
+      runId: 'run-1',
+      requestId: 'a',
+    } as never);
+    const retry = serializeTaskRequestContext({
+      authority,
+      runId: 'run-2',
+      requestId: 'b',
+    } as never);
+    expect(first).toBe(retry);
+  });
+
+  it('tells the input forms apart', () => {
+    const forms = [
+      serializeTaskInput('hi'),
+      serializeTaskInput([{ type: 'text', text: 'hi' }]),
+      serializeTaskInput({ append: [] }),
+      serializeTaskInput({ continue: true }),
+    ];
+    expect(new Set(forms).size).toBe(forms.length);
   });
 });
 

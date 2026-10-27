@@ -25,6 +25,7 @@ import {
   readAgUiStream,
   typesOf,
 } from './ag-ui-stream.test-support.ts';
+import { listHeldTasks } from '../test';
 
 const SECRET = 'ag-ui-approval-secret';
 
@@ -211,7 +212,7 @@ describe('the interrupt of a settled approval', () => {
 
         const attached = await readAgUiStream(await handler(attachThreadRequest('thread-1')));
 
-        const history = await bureau.eventHistory({ kind: 'run', id: nativeRunId });
+        const history = await bureau.tasks.events(nativeRunId);
         if (!('events' in history)) throw new Error('expected a page of history');
         const record = history.events.findLast((event) => event.kind === 'run.completed');
         const last = attached.at(-1)!;
@@ -357,7 +358,7 @@ describe('a human wait', () => {
           },
         });
         expect(bureauMetadata(frames.at(-1)!.event)['durable']).toBe(false);
-        expect(bureau.getRun(nativeRunId)?.status).toBe('running');
+        expect(bureau.tasks.detail(nativeRunId)?.status).toBe('running');
       },
     );
   });
@@ -419,13 +420,13 @@ describe('a thread that is waiting on an answer', () => {
       },
       async ({ handler, bureau }) => {
         await readAgUiStream(await handler(startRequest(runAgentInput())));
-        const runsBefore = bureau.listRuns().length;
+        const runsBefore = listHeldTasks(bureau).length;
 
         const frames = await readAgUiStream(await startAgain(handler));
 
         expect(frames).toHaveLength(1);
         expect(frames[0]!.event).toMatchObject({ type: EventType.RUN_ERROR, code: 'THREAD_BUSY' });
-        expect(bureau.listRuns()).toHaveLength(runsBefore);
+        expect(listHeldTasks(bureau)).toHaveLength(runsBefore);
       },
     );
   });
@@ -435,13 +436,13 @@ describe('a thread that is waiting on an answer', () => {
       { script: [chargeCard], toolbox: approvalToolbox([]) },
       async ({ handler, bureau }) => {
         await readAgUiStream(await handler(startRequest(runAgentInput())));
-        const runsBefore = bureau.listRuns().length;
+        const runsBefore = listHeldTasks(bureau).length;
 
         const frames = await readAgUiStream(await startAgain(handler));
 
         expect(frames).toHaveLength(1);
         expect(frames[0]!.event).toMatchObject({ type: EventType.RUN_ERROR, code: 'THREAD_BUSY' });
-        expect(bureau.listRuns()).toHaveLength(runsBefore);
+        expect(listHeldTasks(bureau)).toHaveLength(runsBefore);
       },
     );
   });

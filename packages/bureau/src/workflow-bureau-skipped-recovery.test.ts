@@ -73,7 +73,7 @@ describe('a Bureau over a store with a run of a workflow type it has no trace of
     diagnostics.length = 0;
 
     const second = await startWorkflowBureau({ directory: workflows, overrides });
-    const report = await second.bureau.waitForRecovery?.();
+    const report = await second.bureau.recovery();
     expect(report?.outcome).toBe('partial');
     expect(report?.skippedRuns).toEqual([{ runId: 'stranded-run', type: 'stranded' }]);
     expect(report?.perRunFailures).toEqual([]);
@@ -86,7 +86,7 @@ describe('a Bureau over a store with a run of a workflow type it has no trace of
     expect(recoveryDiagnostics(diagnostics)).toHaveLength(1);
 
     await second.bureau.durableEngine()!.signal('healthy-run', 'go', null);
-    const healthy = await second.bureau.waitForDurableRun('healthy-run');
+    const healthy = await second.bureau.tasks.wait('healthy-run');
     expect(healthy?.status).toBe('completed');
     expect(second.calls.map((call) => call.message)).toEqual(['healthy question']);
     // The skipped run is untouched in storage.
@@ -99,14 +99,14 @@ describe('a Bureau over a store with a run of a workflow type it has no trace of
     await writeFile(join(workflows, 'stranded.json'), strandedText);
     const third = await startWorkflowBureau({ directory: workflows, overrides });
     cleanups.push(() => third.dispose());
-    expect(await third.bureau.waitForRecovery?.()).toEqual({
+    expect(await third.bureau.recovery()).toEqual({
       outcome: 'clean',
       perRunFailures: [],
       skippedRuns: [],
     });
     expect(recoveryDiagnostics(diagnostics)).toEqual([]);
     await third.bureau.durableEngine()!.signal('stranded-run', 'go', null);
-    const resumed = await third.bureau.waitForDurableRun('stranded-run');
+    const resumed = await third.bureau.tasks.wait('stranded-run');
     expect(resumed?.status).toBe('completed');
     expect(third.calls.map((call) => call.message)).toEqual(['stranded question']);
   });
@@ -155,7 +155,7 @@ describe('a Bureau started without workflowSource over a store with workflow ins
     });
     cleanups.push(() => crashed.dispose());
     await crashed.durableEngine()!.start('digest', null, { id: 'digest-run' });
-    const agentRun = await crashed.createRun({ agentName: 'default', message: 'Recover me' });
+    const agentRun = await crashed.tasks.start('default', 'Recover me');
     expect(await pollUntil(() => reachedSecondStep)).toBe(true);
 
     const steps: number[] = [];
@@ -177,7 +177,7 @@ describe('a Bureau started without workflowSource over a store with workflow ins
     });
     cleanups.push(() => recovering.dispose());
 
-    const report = await recovering.waitForRecovery?.();
+    const report = await recovering.recovery();
     expect(report?.outcome).toBe('partial');
     expect(report?.batchFailure).toBeUndefined();
     expect(report?.skippedRuns).toEqual([{ runId: 'digest-run', type: 'digest' }]);
@@ -188,6 +188,6 @@ describe('a Bureau started without workflowSource over a store with workflow ins
 
     // The agent run that was in flight beside it recovers and carries on.
     expect(await pollUntil(() => steps.includes(1))).toBe(true);
-    expect(recovering.getRun(agentRun.id)).toBeDefined();
+    expect(recovering.tasks.detail(agentRun.id)).toBeDefined();
   });
 });

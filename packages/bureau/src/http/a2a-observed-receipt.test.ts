@@ -60,7 +60,7 @@ describe('a new task’s receipt over a durable history', () => {
     const beforeRepair = await send(opened, 'asker', { message: original }, ACTIVE);
     expect(first.body.result.task.status.state).toBe('TASK_STATE_COMPLETED');
     expect(faults.failCompletions).toBe(0);
-    await opened.bureau.runDurableMaintenance();
+    await opened.bureau.maintain();
     const afterRepair = await send(opened, 'asker', { message: original }, ACTIVE);
 
     expect([receiptOf(first), receiptOf(beforeRepair), receiptOf(afterRepair)]).toEqual([

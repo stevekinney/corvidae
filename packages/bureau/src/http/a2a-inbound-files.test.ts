@@ -391,10 +391,10 @@ describe('inline bytes', () => {
 
   it('stay with the claim when creating the run fails in a way that may have created it, and the retry delivers them', async () => {
     await withAgents({ seer: seeing({ calls: 0, rows: [] }) }, async (opened) => {
-      const real = opened.bureau.createRun.bind(opened.bureau);
+      const real = opened.bureau.tasks.start.bind(opened.bureau.tasks);
       let failures = 1;
-      opened.bureau.createRun = async (request: Parameters<typeof real>[0]) => {
-        const run = await real(request);
+      opened.bureau.tasks.start = async (...args: Parameters<typeof real>) => {
+        const run = await real(...args);
         if (failures > 0) {
           failures -= 1;
           throw new Error('the connection was lost after the run was created');
@@ -423,16 +423,12 @@ describe('inline bytes', () => {
 
   it('are released when the task is not created: a context another caller owns', async () => {
     await withAgents({ seer: seeing({ calls: 0, rows: [] }) }, async (opened) => {
-      const stranger = await opened.bureau.createRun({
-        agentName: 'seer',
-        principal: BOB,
-        message: 'mine',
-      });
+      const stranger = await opened.bureau.tasks.start('seer', 'mine', { principal: BOB });
       const body = await send(
         opened,
         'seer',
         messageWith([{ text: 'x' }, { raw: base64Of(png(60)), mediaType: 'image/png' }], {
-          contextId: stranger.sessionId,
+          contextId: stranger.contextId,
         }),
       );
       expect(body.error?.code).toBe(-32001);
@@ -655,10 +651,10 @@ describe('a retry completes from the claim', () => {
   it('does not read an asset route again: an asset deleted between attempts cannot fail the retry', async () => {
     await withAgents({ seer: seeing({ calls: 0, rows: [] }) }, async (opened) => {
       const assetId = await admit(opened, png(90));
-      const real = opened.bureau.createRun.bind(opened.bureau);
+      const real = opened.bureau.tasks.start.bind(opened.bureau.tasks);
       let failures = 1;
-      opened.bureau.createRun = async (request: Parameters<typeof real>[0]) => {
-        const run = await real(request);
+      opened.bureau.tasks.start = async (...args: Parameters<typeof real>) => {
+        const run = await real(...args);
         if (failures > 0) {
           failures -= 1;
           throw new Error('the connection was lost after the run was created');
@@ -736,16 +732,12 @@ describe('inline bytes under the reuse duplicate policy', () => {
         const row = await userRowOf(opened, task.contextId);
         expect(row.content[1].source.assetId).toBe(held);
 
-        const stranger = await opened.bureau.createRun({
-          agentName: 'seer',
-          principal: BOB,
-          message: 'mine',
-        });
+        const stranger = await opened.bureau.tasks.start('seer', 'mine', { principal: BOB });
         const refused = await send(
           opened,
           'seer',
           messageWith([{ text: 'x' }, { raw: base64Of(bytes), mediaType: 'image/png' }], {
-            contextId: stranger.sessionId,
+            contextId: stranger.contextId,
           }),
         );
         expect(refused.error?.code).toBe(-32001);
@@ -841,14 +833,14 @@ describe('a recorded projection replayed to another credential', () => {
     const seen: Seen = { calls: 0, rows: [] };
     await withAgents({ seer: seeing(seen) }, async (opened) => {
       const assetId = await admit(opened, png(96));
-      const real = opened.bureau.createRun.bind(opened.bureau);
+      const real = opened.bureau.tasks.start.bind(opened.bureau.tasks);
       let failures = 1;
-      opened.bureau.createRun = async (request: Parameters<typeof real>[0]) => {
+      opened.bureau.tasks.start = async (...args: Parameters<typeof real>) => {
         if (failures > 0) {
           failures -= 1;
           throw new Error('the store was unavailable');
         }
-        return real(request);
+        return real(...args);
       };
       const message = messageWith([
         { text: 'x' },

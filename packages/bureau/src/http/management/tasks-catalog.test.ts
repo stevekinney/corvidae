@@ -1,22 +1,18 @@
 /**
- * A `bureau.run()` dispatch is a task too. It owns no session and records no durable
- * `run.*` events, so its stream is the snapshot alone; its human wait is a review of the
- * task; and an abort through its own handle leaves a cleanup the cancel operation reports.
+ * A task's human wait is a review of the task, and an abort through its own handle leaves a
+ * cleanup the cancel operation reports.
  */
 import { createAgent, type GenerateContext, stopWhen } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
-import { waitForCondition } from '../../test';
+import { waitForCondition, closedTask } from '../../test';
 import {
-  answering,
   openBureau,
   type OpenedBureau,
   OWNER,
   parkingUntilAborted,
-  readFrames,
   rpc,
-  subscribeRequest,
 } from './management-fixtures.test-support.ts';
 
 async function withBureau<T>(
@@ -52,63 +48,16 @@ const asker = createAgent({
   stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
 });
 
-describe('a catalog task', () => {
-  it('ends its event stream after the snapshot, because it records no durable history to follow', async () => {
-    await withBureau({ agents: { holder }, durableHistory: true }, async (opened) => {
-      const run = opened.bureau.run('holder', 'work', { principal: OWNER.alice });
-      try {
-        await waitForCondition(
-          async () => (await opened.bureau.internals.taskRegistry.get(run.id)) !== undefined,
-          'the dispatch was never recorded as a task',
-        );
-
-        const frames = await readFrames(
-          await opened.handler(
-            subscribeRequest('bureau.tasks.events', { taskId: run.id }, 'alice-key'),
-          ),
-        );
-
-        expect(frames.map((frame) => frame.event)).toEqual(['task.snapshot']);
-      } finally {
-        run.abort('test over');
-        await run.closed();
-      }
-    });
-  });
-
-  it('carries the answer of a completed catalog task in its snapshot, as an artifact', async () => {
-    const answerer = createAgent({ name: 'answerer', generate: answering('the catalog answer') });
-    await withBureau({ agents: { answerer }, durableHistory: true }, async (opened) => {
-      const run = opened.bureau.run('answerer', 'question', { principal: OWNER.alice });
-      await run.result();
-      await waitForCondition(async () => {
-        const task = await opened.bureau.internals.taskRegistry.get(run.id);
-        return task?.status === 'completed';
-      }, 'the task never settled as completed');
-
-      const frames = await readFrames(
-        await opened.handler(
-          subscribeRequest('bureau.tasks.events', { taskId: run.id }, 'alice-key'),
-        ),
-      );
-
-      expect(frames.map((frame) => frame.event)).toEqual(['task.snapshot']);
-      expect(frames[0]?.data).toMatchObject({
-        status: 'completed',
-        artifact: { artifactId: `${run.id}:result`, text: 'the catalog answer', truncated: false },
-      });
-    });
-  });
-
+describe('a task started with tasks.start', () => {
   it('answers a cancel after an abort through its own handle with the cleanup the handle reported', async () => {
     await withBureau({ agents: { holder } }, async (opened) => {
-      const run = opened.bureau.run('holder', 'work', { principal: OWNER.alice });
+      const run = await opened.bureau.tasks.start('holder', 'work', { principal: OWNER.alice });
       await waitForCondition(async () => {
         const task = await opened.bureau.internals.taskRegistry.get(run.id);
         return task !== undefined;
       }, 'the dispatch was never recorded as a task');
       run.abort('stopped by its owner');
-      const acknowledgement = await run.closed();
+      const acknowledgement = await closedTask(opened.bureau, run);
       await waitForCondition(async () => {
         const task = await opened.bureau.internals.taskRegistry.get(run.id);
         return task?.status === 'canceled';
@@ -130,7 +79,9 @@ describe('a catalog task', () => {
 
   it('is input-required while its run waits on a human, and respond answers that wait', async () => {
     await withBureau({ agents: { asker } }, async (opened) => {
-      const run = opened.bureau.run('asker', 'which one?', { principal: OWNER.alice });
+      const run = await opened.bureau.tasks.start('asker', 'which one?', {
+        principal: OWNER.alice,
+      });
       await waitForCondition(
         () => opened.bureau.reviews.list().some((review) => review.runId === run.id),
         'the run never parked',

@@ -708,11 +708,7 @@ describe('the reviews operations against a real Bureau', () => {
       storage: { type: 'memory' },
       durable: true,
     });
-    const run = await bureau.createRun({
-      agentName: 'default',
-      message: 'park-me',
-      principal: 'api-key:tester',
-    });
+    const run = await bureau.tasks.start('default', 'park-me', { principal: 'api-key:tester' });
     await waitForCondition(
       () => bureau.reviews.list().some((review) => review.runId === run.id),
       'expected requestHumanInput to park and surface a pending review',
@@ -830,11 +826,7 @@ describe('the reviews operations against a real Bureau', () => {
       durable: true,
     });
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'Charge it',
-        principal: 'api-key:tester',
-      });
+      const run = await bureau.tasks.start('default', 'Charge it', { principal: 'api-key:tester' });
       await waitForCondition(
         () => bureau.reviews.list().some((review) => review.runId === run.id),
         'expected the tool call to surface a pending approval',
@@ -850,7 +842,7 @@ describe('the reviews operations against a real Bureau', () => {
       });
 
       expect(resolved.result).toMatchObject({ decision: 'approve', receipt: 'applied' });
-      const session = await bureau.contexts.get(run.sessionId);
+      const session = await bureau.contexts.get(run.contextId);
       const history = session?.conversationHistory;
       const row = history?.ids
         .map((id) => history.messages[id])
@@ -919,11 +911,7 @@ describe('the reviews operations against a real Bureau', () => {
       durable: true,
     });
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'Charge it',
-        principal: 'api-key:tester',
-      });
+      const run = await bureau.tasks.start('default', 'Charge it', { principal: 'api-key:tester' });
       await waitForCondition(
         () => bureau.reviews.list().some((review) => review.runId === run.id),
         'expected the tool call to surface a pending approval',
@@ -1048,7 +1036,11 @@ describe('who reaches the human wait of a bureau.run() run, through a real Burea
       storage: { type: 'memory' },
       durable: true,
     });
-    const run = bureau.run('asker', 'deploy', principal === undefined ? {} : { principal });
+    const run = await bureau.tasks.start(
+      'asker',
+      'deploy',
+      principal === undefined ? {} : { principal },
+    );
     await waitForCondition(
       () => bureau.reviews.list().some((review) => review.runId === run.id),
       'expected the catalog run to park and surface a pending review',
@@ -1094,7 +1086,7 @@ describe('who reaches the human wait of a bureau.run() run, through a real Burea
   it('shows a run with no principal to an operator and to the local caller, and to no other key', async () => {
     const { bureau, run, id } = await parkedCatalogRun(undefined);
     try {
-      expect(await bureau.getOwner({ kind: 'review', id })).toBe('anonymous:local');
+      expect(await bureau.ownerOf({ kind: 'review', id })).toBe('anonymous:local');
       const keyed = createBureauHandler(bureau, { authentication: authenticationFor });
       const local = createBureauHandler(bureau, { unauthenticatedAccess: 'allow' });
 

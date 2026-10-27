@@ -9,9 +9,9 @@ import {
   createSessionHandle,
   SESSION_OWNER_METADATA_KEY,
   stopWhen,
-  waitForRunState,
   withBackendDescriptors,
 } from '@lostgradient/operative';
+import { waitForTaskState } from './test';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -81,13 +81,11 @@ async function openBureau() {
 type PaintingBureau = Awaited<ReturnType<typeof openBureau>>['bureau'];
 
 async function paint(bureau: PaintingBureau, sessionId: string) {
-  const created = await bureau.createRun({
-    message: 'Draw',
-    agentName: 'painter',
+  const created = await bureau.tasks.start('painter', 'Draw', {
+    contextId: sessionId,
     principal: alice.id,
-    sessionId,
   });
-  await waitForRunState(bureau, created.id);
+  await waitForTaskState(bureau, created.id);
   for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
 }
 

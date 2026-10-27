@@ -289,7 +289,7 @@ async function startFire(bureau: Bureau, sessionId: string): Promise<string> {
   if (created === undefined || occurrence === null || occurrence === undefined) {
     throw new Error('The schedule has no first occurrence.');
   }
-  void bureau.runDurableMaintenance(occurrence).catch(() => undefined);
+  void bureau.maintain(occurrence).catch(() => undefined);
   return pollUntil(async () => {
     const schedule = await bureau.schedules.get(created.id);
     return schedule?.currentWorkflowId;

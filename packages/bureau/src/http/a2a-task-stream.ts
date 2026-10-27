@@ -47,7 +47,7 @@ import { INTERACTIVE_SURFACE_EVENT_KINDS } from '../interactive-surface/store.ts
 import type { InteractiveSurface } from '../interactive-surface/types.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
 import { bearsSettlement } from '../task-resync.ts';
-import type { Bureau, BureauReviews } from '../types.ts';
+import type { Bureau, BureauReviews, BureauTasks } from '../types.ts';
 import {
   type FormsAuditInternals,
   formsOf,
@@ -82,10 +82,9 @@ const REPLAY_PAGE_LIMIT = 200;
 const FOLLOW_POLL_MS = 1_000;
 
 /** The part of a Bureau a stream reads. */
-export type A2AStreamBureau = Pick<
-  Bureau,
-  'eventHistory' | 'subscribeEventHistory' | 'addEventListener' | 'removeEventListener'
-> & { readonly reviews: Pick<BureauReviews, 'get'> } & {
+export type A2AStreamBureau = Pick<Bureau, 'addEventListener' | 'removeEventListener'> & {
+  readonly tasks: Pick<BureauTasks, 'events' | 'subscribeEvents'>;
+} & { readonly reviews: Pick<BureauReviews, 'get'> } & {
   readonly internals: FormsAuditInternals & {
     readonly taskRegistry: Pick<TaskRegistry, 'get' | 'record' | 'onSettled' | 'onChanged'>;
   };
@@ -337,10 +336,9 @@ export async function readRetained(
 ): Promise<
   { events: DurableEventEnvelope[]; gap: Gap | undefined; reached: string | undefined } | undefined
 > {
-  const owner = { kind: 'run', id: taskId } as const;
   let gap: Gap | undefined;
   if (requested !== undefined) {
-    const probe = await bureau.eventHistory(owner, { since: requested, limit: 1 });
+    const probe = await bureau.tasks.events(taskId, { since: requested, limit: 1 });
     if ('outcome' in probe && probe.outcome === 'unsupported-capability') return undefined;
     if ('outcome' in probe && probe.outcome === 'gap') {
       gap = {
@@ -352,7 +350,7 @@ export async function readRetained(
   const events: DurableEventEnvelope[] = [];
   let since: string | undefined;
   for (;;) {
-    const page = await bureau.eventHistory(owner, {
+    const page = await bureau.tasks.events(taskId, {
       ...(since === undefined ? {} : { since }),
       limit: REPLAY_PAGE_LIMIT,
     });
@@ -374,7 +372,7 @@ export async function readRetained(
   // Retention may have advanced past the requested cursor while the pages were read: the replay
   // skipped that gap without naming it, so look again and report it.
   if (requested !== undefined && gap === undefined) {
-    const probe = await bureau.eventHistory(owner, { since: requested, limit: 1 });
+    const probe = await bureau.tasks.events(taskId, { since: requested, limit: 1 });
     if ('outcome' in probe && probe.outcome === 'gap') {
       gap = {
         requestedCursor: requested,
@@ -679,8 +677,8 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
   if (retained !== undefined) {
     const controller = new AbortController();
     stops.push(() => controller.abort());
-    const subscription = bureau.subscribeEventHistory(
-      { kind: 'run', id: taskId },
+    const subscription = bureau.tasks.subscribeEvents(
+      taskId,
       (event) => {
         if (event.kind === DURABLE_HISTORY_GAP_KIND) {
           // Retention passed the next cursor: close rather than skip, and the client reconnects.

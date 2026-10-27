@@ -77,33 +77,35 @@ function standIn(initial: DurableEventEnvelope[] = []) {
   const bureau: A2APushBureau = {
     lifecycle: 'ready',
     reviews: { get: async () => undefined },
-    eventHistory: (async (_owner: unknown, options?: { since?: string; limit?: number }) => {
-      if (options?.limit !== 1 && beforeReplay !== undefined) {
-        const hook = beforeReplay;
-        beforeReplay = undefined;
-        hook();
-      }
-      const since = options?.since === undefined ? -1 : Number(options.since);
-      if (since < floor - 1) return { outcome: 'gap', firstRetainedSequence: floor };
-      const events = history.filter((event) => Number(event.cursor) > since);
-      const limit = options?.limit ?? 100;
-      const page = events.slice(0, limit);
-      return {
-        events: page,
-        hasMore: events.length > limit,
-        nextCursor: page.at(-1)?.cursor,
-      };
-    }) as never,
-    subscribeEventHistory: ((
-      _owner: unknown,
-      listener: (event: DurableEventEnvelope) => void,
-      subscription?: { onClosed?: (error?: unknown) => void; signal?: AbortSignal },
-    ) => {
-      if (subscription?.signal !== undefined) signals.push(subscription.signal);
-      listeners.push(listener);
-      if (subscription?.onClosed !== undefined) closers.push(subscription.onClosed);
-      return { unsubscribe: () => undefined };
-    }) as never,
+    tasks: {
+      events: (async (_taskId: unknown, options?: { since?: string; limit?: number }) => {
+        if (options?.limit !== 1 && beforeReplay !== undefined) {
+          const hook = beforeReplay;
+          beforeReplay = undefined;
+          hook();
+        }
+        const since = options?.since === undefined ? -1 : Number(options.since);
+        if (since < floor - 1) return { outcome: 'gap', firstRetainedSequence: floor };
+        const events = history.filter((event) => Number(event.cursor) > since);
+        const limit = options?.limit ?? 100;
+        const page = events.slice(0, limit);
+        return {
+          events: page,
+          hasMore: events.length > limit,
+          nextCursor: page.at(-1)?.cursor,
+        };
+      }) as never,
+      subscribeEvents: ((
+        _taskId: unknown,
+        listener: (event: DurableEventEnvelope) => void,
+        subscription?: { onClosed?: (error?: unknown) => void; signal?: AbortSignal },
+      ) => {
+        if (subscription?.signal !== undefined) signals.push(subscription.signal);
+        listeners.push(listener);
+        if (subscription?.onClosed !== undefined) closers.push(subscription.onClosed);
+        return { unsubscribe: () => undefined };
+      }) as never,
+    },
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
     internals: {

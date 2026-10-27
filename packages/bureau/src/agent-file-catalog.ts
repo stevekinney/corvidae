@@ -87,7 +87,7 @@ export interface AgentToolDescription {
   readonly shortDescription: string | null;
 }
 
-/** The default agent every `createRun` without `agentName` runs. No file may take its name. */
+/** The reserved name of the implicit Bureau-wide agent, which no longer exists. No file may take its name. */
 export const RESERVED_DEFAULT_AGENT_IDENTIFIER = 'bureau';
 
 /** One agent in {@link BureauAgentCatalog.list}, code-defined or from a file. */

@@ -67,11 +67,7 @@ describe('a session-run approval whose approve is in flight', () => {
         }),
       },
     });
-    const run = await bureau.createRun({
-      agentName: 'default',
-      message: 'charge',
-      principal: OWNER.alice,
-    });
+    const run = await bureau.tasks.start('default', 'charge', { principal: OWNER.alice });
     const review = await pollUntil(
       () => bureau.reviews.list().find((candidate) => candidate.runId === run.id),
       'the approval',

@@ -33,6 +33,7 @@ import { urlOf } from '../lib/bureau-stub.test-support.ts';
 import { getHostPaths } from '../lib/host-paths.ts';
 import { fakeProvider, writeProviderHome } from './fake-provider.test-support.ts';
 import { startHost, type Host } from './host.ts';
+import { runTask } from './run-task.test-support.ts';
 
 const directories: string[] = [];
 const hosts: Host[] = [];
@@ -266,7 +267,7 @@ describe('the operations, against the real Bureau', () => {
   test('lists the version that has run, with its hash and last-run time', async () => {
     const { host, fetcher } = await startConfigured();
     const created = await createAgent('researcher', definition, { fetch: fetcher });
-    const result = await host.bureau.run('researcher', 'Hello').result();
+    const result = await runTask(host.bureau, 'researcher', 'Hello');
     expect(result.content).toBe('A reply.');
     const revisions = await listAgentRevisions('researcher', { fetch: fetcher });
     expect(revisions.map((revision) => revision.hash)).toEqual([created.hash]);

@@ -1,5 +1,5 @@
 /**
- * COR-1630 — a catalog run releases the claims its rows hold on managed assets when the run ends.
+ * COR-1630 — a catalog run (a child, a goal attempt, or a step) releases the claims its rows hold on managed assets when the run ends.
  *
  * A run with no session holds the assets its rows reference under `run-row:<run id>:<row id>`,
  * with a claim that never lapses (COR-1581), and nothing let those go. The outcome matrix, who
@@ -7,19 +7,14 @@
  *
  * | How the run ends or does not                      | Who releases           | Result                        |
  * | ------------------------------------------------- | ---------------------- | ----------------------------- |
- * | `bureau.run()` completes / fails / is aborted     | catalog dispatcher     | release the held pairs        |
- * | `tasks.cancel` on a `bureau.run()` run            | catalog dispatcher     | release the held pairs        |
  * | child canceled by its parent                      | catalog dispatcher     | release the held pairs        |
- * | seeding claim fails partway                       | catalog dispatcher     | release what was claimed      |
- * | non-durable run settles                           | catalog dispatcher     | release the held pairs        |
- * | recovered run ends                                | settlement hook        | release from the checkpoint   |
- * | shutdown cancels a run for good (`abort` policy)  | catalog dispatcher     | release the held pairs        |
- * | run completes while a `drain` shutdown waits      | catalog dispatcher     | release the held pairs        |
- * | shutdown with a run that will resume (recovered)  | nobody until it ends   | release nothing, then at end  |
- * | run lost to another engine                        | nobody (the winner)    | release nothing               |
  * | goal attempt (live or recovered)                  | goal forwarder         | claim the session, release    |
  * | recovered goal attempt, goal already over         | settlement hook        | release from the checkpoint   |
  * | an asset no row ever claimed                      | nobody                 | no `asset.released` event     |
+ *
+ * A task runs in a context, which holds its rows, so it has no run-row claim to release. The
+ * dispatcher's other rows (seeding failure, completion, abort, shutdown, recovery, a run lost to
+ * another engine) are pinned at the unit level.
  *
  * The unit-level rows (every forwarder return, an inspect that fails, an unreadable conversation,
  * idempotence, which handles the dispatcher reports) are pinned in
@@ -38,18 +33,13 @@ import {
   stopWhen,
   type Validator,
   waitForCondition,
-  waitForRunState,
   withBackendDescriptors,
 } from '@lostgradient/operative';
+import { waitForTaskState } from './test';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
-import {
-  appendAssistantMessage,
-  appendUserMessage,
-  createConversationHistory,
-  type MediaContent,
-} from 'conversationalist';
+import { type MediaContent } from 'conversationalist';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';
@@ -78,7 +68,6 @@ afterEach(async () => {
 });
 
 const FLOOR_MILLISECONDS = 1_000;
-const PAST_THE_FLOOR = 5_000;
 
 const anthropicDescriptors = createModelCatalog().descriptors.filter(
   (descriptor) => descriptor.provider === 'anthropic',
@@ -117,23 +106,6 @@ function viewer(hold?: Promise<void>, seen: GenerateContext[] = []) {
     stopWhen: stopWhen.noToolCalls(),
   });
 }
-
-/** An agent that answers with a generated image. */
-const painter = createAgent({
-  generate: withBackendDescriptors(
-    async () => ({ content: '', parts: [generatedPart], toolCalls: [] }),
-    imageOutputDescriptors,
-  ),
-  stopWhen: stopWhen.noToolCalls(),
-});
-
-/** An agent whose model fails. */
-const failing = createAgent({
-  generate: withBackendDescriptors(async () => {
-    throw new Error('the provider is down');
-  }, anthropicDescriptors),
-  stopWhen: stopWhen.noToolCalls(),
-});
 
 function gate() {
   let open!: () => void;
@@ -192,13 +164,6 @@ function assetIdOf(part: MediaContent): string {
   return part.source.assetId;
 }
 
-async function pastTheFloor(environment: Environment, bureau: Bureau) {
-  await environment.runtime.advance(PAST_THE_FLOOR);
-  const collected = await bureau.assets!.collectGarbage().result();
-  if (collected.outcome !== 'completed') throw new Error(`collection ${collected.outcome}`);
-  return collected.value;
-}
-
 /** The holders that claim an asset, read through the privileged projection. */
 async function holdersOf(bureau: Bureau, assetId: string): Promise<string[]> {
   const descriptor = await bureau.assets!.inspect(assetId, aliceAdministrator, {
@@ -206,19 +171,6 @@ async function holdersOf(bureau: Bureau, assetId: string): Promise<string[]> {
   });
   if (descriptor.projection !== 'privileged') throw new Error('expected the privileged projection');
   return descriptor.retention.references.map((reference) => reference.holderId);
-}
-
-/** Every `asset.released` event the bureau's asset service emits from now on. */
-function watchReleases(bureau: Bureau): Array<{ assetId: string; holderId: string }> {
-  const released: Array<{ assetId: string; holderId: string }> = [];
-  const unsubscribe = bureau.assets!.subscribe((event) => {
-    const { assetId, holderId } = event;
-    if (event.type === 'asset.released' && assetId !== undefined && holderId !== undefined) {
-      released.push({ assetId, holderId });
-    }
-  });
-  cleanups.push(async () => unsubscribe());
-  return released;
 }
 
 /** Every claim taken or let go on any asset, in the order the asset service reports it. */
@@ -252,15 +204,6 @@ async function releasedHolders(bureau: Bureau, assetId: string, runId: string): 
   }, `run "${runId}" never released its claim on asset "${assetId}"`);
 }
 
-/** A conversation whose earlier user row and last user row each carry an image. */
-function seededConversation(early: MediaContent, last: MediaContent) {
-  let history = createConversationHistory();
-  history = appendUserMessage(history, [{ type: 'text', text: 'an earlier question' }, early]);
-  history = appendAssistantMessage(history, 'noted');
-  history = appendUserMessage(history, [{ type: 'text', text: 'and now this one' }, last]);
-  return history;
-}
-
 const durableEngine = { storage: { type: 'memory' as const }, durable: true };
 
 async function storageDirectory(): Promise<{
@@ -271,16 +214,6 @@ async function storageDirectory(): Promise<{
     await rm(directory, { recursive: true, force: true });
   });
   return { storage: { type: 'sqlite', path: join(directory, 'bureau') } };
-}
-
-async function durableStatusOf(bureau: Bureau, runId: string): Promise<string | undefined> {
-  const run = await bureau.getDurableRun(runId);
-  return run?.status;
-}
-
-async function taskStatusOf(bureau: Bureau, runId: string): Promise<string | undefined> {
-  const task = await bureau.internals.taskRegistry.get(runId);
-  return task?.status;
 }
 
 async function goalStatusOf(bureau: Bureau, goalRunId = 'g1'): Promise<string | undefined> {
@@ -306,118 +239,6 @@ function collectDiagnostics() {
 describe.each([
   ['a durable engine', durableEngine],
   ['no durable engine (the in-process path)', {}],
-] as const)('a bureau.run() that ends, on %s', (_name, extra) => {
-  it('releases the claims of the rows it took and no others, once it completes', async () => {
-    const environment = createEnvironment();
-    const bureau = await openBureau(environment, { painter }, extra);
-    const released = watchReleases(bureau);
-    const early = await suppliedImage(bureau);
-    const last = await suppliedImage(bureau);
-    const history = seededConversation(early, last);
-    const lastRowId = history.ids.at(-1)!;
-
-    const run = bureau.run('painter', { conversation: history }, { principal: alice.id });
-    const result = await run.result();
-    const generated = result.parts.find((part) => part.type === 'image');
-    if (generated === undefined || generated.type !== 'image')
-      throw new Error('the run generated no image');
-    const generatedRowId = result.conversation.getMessages().at(-1)!.id;
-
-    await waitForCondition(() => released.length >= 2, 'the run never released its claims');
-    await yieldToPortableEventLoop();
-
-    // Both claims the run took go: the last seeded row's, and the row it committed.
-    expect(released).toEqual(
-      expect.arrayContaining([
-        { assetId: assetIdOf(last), holderId: runRowHolderId(run.id, lastRowId) },
-        { assetId: assetIdOf(generated), holderId: runRowHolderId(run.id, generatedRowId) },
-      ]),
-    );
-    expect(released).toHaveLength(2);
-    // The earlier row's asset was never claimed under the run, so it is not released either.
-    expect(released.map((event) => event.assetId)).not.toContain(assetIdOf(early));
-    for (const part of [early, last, generated]) {
-      expect(await holdersOf(bureau, assetIdOf(part))).toEqual([]);
-    }
-
-    // The consequence: nothing keeps them any more, so the retention floor expires them.
-    const report = await pastTheFloor(environment, bureau);
-    expect(report.expired).toEqual(
-      expect.arrayContaining([assetIdOf(early), assetIdOf(last), assetIdOf(generated)]),
-    );
-  });
-
-  it('releases the claims of a run that failed by finish reason', async () => {
-    const environment = createEnvironment();
-    const bureau = await openBureau(environment, { failing }, extra);
-    const image = await suppliedImage(bureau);
-
-    const run = bureau.run('failing', [image], { principal: alice.id });
-    const result = await run.result();
-    expect(result.finishReason).toBe('error');
-
-    await releasedHolders(bureau, assetIdOf(image), run.id);
-  });
-
-  it('releases the claims of an aborted run', async () => {
-    const environment = createEnvironment();
-    const parked = gate();
-    const seen: GenerateContext[] = [];
-    const bureau = await openBureau(environment, { viewer: viewer(parked.promise, seen) }, extra);
-    const image = await suppliedImage(bureau);
-    const run = bureau.run('viewer', [image], { principal: alice.id });
-    await waitForCondition(() => seen.length > 0, 'the run never reached its first step');
-    expect(heldByRun(await holdersOf(bureau, assetIdOf(image)), run.id)).toHaveLength(1);
-
-    run.abort('stop');
-    const result = await run.result();
-    expect(result.finishReason).toBe('aborted');
-
-    await releasedHolders(bureau, assetIdOf(image), run.id);
-    parked.open();
-  });
-
-  it('releases the claims of a task that is canceled', async () => {
-    const environment = createEnvironment();
-    const parked = gate();
-    const seen: GenerateContext[] = [];
-    const bureau = await openBureau(environment, { viewer: viewer(parked.promise, seen) }, extra);
-    const image = await suppliedImage(bureau);
-    const run = bureau.run('viewer', [image], { principal: alice.id });
-    await waitForCondition(() => seen.length > 0, 'the run never reached its first step');
-
-    await bureau.internals.taskRegistry.cancel(run.id, 0);
-
-    await releasedHolders(bureau, assetIdOf(image), run.id);
-    parked.open();
-  });
-
-  it('releases what its seeding claim took when the claim fails partway, and fails the run', async () => {
-    const environment = createEnvironment();
-    const bureau = await openBureau(environment, { viewer: viewer() }, extra);
-    const first = await suppliedImage(bureau);
-    const second = await suppliedImage(bureau);
-    const retain = bureau.assets!.retain.bind(bureau.assets!);
-    const failure = spyOn(bureau.assets!, 'retain').mockImplementation(
-      async (assetId, principal, reference) => {
-        if (assetId === assetIdOf(second)) throw new Error('the asset store is down');
-        return retain(assetId, principal, reference);
-      },
-    );
-
-    const run = bureau.run('viewer', [first, second], { principal: alice.id });
-    const result = await run.result();
-    failure.mockRestore();
-
-    expect(result.finishReason).toBe('error');
-    await releasedHolders(bureau, assetIdOf(first), run.id);
-    expect(await holdersOf(bureau, assetIdOf(second))).toEqual([]);
-  });
-});
-
-describe.each([
-  ['a durable engine', durableEngine],
-  ['no durable engine (the in-process path)', {}],
 ] as const)('a child run that is canceled by its parent, on %s', (_name, extra) => {
   it('releases its claims', async () => {
     const environment = createEnvironment();
@@ -439,14 +260,10 @@ describe.each([
       },
       extra,
     );
-    const parent = await bureau.createRun({
-      agentName: 'default',
-      message: 'plan the work',
-      principal: alice.id,
-    });
+    const parent = await bureau.tasks.start('default', 'plan the work', { principal: alice.id });
     cleanups.push(async () => {
-      bureau.abortRun(parent.id);
-      await waitForRunState(bureau, parent.id);
+      await bureau.tasks.cancel(parent.id);
+      await waitForTaskState(bureau, parent.id);
       parked.open();
     });
     const image = await suppliedImage(bureau);
@@ -461,193 +278,10 @@ describe.each([
     await waitForCondition(() => seen.length > 0, 'the child never reached its first step');
     expect(heldByRun(await holdersOf(bureau, assetIdOf(image)), childRunId)).toHaveLength(1);
 
-    bureau.abortRun(parent.id);
+    await bureau.tasks.cancel(parent.id);
     await bureau.children.wait({ parentRunId: parent.id, childRunId });
 
     await releasedHolders(bureau, assetIdOf(image), childRunId);
-  });
-});
-
-describe('a bureau.run() at shutdown', () => {
-  const durable = { durable: true };
-
-  it('releases its claims when the default abort policy cancels it for good, without a diagnostic', async () => {
-    const environment = createEnvironment();
-    const location = await storageDirectory();
-    const diagnostics = collectDiagnostics();
-    const seen: GenerateContext[] = [];
-    const first = await openBureau(
-      environment,
-      { viewer: viewer(new Promise<void>(() => {}), seen) },
-      { ...location, ...durable, onDiagnostic: diagnostics.onDiagnostic },
-    );
-    const image = await suppliedImage(first);
-    const run = first.run('viewer', [image], { principal: alice.id });
-    await waitForCondition(() => seen.length > 0, 'the run never reached its first step');
-    expect(heldByRun(await holdersOf(first, assetIdOf(image)), run.id)).toHaveLength(1);
-
-    await first.dispose();
-
-    // The shutdown's own abort ended the run for good, so the next boot has nothing to resume.
-    const replacement: GenerateContext[] = [];
-    const second = await openBureau(
-      environment,
-      { viewer: viewer(undefined, replacement) },
-      { ...location, ...durable },
-    );
-    await second.waitForRecovery?.();
-    expect(await durableStatusOf(second, run.id)).toBe('cancelled');
-    expect(await taskStatusOf(second, run.id)).toBe('canceled');
-    expect(heldByRun(await holdersOf(second, assetIdOf(image)), run.id)).toEqual([]);
-    expect(replacement).toEqual([]);
-    expect(diagnostics.aboutAssets()).toEqual([]);
-    const report = await pastTheFloor(environment, second);
-    expect(report.expired).toContain(assetIdOf(image));
-  });
-
-  it('releases its claims when it completes while a drain shutdown waits for it, without a diagnostic', async () => {
-    const environment = createEnvironment();
-    const location = await storageDirectory();
-    const diagnostics = collectDiagnostics();
-    const parked = gate();
-    const seen: GenerateContext[] = [];
-    const first = await openBureau(
-      environment,
-      { viewer: viewer(parked.promise, seen) },
-      { ...location, ...durable, onDiagnostic: diagnostics.onDiagnostic },
-    );
-    const image = await suppliedImage(first);
-    const run = first.run('viewer', [image], { principal: alice.id });
-    await waitForCondition(() => seen.length > 0, 'the run never reached its first step');
-
-    const shutdown = first.shutdown({ policy: 'drain' });
-    parked.open();
-    await shutdown;
-    const finished = await run.result();
-    expect(finished.finishReason).not.toBe('error');
-
-    const second = await openBureau(environment, { viewer: viewer() }, { ...location, ...durable });
-    await second.waitForRecovery?.();
-    expect(await durableStatusOf(second, run.id)).toBe('completed');
-    expect(heldByRun(await holdersOf(second, assetIdOf(image)), run.id)).toEqual([]);
-    expect(diagnostics.aboutAssets()).toEqual([]);
-  });
-
-  it('keeps its claims when this process lost the run to another engine', async () => {
-    const environment = createEnvironment();
-    const parked = gate();
-    const seen: GenerateContext[] = [];
-    const bureau = await openBureau(
-      environment,
-      { viewer: viewer(parked.promise, seen) },
-      durableEngine,
-    );
-    const image = await suppliedImage(bureau);
-    const run = bureau.run('viewer', [image], { principal: alice.id });
-    await waitForCondition(() => seen.length > 0, 'the run never reached its first step');
-    const engine = bureau.durableEngine();
-    if (engine === undefined) throw new Error('Expected a durable engine.');
-    // Another engine over the same store won the run's checkpoint compare-and-swap, and is still
-    // running it: this engine's handle settles interrupted, and the stored run is not over.
-    const original = engine.get.bind(engine);
-    const lost = spyOn(engine, 'lostWorkflowClaim').mockReturnValue(true);
-    const winnerRunning = spyOn(engine, 'get').mockImplementation(async (id: string) => {
-      const record = await original(id);
-      return id === run.id && record !== null && record !== undefined
-        ? { ...record, status: 'running' }
-        : record;
-    });
-    const released = watchReleases(bureau);
-
-    parked.open();
-    await run.result();
-    // Give a release every chance to happen before asserting that it did not.
-    for (let turn = 0; turn < 50; turn += 1) await yieldToPortableEventLoop();
-    lost.mockRestore();
-    winnerRunning.mockRestore();
-
-    expect(released).toEqual([]);
-    expect(heldByRun(await holdersOf(bureau, assetIdOf(image)), run.id)).toHaveLength(1);
-  });
-});
-
-describe('a run recovered after a restart', () => {
-  const recovering = {
-    durable: true,
-    durableOwnership: { ownership: 'none' as const },
-  };
-
-  /** The first process starts the run and is the one that died: its model never answers. */
-  async function startRunThatDies(
-    environment: Environment,
-    location: Awaited<ReturnType<typeof storageDirectory>>,
-  ) {
-    const seen: GenerateContext[] = [];
-    const first = await openBureau(
-      environment,
-      { viewer: viewer(new Promise<void>(() => {}), seen) },
-      { ...location, ...recovering },
-    );
-    const early = await suppliedImage(first);
-    const last = await suppliedImage(first);
-    const run = first.run(
-      'viewer',
-      { conversation: seededConversation(early, last) },
-      {
-        principal: alice.id,
-      },
-    );
-    await waitForCondition(() => seen.length > 0, 'the run never reached its first step');
-    return { first, run, early, last };
-  }
-
-  it('releases its claims, and only the claimed row’s, in the process that recovers it', async () => {
-    const environment = createEnvironment();
-    const location = await storageDirectory();
-    const { run, early, last } = await startRunThatDies(environment, location);
-    const resume = gate();
-    const second = await openBureau(
-      environment,
-      { viewer: viewer(resume.promise) },
-      { ...location, ...recovering },
-    );
-    await second.waitForRecovery?.();
-    const released = watchReleases(second);
-    expect(heldByRun(await holdersOf(second, assetIdOf(last)), run.id)).toHaveLength(1);
-
-    resume.open();
-
-    await releasedHolders(second, assetIdOf(last), run.id);
-    expect(released.map((event) => event.assetId)).toEqual([assetIdOf(last)]);
-    expect(released.map((event) => event.assetId)).not.toContain(assetIdOf(early));
-  });
-
-  it('keeps its claims through a graceful shutdown, and releases them when the next boot finishes it', async () => {
-    const environment = createEnvironment();
-    const location = await storageDirectory();
-    const { run, last } = await startRunThatDies(environment, location);
-    const diagnostics = collectDiagnostics();
-    const second = await openBureau(
-      environment,
-      { viewer: viewer(new Promise<void>(() => {})) },
-      { ...location, ...recovering, onDiagnostic: diagnostics.onDiagnostic },
-    );
-    await second.waitForRecovery?.();
-    const releasedBySecond = watchReleases(second);
-
-    await second.dispose();
-
-    // The recovered run is lost, not ended: its durable record still reads in flight.
-    expect(releasedBySecond).toEqual([]);
-    expect(diagnostics.aboutAssets()).toEqual([]);
-    const third = await openBureau(
-      environment,
-      { viewer: viewer() },
-      { ...location, ...recovering },
-    );
-    // The run is still in flight and still holds its claim when the next boot opens.
-    await third.waitForRecovery?.();
-    await releasedHolders(third, assetIdOf(last), run.id);
   });
 });
 
@@ -975,7 +609,7 @@ describe('a goal attempt across a restart', () => {
       }),
       diagnostics.onDiagnostic,
     );
-    await second.waitForRecovery?.();
+    await second.recovery();
     // The run that will resume released nothing at shutdown, and still holds its claim.
     expect(heldByRun(await holdersOf(second, assetId), 'goal-g1-a0').length).toBeGreaterThan(0);
 

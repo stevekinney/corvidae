@@ -143,7 +143,7 @@ const stopped = {
     }
     await pollUntil(async () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
-      await bureau.runDurableMaintenance(Date.now());
+      await bureau.maintain(Date.now());
       return (await bureau.internals.taskRegistry.record(fireId)) === undefined ? true : undefined;
     }, 'the fire’s task to leave retention');
   },
@@ -159,9 +159,9 @@ const continuing = {
     );
     expect(canceled.error).toBeUndefined();
   },
-  'canceled as a durable run': async ({ bureau, fireId }: Context) => {
-    const outcome = await bureau.cancelDurableRun(fireId);
-    expect(outcome.status).toBe('requested');
+  'canceled in process through tasks.cancel': async ({ bureau, fireId }: Context) => {
+    const outcome = await bureau.tasks.cancel(fireId);
+    expect(outcome.receipt).not.toBe('rejected');
   },
   'canceled in the engine, by a route Bureau did not take': async ({ bureau, fireId }: Context) => {
     await bureau.durableEngine()?.cancel(fireId);
@@ -396,8 +396,8 @@ describe('a crash between a fire’s cancel and the release of its approval', ()
     'canceled through its task, crashed before the release': (first: Bureau, fireId: string) => {
       void rpc(handlerOf(first), 'bureau.tasks.cancel', { taskId: fireId }, 'alice-key');
     },
-    'canceled as a durable run, crashed before the release': (first: Bureau, fireId: string) => {
-      void first.cancelDurableRun(fireId);
+    'canceled in process, crashed before the release': (first: Bureau, fireId: string) => {
+      void first.tasks.cancel(fireId);
     },
     'canceled in the engine, crashed before the release': (first: Bureau, fireId: string) => {
       void first.durableEngine()?.cancel(fireId);
@@ -470,8 +470,8 @@ describe('a cancel by a peer, with the holder alive', () => {
       toolbox: approvalToolbox([]),
     });
 
-    const outcome = await peer.cancelDurableRun(fireId);
-    expect(outcome.status).toBe('requested');
+    const outcome = await peer.tasks.cancel(fireId);
+    expect(outcome.receipt).toBe('canceled');
     await pollUntil(
       async () => ((await durableStatus(peer, fireId)) === 'cancelled' ? true : undefined),
       'the engine to record the cancel',

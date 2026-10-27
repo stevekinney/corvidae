@@ -25,6 +25,7 @@ import {
   createBureauHandler,
 } from '../create-bureau-handler.ts';
 import { authentication, type Handler, type RpcBody } from './management-fixtures.test-support.ts';
+import { runTask } from '../../test';
 
 const harnesses: FileBureauHarness[] = [];
 /** Disposes every Bureau `serve` opened, newest first. Call it from `afterEach`. */
@@ -121,7 +122,7 @@ export function listOf(response: RpcBody, key: string): Array<Record<string, unk
 export async function seed(served: Served): Promise<string> {
   await served.put('researcher.md', RESEARCHER);
   await served.bureau.agents.refresh();
-  await served.bureau.run('researcher', 'hello').result();
+  await runTask(served.bureau, 'researcher', 'hello');
   return served.hashOf('researcher');
 }
 

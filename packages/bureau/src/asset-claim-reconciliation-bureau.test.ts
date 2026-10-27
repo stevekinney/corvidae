@@ -119,27 +119,27 @@ describe('a run that ended in a process that died before it released', () => {
     const store = await createStore();
     const first = await openBureau(store);
     const { assetId, source } = await admitImage(first);
-    const run = first.run('viewer', [{ type: 'image', source }], { principal: alice.id });
+    const run = await first.tasks.start('viewer', [{ type: 'image', source }], {
+      principal: alice.id,
+    });
     await run.result();
-    await waitForCondition(async () => {
-      const holders = await holdersOf(first, assetId);
-      return holders.length === 0;
-    }, 'the dispatcher never released the run’s claim');
     // The process dies after the terminal commit and before the release: the claim is still there.
+    // A task's rows are held by its context, so the run-row claim stands for a catalog run's
+    // (a child's) that the process never let go.
     const lost = runRowHolderId(run.id, 'row-lost');
     await first.assets!.retain(assetId, alice, {
       holderId: lost,
       until: UNTIL,
       [bureauClaim]: true,
     });
-    expect(await holdersOf(first, assetId)).toEqual([lost]);
+    expect(await holdersOf(first, assetId)).toContain(lost);
     await first.dispose();
 
     // The boot's reconciliation runs beside the caller, after recovery, so it is waited for.
     const second = await openBureau(store);
     await waitForCondition(async () => {
       const holders = await holdersOf(second, assetId);
-      return holders.length === 0;
+      return !holders.includes(lost);
     }, 'the boot never released the lost claim');
     await second.dispose();
 
@@ -164,7 +164,7 @@ describe('a run that ended in a process that died before it released', () => {
       'the third boot never reconciled its run and session claims',
     );
     // Disposing waits for the tracked reconciliation, so it has finished when this returns.
-    expect(await holdersOf(third, assetId)).toEqual([]);
+    expect(await holdersOf(third, assetId)).not.toContain(lost);
     await third.dispose();
     expect(releases).toEqual([]);
   });
@@ -177,7 +177,9 @@ describe('a run that ended in a process that died before it released', () => {
     });
     const bureau = await openBureau(store, parked);
     const { assetId, source } = await admitImage(bureau);
-    const run = bureau.run('viewer', [{ type: 'image', source }], { principal: alice.id });
+    const run = await bureau.tasks.start('viewer', [{ type: 'image', source }], {
+      principal: alice.id,
+    });
     const holders = async () => holdersOf(bureau, assetId);
     await waitForCondition(async () => {
       const held = await holders();
@@ -185,9 +187,10 @@ describe('a run that ended in a process that died before it released', () => {
     }, 'the run never claimed its input');
     const before = await holders();
 
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
 
-    expect(before).toEqual([runRowHolderId(run.id, `${run.id}:input`)]);
+    // The task's context holds its input row.
+    expect(before).toEqual([expect.stringContaining(`session-row:${run.contextId}:`)]);
     expect(await holders()).toEqual(before);
   });
 });
@@ -342,7 +345,7 @@ describe('a session deleted while its claims are being taken', () => {
     await bureau.internals.sessionStore!.delete('session-1');
     expect(await holdersOf(bureau, assetId)).toHaveLength(1);
 
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
 
     expect(await holdersOf(bureau, assetId)).toEqual([]);
   });

@@ -9,8 +9,6 @@ import type {
 } from '@lostgradient/lifecycle';
 import type { GovernedMemory, MemoryCapability } from '@lostgradient/memory';
 import type {
-  AgentInput,
-  AgentRun,
   AgentRunEventRegistry,
   AgentSession,
   CacheOptions,
@@ -27,7 +25,9 @@ import type {
   HumanInputSchema,
   LivenessSnapshot,
   PeerCallJournal,
+  RunEvent,
   RunFrame,
+  RunResult,
   SessionInputAdmissionOutcome,
   SessionInputAdmissionRequest,
   SessionInputPayload,
@@ -39,7 +39,13 @@ import type {
   Validator,
 } from '@lostgradient/operative';
 import type { SkillActivationRecord, SkillCatalogRevision } from './skills';
-import type { TaskRegistry } from './task-registry';
+import type {
+  TaskCancelOutcome,
+  TaskListPage,
+  TaskListQuery,
+  TaskRegistry,
+  TaskView,
+} from './task-registry';
 import type { InteractiveSurfaces } from './interactive-surface/store';
 import type { ToolPolicy } from 'armorer/protocol';
 import type { AgentSource, WorkflowSource } from './sources/definition-source';
@@ -64,8 +70,9 @@ import type { ConversationHistory, Message, MultiModalContent } from 'conversati
 
 import type {
   AgentDefinitions,
+  AgentHasOutput,
   AgentNames,
-  AgentRunForName,
+  AgentOutput,
   BureauAgentCatalog,
 } from './agent-catalog';
 import type { BureauAssetOptions } from './assets/asset-service';
@@ -73,7 +80,7 @@ import type { McpResourceReader } from './assets/content-source-resolver';
 import type { AssetService } from './assets/types';
 import type { AuditRetentionOption, AuditTrail, CheckpointRetentionOption } from './audit-trail';
 import type { BureauEventFeed } from './bureau-event-feed.ts';
-import type { CreatedRunSummary, RunCreationReceiptLocation } from './command-ledger';
+import type { RunCreationReceipt, RunCreationReceiptLocation } from './command-ledger';
 import type { BureauChildDelegationOptions, BureauChildren } from './child-topology';
 import type {
   DurableEventHistoryPageOptions,
@@ -286,7 +293,7 @@ export interface BureauRetentionOptions {
    * the Weft fleet feed's own retention floor — audit evidence always
    * outlives the durable events it describes, even when `olderThan` would
    * otherwise have allowed pruning it sooner. Pruning runs inside the
-   * existing durable maintenance pass: {@link Bureau.runDurableMaintenance}
+   * existing durable maintenance pass: {@link Bureau.maintain}
    * for a `'manual'` host's own alarm/Cron trigger, and — under the
    * default `'automatic'` profile — the same background interval that
    * already prunes stale run ownership (AB-374). It is never driven on a
@@ -311,7 +318,7 @@ export interface BureauRetentionOptions {
    * `BureauError(..., 'BAD_REQUEST')`.
    *
    * On every terminal transition of a durable run — completion, error, abort,
-   * or {@link Bureau.cancelDurableRun} — bureau runs exactly ONE cleanup step
+   * or a durable cancel through {@link BureauTasks.cancel} — bureau runs exactly ONE cleanup step
    * for that run, however many of those triggers fire. The step re-reads the
    * run's durable record first and prunes only once the engine reports a
    * terminal status, so a checkpoint can never be pruned ahead of the
@@ -332,7 +339,7 @@ export interface BureauRetentionOptions {
    * the runtime clock from the run's terminal action; a run that settled
    * before a restart and was not reattached is measured from when the ledger
    * first observes it settled. A run still in progress holds its binding.
-   * Once the window has passed, {@link Bureau.locateRunCreationReceipt}
+   * Once the window has passed, {@link BureauTasks.receipt}
    * reports `expired`, the same request id creates a new run, and durable
    * maintenance deletes the binding. `createBureau` throws
    * `BureauError(..., 'BAD_REQUEST')` for any other value.
@@ -368,10 +375,10 @@ export interface BureauRetentionOptions {
    * running task, and a terminal one not yet older than the window, is never
    * removed. Only tasks in this process's run store are candidates, so a
    * terminal run from before a restart is not removed. The pass runs from
-   * {@link Bureau.runDurableMaintenance} and from the automatic maintenance timer,
+   * {@link Bureau.maintain} and from the automatic maintenance timer,
    * which starts only for a durable bureau or one with KV-backed audit
    * retention; an ephemeral bureau with neither keeps its terminal tasks until
-   * something calls `runDurableMaintenance`. A task is also kept for as long as its run-creation binding
+   * something calls `maintain`. A task is also kept for as long as its run-creation binding
    * ({@link BureauRetentionOptions.receipts}) is stored, so an
    * exact retry of the request that created it always finds its task.
    * `olderThan` must be a finite, non-negative number; otherwise
@@ -410,14 +417,11 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   /**
    * The typed agent catalog (AB-15, AB-22) — a plain literal map of agent
    * name to `RunnableAgent`, exposed read-only as {@link Bureau.agents} and
-   * dispatched by name through {@link Bureau.run}. Optional (COR-1701): omitted
-   * means `{}`, typed `Record<never, never>`, for a bureau that only uses the
-   * session/durability-backed `createRun` surface or file agents
-   * ({@link BureauOptions.agentSource}) and doesn't dispatch through the code
-   * catalog at all. There is no
-   * register/unregister lifecycle: the map is fixed for the bureau's
-   * lifetime, independent of and additive to `createRun` (a bureau may use
-   * either surface or both). Every run and schedule fire
+   * started by name through {@link BureauTasks.start}. Optional (COR-1701):
+   * omitted means `{}`, typed `Record<never, never>`, for a bureau that only
+   * runs file agents ({@link BureauOptions.agentSource}) and starts nothing
+   * from the code catalog. There is no register/unregister lifecycle: the map
+   * is fixed for the bureau's lifetime. Every task and schedule fire
    * belongs to one of these agents.
    *
    * The name `bureau` is reserved (it named the implicit Bureau-wide agent,
@@ -430,7 +434,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * `agentFileDirectory(path, { tools })` from `@lostgradient/bureau/sources` for a directory of
    * Markdown agent files (COR-1524): every `*.md` file in it is an agent whose identifier is the
    * filename without the extension, listed in {@link Bureau.agents} beside the code-defined ones
-   * and run by name through {@link Bureau.run} or a session run. See
+   * and started by name through {@link BureauTasks.start}. See
    * `documentation/agent-files.md`.
    *
    * Bureau keeps parsing, validation, snapshots, revisions, publication, and the write-through
@@ -499,9 +503,9 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   /**
    * Override for Weft-backed durable execution. Durable execution is **on by
    * default whenever a persistent `storage` backend (`sqlite`/`lmdb`) is
-   * configured** — every `createRun()` is then checkpointed on the same backend
+   * configured** — every task is then checkpointed on the same backend
    * and resumes from its last completed step after a crash, with the standard
-   * `run()`/`createRun()` event surface unchanged.
+   * run event surface unchanged.
    *
    * The default follows persistence because that is the only place resume is
    * real: a `memory` backend loses its checkpoints with the process, so it stays
@@ -511,7 +515,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * Has no effect without any `storage` (a durable engine needs a backend).
    *
    * Recovered runs are registered through Weft's pre-resume recovery hook, so
-   * {@link Bureau.getRun} and live event subscribers see them before resumed
+   * {@link BureauTasks.detail} and live event subscribers see them before resumed
    * user code advances.
    */
   durable?: boolean;
@@ -519,7 +523,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * Select how the durable engine's periodic maintenance is driven. The
    * default `'automatic'` profile uses in-process intervals. Cloudflare
    * Durable Objects and other serverless hosts should use `'manual'`, then
-   * call {@link Bureau.runDurableMaintenance} from each alarm or Cron wake-up.
+   * call {@link Bureau.maintain} from each alarm or Cron wake-up.
    */
   maintenance?: 'automatic' | 'manual';
   /**
@@ -552,7 +556,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * operative's `createFlowController`: a per-key concurrency cap, a rate
    * limit keyed by an arbitrary function of the trigger, and singleton
    * dedupe of concurrent identical triggers. Applies uniformly to both
-   * API-triggered runs (`createRun`) and durable schedule fires — the same
+   * API-triggered runs (`tasks.start`) and durable schedule fires — the same
    * policy instance tracks state across both surfaces. `concurrency`/`rateLimit`
    * default their grouping key to the run's `agentName`; `singleton`
    * requires an explicit key (there is no sane default identity for "this
@@ -562,16 +566,13 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   flowControl?: FlowControlPolicy;
   /**
    * F3, COR-1700 — whether a durable Bureau offers operative's `requestHumanInput` HITL tool.
-   * It is offered by default (COR-1577) to a durable `createRun` run (a Bureau-wide one, or one of
-   * a named catalog agent), to a schedule fire, and to a durable `bureau.run()` run of an agent
-   * that resolves definitions. It is never offered without a durable engine, whatever this option
+   * It is offered by default (COR-1577) to a durable task and to a schedule fire. It is never offered without a durable engine, whatever this option
    * says, nor to a child run, a goal attempt, or a workflow-file agent step. An agent file's
    * `tools:` list does not gate it. The tool is bound to that run's OWN event emitter and its real
    * `ctx.services` object — the only wiring under which a `HumanWaitParkedEvent` the tool
-   * dispatches actually reaches `subscribeLiveFrames`/`store` listeners (including AB-13's
+   * dispatches actually reaches `frames`/`store` listeners (including AB-13's
    * flow-control `markParked`) and `reviews.list` (AB-20). The park is a `human-wait`
-   * review: a `createRun` run's carries its `sessionId`, and a `bureau.run()` run's, which has no
-   * session, is addressed by its `runId` and resumed through the engine by that id. The agent
+   * review: a task's carries its context's id as `sessionId`, and `runId` is the task's id. The agent
    * must stop on the call (`stopWhen.toolCalled('requestHumanInput')`) for the run to park.
    *
    * Pass `false` to remove the tool. Passing `true` throws `BureauError` `BAD_REQUEST`: the tool
@@ -588,7 +589,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   humanInput?: BureauHumanInputOption;
   /**
    * AB-201, COR-1700 — whether a durable Bureau offers operative's `scheduleWakeup`
-   * self-scheduling tool to a durable `createRun` run, mirroring
+   * self-scheduling tool to a durable task, mirroring
    * {@link BureauOptions.humanInput}'s wiring exactly. It is offered by default: Bureau adds a
    * `scheduleWakeup` tool to each durable run's toolbox, bound to that run's real `ctx.services`
    * object so a call genuinely parks the workflow via `ctx.sleep` (AB-41's decision record)
@@ -633,7 +634,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * generator runs, so a second process racing to resume the same workflow
    * fails closed instead of double-executing it.
    *
-   * Under `'workflow-lease'`, run-ownership pruning (`runDurableMaintenance()`
+   * Under `'workflow-lease'`, run-ownership pruning (`maintain()`
    * and the automatic maintenance timer) also skips any run whose workflow
    * claim is currently live on any process; under `'none'` pruning is
    * unchanged.
@@ -717,7 +718,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * would miss. It receives every event the emitter dispatches for the life of
    * the Bureau, in dispatch order. A throwing listener, or an async one that rejects, is
    * reported through {@link onDiagnostic} and does not affect the Bureau. Live frames have no
-   * such option: `subscribeLiveFrames` replays the frames emitted during
+   * such option: `frames` replays the frames emitted during
    * recovery to its first subscriber.
    */
   onEvent?: (event: BureauEventMap[BureauEventType]) => void | Promise<void>;
@@ -816,7 +817,7 @@ export type BureauEventType = keyof BureauEventMap & string;
  * - `'rejected'` — resolved via `reviews.resolve` with `decision: 'reject'` (requires a reason).
  * - `'expired'` — a tool-approval review swept by the expiry pass (a schedule fire's, the maintenance pass's) past its binding's `expiresAt`.
  * - `'revoked'` — transitioned by task-retention expiry or `deleteSession` via `revokePendingApprovalsForRun`.
- * - `'canceled'` — transitioned by `abortRun`/`cancelDurableRun` via `revokePendingApprovalsForRun`.
+ * - `'canceled'` — transitioned by `tasks.cancel` via `revokePendingApprovalsForRun`.
  * - `'superseded'` — a tool-approval review whose `resumeApproval` re-gate produced a new `pendingApproval` for the same `callId`.
  */
 export type ReviewStatus =
@@ -869,9 +870,9 @@ export interface PendingHumanWaitReview {
   id: string;
   runId: string;
   /**
-   * The Bureau session the run belongs to. Absent for a run started with `bureau.run()`
-   * (COR-1577), which has no session: the run id is what addresses the review, and
-   * {@link Bureau.reviews.resolve} resumes it through the engine by that id.
+   * The Bureau session the run belongs to. Absent only for a review of a run that has no session,
+   * which is addressed by its run id; {@link Bureau.reviews.resolve} resumes it through the
+   * engine by that id.
    */
   sessionId?: string | undefined;
   agentName: string | undefined;
@@ -894,8 +895,8 @@ export interface PendingHumanWaitReview {
 export type PendingReview = PendingToolApprovalReview | PendingHumanWaitReview;
 
 /**
- * A review that belongs to a session: every tool approval, and a human wait of a `createRun`
- * run. Bureau's session code works in this type; a catalog run's human wait has no session.
+ * A review that belongs to a session: every tool approval, and a human wait of a task.
+ * Bureau's session code works in this type; a human wait of a run with no session lacks one.
  */
 export type SessionPendingReview =
   PendingToolApprovalReview | (PendingHumanWaitReview & { readonly sessionId: string });
@@ -982,7 +983,8 @@ export type CleanupAcknowledgement = 'not-required' | 'completed' | 'failed' | '
  * omitted (including when `options` itself is omitted) — matching
  * `dispose()`'s existing behavior.
  *
- * - `'abort'` aborts caller-owned and catalog runs, including durable runs.
+ * - `'abort'` aborts caller-owned and catalog runs, including durable runs this process started.
+ *   A durable run this process recovered at boot is left recoverable, as under `'detach'`.
  * - `'drain'` waits for caller-owned and catalog runs to finish naturally.
  * - `'detach'` leaves durable caller-owned runs recoverable, aborts process-local and catalog
  *   runs, and waits for errored runs as `'drain'` does. Toolbox cleanup remains abortive.
@@ -1035,7 +1037,10 @@ export interface BureauShutdownOwnerReport {
 export interface BureauShutdownReport {
   readonly admissionClosed: true;
   readonly policy: 'abort' | 'drain' | 'detach';
-  /** Number of durable caller-owned runs left running for a later process to recover. */
+  /**
+   * Number of durable caller-owned runs left running for a later process to recover: every one
+   * under `'detach'`, and under `'abort'` the ones this process recovered rather than started.
+   */
   readonly detached: number;
   readonly requested: number;
   readonly completed: number;
@@ -1046,7 +1051,7 @@ export interface BureauShutdownReport {
 }
 
 /**
- * Returned by {@link Bureau.waitForRecovery}, modeled on
+ * Returned by {@link Bureau.recovery}, modeled on
  * {@link BureauShutdownReport}'s shape rather than a new report vocabulary
  * (AB-242's decision record). Aggregates one boot recovery pass's outcome so
  * a caller who wants to know whether recovery actually succeeded has a
@@ -1106,22 +1111,17 @@ export interface BureauChildrenOptions<D extends AgentDefinitions = AgentDefinit
 }
 
 /**
- * Per-call options accepted by {@link Bureau.run} — session/tracing/
- * attribution concerns that are properties of the CALL, not the agent (AB-15).
+ * Per-call options of a catalog dispatch (a child, a goal attempt, or a workflow step) —
+ * session/tracing/attribution concerns that are properties of the CALL, not the agent (AB-15).
+ * {@link StartTaskOptions} carries the same concerns for a task.
  * There is deliberately no `systemPrompt`, `maximumSteps`, or `maximumTokens`
  * override here: anything that shapes how the agent runs is fixed on the
  * catalog agent's own definition (`createAgent({ instructions, ... })`).
  */
 export interface BureauRunOptions {
   /**
-   * On the durable dispatch branch (a durable engine composed AND the named
-   * agent supports definition resolution), seeds the `ActiveRun`'s
-   * session-correlation key (defaulting to the minted run id when omitted).
-   * A no-op on the direct/in-memory dispatch branch — `AgentRunContext`
-   * (AB-15) carries no `sessionId` field, so a bare `RunnableAgent.run()`
-   * has nowhere to observe it. Accepted without error on either branch,
-   * since a caller cannot generally predict in advance which branch a
-   * given agent will take.
+   * Seeds the `ActiveRun`'s session-correlation key on the durable dispatch
+   * (defaulting to the minted run id when omitted).
    */
   sessionId?: string;
   signal?: AbortSignal;
@@ -1129,13 +1129,11 @@ export interface BureauRunOptions {
   withTraceContext?: <T>(parentContext: unknown, fn: () => Promise<T>) => Promise<T>;
   /**
    * AB-241 — the authenticated principal attributed with this run, forwarded
-   * into `AgentRunContext.principal` on both dispatch branches. The direct
-   * (in-memory) branch hands it straight to the agent's own `run()`; the
-   * durable branch additionally records it exactly as `Bureau.createRun`
-   * does — `LivenessSnapshot.owner` and the in-memory `runAttribution` map
-   * `eventHistory`'s principal gate consults — so audit entries and
-   * liveness observers see the same attribution either way. A non-string
-   * value throws synchronously (`BureauError` `BAD_REQUEST`).
+   * into `AgentRunContext.principal`. The dispatch records it as a task does —
+   * `LivenessSnapshot.owner` and the in-memory `runAttribution` map the
+   * event history's principal gate consults — so audit entries and
+   * liveness observers see the same attribution. A non-string
+   * value is `BAD_REQUEST`.
    */
   principal?: string;
 }
@@ -1178,7 +1176,7 @@ export interface BureauReviews {
    * {@link BureauReviews.list}. Otherwise it derives the park as recovery does: the park,
    * its ordinal and its prompt from the run's checkpoint, still pending while the engine's
    * `waitingForSignals` names its signal. A session run's review carries the session from the
-   * durable run input; a `bureau.run()` run's carries none. Empty for a run that is not parked on
+   * durable run input. Empty for a run that is not parked on
    * a human wait, or that this Bureau has no durable engine to read. Pending tool approvals are
    * not derived.
    */
@@ -1231,7 +1229,7 @@ export type AuditQuery = {
 export type BureauAuditQueryOptions = {
   /**
    * Only records about resources this owner owns (the `api-key:<subject>` or `anonymous:local`
-   * string `getOwner` returns). A record about a resource with no owner is never returned for an
+   * string `ownerOf` returns). A record about a resource with no owner is never returned for an
    * owner. Omitted, every record is returned: an in-process caller is the host itself.
    */
   readonly owner?: string | undefined;
@@ -1264,6 +1262,267 @@ export type AuditQueryPage = {
   /** Pass it as `cursor` for the next page; `null` on the last. */
   readonly nextCursor: string | null;
 };
+
+/**
+ * What {@link BureauTasks.start} runs: a message for the context (a string, or an ordered list of
+ * parts, as `AgentInput` takes), a conversation that seeds a new context, conversation rows to
+ * append with their own ids (as an A2A continuation sends them), or `{ continue: true }` to answer
+ * the context's conversation as it stands (an AG-UI resume).
+ */
+export type TaskInput =
+  | SessionInputPayload
+  | {
+      /** Seeds a new context with this conversation. Naming a `contextId` too is `BAD_REQUEST`. */
+      readonly conversation: ConversationHistory;
+    }
+  | {
+      /** Rows appended to the context's conversation verbatim, ids and parts included. */
+      readonly append: readonly Message[];
+    }
+  | {
+      /** Answers the context's conversation as it stands, which must end in a user or tool row. */
+      readonly continue: true;
+    };
+
+/** How {@link BureauTasks.start} starts a task. */
+export interface StartTaskOptions {
+  /**
+   * The context to continue. Omitted, the task creates a context. A context bound to another
+   * agent is `BAD_REQUEST`; another principal's reads as one that does not exist (`NOT_FOUND`).
+   */
+  readonly contextId?: string;
+  /**
+   * The owner of record of the task, and of a context it creates: the authenticated principal that
+   * started it. Omitted, the task is owned by `anonymous:local`.
+   */
+  readonly principal?: string;
+  /**
+   * The caller's idempotency key for this start. A retry with the same principal, agent, and key
+   * and the same `agentName`, `input`, `contextId`, and `requestContext` returns the original task;
+   * the same key with any of those changed is refused with `BureauLedgerConflictError`. Needs
+   * `principal` (`BAD_REQUEST` otherwise) and a durable engine (`NOT_CONFIGURED`, subject
+   * `durable`). Bound to its task until {@link BureauRetentionOptions.receipts} after it settles.
+   * A receipt that cannot be recorded rejects the start with `RunCreationReceiptUnrecordedError`
+   * naming the task, which is aborted; a retry returns it.
+   */
+  readonly commandId?: string;
+  /** Authenticated, request-scoped authority forwarded to Armorer tool execution. */
+  readonly requestContext?: ToolRequestContext;
+  /** Aborts the task when it fires, from the moment the task starts executing. */
+  readonly signal?: AbortSignal;
+  /** The caller's trace context, the parent of the task's spans. */
+  readonly traceContext?: unknown;
+  /** Runs the task's work under `parent`, the caller's tracer binding. */
+  readonly withTraceContext?: <T>(parent: unknown, fn: () => Promise<T>) => Promise<T>;
+}
+
+/**
+ * A started task. It iterates the task's run events; `result()` settles with the run's result,
+ * `abort()` requests cancellation (a no-op once the task has settled), and `snapshot()` reads its
+ * liveness now. A handle a `commandId` retry replays for a task this process does not run settles
+ * `result()` from {@link BureauTasks.wait}.
+ */
+export interface TaskHandle<O = unknown> extends AsyncIterable<RunEvent> {
+  /** The task's id. */
+  readonly id: string;
+  /** The context the task runs in. */
+  readonly contextId: string;
+  /** The receipt of a start that named a `commandId`. */
+  readonly receipt?: RunCreationReceipt;
+  /** Settles with the run's result once the task has ended. */
+  result(): Promise<RunResult<O>>;
+  /** Requests cancellation of the task; once it has settled, does nothing. */
+  abort(reason?: string): void;
+  /** The task's liveness as of now. */
+  snapshot(): LivenessSnapshot;
+}
+
+/** Which `commandId` {@link BureauTasks.receipt} looks up, scoped as the ledger key is. */
+export interface TaskReceiptQuery {
+  /** The authenticated caller that issued the start. */
+  readonly commandId: string;
+  readonly principal: string;
+  /** The agent the task ran as. Required unless `contextId` names an existing context. */
+  readonly agentName?: string | undefined;
+  /** The context the start continued, whose agent the task then ran as. */
+  readonly contextId?: string | undefined;
+}
+
+/** What {@link BureauTasks.inspect} reads about one task. */
+export interface TaskInspection {
+  readonly task: TaskView;
+  /** The run's liveness, or `undefined` when this process holds no live run for the task. */
+  readonly liveness: LivenessSnapshot | undefined;
+  /** The children the task's run owns, in the order the topology records them. */
+  readonly children: readonly {
+    readonly childRunId: string;
+    readonly childAgentName: string;
+    readonly status: string;
+    readonly parentCancellation: string;
+    readonly revision: number;
+    /** The child's liveness, or `undefined` when this process holds no live run for it. */
+    readonly liveness: LivenessSnapshot | undefined;
+  }[];
+}
+
+/**
+ * One answer to a task's open wait, for {@link BureauTasks.respond}. Send exactly one of `answer`,
+ * `data`, and `decision`.
+ */
+export interface TaskRespondRequest {
+  /** The task whose wait is answered. */
+  readonly taskId: string;
+  /** The caller's idempotency key for this command, at most 200 characters. */
+  readonly messageId: string;
+  /** Answer text for a human-input wait; a list of parts is joined with a newline. */
+  readonly answer?: string | readonly string[] | undefined;
+  /** The answer of a human wait that carries an input schema, validated against it. */
+  readonly data?: Readonly<Record<string, unknown>> | undefined;
+  /** The decision on an approval or a human wait. */
+  readonly decision?: 'approve' | 'deny' | 'reject' | undefined;
+  /** Required, and non-blank, for `reject`. */
+  readonly reason?: string | undefined;
+  /** Addresses the human wait with this signal. */
+  readonly signalName?: string | undefined;
+  /** Addresses the tool approval for this call. */
+  readonly callId?: string | undefined;
+  /**
+   * Who answers: the owner string (`api-key:<subject>` or `anonymous:local`) the answer is
+   * recorded as resolved by, and the caller the receipt belongs to.
+   */
+  readonly principal: string;
+  /**
+   * Answer as an operator: another owner's human-input waits may be answered, and an approval of
+   * a task `principal` does not own is answered as a missing task. Omitted, only the task's owner
+   * may answer. `createBureauHandler` sets it for a caller holding `bureau.tasks:write`.
+   */
+  readonly operator?: boolean | undefined;
+}
+
+/** What {@link BureauTasks.respond} answered, and the receipt an exact retry returns. */
+export interface TaskRespondResult {
+  readonly taskId: string;
+  readonly messageId: string;
+  /** The review the command resolved. */
+  readonly reviewId: string;
+  readonly kind: 'tool-approval' | 'human-wait';
+  readonly decision: 'approve' | 'deny' | 'reject';
+  /** `applied`, or `superseded` when the approval was gated again and the tool did not run. */
+  readonly receipt: 'applied' | 'rejected' | 'superseded';
+  /** A `tool-approval` reject only: the reason, for the next run to splice in. */
+  readonly feedback?: string | undefined;
+}
+
+/** The output a task of the catalog agent `TName` settles with: its schema's, else `unknown`. */
+export type TaskOutputOf<
+  D extends AgentDefinitions,
+  TName extends keyof D & string,
+> = TName extends TName
+  ? AgentHasOutput<D, TName> extends true
+    ? AgentOutput<D, TName>
+    : unknown
+  : never;
+
+/**
+ * The tasks of a Bureau: start one, and read, wait on, watch, and cancel it.
+ * `bureau.tasks.*` operations served by `createBureauHandler` delegate to these members. None of
+ * them authorizes the caller beyond the principal a start or a receipt names.
+ */
+export interface BureauTasks<D extends AgentDefinitions = AgentDefinitions> {
+  /**
+   * Starts a task of the catalog agent `agentName` with `input`, in the context
+   * `options.contextId` names or in a new one. The task is durable when a durable engine is
+   * composed and otherwise runs in memory. Refusals land before anything is persisted: an unknown
+   * agent is `NOT_FOUND`, an agent with no definition resolver `UNSUPPORTED_CAPABILITY`.
+   */
+  start<TName extends AgentNames<D>>(
+    agentName: TName,
+    input: TaskInput,
+    options?: StartTaskOptions,
+  ): Promise<TaskHandle<TaskOutputOf<D, TName>>>;
+  /** Starts a task of an agent named at run time, such as a file agent; its output is untyped. */
+  start(agentName: string, input: TaskInput, options?: StartTaskOptions): Promise<TaskHandle>;
+  /**
+   * A task this process holds, by id, with its steps, events, transcript, and liveness. A task is
+   * held after it settles until its record expires under {@link BureauRetentionOptions.tasks}.
+   * `undefined` for any other id.
+   */
+  detail(id: string): RunDetail | undefined;
+  /** The task's record, from the task registry; `undefined` for a task it does not hold. */
+  get(id: string): Promise<TaskView | undefined>;
+  /** A page of the task registry's tasks, as `query` filters and pages them. */
+  list<T = TaskView>(query: TaskListQuery<T>): Promise<TaskListPage<T>>;
+  /**
+   * Cancels a task and reports where its cleanup stands, waiting up to `waitMilliseconds`
+   * (default 0) for the acknowledgement: `cancel-requested`, `canceled`, `cleanup-pending`,
+   * `cleaned-up`, `cleanup-failed`, `cleanup-unresolved`, `unknown-outcome`, or `rejected` (the
+   * task had already finished). A task the registry does not hold is `NOT_FOUND`.
+   */
+  cancel(id: string, options?: { readonly waitMilliseconds?: number }): Promise<TaskCancelOutcome>;
+  /**
+   * Where a `commandId`'s receipt stands: `recorded`, `pending`, `expired`, or `not-found`. A
+   * blank principal or command id is `BAD_REQUEST`; without a durable engine, `NOT_CONFIGURED`.
+   */
+  receipt(query: TaskReceiptQuery): Promise<RunCreationReceiptLocation>;
+  /**
+   * The durable engine's view of the task's workflow: `null` when the engine does not know it,
+   * `undefined` when no durable engine is composed.
+   */
+  workflow(id: string): Promise<WorkflowState | null | undefined>;
+  /** The durable engine's workflows, filtered; `undefined` when no durable engine is composed. */
+  workflows(
+    filter?: ListFilter,
+    options?: ListOptions,
+  ): Promise<PaginatedResult<WorkflowSummary> | undefined>;
+  /**
+   * Resolves with the task's workflow state once it is terminal in the durable store, `null`
+   * when the engine does not know it, and `undefined` when no durable engine is composed. Under
+   * `maintenance: 'manual'` a task that is not yet terminal rejects (`UNSUPPORTED_CAPABILITY`).
+   */
+  wait(id: string): Promise<WorkflowState | null | undefined>;
+  /**
+   * Delivers the task's liveness now and again on every change, until unsubscribed or `signal`
+   * fires. A task this process does not hold is `NOT_FOUND`.
+   */
+  snapshot(
+    id: string,
+    observer: (snapshot: LivenessSnapshot) => void,
+    options?: { signal?: AbortSignal },
+  ): Subscription;
+  /** A page of the task's durable event history. */
+  events(
+    id: string,
+    options?: DurableEventHistoryPageOptions,
+  ): Promise<
+    | DurableEventPage
+    | DurableEventGap
+    | EventHistoryUnsupportedOutcome
+    | EventHistoryNotFoundOutcome
+    | EventHistoryDeletedAggregateOutcome
+  >;
+  /** Subscribes to the task's durable event history: a replay from the cursor, then the live tail. */
+  subscribeEvents(
+    id: string,
+    listener: (event: DurableEventEnvelope) => void,
+    options?: DurableEventHistorySubscribeOptions,
+  ): Subscription;
+  /**
+   * The task's record, its run's liveness, and the children it owns, for the run inspector;
+   * `undefined` for a task the registry does not hold.
+   */
+  inspect(id: string): Promise<TaskInspection | undefined>;
+  /**
+   * Answers one open wait of a task as `request.principal`: answer text or structured `data` for
+   * a human-input wait, or a `decision` on an approval or a human wait. `signalName` or `callId`
+   * says which wait when several are open; with neither, exactly one must be. Only the task's
+   * owner may answer, unless `request.operator` is set (see {@link TaskRespondRequest.operator});
+   * another owner's task, and a task the registry does not hold, are `NOT_FOUND`. An exact retry
+   * of a `messageId` returns the original receipt, even after the task's record is gone; the same
+   * `messageId` with another command is `CONFLICT`, as are a task with no open wait and a review
+   * already resolved. A malformed request, or an answer the wait cannot take, is `BAD_REQUEST`.
+   */
+  respond(request: TaskRespondRequest): Promise<TaskRespondResult>;
+}
 
 /**
  * The Bureau's audit trail, read as metadata. `bureau.audit.query` served by `createBureauHandler`
@@ -1351,7 +1610,7 @@ export interface BureauSchedules {
    * schedule, when it is a workflow file's schedule (which runs no agent of its own), or when no
    * durable engine is composed. It is read from the schedule's stored input and is the only part
    * of that input this returns: never its text or its session. It does not check who may see the
-   * schedule, so a caller answers to {@link Bureau.getOwner} first.
+   * schedule, so a caller answers to {@link Bureau.ownerOf} first.
    */
   agentName(scheduleId: string): Promise<string | undefined>;
 
@@ -1361,14 +1620,14 @@ export interface BureauSchedules {
    * schedule, when it is a workflow file's, when its input holds no text, or when no durable engine
    * is composed. It reads the stored input beside {@link BureauSchedules.agentName}, never its
    * session, and does not check who may see the schedule, so a caller answers to
-   * {@link Bureau.getOwner} first.
+   * {@link Bureau.ownerOf} first.
    */
   inputPreview(scheduleId: string): Promise<string | undefined>;
 
   /**
    * One page of the schedule definition's durable event history (`schedule.created`, paused,
    * resumed, and cancelled), from the exclusive `options.since` cursor. It is
-   * {@link Bureau.eventHistory} for the `schedule` owner: the outcomes, `options.principal`
+   * {@link BureauTasks.events} for the `schedule` owner: the outcomes, `options.principal`
    * authorization, and paging are that method's, so see it for the full contract.
    */
   events(
@@ -1385,7 +1644,7 @@ export interface BureauSchedules {
   /**
    * Replays the schedule definition's durable event history from the exclusive `options.since`
    * cursor, then delivers live events with no gap and no duplicate at the handoff. It is
-   * {@link Bureau.subscribeEventHistory} for the `schedule` owner, so an ephemeral bureau returns
+   * {@link BureauTasks.subscribeEvents} for the `schedule` owner, so an ephemeral bureau returns
    * an already-closed subscription and `options.principal` applies as it does there.
    */
   subscribeEvents(
@@ -1463,7 +1722,7 @@ export interface BureauContexts {
    * under the input's own `id` as its message id, and the promotion commits in
    * the write that saves the turn, whatever that step's outcome. It reads
    * `canceled` when the input was not appended before its run ended, however
-   * it ended (completed, failed, `abortRun`, `cancelDurableRun`, or promoted
+   * it ended (completed, failed, cancelled through `tasks.cancel`, or promoted
    * but never started), so the client resends it; Bureau never starts a run to
    * answer input, and the ending run cancels what it never delivered unless
    * another run of the session is live, whose end does the cancelling. With no
@@ -1582,7 +1841,7 @@ export interface BureauContexts {
 
   /**
    * One page of the context's durable event history, from the exclusive `options.since` cursor. It
-   * is {@link Bureau.eventHistory} for the `session` owner: the outcomes, `options.principal`
+   * is {@link BureauTasks.events} for the `session` owner: the outcomes, `options.principal`
    * authorization, and paging are that method's, so see it for the full contract.
    */
   events(
@@ -1599,7 +1858,7 @@ export interface BureauContexts {
   /**
    * Replays the context's durable event history from the exclusive `options.since` cursor, then
    * delivers live events with no gap and no duplicate at the handoff. It is
-   * {@link Bureau.subscribeEventHistory} for the `session` owner, so an ephemeral bureau returns an
+   * {@link BureauTasks.subscribeEvents} for the `session` owner, so an ephemeral bureau returns an
    * already-closed subscription and `options.principal` applies as it does there.
    */
   subscribeEvents(
@@ -1714,11 +1973,10 @@ export interface BureauInternals {
   readonly onlineEvalSampler: OnlineEvalSampler | undefined;
 
   /**
-   * AB-369: every run `abortRun` has requested cancellation for but whose
-   * `activeRun.closed()` has not yet settled — the same `abortingRunIds`
-   * bookkeeping `abortRun` itself maintains, read publicly rather than
-   * inferred. `since` is the {@link RuntimeServices.clock} timestamp
-   * `abortRun` recorded when it first requested cancellation for that run.
+   * AB-369: every run whose cancellation `tasks.cancel` or a task handle's `abort` has requested
+   * but whose `activeRun.closed()` has not yet settled, read from the abort bookkeeping rather
+   * than inferred. `since` is the {@link RuntimeServices.clock} timestamp of the first request
+   * for that run.
    * A run still listed here long after its abort should have settled is a
    * genuine leak — {@link BureauQuiescenceReport} (`bureau/test`) surfaces
    * it as a non-quiescent row.
@@ -1771,6 +2029,12 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    */
   readonly contexts: BureauContexts;
   /**
+   * The tasks: `start` one, and `detail`, `get`, `list`, `cancel`, `receipt`, `workflow`,
+   * `workflows`, `wait`, `snapshot`, `events`, `subscribeEvents`, and `inspect`. See
+   * {@link BureauTasks}.
+   */
+  readonly tasks: BureauTasks<D>;
+  /**
    * The audit trail read as redacted metadata: `query(filter, options?)`. See {@link BureauAudit}.
    */
   readonly audit: BureauAudit;
@@ -1809,49 +2073,14 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   readonly workflows: BureauWorkflows | undefined;
 
   /**
-   * Dispatch to a named catalog agent (AB-15, AB-22) — synchronous, like
-   * `RunnableAgent.run`: it returns the `AgentRun` handle immediately, never
-   * `Promise<AgentRun>`, regardless of whether the named agent is a
-   * `createLazyAgent` entry still resolving. Synchronous throws are limited
-   * to an unknown `name`, a disposed bureau, and malformed `input`/`options`;
-   * every other failure (session, provider, tool, policy, or abort) settles
-   * through the returned handle.
-   *
-   * Independent of `createRun` below: `run` dispatches to a catalog
-   * `RunnableAgent` (agent-owned generate/tools/durability by construction);
-   * `createRun` keeps driving bureau-level `generate`/`provider` through the
-   * session/durable-execution machinery. A bureau may use either, both, or
-   * neither.
-   *
-   * When this bureau has a durable engine composed (a persistent `storage`
-   * backend, or `durable: true`) and the named agent supports the
-   * definition-resolution capability (every `createAgent`/`createLazyAgent`
-   * result does), the run is driven through that SAME durable engine so it
-   * survives a crash and resumes — exactly like a `createRun` run. Otherwise
-   * the agent's own in-memory `run()` is used directly.
-   */
-  run<TName extends AgentNames<D>>(
-    name: TName,
-    input: AgentInput,
-    options?: BureauRunOptions,
-  ): AgentRunForName<D, TName>;
-  /**
-   * COR-1524 — dispatch an agent by a name only known at run time: a file-based agent's
-   * identifier (see {@link BureauOptions.agentSource}). The handle is untyped, as the agent's
-   * output is. A name that matches neither a code-defined agent nor a file agent whose state is
-   * `ready` throws `BureauError` (`NOT_FOUND`), exactly as the typed overload does.
-   */
-  run(name: string, input: AgentInput, options?: BureauRunOptions): AgentRun<unknown, boolean>;
-
-  /**
    * COR-772 — Bureau's durable parent-child topology: dispatch a catalog
-   * agent as the child of a run this bureau knows (a `createRun` run, a
-   * durable `bureau.run` run, or another child), then list, get, wait on,
+   * agent as the child of a run this bureau knows (a task, or another child),
+   * then list, get, wait on,
    * signal, and cancel it by its stable identifier — including after a
    * process restart. Every operation names the owning parent; naming an
    * unrelated parent reads as `not-found`. A child never shares its
-   * parent's abort signal: cancelling a parent through `abortRun`,
-   * `cancelDurableRun`, its own `bureau.run` handle, or `children.cancel`
+   * parent's abort signal: cancelling a parent through `tasks.cancel`,
+   * its own `TaskHandle`, or `children.cancel`
    * applies each child's recorded `parentCancellation` policy instead. See
    * `child-topology.ts`.
    */
@@ -1882,56 +2111,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   readonly goals: BureauGoals<AgentNames<D>>;
 
   /**
-   * Creates a run of the agent named by {@link CreateRunRequest.agentName}: a catalog agent, or
-   * `'bureau'`, the implicit Bureau-wide agent that runs the Bureau-level `generate` and toolbox
-   * until those options are removed (COR-323, part 2). The run is durable when a durable engine is
-   * composed and otherwise runs in memory.
-   *
-   * COR-424: a request naming {@link CreateRunRequest.runCreationRequestId}
-   * goes through the run-creation command ledger and resolves with a
-   * `receipt`. Retrying it with the same principal, agent, request id, and
-   * payload returns the original run and receipt rather than creating
-   * another run; reusing the request id with a different payload rejects
-   * with `BureauLedgerConflictError`. Both hold while the binding is retained
-   * ({@link BureauRetentionOptions.receipts}); after that the
-   * request id creates a new run.
-   */
-  createRun(request: CreateRunRequest): Promise<CreatedRunSummary>;
-  /**
-   * COR-424 — where a run-creation request's receipt stands: `recorded`,
-   * `pending` (claimed, with no started run), `expired` once its binding's
-   * retention window has passed (the same request id then creates a new
-   * run), or `not-found`. Scoped like the ledger key, to the principal and to
-   * the agent the run is: the session's, when the request continued an existing session (name it
-   * with `sessionId`), otherwise `agentName`, which is then required. A query that finds the
-   * run started records its receipt, exactly as a retry would. Rejects
-   * with `BureauError` (`BAD_REQUEST`) for a blank principal or request id,
-   * and (`NOT_CONFIGURED`, subject `durable`) without a durable engine.
-   */
-  locateRunCreationReceipt(
-    request: LocateRunCreationReceiptRequest,
-  ): Promise<RunCreationReceiptLocation>;
-  /**
-   * The runs `createRun` started that this process still holds. A
-   * `bureau.run()` run is not listed, though `getRun` and `abortRun` accept
-   * its id.
-   */
-  listRuns(status?: string): RunSummary[];
-  /**
-   * A run this process holds, by id: a `createRun` run's `RunSummary.id`, or
-   * the `id` on a `bureau.run()` handle (COR-1302). A `createRun` run is held
-   * after it settles, until its task expires under {@link BureauRetentionOptions.tasks}. A `bureau.run()` run is held from the
-   * moment `bureau.run()` returns until it settles, and then released on its
-   * own, as it was before it could be read by id. Until its agent's run is
-   * built — and for its whole life when Bureau cannot build it (a
-   * hand-written agent, or the durable branch's in-memory fallback) — it
-   * reads as `running` with no steps, actions, or usage, and the handle's own
-   * liveness snapshot. A durable `bureau.run()` run recovered after a restart
-   * is not held; `getDurableRun` reads it. `undefined` for any other id.
-   */
-  getRun(id: string): RunDetail | undefined;
-
-  /**
    * The owner of record of a resource (COR-718), or `undefined` when no such
    * resource exists. The owner is the principal that created the resource,
    * stored once at creation and unchanged afterward; a service principal such as
@@ -1952,48 +2131,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    *   live session, which may be gone or recreated under another owner. An entry
    *   without one, such as a deletion that bypassed Bureau, has no owner.
    */
-  getOwner(resource: OwnedResource): Promise<string | undefined>;
-
-  /**
-   * Subscribes to live liveness updates for a run (AB-88/AB-214),
-   * delegating to the underlying `ActiveRun`'s `subscribeSnapshot`. Delivers
-   * the current snapshot synchronously before returning, then a new
-   * snapshot on every revision change; already-terminal work delivers the
-   * terminal snapshot once. A caller with only `getRun(id)` sees the
-   * liveness observed at that call; a caller wanting live updates uses this
-   * instead of polling `getRun`.
-   *
-   * Throws when `id` names no known run — matching `abortRun`'s unknown-id
-   * behavior rather than `getRun`'s `undefined`-returning one, because there
-   * is no snapshot value to hand back synchronously to `observer` for an id
-   * this bureau has never registered.
-   */
-  subscribeRunSnapshot(
-    runId: string,
-    observer: (snapshot: LivenessSnapshot) => void,
-    options?: { signal?: AbortSignal },
-  ): Subscription;
-
-  /**
-   * Requests cancellation of a running run and returns its summary with
-   * `status: 'aborting'`. Accepts the ids {@link Bureau.getRun} accepts. For a
-   * `bureau.run()` run (COR-1302) this works from the moment `bureau.run()`
-   * returns: a run aborted before its agent's run is built is cancelled
-   * through its handle. Once a `bureau.run()` run has settled it is released,
-   * so a later call throws `NOT_FOUND`, where a settled `createRun` run
-   * returns its terminal summary.
-   */
-  abortRun(id: string): RunSummary;
-
-  /**
-   * Read the durable engine's view of a run: its full {@link WorkflowState}
-   * (status, step cursor, failure category, termination reason, timestamps).
-   * Backed by `engine.get(runId)`. Returns `null` when the run is unknown to the
-   * engine and `undefined` when no durable engine is composed. This is the only
-   * way to see a run's durable status mid-flight — session metadata is written
-   * only at terminal transitions, and a recovered run is otherwise opaque.
-   */
-  getDurableRun(runId: string): Promise<WorkflowState | null | undefined>;
+  ownerOf(resource: OwnedResource): Promise<string | undefined>;
 
   /**
    * The durable Weft engine this bureau composed, or `undefined` when none is composed. It is the
@@ -2004,64 +2142,12 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * dispose it, and must not register workflows on it or start its own background tasks.
    *
    * This is an admin surface for one local principal. Every operation on the engine, a cancel, a
-   * signal, a start, bypasses the checks `createRun` and the session verbs make on the caller's
+   * signal, a start, bypasses the checks `tasks.start` and the session verbs make on the caller's
    * ownership of a session or run, so a host that serves it must authenticate its callers
    * itself. Hand it only to a host that answers to a single trusted caller, such as a local
    * console.
    */
   durableEngine(): RegistryAgnosticEngine | undefined;
-
-  /**
-   * Waits until a run's durable workflow has reached a terminal state in the durable store, then
-   * resolves with its {@link WorkflowState}. Terminal means any status other than `pending`,
-   * `running` or `suspended` (so `completed`, `failed`, `cancelled` or `timed-out`). A failed or
-   * cancelled run resolves with its state rather than rejecting.
-   *
-   * It resolves after the durable commit. Live frames, bureau events and `getRun(id).status` are
-   * announced by this process and can precede it, so a caller that is about to read the durable
-   * store (`getDurableRun`, `eventHistory`, a second bureau over the same store) waits here
-   * instead. The wait is Weft's own result waiter (`engine.getHandle(runId).result()`): it settles
-   * from this engine's terminal delivery, or from the store when another engine over the same
-   * store finishes the run, which needs the engine to own workflows with
-   * `ownership: 'workflow-lease'` so that Weft polls for the other engine's completion.
-   *
-   * Resolves `undefined` when no durable engine is composed and `null` when the engine has no such
-   * run, the same meanings as {@link Bureau.getDurableRun}. A run that is already terminal
-   * resolves immediately. It rejects when Weft's result waiter fails for a reason that leaves the
-   * run non-terminal in the store (a disposed engine, a transient read failure), and it rejects
-   * with an `UNSUPPORTED_CAPABILITY` `BureauError` for a non-terminal run under
-   * `maintenance: 'manual'`, where nothing re-reads the store between maintenance
-   * passes: use `runDurableMaintenance()` and `getDurableRun()` there.
-   */
-  waitForDurableRun(runId: string): Promise<WorkflowState | null | undefined>;
-
-  /**
-   * Cancel a durable run that has no live, process-local `ActiveRun` (AB-37,
-   * AB-205) — the boot-recovered fire that makes `abortRun` throw
-   * `NOT_FOUND`. Asynchronous, unlike `abortRun`, and never rejects: every
-   * failure mode resolves as a variant of {@link CancelDurableRunOutcome}
-   * instead. `engine.cancel` alone is not proof a cancellation committed (it
-   * resolves `void` unconditionally, whether it won or lost a race against
-   * the workflow completing on its own), so this always re-reads
-   * `getDurableRun(runId)` after `engine.cancel` resolves and reports
-   * `'requested'` only when that re-read observes `status === 'cancelled'`;
-   * any other terminal status resolves `'already-terminal'`.
-   */
-  cancelDurableRun(runId: string): Promise<CancelDurableRunOutcome>;
-
-  /**
-   * List durable runs from the engine, optionally filtered (status, type, tags).
-   * Backed by `engine.list(filter, options)`. Returns `undefined` when no durable
-   * engine is composed. Note the engine internally types the filter as a
-   * `TypedListFilter`; the plain {@link ListFilter} accepted here is structurally
-   * compatible as long as `attributes` is omitted. A scan-cap breach from the
-   * engine surfaces as a thrown weft fault (catch generically — the cap error is
-   * not on the public barrel).
-   */
-  listDurableRuns(
-    filter?: ListFilter,
-    options?: ListOptions,
-  ): Promise<PaginatedResult<WorkflowSummary> | undefined>;
 
   /**
    * Run one host-driven durable-engine maintenance cycle. This fires due
@@ -2096,7 +2182,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * a fully ephemeral bureau, because it did maintain something; one that
    * removed none there still resolves `undefined`.
    */
-  runDurableMaintenance(now?: number): Promise<true | undefined>;
+  maintain(now?: number): Promise<true | undefined>;
 
   /**
    * Installs the host-owned authority freshness check used immediately before
@@ -2109,7 +2195,9 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
 
   /**
    * Waits for boot durable recovery to finish and resolves a typed
-   * {@link BureauRecoveryReport} describing its outcome.
+   * {@link BureauRecoveryReport} describing its outcome. A Bureau with no durable engine has
+   * no runs to recover, so with nothing recorded to sweep this resolves
+   * `{ outcome: 'clean', perRunFailures: [], skippedRuns: [] }` immediately.
    *
    * `createBureau()` returns once boot recovery has STARTED — `recoverAll()`
    * has begun resuming recovered handles and each owned run has been
@@ -2119,15 +2207,15 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * listeners, and the like) is ready.
    *
    * That timing is DIFFERENT on the two paths this method covers, so what
-   * `await waitForRecovery()` buys a caller is different too:
+   * `await recovery()` buys a caller is different too:
    *
    * - **Recovery not deferred** (the common case: `requestAuthorityValidator`
    *   is set in `BureauOptions`, or no persisted session has an in-flight run
    *   under transport-issued authority). `createBureau()` itself already
    *   awaits this same barrier before resolving, so by the time a caller HAS
-   *   a `bureau` to call `waitForRecovery()` on, recovery classification is
+   *   a `bureau` to call `recovery()` on, recovery classification is
    *   already done and any recovered run may already be advancing. Calling
-   *   `waitForRecovery()` here reports that (already-settled) fact; it
+   *   `recovery()` here reports that (already-settled) fact; it
    *   cannot retroactively delay a recovered run's already-dispatched first
    *   step. A caller with post-boot dependency wiring that a recovered run
    *   will need must finish that wiring BEFORE calling `createBureau()` (or
@@ -2142,12 +2230,12 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    *   starting recovery, and recovery does not start at all until
    *   `setRequestAuthorityValidator()` is called with a validator, so a
    *   caller that finishes its dependency wiring before or immediately after
-   *   that call, then `await`s `waitForRecovery()`, genuinely gates on
+   *   that call, then `await`s `recovery()`, genuinely gates on
    *   recovery's classification/reattachment pass completing.
-   *   `waitForRecovery()` is the only way to observe when that deferred pass
+   *   `recovery()` is the only way to observe when that deferred pass
    *   finishes.
    */
-  waitForRecovery?(): Promise<BureauRecoveryReport>;
+  recovery(): Promise<BureauRecoveryReport>;
 
   /**
    * Subscribe to every live frame. The FIRST subscriber is also replayed, in
@@ -2159,7 +2247,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * subscribers receive only new frames. Emitter listeners get
    * no such replay; register them through {@link BureauOptions.onEvent}.
    */
-  subscribeLiveFrames(listener: (frame: ServerFrame) => void): () => void;
+  frames(listener: (frame: ServerFrame) => void): () => void;
 
   addEventListener<K extends keyof BureauEventMap & string>(
     type: K,
@@ -2210,9 +2298,11 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * directly when the report is useful.
    *
    * `'abort'` (the default when `policy` is omitted) aborts every active run
-   * immediately, then awaits every drain. `'drain'` closes admission
+   * this process started immediately, then awaits every drain. A durable run this process
+   * recovered at boot is left running for the next process to recover, as `'detach'` leaves it,
+   * and is counted in the report's `detached`. `'drain'` closes admission
    * identically but lets every already-active caller-owned agent run
-   * (`bureau.run`/session-owned) reach its own natural terminal result while
+   * (task-owned) reach its own natural terminal result while
    * Bureau-owned background work (online-evals, webhook notifier,
    * audit trail) is stopped/awaited exactly as under `'abort'`.
    * `'detach'` closes admission identically, leaves durable caller-owned runs recoverable,
@@ -2257,96 +2347,36 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * its in-flight asset work and awaits every cleanup acknowledgement.
    */
   readonly assets: AssetService | undefined;
-
-  /**
-   * Pages `owner`'s durable event history (AB-91's `ab91-01` slice,
-   * AB-310) — a bounded, sequence-ordered page of events after the
-   * exclusive `since` cursor, a {@link DurableEventGap} when `since`
-   * predates the store's retention floor, or
-   * `{ outcome: 'unsupported-capability', reason: 'no-persistent-storage'
-   * }` for an ephemeral bureau (no persistent storage backend
-   * configured) — matching the `unsupported-capability` locator outcome
-   * AB-91's own source spec and AB-42's precedent both use for a missing
-   * durable backend.
-   *
-   * A producer sinks the run/session/schedule-fire families AB-87's matrix
-   * classifies as durable into this store (AB-311's coordinator amendment
-   * — see `durable-event-history.ts`'s `createDurableEventProducer` doc
-   * comment for exactly which events, and why a `schedule.created`/
-   * `paused`/`resumed`/`cancelled` definition event is not among them).
-   *
-   * AB-313 adds two outcomes for `owner.kind` `'run'`/`'session'`, and COR-718
-   * extends the first to `'goal'` and `'schedule'` owners:
-   *
-   * - `options.principal`, when provided, is checked against the owner of
-   *   record of the run, session, goal, or schedule (see
-   *   {@link Bureau.getOwner}): only that owner reads its history. A resource
-   *   created with no principal, or recorded before owners existed, belongs to
-   *   `anonymous:local`, and a malformed session owner fails closed. A caller
-   *   whose principal is not the owner gets `{ outcome: 'not-found' }` — the same
-   *   not-found-shaped denial `submitSessionInput` (AB-194) uses, so an
-   *   unauthorized caller cannot distinguish "wrong id" from "exists, not
-   *   yours." Omitting `options.principal` entirely skips the check (an
-   *   internal/trusted caller, or a gateway request from a privileged
-   *   connection).
-   * - When the owner's live Bureau record is gone (the session was
-   *   deleted, or the run's task expired under `retention.tasks`) but this
-   *   store still holds committed events for it, this returns
-   *   `{ outcome: 'deleted-aggregate', owner, events, hasMore, nextCursor?
-   *   }` instead of an ordinary page — distinguishable from BOTH an
-   *   ordinary empty page (an id nothing was ever recorded under) and
-   *   `not-found` (no committed events at all): AB-87's retention/deletion
-   *   posture is that deleting the owner record never deletes its
-   *   history, so the events remain queryable through this same call
-   *   rather than requiring a second one. That outcome is for a trusted
-   *   caller, one that states no principal (COR-718): a caller that states
-   *   one is told `not-found` for a session that no longer exists, because
-   *   history is keyed by id alone and a deleted session has no owner left to
-   *   compare. For a session id that has since been recreated, a caller that
-   *   states a principal must own the live session and sees only the events
-   *   recorded for the live session's incarnation, whatever `since` and
-   *   `limit` it passes; an event recorded for no incarnation is never shown
-   *   to such a caller.
-   */
-  eventHistory(
-    owner: DurableEventOwner,
-    options?: DurableEventHistoryPageOptions,
-  ): Promise<
-    | DurableEventPage
-    | DurableEventGap
-    | EventHistoryUnsupportedOutcome
-    | EventHistoryNotFoundOutcome
-    | EventHistoryDeletedAggregateOutcome
-  >;
-
-  /**
-   * Replays `owner`'s durable event history from the exclusive `since`
-   * cursor, then transitions to live delivery with no gap and no
-   * duplicate at the handoff (AB-311) — see
-   * `durable-event-history.ts`'s `DurableEventHistory.subscribeEventHistory`
-   * doc comment for the full race-freedom, disposal, and error-isolation
-   * contract. Returns an already-closed, never-delivering `Subscription`
-   * for an ephemeral bureau (no persistent storage backend configured) —
-   * a caller that must distinguish "unsupported" from "supported but
-   * empty" calls `eventHistory()` first.
-   *
-   * COR-851 — `options.principal` applies the same authorization
-   * `eventHistory()` applies to its own `principal`, to the replay and to live
-   * delivery alike: omitted, the caller is trusted; present, each event is
-   * delivered only while the principal may read the owner (checked fresh per
-   * event, so an owner created after the subscription is authorized by its
-   * first event), and an owner it may not read, or that does not exist, yields
-   * silence — never a refusal that would tell the two apart.
-   */
-  subscribeEventHistory(
-    owner: DurableEventOwner,
-    listener: (event: DurableEventEnvelope) => void,
-    options?: DurableEventHistorySubscribeOptions,
-  ): Subscription;
 }
 
 /**
- * Returned by {@link Bureau.eventHistory} when the bureau has no
+ * Reads one page of an owner's durable event history. {@link BureauTasks.events},
+ * {@link BureauContexts.events}, and {@link BureauSchedules.events} are this read narrowed to their
+ * owner kind.
+ */
+export type DurableEventHistoryRead = (
+  owner: DurableEventOwner,
+  options?: DurableEventHistoryPageOptions,
+) => Promise<
+  | DurableEventPage
+  | DurableEventGap
+  | EventHistoryUnsupportedOutcome
+  | EventHistoryNotFoundOutcome
+  | EventHistoryDeletedAggregateOutcome
+>;
+
+/**
+ * Subscribes to an owner's durable event history: a replay from the cursor, then the live tail.
+ * Each namespace's `subscribeEvents` is this subscription narrowed to its owner kind.
+ */
+export type DurableEventHistorySubscribe = (
+  owner: DurableEventOwner,
+  listener: (event: DurableEventEnvelope) => void,
+  options?: DurableEventHistorySubscribeOptions,
+) => Subscription;
+
+/**
+ * Returned by an event history read ({@link BureauTasks.events} and its siblings) when the bureau has no
  * persistent storage backend configured.
  */
 export interface EventHistoryUnsupportedOutcome {
@@ -2355,7 +2385,7 @@ export interface EventHistoryUnsupportedOutcome {
 }
 
 /**
- * Returned by {@link Bureau.eventHistory} (AB-313) when `options.principal`
+ * Returned by an event history read ({@link BureauTasks.events} and its siblings) (AB-313) when `options.principal`
  * is provided and does not match `owner`'s recorded principal — the same
  * not-found-shaped denial `submitSessionInput` (AB-42/AB-194) returns, so an
  * unauthorized caller cannot distinguish "no such run/session" from "exists,
@@ -2366,7 +2396,7 @@ export interface EventHistoryNotFoundOutcome {
 }
 
 /**
- * Returned by {@link Bureau.eventHistory} (AB-313) when `owner`'s live
+ * Returned by an event history read ({@link BureauTasks.events} and its siblings) (AB-313) when `owner`'s live
  * Bureau record is gone (its task expired under `retention.tasks`, or a deleted session) but this store
  * still holds committed durable events for it — distinguishable from both
  * an ordinary empty {@link DurableEventPage} (an id nothing was ever
@@ -2393,7 +2423,7 @@ export interface AbortingRun {
   readonly since: number;
 }
 
-/** A resource whose owner of record {@link Bureau.getOwner} reads. */
+/** A resource whose owner of record {@link Bureau.ownerOf} reads. */
 export type OwnedResource =
   | { readonly kind: 'run' | 'session' | 'goal' | 'schedule' | 'review'; readonly id: string }
   | {
@@ -2443,12 +2473,12 @@ export interface RunSummary {
   /**
    * The owner of record of the run: the principal it was created with
    * (e.g. `api-key:<id>`), from the run's attribution, or the owner its
-   * `bureau.run()` handle reports when no attribution was recorded (one
-   * reader, shared with {@link Bureau.getOwner}). A run reattached after
+   * liveness snapshot reports when no attribution was recorded (one
+   * reader, shared with {@link Bureau.ownerOf}). A run reattached after
    * durable recovery keeps it: it is rehydrated from the owning session's
    * `lastRunOwningPrincipals` (AB-359). A run created with no principal reads
    * `undefined` on the direct branch and `anonymous:local` on the durable one;
-   * {@link Bureau.getOwner} and the AG-UI mount read both as `anonymous:local`
+   * {@link Bureau.ownerOf} and the AG-UI mount read both as `anonymous:local`
    * through the same default.
    */
   principal: string | undefined;
@@ -2461,7 +2491,8 @@ export interface RunSummary {
 }
 
 /**
- * Resolution of a {@link Bureau.cancelDurableRun} call (AB-37, AB-205).
+ * Resolution of Bureau's durable cancel of a task no process-local run holds, which
+ * {@link BureauTasks.cancel} takes for such a task (AB-37, AB-205).
  * Never a rejection — every failure mode, including one raised by the engine
  * itself, is represented as a variant here instead.
  */
@@ -2539,16 +2570,9 @@ export interface CreateRunRequest {
    */
   appendMessages?: ReadonlyArray<Message> | undefined;
   sessionId?: string;
-  systemPrompt?: string | undefined;
-  maximumSteps?: number | undefined;
-  /**
-   * Per-request output token cap; overrides the provider's construction-time
-   * maximumTokens for this run. Maps to the provider's max_tokens parameter.
-   */
-  maximumTokens?: number;
   /**
    * COR-1577 — the catalog agent to run. The run executes that agent's own `generate`, tools,
-   * system prompt and stop conditions, as `bureau.run(name, …)` would, with this Bureau's opt-in
+   * system prompt and stop conditions, as `tasks.start(name, …)` does, with this Bureau's opt-in
    * tools (`requestHumanInput`, `scheduleWakeup`) and memory around them.
    *
    * A session is bound to the agent of the run that created it. A later run names that same agent;
@@ -2557,9 +2581,9 @@ export interface CreateRunRequest {
    * catalog, `bureau` (the implicit agent that no longer exists) included, is refused with
    * `NOT_FOUND`; both land before anything is persisted.
    *
-   * For the system prompt, `maximumSteps` and `maximumTokens`, the request's own field wins, then
-   * the agent's value. Stop conditions come from the agent. The session's request context governs tool approvals, never the agent's
-   * `executeOptions.requestContext`.
+   * The system prompt, `maximumSteps`, `maximumTokens`, and stop conditions are the agent's (COR-1707:
+   * a run carries none of its own). The session's request context governs tool approvals, never the
+   * agent's `executeOptions.requestContext`.
    *
    * The run uses that agent's own `generate`, tools, and stop condition. A durable run
    * recovers as its agent: one whose agent has left the catalog fails, and one whose
@@ -2584,12 +2608,12 @@ export interface CreateRunRequest {
   requestContext?: ToolRequestContext | undefined;
   /**
    * COR-424 — the caller's idempotency key for this run-creation command.
-   * When present, `createRun` records the command in a durable ledger keyed
+   * When present, the start records the command in a durable ledger keyed
    * by `(principal, agentName, runCreationRequestId, operation version)`,
    * with surrounding whitespace trimmed from the request id (the principal is
    * keyed exactly as the run records its owner), and a digest of the payload
-   * (`message`, `sessionId`, `systemPrompt`, `maximumSteps`, `maximumTokens`,
-   * each at the value the run will use), and
+   * (`agentName`, the task input, `contextId`, and the request context's `authority`, `audience`,
+   * and `locale`), and
    * resolves with a receipt. Requires `principal`, since an idempotency key
    * needs an authenticated caller to belong to, and a bureau with a durable
    * engine (`NOT_CONFIGURED` otherwise), since a receipt promises a retry
@@ -2600,7 +2624,7 @@ export interface CreateRunRequest {
   runCreationRequestId?: string | undefined;
 }
 
-/** COR-424 — which run-creation request {@link Bureau.locateRunCreationReceipt} looks up. */
+/** COR-424 — which run-creation request {@link BureauTasks.receipt} looks up. */
 export interface LocateRunCreationReceiptRequest {
   /** The authenticated caller that issued the request. */
   principal: string;

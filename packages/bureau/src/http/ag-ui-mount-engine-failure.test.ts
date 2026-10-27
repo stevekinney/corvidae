@@ -29,6 +29,7 @@ import {
   startStream,
 } from './ag-ui-engine-failure.test-support.ts';
 import { typesOf } from './ag-ui-stream.test-support.ts';
+import { listHeldTasks } from '../test';
 
 /** The durable run record: the key a run's own writes go to once the run is released. */
 const DURABLE_RUN_RECORD = 'durable-run:';
@@ -81,7 +82,7 @@ describe('a durable run whose engine fails it (COR-1587)', () => {
         expect(refusing.refused()).toBeGreaterThan(0);
         expect(stream.received.at(-1)?.event.type).toBe(EventType.RUN_ERROR);
         expect(typesOf(stream.received)).not.toContain(EventType.RUN_FINISHED);
-        expect(bureau.listRuns()[0]?.status).toBe('error');
+        expect(listHeldTasks(bureau)[0]?.status).toBe('error');
         const session = await bureau.contexts.get('thread-1');
         expect(session?.metadata['lastRunStatus']).toBe('error');
       } finally {
@@ -109,7 +110,7 @@ describe('a durable run the engine times out (COR-1587)', () => {
 
       expect(stream.received.at(-1)?.event.type).toBe(EventType.RUN_ERROR);
       expect(typesOf(stream.received)).not.toContain(EventType.RUN_FINISHED);
-      expect(bureau.listRuns()[0]?.status).toBe('error');
+      expect(listHeldTasks(bureau)[0]?.status).toBe('error');
       const session = await bureau.contexts.get('thread-1');
       expect(session?.metadata['lastRunStatus']).toBe('error');
     } finally {
@@ -152,22 +153,18 @@ describe('a durable run that fails after it committed a step (COR-1587)', () => 
     try {
       // The run's report: the usage of the step that committed, before the write that was refused.
       const reportedUsage: number[] = [];
-      bureau.subscribeLiveFrames((frame) => {
+      bureau.frames((frame) => {
         if (frame.type === 'run-envelope' && frame.frame.type === 'run-finished') {
           reportedUsage.push(frame.frame.report.usage.total);
         }
       });
-      const summary = await bureau.createRun({
-        agentName: 'default',
-        message: 'Go.',
-        sessionId: 'thread-1',
-      });
+      const summary = await bureau.tasks.start('default', 'Go.', { contextId: 'thread-1' });
       await reachedStepOne;
       refusing.refuseWritesUnder(DURABLE_RUN_RECORD);
       release();
       await bureau.internals.whenTaskRecorded(summary.id);
 
-      expect(bureau.listRuns().find((run) => run.id === summary.id)?.status).toBe('error');
+      expect(listHeldTasks(bureau).find((run) => run.id === summary.id)?.status).toBe('error');
       expect(reportedUsage).toEqual([15]);
       expect(await transcriptOf(bureau)).toEqual([
         'user:Go.',
@@ -234,14 +231,10 @@ describe('a durable run that fails after it committed a step (COR-1587)', () => 
       maximumHistoryEvents: 6,
     });
     try {
-      const summary = await bureau.createRun({
-        agentName: 'default',
-        message: 'Go.',
-        sessionId: 'thread-1',
-      });
+      const summary = await bureau.tasks.start('default', 'Go.', { contextId: 'thread-1' });
       await bureau.internals.whenTaskRecorded(summary.id);
 
-      expect(bureau.listRuns().find((run) => run.id === summary.id)?.status).toBe('error');
+      expect(listHeldTasks(bureau).find((run) => run.id === summary.id)?.status).toBe('error');
       // The breaker ends the run at step 1's checkpoint, and the engine settles the run only after
       // that step's activity has landed (COR-1597), so the reply it wrote is part of what the
       // session keeps. The run was never cut short of a write the session then missed.
@@ -342,7 +335,7 @@ describe('a durable run ended while its step is being committed (COR-1597)', () 
 
       await stream.rest();
 
-      const runId = bureau.listRuns()[0]!.id;
+      const runId = listHeldTasks(bureau)[0]!.id;
       expect(await bureau.contexts.inputsDeliveredBy(runId, 'thread-1')).toEqual(['follow-up-1']);
       expect(await transcriptOf(bureau)).toEqual(expect.arrayContaining(['user:One more thing']));
       expect(typesOf(stream.received).slice(-2)).toEqual([
@@ -367,9 +360,9 @@ describe('a durable run ended while its step is being committed (COR-1597)', () 
       holding.arm();
       generate.release('hold');
       await holding.held;
-      const runId = bureau.listRuns()[0]!.id;
+      const runId = listHeldTasks(bureau)[0]!.id;
 
-      bureau.abortRun(runId);
+      await bureau.tasks.cancel(runId);
       // The cancel is committed and the settle has had every chance to read: the write is still held.
       await macrotasks(50);
       holding.release();
@@ -377,7 +370,7 @@ describe('a durable run ended while its step is being committed (COR-1597)', () 
       await stream.rest();
 
       expect(await transcriptOf(bureau)).toEqual(expect.arrayContaining(['assistant:First.']));
-      expect(bureau.listRuns().find((run) => run.id === runId)?.status).toBe('aborted');
+      expect(listHeldTasks(bureau).find((run) => run.id === runId)?.status).toBe('aborted');
     } finally {
       holding.release();
       await stream.cancel().catch(() => undefined);
@@ -400,13 +393,13 @@ describe('a durable run ended while its step is being committed (COR-1597)', () 
       holding.arm();
       generate.release('hold');
       await holding.held;
-      const runId = bureau.listRuns()[0]!.id;
+      const runId = listHeldTasks(bureau)[0]!.id;
 
-      bureau.abortRun(runId);
-      let durableRun = await bureau.getDurableRun(runId);
+      await bureau.tasks.cancel(runId);
+      let durableRun = await bureau.tasks.workflow(runId);
       while (durableRun?.status !== 'cancelled') {
         await macrotasks(1);
-        durableRun = await bureau.getDurableRun(runId);
+        durableRun = await bureau.tasks.workflow(runId);
       }
       let shutdownDone = false;
       const disposing = bureau.dispose().finally(() => (shutdownDone = true));

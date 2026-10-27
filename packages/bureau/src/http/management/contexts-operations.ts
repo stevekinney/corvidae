@@ -5,8 +5,7 @@
  * A context belongs to the principal that created it. A caller reaches its own
  * contexts without any scope; `bureau.contexts:read` grants `list` and `get` on any
  * owner's, `bureau.contexts:write` grants `delete`, neither implies the other, and a
- * context the caller may not see is answered exactly as a missing one. A context that is the id of a `bureau.run` dispatch with no session behind
- * it is missing here: a catalog run owns no session.
+ * context the caller may not see is answered exactly as a missing one. A task's id is not a context id, so it reads as missing here.
  *
  * @module contexts-operations
  */

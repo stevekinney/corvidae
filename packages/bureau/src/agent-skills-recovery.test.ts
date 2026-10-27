@@ -85,13 +85,9 @@ describe('a session run of an agent with skills, reattached after its process di
       storage: { type: 'sqlite', path },
       agents: { default: await agentFor([], []) },
     });
-    const run = await first.createRun({
-      agentName: 'default',
-      message: 'lock, then charge',
-      principal: OWNER.alice,
-    });
+    const run = await first.tasks.start('default', 'lock, then charge', { principal: OWNER.alice });
     await pollForTime(
-      async () => ((await skillsRecorded(first, run.sessionId)) ? true : undefined),
+      async () => ((await skillsRecorded(first, run.contextId)) ? true : undefined),
       'the active skill to be recorded',
     );
     await letStepsCommit();
@@ -112,7 +108,7 @@ describe('a session run of an agent with skills, reattached after its process di
     // refused before it reached an approval, and nothing ran.
     expect(offered).not.toContain('charge-card');
     expect(restarted.reviews.list().filter((review) => review.runId === run.id)).toEqual([]);
-    const session = await restarted.contexts.get(run.sessionId);
+    const session = await restarted.contexts.get(run.contextId);
     const refusal = getMessages(session!.conversationHistory).find(
       (message) => message.toolResult?.callId === 'charge-Y',
     )?.toolResult?.error?.code;

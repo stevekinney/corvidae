@@ -5,6 +5,7 @@ import { describe, expect, it } from 'bun:test';
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { deferred } from './test/session-input-fixtures';
+import { startTaskFrom } from './test/task-start-request.ts';
 
 /**
  * COR-1661 — an input names the incarnation of the session it was checked against. A context
@@ -26,15 +27,14 @@ async function withLiveSession(
     return { content: 'answer', toolCalls: [] };
   });
   try {
-    const run = await bureau.createRun({
+    const run = await startTaskFrom(bureau, {
       agentName: 'default',
-      message: 'First',
+      input: 'First',
       principal: 'alice',
-      maximumSteps: 1,
     });
     await started.promise;
-    const session = await bureau.contexts.get(run.sessionId);
-    await body({ sessionId: run.sessionId, incarnation: session?.incarnation ?? '' }, bureau);
+    const session = await bureau.contexts.get(run.contextId);
+    await body({ sessionId: run.contextId, incarnation: session?.incarnation ?? '' }, bureau);
   } finally {
     release.resolve();
     await bureau.dispose();

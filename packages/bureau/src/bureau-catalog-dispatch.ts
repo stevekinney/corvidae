@@ -24,7 +24,6 @@ import {
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   readGenerationProfile,
   resolvesOwnGuardrails,
-  snapshotAgentInput,
 } from '@lostgradient/operative';
 
 import type { AgentDefinitions, AnyRunnableAgent, BureauAgentCatalog } from './agent-catalog';
@@ -69,10 +68,6 @@ export interface CatalogDispatcherDependencies {
   readonly detachBestEffortPromise: (promise: Promise<unknown>) => void;
   readonly createBureauError: (message: string, code: CatalogRunErrorCode) => Error;
   readonly validateAgentRunInput: (input: unknown) => void;
-  readonly validateBureauRunOptions: (
-    options: BureauRunOptions | undefined,
-    principal: unknown,
-  ) => void;
   /**
    * COR-772 — called once a durable catalog run settles as aborted, however
    * the abort arrived (its own handle, `dispose`, or the engine cancelling
@@ -90,21 +85,6 @@ export interface CatalogDispatcherDependencies {
    * inside its own `run()`, so there is no `ActiveRun` to pass for it.
    */
   readonly registerCatalogRun?: ((activeRun: ActiveRun) => void) | undefined;
-  /**
-   * COR-1481 — called once for each `bureau.run()` dispatch, with its handle, as
-   * the handle is returned: the moment the run becomes a task. Child runs and goal
-   * attempts are not passed. `contextId` is the session id the caller named, or
-   * the run's own id when it named none.
-   */
-  readonly onCatalogRunAdmitted?:
-    | ((admission: {
-        readonly handle: AgentRun<unknown, boolean>;
-        readonly agentName: string;
-        readonly owner: string;
-        readonly contextId: string;
-        readonly input: AgentInput;
-      }) => void)
-    | undefined;
   /**
    * COR-1630 — called once when the handle of a catalog run settles, for every dispatch that holds
    * its own asset claims and is not a goal attempt: `bureau.run()`, a child run and a workflow
@@ -270,12 +250,6 @@ export class GoalAttemptTombstonedError extends Error {
   }
 }
 
-/** COR-1302 — an unsettled `bureau.run()` handle; see `findCatalogRun`. */
-export interface DispatchedCatalogRun {
-  readonly handle: AgentRun<unknown, boolean>;
-  readonly agentName: string;
-}
-
 export interface GoalAttemptRun {
   readonly run: AgentRun<unknown, boolean>;
   readonly durablyStarted: Promise<void>;
@@ -291,51 +265,19 @@ export function createCatalogDispatcher({
   detachBestEffortPromise,
   createBureauError,
   validateAgentRunInput,
-  validateBureauRunOptions,
   onDurableRunAborted,
   humanInput,
   registerCatalogRun,
-  onCatalogRunAdmitted,
   onCatalogRunEnded,
   fileAgents,
 }: CatalogDispatcherDependencies): {
-  runAgent: (
-    name: string,
-    input: AgentInput,
-    runOptions?: BureauRunOptions,
-  ) => AgentRun<unknown, boolean>;
   planChildRun: (
     name: string,
   ) => { readonly durable: boolean; readonly agentVersion: string } | undefined;
   startChildRun: (start: ChildTopologyStart) => AgentRun<unknown, boolean>;
   startGoalAttemptRun: (start: GoalAttemptStart) => GoalAttemptRun;
   startWorkflowStepRun: (start: WorkflowStepStart) => AgentRun<unknown, boolean>;
-  findCatalogRun: (id: string) => DispatchedCatalogRun | undefined;
 } {
-  /**
-   * COR-1302 — every unsettled `bureau.run()` handle, by its `id`, from the
-   * moment `runAgent` returns it until its `result()` settles. Bureau reads it
-   * through `findCatalogRun` while a run is not on its run store, so `getRun`
-   * and `abortRun` accept the id before the dispatch has built the run (and
-   * for a catalog run that never builds one). Only `runAgent` adds to it:
-   * child runs and goal attempts stay reachable only through their own
-   * surfaces.
-   */
-  const dispatchedCatalogRuns = new Map<string, DispatchedCatalogRun>();
-
-  function indexCatalogRun(
-    handle: AgentRun<unknown, boolean>,
-    agentName: string,
-  ): AgentRun<unknown, boolean> {
-    dispatchedCatalogRuns.set(handle.id, { handle, agentName });
-    detachBestEffortPromise(
-      handle.result().finally(() => {
-        dispatchedCatalogRuns.delete(handle.id);
-      }),
-    );
-    return handle;
-  }
-
   /**
    * The goal attempt each attribution entry this dispatcher made for one stands
    * for. Keyed by the entry itself, so it lives and dies with it and an entry
@@ -1030,118 +972,6 @@ export function createCatalogDispatcher({
     return goalAttempt || workflowStep ? guardedRun : trackCatalogRun(guardedRun);
   }
 
-  function prepareCatalogRunContext(
-    name: string,
-    runOptions: BureauRunOptions | undefined,
-  ): { context: AgentRunContext; principal: string | undefined } {
-    const capturedRunOptionsPrincipal = runOptions?.principal;
-    validateBureauRunOptions(runOptions, capturedRunOptionsPrincipal);
-    const context: AgentRunContext = { agentName: name };
-    if (runOptions?.signal) context.signal = runOptions.signal;
-    if (runOptions?.traceContext !== undefined) context.traceContext = runOptions.traceContext;
-    if (runOptions?.withTraceContext) context.withTraceContext = runOptions.withTraceContext;
-    if (capturedRunOptionsPrincipal !== undefined) {
-      context.principal = capturedRunOptionsPrincipal;
-    }
-    return { context, principal: capturedRunOptionsPrincipal };
-  }
-
-  function runAgent(
-    name: string,
-    callerInput: AgentInput,
-    runOptions?: BureauRunOptions,
-  ): AgentRun<unknown, boolean> {
-    if (getShutdownPromise()) {
-      throw createBureauError('Cannot run an agent: bureau is disposed', 'CONFLICT');
-    }
-    const agent = agentCatalog.find(name);
-    if (!agent) {
-      throw createBureauError(`Unknown agent "${name}"`, 'NOT_FOUND');
-    }
-    validateAgentRunInput(callerInput);
-    // The caller owns its input and may edit it as soon as this call returns, but the
-    // run resolves and persists its recovery record across awaits. Copy what was
-    // validated, now, and use the copy everywhere below.
-    const input = snapshotAgentInput(callerInput);
-
-    const prepared = prepareCatalogRunContext(name, runOptions);
-    const principal = prepared.principal;
-    // COR-1367 — the agent's inherited guardrail policy travels in its context.
-    const context: AgentRunContext = {
-      ...prepared.context,
-      ...catalogRunGuardrailsContext(agent),
-    };
-
-    // COR-1481 — the dispatch is a task from the moment its handle exists.
-    const admitted = (handle: AgentRun<unknown, boolean>): AgentRun<unknown, boolean> => {
-      onCatalogRunAdmitted?.({
-        handle,
-        agentName: name,
-        owner: ownerOrLocal(principal),
-        contextId: runOptions?.sessionId ?? handle.id,
-        input,
-      });
-      return handle;
-    };
-
-    const hasResolver = hasDefinitionResolver(agent);
-    if (runtime.durable && hasResolver) {
-      return admitted(
-        indexCatalogRun(
-          runDurableCatalogAgent(name, input, runOptions, context, principal, agent),
-          name,
-        ),
-      );
-    }
-    // COR-1302 — the direct branch's handle is returned before the agent's
-    // own run exists too, so it takes its id from this bureau's runtime now,
-    // as the durable branch does.
-    context.runId = runtimeServices.identifiers.next('agent-run');
-
-    // Review round 2 (Codex): a hand-written catalog RunnableAgent is a
-    // valid entry, and one whose run() throws synchronously during per-run
-    // setup must still settle through the returned handle, not escape as a
-    // synchronous throw from bureau.run() itself — AB-22's synchronous-throw
-    // allowlist is unknown name / disposed / malformed input-options only.
-    // `createDeferredAgentRun` already contains exactly this "resolveAgent's
-    // run() throws synchronously" handling (built for createLazyAgent's own
-    // resolved-module case, agnostic to why); reusing it here for an
-    // already-resolved agent avoids duplicating that state machine. The one
-    // externally observable cost is that `agent.run()` itself is invoked one
-    // microtask later than before — compatible with the contract, which
-    // promises a synchronous RETURN of the handle, not synchronous START of
-    // the agent's own work.
-    // COR-1524 — a file agent's snapshot is stored, and this run tied to it, from the moment the
-    // handle exists, and settled when the handle ends, however it ends.
-    const fileReference = beginDirectFileReference(agent, context.runId);
-    const direct = trackCatalogRun(
-      settleDirectFileReference(
-        createDeferredAgentRun(
-          () =>
-            resolveInvariantComposedAgent(
-              name,
-              input,
-              context,
-              principal,
-              agent,
-              hasResolver,
-              registerCatalogRun,
-              fileReference,
-            ),
-          input,
-          context,
-          name,
-        ),
-        fileReference,
-        context.runId,
-      ),
-    );
-    // COR-1630 — only an agent that resolves its run options is given media options, so only
-    // its run holds claims to release.
-    if (hasResolver) reportWhenSettled(direct, context.runId, principal);
-    return admitted(indexCatalogRun(direct, name));
-  }
-
   /**
    * COR-772 — what dispatching `name` as a child would look like, read before
    * anything starts so Bureau can record the child's workflow identity
@@ -1480,16 +1310,10 @@ export function createCatalogDispatcher({
     return handle;
   }
 
-  function findCatalogRun(id: string): DispatchedCatalogRun | undefined {
-    return dispatchedCatalogRuns.get(id);
-  }
-
   return {
-    runAgent,
     planChildRun,
     startChildRun,
     startGoalAttemptRun,
     startWorkflowStepRun,
-    findCatalogRun,
   };
 }

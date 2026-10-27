@@ -107,10 +107,13 @@ describe('a resume that reads a session another owner created under the threadâ€
       let created = false;
       const handler = aliceHandlerOver({
         ...bureau,
-        createRun: async (...args) => {
-          const run = await bureau.createRun(...args);
-          created = true;
-          return run;
+        tasks: {
+          ...bureau.tasks,
+          start: async (...args: Parameters<typeof bureau.tasks.start>) => {
+            const run = await bureau.tasks.start(...args);
+            created = true;
+            return run;
+          },
         },
         contexts: {
           ...bureau.contexts,

@@ -6,7 +6,7 @@
  * decides when a run's frame forwarder stops listening. A test that hands
  * `createRunFrameForwarder` a bare `ActiveRun` cannot see that decision, so
  * these tests drive the whole Bureau lifecycle and read the frames a
- * `subscribeLiveFrames` listener receives, for both run drivers. A run that a
+ * `frames` listener receives, for both run drivers. A run that a
  * restarted Bureau reattaches replays its memoized steps and dispatches no step
  * events, so it is covered separately below.
  */
@@ -26,7 +26,7 @@ import { z } from 'zod';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { createBureau } from './create-bureau';
-import { waitForCondition, waitForRunState } from './test';
+import { waitForCondition, waitForTaskState } from './test';
 import { holdFirstTerminalRunCommit } from './test/held-terminal-commit';
 import type { BureauOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';
@@ -73,11 +73,11 @@ async function collectRunFrames(
   });
   try {
     const frames: RunFrame[] = [];
-    const unsubscribe = bureau.subscribeLiveFrames((frame) => {
+    const unsubscribe = bureau.frames((frame) => {
       if (frame.type === 'run-envelope') frames.push(frame.frame);
     });
-    const summary = await bureau.createRun({ agentName: 'default', message: 'Go.' });
-    const settled = await waitForRunState(bureau, summary.id);
+    const summary = await bureau.tasks.start('default', 'Go.');
+    const settled = await waitForTaskState(bureau, summary.id);
     unsubscribe();
     return { frames, finishReason: settled.finishReason };
   } finally {
@@ -189,7 +189,7 @@ describe.each(failureShapes)(
           durable: true,
           durableOwnership: { ownership: 'none' },
         });
-        const run = await bureauA.createRun({ agentName: 'default', message: 'Go.' });
+        const run = await bureauA.tasks.start('default', 'Go.');
         await crashed.reached;
         replayed = holdFirstTerminalRunCommit(
           await resolveStorage({ type: 'sqlite', path: databasePath }),
@@ -216,13 +216,13 @@ describe.each(failureShapes)(
         });
         bureauB = reattached;
         const frames: RunFrame[] = [];
-        reattached.subscribeLiveFrames((frame) => {
+        reattached.frames((frame) => {
           if (frame.type === 'run-envelope' && frame.runId === run.id) frames.push(frame.frame);
         });
         await replayed.reached;
         replayed.release();
         await waitForCondition(async () => {
-          const session = await reattached.contexts.get(run.sessionId);
+          const session = await reattached.contexts.get(run.contextId);
           return session?.metadata['lastRunStatus'] !== 'running';
         }, 'the reattached run never settled');
 

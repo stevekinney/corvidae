@@ -3,6 +3,7 @@
  * fetch against the handler, every run is scripted (no model), and every event
  * read back is parsed with `@ag-ui/core`'s own schema.
  */
+import type { TaskHandle } from '../types.ts';
 import { EventType, type RunAgentInput } from '@ag-ui/core';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { stopWhen, type Toolbox, waitForCondition } from '@lostgradient/operative';
@@ -28,6 +29,7 @@ import {
   readAgUiStream,
   typesOf,
 } from './ag-ui-stream.test-support.ts';
+import { listHeldTasks } from '../test';
 
 /** Whether two events are the same once each one's own requested id is replaced and the clock reading dropped. */
 function sameOnceSubstituted(
@@ -151,7 +153,7 @@ describe('start', () => {
         }
         const finished = frames.at(-1)!;
         const nativeRunId = String(bureauMetadata(frames[0]!.event)['runId']);
-        const history = await bureau.eventHistory({ kind: 'run', id: nativeRunId });
+        const history = await bureau.tasks.events(nativeRunId);
         if (!('events' in history)) throw new Error('expected a page of history');
         const record = history.events.findLast((event) => event.kind === 'run.completed');
         expect(record?.cursor).toBeString();
@@ -199,7 +201,7 @@ describe('start', () => {
         const first = await readAgUiStream(await handler(startRequest(runAgentInput())));
         const retry = await readAgUiStream(await handler(startRequest(runAgentInput())));
 
-        expect(bureau.listRuns()).toHaveLength(1);
+        expect(listHeldTasks(bureau)).toHaveLength(1);
         expect(bureauMetadata(retry[0]!.event)['runId']).toBe(
           bureauMetadata(first[0]!.event)['runId'],
         );
@@ -242,7 +244,7 @@ describe('a start that races another on the same thread', () => {
               }),
             ),
           );
-        const runsBefore = bureau.listRuns().length;
+        const runsBefore = listHeldTasks(bureau).length;
 
         const [left, right] = await Promise.all([start('race-a', 'one'), start('race-b', 'two')]);
         const leftReader = new FrameReader(left);
@@ -256,7 +258,7 @@ describe('a start that races another on the same thread', () => {
         expect(first.filter((event) => event.type === EventType.RUN_STARTED)).toHaveLength(1);
         expect(refused).toHaveLength(1);
         expect(refused[0]).toMatchObject({ code: 'THREAD_BUSY' });
-        expect(bureau.listRuns()).toHaveLength(runsBefore + 1);
+        expect(listHeldTasks(bureau)).toHaveLength(runsBefore + 1);
       },
     );
   });
@@ -269,12 +271,14 @@ describe('a start that races another on the same thread in another process', () 
       try {
         const reached = Promise.withResolvers<void>();
         const held = Promise.withResolvers<void>();
-        const createRun = harness.bureau.createRun.bind(harness.bureau);
-        spyOn(harness.bureau, 'createRun').mockImplementationOnce(async (request) => {
-          reached.resolve();
-          await held.promise;
-          return createRun(request);
-        });
+        const startTask = harness.bureau.tasks.start.bind(harness.bureau.tasks);
+        spyOn(harness.bureau.tasks, 'start').mockImplementationOnce(
+          async (...args: Parameters<typeof startTask>) => {
+            reached.resolve();
+            await held.promise;
+            return startTask(...args);
+          },
+        );
         const start = (handler: Harness['handler'], runId: string) =>
           handler(
             startRequest(
@@ -295,8 +299,8 @@ describe('a start that races another on the same thread in another process', () 
         expect(refused).toHaveLength(1);
         expect(refused[0]!.event).toMatchObject({ type: EventType.RUN_ERROR, code: 'THREAD_BUSY' });
         expect(started.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
-        expect(harness.bureau.listRuns()).toHaveLength(1);
-        expect(peer.bureau.listRuns()).toHaveLength(0);
+        expect(listHeldTasks(harness.bureau)).toHaveLength(1);
+        expect(listHeldTasks(peer.bureau)).toHaveLength(0);
       } finally {
         await peer.dispose();
       }
@@ -338,7 +342,7 @@ describe('a start that races another on the same thread in another process', () 
             type: EventType.RUN_ERROR,
             code: 'THREAD_BUSY',
           });
-          expect(peer.bureau.listRuns()).toHaveLength(0);
+          expect(listHeldTasks(peer.bureau)).toHaveLength(0);
         } finally {
           await peer.dispose();
         }
@@ -356,9 +360,9 @@ describe('a start that races another on the same thread in another process', () 
         try {
           const reached = Promise.withResolvers<void>();
           // The first Bureau claims the thread and its process dies before it creates the run.
-          spyOn(harness.bureau, 'createRun').mockImplementationOnce(() => {
+          spyOn(harness.bureau.tasks, 'start').mockImplementationOnce(() => {
             reached.resolve();
-            return new Promise(() => {});
+            return new Promise<TaskHandle>(() => {});
           });
           void harness.handler(
             startRequest(
@@ -383,7 +387,7 @@ describe('a start that races another on the same thread in another process', () 
           );
 
           expect(frames.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
-          expect(peer.bureau.listRuns()).toHaveLength(1);
+          expect(listHeldTasks(peer.bureau)).toHaveLength(1);
         } finally {
           await peer.dispose();
         }
@@ -437,7 +441,8 @@ describe('whether a thread is busy, decided from what the store holds', () => {
     );
   const settled = (harness: Harness) =>
     waitForCondition(
-      () => harness.bureau.getRun(harness.bureau.listRuns()[0]!.id)?.status === 'completed',
+      () =>
+        harness.bureau.tasks.detail(listHeldTasks(harness.bureau)[0]!.id)?.status === 'completed',
       'run did not settle',
     );
 
@@ -457,7 +462,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
             type: EventType.RUN_ERROR,
             code: 'THREAD_BUSY',
           });
-          expect(peer.bureau.listRuns()).toHaveLength(0);
+          expect(listHeldTasks(peer.bureau)).toHaveLength(0);
         } finally {
           await peer.dispose();
         }
@@ -485,7 +490,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
           const frames = await readAgUiStream(await peer.handler(startWithMessage('run-b')));
 
           expect(frames.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
-          expect(peer.bureau.listRuns()).toHaveLength(1);
+          expect(listHeldTasks(peer.bureau)).toHaveLength(1);
         } finally {
           await peer.dispose();
           await restarted.dispose();
@@ -679,14 +684,12 @@ describe('whether a thread is busy, decided from what the store holds', () => {
         await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
         await settled(harness);
         // Another run is started on the thread directly, past the mount, and settles.
-        const second = await harness.bureau.createRun({
-          sessionId: 'thread-1',
-          agentName: 'assistant',
-          message: 'and another thing',
+        const second = await harness.bureau.tasks.start('assistant', 'and another thing', {
+          contextId: 'thread-1',
           principal: 'anonymous:local',
         });
         await waitForCondition(
-          () => harness.bureau.getRun(second.id)?.status === 'completed',
+          () => harness.bureau.tasks.detail(second.id)?.status === 'completed',
           'second run did not settle',
         );
 
@@ -740,7 +743,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
         // workflow `pending` until its inline launch runs, and that is still unsettled.
         const first = await harness.handler(startRequest(runAgentInput()));
         const session = await harness.bureau.contexts.get('thread-1');
-        const durable = await harness.bureau.getDurableRun(
+        const durable = await harness.bureau.tasks.workflow(
           session?.metadata['lastRunId'] as string,
         );
         expect(durable?.status).toBe('pending');
@@ -748,7 +751,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
         const second = await readAgUiStream(await harness.handler(startWithMessage('run-b')));
 
         expect(second[0]!.event).toMatchObject({ code: 'THREAD_BUSY' });
-        expect(harness.bureau.listRuns()).toHaveLength(1);
+        expect(listHeldTasks(harness.bureau)).toHaveLength(1);
         await readAgUiStream(first);
       },
     );
@@ -820,7 +823,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
           const b = new FrameReader(await harness.handler(message('r2', ['user-1', 'user-2'])));
           await b.until(EventType.STEP_STARTED);
           await harness.generate.reached('hold');
-          const [runA, runB] = harness.bureau.listRuns().map((run) => run.id);
+          const [runA, runB] = listHeldTasks(harness.bureau).map((run) => run.id);
           save.release();
           await waitForCondition(save.landed, 'run A’s terminal save never landed');
           const afterSave = await harness.bureau.contexts.get('thread-1');
@@ -840,7 +843,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
           );
 
           expect(c[0]!.event).toMatchObject({ code: 'THREAD_BUSY' });
-          expect(harness.bureau.listRuns()).toHaveLength(2);
+          expect(listHeldTasks(harness.bureau)).toHaveLength(2);
           harness.generate.release('hold');
           await b.rest();
         },
@@ -859,7 +862,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
             const b = new FrameReader(await peer.handler(message('r2', ['user-1', 'user-2'])));
             await b.until(EventType.STEP_STARTED);
             await peer.generate.reached('hold');
-            const runB = peer.bureau.listRuns()[0]!.id;
+            const runB = listHeldTasks(peer.bureau)[0]!.id;
             save.release();
             await waitForCondition(save.landed, 'run A’s terminal save never landed');
             const afterSave = await peer.bureau.contexts.get('thread-1');
@@ -871,7 +874,9 @@ describe('whether a thread is busy, decided from what the store holds', () => {
             );
 
             expect(c[0]!.event).toMatchObject({ code: 'THREAD_BUSY' });
-            expect(harness.bureau.listRuns().length + peer.bureau.listRuns().length).toBe(2);
+            expect(listHeldTasks(harness.bureau).length + listHeldTasks(peer.bureau).length).toBe(
+              2,
+            );
             peer.generate.release('hold');
             await b.rest();
           } finally {
@@ -898,7 +903,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
       const refused = await readAgUiStream(await harness.handler(startWithMessage('run-b')));
 
       expect(refused[0]!.event).toMatchObject({ code: 'THREAD_BUSY' });
-      expect(harness.bureau.listRuns()).toHaveLength(1);
+      expect(listHeldTasks(harness.bureau)).toHaveLength(1);
     });
   });
 
@@ -914,12 +919,12 @@ describe('whether a thread is busy, decided from what the store holds', () => {
           ? undefined
           : { ...session, metadata: { ...session.metadata, lastRunStatus: 'running' } };
       });
-      spyOn(harness.bureau, 'getDurableRun').mockRejectedValue(new Error('store unavailable'));
+      spyOn(harness.bureau.tasks, 'workflow').mockRejectedValue(new Error('store unavailable'));
 
       const refused = await readAgUiStream(await harness.handler(startWithMessage('run-b')));
 
       expect(refused[0]!.event).toMatchObject({ code: 'THREAD_BUSY' });
-      expect(harness.bureau.listRuns()).toHaveLength(1);
+      expect(listHeldTasks(harness.bureau)).toHaveLength(1);
     });
   });
 });
@@ -947,7 +952,7 @@ describe('a start whose lease cannot be released', () => {
       logged.mockRestore();
 
       expect(frames.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
-      expect(harness.bureau.listRuns()).toHaveLength(1);
+      expect(listHeldTasks(harness.bureau)).toHaveLength(1);
       expect(logCount).toBe(1);
     });
   });
@@ -994,7 +999,7 @@ describe('a start whose thread lease was taken over before it created its run', 
           expect(second.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
           expect(refused).toHaveLength(1);
           expect(refused[0]!.event).toMatchObject({ code: 'THREAD_BUSY' });
-          expect(harness.bureau.listRuns()).toHaveLength(0);
+          expect(listHeldTasks(harness.bureau)).toHaveLength(0);
         } finally {
           await peer.dispose();
         }
@@ -1014,7 +1019,7 @@ describe('a start that reuses the runId of another thread’s run', () => {
 
       expect(frames).toHaveLength(1);
       expect(frames[0]!.event).toMatchObject({ type: EventType.RUN_ERROR, code: 'RUN_CONFLICT' });
-      expect(bureau.listRuns()).toHaveLength(1);
+      expect(listHeldTasks(bureau)).toHaveLength(1);
     });
   });
 });
@@ -1207,7 +1212,7 @@ describe('a thread with a run in progress', () => {
         const first = new FrameReader(await handler(startRequest(runAgentInput())));
         await first.until(EventType.STEP_STARTED);
         await generate.reached('hold');
-        const runsBefore = bureau.listRuns().length;
+        const runsBefore = listHeldTasks(bureau).length;
 
         const second = await readAgUiStream(
           await handler(
@@ -1222,7 +1227,7 @@ describe('a thread with a run in progress', () => {
 
         expect(second).toHaveLength(1);
         expect(second[0]!.event).toMatchObject({ type: EventType.RUN_ERROR, code: 'THREAD_BUSY' });
-        expect(bureau.listRuns()).toHaveLength(runsBefore);
+        expect(listHeldTasks(bureau)).toHaveLength(runsBefore);
         generate.release('hold');
         await first.rest();
       },
@@ -1363,18 +1368,18 @@ describe('a client that goes away', () => {
         const starter = new FrameReader(await handler(startRequest(runAgentInput())));
         await starter.until(EventType.STEP_STARTED);
         await generate.reached('hold');
-        const runId = bureau.listRuns()[0]!.id;
+        const runId = listHeldTasks(bureau)[0]!.id;
 
         await starter.cancel();
 
-        expect(bureau.getRun(runId)?.status).toBe('running');
+        expect(bureau.tasks.detail(runId)?.status).toBe('running');
         const attached = new FrameReader(await handler(attachRunRequest(runId)));
         const opening = await attached.until(EventType.STATE_SNAPSHOT);
         expect(opening[0]!.event.type).toBe(EventType.RUN_STARTED);
         generate.release('hold');
         await attached.rest();
         await waitForCondition(
-          () => bureau.getRun(runId)?.status === 'completed',
+          () => bureau.tasks.detail(runId)?.status === 'completed',
           'the run never finished',
         );
       },

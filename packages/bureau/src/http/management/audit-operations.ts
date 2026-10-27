@@ -3,7 +3,7 @@
  *
  * A caller reads the records about the resources it owns without any scope, and a caller holding
  * `bureau.audit:read` reads every record. A record belongs to the owner of the run, session, or
- * schedule it is about (`Bureau.getOwner({ kind: 'audit' })`); a record about a resource with no
+ * schedule it is about (`Bureau.ownerOf({ kind: 'audit' })`); a record about a resource with no
  * owner, such as a run that has been deleted, is read only through the scope. The actor a record
  * names (`principal`) is never what decides: a service principal such as `system:scheduler`
  * acts on resources it does not own.

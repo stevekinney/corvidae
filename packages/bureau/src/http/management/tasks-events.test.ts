@@ -60,13 +60,13 @@ function parksThenAnswers(): GenerateFunction {
 }
 
 async function parkedRun(opened: OpenedBureau, principal = OWNER.alice) {
-  const run = await opened.bureau.createRun({ agentName: 'default', message: 'park', principal });
+  const run = await opened.bureau.tasks.start('default', 'park', { principal });
   await waitForCondition(
     () => opened.bureau.reviews.list().some((review) => review.runId === run.id),
     'the run never parked',
   );
   await waitForCondition(async () => {
-    const page = await opened.bureau.eventHistory({ kind: 'run', id: run.id });
+    const page = await opened.bureau.tasks.events(run.id);
     return 'events' in page && page.events.some((event) => event.kind === 'review.requested');
   }, 'review.requested never reached the history');
   return run;
@@ -79,13 +79,9 @@ describe('bureau.tasks.events', () => {
     await withBureau(
       { generate: async () => ({ content: 'ok', toolCalls: [] }) },
       async (opened) => {
-        const run = await opened.bureau.createRun({
-          agentName: 'default',
-          message: 'go',
-          principal: OWNER.alice,
-        });
+        const run = await opened.bureau.tasks.start('default', 'go', { principal: OWNER.alice });
         await waitForCondition(
-          () => opened.bureau.getRun(run.id)?.status === 'completed',
+          () => opened.bureau.tasks.detail(run.id)?.status === 'completed',
           'finish',
         );
 
@@ -141,14 +137,13 @@ describe('bureau.tasks.events', () => {
         : { content: 'the final answer', toolCalls: [] };
     };
     await withBureau({ generate, toolbox }, async (opened) => {
-      const run = await opened.bureau.createRun({
-        agentName: 'default',
-        message: 'go',
-        principal: OWNER.alice,
-      });
-      await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'completed', 'finish');
+      const run = await opened.bureau.tasks.start('default', 'go', { principal: OWNER.alice });
+      await waitForCondition(
+        () => opened.bureau.tasks.detail(run.id)?.status === 'completed',
+        'finish',
+      );
       await waitForCondition(async () => {
-        const page = await opened.bureau.eventHistory({ kind: 'run', id: run.id });
+        const page = await opened.bureau.tasks.events(run.id);
         return 'events' in page && page.events.some((event) => event.kind === 'run.completed');
       }, 'run.completed never reached the history');
 
@@ -223,9 +218,7 @@ describe('bureau.tasks.events', () => {
     await withBureau(
       { generate: chargesOnce, toolbox: approvalToolbox(charges), stopAtApproval: true },
       async (opened) => {
-        const run = await opened.bureau.createRun({
-          agentName: 'default',
-          message: 'charge',
+        const run = await opened.bureau.tasks.start('default', 'charge', {
           principal: OWNER.alice,
         });
         await waitForCondition(
@@ -233,7 +226,7 @@ describe('bureau.tasks.events', () => {
           'the approval never became pending',
         );
         await waitForCondition(async () => {
-          const page = await opened.bureau.eventHistory({ kind: 'run', id: run.id });
+          const page = await opened.bureau.tasks.events(run.id);
           return 'events' in page && page.events.some((event) => event.kind === 'review.requested');
         }, 'review.requested never reached the history');
 
@@ -266,7 +259,7 @@ describe('bureau.tasks.events', () => {
         'alice-key',
       );
       await waitForCondition(async () => {
-        const page = await opened.bureau.eventHistory({ kind: 'run', id: run.id });
+        const page = await opened.bureau.tasks.events(run.id);
         return 'events' in page && page.events.some((event) => event.kind === 'run.completed');
       }, 'run.completed never reached the history');
       const all = await readFrames(
@@ -288,11 +281,7 @@ describe('bureau.tasks.events', () => {
 
   it('answers an ephemeral Bureau, which keeps no durable history, as an unsupported capability', async () => {
     await withBureau({ durableHistory: false }, async (opened) => {
-      const run = await opened.bureau.createRun({
-        agentName: 'default',
-        message: 'go',
-        principal: OWNER.alice,
-      });
+      const run = await opened.bureau.tasks.start('default', 'go', { principal: OWNER.alice });
 
       const response = await opened.handler(
         subscribeRequest('bureau.tasks.events', { taskId: run.id }, 'alice-key'),
