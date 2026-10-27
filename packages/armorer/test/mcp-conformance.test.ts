@@ -22,6 +22,7 @@ import { toCallToolResult } from '../src/integrations/mcp/content';
 import { toolContent } from '../src/protocol';
 import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support';
 import { connectInProcessClient, type NegotiationMode } from './fixtures/mcp-in-process-client';
+import { createStoreDouble } from './fixtures/mcp-task-harness';
 
 /**
  * Dual-era conformance: the official SDK client, pinned to 2026-07-28 or
@@ -101,7 +102,16 @@ function createConformanceToolbox(observed: Observed[]) {
       });
     },
   });
-  return createToolbox([sum, media, hold]);
+  const ledger = createTool({
+    name: 'ledger',
+    description: 'opts into MCP tasks',
+    input: z.object({ account: z.string() }),
+    metadata: { mcp: { taskBacked: true } },
+    async execute({ account }) {
+      return { account, balance: 42 };
+    },
+  });
+  return createToolbox([sum, media, hold, ledger]);
 }
 
 const eras: Array<{ era: 'modern' | 'legacy'; mode: NegotiationMode; version: string }> = [
@@ -118,6 +128,7 @@ afterEach(async () => {
 async function createEndpoint(observed: Observed[]) {
   const mcp = await createMCP(createConformanceToolbox(observed), {
     serverInfo: { name: 'armorer-conformance', version: '1.0.0' },
+    taskStore: createStoreDouble(),
     cacheHints: { 'tools/list': { ttlMs: 60_000 } },
     resources: (server, context) => {
       server.registerResource('era', 'armorer://era', { title: 'Era' }, async () => ({
@@ -142,7 +153,7 @@ describe.each(eras)('MCP conformance ($era era)', ({ era, mode, version }) => {
       expect(client.getProtocolEra()).toBe(era);
       expect(client.getNegotiatedProtocolVersion()).toBe(version);
       const { tools } = await client.listTools();
-      expect(tools.map((tool) => tool.name).toSorted()).toEqual(['hold', 'media', 'sum']);
+      expect(tools.map((tool) => tool.name).toSorted()).toEqual(['hold', 'ledger', 'media', 'sum']);
       const sum = tools.find((tool) => tool.name === 'sum');
       expect(sum?.inputSchema).toMatchObject({
         $schema: MCP_JSON_SCHEMA_DIALECT,
@@ -337,6 +348,19 @@ describe.each(eras)('MCP conformance ($era era)', ({ era, mode, version }) => {
         arguments: {},
       });
       expect(failed.error?.message).toMatch(/no serverId was configured/);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('answers an opted-in tool synchronously to a client that does not declare the Tasks extension', async () => {
+    const mcp = await createEndpoint([]);
+    const { client } = await connectInProcessClient(mcp, mode);
+    try {
+      const result = await client.callTool({ name: 'ledger', arguments: { account: 'ops' } });
+
+      expect(result.structuredContent).toEqual({ account: 'ops', balance: 42 });
+      expect(result.isError).toBeFalsy();
     } finally {
       await client.close();
     }

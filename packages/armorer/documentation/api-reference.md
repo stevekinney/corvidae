@@ -375,14 +375,35 @@ Import MCP integration helpers from `armorer`.
 ### Functions
 
 - `createMCP`
+- `fromMcpEndpointTools`
 - `fromMcpTools`
 - `toMcpTools`
 - `toolConfigurationFromMetadata`
 
+### Classes and constants
+
+- `MCPInputRequiredUnsupportedError`
+- `MCPTaskClientError`
+- `MCPTaskRecordVersionError`
+- `MCP_TASKS_EXTENSION`
+- `MCP_TASK_KEY_PREFIX`
+- `MCP_TASK_RECORD_VERSION`
+- `DEFAULT_MCP_TASK_TTL_MS`
+- `DEFAULT_MCP_TASK_POLL_INTERVAL_MS`
+
 ### Types
 
 - `CreateMCPOptions`
+- `FromMcpEndpointToolsOptions`
 - `FromMCPToolsOptions`
+- `MCPCreateTaskResult`
+- `MCPTaskError`
+- `MCPTaskOptions`
+- `MCPTaskRecord`
+- `MCPTaskStatus`
+- `MCPTaskStore`
+- `MCPTaskStoreCondition`
+- `MCPTaskStoreOperation`
 - `MCPPromptRegistrar`
 - `MCPResourceRegistrar`
 - `MCPToolConfiguration`
