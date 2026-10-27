@@ -22,7 +22,10 @@ import type { Engine } from '../core/engine.ts';
 import { getWorkflowIdFromEvent } from '../core/events/workflow-event-id.ts';
 import { WORKFLOW_TERMINAL_EVENT_TYPES } from '../core/events/workflow-events.ts';
 import type { WorkflowEvent } from '../core/types.ts';
-import { CLIENT_VISIBLE_EVENT_TYPES } from '../server/runtime/client-visible-events.ts';
+import {
+  CLIENT_VISIBLE_EVENT_TYPES,
+  serializeClientVisibleEventData,
+} from '../server/runtime/client-visible-events.ts';
 import { dropOverlappingLiveFrames } from './event-stream-transport.ts';
 import type { WorkflowEventTail } from './event-tail.ts';
 
@@ -51,11 +54,7 @@ function isWorkflowVisibleEvent(event: Event): boolean {
  * produce identical {@link WorkflowEvent} records.
  */
 function serializeEngineEvent(event: Event): WorkflowEvent {
-  const raw: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(event)) {
-    if (key === 'type') continue;
-    raw[key] = value instanceof Error ? value.message : value;
-  }
+  const raw = serializeClientVisibleEventData(event);
   // JSON round-trip to match the server transport: drops `undefined` values and
   // normalizes the bag to the same shape the HTTP tail receives off the wire.
   const data = JSON.parse(JSON.stringify(raw)) as Record<string, unknown>;

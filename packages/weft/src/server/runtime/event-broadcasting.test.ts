@@ -42,6 +42,7 @@ import { createFleetEventFeed, type FleetEventEnvelope } from '../fleet-event-fe
 import {
   CLIENT_VISIBLE_EVENT_TYPES,
   EVENT_CLASSIFICATIONS,
+  serializeClientVisibleEventData,
   TOKEN_EVENT_TYPE,
 } from './client-visible-events.ts';
 import { registerWorkflowEventLifecycle, wireEventBroadcasting } from './event-broadcasting.ts';
@@ -122,7 +123,13 @@ describe('wireEventBroadcasting', () => {
           .filter((key) => key !== 'type')
           .every((key) => allowed.has(key)),
       ).toBe(true);
+      expect(serializeClientVisibleEventData(event)).not.toHaveProperty('isTrusted');
     }
+
+    expect(serializeClientVisibleEventData(new WorkflowSuspendedEvent('wf-legacy'))).toHaveProperty(
+      'isTrusted',
+      false,
+    );
   });
 
   it('denies the unsafe task-attempt event with a reason and keeps it out of read filters', () => {
@@ -217,6 +224,7 @@ describe('wireEventBroadcasting', () => {
       kind: WorkflowRevisionInstalledEvent.type,
       payload: { workflowType: 'checkout', revision: 'r1' },
     });
+    expect(fleetEvents[0]!.payload).not.toHaveProperty('isTrusted');
     expect(fleetEvents[0]).not.toHaveProperty('workflowId');
     expect(watchKeys).toEqual([]);
     expect(published).toEqual([]);
@@ -306,6 +314,7 @@ describe('wireEventBroadcasting', () => {
       cursor: '0',
       data: { workflowId: 'wf-watch-fallback' },
     });
+    expect(JSON.parse(published[0]!.message).data).toHaveProperty('isTrusted', false);
   });
 
   it('logs and suppresses fleet append failures', async () => {
