@@ -163,6 +163,7 @@ describe('durable steering across two Bureau processes', () => {
       expect(readsByA.mock.calls.some(([key]) => key.endsWith(pauseEntry))).toBe(true);
       readsByA.mockRestore();
       // The read entry is applied to the gate in the same fold.
+      // load-proof: the read entry is applied to the gate by a promise continuation of the read the loop above already observed, so a microtask drain completes it; nothing real is pending
       await Bun.sleep(0);
       releaseTool?.();
       await quietFor(300);

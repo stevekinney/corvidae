@@ -59,6 +59,7 @@ async function coverageFor(directory: string, flags: string[]): Promise<Map<numb
   const process = Bun.spawn(
     [
       'bun',
+      '--no-install',
       'test',
       TEST_TIMEOUT_ARGUMENT,
       ...flags,

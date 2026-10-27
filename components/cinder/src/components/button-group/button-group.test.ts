@@ -250,6 +250,7 @@ describe('ButtonGroup', () => {
     group.removeChild(child);
     // MutationObserver callbacks are batched as microtasks. In happy-dom,
     // a setTimeout(0) reliably flushes the callback queue.
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
     expect(child.hasAttribute('data-cinder-button-group-item')).toBe(false);
@@ -294,6 +295,7 @@ describe('ButtonGroup', () => {
     groupB.appendChild(movedChild);
     // MutationObserver callbacks are batched as microtasks. In happy-dom,
     // a setTimeout(0) reliably flushes the callback queue.
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
     expect(movedChild.getAttribute('data-cinder-button-group-item')).toBe(groupBOwnershipValue);
@@ -311,6 +313,7 @@ describe('ButtonGroup', () => {
 
     // MutationObserver callbacks are batched as microtasks. In happy-dom,
     // a setTimeout(0) reliably flushes the callback queue.
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
     expect(newButton.hasAttribute('data-cinder-button-group-item')).toBe(true);
@@ -365,6 +368,7 @@ describe('ButtonGroup', () => {
       // MutationObserver callbacks (both the test's own observer above and
       // {@attach}'s internal one) are batched as microtasks — flush them the
       // same way the existing dynamic-children tests in this file do.
+      // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
       observer.disconnect();

@@ -2803,6 +2803,7 @@ describe('RemoteWorker — connect() re-entrancy', () => {
     // Redundant connect() must not open a second socket or close the live one.
     expect(await worker.connect()).toBeUndefined();
     // Give any stray socket activity a chance to surface.
+    // load-proof: negative window: asserts no extra socket, frame or settlement appears; load can only delay stray activity, never create it
     await sleepForTesting(50);
     expect(tracking.sockets.length).toBe(1);
     expect(tracking.closeCount()).toBe(0);
@@ -2867,6 +2868,7 @@ describe('RemoteWorker — connect() re-entrancy', () => {
         sessionGeneration: 1,
       }),
     );
+    // load-proof: negative window: asserts no extra socket, frame or settlement appears; load can only delay stray activity, never create it
     await sleepForTesting(50);
     expect(secondSettled).toBe(false);
 
@@ -3465,12 +3467,14 @@ describe('RemoteWorker — taskResult resend on reconnect', () => {
     worker[Symbol.dispose]();
     // Activity resolves AFTER disposal — its result must be dropped, not buffered.
     resolveActivity!('too-late');
+    // load-proof: negative window: asserts no extra socket, frame or settlement appears; load can only delay stray activity, never create it
     await sleepForTesting(50);
 
     // Post-dispose connect() rejects (terminal contract); nothing flushes.
     expect(await throwingRejectionOf(worker.connect())).toThrow(
       'RemoteWorker has been disposed and cannot reconnect',
     );
+    // load-proof: negative window: asserts no extra socket, frame or settlement appears; load can only delay stray activity, never create it
     await sleepForTesting(50);
     expect(harness.framesFor(1).some((m) => m.type === 'taskResult')).toBe(false);
   });
@@ -3775,6 +3779,7 @@ describe('RemoteWorker — send-failure recovery and backpressure', () => {
     const framesFor = (index: number): any[] => messagesByRegistration[index] ?? [];
 
     // The socket is OPEN but not yet acked — no taskResult may have been sent.
+    // load-proof: negative window: asserts no extra socket, frame or settlement appears; load can only delay stray activity, never create it
     await sleepForTesting(50);
     expect(framesFor(1).some((m) => m.type === 'taskResult')).toBe(false);
 

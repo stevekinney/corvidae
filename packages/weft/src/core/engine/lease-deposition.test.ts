@@ -787,7 +787,9 @@ describe('#470 Step 2: fenced-write fan-out — behavior-level coverage', () => 
       expect(internals.deposed).toBe(true);
       await engine[Symbol.asyncDispose]();
       // Let the deferred deposition teardown run; it must no-op (already disposed).
+      // load-proof: negative window for a late rejection from an already disposed engine: load can only delay a rejection, never produce one earlier
       await new Promise((resolve) => setImmediate(resolve));
+      // load-proof: negative window for a late rejection from an already disposed engine: load can only delay a rejection, never produce one earlier
       await new Promise((resolve) => setImmediate(resolve));
     } finally {
       process.off('warning', listener);

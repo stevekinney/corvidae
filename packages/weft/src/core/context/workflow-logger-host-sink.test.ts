@@ -231,6 +231,7 @@ describe('EngineOptions.onLog host sink', () => {
     using consoleRecovered = new Engine({ storage: consoleStorage });
     build(consoleRecovered);
     const [consoleHandle] = await consoleRecovered.recoverAll();
+    // load-proof: recoverAll has resolved and the recovered run parks through promise continuations on in-memory storage; the awaited signal and result() wait for the outcome
     await sleepForTesting(10);
     await consoleRecovered.signal('spec-recover-id', 'go', 'go');
     expect(await consoleHandle!.result()).toBe(1);
@@ -253,6 +254,7 @@ describe('EngineOptions.onLog host sink', () => {
     });
     build(sinkRecovered);
     const [sinkHandle] = await sinkRecovered.recoverAll();
+    // load-proof: recoverAll has resolved and the recovered run parks through promise continuations on in-memory storage; the awaited signal and result() wait for the outcome
     await sleepForTesting(10);
     await sinkRecovered.signal('spec-recover-id', 'go', 'go');
     expect(await sinkHandle!.result()).toBe(1);

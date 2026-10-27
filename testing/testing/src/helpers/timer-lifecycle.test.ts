@@ -11,6 +11,7 @@ test('tracks native timeout handles and removes fired or cleared timers', async 
     expect(timers.active().has(canceled)).toBe(true);
     clearTimeout(canceled);
     expect(timers.active().has(canceled)).toBe(false);
+    // load-proof: awaits its own zero-delay timer, which is the subject of the test (a tracked timer leaves the active set when it fires); no outside work is waited for
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     expectNoLeakedTimers(timers.active());
   } finally {

@@ -404,6 +404,7 @@ describe('JsonSchemaEditor — JSON view draft validity', () => {
 describe('JsonSchemaEditor — controlled and uncontrolled schema inputs', () => {
   afterEach(() => cleanup());
 
+  // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
   function flushEffects(): Promise<void> {
     return new Promise<void>((resolve) => setTimeout(resolve, 0));
   }

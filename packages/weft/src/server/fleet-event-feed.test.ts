@@ -738,6 +738,7 @@ describe('createFleetEventFeed', () => {
     const controller = new AbortController();
     const subscription = collect(subscriberFeed.subscribe({ signal: controller.signal }), 1);
 
+    // load-proof: collect() attaches the subscription through promise continuations before this yield returns, so the append is ordered after the attach by microtasks, not by timing
     await new Promise<void>((resolve) => setImmediate(resolve));
     await appenderFeed.append({
       kind: 'worker:connected',
@@ -757,6 +758,7 @@ describe('createFleetEventFeed', () => {
     const controller = new AbortController();
     const iterator = feed.subscribe({ signal: controller.signal })[Symbol.asyncIterator]();
     const pending = iterator.next();
+    // load-proof: the iterator is already pending on in-memory storage, and abort() settles it synchronously through the promise chain
     await new Promise<void>((resolve) => setImmediate(resolve));
     controller.abort();
     expect(await pending).toEqual({ done: true, value: undefined });

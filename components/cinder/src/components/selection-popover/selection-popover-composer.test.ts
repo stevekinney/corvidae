@@ -51,6 +51,7 @@ describe('SelectionPopover', () => {
     document.body.append(outside);
     outside.dispatchEvent(new (globalThis.PointerEvent ?? Event)('pointerdown', { bubbles: true }));
 
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(closed).toBe(false);

@@ -11,11 +11,8 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import {
-  sleepForTesting,
-  waitForCondition,
-  yieldToEventLoop,
-} from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition, yieldToEventLoop } from '../../testing/fake-timers.test-support.ts';
+import { settleInlineLaunches } from '../../testing/inline-launch-settle.test-support.ts';
 
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
@@ -32,7 +29,7 @@ import { cleanupWorkflowStorage } from './termination/cleanup.ts';
 
 /** Drain microtasks so fire-and-forget inline work completes. */
 async function flush(): Promise<void> {
-  await sleepForTesting(10);
+  await settleInlineLaunches();
 }
 
 /** Advance engine clock and scheduler then drain pending inline work. */

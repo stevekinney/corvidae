@@ -126,6 +126,7 @@ describe('Slider (single)', () => {
 
     await tick();
     target.setAttribute('dir', 'rtl');
+    // load-proof: negative window: the assertion that follows only requires that nothing has fired once the microtask queue has drained
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(root?.getAttribute('dir')).toBeNull();
 
@@ -148,6 +149,7 @@ describe('Slider (single)', () => {
 
     await tick();
     target.style.direction = 'rtl';
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(root?.getAttribute('dir')).toBeNull();
 

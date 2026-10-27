@@ -162,6 +162,7 @@ describe('createEditorAttachment', () => {
     const detach = expectDetachFunction(attachment(createEditorElement()));
 
     detach();
+    // load-proof: negative window, the assertion only requires that createEditor is still uncalled after the cancelled start has had its microtasks, and a longer wait could only give it more time to stay uncalled
     await new Promise((resolve) => setTimeout(resolve, 0));
     await flushMicrotasks();
 

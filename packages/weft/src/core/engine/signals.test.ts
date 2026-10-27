@@ -326,6 +326,7 @@ describe('engine signals', () => {
     class SlowSequenceStorage extends NoConditionalBatchMemoryStorage {
       override async get(key: string): Promise<Uint8Array | null> {
         if (key === KEYS.signalSequence('workflow-anonymous-concurrent')) {
+          // load-proof: storage double that stretches a race window; the yield is the injected latency itself and every assertion awaits the real results
           await sleepForTesting(5);
         }
 

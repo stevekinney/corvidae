@@ -204,6 +204,7 @@ describe('SelectionPopover', () => {
       expect(closed).toBe(false);
       expect(requiredInstance(textarea, HTMLTextAreaElement).value).toBe('Paired keyboard draft');
 
+      // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
       await new Promise((resolve) => setTimeout(resolve, 0));
       await fireEvent.scroll(window);
       expect(closed).toBe(true);

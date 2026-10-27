@@ -705,6 +705,7 @@ function recordingTimers(holdMilliseconds?: number) {
     live,
     now: () => Date.now(),
     timers: {
+      // load-proof: tests wait for the callbacks to have RUN (the pending set `live` empties), never for a timer to be asked for, so the macrotask each callback waits for orders nothing
       setTimeout: (callback: () => void, ms?: number) => {
         requested.push(ms ?? 0);
         // A wait of the held length never ends: the stretch a subscription must stay up for.
@@ -829,7 +830,7 @@ describe('a followed fire whose subscription keeps ending', () => {
   it('starts the wait over once a subscription has stayed up for the cap', async () => {
     const { history: real } = await openHistory();
     // The stretch a subscription must stay up for (5 000 ms) passes at once here.
-    const { requested, timers } = recordingTimers();
+    const { requested, live, timers } = recordingTimers();
     const lives: Array<() => void> = [];
     const endable: Pick<DurableEventHistory, 'page' | 'subscribeEventHistoryOfOwners'> = {
       page: (...args) => real.page(...args),
@@ -860,10 +861,12 @@ describe('a followed fire whose subscription keeps ending', () => {
     lives[0]?.();
     await eventually(() => (lives.length >= 2 ? true : undefined), 'the first reopen');
     await follower.settled();
-    // The stability timer fires (the recording timers run it at once), which is the cap elapsing.
+    // The stability timer fires (the recording timers run it on a macrotask of their own), which is
+    // the cap elapsing. Being asked for is not firing: end the subscription only once nothing the
+    // follower scheduled is still waiting to run.
     await eventually(
-      () => (requested.length >= 3 ? true : undefined),
-      'the stability timer to be asked for',
+      () => (requested.length >= 3 && live.size === 0 ? true : undefined),
+      'the stability timer to have fired',
     );
     lives[1]?.();
     await eventually(() => (lives.length >= 3 ? true : undefined), 'the second reopen');

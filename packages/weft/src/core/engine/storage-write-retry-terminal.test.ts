@@ -360,6 +360,7 @@ describe('disposal during an attempt', () => {
     // A further attempt would follow the wait that disposal ends; give its zero-length timer, which
     // was armed first, its turn before counting.
     await yieldToPortableEventLoop();
+    // load-proof: negative window: asserts no further retry attempt follows disposal; load can only delay an attempt, never create one
     await sleepForTesting(1);
     await yieldToPortableEventLoop();
     // The attempt in flight when the engine was disposed was the last.

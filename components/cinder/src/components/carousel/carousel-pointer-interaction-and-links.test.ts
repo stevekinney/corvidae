@@ -301,6 +301,7 @@ describe('Carousel', () => {
     });
     const root = requiredInstance(container.querySelector('.cinder-carousel'), HTMLElement);
     root.setAttribute('dir', 'rtl');
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(scrollTo).toHaveBeenCalledWith({ left: 100, behavior: 'auto' });
   });

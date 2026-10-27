@@ -91,6 +91,7 @@ const wideEvaluation = (() => {
 })();
 
 const settle = async () => {
+  // load-proof: the editors flush through Svelte and the in-memory evaluator, so the update settles inside the microtask queue
   await new Promise((resolve) => setTimeout(resolve, 0));
   flushSync();
   await tick();

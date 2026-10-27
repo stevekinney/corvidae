@@ -30,6 +30,7 @@ describe('executeActivity', () => {
     };
 
     const result = await executeActivity(request, async (input: unknown) => {
+      // load-proof: an activity body that stretches the call; executeActivity is awaited so the result is asserted only after it truly finishes
       await sleepForTesting(1);
       return (input as number) * 2;
     });

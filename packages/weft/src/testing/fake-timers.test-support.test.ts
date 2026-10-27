@@ -111,6 +111,7 @@ describe('fake timer testing helpers', () => {
       fired = true;
     }, 25);
 
+    // load-proof: timers fire in expiry order, so the helper's own 1 ms turn is always handled before the 25 ms timer even on a stalled loop; the assertion pins that order, not elapsed time
     await sleepForTesting(25);
 
     expect(fired).toBe(false);

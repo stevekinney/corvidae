@@ -21,6 +21,7 @@ import { Session } from './session.ts';
 export const SESSION_ID = '0b6f0c3e-8a1d-4c55-9a64-2f6e9b7d1c10';
 
 /** Let every pending promise continuation run. Time itself only moves with `ManualClock.advance`. */
+// load-proof: the code under test yields with setImmediate after a fixed number of bytes, so a settle needs a number of event-loop iterations fixed by the byte counts, not by the load, and each Bun.sleep(0) resolves in a later iteration than an immediate queued before it
 export function flush(): Promise<void> {
   return Bun.sleep(0);
 }

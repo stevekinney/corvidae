@@ -472,6 +472,7 @@ describe('the chat list, a new chat, and the agents', () => {
     const answered: unknown = queryClient()?.getQueryData(queryKeys.agents.list());
     expect(answered).toEqual([]);
     // One turn of the event loop lets the page take the answer in.
+    // load-proof: the Bureau answer is already in the query cache, so the page only needs its Svelte flush, which settles inside the promise chain
     await new Promise((resolve) => setImmediate(resolve));
 
     expect(container.querySelector('[data-testid="welcome-agents"]')).toBeNull();

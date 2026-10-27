@@ -3,6 +3,7 @@ import { afterEach, describe, expect, jest, test } from 'bun:test';
 import { tick } from 'svelte';
 
 import { expectNoLeakedTimers, setupHappyDom, trackTimers } from '@lostgradient/testing';
+import { captureZeroDelayTimers } from '../test/zero-delay-timers.ts';
 
 setupHappyDom();
 
@@ -71,6 +72,7 @@ describe('useAnnouncer', () => {
 
   test('unmounting clears pending announcement timers', async () => {
     const timers = trackTimers();
+    const zeroDelayTimers = captureZeroDelayTimers();
     try {
       const { getByRole, unmount } = render(AnnouncerWrapper, {
         props: { debounceMs: 10_000, clearDelay: 10_000 },
@@ -79,10 +81,11 @@ describe('useAnnouncer', () => {
       await fireEvent.click(getByRole('button', { name: 'announce saved' }));
       unmount();
       // Svelte releases its delegated event reference on the next task.
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      await zeroDelayTimers.settled();
 
       expectNoLeakedTimers(timers.active());
     } finally {
+      zeroDelayTimers.release();
       timers.release();
     }
   });

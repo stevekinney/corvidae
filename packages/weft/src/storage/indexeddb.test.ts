@@ -395,6 +395,7 @@ function pagedKey(index: number, prefix = 'p:'): string {
   return `${prefix}${String(index).padStart(6, '0')}`;
 }
 
+// load-proof: the macrotask is the scenario under test (a consumer that yields the event loop between records), not a wait for storage work, which each test awaits directly
 function macrotask(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }

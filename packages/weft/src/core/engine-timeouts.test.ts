@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import {
-  createDeferred,
-  sleepForTesting,
-  waitForever,
-} from '../testing/fake-timers.test-support.ts';
+import { createDeferred, waitForever } from '../testing/fake-timers.test-support.ts';
+import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
 
 import { KEYS } from '../storage/interface.ts';
 import { TestEngine } from '../testing/test-engine.ts';
@@ -18,7 +15,7 @@ import { workflow } from './types.ts';
 // ---------------------------------------------------------------------------
 
 async function flush(): Promise<void> {
-  await sleepForTesting(10);
+  await settleInlineLaunches();
 }
 
 const slowActivity = async (..._args: unknown[]) => {

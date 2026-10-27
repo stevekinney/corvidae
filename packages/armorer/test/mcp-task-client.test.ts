@@ -129,6 +129,7 @@ async function fixture(
       (async (milliseconds) => {
         delays.push(milliseconds);
         gate.resolve();
+        // load-proof: injected stand-in for the client's backoff delay; the test awaits the gate this seam resolves, never the length of this turn, and an in-memory server answers inside the promise chain
         await Bun.sleep(1);
       }),
   });

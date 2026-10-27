@@ -377,6 +377,7 @@ describe('evaluateCase', () => {
     expect(infrastructureError(await pending).reason).toBe('latency-budget-exceeded');
     resolve(1);
     // One macrotask turn drains every microtask the abandoned scoring loop queues.
+    // load-proof: a negative window: the assertion that follows is that the abandoned scoring loop never called the policy, and load can delay a call but never cause one
     await Bun.sleep(0);
     const policy = spies[2]!;
     expect(policy).toHaveBeenCalledTimes(0);

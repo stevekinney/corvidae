@@ -146,6 +146,7 @@ describe('mount harness', () => {
     process.on('unhandledRejection', listener);
     try {
       action();
+      // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
       await new Promise((resolve) => setTimeout(resolve, 0));
     } finally {
       process.off('unhandledRejection', listener);

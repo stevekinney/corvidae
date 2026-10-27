@@ -2,7 +2,7 @@ import { describe, expect, it, mock } from 'bun:test';
 
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { sleepForTesting } from '../../testing/fake-timers.test-support.ts';
+import { settleInlineLaunches } from '../../testing/inline-launch-settle.test-support.ts';
 import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { Engine } from '../engine.ts';
 import type { WorkflowContext } from '../types.ts';
@@ -25,7 +25,7 @@ import {
 } from './termination.ts';
 
 async function flush(): Promise<void> {
-  await sleepForTesting(10);
+  await settleInlineLaunches();
 }
 
 function createTerminationCallbacks(

@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '../../storage/memory.ts';
-import { sleepForTesting, waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { settleInlineLaunches } from '../../testing/inline-launch-settle.test-support.ts';
 import { captureWorkflowLogConsole } from '../../testing/workflow-log-capture.test-support.ts';
 import { Engine } from '../engine.ts';
 import { activity } from '../types.ts';
@@ -17,7 +18,7 @@ import type { WorkflowLogRecord } from '../types/workflow-log.ts';
  */
 
 async function flush(): Promise<void> {
-  await sleepForTesting(10);
+  await settleInlineLaunches();
 }
 
 /** Messages emitted at our marker levels, in order (ignores engine debug noise). */

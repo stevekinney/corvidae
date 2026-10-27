@@ -68,6 +68,7 @@ async function type(text: string): Promise<void> {
 }
 
 async function settle(): Promise<void> {
+  // load-proof: the editors flush through Svelte and the in-memory evaluator, so the update settles inside the microtask queue
   await new Promise((resolve) => setTimeout(resolve, 0));
   flushSync();
   await tick();
@@ -88,6 +89,7 @@ async function click(label: string): Promise<void> {
   const target = button(label);
   if (target === undefined) throw new Error(`no ${label} button`);
   target.click();
+  // load-proof: the editors flush through Svelte and the in-memory evaluator, so the update settles inside the microtask queue
   await new Promise((resolve) => setTimeout(resolve, 0));
   flushSync();
   await tick();
