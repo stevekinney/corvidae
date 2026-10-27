@@ -6,9 +6,20 @@
 //
 // Usage:
 //   bun scripts/chef/review-threads.ts list <owner/repo> <pr> [--unresolved] [--json]
+//   bun scripts/chef/review-threads.ts list --pr <n> [--repository <owner/repo>] [--config <json>]
+//                                      [--unresolved] [--json]
 //   bun scripts/chef/review-threads.ts resolve <owner/repo> <pr> --file <tsv> [--json]
+//   bun scripts/chef/review-threads.ts resolve --pr <n> [--repository <owner/repo>] [--config <json>]
+//                                      --file <tsv> [--json]
 //   bun scripts/chef/review-threads.ts classes --pr <n> [--repository <owner/repo>] [--config <json>]
 //                                      [--classes <json>] [--json]
+//   bun scripts/chef/review-threads.ts classes <owner/repo> <pr> [--config <json>] [--classes <json>]
+//                                      [--json]
+//
+// Every subcommand names its pull request either positionally (`<owner/repo> <pr>`) or with `--pr
+// <n>`. With `--pr`, the repository is the one positional, else `--repository`, else the
+// configuration's `repository` (the checked-in `repository.json` unless `--config` names another).
+// Giving the repository twice, or `--pr` with a positional pull request number, is a usage error.
 //
 // `list` prints one line per thread (thread id, first comment's databaseId, path:line, author,
 // resolved or open, first line of the first comment) and a final `SEEN=<n> TOTAL=<n>
@@ -35,8 +46,9 @@ import {
   defaultRunner,
   emitResult,
   parseOptions,
-  type Runner,
   UsageError,
+  type ParsedOptions,
+  type Runner,
 } from './process-runner.ts';
 import { DEFAULT_CONFIGURATION_PATH, loadRepositoryConfig } from './repository-config.ts';
 
@@ -108,6 +120,40 @@ export function parseRepository(repository: string): {
 export function parsePullRequest(value: string): number {
   if (!/^[1-9]\d*$/.test(value)) throw new UsageError(`"${value}" is not a pull request number.`);
   return Number(value);
+}
+
+/** The options every subcommand shares for naming its pull request. */
+const targetOptions = ['pr', 'repository', 'config'];
+
+/**
+ * The repository and pull request a subcommand acts on: `<owner/repo> <pr>` positionally, or
+ * `--pr <n>` with the repository from the one positional, `--repository`, or the configuration.
+ */
+export function resolveTarget(
+  parsed: ParsedOptions,
+  command: string,
+): { repository: string; pr: number } {
+  const prFlag = parsed.values['pr'];
+  const flagged = prFlag !== undefined;
+  const usage = `${command} takes <owner/repo> <pr>, or --pr <n> [--repository <owner/repo>].`;
+  if (!flagged) {
+    if (parsed.positionals.length !== 2 || parsed.values['repository'] !== undefined)
+      throw new UsageError(usage);
+    const repository = parsed.positionals[0] as string;
+    parseRepository(repository);
+    return { repository, pr: parsePullRequest(parsed.positionals[1] as string) };
+  }
+  if (prFlag === '') throw new UsageError('--pr is required.');
+  if (parsed.positionals.length > 1) throw new UsageError(usage);
+  const named = parsed.positionals[0];
+  if (named !== undefined && parsed.values['repository'] !== undefined)
+    throw new UsageError('Name the repository once: a positional or --repository, not both.');
+  const repository =
+    named ??
+    parsed.values['repository'] ??
+    loadRepositoryConfig(parsed.values['config'] ?? DEFAULT_CONFIGURATION_PATH).repository;
+  parseRepository(repository);
+  return { repository, pr: parsePullRequest(prFlag) };
 }
 
 interface ThreadNode {
@@ -525,18 +571,10 @@ function runClasses(
   injected: DefectClass[] | undefined,
 ): { code: number; output: string } {
   const parsed = parseOptions(argv, {
-    values: ['pr', 'repository', 'config', 'classes'],
+    values: [...targetOptions, 'classes'],
     flags: ['json'],
   });
-  if (parsed.positionals.length > 0)
-    throw new UsageError(`Unexpected argument ${parsed.positionals[0]}.`);
-  const prValue = parsed.values['pr'];
-  if (prValue === undefined || prValue === '') throw new UsageError('--pr is required.');
-  const pr = parsePullRequest(prValue);
-  const repository =
-    parsed.values['repository'] ??
-    loadRepositoryConfig(parsed.values['config'] ?? DEFAULT_CONFIGURATION_PATH).repository;
-  parseRepository(repository);
+  const { repository, pr } = resolveTarget(parsed, 'classes');
   const classes = injected ?? loadDefectClasses(parsed.values['classes']);
   const json = parsed.flags.has('json');
   try {
@@ -585,13 +623,10 @@ export function run(
   if (command !== 'list' && command !== 'resolve')
     throw new UsageError(`Unknown command ${command}.`);
   const parsed = parseOptions(argv.slice(1), {
-    values: command === 'resolve' ? ['file'] : [],
+    values: command === 'resolve' ? [...targetOptions, 'file'] : targetOptions,
     flags: command === 'list' ? ['unresolved', 'json'] : ['json'],
   });
-  if (parsed.positionals.length !== 2) throw new UsageError(`${command} takes <owner/repo> <pr>.`);
-  const repository = parsed.positionals[0] as string;
-  parseRepository(repository);
-  const pr = parsePullRequest(parsed.positionals[1] as string);
+  const { repository, pr } = resolveTarget(parsed, command);
   const json = parsed.flags.has('json');
   try {
     if (command === 'list') {

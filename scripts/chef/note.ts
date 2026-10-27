@@ -13,7 +13,9 @@
 // `state` replaces the body under `## <heading>` (up to the next `## `), creating the section when
 // it is absent, and warns above 300 lines. `log` appends `- <local ISO timestamp> <entry>` to the
 // sibling log, creating it with a title line. `row` updates one cell of the first Markdown table
-// whose first column contains the key. `stats` prints line counts and byte sizes.
+// whose first column contains the key; any value is safe (`escapeCell`: pipes escaped, backslashes before
+// punctuation doubled, line breaks flattened), so pass it as one quoted argument and never edit a
+// table row with `sed`. `stats` prints line counts and byte sizes.
 //
 // Exit codes: 0 success, 1 the key, column or note was not found, 2 invalid CLI usage.
 
@@ -121,7 +123,7 @@ export function replaceSection(
 }
 
 /** Split a Markdown table row into its raw cells, honoring `\|`. Null when it is not a row. */
-function splitRow(line: string): string[] | null {
+export function splitRow(line: string): string[] | null {
   const trimmed = line.trim();
   if (!trimmed.startsWith('|')) return null;
   let body = trimmed.slice(1);
@@ -144,6 +146,26 @@ function splitRow(line: string): string[] | null {
 
 function isSeparator(cells: string[]): boolean {
   return cells.length > 0 && cells.every((cell) => /^\s*:?-{1,}:?\s*$/.test(cell));
+}
+
+/**
+ * A value as one Markdown table cell. Line breaks (CR, LF, and the Unicode line and paragraph
+ * separators) collapse to one space, so the row stays on one line. Every `|` becomes `\|`. A
+ * backslash that precedes ASCII punctuation (`|`, `#`, another backslash, and so on) is doubled,
+ * because a renderer would otherwise read `\` plus that character as an escape and either drop the
+ * backslash or swallow the pipe's escape. `#`, `@`, and a backslash before a letter need nothing.
+ */
+export function escapeCell(value: string): string {
+  const flat = value.replace(/\s*[\r\n\u2028\u2029]\s*/g, ' ').trim();
+  let escaped = '';
+  for (let index = 0; index < flat.length; index += 1) {
+    const character = flat[index] as string;
+    const next = flat[index + 1] ?? '';
+    if (character === '\\' && /^[!-/:-@[-`{-~]$/.test(next)) escaped += '\\\\';
+    else if (character === '|') escaped += '\\|';
+    else escaped += character;
+  }
+  return escaped;
 }
 
 export type RowResult =
@@ -174,10 +196,7 @@ export function updateRow(note: string, key: string, column: string, value: stri
       );
       if (columnIndex === -1) return { found: false, reason: 'column' };
       while (cells.length <= columnIndex) cells.push('');
-      cells[columnIndex] = ` ${value
-        .replace(/\|/g, '\\|')
-        .replace(/\s*\n\s*/g, ' ')
-        .trim()} `;
+      cells[columnIndex] = ` ${escapeCell(value)} `;
       lines[rowIndex] = `|${cells.join('|')}|`;
       return { found: true, text: lines.join('\n'), line: rowIndex + 1 };
     }

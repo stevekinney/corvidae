@@ -273,6 +273,92 @@ describe('list', () => {
   });
 });
 
+describe('--pr spelling', () => {
+  const config = () =>
+    file(
+      'config.json',
+      JSON.stringify({
+        repository: 'acme/widgets',
+        defaultBranch: 'main',
+        worktreeRoots: { claude: '/c', codex: '/x' },
+        manifestName: 'widgets',
+        installCommand: 'true',
+        gateCommand: 'true',
+        affectedCheckCommand: 'true',
+        mergeMethod: 'squash',
+      }),
+    );
+
+  test('list --pr <n> reads the repository from the configuration and matches the positional form', () => {
+    const positional = run(['list', 'acme/widgets', '7', '--json'], {
+      runner: fakeGitHub(makeThreads(3, 3)).runner,
+    });
+    const fake = fakeGitHub(makeThreads(3, 3));
+    const flagged = run(['list', '--pr', '7', '--config', config(), '--json'], {
+      runner: fake.runner,
+    });
+    expect(flagged.code).toBe(0);
+    expect(JSON.parse(flagged.output)).toEqual(JSON.parse(positional.output));
+    expect(fake.calls[0]).toContain('owner=acme');
+    expect(fake.calls[0]).toContain('name=widgets');
+    expect(fake.calls[0]).toContain('pr=7');
+  });
+
+  test('list --pr <n> defaults to the checked-in repository.json', () => {
+    const fake = fakeGitHub(makeThreads(1));
+    expect(run(['list', '--pr', '7', '--unresolved'], { runner: fake.runner }).code).toBe(0);
+    expect(fake.calls[0]).toContain('owner=stevekinney');
+    expect(fake.calls[0]).toContain('name=corvidae');
+  });
+
+  test('--repository and a repository positional both name the repository with --pr', () => {
+    const viaFlag = fakeGitHub(makeThreads(1));
+    run(['list', '--pr', '7', '--repository', 'acme/gadgets'], { runner: viaFlag.runner });
+    expect(viaFlag.calls[0]).toContain('name=gadgets');
+    const viaPositional = fakeGitHub(makeThreads(1));
+    run(['list', 'acme/gizmos', '--pr', '7'], { runner: viaPositional.runner });
+    expect(viaPositional.calls[0]).toContain('name=gizmos');
+  });
+
+  test('resolve --pr <n> replies and resolves like the positional form', () => {
+    const threads = makeThreads(2);
+    const fake = fakeGitHub(threads);
+    const result = run(
+      [
+        'resolve',
+        '--pr',
+        '7',
+        '--repository',
+        'acme/widgets',
+        '--file',
+        file('replies.tsv', 'T1\tfixed in abc\nT2\tdeclined\n'),
+      ],
+      { runner: fake.runner },
+    );
+    expect(result.code).toBe(0);
+    expect(result.output).toContain('RESOLVED 2/2');
+    expect(fake.replies).toHaveLength(2);
+  });
+
+  test('classes accepts the positional form too', () => {
+    const result = run(['classes', 'acme/widgets', '7'], {
+      runner: fakeGitHub(makeThreads(1)).runner,
+    });
+    expect(result.code).toBe(0);
+  });
+
+  test('refuses an ambiguous or incomplete target as a usage error', () => {
+    const runner = fakeGitHub([]).runner;
+    expect(() => run(['list', 'acme/widgets', '7', '--pr', '8'], { runner })).toThrow(UsageError);
+    expect(() =>
+      run(['list', 'acme/widgets', '--pr', '7', '--repository', 'a/b'], { runner }),
+    ).toThrow(UsageError);
+    expect(() => run(['list', '--pr', 'x'], { runner })).toThrow(UsageError);
+    expect(() => run(['list', '--repository', 'acme/widgets'], { runner })).toThrow(UsageError);
+    expect(() => run(['list', '--pr', '7', 'a/b', 'extra'], { runner })).toThrow(UsageError);
+  });
+});
+
 describe('parseReplies', () => {
   test('splits on the first tab, expands \\n and skips blank lines', () => {
     expect(parseReplies('T1\tFixed in abc.\\nThanks\n\nT2\tDeclined: one-off\n')).toEqual([
