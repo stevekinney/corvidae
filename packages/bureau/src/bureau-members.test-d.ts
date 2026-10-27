@@ -8,6 +8,7 @@ import type {
   Bureau,
   BureauAudit,
   BureauContexts,
+  BureauTasks,
   BureauInternals,
   BureauReviews,
   BureauSchedules,
@@ -66,7 +67,6 @@ type MovedToInternals = Extract<
   | 'auditTrail'
   | 'listAbortingRuns'
   | 'whenRunRecorded'
-  | 'tasks'
 >;
 
 export type NoFlatReviewMembers = AssertNever<RemovedReviewMembers>;
@@ -80,6 +80,8 @@ export type NoTopLevelAuditTrail = AssertNever<Extract<keyof Bureau, 'auditTrail
 export type ReviewsAreDeclared = Bureau['reviews'] extends BureauReviews ? true : never;
 export type SchedulesAreDeclared = Bureau['schedules'] extends BureauSchedules ? true : never;
 export type ContextsAreDeclared = Bureau['contexts'] extends BureauContexts ? true : never;
+// `tasks` is the task API now; the registry it named before is `internals.taskRegistry`.
+export type TasksAreDeclared = Bureau['tasks'] extends BureauTasks ? true : never;
 export type AuditIsDeclared = Bureau['audit'] extends BureauAudit ? true : never;
 export type InternalsAreDeclared = Bureau['internals'] extends BureauInternals ? true : never;
 

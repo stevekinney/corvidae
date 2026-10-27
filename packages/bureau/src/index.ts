@@ -219,6 +219,8 @@ export {
   digestRunCreationPayload,
   RUN_CREATION_OPERATION_VERSION,
   RunCreationReceiptUnrecordedError,
+  serializeTaskInput,
+  serializeTaskRequestContext,
 } from './command-ledger';
 export { createAgentDiscoveryTool } from './create-agent-discovery-tool';
 export type {
@@ -464,6 +466,13 @@ export type {
   AuditQueryRecord,
   BureauReviews,
   BureauContexts,
+  BureauTasks,
+  StartTaskOptions,
+  TaskHandle,
+  TaskInput,
+  TaskInspection,
+  TaskOutputOf,
+  TaskReceiptQuery,
   BureauSchedules,
   BureauRunOptions,
   BureauShutdownOptions,

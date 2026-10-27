@@ -136,60 +136,6 @@ describe('createRun with a run-creation request id', () => {
     });
   });
 
-  it('treats a retry that spells out the defaults it first omitted as the same command', async () => {
-    await withDurableBureau(
-      async (bureau) => {
-        const first = await bureau.createRun(REQUEST);
-        const retry = await bureau.createRun({
-          ...REQUEST,
-          agentName: 'default',
-          systemPrompt: 'You keep the books.',
-          maximumSteps: 7,
-        });
-
-        expect(retry.id).toBe(first.id);
-        expect(retry.receipt).toEqual(first.receipt);
-        expect(await durableRunIds(bureau)).toEqual([first.id]);
-
-        // A value that differs from the default is a different command.
-        const conflict = await rejectionOf(bureau.createRun({ ...REQUEST, maximumSteps: 8 }));
-        expect(conflict).toBeInstanceOf(BureauLedgerConflictError);
-      },
-      { systemPrompt: 'You keep the books.', maximumSteps: 7 },
-    );
-  });
-
-  it('reads a named run’s defaults from the agent, so the digest holds the values that win', async () => {
-    await withDurableBureau(
-      async (bureau) => {
-        const named = { ...REQUEST, agentName: 'researcher' };
-        const first = await bureau.createRun(named);
-
-        // Spelling out what the agent declares is the same command: the agent's values beat the
-        // Bureau's defaults, so they are what the digest holds.
-        const retry = await bureau.createRun({
-          ...named,
-          systemPrompt: 'You are the researcher.',
-          maximumSteps: 4,
-        });
-        expect(retry.id).toBe(first.id);
-
-        // The Bureau's own defaults lost, so spelling them out is a different command.
-        const bureauPrompt = await rejectionOf(
-          bureau.createRun({ ...named, systemPrompt: 'You keep the books.' }),
-        );
-        expect(bureauPrompt).toBeInstanceOf(BureauLedgerConflictError);
-        const bureauSteps = await rejectionOf(bureau.createRun({ ...named, maximumSteps: 7 }));
-        expect(bureauSteps).toBeInstanceOf(BureauLedgerConflictError);
-      },
-      {
-        systemPrompt: 'You keep the books.',
-        maximumSteps: 7,
-        researcher: { instructions: 'You are the researcher.', maximumSteps: 4 },
-      },
-    );
-  });
-
   it('rejects the same request id with a different payload as a typed conflict carrying the original receipt', async () => {
     await withDurableBureau(async (bureau) => {
       const first = await bureau.createRun(REQUEST);

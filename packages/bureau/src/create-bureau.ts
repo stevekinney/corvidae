@@ -13,14 +13,20 @@ import {
   type AgentInput,
   type AgentRun,
   type AgentSession,
+  type RunEvent,
+  type RunResult,
+  type SessionInputPayload,
   type ChildSignalContract, // COR-625: operative's OBJECT-form cleanup acknowledgement, aliased on
   // import because `./types` exports an unrelated string-union type under
   // the same name (armorer's shutdown-owner outcome vocabulary). The two are
   // genuinely different values and must not shadow each other here.
   type CleanupAcknowledgement as RunCleanupAcknowledgement,
+  appendAgentInput,
+  payloadText,
   assertAgentInput,
   type CombinedOperativeEventMap,
   createActiveRun,
+  createAgentRun,
   createAgentRunEventRegistry,
   createAgentScheduler,
   createFlowController,
@@ -195,7 +201,8 @@ import {
   type RunCreationAttempt,
   type RunCreationObservation,
   type RunCreationReceiptLocation,
-  serializeAppendedMessages,
+  serializeTaskInput,
+  serializeTaskRequestContext,
 } from './command-ledger';
 import {
   createDurableEventHistory,
@@ -479,6 +486,9 @@ import type {
   ContextDeletionReport,
   CreateRunRequest,
   LocateRunCreationReceiptRequest,
+  StartTaskOptions,
+  TaskHandle,
+  TaskInput,
   OwnedResource,
   DiagnosticSink,
   DurableScheduleDefinition,
@@ -505,6 +515,7 @@ import {
 import { isSettlingRunAction, settledActionTimestamp } from './run-settlement';
 import { createAudit } from './audit/create-audit';
 import { createContexts } from './contexts/create-contexts';
+import { createTaskHandle, createTasks, seedsConversation } from './tasks/create-tasks';
 import { createReviews } from './reviews/create-reviews';
 import { createSchedules } from './schedules/create-schedules';
 import { createWebhookNotifier, type WebhookNotifier } from './webhook-notifier';
@@ -1194,6 +1205,55 @@ function validateMessageRequest(
       toBadRequest('"maximumTokens" must be a positive integer');
     }
   }
+}
+
+/**
+ * What a task start adds to a run-creation request inside Bureau: the input it was given (the
+ * receipt digest covers it), the parts of a part-list input, and a hook that sees the run's
+ * `ActiveRun` the moment it exists, before any of its events can be missed.
+ */
+type SessionTaskFields = {
+  readonly taskInput?: TaskInput | undefined;
+  readonly inputParts?: Exclude<SessionInputPayload, string> | undefined;
+  readonly onActiveRun?: ((activeRun: ActiveRun) => void) | undefined;
+};
+
+/** The run-creation fields a task input becomes: a message, its parts, or rows to append. */
+function taskRequestFieldsOf(
+  input: TaskInput,
+): Pick<CreateRunRequest & SessionTaskFields, 'message' | 'inputParts' | 'appendMessages'> {
+  if (typeof input === 'string') return { message: input };
+  if (Array.isArray(input)) {
+    assertAgentInput(input);
+    return { inputParts: input };
+  }
+  if (typeof input !== 'object' || input === null) {
+    return toBadRequest('"input" must be a string, a list of parts, or a task input object');
+  }
+  if ('append' in input) return { appendMessages: input.append };
+  if ('conversation' in input) {
+    const history = input.conversation;
+    return { appendMessages: history.ids.map((id) => history.messages[id]!) };
+  }
+  if ('continue' in input) return {};
+  return toBadRequest('"input" must be a string, a list of parts, or a task input object');
+}
+
+/** The text that stands for a request where only text fits: its message, parts, or last user row. */
+function requestTextOf(request: CreateRunRequest & SessionTaskFields): string {
+  if (request.message !== undefined) return request.message;
+  return request.inputParts === undefined
+    ? lastUserTextOf(request.appendMessages)
+    : payloadText(request.inputParts);
+}
+
+/** The input a request that names no `taskInput` stands for, so its digest covers what it ran. */
+function legacyTaskInputOf(request: CreateRunRequest): unknown {
+  const rows = request.appendMessages ?? [];
+  if (request.message !== undefined) {
+    return rows.length === 0 ? request.message : { message: request.message, append: rows };
+  }
+  return rows.length === 0 ? { continue: true } : { append: rows };
 }
 
 function validateCreateRunRequest(request: CreateRunRequest): void {
@@ -6977,7 +7037,119 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
    * run for its owner. Giving catalog runs their own deletion surface remains
    * its own design problem, outside COR-1302 as it was outside AB-241.
    */
-  async function createRunFromRequest(request: CreateRunRequest): Promise<CreatedRunSummary> {
+  /**
+   * Starts a task: a session run of `agentName` over `input`, in the context `options.contextId`
+   * names or in a new one, returned as a {@link TaskHandle}. A fresh task's handle iterates its
+   * run's events from the run's creation. A `commandId` retry that replays a task this process
+   * runs iterates the live tail; one this process does not run iterates nothing, and its
+   * `result()` settles from the durable store.
+   */
+  async function startTask(
+    agentName: string,
+    input: TaskInput,
+    startOptions: StartTaskOptions = {},
+  ): Promise<TaskHandle> {
+    if (typeof agentName !== 'string' || agentName.trim().length === 0) {
+      toBadRequest('"agentName" must be a non-empty string');
+    }
+    const fields = taskRequestFieldsOf(input);
+    if (seedsConversation(input) && startOptions.contextId !== undefined) {
+      toBadRequest('A task seeded with a "conversation" creates its context: omit "contextId"');
+    }
+    let live: { run: AgentRun<unknown, true>; events: AsyncIterator<RunEvent> } | undefined;
+    const created = await createRunFromRequest({
+      agentName,
+      ...fields,
+      ...(startOptions.contextId === undefined ? {} : { sessionId: startOptions.contextId }),
+      ...(startOptions.principal === undefined ? {} : { principal: startOptions.principal }),
+      ...(startOptions.commandId === undefined
+        ? {}
+        : { runCreationRequestId: startOptions.commandId }),
+      ...(startOptions.requestContext === undefined
+        ? {}
+        : { requestContext: startOptions.requestContext }),
+      taskInput: input,
+      onActiveRun(activeRun) {
+        const run = createAgentRun<unknown, true>(activeRun, {
+          onCompletedIteration: 'empty',
+          hasOutput: true,
+        });
+        live = { run, events: run[Symbol.asyncIterator]() };
+      },
+    });
+    // A replay creates no run here: the handle follows the run this process holds, if any.
+    if (live === undefined) {
+      const held = store.getRun(created.id)?.activeRun;
+      if (held !== undefined) {
+        const run = createAgentRun<unknown, true>(held, {
+          onCompletedIteration: 'empty',
+          hasOutput: true,
+        });
+        live = { run, events: run[Symbol.asyncIterator]() };
+      }
+    }
+    const signal = startOptions.signal;
+    if (signal !== undefined) {
+      const onAbort = () => abortTask(created.id, 'Aborted by the start signal');
+      if (signal.aborted) onAbort();
+      else signal.addEventListener('abort', onAbort, { once: true });
+    }
+    return createTaskHandle<unknown>({
+      id: created.id,
+      contextId: created.sessionId,
+      receipt: created.receipt,
+      live,
+      settle: () => settledTaskResult(created.id),
+      abort: (reason) => abortTask(created.id, reason),
+      snapshot: () => taskSnapshot(created.id),
+    });
+  }
+
+  /** Requests cancellation of a task, doing nothing once it has settled or for one not held here. */
+  function abortTask(id: string, reason?: string): void {
+    const runState = store.getRun(id);
+    if (runState === undefined) {
+      if (findCatalogRun(id) === undefined) return;
+      abortRun(id);
+      return;
+    }
+    if (runState.status !== 'running') return;
+    if (reason === undefined) abortRun(id);
+    else {
+      runState.activeRun.abort(reason);
+      void tasks.watchCleanup(id, runState.activeRun.closed());
+    }
+  }
+
+  /** A task's liveness now: the held run's, else the terminal one its durable state implies. */
+  function taskSnapshot(id: string): LivenessSnapshot {
+    const detail = getRun(id);
+    if (detail !== undefined) return detail.liveness;
+    throw new BureauError(`Task "${id}" is not held by this process`, 'NOT_FOUND');
+  }
+
+  /**
+   * The result of a task this process does not run, once its workflow is terminal in the durable
+   * store: the workflow's recorded result. A task that did not complete rejects with its error.
+   */
+  async function settledTaskResult(id: string): Promise<RunResult> {
+    const state = await waitForDurableRun(id);
+    if (state === undefined) {
+      throw new BureauError('Task results need a durable engine', 'NOT_CONFIGURED', 'durable');
+    }
+    if (state === null) throw new BureauError(`Task "${id}" not found`, 'NOT_FOUND');
+    if (state.status !== 'completed') {
+      throw new BureauError(
+        `Task "${id}" ended ${state.status}${state.error === undefined ? '' : `: ${state.error}`}`,
+        'CONFLICT',
+      );
+    }
+    return state.result as RunResult;
+  }
+
+  async function createRunFromRequest(
+    request: CreateRunRequest & SessionTaskFields,
+  ): Promise<CreatedRunSummary> {
     validateCreateRunRequest(request);
     // COR-718 — the owner of record: stored once, below, and unchanged afterward. A
     // host that states no principal owns the run as `anonymous:local`; one that
@@ -6996,7 +7168,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     const runId = runtimeServices.identifiers.next('run');
     // The text that stands for the request where only text fits: flow control,
     // and the session's `lastUserMessage`.
-    const requestText = request.message ?? lastUserTextOf(request.appendMessages);
+    const requestText = requestTextOf(request);
 
     // COR-1577 — which agent this run is. A session is bound to the agent of the run that
     // created it, so an existing session decides; a new one takes the named agent, or the
@@ -7085,12 +7257,10 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
             agentName,
             requestId: request.runCreationRequestId.trim(),
             payloadDigest: digestRunCreationPayload({
-              message: request.message,
-              appendMessages: serializeAppendedMessages(request.appendMessages),
-              sessionId: request.sessionId?.trim(),
-              systemPrompt: effectiveSystemPrompt,
-              maximumSteps: effectiveMaximumSteps,
-              maximumTokens: effectiveMaximumTokens,
+              agentName,
+              input: serializeTaskInput(request.taskInput ?? legacyTaskInputOf(request)),
+              contextId: request.sessionId?.trim(),
+              requestContext: serializeTaskRequestContext(request.requestContext),
             }),
             claim: { runId, sessionId },
           });
@@ -7143,6 +7313,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       }
 
       if (request.message !== undefined) conversation.appendUserMessage(request.message);
+      if (request.inputParts !== undefined) appendAgentInput(conversation, request.inputParts);
       appendRequestRows(conversation, request.appendMessages);
       // A run answers the row the conversation ends in: a user message, or a
       // tool result (the outcome of an approval) with nothing newer.
@@ -7569,6 +7740,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         throw error;
       }
       activeRuns.add(activeRun);
+      request.onActiveRun?.(activeRun);
       runToolboxes.add(runToolbox);
       runToolboxesByRunId.set(runId, runToolbox);
       // AB-96 — the versioned run-lifecycle frame stream. Registered before
@@ -18453,6 +18625,30 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       bureau.subscribeEventHistory(owner, listener, subscribeOptions),
   });
 
+  // COR-1707: `start` is a session run over the task input, returned as a handle; the reads and
+  // the cancel are the registry's and the Bureau's own, and `events` reads the `run` owner.
+  const bureauTasks = createTasks({
+    start: startTask,
+    detail: getRun,
+    receipt: (query) =>
+      locateRunCreationReceipt({
+        principal: query.principal,
+        runCreationRequestId: query.commandId,
+        ...(query.agentName === undefined ? {} : { agentName: query.agentName }),
+        ...(query.contextId === undefined ? {} : { sessionId: query.contextId }),
+      }),
+    workflow: getDurableRun,
+    workflows: listDurableRuns,
+    wait: waitForDurableRun,
+    snapshot: subscribeRunSnapshot,
+    registry: tasks,
+    children: childTopology.children,
+    eventHistory: (owner, eventHistoryOptions) => bureau.eventHistory(owner, eventHistoryOptions),
+    subscribeEventHistory: (owner, listener, subscribeOptions) =>
+      bureau.subscribeEventHistory(owner, listener, subscribeOptions),
+    notFound: (message) => new BureauError(message, 'NOT_FOUND'),
+  }) as Bureau<D>['tasks'];
+
   const audit = createAudit({
     trail: () => auditTrailInstance,
     ownerOf: ({ runId, detail }) => getOwner({ kind: 'audit', runId, detail }),
@@ -18464,6 +18660,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     reviews,
     schedules,
     contexts,
+    tasks: bureauTasks,
     audit,
     internals: {
       hasExplicitId: options.id !== undefined,

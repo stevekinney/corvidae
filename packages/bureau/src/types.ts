@@ -27,7 +27,9 @@ import type {
   HumanInputSchema,
   LivenessSnapshot,
   PeerCallJournal,
+  RunEvent,
   RunFrame,
+  RunResult,
   SessionInputAdmissionOutcome,
   SessionInputAdmissionRequest,
   SessionInputPayload,
@@ -39,7 +41,13 @@ import type {
   Validator,
 } from '@lostgradient/operative';
 import type { SkillActivationRecord, SkillCatalogRevision } from './skills';
-import type { TaskRegistry } from './task-registry';
+import type {
+  TaskCancelOutcome,
+  TaskListPage,
+  TaskListQuery,
+  TaskRegistry,
+  TaskView,
+} from './task-registry';
 import type { InteractiveSurfaces } from './interactive-surface/store';
 import type { ToolPolicy } from 'armorer/protocol';
 import type { AgentSource, WorkflowSource } from './sources/definition-source';
@@ -64,7 +72,9 @@ import type { ConversationHistory, Message, MultiModalContent } from 'conversati
 
 import type {
   AgentDefinitions,
+  AgentHasOutput,
   AgentNames,
+  AgentOutput,
   AgentRunForName,
   BureauAgentCatalog,
 } from './agent-catalog';
@@ -73,7 +83,11 @@ import type { McpResourceReader } from './assets/content-source-resolver';
 import type { AssetService } from './assets/types';
 import type { AuditRetentionOption, AuditTrail, CheckpointRetentionOption } from './audit-trail';
 import type { BureauEventFeed } from './bureau-event-feed.ts';
-import type { CreatedRunSummary, RunCreationReceiptLocation } from './command-ledger';
+import type {
+  CreatedRunSummary,
+  RunCreationReceipt,
+  RunCreationReceiptLocation,
+} from './command-ledger';
 import type { BureauChildDelegationOptions, BureauChildren } from './child-topology';
 import type {
   DurableEventHistoryPageOptions,
@@ -1259,6 +1273,206 @@ export type AuditQueryPage = {
 };
 
 /**
+ * What {@link BureauTasks.start} runs: a message for the context (a string, or an ordered list of
+ * parts, as `AgentInput` takes), a conversation that seeds a new context, conversation rows to
+ * append with their own ids (as an A2A continuation sends them), or `{ continue: true }` to answer
+ * the context's conversation as it stands (an AG-UI resume).
+ */
+export type TaskInput =
+  | SessionInputPayload
+  | {
+      /** Seeds a new context with this conversation. Naming a `contextId` too is `BAD_REQUEST`. */
+      readonly conversation: ConversationHistory;
+    }
+  | {
+      /** Rows appended to the context's conversation verbatim, ids and parts included. */
+      readonly append: readonly Message[];
+    }
+  | {
+      /** Answers the context's conversation as it stands, which must end in a user or tool row. */
+      readonly continue: true;
+    };
+
+/** How {@link BureauTasks.start} starts a task. */
+export interface StartTaskOptions {
+  /**
+   * The context to continue. Omitted, the task creates a context. A context bound to another
+   * agent is `BAD_REQUEST`; another principal's reads as one that does not exist (`NOT_FOUND`).
+   */
+  readonly contextId?: string;
+  /**
+   * The owner of record of the task, and of a context it creates: the authenticated principal that
+   * started it. Omitted, the task is owned by `anonymous:local`.
+   */
+  readonly principal?: string;
+  /**
+   * The caller's idempotency key for this start. A retry with the same principal, agent, and key
+   * and the same `agentName`, `input`, `contextId`, and `requestContext` returns the original task;
+   * the same key with any of those changed is refused with `BureauLedgerConflictError`. Needs
+   * `principal` (`BAD_REQUEST` otherwise) and a durable engine (`NOT_CONFIGURED`, subject
+   * `durable`). Bound to its task until {@link BureauRetentionOptions.receipts} after it settles.
+   */
+  readonly commandId?: string;
+  /** Authenticated, request-scoped authority forwarded to Armorer tool execution. */
+  readonly requestContext?: ToolRequestContext;
+  /** Aborts the task when it fires. */
+  readonly signal?: AbortSignal;
+  /** The caller's trace context, the parent of the task's spans. */
+  readonly traceContext?: unknown;
+  /** Runs the task's work under `parent`, the caller's tracer binding. */
+  readonly withTraceContext?: <T>(parent: unknown, fn: () => Promise<T>) => Promise<T>;
+}
+
+/**
+ * A started task. It iterates the task's run events; `result()` settles with the run's result,
+ * `abort()` requests cancellation (a no-op once the task has settled), and `snapshot()` reads its
+ * liveness now. A handle a `commandId` retry replays for a task this process does not run settles
+ * `result()` from {@link BureauTasks.wait}.
+ */
+export interface TaskHandle<O = unknown> extends AsyncIterable<RunEvent> {
+  /** The task's id. */
+  readonly id: string;
+  /** The context the task runs in. */
+  readonly contextId: string;
+  /** The receipt of a start that named a `commandId`. */
+  readonly receipt?: RunCreationReceipt;
+  /** Settles with the run's result once the task has ended. */
+  result(): Promise<RunResult<O>>;
+  /** Requests cancellation of the task; once it has settled, does nothing. */
+  abort(reason?: string): void;
+  /** The task's liveness as of now. */
+  snapshot(): LivenessSnapshot;
+}
+
+/** Which `commandId` {@link BureauTasks.receipt} looks up, scoped as the ledger key is. */
+export interface TaskReceiptQuery {
+  /** The authenticated caller that issued the start. */
+  readonly commandId: string;
+  readonly principal: string;
+  /** The agent the task ran as. Required unless `contextId` names an existing context. */
+  readonly agentName?: string | undefined;
+  /** The context the start continued, whose agent the task then ran as. */
+  readonly contextId?: string | undefined;
+}
+
+/** What {@link BureauTasks.inspect} reads about one task. */
+export interface TaskInspection {
+  readonly task: TaskView;
+  /** The run's liveness, or `undefined` when this process holds no live run for the task. */
+  readonly liveness: LivenessSnapshot | undefined;
+  /** The children the task's run owns, in the order the topology records them. */
+  readonly children: readonly {
+    readonly childRunId: string;
+    readonly childAgentName: string;
+    readonly status: string;
+    readonly parentCancellation: string;
+    readonly revision: number;
+    /** The child's liveness, or `undefined` when this process holds no live run for it. */
+    readonly liveness: LivenessSnapshot | undefined;
+  }[];
+}
+
+/** The output a task of the catalog agent `TName` settles with: its schema's, else `unknown`. */
+export type TaskOutputOf<
+  D extends AgentDefinitions,
+  TName extends keyof D & string,
+> = TName extends TName
+  ? AgentHasOutput<D, TName> extends true
+    ? AgentOutput<D, TName>
+    : unknown
+  : never;
+
+/**
+ * The tasks of a Bureau: start one, and read, wait on, watch, and cancel it.
+ * `bureau.tasks.*` operations served by `createBureauHandler` delegate to these members. None of
+ * them authorizes the caller beyond the principal a start or a receipt names.
+ */
+export interface BureauTasks<D extends AgentDefinitions = AgentDefinitions> {
+  /**
+   * Starts a task of the catalog agent `agentName` with `input`, in the context
+   * `options.contextId` names or in a new one. The task is durable when a durable engine is
+   * composed and otherwise runs in memory. Refusals land before anything is persisted: an unknown
+   * agent is `NOT_FOUND`, an agent with no definition resolver `UNSUPPORTED_CAPABILITY`.
+   */
+  start<TName extends AgentNames<D>>(
+    agentName: TName,
+    input: TaskInput,
+    options?: StartTaskOptions,
+  ): Promise<TaskHandle<TaskOutputOf<D, TName>>>;
+  /** Starts a task of an agent named at run time, such as a file agent; its output is untyped. */
+  start(agentName: string, input: TaskInput, options?: StartTaskOptions): Promise<TaskHandle>;
+  /**
+   * A task this process holds, by id, with its steps, events, transcript, and liveness. A task is
+   * held after it settles until its record expires under {@link BureauRetentionOptions.tasks}.
+   * `undefined` for any other id.
+   */
+  detail(id: string): RunDetail | undefined;
+  /** The task's record, from the task registry; `undefined` for a task it does not hold. */
+  get(id: string): Promise<TaskView | undefined>;
+  /** A page of the task registry's tasks, as `query` filters and pages them. */
+  list<T = TaskView>(query: TaskListQuery<T>): Promise<TaskListPage<T>>;
+  /**
+   * Cancels a task and reports where its cleanup stands, waiting up to `waitMilliseconds`
+   * (default 0) for the acknowledgement: `cancel-requested`, `canceled`, `cleanup-pending`,
+   * `cleaned-up`, `cleanup-failed`, `cleanup-unresolved`, `unknown-outcome`, or `rejected` (the
+   * task had already finished). A task the registry does not hold is `NOT_FOUND`.
+   */
+  cancel(id: string, options?: { readonly waitMilliseconds?: number }): Promise<TaskCancelOutcome>;
+  /**
+   * Where a `commandId`'s receipt stands: `recorded`, `pending`, `expired`, or `not-found`. A
+   * blank principal or command id is `BAD_REQUEST`; without a durable engine, `NOT_CONFIGURED`.
+   */
+  receipt(query: TaskReceiptQuery): Promise<RunCreationReceiptLocation>;
+  /**
+   * The durable engine's view of the task's workflow: `null` when the engine does not know it,
+   * `undefined` when no durable engine is composed.
+   */
+  workflow(id: string): Promise<WorkflowState | null | undefined>;
+  /** The durable engine's workflows, filtered; `undefined` when no durable engine is composed. */
+  workflows(
+    filter?: ListFilter,
+    options?: ListOptions,
+  ): Promise<PaginatedResult<WorkflowSummary> | undefined>;
+  /**
+   * Resolves with the task's workflow state once it is terminal in the durable store, `null`
+   * when the engine does not know it, and `undefined` when no durable engine is composed. Under
+   * `maintenance: 'manual'` a task that is not yet terminal rejects (`UNSUPPORTED_CAPABILITY`).
+   */
+  wait(id: string): Promise<WorkflowState | null | undefined>;
+  /**
+   * Delivers the task's liveness now and again on every change, until unsubscribed or `signal`
+   * fires. A task this process does not hold is `NOT_FOUND`.
+   */
+  snapshot(
+    id: string,
+    observer: (snapshot: LivenessSnapshot) => void,
+    options?: { signal?: AbortSignal },
+  ): Subscription;
+  /** A page of the task's durable event history. */
+  events(
+    id: string,
+    options?: DurableEventHistoryPageOptions,
+  ): Promise<
+    | DurableEventPage
+    | DurableEventGap
+    | EventHistoryUnsupportedOutcome
+    | EventHistoryNotFoundOutcome
+    | EventHistoryDeletedAggregateOutcome
+  >;
+  /** Subscribes to the task's durable event history: a replay from the cursor, then the live tail. */
+  subscribeEvents(
+    id: string,
+    listener: (event: DurableEventEnvelope) => void,
+    options?: DurableEventHistorySubscribeOptions,
+  ): Subscription;
+  /**
+   * The task's record, its run's liveness, and the children it owns, for the run inspector;
+   * `undefined` for a task the registry does not hold.
+   */
+  inspect(id: string): Promise<TaskInspection | undefined>;
+}
+
+/**
  * The Bureau's audit trail, read as metadata. `bureau.audit.query` served by `createBureauHandler`
  * delegates to {@link BureauAudit.query}, so both return the same records for the same filter.
  * The raw trail is {@link BureauInternals.auditTrail}.
@@ -1763,6 +1977,12 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * See {@link BureauContexts}.
    */
   readonly contexts: BureauContexts;
+  /**
+   * The tasks: `start` one, and `detail`, `get`, `list`, `cancel`, `receipt`, `workflow`,
+   * `workflows`, `wait`, `snapshot`, `events`, `subscribeEvents`, and `inspect`. See
+   * {@link BureauTasks}.
+   */
+  readonly tasks: BureauTasks<D>;
   /**
    * The audit trail read as redacted metadata: `query(filter, options?)`. See {@link BureauAudit}.
    */
