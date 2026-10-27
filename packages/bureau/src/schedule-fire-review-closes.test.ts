@@ -786,7 +786,8 @@ describe('a canceled fire’s tool approval, retried at boot', () => {
     await first.dispose();
 
     const restarted = await openWaiting(path);
-    await sleep(1_500);
+    // No canceled record may appear; a slow host can only delay one, never bring it forward.
+    await quietFor(1_500);
 
     expect(
       await auditRecordsOf(restarted, fireId, 'review.tool-approval.canceled', abandoned),

@@ -95,8 +95,8 @@ describe('startTreeSampler', () => {
         }),
       intervalMilliseconds: 1,
     });
-    // load-proof: the 1 ms interval's first tick is due before this pause ends, and timers run in deadline order
-    await Bun.sleep(10);
+    // load-proof: the 1 ms interval was armed before this 10 ms timer, and timers on one clock fire in order of their deadlines
+    await quietFor(10);
     release?.();
     const series = await sampler.stop();
     expect(series.skippedTicks).toBeGreaterThan(0);

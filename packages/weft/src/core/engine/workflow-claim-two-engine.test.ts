@@ -1848,7 +1848,7 @@ describe('COR-1383: an old run terminal in-memory teardown must not wipe a same-
       await engineB.start('claim-race-echo', 'NEW', { id, onTerminalConflict: 'start-new' });
       release.resolve();
 
-      expect(await Promise.race([oldResult, Bun.sleep(1000).then(() => 'TIMEOUT')])).toBe('OLD');
+      expect(await oldResult).toBe('OLD');
       const internals = getInternals(engineA);
       expect(internals.checkpoints.has(id)).toBe(false);
       expect(internals.resultResolvers.has(id)).toBe(false);
@@ -1934,9 +1934,7 @@ describe('COR-1383: an old run terminal in-memory teardown must not wipe a same-
 
       expect(getInternals(engine).parkedInlineWorkflows.has(id)).toBe(true);
       await engine.signal(id, 'go');
-      expect(
-        await Promise.race([replacement.result(), Bun.sleep(1000).then(() => 'TIMEOUT')]),
-      ).toBe('ran');
+      expect(await replacement.result()).toBe('ran');
     } finally {
       release.resolve();
       await engine[Symbol.asyncDispose]();
@@ -1972,9 +1970,7 @@ describe('COR-1383: an old run terminal in-memory teardown must not wipe a same-
 
       expect(getInternals(engine).parkedInlineWorkflows.has(id)).toBe(true);
       await engine.signal(id, 'go');
-      expect(
-        await Promise.race([replacement.result(), Bun.sleep(1000).then(() => 'TIMEOUT')]),
-      ).toBe('ran');
+      expect(await replacement.result()).toBe('ran');
     } finally {
       release.resolve();
       await engine[Symbol.asyncDispose]();
@@ -1998,7 +1994,7 @@ describe('COR-1383: an old run terminal in-memory teardown must not wipe a same-
       };
       release.resolve();
       try {
-        expect(await Promise.race([oldResult, Bun.sleep(1000).then(() => 'TIMEOUT')])).toBe('OLD');
+        expect(await oldResult).toBe('OLD');
       } finally {
         storage.get = originalGet;
       }
@@ -2689,7 +2685,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
     // Cancelling again locally finds the record already terminal and must still settle the waiter.
     await engineA.cancel(id);
 
-    const settled = await Promise.race([outcome, Bun.sleep(3_000).then(() => 'hung')]);
+    const settled = await outcome;
     expect(settled).toBe('rejected');
   });
 
@@ -2742,7 +2738,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
       gate.release.resolve();
       await cancelOld;
 
-      const settled = await Promise.race([oldOutcome, Bun.sleep(3_000).then(() => 'hung')]);
+      const settled = await oldOutcome;
       expect(settled).toContain('rejected:');
       expect(settled).not.toContain('P1:NEW');
       // The replacement's durable outcome is untouched.

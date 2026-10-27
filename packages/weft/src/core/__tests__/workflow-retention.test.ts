@@ -25,6 +25,7 @@ import {
   type WorkflowContext,
   type WorkflowDefinition,
 } from '../types.ts';
+import { quietFor } from '../../../scripts/lib/wait-until.ts';
 
 /**
  * Move `type`'s catalog active pointer to `revision`, tolerating a
@@ -743,8 +744,8 @@ describe('workflow retention', () => {
     // observable "purge did not happen" event to await, so a fixed real-time
     // window is the only way to give the (would-be regression)
     // default-fallback purge a fair chance to have already run.
-    // fixed delay: negative assertion
-    await waitForRealTimersForTesting(80);
+    // No purge may happen; a slow host can only delay one, never bring it forward.
+    await quietFor(80);
     expect(await engine.get(workflowId)).not.toBeNull();
 
     engine[Symbol.dispose]();
@@ -849,8 +850,8 @@ describe('workflow retention', () => {
     // to await, so a fixed real-time window is the only way to give the
     // (would-be regression) short-sibling-policy purge a fair chance to
     // have already run.
-    // fixed delay: negative assertion
-    await waitForRealTimersForTesting(80);
+    // No purge may happen; a slow host can only delay one, never bring it forward.
+    await quietFor(80);
     expect(await engine.get(workflowId)).not.toBeNull();
 
     engine[Symbol.dispose]();

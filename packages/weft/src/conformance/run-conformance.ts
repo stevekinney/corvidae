@@ -80,6 +80,13 @@ export type RunConformanceReportOptions = {
    */
   replacementTimeoutMs?: number;
   /**
+   * Upper bound, in milliseconds, for the two waits that end the reconnect check: for the reassigned
+   * task to be claimed past its first attempt, and for the replacement worker to go idle. Defaults to
+   * `timeoutMs`. A caller proving that a worker which never gets there fails shortens only these, so
+   * every wait that must succeed (startup included) keeps its long bound.
+   */
+  settleTimeoutMs?: number;
+  /**
    * Resolves once the replacement worker's process has started, before the wait for it to register
    * begins. A caller that shortens `replacementTimeoutMs` gates the short window on this, so a host
    * slow to start the process cannot spend the window before the replacement exists. Defaults to
@@ -146,13 +153,20 @@ async function dispatchAndWait(
   await waitForResolvedStatus(storage, operationId, expectedStatus, timeoutMs);
 }
 
+/** The bounds one run waits with, each already defaulted. */
+type ConformanceLimits = {
+  timeoutMs: number;
+  settleTimeoutMs: number;
+  replacementTimeoutMs: number;
+  replacementStarted: () => Promise<void>;
+};
+
 async function runConformanceChecks(
   command: readonly string[],
-  timeoutMs: number,
   serve: ConformanceServe,
-  replacementTimeoutMs: number,
-  replacementStarted: () => Promise<void>,
+  limits: ConformanceLimits,
 ): Promise<ConformanceCheck[]> {
+  const { timeoutMs, settleTimeoutMs, replacementTimeoutMs, replacementStarted } = limits;
   const storage = new MemoryStorage();
   const engine = new Engine({ storage });
   let server: WeftServer;
@@ -294,9 +308,9 @@ async function runConformanceChecks(
       storage,
       reconnectOperationId,
       replacementWorkerId,
-      timeoutMs,
+      settleTimeoutMs,
     );
-    await waitForWorkerIdle(server, replacementWorkerId, timeoutMs);
+    await waitForWorkerIdle(server, replacementWorkerId, settleTimeoutMs);
     await waitForResolvedStatus(storage, reconnectOperationId, 'completed', timeoutMs);
     checks.push(createCheck('reconnect', true, 'in-flight task completed after reconnect'));
 
@@ -357,13 +371,12 @@ export async function runConformanceReport(
 ): Promise<ConformanceReport> {
   try {
     return createConformanceReport(
-      await runConformanceChecks(
-        options.command,
-        options.timeoutMs,
-        options.serve,
-        options.replacementTimeoutMs ?? options.timeoutMs,
-        options.replacementStarted ?? (() => Promise.resolve()),
-      ),
+      await runConformanceChecks(options.command, options.serve, {
+        timeoutMs: options.timeoutMs,
+        settleTimeoutMs: options.settleTimeoutMs ?? options.timeoutMs,
+        replacementTimeoutMs: options.replacementTimeoutMs ?? options.timeoutMs,
+        replacementStarted: options.replacementStarted ?? (() => Promise.resolve()),
+      }),
     );
   } catch (error) {
     return createConformanceReport([

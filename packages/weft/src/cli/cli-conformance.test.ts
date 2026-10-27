@@ -88,7 +88,7 @@ const scenario3 = await outcomeOf(async () => {
 });
 
 const scenario4 = await outcomeOf(async () => {
-  // load-proof: the broken worker never registers, so no load can make the run succeed
+  // load-proof: the broken worker never registers, so the run ends on the register wait whatever the load, and the assertions hold for it
   const result = await executeConformance({
     timeoutMs: 500,
     json: true,
@@ -102,7 +102,7 @@ const scenario4 = await outcomeOf(async () => {
 });
 
 const scenario5 = await outcomeOf(async () => {
-  // load-proof: the broken worker never registers, so no load can make the run succeed
+  // load-proof: the broken worker never registers, so the run ends on the register wait whatever the load, and the assertions hold for it
   const result = await executeConformance({
     timeoutMs: 500,
     json: false,
@@ -114,9 +114,8 @@ const scenario5 = await outcomeOf(async () => {
 });
 
 const scenario6 = await outcomeOf(async () => {
-  // load-proof: the worker advertises the wrong activities, so no load can make the run succeed
   const result = await executeConformance({
-    timeoutMs: 750,
+    timeoutMs: HANG_GUARD_MILLISECONDS,
     json: true,
     workerCommand: ['bun', './src/cli/__fixtures__/conformance-wrong-activities-worker.ts'],
   });
@@ -139,9 +138,8 @@ const scenario6 = await outcomeOf(async () => {
 });
 
 const scenario7 = await outcomeOf(async () => {
-  // load-proof: the worker exits after registering, so no load can make the run succeed
   const result = await executeConformance({
-    timeoutMs: 1_000,
+    timeoutMs: HANG_GUARD_MILLISECONDS,
     json: true,
     workerCommand: ['bun', './src/cli/__fixtures__/conformance-register-exit-worker.ts'],
   });
@@ -158,9 +156,10 @@ const scenario7 = await outcomeOf(async () => {
 });
 
 const scenario8 = await outcomeOf(async () => {
-  // load-proof: the worker fixture fails by design, so no load can make the run succeed
+  // Only the wait this worker leaves unsatisfied is short: it can never be met, so no load ends it early.
   const result = await executeConformance({
-    timeoutMs: 1_000,
+    timeoutMs: HANG_GUARD_MILLISECONDS,
+    settleTimeoutMs: 1_000,
     json: true,
     workerCommand: [
       'env',
@@ -180,9 +179,10 @@ const scenario8 = await outcomeOf(async () => {
 });
 
 const scenario9 = await outcomeOf(async () => {
-  // load-proof: the worker fixture fails by design, so no load can make the run succeed
+  // Only the wait this worker leaves unsatisfied is short: it can never be met, so no load ends it early.
   const result = await executeConformance({
-    timeoutMs: 1_000,
+    timeoutMs: HANG_GUARD_MILLISECONDS,
+    settleTimeoutMs: 1_000,
     json: true,
     workerCommand: [
       'env',

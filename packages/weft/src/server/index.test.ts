@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
+import { quietFor } from '../../scripts/lib/wait-until.ts';
 import { waitForParityCondition as waitFor } from '../core/parity/real-timer-wait.test-support.ts';
 import { waitForRealTimersForTesting } from '../testing/fake-timers.test-support.ts';
 
@@ -1370,7 +1371,6 @@ describe('serve', () => {
     const opened = await new Promise<boolean>((resolve) => {
       ws.addEventListener('open', () => resolve(true));
       ws.addEventListener('error', () => resolve(false));
-      setTimeout(() => resolve(false), 2000);
     });
     expect(opened).toBe(true);
 
@@ -1842,7 +1842,9 @@ describe('worker WebSocket protocol', () => {
     await registerWorker(ws, { workerId: 'w3', activities: ['test.charge'] });
 
     const before = server.registry.getAll()[0]?.lastHeartbeat ?? 0;
-    await waitForRealTimersForTesting(50);
+    await waitFor(() => Date.now() > before, {
+      label: 'wall clock advances past the registration heartbeat',
+    });
 
     ws.send(JSON.stringify({ type: 'heartbeat', workerId: 'w3' }));
     await waitFor(() => (server.registry.getAll()[0]?.lastHeartbeat ?? 0) > before, {
@@ -2008,7 +2010,7 @@ describe('worker WebSocket protocol', () => {
         const text = await response.text();
         return text.includes('weft_task_stale_heartbeats 1');
       },
-      { label: 'stale heartbeat metric to refresh', timeoutMs: 1000 },
+      { label: 'stale heartbeat metric to refresh' },
     );
   });
 
@@ -2034,9 +2036,10 @@ describe('worker WebSocket protocol', () => {
     const before = beforeRecord;
 
     // ensures wall-clock advances so the heartbeat-extended deadline is
-    // measurably greater than `before` (no event to await for the gap itself)
-    // fixed delay: pre-dispatch settle
-    await waitForRealTimersForTesting(25);
+    // measurably greater than `before` (the gap itself is awaited as a clock reading)
+    await waitFor(() => Date.now() > before.leaseDeadline - before.visibilityTimeoutMilliseconds, {
+      label: 'wall clock advances past the lease start',
+    });
 
     // Acceptance criterion 1: a bare worker-SESSION heartbeat renews no
     // activity-attempt lease at all — before COR-230 this alone would have
@@ -2386,8 +2389,7 @@ describe('worker WebSocket protocol', () => {
     );
     // `size === 0` is true immediately, so a condition-wait would return before
     // the message could be wrongly handled; give the server time to (not) process it.
-    // fixed delay: negative assertion
-    await waitForRealTimersForTesting(50);
+    await quietFor(50);
 
     // Registry should be empty — register messages are only processed on worker paths
     expect(server.registry.size).toBe(0);
@@ -2519,7 +2521,13 @@ describe('worker WebSocket protocol', () => {
       fairShareKey: 'key-beta',
     });
     expect(dispatchedBeta).toBe(true);
-    await waitForRealTimersForTesting(50);
+    await waitFor(
+      () =>
+        [...receivedByWorker.values()].some((tasks) =>
+          tasks.some((task) => task.operationId === 'beta-1'),
+        ),
+      { label: 'beta-1 received by a worker' },
+    );
 
     // Exactly one worker picked up beta-1 — and the worker chosen had a
     // per-beta-key count of 0 before this dispatch (which is true for any of
@@ -2813,7 +2821,9 @@ describe('worker WebSocket protocol', () => {
       input: null,
       workflowId: 'wf-sticky-1',
     });
-    await waitForRealTimersForTesting(100);
+    await waitFor(() => [...received1, ...received2].some((m) => m.operationId === 'sticky-op-1'), {
+      label: 'sticky-op-1 received by a worker',
+    });
 
     // Determine which worker handled the first task.
     const firstWorker = received1.some((m) => m.operationId === 'sticky-op-1')
@@ -2872,7 +2882,7 @@ describe('worker WebSocket protocol', () => {
       input: null,
       workflowId: 'wf-cap',
     });
-    await waitForRealTimersForTesting(50);
+    await waitFor(() => server.registry.isAssigned('cap-op-1'), { label: 'cap-op-1 assigned' });
 
     // w1 is now at capacity (1/1). Sticky dispatch should fall back to w2.
     await server.dispatchTask({
@@ -3287,6 +3297,19 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
     return ws;
   }
 
+  /**
+   * Resolves once `count` token chunks of `workflowId` are in durable storage, which is what a
+   * connection made afterwards replays from.
+   */
+  async function waitForPersistedTokens(workflowId: string, count: number): Promise<void> {
+    await waitFor(
+      async () => (await engine.getStreamChunks(workflowId, 'tokens')).length >= count,
+      {
+        label: `${count} token chunk(s) of ${workflowId} persisted`,
+      },
+    );
+  }
+
   /** Collect messages received on a WebSocket. */
   function collectMessages(ws: WebSocket): Array<{ type: string; [key: string]: unknown }> {
     const messages: Array<{ type: string; [key: string]: unknown }> = [];
@@ -3469,7 +3492,6 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
 
     const ws = await connectStream(server, id);
     const messages = collectMessages(ws);
-    await waitForRealTimersForTesting(50);
 
     // Dispatch token events directly on the engine
     engine.dispatchEvent(new TokenEvent(id, 'Hello', 'gpt-4'));
@@ -3497,7 +3519,6 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
     const workflowId = 'wf:stream/with spaces';
     const ws = await connectStream(server, workflowId);
     const messages = collectMessages(ws);
-    await waitForRealTimersForTesting(50);
 
     engine.dispatchEvent(new TokenEvent(workflowId, 'encoded-live', 'gpt-4'));
     await waitFor(
@@ -3522,7 +3543,6 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
     const workflowId = 'wf:watch/with spaces';
     const ws = await connectWatch(server, workflowId);
     const messages = collectMessages(ws);
-    await waitForRealTimersForTesting(50);
 
     engine.dispatchEvent(new WorkflowCompletedEvent(workflowId, 'encoded-watch', 1));
     await waitFor(
@@ -3590,7 +3610,6 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
 
     const ws = await connectWatch(server, 'wf-watch-clamped', { resumeFrom: 999 });
     const messages = collectMessages(ws);
-    await waitForRealTimersForTesting(50);
 
     engine.dispatchEvent(new WorkflowSuspendedEvent('wf-watch-clamped'));
     await waitFor(
@@ -3621,7 +3640,6 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
 
     const ws = await connectStream(server, 'wf-a');
     const messages = collectMessages(ws);
-    await waitForRealTimersForTesting(50);
 
     // Dispatch token events for two different workflows
     engine.dispatchEvent(new TokenEvent('wf-a', 'for-a', 'gpt-4'));
@@ -3646,7 +3664,7 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
     // Dispatch token events before a client connects
     engine.dispatchEvent(new TokenEvent('wf-replay', 'first', 'gpt-4'));
     engine.dispatchEvent(new TokenEvent('wf-replay', 'second', 'gpt-4'));
-    await waitForRealTimersForTesting(200);
+    await waitForPersistedTokens('wf-replay', 2);
 
     // Now connect — client should receive replay of existing token events
     const ws = await connectStream(server, 'wf-replay');
@@ -3678,11 +3696,13 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
 
     const workflowId = 'wf:replay/with spaces';
     engine.dispatchEvent(new TokenEvent(workflowId, 'encoded', 'gpt-4'));
-    await waitForRealTimersForTesting(200);
+    await waitForPersistedTokens('wf:replay/with spaces', 1);
 
     const ws = await connectStream(server, workflowId);
     const messages = collectMessages(ws);
-    await waitForRealTimersForTesting(200);
+    await waitFor(() => messages.some((message) => message.type === TokenEvent.type), {
+      label: 'encoded-id replay received',
+    });
 
     const replayMessages = messages.filter((message) => message.type === TokenEvent.type);
     const replayedTokens = replayMessages.map(
@@ -3882,7 +3902,7 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
 
     engine.dispatchEvent(new TokenEvent('wf-resume', 'first', 'gpt-4'));
     engine.dispatchEvent(new TokenEvent('wf-resume', 'second', 'gpt-4'));
-    await waitForRealTimersForTesting(200);
+    await waitForPersistedTokens('wf-resume', 2);
 
     const ws = await connectStream(server, 'wf-resume', { resumeFrom: 0 });
     const messages = collectMessages(ws);
@@ -3907,11 +3927,10 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
     server = serveTestServer({ engine, port: 0 });
 
     engine.dispatchEvent(new TokenEvent('wf-resume-clamped', 'first', 'gpt-4'));
-    await waitForRealTimersForTesting(200);
+    await waitForPersistedTokens('wf-resume-clamped', 1);
 
     const ws = await connectStream(server, 'wf-resume-clamped', { resumeFrom: 999 });
     const messages = collectMessages(ws);
-    await waitForRealTimersForTesting(50);
 
     engine.dispatchEvent(new TokenEvent('wf-resume-clamped', 'second', 'gpt-4'));
     await waitFor(
@@ -3936,7 +3955,6 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
 
     const ws = await connectStream(server, 'wf-resume-empty', { resumeFrom: 999 });
     const messages = collectMessages(ws);
-    await waitForRealTimersForTesting(50);
 
     engine.dispatchEvent(new TokenEvent('wf-resume-empty', 'live', 'gpt-4'));
     await waitFor(
@@ -3966,7 +3984,6 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
 
     const ws = await connectStream(server, 'wf-resume-malformed', { resumeFrom: 999 });
     const messages = collectMessages(ws);
-    await waitForRealTimersForTesting(50);
 
     engine.dispatchEvent(new TokenEvent('wf-resume-malformed', 'live', 'gpt-4'));
     await waitFor(
@@ -3991,7 +4008,7 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
 
     engine.dispatchEvent(new TokenEvent('wf-overlap', 'first', 'gpt-4'));
     engine.dispatchEvent(new TokenEvent('wf-overlap', 'second', 'gpt-4'));
-    await waitForRealTimersForTesting(200);
+    await waitForPersistedTokens('wf-overlap', 2);
 
     const originalGetStreamChunks = engine.getStreamChunks.bind(engine);
     let releaseReplay!: () => void;
@@ -4016,10 +4033,8 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
 
     const ws = await connectStream(server, 'wf-overlap', { resumeFrom: 0 });
     const messages = collectMessages(ws);
-    await waitForRealTimersForTesting(50);
 
     engine.dispatchEvent(new TokenEvent('wf-overlap', 'third', 'gpt-4'));
-    await waitForRealTimersForTesting(50);
 
     releaseReplay();
     await waitFor(
@@ -4052,7 +4067,7 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
     server = serveTestServer({ engine, port: 0 });
 
     engine.dispatchEvent(new TokenEvent('wf-restart', 'persisted', 'gpt-4'));
-    await waitForRealTimersForTesting(200);
+    await waitForPersistedTokens('wf-restart', 1);
 
     await server.stop();
     engine[Symbol.dispose]();
@@ -4137,7 +4152,7 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
         concurrency: 5,
       }),
     );
-    await waitForRealTimersForTesting(50); // fixed delay: negative assertion (no event to await)
+    await quietFor(50);
 
     // Registry should be empty — register messages are only for worker paths
     expect(server.registry.size).toBe(0);
@@ -4154,8 +4169,7 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
     const ws2 = await connectStream(server, 'wf-multi');
     const messages1 = collectMessages(ws1);
     const messages2 = collectMessages(ws2);
-    // fixed delay: pre-dispatch settle — waits for both stream subscriptions to establish (no observable ready signal)
-    await waitForRealTimersForTesting(50);
+    // Both sockets were registered by the server's open handler before their opens resolved.
 
     engine.dispatchEvent(new TokenEvent('wf-multi', 'shared-token', 'gpt-4'));
     await waitFor(
@@ -4379,7 +4393,9 @@ describe('task queue leasing endpoints (GET /v1/tasks/:queue, POST /v1/tasks/:qu
     const pollPromise = fetch(`${server.url}/v1/tasks/default?activity=test.charge&timeout=5000`);
 
     // Wait a bit, then enqueue a task
-    await waitForRealTimersForTesting(100);
+    await waitFor(() => server.taskQueue.hasWaiter('default', 'test.charge'), {
+      label: 'long poll parked',
+    });
     await server.dispatchTask({
       operationId: 'op-delayed',
       activityName: 'test.charge',
@@ -4545,7 +4561,9 @@ describe('task queue leasing endpoints (GET /v1/tasks/:queue, POST /v1/tasks/:qu
     });
 
     worker.start();
-    await waitForRealTimersForTesting(100);
+    await waitFor(() => server.taskQueue.hasWaiter('default', 'testWorkflow.greet'), {
+      label: 'worker long poll parked',
+    });
 
     // Dispatch a task — no WebSocket workers, so it goes to the queue
     await server.dispatchTask({
@@ -4943,8 +4961,7 @@ describe('task assignment deduplication', () => {
     });
     expect(second).toBe(false);
 
-    // fixed delay: negative assertion (blocked re-dispatch must not send a second task message)
-    await waitForRealTimersForTesting(50);
+    await quietFor(50);
 
     const taskMessages = received.filter((m) => m.type === 'task');
     expect(taskMessages.length).toBe(1);
@@ -5148,7 +5165,7 @@ describe('visibility timeout persistence', () => {
     await storage.put(taskLedgerKey('restored-cancel-op'), encodeRemoteTaskRecord(leasedRecord));
 
     server = serveTestServer({ engine, port: 0 });
-    await waitForRealTimersForTesting(100);
+    await server.ready;
 
     const ws = await connectWorker(server);
     const received: Array<{ type: string; operationId?: string; attemptToken?: string }> = [];
@@ -5458,7 +5475,7 @@ describe('worker disconnection triggers task reassignment', () => {
       workflowType: 'test',
       input: null,
     });
-    await waitForRealTimersForTesting(50);
+    await waitFor(() => server.registry.isAssigned('attempt-op'), { label: 'attempt-op assigned' });
 
     // Disconnect w1 — task should be re-dispatched with attempt 2
     ws1.close();
@@ -5612,18 +5629,34 @@ describe('worker disconnection triggers task reassignment', () => {
       workflowType: 'test',
       input: null,
     });
-    await waitForRealTimersForTesting(100);
+    await waitFor(
+      () =>
+        ['multi-op-1', 'multi-op-2', 'multi-op-3'].every((id) => server.registry.isAssigned(id)),
+      { label: 'every multi-op task assigned' },
+    );
 
     // Record which tasks w1 has in-flight (via the registry).
     const w1Tasks = server.registry.getWorkerTasks('w1');
     const w1TaskIds = w1Tasks.map((t) => t.operationId).toSorted();
+    const w2TaskIds = server.registry.getWorkerTasks('w2').map((t) => t.operationId);
 
-    // Clear received so only reassignment messages are captured.
+    // w2's own tasks may still be on the wire; clear `received` only once they have all arrived, so
+    // that only reassignment messages are captured after it.
+    await waitFor(
+      () =>
+        w2TaskIds.every((id) =>
+          received.some((message) => message.type === 'task' && message.operationId === id),
+        ),
+      { label: "w2's own tasks delivered" },
+    );
     received.length = 0;
 
     // Disconnect w1 — tasks assigned to w1 should be reassigned to w2.
     ws1.close();
-    await waitForRealTimersForTesting(300);
+    await waitFor(() => received.filter((m) => m.type === 'task').length >= w1TaskIds.length, {
+      label: 'w1 tasks reassigned',
+    });
+    await quietFor(100);
 
     const taskMessages = received.filter((m) => m.type === 'task');
     const reassignedIds = taskMessages
@@ -5651,7 +5684,9 @@ describe('worker disconnection triggers task reassignment', () => {
         workflowType: 'test',
         input: null,
       });
-      await waitForRealTimersForTesting(50);
+      await waitFor(() => server.registry.isAssigned('disconnect-corrupt-op'), {
+        label: 'disconnect-corrupt-op assigned',
+      });
       // Post-cutover (WFT-22), corrupt a `task-ledger:` value instead of the
       // legacy `op:inflight:` key. `decodeRemoteTaskRecord` treats a value
       // that fails `isRemoteTaskRecord` validation the same as an absent
@@ -5694,7 +5729,9 @@ describe('worker disconnection triggers task reassignment', () => {
         workflowType: 'test',
         input: null,
       });
-      await waitForRealTimersForTesting(50);
+      await waitFor(() => server.registry.isAssigned('disconnect-missing-op'), {
+        label: 'disconnect-missing-op assigned',
+      });
       // Post-cutover (WFT-22), simulate the ledger write not having landed
       // before disconnect by deleting the durable `task-ledger:` record
       // rather than the legacy `op:inflight:` key nothing writes anymore.
@@ -5738,7 +5775,9 @@ describe('worker disconnection triggers task reassignment', () => {
         workflowType: 'test',
         input: null,
       });
-      await waitForRealTimersForTesting(50);
+      await waitFor(() => server.registry.isAssigned('disconnect-get-fail-op'), {
+        label: 'disconnect-get-fail-op assigned',
+      });
 
       // Installed after dispatch's own ledger read/write has already
       // committed — the disconnect handler's own read of the same ledger
@@ -5921,7 +5960,11 @@ describe('visibility timeout expiry triggers task reassignment', () => {
     expect(server.registry.isAssigned('expiry-op-1')).toBe(true);
 
     // Wait for the visibility timeout to expire and the scanner to pick it up
-    await waitForRealTimersForTesting(300);
+    await waitFor(
+      () =>
+        received.filter((m) => m.type === 'task' && m.operationId === 'expiry-op-1').length >= 2,
+      { label: 'expiry-op-1 reassigned' },
+    );
 
     // The worker should have received the task at least twice (original + reassignment)
     const taskMessages = received.filter(
@@ -6067,7 +6110,6 @@ describe('visibility timeout expiry triggers task reassignment', () => {
         return record !== null && record.state === 'terminal';
       },
       {
-        timeoutMs: 2000,
         label: 'expired task completion cleanup',
       },
     );
@@ -6099,12 +6141,19 @@ describe('visibility timeout expiry triggers task reassignment', () => {
       input: null,
       visibilityTimeout: 100,
     });
-    await waitForRealTimersForTesting(50);
+    await waitFor(() => server.registry.isAssigned('fallback-expiry-op'), {
+      label: 'fallback-expiry-op assigned',
+    });
 
     // Unregister the worker before the timeout expires, but don't close the WS
     // (simulating a worker that stops heartbeating). Instead, just disconnect:
     ws.close();
-    await waitForRealTimersForTesting(300);
+    await waitFor(
+      async () => (await readLedgerRecord(storage, 'fallback-expiry-op'))?.state === 'queued',
+      {
+        label: 'fallback-expiry-op requeued',
+      },
+    );
 
     // The expired task should have been reclaimed and requeued to long-poll
     // (worker disconnect already handles this, but visibility-timeout expiry
@@ -6137,7 +6186,7 @@ describe('visibility timeout expiry triggers task reassignment', () => {
     // (e.g., created by another process) and has no matching in-memory
     // registry entry, per WFT-22's `task-ledger:` scan in
     // `reconcileOrphanedRecords`.
-    await waitForRealTimersForTesting(100);
+    await server.ready;
     const expiredRecord = makeLeasedLedgerRecord({
       operationId: 'orphan-op',
       workerSessionId: 'ghost-worker',
@@ -6247,7 +6296,10 @@ describe('visibility timeout expiry triggers task reassignment', () => {
     // never arrive. Force real wall-clock time to advance a comfortable
     // margin before sending the heartbeat so the two `Date.now()` reads
     // can never collide.
-    await waitForRealTimersForTesting(1000);
+    await waitFor(
+      () => Date.now() > initialRecord.leaseDeadline - initialRecord.visibilityTimeoutMilliseconds,
+      { label: 'wall clock advances past the lease start' },
+    );
     // COR-230: only an `activityHeartbeat` naming this exact attempt renews
     // its lease — a bare session `heartbeat` would not touch this record at
     // all, so it could never produce the stale-heap-vs-extended-deadline race
@@ -6466,7 +6518,9 @@ describe('visibility timeout expiry triggers task reassignment', () => {
         input: null,
         visibilityTimeout: 100,
       });
-      await waitForRealTimersForTesting(50);
+      await waitFor(() => server.registry.isAssigned('visibility-corrupt-op'), {
+        label: 'visibility-corrupt-op assigned',
+      });
       // Post-cutover (WFT-22), corrupt the `task-ledger:` value with genuinely
       // invalid MessagePack bytes (`0xc1` is msgpack's reserved "never used"
       // marker — see `engine.test.ts`'s malformed-review fixtures for the same
@@ -6577,7 +6631,9 @@ describe('visibility timeout expiry triggers task reassignment', () => {
           concurrency: 1,
         }),
       );
-      await waitForRealTimersForTesting(50);
+      await waitFor(() => localServer.registry.getWorker('race-worker') !== undefined, {
+        label: 'race-worker registered',
+      });
 
       await localServer.dispatchTask({
         operationId: targetOperationId,
@@ -6594,8 +6650,10 @@ describe('visibility timeout expiry triggers task reassignment', () => {
       // 120ms (10ms × RECONCILIATION_MULTIPLIER). The delayed read parks for
       // 200ms, spanning at least one reconciliation tick, so the bug would
       // produce a duplicate failure event.
-      // fixed delay: negative assertion (no event to await)
-      await waitForRealTimersForTesting(700);
+      await waitFor(() => failedOperationIds.includes(targetOperationId), {
+        label: 'first failure event',
+      });
+      await quietFor(700);
 
       const relevant = failedOperationIds.filter((id) => id === targetOperationId);
       expect(relevant.length).toBe(1);
@@ -6702,6 +6760,7 @@ describe('visibility timeout expiry triggers task reassignment', () => {
     server = serveTestServer({ engine, port: 0, visibilityPollIntervalMs: 20 });
 
     const ws = await connectWorker(server);
+    let firstOrphanTaskAt: number | undefined;
     const received: Array<{
       type: string;
       operationId?: string;
@@ -6717,6 +6776,7 @@ describe('visibility timeout expiry triggers task reassignment', () => {
       };
       received.push(message);
       if (message.type === 'task' && message.operationId === 'orphan-track-op') {
+        firstOrphanTaskAt ??= Date.now();
         ws.send(
           JSON.stringify({
             type: 'taskResult',
@@ -6729,8 +6789,8 @@ describe('visibility timeout expiry triggers task reassignment', () => {
       }
     });
     await registerWorker(ws, { workerId: 'w-reconcile-track', activities: ['test.charge'] });
+    await server.ready;
 
-    await waitForRealTimersForTesting(50);
     const orphanTrackRecord = makeLeasedLedgerRecord({
       operationId: 'orphan-track-op',
       workerSessionId: 'ghost-worker',
@@ -6739,14 +6799,6 @@ describe('visibility timeout expiry triggers task reassignment', () => {
       visibilityTimeoutMilliseconds: 500,
     });
     await storage.put(taskLedgerKey('orphan-track-op'), encodeRemoteTaskRecord(orphanTrackRecord));
-
-    // fixed delay: negative assertion (orphan must NOT be reassigned yet)
-    await waitForRealTimersForTesting(300);
-
-    const earlyTaskMessages = received.filter((message) => {
-      return message.type === 'task' && message.operationId === 'orphan-track-op';
-    });
-    expect(earlyTaskMessages).toHaveLength(0);
 
     await waitFor(
       () =>
@@ -6760,6 +6812,9 @@ describe('visibility timeout expiry triggers task reassignment', () => {
     });
     expect(taskMessages.length).toBeGreaterThanOrEqual(1);
     expect(taskMessages[0]?.attempt).toBe(2);
+    // Not reassigned before its lease ran out. The invariant is the order of two instants, so a
+    // slow host cannot break it; a fixed window before the deadline could.
+    expect(firstOrphanTaskAt).toBeGreaterThanOrEqual(orphanTrackRecord.leaseDeadline);
 
     ws.close();
     await waitForRealTimersForTesting(50);
@@ -6771,7 +6826,7 @@ describe('visibility timeout expiry triggers task reassignment', () => {
     server = serveTestServer({ engine, port: 0, visibilityPollIntervalMs: 20 });
 
     try {
-      await waitForRealTimersForTesting(50);
+      await server.ready;
       // Genuinely invalid MessagePack bytes (`0xc1` is msgpack's reserved
       // "never used" marker) so `decode()` itself throws inside
       // `decodeRemoteTaskRecord`, reaching `reconcileOrphanedRecords`'s
@@ -6932,7 +6987,14 @@ describe('concurrent scanner deduplication', () => {
 
     // Wait for at least one full reconciliation cycle (600ms) plus some slack
     // so both scanners have had multiple chances to process the expired record.
-    await waitForRealTimersForTesting(800);
+    await waitFor(
+      () =>
+        received.some(
+          (m) => m.type === 'task' && m.operationId === 'dedup-scan-op' && m.attempt === 2,
+        ),
+      { label: 'dedup-scan-op reassigned' },
+    );
+    await quietFor(800);
 
     // The task must be re-dispatched exactly once (attempt 2). If the guard
     // were absent, the worker would receive attempt 2 more than once.
@@ -6961,7 +7023,7 @@ describe('concurrent scanner deduplication', () => {
 
     // Wait for the server's startup restore scan to finish before inserting
     // the orphan so it is not accidentally restored as a valid in-flight task.
-    await waitForRealTimersForTesting(100);
+    await server.ready;
 
     const orphanRecord = makeLeasedLedgerRecord({
       operationId: 'dedup-orphan-op',
@@ -6974,7 +7036,13 @@ describe('concurrent scanner deduplication', () => {
     // Wait for two full reconciliation cycles (2 * 600ms = 1200ms) plus slack.
     // Without the deduplication guard a second concurrent reconciliation cycle
     // would re-dispatch the same record a second time.
-    await waitForRealTimersForTesting(1400);
+    await waitFor(
+      () => received.some((m) => m.type === 'task' && m.operationId === 'dedup-orphan-op'),
+      {
+        label: 'dedup-orphan-op reassigned',
+      },
+    );
+    await quietFor(1400);
 
     // The orphaned task must be re-dispatched exactly once.
     const taskMessages = received.filter(
@@ -7076,7 +7144,7 @@ describe('concurrent scanner deduplication', () => {
 
     try {
       server = serveTestServer({ engine, port: 0, visibilityPollIntervalMs: 25 });
-      await waitForRealTimersForTesting(100);
+      await server.ready;
 
       const orphanRecord = makeLeasedLedgerRecord({
         operationId,
@@ -7138,20 +7206,6 @@ describe('retry policy respected on reassignment', () => {
     maxBackoff: 5000,
   };
 
-  // WFT-91: several `waitFor` calls in this describe block raise their
-  // budget to 8000ms (see the comments at each call site for the CI
-  // contention evidence behind that figure). A bare `waitFor` timeout alone
-  // is not enough — `bun test <path>` (the documented focused-run command in
-  // development-setup.md) falls back to Bun's own 5000ms-per-test default
-  // when no `--timeout` flag is supplied, which is below 8000ms and would
-  // kill the enclosing test before the wait's own headroom could be used.
-  // Only `bun run test`/`bun test --timeout 15000` (this repo's package.json
-  // script) raises Bun's per-test timeout above 8000ms. Giving each affected
-  // `it` an explicit per-test timeout (Bun's `it(name, fn, timeoutMs)` third
-  // argument), strictly above `CI_WAIT_TIMEOUT_MS`, makes those tests
-  // self-contained regardless of which supported invocation runs them.
-  const CI_WAIT_TIMEOUT_MS = 8000;
-
   it('does not re-dispatch when maxAttempts exceeded on visibility timeout expiry', async () => {
     ({ engine, storage } = createReconnectTestEngineWithStorage());
     server = serveTestServer({ engine, port: 0, visibilityPollIntervalMs: 50 });
@@ -7191,7 +7245,7 @@ describe('retry policy respected on reassignment', () => {
         terminal = record;
         return true;
       },
-      { timeoutMs: 1000, label: 'max-attempt-expiry-op terminal resolution' },
+      { label: 'max-attempt-expiry-op terminal resolution' },
     );
 
     expect(terminal).toMatchObject({
@@ -7296,22 +7350,14 @@ describe('retry policy respected on reassignment', () => {
       { label: 'within-limit task initially dispatched' },
     );
 
-    // Wait for the visibility timeout to expire and the scanner to
-    // re-dispatch. WFT-91: this test was one of four in "retry policy
-    // respected on reassignment" observed timing out at
-    // `waitForParityCondition`'s default 2000ms budget in CI across
-    // otherwise-unrelated pull requests (see the WFT-91 Linear issue) — same
-    // describe-block-wide tight-margin exposure (100ms visibility timeout +
-    // 100ms initial backoff) as the "applies backoff delay" tests, whose
-    // comment records the local baseline measurement and the reasoning for
-    // the 8000ms figure used here too.
+    // Wait for the visibility timeout to expire and the scanner to re-dispatch. The wait ends on the
+    // event; its only deadline is the hang guard, however slow the host is.
     await waitFor(
       () =>
         received.filter((m) => m.type === 'task' && m.operationId === 'within-limit-expiry-op')
           .length >= 2,
       {
         label: 'within-limit task re-dispatched after visibility expiry',
-        timeoutMs: CI_WAIT_TIMEOUT_MS,
       },
     );
 
@@ -7368,26 +7414,8 @@ describe('retry policy respected on reassignment', () => {
     });
 
     // Wait long enough for: visibility timeout (80ms) + backoff (100ms) + scanner intervals.
-    // WFT-91: this describe block observed real CI failures at
-    // `waitForParityCondition`'s default 2000ms budget across multiple
-    // otherwise-unrelated pull requests (see the WFT-91 Linear issue).
-    // Locally this test's actual work completes in ~270-320ms even under
-    // background load (measured via 15 repeated junit-timed runs), so the
-    // 2000ms default already has a wide nominal margin — the CI failures are
-    // evidence of GitHub Actions runner-side scheduling stalls, not a tight
-    // configured delay. `scheduleDelayedDispatch` has no test-injectable
-    // clock seam (see `src/server/runtime/task-dispatch.ts`), and adding one
-    // is out of scope for this test-only pull request, so raise the budget
-    // for this test only rather than the shared default: 8000ms is 4x the
-    // previous 2000ms budget, giving substantial headroom over the measured
-    // ~300ms baseline without matching the repo's known worst-case outlier
-    // (WFT-89 observed a 26.7s stall on an unrelated test under severe CI
-    // contention) — if 8000ms still proves insufficient that is itself
-    // evidence for the broader over-subscribed-runner investigation WFT-89
-    // and WFT-96 both flag, not a reason to keep inflating this number.
     await waitFor(() => timestamps.length >= 2, {
       label: 'backoff expiry redispatch received',
-      timeoutMs: CI_WAIT_TIMEOUT_MS,
     });
 
     // Should have received both dispatches
@@ -7433,24 +7461,16 @@ describe('retry policy respected on reassignment', () => {
       input: null,
       retryPolicy: { ...testRetryPolicy, maxAttempts: 3, initialBackoff: 150 },
     });
-    await waitForRealTimersForTesting(50);
+    await waitFor(() => server.registry.isAssigned('backoff-disconnect-op'), {
+      label: 'backoff-disconnect-op assigned',
+    });
 
     // Disconnect w1 — should apply backoff before re-dispatching to w2
     ws1.close();
 
-    // Wait for the backoff delay to complete. WFT-91: this is the tightest
-    // test in the describe block (150ms configured backoff, zero configured
-    // slack), and was one of four distinct tests in this block observed
-    // timing out at the 2000ms default in CI across separate pull requests
-    // (see the WFT-91 Linear issue). Locally this test's actual work
-    // completes in ~435-450ms even under background load (measured via 15
-    // repeated junit-timed runs), so raise the budget for this test only —
-    // same reasoning and the same 8000ms figure as the sibling
-    // "applies backoff delay before re-dispatch on visibility timeout
-    // expiry" test above.
+    // Wait for the backoff delay to complete; the only deadline is the hang guard.
     await waitFor(() => timestamps.length === 1, {
       label: 'backoff disconnect redispatch received',
-      timeoutMs: CI_WAIT_TIMEOUT_MS,
     });
 
     expect(timestamps.length).toBe(1);
@@ -7520,19 +7540,12 @@ describe('retry policy respected on reassignment', () => {
       // pre-commit full-suite run. The poll adapts to the real timing, and the
       // full `toHaveBeenCalledWith` contract (including the Error argument) is
       // still asserted afterward so polling can't mask a wrong-shaped call.
-      // WFT-91: this test was one of four in "retry policy respected on
-      // reassignment" observed timing out at `waitForParityCondition`'s
-      // default 2000ms budget in CI across otherwise-unrelated pull
-      // requests (see the WFT-91 Linear issue) — same describe-block-wide
-      // tight-margin exposure as the "applies backoff delay" tests above,
-      // whose comment records the local baseline measurement and the
-      // reasoning for the 8000ms figure used here too.
       await waitFor(
         () =>
           errorSpy.mock.calls.some(
             (call) => call[0] === `[weft] Delayed redispatch failed for "${operationId}":`,
           ),
-        { label: 'delayed redispatch error log', timeoutMs: CI_WAIT_TIMEOUT_MS },
+        { label: 'delayed redispatch error log' },
       );
 
       expect(errorSpy).toHaveBeenCalledWith(
@@ -7968,7 +7981,9 @@ describe('worker shutdown and cancel propagation', () => {
       input: { amount: 100 },
       workflowId: 'workflow-to-cancel',
     });
-    await waitForRealTimersForTesting(50);
+    await waitFor(() => server.registry.isAssigned('wf-cancel-op-1'), {
+      label: 'wf-cancel-op-1 assigned',
+    });
 
     // Simulate workflow cancellation by dispatching the event on the engine
     const { WorkflowCancelledEvent: CancelledEvent } = await import('../core/events.ts');

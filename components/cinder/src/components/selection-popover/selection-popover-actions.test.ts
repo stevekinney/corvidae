@@ -272,6 +272,7 @@ describe('SelectionPopover actions opening without a pointer gesture', () => {
 
     window.dispatchEvent(new (globalThis.PointerEvent ?? Event)('pointerdown', { bubbles: true }));
     window.dispatchEvent(new (globalThis.PointerEvent ?? Event)('pointerup', { bubbles: true }));
+    // load-proof: focus must stay on the outside button; a slow host can only delay a (wrong) move of it
     await quietFor(20);
 
     expect(document.activeElement === outside).toBe(true);
@@ -286,6 +287,7 @@ describe('SelectionPopover actions opening without a pointer gesture', () => {
       },
     }));
     await openWithActions({ actions: lateActions });
+    // load-proof: nothing may take focus before the late control renders; a slow host can only delay a (wrong) focus
     await quietFor(20);
     expect(document.activeElement === document.body).toBe(true);
 

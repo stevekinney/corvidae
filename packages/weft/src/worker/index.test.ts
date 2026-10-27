@@ -504,11 +504,7 @@ describe('RemoteWorker', () => {
 
     worker[Symbol.dispose]();
 
-    const pendingTimeout = sleepForTesting(250).then(() => {
-      throw new Error('connect() remained pending after worker disposal');
-    });
-
-    expect(await throwingRejectionOf(Promise.race([connectPromise, pendingTimeout]))).toThrow(
+    expect(await throwingRejectionOf(connectPromise)).toThrow(
       'Worker disposed before worker registration completed',
     );
   });
@@ -2711,10 +2707,7 @@ describe('RemoteWorker — connect() re-entrancy', () => {
     const second = worker.connect();
 
     // The first promise must settle (reject) rather than hang forever.
-    const firstHang = sleepForTesting(250).then(() => {
-      throw new Error('first connect() remained pending after supersession');
-    });
-    expect(await throwingRejectionOf(Promise.race([first, firstHang]))).toThrow(
+    expect(await throwingRejectionOf(first)).toThrow(
       'Superseded by a new connect() call',
     );
 

@@ -4,6 +4,7 @@
  * wired or abandoned. A composition built without it answers at once, as it always did.
  */
 import { type RunOptions } from '@lostgradient/operative';
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
@@ -45,15 +46,22 @@ const catalogRunInfo = {
   input: { runId: 'catalog-run', sessionId: 'catalog-run', agentName: 'echo' },
 } as const;
 
-/** Whether `promise` has settled, after the microtasks and one macrotask a wait would need. */
+/**
+ * Whether `promise` settles inside a quiet window. Every caller expects it not to: the promise waits
+ * on a resolver that never arrives, so a loaded host can only keep it pending longer.
+ */
 async function settledWithin(promise: Promise<unknown>): Promise<boolean> {
-  const marker = Symbol('pending');
-  // load-proof: the promise waits on a resolver that never arrives, so load can only keep it pending longer
-  const winner = await Promise.race([
-    promise,
-    new Promise((resolve) => setTimeout(resolve, 20, marker)),
-  ]);
-  return winner !== marker;
+  let settled = false;
+  void promise.then(
+    () => {
+      settled = true;
+    },
+    () => {
+      settled = true;
+    },
+  );
+  await quietFor(20);
+  return settled;
 }
 
 describe('a composition that was not told a resolver is coming (COR-1586)', () => {

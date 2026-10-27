@@ -36,16 +36,26 @@
  *     microtasks drain before anything else runs, so their count belongs to the code.
  *   - `wall-clock-poll`: a loop that ends on `Date.now()` or `performance.now()` against a
  *     deadline, which also keeps counting while the host sleeps (COR-1541).
- *   - `sleep-synchronization`: `await sleep(n)`, `await Bun.sleep(n)` or an awaited promise around
- *     `setTimeout`, with `n` above zero, as a statement of a test or hook body. A fixed pause
- *     before an assertion fails exactly when the host is slow. Wait for the thing (`waitUntil`, an
- *     awaited promise, an event), drive a manual clock, or, for something that must NOT happen,
- *     call `quietFor(n)`, which says so: load can only delay an event, never advance it. A sleep in
- *     a helper or double, or inside a loop (a poll), is not a statement of the body and is not read.
- *   - `timer-rejection`: a `setTimeout` whose callback rejects or throws, or an
- *     `AbortSignal.timeout`, with a delay below the hang guard: the timer half of a race.
- *   - `timer-race`: `Promise.race` with a `sleep(n)` or `setTimeout` promise (`n` above zero and
- *     below the hang guard) as one racer.
+ *   - `sleep-synchronization`: `await sleep(n)`, `await Bun.sleep(n)`, the promise `setTimeout` of
+ *     `node:timers/promises`, `waitForRealTimersForTesting(n)`, or an awaited promise around
+ *     `setTimeout` (with the callback wrapped or not), with `n` above zero, as a statement of a test
+ *     or `beforeEach`/`beforeAll` body, when the test asserts anything after it. A fixed pause before
+ *     an assertion fails exactly when the host is slow. Wait for the thing (`waitUntil`, an awaited
+ *     promise, an event, a registry or storage state), or, for something that must NOT happen, call
+ *     `quietFor(n)`, which says so: load can only delay an event, never advance it. A sleep in a
+ *     helper or double, inside a loop (a poll), in a teardown hook, or one after which nothing is
+ *     asserted, is not read. `sleepForTesting` is not read: in real mode it yields one scheduler turn.
+ *   - `timer-rejection`: a `setTimeout` whose callback rejects or throws (through any parameter name),
+ *     or an `AbortSignal.timeout`, with a delay below the hang guard: the timer half of a race.
+ *   - `timer-race`: a timer promise raced against work, in `Promise.race`/`Promise.any`: `sleep(n)`,
+ *     `Bun.sleep(n).then(...)`, the `node:timers/promises` sleep, a `new Promise` around `setTimeout`
+ *     (resolving or rejecting), or a `const` holding one, with `n` above zero and below the hang
+ *     guard; and a `new Promise` executor whose own `setTimeout` also resolves it while something else
+ *     can, which is the same race written inline.
+ *   - `quiet-window`: `await quietFor(n)` followed, in the same block, by an assertion that something
+ *     happened (`toBe(true)`, `toContain`, `toBeDefined`, `toBeGreaterThan`...). `quietFor` proves an
+ *     absence; before a positive assertion it is a fixed pause that passes the sleep rule by name.
+ *     Counts (`toHaveLength(1)`) read as "still one" and are not here.
  *
  * A budget is read through numeric literals, `+ - * /`, parentheses, the hang-guard constants, and
  * a `const` declared in the file. A budget the guard cannot resolve is not a `wait-budget`
@@ -53,9 +63,13 @@
  * rules have no legitimate short value to protect.
  *
  * A duration is virtual time, and so is not read, inside a test or hook (or a suite whose
- * `beforeEach`/`beforeAll` does) that installs a manual clock: `useFakeTimers`,
- * `createManualRuntimeServices`, `createManualClock` or `new ManualClock`. That never excuses a
- * Bun test timeout, a Testing Library wait, or a hang-guarded child.
+ * `beforeEach`/`beforeAll` does) that calls `useFakeTimers`, which patches the global `setTimeout`.
+ * Even then a `Bun.sleep`, a `node:timers/promises` sleep and the real-timer helper keep real time,
+ * and `createManualRuntimeServices`, `createManualClock` and manual engines do not patch the global
+ * timers at all: they inject their own, so only a call THROUGH the injected services
+ * (`runtime.sleep(n)`, a `sleep` destructured from them) is virtual, and the guard reads a bare
+ * global sleep beside one as the real wait it is. A fake clock never excuses a Bun test timeout, a
+ * Testing Library wait, or a hang-guarded child.
  *
  * Two narrow exemptions, each a comment of at least twenty characters directly above the statement
  * (or the expression inside it) and covering only that statement:
@@ -64,9 +78,11 @@
  *     must name a short guard to prove it fires: `spawnWithHangGuard`, `runWithHangGuard`,
  *     `afterAwakeTime`, `waitForCondition`, `waitUntil` and the like. No load can make a child that
  *     never exits exit, or a condition that is never true hold.
- *   - `// load-proof: <reason>` for a wait that load cannot flip: it waits for something that must
- *     not happen, runs on an injected clock, is rejected before it starts, or races a stand-in
- *     that never answers. It covers the wait rules above (not a Bun or Testing Library timeout).
+ *   - `// load-proof: <reason>` for a wait that load cannot flip, and the reason must say why in terms
+ *     of determinism, never of expected speed: it waits for something that must not happen (a
+ *     longer wait only gives it more time), is rejected before it starts, ends on an event whatever
+ *     the clock says, or relies on timers of one clock firing in order of their deadlines. It covers
+ *     the wait rules above (not a Bun or Testing Library timeout).
  *
  * Two further checks keep the deadline in place. `findPackageScriptViolations` rejects a
  * `package.json` script that starts `bun test` directly: the wrapper `scripts/bun-test.ts` (or
@@ -77,8 +93,12 @@
  *
  * Scanned: every `*.test.ts` and `*.test-support.ts`, and every `.ts` module under a directory named
  * `test`, `tests`, `testing`, `__tests__` or `fixtures`, in every workspace and the root `scripts/`.
- * Not scanned: Playwright specs (`*.playwright.ts`, `*.spec.ts`, files importing Playwright,
- * `e2e/`), which run through `test:browser` outside `check` and `validate`.
+ * Not scanned: the Playwright specs (`*.playwright.ts`, `*.spec.ts`, `e2e/`, and the helpers in
+ * `scripts/browser-fixtures/tests/`), which `test:browser` runs outside `check` and `validate`, and
+ * the real-browser smoke tests that read `WEFT_BROWSER_SMOKE` (they skip unless that opt-in flag is
+ * set, and no gate sets it). `test:browser-fixtures` is NOT a Playwright lane: it runs the Bun tests
+ * in `scripts/browser-fixtures/scripts` and a build verification, so those are scanned like any
+ * other test, including a file that imports Playwright for its types or version.
  *
  * Blind spots, documented rather than claimed as covered. The guard cannot see:
  *
@@ -126,6 +146,10 @@ const SKIPPED_DIRECTORIES = new Set([
   // Playwright end-to-end suites run through `test:browser`, outside `check` and `validate`.
   'e2e',
 ]);
+// `scripts/browser-fixtures/tests` holds the Playwright specs (`*.playwright.ts`) and their helpers;
+// `test:browser` runs them, outside `check` and `validate`. The Bun tests that `test:browser-fixtures`
+// runs live in `scripts/browser-fixtures/scripts` and are scanned.
+const PLAYWRIGHT_LANE_DIRECTORY = join('scripts', 'browser-fixtures', 'tests');
 
 export type DeadlineRule =
   | 'bun-test-timeout'
@@ -136,7 +160,8 @@ export type DeadlineRule =
   | 'wall-clock-poll'
   | 'sleep-synchronization'
   | 'timer-rejection'
-  | 'timer-race';
+  | 'timer-race'
+  | 'quiet-window';
 export type DeadlineViolation = {
   rule: DeadlineRule;
   line: number;
@@ -165,6 +190,9 @@ const BUDGET_PROPERTIES = new Set([
   'timeoutMilliseconds',
   'hangGuardMilliseconds',
 ]);
+const WAIT_FOR_BUDGETS = new Set(
+  [...BUDGET_PROPERTIES].filter((property) => property !== 'timeout'),
+);
 /** Calls whose budget is a wait for something that should eventually happen. */
 const WAITING_CALLEES =
   /^(waitUntil|awakeTurns|waitFor\w*|poll\w*|eventually|\w+Until|readFrames|nextServerMessage|resolveWithin|launch|spawnWithHangGuard|runWithHangGuard|executeCodegen|executeConformance|createConformanceTargetRunner|runnerFor)$/;
@@ -418,24 +446,21 @@ function isShort(
   return resolved < HANG_GUARD_MILLISECONDS;
 }
 
-// Calls that put a test on a clock it advances itself: Bun's fake timers, and the manual runtime
-// services and manual clocks the workspaces own. Under any of them a duration is virtual time.
-const MANUAL_CLOCK_CALLEES = new Set([
-  'useFakeTimers',
-  'createManualRuntimeServices',
-  'createManualClock',
-  'createManualDurableEngine',
-]);
+// Calls that patch the global timers, so a `setTimeout` the test or the code under test makes runs on
+// a clock the test advances. Manual runtime services and manual clocks are NOT here: they hand the code
+// under test an injected clock and leave `setTimeout`, `Bun.sleep` and `node:timers/promises` real, so
+// a test that sleeps for real beside one is still timing the host. Only a call through the injected
+// services (`runtime.sleep(n)`, `clock.advance(n)`) is virtual time, and the guard reads those as
+// member calls it does not match.
+const MANUAL_CLOCK_CALLEES = new Set(['useFakeTimers']);
 
-/** Whether `node` installs a manual clock: `useFakeTimers()`, `createManualRuntimeServices()`, `new ManualClock()`. */
+/** Whether `node` patches the global timers with `useFakeTimers()`. */
 function callsUseFakeTimers(node: ts.Node): boolean {
   let found = false;
   walk(node, (child) => {
     if (ts.isCallExpression(child)) {
       const name = calleeName(child);
       if (name !== null && MANUAL_CLOCK_CALLEES.has(name)) found = true;
-    } else if (ts.isNewExpression(child) && child.expression.getText().endsWith('ManualClock')) {
-      found = true;
     }
   });
   return found;
@@ -571,9 +596,10 @@ export function findDeadlineViolations(sourceFile: ts.SourceFile): DeadlineViola
           break;
         }
       }
-      return;
-    }
-    if (name === 'configure') {
+      // `waitFor` is also the name workspaces import their own wait helpers under
+      // (`waitForParityCondition as waitFor`), whose budget is `timeoutMs`: read it below too.
+      if (name !== 'waitFor') return;
+    } else if (name === 'configure') {
       for (const argument of node.arguments) {
         const unwrapped = unwrap(argument);
         if (!ts.isObjectLiteralExpression(unwrapped)) continue;
@@ -616,7 +642,11 @@ export function findDeadlineViolations(sourceFile: ts.SourceFile): DeadlineViola
     for (const argument of node.arguments) {
       const unwrapped = unwrap(argument);
       if (!ts.isObjectLiteralExpression(unwrapped)) continue;
-      const option = propertyNamed(unwrapped, BUDGET_PROPERTIES);
+      // `waitFor`'s `timeout` is Testing Library's, reported above.
+      const option = propertyNamed(
+        unwrapped,
+        name === 'waitFor' ? WAIT_FOR_BUDGETS : BUDGET_PROPERTIES,
+      );
       if (
         option !== undefined &&
         isShort(option.initializer, constants, { unresolvedIsShort: false, allowZero: true }) &&
@@ -643,6 +673,7 @@ export function findDeadlineViolations(sourceFile: ts.SourceFile): DeadlineViola
     ...findSleepSynchronization(sourceFile, constants),
     ...findTimerRejections(sourceFile, constants),
     ...findTimerRaces(sourceFile, constants),
+    ...findPositiveQuietWindows(sourceFile),
   ];
 }
 
@@ -903,44 +934,199 @@ function findDefaultedBudgets(
   return violations;
 }
 
-const SLEEP_CALLEES = new Set(['sleep', 'delay', 'wait', 'pause', 'nap']);
+// Names that mean "do nothing for n milliseconds": `sleep`, `delay`, `pause`, `nap`, `wait`, and the
+// test helper that waits for real timers. `sleepForTesting` is not here: in real mode it yields one
+// scheduler turn rather than waiting n milliseconds, which is a fixed-turn pause (a blind spot below).
+const SLEEP_NAME =
+  /^(sleep|delay|pause|nap)(ForReal|Real|Ms|Milliseconds)?$|^wait$|^waitForRealTimersForTesting$/;
+// Sleeps that Bun's fake timers advance. Everything else (`Bun.sleep`, `node:timers/promises`, the
+// real-timer helper) keeps real time under `useFakeTimers`.
+const VIRTUAL_SLEEP = new Set<string>();
 
-/** The delay of `await sleep(n)`, `await Bun.sleep(n)` or `await new Promise((r) => setTimeout(r, n))`. */
-function awaitedSleepDelay(expression: ts.Expression): ts.Expression | null {
+/** What a promise that settles on a real timer is waiting for, and whether fake timers advance it. */
+type TimerPromise = { delay: ts.Expression; virtual: boolean };
+
+/** The facts about a file that decide which `sleep` is the real one. */
+type TimerContext = {
+  /** Names bound to the promise form of `setTimeout` in `node:timers/promises`. */
+  aliases: ReadonlySet<string>;
+  /** Names destructured from an object (`const { sleep } = runtime`): an injected clock, not a global. */
+  injected: ReadonlySet<string>;
+  constants: ReadonlyMap<string, ts.Expression>;
+};
+
+function timerContext(
+  sourceFile: ts.SourceFile,
+  constants: ReadonlyMap<string, ts.Expression>,
+): TimerContext {
+  const aliases = new Set<string>();
+  const injected = new Set<string>();
+  walk(sourceFile, (node) => {
+    if (
+      ts.isImportDeclaration(node) &&
+      ts.isStringLiteral(node.moduleSpecifier) &&
+      /^(node:)?timers\/promises$/.test(node.moduleSpecifier.text)
+    ) {
+      const bindings = node.importClause?.namedBindings;
+      if (bindings !== undefined && ts.isNamedImports(bindings)) {
+        for (const element of bindings.elements) {
+          if ((element.propertyName ?? element.name).text === 'setTimeout') {
+            aliases.add(element.name.text);
+          }
+        }
+      }
+    }
+    if (
+      ts.isBindingElement(node) &&
+      ts.isObjectBindingPattern(node.parent) &&
+      ts.isIdentifier(node.name)
+    ) {
+      injected.add(node.name.text);
+    }
+  });
+  return { aliases, injected, constants };
+}
+
+/** The `new Promise` executor that `node` is inside of, when it is the executor's own body. */
+function enclosingExecutor(node: ts.Node): ts.FunctionLikeDeclaration | null {
+  const executor = ts.findAncestor(node, ts.isFunctionLike);
+  if (
+    executor === undefined ||
+    !(ts.isArrowFunction(executor) || ts.isFunctionExpression(executor)) ||
+    !ts.isNewExpression(executor.parent) ||
+    executor.parent.expression.getText() !== 'Promise'
+  ) {
+    return null;
+  }
+  return executor;
+}
+
+/** Whether `callback` settles an executor's promise: it throws, or calls one of the executor's parameters. */
+function settlesExecutor(
+  callback: ts.Node,
+  executor: ts.FunctionLikeDeclaration,
+): { resolves: boolean; rejects: boolean } {
+  const [resolveParameter, rejectParameter] = executor.parameters.map((parameter) =>
+    ts.isIdentifier(parameter.name) ? parameter.name.text : null,
+  );
+  let resolves = false;
+  let rejects = false;
+  walk(callback, (child) => {
+    if (ts.isThrowStatement(child)) rejects = true;
+    if (!ts.isCallExpression(child)) return;
+    const name = unwrap(child.expression).getText();
+    if (rejectParameter !== undefined && rejectParameter !== null && name === rejectParameter) {
+      rejects = true;
+    }
+    if (resolveParameter !== undefined && resolveParameter !== null && name === resolveParameter) {
+      resolves = true;
+    }
+    if (/^(reject|rejectPromise|fail)$/.test(name)) rejects = true;
+  });
+  return { resolves, rejects };
+}
+
+/**
+ * The timer a promise settles on, when its settlement is a pause: `sleep(n)`, `Bun.sleep(n)`, the
+ * promise `setTimeout` of `node:timers/promises`, `new Promise((r) => setTimeout(r, n))` and its
+ * wrapped-callback forms, any of them followed by `.then`/`.catch`/`.finally`, or a `const` holding one.
+ */
+function timerPromiseOf(
+  expression: ts.Expression,
+  context: TimerContext,
+  depth = 0,
+): TimerPromise | null {
   const operand = unwrap(expression);
+  if (ts.isIdentifier(operand)) {
+    const initializer = context.constants.get(operand.text);
+    return initializer === undefined || depth > 3
+      ? null
+      : timerPromiseOf(initializer, context, depth + 1);
+  }
   if (ts.isCallExpression(operand)) {
     const callee = unwrap(operand.expression);
-    const name = ts.isIdentifier(callee)
-      ? callee.text
-      : ts.isPropertyAccessExpression(callee) && callee.expression.getText() === 'Bun'
-        ? callee.name.text
-        : null;
-    if (name !== null && SLEEP_CALLEES.has(name)) return operand.arguments[0] ?? null;
+    if (ts.isPropertyAccessExpression(callee) && /^(then|catch|finally)$/.test(callee.name.text)) {
+      return timerPromiseOf(callee.expression, context, depth);
+    }
+    const delay = operand.arguments[0];
+    if (delay === undefined) return null;
+    if (ts.isIdentifier(callee)) {
+      if (context.aliases.has(callee.text)) return { delay, virtual: false };
+      if (SLEEP_NAME.test(callee.text) && !context.injected.has(callee.text)) {
+        return { delay, virtual: VIRTUAL_SLEEP.has(callee.text) };
+      }
+      return null;
+    }
+    if (ts.isPropertyAccessExpression(callee) && callee.expression.getText() === 'Bun') {
+      return /^sleep$/.test(callee.name.text) ? { delay, virtual: false } : null;
+    }
     return null;
   }
   if (ts.isNewExpression(operand) && operand.expression.getText() === 'Promise') {
     const executor = operand.arguments?.[0];
-    if (executor === undefined) return null;
-    let delay: ts.Expression | null = null;
+    if (
+      executor === undefined ||
+      !(ts.isArrowFunction(executor) || ts.isFunctionExpression(executor))
+    ) {
+      return null;
+    }
+    let found: TimerPromise | null = null;
     walk(executor, (node) => {
       if (
-        ts.isCallExpression(node) &&
-        /^(globalThis\.)?setTimeout$/.test(unwrap(node.expression).getText()) &&
-        node.arguments.length >= 2 &&
-        node.arguments[0] !== undefined &&
-        ts.isIdentifier(unwrap(node.arguments[0])) &&
-        (unwrap(node.arguments[0]) as ts.Identifier).text ===
-          ((ts.isArrowFunction(executor) || ts.isFunctionExpression(executor)) &&
-          executor.parameters[0] !== undefined
-            ? executor.parameters[0].name.getText()
-            : '')
+        !ts.isCallExpression(node) ||
+        !/^(globalThis\.)?setTimeout$/.test(unwrap(node.expression).getText()) ||
+        node.arguments.length < 2
       ) {
-        delay = node.arguments[1] ?? null;
+        return;
       }
+      const [callback, delay] = node.arguments;
+      if (callback === undefined || delay === undefined) return;
+      const parameter = executor.parameters[0]?.name.getText();
+      const settles =
+        ts.isIdentifier(unwrap(callback)) && (unwrap(callback) as ts.Identifier).text === parameter
+          ? true
+          : (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback)) &&
+            (() => {
+              const result = settlesExecutor(callback.body, executor);
+              return result.resolves || result.rejects;
+            })();
+      if (settles) found = { delay, virtual: true };
     });
-    return delay;
+    return found;
   }
   return null;
+}
+
+/**
+ * Whether `body` asserts anything after `node`. A pause after which the test only closes what it
+ * opened (`ws.close(); await pause(50);` and then nothing) checks nothing about the pause's length;
+ * it is a pause before an assertion, or a setup step, that a slow host defeats.
+ */
+function pausesBeforeAssertion(
+  registration: ts.CallExpression,
+  body: ts.Node,
+  node: ts.Node,
+): boolean {
+  // A hook runs before every test it covers, so a pause in `beforeEach`/`beforeAll` is a setup wait;
+  // one in `afterEach`/`afterAll` closes what the test opened and checks nothing.
+  const root = chainRoot(registration.expression);
+  if (ts.isIdentifier(root) && /^before/.test(root.text)) return true;
+  if (ts.isIdentifier(root) && /^after/.test(root.text)) return false;
+  return assertsAfter(body, node);
+}
+
+function assertsAfter(body: ts.Node, node: ts.Node): boolean {
+  let found = false;
+  walk(body, (child) => {
+    if (
+      child.getStart() >= node.getEnd() &&
+      ts.isCallExpression(child) &&
+      /^(expect|assert)(\.\w+)*$/.test(unwrap(child.expression).getText())
+    ) {
+      found = true;
+    }
+  });
+  return found;
 }
 
 /**
@@ -954,33 +1140,28 @@ function findSleepSynchronization(
   constants: ReadonlyMap<string, ts.Expression>,
 ): DeadlineViolation[] {
   const violations: DeadlineViolation[] = [];
+  const context = timerContext(sourceFile, constants);
   walk(sourceFile, (node) => {
     if (!ts.isExpressionStatement(node) || !ts.isAwaitExpression(node.expression)) return;
-    const delay = awaitedSleepDelay(node.expression.expression);
-    if (delay === null) return;
-    const value = resolveNumber(delay, constants);
+    const timer = timerPromiseOf(node.expression.expression, context);
+    if (timer === null) return;
+    const value = resolveNumber(timer.delay, constants);
     if (value !== null && value <= 0) return;
     // A sleep inside a loop is a poll, which the loop rules cover. Only a bare pause in the body of a
     // test or hook is read here: the nearest enclosing function is the registered callback.
-    if (
-      ts.findAncestor(
-        node,
-        (ancestor) => ts.isIterationStatement(ancestor, false) || ts.isFunctionLike(ancestor),
-      ) !== undefined
-    ) {
-      const nearest = ts.findAncestor(
-        node,
-        (ancestor) => ts.isIterationStatement(ancestor, false) || ts.isFunctionLike(ancestor),
-      );
-      if (nearest !== undefined && ts.isIterationStatement(nearest, false)) return;
-    }
+    const nearest = ts.findAncestor(
+      node,
+      (ancestor) => ts.isIterationStatement(ancestor, false) || ts.isFunctionLike(ancestor),
+    );
+    if (nearest !== undefined && ts.isIterationStatement(nearest, false)) return;
     const body = ts.findAncestor(node, ts.isFunctionLike);
     if (
       body === undefined ||
       !ts.isCallExpression(body.parent) ||
       !isRegistration(body.parent) ||
-      isUnderFakeTimers(node) ||
-      isLoadProof(sourceFile, node)
+      (timer.virtual && isUnderFakeTimers(node)) ||
+      isLoadProof(sourceFile, node) ||
+      !pausesBeforeAssertion(body.parent, body, node)
     ) {
       return;
     }
@@ -1016,19 +1197,34 @@ function findTimerRejections(
     const [callback, delay] = node.arguments;
     if (callback === undefined || delay === undefined) return;
     if (!(ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) return;
-    let rejects = false;
+    const executor = enclosingExecutor(node);
+    const settled =
+      executor === null
+        ? { resolves: false, rejects: false }
+        : settlesExecutor(callback.body, executor);
+    let rejects = settled.rejects;
     walk(callback.body, (child) => {
       if (ts.isThrowStatement(child)) rejects = true;
-      if (
-        ts.isCallExpression(child) &&
-        /^(reject|rejectPromise|fail)$/.test(unwrap(child.expression).getText())
-      ) {
-        rejects = true;
-      }
     });
-    if (!rejects || isUnderFakeTimers(node) || isLoadProof(sourceFile, node)) return;
+    // A timer that RESOLVES a promise something else can also settle is the same race: the other
+    // source loses to the timer when the host is slow. (A promise that only waits for its timer is a
+    // sleep, which the sleep rule reads.)
+    const racesOtherSource =
+      executor !== null &&
+      settled.resolves &&
+      !rejects &&
+      executor.body !== undefined &&
+      ts.isBlock(executor.body) &&
+      executor.body.statements.some((statement) => !statement.getText().includes('setTimeout('));
+    if (
+      (!rejects && !racesOtherSource) ||
+      isUnderFakeTimers(node) ||
+      isLoadProof(sourceFile, node)
+    ) {
+      return;
+    }
     if (!isShort(delay, constants, { unresolvedIsShort: false, allowZero: true })) return;
-    violations.push(violation(sourceFile, node, 'timer-rejection'));
+    violations.push(violation(sourceFile, node, rejects ? 'timer-rejection' : 'timer-race'));
   });
   return violations;
 }
@@ -1043,18 +1239,68 @@ function findTimerRaces(
   constants: ReadonlyMap<string, ts.Expression>,
 ): DeadlineViolation[] {
   const violations: DeadlineViolation[] = [];
+  const context = timerContext(sourceFile, constants);
   walk(sourceFile, (node) => {
-    if (!ts.isCallExpression(node) || unwrap(node.expression).getText() !== 'Promise.race') return;
+    if (
+      !ts.isCallExpression(node) ||
+      !/^Promise\.(race|any)$/.test(unwrap(node.expression).getText())
+    )
+      return;
     const [racers] = node.arguments;
     if (racers === undefined || !ts.isArrayLiteralExpression(unwrap(racers))) return;
     for (const racer of (unwrap(racers) as ts.ArrayLiteralExpression).elements) {
-      const delay = awaitedSleepDelay(racer);
-      if (delay === null) continue;
-      const value = resolveNumber(delay, constants);
+      const timer = timerPromiseOf(racer, context);
+      if (timer === null) continue;
+      const value = resolveNumber(timer.delay, constants);
       if (value === null || value <= 0 || value >= HANG_GUARD_MILLISECONDS) continue;
-      if (isUnderFakeTimers(node) || isLoadProof(sourceFile, node)) continue;
+      if ((timer.virtual && isUnderFakeTimers(node)) || isLoadProof(sourceFile, node)) continue;
       violations.push(violation(sourceFile, node, 'timer-race'));
       break;
+    }
+  });
+  return violations;
+}
+
+// An assertion that something HAPPENED: after a `quietFor` window it can only pass by luck of timing.
+// Counts (`toHaveLength(1)`) are not here: after a quiet window they read "still one", an absence.
+const POSITIVE_ASSERTION =
+  /\.(toBe\(\s*true\s*\)|toBeTruthy\(|toBeDefined\(|toContain\(|toBeGreaterThan|toHaveBeenCalled\(\s*\)|toMatch\(|toBeInstanceOf)/;
+
+/**
+ * `await quietFor(n)` followed by an assertion that something happened. `quietFor` is the window for
+ * something that must NOT happen: load can only delay an event, so a pass through it proves the
+ * absence. Placed before a positive assertion it is a fixed pause in disguise, and passes the sleep
+ * rule by name alone. The first `expect` after it, in the same block, must not read as positive; wait
+ * for the event instead (`waitUntil`, an awaited promise), or assert the absence.
+ */
+function findPositiveQuietWindows(sourceFile: ts.SourceFile): DeadlineViolation[] {
+  const violations: DeadlineViolation[] = [];
+  walk(sourceFile, (node) => {
+    if (
+      !ts.isExpressionStatement(node) ||
+      !ts.isAwaitExpression(node.expression) ||
+      !ts.isCallExpression(node.expression.expression) ||
+      calleeName(node.expression.expression) !== 'quietFor' ||
+      !(ts.isBlock(node.parent) || ts.isCaseClause(node.parent))
+    ) {
+      return;
+    }
+    const siblings = node.parent.statements;
+    for (const next of siblings.slice(siblings.indexOf(node) + 1)) {
+      const text = next.getText(sourceFile);
+      if (!/\bexpect\(/.test(text)) {
+        // Another await ends the window's meaning; keep looking only through plain statements.
+        if (containsAwait(next)) return;
+        continue;
+      }
+      if (
+        POSITIVE_ASSERTION.test(text) &&
+        !/\.not\./.test(text) &&
+        !isLoadProof(sourceFile, node)
+      ) {
+        violations.push(violation(sourceFile, node, 'quiet-window'));
+      }
+      return;
     }
   });
   return violations;
@@ -1139,6 +1385,7 @@ export function collectFiles(directory: string, tests: string[], runners: string
     const path = join(directory, entry.name);
     if (entry.isDirectory()) {
       if (entry.name.startsWith('.') || SKIPPED_DIRECTORIES.has(entry.name)) continue;
+      if (relative(root, path) === PLAYWRIGHT_LANE_DIRECTORY) continue;
       // Wall-clock targets belong under a package's `scripts/benchmarks/`.
       if (entry.name === 'benchmarks' && basename(directory) === 'scripts') continue;
       collectFiles(path, tests, runners);
@@ -1150,9 +1397,9 @@ export function collectFiles(directory: string, tests: string[], runners: string
   }
 }
 
-// A module that imports Playwright belongs to a browser lane (`test:browser`), which runs outside
-// `check` and `validate`, so its waits are Playwright's, not a blocking test's.
-const PLAYWRIGHT_IMPORT = /from\s+['"](@playwright\/test|playwright|playwright-core)['"]/;
+// Real-browser smoke tests run only when this flag is set; none of `check`, `validate` or the
+// dev container sets it, so their Playwright launch and wait budgets are not blocking deadlines.
+const OPT_IN_BROWSER_GATE = /WEFT_BROWSER_SMOKE/;
 
 async function scan(): Promise<string[]> {
   const findings: string[] = [];
@@ -1162,7 +1409,7 @@ async function scan(): Promise<string[]> {
 
   for (const path of tests.toSorted()) {
     const source = await Bun.file(path).text();
-    if (PLAYWRIGHT_IMPORT.test(source)) continue;
+    if (OPT_IN_BROWSER_GATE.test(source)) continue;
     const sourceFile = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
     for (const found of findDeadlineViolations(sourceFile)) {
       findings.push(`${relative(root, path)}:${found.line} — ${found.rule} — ${found.text}`);

@@ -328,16 +328,21 @@ describe('the fire review follower', () => {
     const writer = createDurableEventHistory(storage, createManualRuntimeServices());
     cleanups.push(() => writer.dispose());
     const gate = Promise.withResolvers<void>();
+    const entered = Promise.withResolvers<void>();
     const { follower, reread } = openFollower(history, {
       closeReview: async (_runId, reviewId) => {
-        if (reviewId === 'first') await gate.promise;
+        if (reviewId === 'first') {
+          entered.resolve();
+          await gate.promise;
+        }
       },
     });
     follower.follow('fire-a');
     follower.follow('fire-b');
     await follower.settled();
     await writer.record(runOwner('fire-a'), 'review.approved', closing('first'));
-    await sleep(100);
+    // The first closing is being applied, held at the gate, before the later ones are recorded.
+    await entered.promise;
     await writer.record(runOwner('fire-a'), 'review.expired', closing('second'));
     await writer.record(runOwner('fire-b'), 'review.expired', closing('third'));
     expect(await writer.retainBefore(Date.now() + 1_000_000)).toBeGreaterThan(0);
@@ -573,11 +578,15 @@ describe('a followed fire that cannot be read', () => {
     const writer = createDurableEventHistory(storage, createManualRuntimeServices());
     cleanups.push(() => writer.dispose());
     const gate = Promise.withResolvers<void>();
+    const entered = Promise.withResolvers<void>();
     const failedOnce = new Set<string>();
     const succeeded: string[] = [];
     const { follower } = openFollower(history, {
       closeReview: async (_runId, reviewId) => {
-        if (reviewId === 'first') await gate.promise;
+        if (reviewId === 'first') {
+          entered.resolve();
+          await gate.promise;
+        }
       },
       reread: async (runId) => {
         if (!failedOnce.has(runId)) {
@@ -593,7 +602,8 @@ describe('a followed fire that cannot be read', () => {
     succeeded.length = 0;
     failedOnce.clear();
     await writer.record(runOwner('fire-a'), 'review.approved', closing('first'));
-    await sleep(100);
+    // The first closing is being applied, held at the gate, before the later ones are recorded.
+    await entered.promise;
     await writer.record(runOwner('fire-a'), 'review.expired', closing('second'));
     await writer.record(runOwner('fire-b'), 'review.expired', closing('third'));
     expect(await writer.retainBefore(Date.now() + 1_000_000)).toBeGreaterThan(0);

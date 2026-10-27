@@ -532,6 +532,7 @@ describe('RemoteWorker durability — same-worker stale attempt (attempt token)'
     // (usually zero) remaining real time until the real deadline.
     const remainingUntilExpiry = attempt1Record.leaseDeadline - Date.now();
     if (remainingUntilExpiry > 0) {
+      // load-proof: waits out the remaining real lease time; a loaded host only lengthens the wait past the deadline, which is what the next step needs
       await waitForRealTimersForTesting(remainingUntilExpiry);
     }
     // `scanAt` awaits `scanExpiredTasks` to full completion — an observed

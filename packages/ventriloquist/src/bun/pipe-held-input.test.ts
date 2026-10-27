@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { rejectionOf } from '@lostgradient/testing';
+import { quietFor } from '@lostgradient/testing/wait-until';
 
 import { createDeferred } from '../session/fixtures/deferred.ts';
 import type { InputHold } from '../session/session-types.ts';
@@ -30,8 +31,23 @@ function recordHold() {
   return { log, hold };
 }
 
-const settledIn = (promise: Promise<unknown>) =>
-  Promise.race([promise.then(() => 'settled'), Bun.sleep(50).then(() => 'unsettled')]);
+/**
+ * Whether `promise` settles inside a quiet window. Every caller expects it not to: a pass through
+ * the window proves the absence, and a loaded host can only delay a settlement, never bring it forward.
+ */
+async function settledIn(promise: Promise<unknown>): Promise<'settled' | 'unsettled'> {
+  let settled = false;
+  void promise.then(
+    () => {
+      settled = true;
+    },
+    () => {
+      settled = true;
+    },
+  );
+  await quietFor(50);
+  return settled ? 'settled' : 'unsettled';
+}
 
 const eagain = () => Object.assign(new Error('try again'), { code: 'EAGAIN' });
 

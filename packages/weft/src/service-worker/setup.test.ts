@@ -7,6 +7,7 @@ import { principalFromApiKey } from '../server/principal.ts';
 import type { EventEnvelope, WorkflowEventFeed } from '../server/workflow-event-feed.ts';
 import { IndexedDBStorage } from '../storage/indexeddb.ts';
 import { MemoryStorage } from '../storage/memory.ts';
+import { quietFor } from '../../scripts/lib/wait-until.ts';
 import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
 import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { resetSetupServiceWorkerRegistry, setupServiceWorker } from './setup.ts';
@@ -520,11 +521,13 @@ describe('setupServiceWorker', () => {
       expect(respondedWith).toBeDefined();
       // The response promise should still be pending. Race it against a
       // very short timer to confirm.
-      const racedBefore = await Promise.race([
-        respondedWith!.then(() => 'response'),
-        new Promise<string>((resolve) => setTimeout(() => resolve('timer'), 10)),
-      ]);
-      expect(racedBefore).toBe('timer');
+      let settledBefore = false;
+      void respondedWith!.then(() => {
+        settledBefore = true;
+      });
+      // Load can only delay a settlement, never bring it forward.
+      await quietFor(10);
+      expect(settledBefore).toBe(false);
       // Release register; respondedWith should now settle.
       releaseRegister();
       const setup = await setupPromise;
@@ -888,11 +891,13 @@ describe('setupServiceWorker recover option', () => {
       });
 
       // Response is still pending while scan (and thus recoverAll) is blocked.
-      const racedBefore = await Promise.race([
-        respondedWith!.then(() => 'response'),
-        new Promise<string>((resolve) => setTimeout(() => resolve('timer'), 10)),
-      ]);
-      expect(racedBefore).toBe('timer');
+      let settledBefore = false;
+      void respondedWith!.then(() => {
+        settledBefore = true;
+      });
+      // Load can only delay a settlement, never bring it forward.
+      await quietFor(10);
+      expect(settledBefore).toBe(false);
 
       // Release the scan latch; setup and response should now settle.
       releaseScan();
@@ -918,11 +923,13 @@ describe('setupServiceWorker recover option', () => {
       });
 
       // The waitUntil promise is still pending while scan is blocked.
-      const racedBefore = await Promise.race([
-        captured!.then(() => 'settled'),
-        new Promise<string>((resolve) => setTimeout(() => resolve('timer'), 10)),
-      ]);
-      expect(racedBefore).toBe('timer');
+      let settledBefore = false;
+      void captured!.then(() => {
+        settledBefore = true;
+      });
+      // Load can only delay a settlement, never bring it forward.
+      await quietFor(10);
+      expect(settledBefore).toBe(false);
 
       // Release the latch.
       releaseScan();

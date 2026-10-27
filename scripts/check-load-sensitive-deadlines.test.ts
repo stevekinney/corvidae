@@ -420,9 +420,29 @@ describe('a sleep used to let something settle', () => {
     ['sleep', "it('a', async () => {\n  await sleep(10);\n  expect(1).toBe(1);\n});"],
     [
       'a promise around setTimeout',
-      "test('a', async () => {\n  await new Promise((resolve) => setTimeout(resolve, 50));\n});",
+      "test('a', async () => {\n  await new Promise((resolve) => setTimeout(resolve, 50));\n  expect(done()).toBe(true);\n});",
     ],
     ['a hook', 'beforeEach(async () => {\n  await Bun.sleep(5);\n});'],
+    [
+      'the sleep of node:timers/promises',
+      "import { setTimeout as pause } from 'node:timers/promises';\ntest('a', async () => {\n  await pause(100);\n  expect(done()).toBe(true);\n});",
+    ],
+    [
+      'Bun.sleep under fake timers, which do not advance it',
+      "test('a', async () => {\n  useFakeTimers();\n  await Bun.sleep(50);\n  expect(done()).toBe(true);\n});",
+    ],
+    [
+      'Bun.sleep beside manual runtime services, which leave the real clock alone',
+      "test('a', async () => {\n  const runtime = createManualRuntimeServices({});\n  start(runtime);\n  await Bun.sleep(50);\n  expect(done()).toBe(true);\n});",
+    ],
+    [
+      'the real-timer test helper',
+      "test('a', async () => {\n  await waitForRealTimersForTesting(50);\n  expect(done()).toBe(true);\n});",
+    ],
+    [
+      'a promise around a wrapped setTimeout callback',
+      "test('a', async () => {\n  await new Promise((resolve) => setTimeout(() => resolve(1), 50));\n  expect(done()).toBe(true);\n});",
+    ],
   ])('reports %s in a test body', (_name, source) => {
     expect(inspect(source)).toEqual(['sleep-synchronization']);
   });
@@ -439,8 +459,21 @@ describe('a sleep used to let something settle', () => {
     ],
     ['a sleep in a helper', 'async function settle() {\n  await Bun.sleep(50);\n}'],
     [
-      'a sleep under fake timers',
-      "test('a', async () => {\n  useFakeTimers();\n  await Bun.sleep(50);\n});",
+      'a promise around setTimeout under fake timers, which advance it',
+      "test('a', async () => {\n  useFakeTimers();\n  await new Promise((resolve) => setTimeout(resolve, 50));\n  expect(done()).toBe(true);\n});",
+    ],
+    [
+      'a pause that checks nothing afterwards',
+      "test('a', async () => {\n  ws.close();\n  await Bun.sleep(50);\n});",
+    ],
+    ['a pause in a teardown hook', 'afterEach(async () => {\n  await Bun.sleep(50);\n});'],
+    [
+      'a sleep the injected services own',
+      "test('a', async () => {\n  const { sleep } = createManualRuntimeServices();\n  await sleep(50);\n  expect(done()).toBe(true);\n});",
+    ],
+    [
+      'a member call on the injected runtime',
+      "test('a', async () => {\n  const runtime = createManualRuntimeServices();\n  await runtime.sleep(50);\n  expect(done()).toBe(true);\n});",
     ],
     [
       'a sleep under a load-proof marker',
@@ -490,7 +523,46 @@ describe('work raced against a timer', () => {
   });
 
   test.each([
+    [
+      'a sleep chained into a label',
+      "await Promise.race([p, Bun.sleep(1000).then(() => 'TIMEOUT')]);",
+    ],
+    [
+      'a timer promise that resolves',
+      'await Promise.race([p, new Promise((resolve) => setTimeout(() => resolve(false), 250))]);',
+    ],
+    [
+      'a timer promise that rejects through a renamed parameter',
+      "await Promise.race([p, new Promise((_, fail) => setTimeout(() => fail(new Error('t')), 500))]);",
+    ],
+    [
+      'a timer held in a constant',
+      'const timeout = sleep(1000);\nawait Promise.race([p, timeout]);',
+    ],
+    [
+      'the promise sleep of node:timers/promises',
+      "import { setTimeout as delayFor } from 'node:timers/promises';\nawait Promise.race([p, delayFor(500)]);",
+    ],
+    [
+      'a race beside manual runtime services, which leave the real clock alone',
+      'const runtime = createManualRuntimeServices({});\nawait Promise.race([p, Bun.sleep(250)]);',
+    ],
+    ['Promise.any', 'await Promise.any([p, sleep(500)]);'],
+  ])('reports %s', (_name, source) => {
+    expect(inspect(source)).toContain('timer-race');
+  });
+
+  test('reports a promise that also resolves on a timeout', () => {
+    expect(
+      inspect(
+        "test('a', async () => {\n  const opened = await new Promise((resolve) => {\n    ws.on('open', () => resolve(true));\n    setTimeout(() => resolve(false), 2000);\n  });\n});",
+      ),
+    ).toContain('timer-race');
+  });
+
+  test.each([
     ['a zero delay, a single turn', 'await Promise.race([write, Bun.sleep(0)]);'],
+    ['a sleep through an injected clock', 'await Promise.race([work, runtime.sleep(500)]);'],
     ['two pieces of work', 'await Promise.race([first, second]);'],
     [
       'a race that checks the work is still pending',
@@ -498,5 +570,57 @@ describe('work raced against a timer', () => {
     ],
   ])('accepts %s', (_name, source) => {
     expect(inspect(source)).toEqual([]);
+  });
+});
+
+describe('a quiet window placed before an assertion that something happened', () => {
+  test.each([
+    [
+      'toBe(true)',
+      "test('a', async () => {\n  start();\n  await quietFor(100);\n  expect(done()).toBe(true);\n});",
+    ],
+    [
+      'toContain',
+      "test('a', async () => {\n  start();\n  await quietFor(100);\n  expect(seen).toContain('x');\n});",
+    ],
+    [
+      'toBeDefined',
+      "test('a', async () => {\n  start();\n  await quietFor(100);\n  expect(value).toBeDefined();\n});",
+    ],
+  ])('reports %s', (_name, source) => {
+    expect(inspect(source)).toEqual(['quiet-window']);
+  });
+
+  test.each([
+    [
+      'an absence',
+      "test('a', async () => {\n  await quietFor(100);\n  expect(seen).toEqual([]);\n});",
+    ],
+    [
+      'a count that did not grow',
+      "test('a', async () => {\n  await quietFor(100);\n  expect(calls).toHaveLength(1);\n});",
+    ],
+    [
+      'a negated matcher',
+      "test('a', async () => {\n  await quietFor(100);\n  expect(spy).not.toHaveBeenCalled();\n});",
+    ],
+    [
+      'a boolean that stays false',
+      "test('a', async () => {\n  await quietFor(100);\n  expect(settled).toBe(false);\n});",
+    ],
+    [
+      'a window under a load-proof marker',
+      "test('a', async () => {\n  // load-proof: focus must stay put; a slow host can only delay a move\n  await quietFor(100);\n  expect(focused).toBe(true);\n});",
+    ],
+  ])('accepts %s', (_name, source) => {
+    expect(inspect(source)).toEqual([]);
+  });
+});
+
+describe('a wait helper imported under the name waitFor', () => {
+  test("is read for its timeoutMs budget as well as Testing Library's timeout", () => {
+    expect(
+      inspect("test('a', async () => {\n  await waitFor(() => ready, { timeoutMs: 1000 });\n});"),
+    ).toEqual(['wait-budget']);
   });
 });
