@@ -164,8 +164,9 @@ export const clientContractAsyncActivityWorkflow = workflow({
 export async function waitForQueryReadyForTesting(
   client: WeftClient,
   workflowId: string,
+  options: { hangGuardMilliseconds?: number } = {},
 ): Promise<void> {
-  for await (const _turn of awakeTurns()) {
+  for await (const _turn of awakeTurns(options)) {
     if ((await client.query(workflowId, 'ready')) === true) {
       return;
     }

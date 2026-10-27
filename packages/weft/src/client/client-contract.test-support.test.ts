@@ -33,7 +33,12 @@ describe('client contract test support', () => {
     };
 
     expect(
-      await throwingRejectionOf(waitForQueryReadyForTesting(client as never, 'workflow-stuck')),
+      await throwingRejectionOf(
+        // hang-guard-self-test: the query never reports ready, so no load can satisfy it in time
+        waitForQueryReadyForTesting(client as never, 'workflow-stuck', {
+          hangGuardMilliseconds: 20,
+        }),
+      ),
     ).toThrow('Workflow workflow-stuck did not expose query handlers');
   });
 
