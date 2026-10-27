@@ -1,10 +1,13 @@
 import { rejectionOf } from '@lostgradient/testing';
+import { HttpClientError } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
 import type { Fetcher } from './bureau-client.ts';
 import { humanWaitFixture, toolApprovalFixture } from './bureau-fixtures.test-support.ts';
 import {
   getBureauReview,
+  isApprovalOutcomeNotWritten,
+  isReviewRoundChanged,
   listBureauReviews,
   resolveBureauReview,
   type BureauReview,
@@ -75,6 +78,30 @@ describe('the Bureau’s review operations', () => {
         params: { id: TOOL_APPROVAL.id, decision: 'reject', reason: 'Wrong order' },
       },
     ]);
+  });
+
+  test('resolve sends the round the caller was shown when it has one (COR-1714)', async () => {
+    const stub = answering({
+      id: TOOL_APPROVAL.id,
+      kind: 'tool-approval',
+      decision: 'approve',
+      receipt: 'applied',
+    });
+    await withFetch(stub.fetch, () =>
+      resolveBureauReview({ id: TOOL_APPROVAL.id, decision: 'approve', round: 2 }),
+    );
+    expect(stub.calls[0]?.params).toEqual({ id: TOOL_APPROVAL.id, decision: 'approve', round: 2 });
+  });
+
+  test('tells a review that changed while it was read from every other Conflict', () => {
+    const conflict = (reason: unknown) =>
+      new HttpClientError(409, 'Conflict', { faultCode: 'Conflict', data: { reason } });
+    const changed = conflict('REVIEW_ROUND_CHANGED: now at round 3');
+    expect(isReviewRoundChanged(changed)).toBe(true);
+    expect(isApprovalOutcomeNotWritten(changed)).toBe(false);
+    expect(isReviewRoundChanged(conflict('Another resolver won.'))).toBe(false);
+    expect(isReviewRoundChanged(conflict('APPROVAL_OUTCOME_NOT_WRITTEN: x'))).toBe(false);
+    expect(isReviewRoundChanged(new Error('REVIEW_ROUND_CHANGED: now at round 3'))).toBe(false);
   });
 
   test('a review of a kind the Bureau does not define is a fault, not a row', async () => {

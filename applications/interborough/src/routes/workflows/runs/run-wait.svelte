@@ -7,8 +7,12 @@
    */
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
-  import { TASK_COPY } from '../../../app/copy.ts';
-  import { getBureauReview, resolveBureauReview } from '../../../lib/bureau-reviews.ts';
+  import { REVIEWS_COPY, TASK_COPY } from '../../../app/copy.ts';
+  import {
+    getBureauReview,
+    isReviewRoundChanged,
+    resolveBureauReview,
+  } from '../../../lib/bureau-reviews.ts';
   import { respondToTask, type TaskOpenWait } from '../../../lib/bureau-tasks.ts';
   import ApprovalDecision from '../../../lib/decision/approval-decision.svelte';
   import QuestionDecision from '../../../lib/decision/question-decision.svelte';
@@ -74,10 +78,18 @@
         id: wait.reviewId,
         decision: decision === 'deny' && note !== '' ? 'reject' : decision,
         ...(note === '' ? {} : { reason: note }),
+        // The round shown: an approval gated again since is refused, not decided.
+        ...(review.data?.kind === 'tool-approval' ? { round: review.data.round } : {}),
       });
       await invalidateReviewQueries(queryClient);
     } catch (error) {
-      failure = faultTreatment(error).message;
+      if (isReviewRoundChanged(error)) {
+        failure = `${REVIEWS_COPY.roundChanged.title}: ${REVIEWS_COPY.roundChanged.message}`;
+        // The review is read again, so the request it changed to is the one shown.
+        await invalidateReviewQueries(queryClient);
+      } else {
+        failure = faultTreatment(error).message;
+      }
     } finally {
       working = false;
     }
