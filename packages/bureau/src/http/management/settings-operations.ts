@@ -264,8 +264,10 @@ export const settingsEventsOperation = defineOperation<
       controller.abort();
       return Promise.resolve();
     };
+    const subscriptionId = `settings-${subscriptionCount}`;
     return Promise.resolve({
-      envelope: { subscriptionId: `settings-${subscriptionCount}` },
+      subscriptionId,
+      envelope: { subscriptionId },
       iterable: Object.assign(iterable, { close }),
       close,
     });
