@@ -376,8 +376,8 @@ describe('a bureau.run() park', () => {
     const aliceReview = await nextReview(bureau, alice.id);
     const anonymousReview = await nextReview(bureau, anonymous.id);
 
-    expect(await bureau.getOwner({ kind: 'review', id: aliceReview.id })).toBe('alice');
-    expect(await bureau.getOwner({ kind: 'review', id: anonymousReview.id })).toBe(
+    expect(await bureau.ownerOf({ kind: 'review', id: aliceReview.id })).toBe('alice');
+    expect(await bureau.ownerOf({ kind: 'review', id: anonymousReview.id })).toBe(
       'anonymous:local',
     );
   });
@@ -624,7 +624,7 @@ describe('a bureau.run() park after a restart', () => {
       prompt: 'Which environment?',
     });
     expect(restored.sessionId).toBe(run.contextId);
-    expect(await restarted.getOwner({ kind: 'review', id: restored.id })).toBe('alice');
+    expect(await restarted.ownerOf({ kind: 'review', id: restored.id })).toBe('alice');
 
     await restarted.reviews.resolve({
       id: restored.id,

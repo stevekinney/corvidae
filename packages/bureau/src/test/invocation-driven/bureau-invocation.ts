@@ -7,8 +7,8 @@
  * - `start` creates the parent run, dispatches one `worker` child, waits for
  *   the child to finish and for the parent to park on its `scheduleWakeup`
  *   timer, then exits through `bureau.shutdown()` with its default policy.
- * - `maintain` is the wake-up: `waitForRecovery()`, then one
- *   `bureau.runDurableMaintenance(now)` pass, then it waits for every durable
+ * - `maintain` is the wake-up: `recovery()`, then one
+ *   `bureau.maintain(now)` pass, then it waits for every durable
  *   run to leave `running` before shutting down.
  * - `read` only reads.
  *
@@ -16,7 +16,7 @@
  * and `ownership: 'none'`. Bureau does not forward a `getNow` to that engine,
  * so its timers are scheduled on the wall clock; the driver's virtual clock
  * for these invocations therefore starts at the wall time, and only
- * `runDurableMaintenance(now)` reads it. With no claims to lapse, `'none'`
+ * `maintain(now)` reads it. With no claims to lapse, `'none'`
  * keeps the wall clock from deciding any outcome here.
  *
  * Not a test file: it is spawned by `invocation-driven-execution.test.ts`.
@@ -136,8 +136,8 @@ async function readState() {
 if (command === 'start') {
   await startParentWithChild();
 } else if (command === 'maintain') {
-  await bureau.waitForRecovery?.();
-  await bureau.runDurableMaintenance(now);
+  await bureau.recovery();
+  await bureau.maintain(now);
   await pollUntil('every durable run to leave running', async () => {
     const runs = await bureau.tasks.workflows();
     return runs?.items.every((item) => item.status !== 'running') ?? false;

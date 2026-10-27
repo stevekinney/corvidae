@@ -197,7 +197,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
     const run = await prepareWithoutLaunching(fixture.configuration);
 
     const restarted = await open(fixture.configuration);
-    const report: BureauRecoveryReport = await restarted.waitForRecovery!();
+    const report: BureauRecoveryReport = await restarted.recovery();
 
     expect(report.perRunFailures).toContainEqual({
       runId: run.id,
@@ -236,7 +236,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
     cleanups.push(() => cancel.mockRestore());
 
     const restarted = await open(fixture.configuration);
-    await restarted.waitForRecovery!();
+    await restarted.recovery();
     cancel.mockRestore();
 
     const task = await restarted.internals.taskRegistry.get(run.id);
@@ -267,7 +267,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
     cleanups.push(() => get.mockRestore());
 
     const restarted = await open(fixture.configuration);
-    await restarted.waitForRecovery!();
+    await restarted.recovery();
     get.mockRestore();
 
     const session = await restarted.contexts.get(run.contextId);
@@ -296,7 +296,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
     };
 
     const restarted = await open(fixture.configuration, { recovery });
-    await restarted.waitForRecovery!();
+    await restarted.recovery();
     claimHolder.mockRestore();
 
     expect(recovery.attempted).toContainEqual([run.id, 'skip']);
@@ -330,7 +330,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
     );
 
     const restarted = await open(fixture.configuration);
-    const report = await restarted.waitForRecovery!();
+    const report = await restarted.recovery();
 
     expect(report.perRunFailures).toContainEqual({ runId, reason: 'prepared-not-launched' });
     expect(await durableStatus(restarted, runId)).toBe('cancelled');
@@ -347,7 +347,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
     };
 
     const restarted = await open(fixture.configuration, { recovery });
-    await restarted.waitForRecovery!();
+    await restarted.recovery();
 
     const verdicts = recovery.attempted.filter(([runId]) => runId === run.id).map(([, v]) => v);
     expect(verdicts).toContain('cancel');
@@ -365,7 +365,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
     const diagnostics: BureauDiagnostic[] = [];
 
     const restarted = await open(refusing, { diagnostics });
-    await restarted.waitForRecovery!();
+    await restarted.recovery();
 
     await waitForCondition(
       async () => (await durableStatus(restarted, run.id)) === 'cancelled',
@@ -404,7 +404,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
     };
 
     const restarted = await open(fixture.configuration, { diagnostics, recovery });
-    await restarted.waitForRecovery!();
+    await restarted.recovery();
     get.mockRestore();
 
     expect(recovery.attempted).toContainEqual([run.id, 'reattach']);

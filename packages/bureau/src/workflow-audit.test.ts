@@ -192,7 +192,7 @@ describe('a write made over HTTP', () => {
     const [entry] =
       (await served.bureau.internals.auditTrail?.query({ runId: 'workflow:digest' })) ?? [];
     expect(entry?.type).toBe('workflow.created');
-    const resourceOwner = await served.bureau.getOwner({
+    const resourceOwner = await served.bureau.ownerOf({
       kind: 'audit',
       runId: entry!.runId,
       detail: entry!.detail,

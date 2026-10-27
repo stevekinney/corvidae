@@ -87,7 +87,7 @@ describe('a schedule’s fire', () => {
         durableOwnership: { ownership: 'none' },
       });
       bureaus.push(second);
-      await second.runDurableMaintenance(created!.nextFireAt!);
+      await second.maintain(created!.nextFireAt!);
       const status = await pollUntil(async () => {
         const page = await second.tasks.workflows();
         const fire = page?.items[0];
@@ -135,7 +135,7 @@ describe('a schedule’s fire', () => {
 
       const second = await createBureau<AgentDefinitions>(options);
       bureaus.push(second);
-      await second.runDurableMaintenance(created!.nextFireAt!);
+      await second.maintain(created!.nextFireAt!);
       const status = await pollUntil(async () => {
         const page = await second.tasks.workflows();
         const fire = page?.items[0];
@@ -176,7 +176,7 @@ describe('a fire into a session another agent began', () => {
       principal: OWNER.alice,
       sessionId: 'shared',
     });
-    await bureau.runDurableMaintenance(created!.nextFireAt!);
+    await bureau.maintain(created!.nextFireAt!);
     await pollUntil(async () => {
       const page = await bureau.tasks.workflows();
       return page?.items.some((run) => run.status === 'failed') ? true : undefined;
@@ -189,7 +189,7 @@ describe('a fire into a session another agent began', () => {
 describe('the origin of a session a fire creates (COR-1645)', () => {
   async function settledFire(bureau: Awaited<ReturnType<typeof harness.open>>, scheduleId: string) {
     const schedule = await bureau.schedules.get(scheduleId);
-    await bureau.runDurableMaintenance(schedule!.nextFireAt!);
+    await bureau.maintain(schedule!.nextFireAt!);
     await pollUntil(async () => {
       const page = await bureau.tasks.workflows();
       return page?.items.some((run) => run.status === 'completed') ? true : undefined;
@@ -238,7 +238,7 @@ describe('the origin of a session a fire creates (COR-1645)', () => {
     });
 
     const schedule = await bureau.schedules.get(created!.id);
-    await bureau.runDurableMaintenance(schedule!.nextFireAt!);
+    await bureau.maintain(schedule!.nextFireAt!);
     // The fire did run in the chat, and the chat is still a chat.
     await pollUntil(async () => {
       const chat = await bureau.internals.sessionStore!.load('shared-chat');

@@ -433,7 +433,7 @@ describe('a durable run recovered by a restarted Bureau (COR-771)', () => {
     if (changePolicyWhileParked) await activateNextPolicy(memory);
     // Not disposed: a graceful shutdown would cancel the parked run.
     const restarted = await open();
-    await restarted.waitForRecovery?.();
+    await restarted.recovery();
     await waitForCondition(
       () => restarted.reviews.list().some((review) => review.runId === run.id),
       'the recovered run never parked again',

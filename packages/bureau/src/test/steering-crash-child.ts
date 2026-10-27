@@ -95,7 +95,7 @@ const bureau = await createBureau<AgentDefinitions>({
 let sessionId: string;
 let runId: string | undefined;
 if (mode === 'retry') {
-  await bureau.waitForRecovery?.();
+  await bureau.recovery();
   sessionId = sessionArgument ?? '';
 } else {
   const run = await bureau.tasks.start('default', 'Wait forever', { principal: 'alice' });

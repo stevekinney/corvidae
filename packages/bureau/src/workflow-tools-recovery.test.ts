@@ -89,7 +89,7 @@ it('writes the file as the agent after a restart, for a session run that was in 
     };
   });
   cleanups.push(() => second.dispose());
-  await second.waitForRecovery?.();
+  await second.recovery();
   await second.tasks.wait(created.id);
 
   expect(results).toHaveLength(1);

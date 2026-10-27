@@ -93,7 +93,7 @@ describe('the host’s workflow directory', () => {
     );
     const result = (await run.result()) as { content: string };
     expect(result.content).toContain('Hello from the assistant');
-    expect(await host.bureau.getOwner({ kind: 'run', id: 'digest-run' })).toBe('anonymous:local');
+    expect(await host.bureau.ownerOf({ kind: 'run', id: 'digest-run' })).toBe('anonymous:local');
     // The workflow has its one native schedule.
     const schedules = await host.bureau.schedules.list({ status: ['active'] });
     expect(schedules?.items.map((schedule) => schedule.id)).toEqual([

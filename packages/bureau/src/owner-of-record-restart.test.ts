@@ -118,7 +118,7 @@ describe('every kind of resource keeps its owner across a restart (COR-718)', ()
 
       const second = await openBureau(path);
       reopened = second;
-      const owner = (resource: Parameters<typeof second.getOwner>[0]) => second.getOwner(resource);
+      const owner = (resource: Parameters<typeof second.ownerOf>[0]) => second.ownerOf(resource);
 
       expect(await owner({ kind: 'run', id: run.id })).toBe(ALICE);
       expect(await owner({ kind: 'session', id: run.contextId })).toBe(ALICE);

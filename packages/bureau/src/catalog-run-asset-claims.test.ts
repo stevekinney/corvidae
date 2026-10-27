@@ -609,7 +609,7 @@ describe('a goal attempt across a restart', () => {
       }),
       diagnostics.onDiagnostic,
     );
-    await second.waitForRecovery?.();
+    await second.recovery();
     // The run that will resume released nothing at shutdown, and still holds its claim.
     expect(heldByRun(await holdersOf(second, assetId), 'goal-g1-a0').length).toBeGreaterThan(0);
 

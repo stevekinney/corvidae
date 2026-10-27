@@ -68,7 +68,7 @@ describe('a task across a boot', () => {
     bureaus.splice(bureaus.indexOf(first), 1);
 
     const second = await open(fixture);
-    await second.waitForRecovery?.();
+    await second.recovery();
 
     expect(await second.internals.taskRegistry.record(run.id)).toBeUndefined();
     expect(await second.internals.taskRegistry.history(run.id)).toBeUndefined();
@@ -85,7 +85,7 @@ describe('a task across a boot', () => {
       'the run never parked',
     );
     const restarted = await open(fixture);
-    await restarted.waitForRecovery?.();
+    await restarted.recovery();
     await waitForCondition(
       () => restarted.reviews.list().some((review) => review.runId === run.id),
       'the recovered run never parked again',

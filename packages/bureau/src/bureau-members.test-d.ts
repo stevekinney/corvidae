@@ -1,4 +1,4 @@
-// Type-level tripwire (COR-1703, COR-1704, COR-1705, COR-1706, COR-1707): the flat review, schedule, session, and run methods and the members
+// Type-level tripwire (COR-1703, COR-1704, COR-1705, COR-1706, COR-1707, COR-1708): the flat review, schedule, session, and run methods and the members
 // that moved onto `bureau.internals` must not return to `Bureau`'s top level. If this file stops
 // compiling, a member that belongs behind `reviews`, `schedules`, `contexts`, `tasks`, or `internals` was declared on
 // `Bureau` again.
@@ -6,6 +6,7 @@
 import { createAgent, createMockGenerate } from '@lostgradient/operative';
 import { z } from 'zod';
 
+import type { AgentModels } from './agent-models.ts';
 import type { BureauMemberPath } from './http/operation-map.ts';
 import type {
   Bureau,
@@ -13,6 +14,7 @@ import type {
   BureauContexts,
   BureauTasks,
   BureauInternals,
+  BureauRecoveryReport,
   BureauReviews,
   BureauSchedules,
   StartTaskOptions,
@@ -222,7 +224,8 @@ export type TasksMembers = AssertNever<
 // one for a name known only at run time.
 type Equals<A, B> =
   (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
-type AssertEquals<A, B extends A, _Check = Equals<A, B> extends true ? true : never> = _Check;
+/** Compiles only when `Value` is `true`, so an `Equals` that is `false` fails here. */
+type AssertTrue<Value extends true> = Value;
 
 const researcher = createAgent({
   generate: createMockGenerate([]),
@@ -232,9 +235,78 @@ const researcher = createAgent({
 declare const typedBureau: Bureau<{ readonly researcher: typeof researcher }>;
 declare const runtimeName: string;
 const typedStart = typedBureau.tasks.start('researcher', 'x');
-export type TypedStartIsATypedHandle = AssertEquals<
-  typeof typedStart,
-  Promise<TaskHandle<{ answer: string }>>
+export type TypedStartIsATypedHandle = AssertTrue<
+  Equals<typeof typedStart, Promise<TaskHandle<{ answer: string }>>>
 >;
 const stringStart = typedBureau.tasks.start(runtimeName, 'x');
-export type StringStartIsAnUntypedHandle = AssertEquals<typeof stringStart, Promise<TaskHandle>>;
+export type StringStartIsAnUntypedHandle = AssertTrue<
+  Equals<typeof stringStart, Promise<TaskHandle>>
+>;
+
+// COR-1708: the Bureau's top-level members, fixed as an exact set. Adding a member, or removing
+// one, fails here and nowhere else, so a flat method cannot return and a namespace cannot lose an
+// entry unnoticed. The list is the project document's table of top-level members (Bureau API, DX,
+// and architecture, "The in-process surface") without `decisions` and `settings`, which the later
+// issues that add them extend this list with. `runtimeServices` and `peerCalls` are members the
+// table does not mention and this issue does not change.
+type TopLevelMembers =
+  // Namespaces.
+  | 'tasks'
+  | 'contexts'
+  | 'reviews'
+  | 'schedules'
+  | 'models'
+  | 'audit'
+  | 'internals'
+  | 'agents'
+  | 'workflows'
+  | 'children'
+  | 'goals'
+  | 'memory'
+  | 'assets'
+  | 'surfaces'
+  // The renamed top-level operations.
+  | 'ownerOf'
+  | 'recovery'
+  | 'maintain'
+  | 'frames'
+  // The members that did not change.
+  | 'id'
+  | 'durableEngine'
+  | 'lifecycle'
+  | 'shutdown'
+  | 'dispose'
+  | 'setRequestAuthorityValidator'
+  | 'addEventListener'
+  | 'removeEventListener'
+  | 'on'
+  | 'once'
+  | 'subscribe'
+  | 'toObservable'
+  | 'events'
+  | 'complete'
+  | 'completed'
+  | 'signal'
+  | 'runtimeServices'
+  | 'peerCalls';
+
+export type BureauTopLevelMembersAreExact = AssertTrue<Equals<keyof Bureau, TopLevelMembers>>;
+
+// The renamed operations keep their signatures, and the old names are gone.
+export type NoOldTopLevelNames = AssertNever<
+  Extract<
+    keyof Bureau,
+    'waitForRecovery' | 'subscribeLiveFrames' | 'getOwner' | 'runDurableMaintenance'
+  >
+>;
+export type RecoveryIsAlwaysPresent = AssertTrue<
+  Equals<Bureau['recovery'], () => Promise<BureauRecoveryReport>>
+>;
+export type MaintainTakesAnOptionalClock = AssertTrue<
+  Equals<Bureau['maintain'], (now?: number) => Promise<true | undefined>>
+>;
+
+// `agents.models(name)` describes one agent, or nothing for a name no agent has.
+export type AgentsModelsDescribesOneAgent = AssertTrue<
+  Equals<Bureau['agents']['models'], (name: string) => AgentModels | undefined>
+>;

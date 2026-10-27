@@ -833,12 +833,12 @@ describe('cleanup', () => {
         // Settled by the wrapped calls themselves, never by polling or a timer.
         let subscribed = Promise.withResolvers<void>();
         let allGone = Promise.withResolvers<void>();
-        const subscribeLiveFrames = harness.bureau.subscribeLiveFrames.bind(harness.bureau);
+        const frames = harness.bureau.frames.bind(harness.bureau);
         const subscribeRunSnapshot = harness.bureau.tasks.snapshot.bind(harness.bureau.tasks);
-        harness.bureau.subscribeLiveFrames = (listener) => {
+        harness.bureau.frames = (listener) => {
           frameListeners += 1;
           subscribed.resolve();
-          const stop = subscribeLiveFrames(listener);
+          const stop = frames(listener);
           return () => {
             frameListeners -= 1;
             if (frameListeners === 0) allGone.resolve();

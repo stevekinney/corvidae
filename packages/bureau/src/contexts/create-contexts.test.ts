@@ -32,7 +32,7 @@ async function open(durable: boolean): Promise<Bureau<AgentDefinitions>> {
     ...(durable ? { durableOwnership: { ownership: 'none' as const } } : {}),
   });
   bureaus.push(bureau);
-  await bureau.waitForRecovery?.();
+  await bureau.recovery();
   return bureau;
 }
 

@@ -84,7 +84,7 @@ async function crashScenario(
     const bureau = await openBureau(storagePath);
     scope.onHang(() => bureau.shutdown());
     try {
-      await bureau.waitForRecovery?.();
+      await bureau.recovery();
       await verify(bureau, runId);
     } finally {
       await bureau.shutdown();
@@ -124,7 +124,7 @@ async function disposedScenario(scope: ScenarioScope): Promise<void> {
     const { runId } = JSON.parse(readFileSync(markerPath, 'utf8')) as { runId: string };
 
     const second = await openBureau(storagePath);
-    await second.waitForRecovery?.();
+    await second.recovery();
     expect(OPEN_STATES.has(await taskStatusOf(second, runId))).toBe(true);
     // A graceful shutdown leaves a task this process recovered, not started, for the next boot.
     await second.dispose();
@@ -132,7 +132,7 @@ async function disposedScenario(scope: ScenarioScope): Promise<void> {
     const third = await openBureau(storagePath);
     scope.onHang(() => third.shutdown());
     try {
-      await third.waitForRecovery?.();
+      await third.recovery();
       const durable = await third.tasks.workflow(runId);
       expect(durable?.status).toBe('running');
       expect(OPEN_STATES.has(await taskStatusOf(third, runId))).toBe(true);

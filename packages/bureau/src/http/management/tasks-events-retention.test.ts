@@ -61,7 +61,7 @@ describe('bureau.tasks.events below the retention floor', () => {
       // Everything the first task recorded is now older than the window, and a later
       // task's events sit above the floor the maintenance pass leaves.
       runtime.setTime(Date.parse(ORIGIN) + 7 * DAY_MS + 1);
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
       const second = await bureau.tasks.start('default', 'second', { principal: OWNER.alice });
       await waitForCondition(
         () => bureau.tasks.detail(second.id)?.status === 'completed',
@@ -143,7 +143,7 @@ describe('bureau.tasks.events below the retention floor', () => {
 
       // The request for input falls out of the window, and the answer arrives after it.
       runtime.setTime(Date.parse(ORIGIN) + 7 * DAY_MS + 1);
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
       const [review] = bureau.reviews.list();
       await bureau.reviews.resolve({
         id: review!.id,
@@ -226,7 +226,7 @@ describe('bureau.tasks.events below the retention floor', () => {
 
       // The request and the settlement fall out of the window; the decision comes after it.
       runtime.setTime(Date.parse(ORIGIN) + 2_000);
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
       const [review] = bureau.reviews.list();
       await bureau.reviews.resolve({ id: review!.id, decision: 'deny', principal: OWNER.alice });
       await waitForCondition(async () => {

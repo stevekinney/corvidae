@@ -160,7 +160,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
           (await receiptState(storage, run.contextId, incarnation, 'input-x', 'late')) ===
           'canceled',
       );
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
 
       expect(generations).toBe(1);
       expect(listHeldTasks(bureau)).toHaveLength(1);
@@ -260,7 +260,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
           (await receiptState(storage, first.contextId, incarnation, 'input-a', 'first')) ===
           'canceled',
       );
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
       expect(runs).toBe(1);
       expect(listHeldTasks(bureau)).toHaveLength(1);
     } finally {
@@ -301,7 +301,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
         const session = await bureau.contexts.get(first.contextId);
         return session?.metadata['lastRunStatus'] === 'aborted';
       });
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
       expect(listHeldTasks(bureau)).toHaveLength(1);
     } finally {
       releaseStepZero.resolve();
@@ -352,7 +352,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
           const session = await bureau.contexts.get(first.contextId);
           return session?.metadata['lastRunStatus'] === 'aborted';
         });
-        await bureau.runDurableMaintenance();
+        await bureau.maintain();
 
         expect(
           await receiptState(
@@ -408,7 +408,7 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
         const session = await bureau.contexts.get(first.contextId);
         return session?.metadata['lastRunStatus'] === 'error';
       });
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
       // The failing step saved the turn, and that write promoted it: never canceled.
       expect(
         await receiptState(storage, first.contextId, incarnation, 'input-a', 'please answer this'),
@@ -544,7 +544,7 @@ describe('a run that ends over a lease a gone holder left behind (COR-1476)', ()
 
       // Past the visibility timeout, the sweep's maintenance settles it.
       runtime.setTime(Date.parse(origin) + 31_000);
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
       expect(await state()).toBe('cancelled');
       expect(await receiptState(storage, run.contextId, incarnation, 'input-x', 'late')).toBe(
         'canceled',
@@ -748,7 +748,7 @@ describe('a promoted input whose command was never acknowledged (COR-1476)', () 
 
       // The sweep retires what no run will acknowledge, at once, since nothing
       // leases it any more; the promotion stands.
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
       expect(await state()).toBe('cancelled');
       expect(await receiptState(real, run.contextId, incarnation, 'input-x', 'delivered')).toBe(
         'promoted',
@@ -1081,7 +1081,7 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
       throw new Error('no run should generate');
     });
     try {
-      await second.waitForRecovery?.();
+      await second.recovery();
       // The run's workflow is terminal, so nothing is live: the boot sweep cancels.
       const storage = await resolveStorage({ type: 'sqlite', path });
       try {
@@ -1145,14 +1145,14 @@ describe('a run promoted but never started (COR-1476)', () => {
       // Still within the run's start window: the run counts as starting, so
       // neither the admission nor the sweep cancels the input.
       if (admitted.outcome === 'admitted') expect(admitted.receipt.state).toBe('accepted');
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
       expect(
         await receiptState(storage, 'ghost-session', saved.incarnation, 'input-x', 'hello'),
       ).toBe('accepted');
 
       // The window lapses with no workflow ever created: the run is over.
       runtime.setTime(Date.parse(origin) + 61_000);
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
       expect(
         await receiptState(storage, 'ghost-session', saved.incarnation, 'input-x', 'hello'),
       ).toBe('canceled');
@@ -1200,7 +1200,7 @@ describe("a deleted session's input mailbox (COR-1476)", () => {
         const session = await bureau.contexts.get(run.contextId);
         return session?.metadata['lastRunStatus'] === 'completed';
       });
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
       expect(await markers(storage)).toHaveLength(0);
 
       // Deletion marks the incarnation again, for the sweep to retire its
@@ -1208,7 +1208,7 @@ describe("a deleted session's input mailbox (COR-1476)", () => {
       await bureau.contexts.delete(run.contextId);
       expect(await markers(storage)).toHaveLength(1);
       await runtime.advance(SESSION_INPUT_TERMINAL_RETENTION_MS + 3_600_000);
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
       expect(await mailbox.list({ limit: 1 })).toEqual([]);
       expect(await markers(storage)).toHaveLength(0);
     } finally {
@@ -1279,7 +1279,7 @@ describe('shutdown releases open input (COR-1476)', () => {
       return { content: 'answer', toolCalls: [] };
     });
     try {
-      await second.waitForRecovery?.();
+      await second.recovery();
       expect(listHeldTasks(second)).toHaveLength(0);
       expect(generations).toBe(0);
     } finally {

@@ -29,8 +29,8 @@ export async function retireSettledTasks(
   runtime: ManualRuntimeServices,
 ): Promise<void> {
   await runtime.advance(TASK_RETENTION_MILLISECONDS + 1);
-  await bureau.runDurableMaintenance();
-  await bureau.runDurableMaintenance();
+  await bureau.maintain();
+  await bureau.maintain();
 }
 
 /**
@@ -47,6 +47,6 @@ export const IMMEDIATE_TASK_RETENTION: Pick<BureauOptions, 'retention'> = {
  */
 export async function retireSettledTasksOnRealClock(bureau: Bureau): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 5));
-  await bureau.runDurableMaintenance();
-  await bureau.runDurableMaintenance();
+  await bureau.maintain();
+  await bureau.maintain();
 }

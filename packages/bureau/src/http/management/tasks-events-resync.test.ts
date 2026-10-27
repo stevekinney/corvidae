@@ -211,7 +211,7 @@ describe('task.resynced', () => {
     const opened = await open(faulty, parksThenAnswers());
     // The wait's event and the resync that follows it both fail.
     const run = await park(opened, faulty.faults, 2);
-    await opened.bureau.runDurableMaintenance();
+    await opened.bureau.maintain();
     // Settled in the Bureau's own hands: the marked task is repaired by the pass.
     await waitForCondition(
       async () => (await resyncCount(opened, run.id)) > 0,
@@ -219,8 +219,8 @@ describe('task.resynced', () => {
     );
     expect(await resyncCount(opened, run.id)).toBe(1);
 
-    await opened.bureau.runDurableMaintenance();
-    await opened.bureau.runDurableMaintenance();
+    await opened.bureau.maintain();
+    await opened.bureau.maintain();
     expect(await resyncCount(opened, run.id)).toBe(1);
   });
 
@@ -234,7 +234,7 @@ describe('task.resynced', () => {
       () => opened.bureau.tasks.detail(run.id)?.status === 'completed',
       'finish',
     );
-    await opened.bureau.runDurableMaintenance();
+    await opened.bureau.maintain();
     await waitForCondition(
       async () => (await resyncCount(opened, run.id)) > 0,
       'the maintenance pass did not repair the task',
@@ -296,7 +296,7 @@ describe('task.resynced', () => {
     // Another start finds nothing owed.
     await second.dispose();
     const third = await open(faulty, async () => ({ content: 'unused', toolCalls: [] }));
-    await third.bureau.runDurableMaintenance();
+    await third.bureau.maintain();
     expect(await resyncCount(third, run.id)).toBe(1);
   });
 });
@@ -348,7 +348,7 @@ describe('the repair of a lost end', () => {
       () => opened.bureau.reviews.list().some((review) => review.runId === run.id),
       'the approval never became pending',
     );
-    await opened.bureau.runDurableMaintenance();
+    await opened.bureau.maintain();
     await waitForCondition(async () => (await resyncCount(opened, run.id)) > 0, 'no resync');
 
     const frames = await framesOf(opened, run.id, (seen) => seen.length >= 3);

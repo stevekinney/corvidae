@@ -131,8 +131,7 @@ async function parkedScenario(scope: ScenarioScope): Promise<void> {
 
     const messages: string[] = [];
     bureau = await openBureau(storagePath, workflows, messages);
-    const report = await bureau.waitForRecovery?.();
-    if (report === undefined) throw new Error('waitForRecovery is unavailable');
+    const report = await bureau.recovery();
     expect(report.perRunFailures).toEqual([]);
     expect(report.outcome).toBe('clean');
     // The file for `waiter` is gone, and `sleeper` is the rewritten one.
@@ -217,7 +216,7 @@ async function claimScenario(scope: ScenarioScope): Promise<void> {
 
     const messages: string[] = [];
     bureau = await openBureau(storagePath, workflows, messages);
-    const report = await bureau.waitForRecovery?.();
+    const report = await bureau.recovery();
     expect(report?.perRunFailures).toEqual([]);
     await bureau.tasks.wait('claimed-run');
     const state = await bureau.tasks.workflow('claimed-run');

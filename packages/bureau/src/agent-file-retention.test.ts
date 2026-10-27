@@ -67,16 +67,16 @@ describe('snapshot retention', () => {
 
     // 30 days after the first settled but only 20 after the second.
     at(30 * DAY_MS + 1);
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
     expect(await revisionCount(harness)).toBe(1);
 
     // Still inside the window of the second.
     at(40 * DAY_MS);
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
     expect(await revisionCount(harness)).toBe(1);
 
     at(40 * DAY_MS + 1);
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
     expect(await revisionCount(harness)).toBe(0);
   });
 
@@ -85,7 +85,7 @@ describe('snapshot retention', () => {
     await runTask(harness.bureau, 'researcher', 'one');
     await harness.runtime.deferred.drain();
     harness.at(3650 * DAY_MS);
-    await harness.bureau.runDurableMaintenance();
+    await harness.bureau.maintain();
     expect(await revisionCount(harness)).toBe(1);
   });
 
@@ -102,13 +102,13 @@ describe('snapshot retention', () => {
     // 30 days after the first settled but only 20 after the second: its task goes, the snapshot
     // stays for the second's.
     at(30 * DAY_MS + 1);
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
     await runtime.deferred.drain();
     expect(bureau.tasks.detail(first.id)).toBeUndefined();
     expect(await revisionCount(harness)).toBe(1);
 
     at(40 * DAY_MS + 1);
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
     await runtime.deferred.drain();
     expect(bureau.tasks.detail(second.id)).toBeUndefined();
     expect(await revisionCount(harness)).toBe(0);
@@ -123,7 +123,7 @@ describe('snapshot retention', () => {
     expect(await revisionCount(harness)).toBe(1);
 
     at(30 * DAY_MS + 1);
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
     await runtime.deferred.drain();
     expect(bureau.tasks.detail(created.id)).toBeUndefined();
     expect(await revisionCount(harness)).toBe(0);
@@ -137,17 +137,17 @@ describe('snapshot retention', () => {
     await harness.started;
 
     at(365 * DAY_MS);
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
     expect(await revisionCount(harness)).toBe(1);
 
     gate.resolve('done');
     await running.result();
     await runtime.deferred.drain();
     at(366 * DAY_MS);
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
     expect(await revisionCount(harness)).toBe(1);
     at(366 * DAY_MS + 365 * DAY_MS);
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
     expect(await revisionCount(harness)).toBe(0);
   });
 });

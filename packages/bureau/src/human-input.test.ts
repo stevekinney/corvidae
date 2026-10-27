@@ -1352,7 +1352,7 @@ describe('the first park request in a step is honored and the rest are refused (
       const { honored, refused } = await firstStepOutcomes(started, calls);
       const deadline = Date.parse('2099-01-01T00:00:00.000Z');
       await waitForCondition(async () => {
-        await started.bureau.runDurableMaintenance(deadline);
+        await started.bureau.maintain(deadline);
         return started.requests.length === 1;
       }, 'expected the wakeup to fire and the run to resume');
       const [request] = started.requests;

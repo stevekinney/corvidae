@@ -274,8 +274,8 @@ describe('text deltas that arrive while a stream is still opening', () => {
         const runId = listHeldTasks(bureau)[0]!.id;
         // A delta from before the stream's replay was read reaches its listener
         // while it is still buffering.
-        const subscribe = bureau.subscribeLiveFrames.bind(bureau);
-        bureau.subscribeLiveFrames = (listener) => {
+        const subscribe = bureau.frames.bind(bureau);
+        bureau.frames = (listener) => {
           const stop = subscribe(listener);
           listener({
             type: 'stream:text-delta',
@@ -309,9 +309,9 @@ describe('the answer an onMaximumSteps handler leaves', () => {
       async ({ handler, bureau, generate }) => {
         // A run completes with the handler's text recorded only on its completion event, which
         // is the one frame the stream cannot get that text from anywhere else.
-        let deliver: Parameters<Harness['bureau']['subscribeLiveFrames']>[0] | undefined;
-        const subscribe = bureau.subscribeLiveFrames.bind(bureau);
-        bureau.subscribeLiveFrames = (listener) => {
+        let deliver: Parameters<Harness['bureau']['frames']>[0] | undefined;
+        const subscribe = bureau.frames.bind(bureau);
+        bureau.frames = (listener) => {
           deliver = listener;
           return subscribe(listener);
         };
@@ -371,9 +371,9 @@ describe('the answer an onMaximumSteps handler leaves, for a client that attache
     await withHarness(
       { script: [{ kind: 'block', barrier: 'hold' }, say('Done.')] },
       async ({ handler, bureau, generate }) => {
-        let deliver: Parameters<Harness['bureau']['subscribeLiveFrames']>[0] | undefined;
-        const subscribe = bureau.subscribeLiveFrames.bind(bureau);
-        bureau.subscribeLiveFrames = (listener) => {
+        let deliver: Parameters<Harness['bureau']['frames']>[0] | undefined;
+        const subscribe = bureau.frames.bind(bureau);
+        bureau.frames = (listener) => {
           deliver = listener;
           return subscribe(listener);
         };
@@ -450,8 +450,8 @@ describe('cleanup', () => {
       { script: [say('Hello.')], agUi: { runtime } },
       async ({ handler, bureau }) => {
         let listening = 0;
-        const original = bureau.subscribeLiveFrames.bind(bureau);
-        bureau.subscribeLiveFrames = (listener) => {
+        const original = bureau.frames.bind(bureau);
+        bureau.frames = (listener) => {
           listening += 1;
           const stop = original(listener);
           return () => {

@@ -2816,7 +2816,7 @@ async function buildRuntimeComposition(
     // In the default automatic profile, `startScheduler: true` is REQUIRED too:
     // recover:false decouples *who drives recovery* from *whether timers fire*,
     // and the poller otherwise follows recover. In manual mode the serverless
-    // host drives timers through `Bureau.runDurableMaintenance()`, so Weft
+    // host drives timers through `Bureau.maintain()`, so Weft
     // requires the in-process scheduler to remain stopped.
     durable = await createRunEngine({
       storage: durableStorage,

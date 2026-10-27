@@ -53,7 +53,7 @@ async function boot(agent = answerDone()) {
     diagnostics: createDiagnostics(),
   });
   cleanups.push(() => bureau.dispose());
-  await bureau.waitForRecovery?.();
+  await bureau.recovery();
   return bureau;
 }
 

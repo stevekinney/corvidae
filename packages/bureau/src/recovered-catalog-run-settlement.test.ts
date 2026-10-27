@@ -112,7 +112,7 @@ describe('a recovered file-agent run', () => {
     const { directory, storagePath, runId } = await startRun();
     const release = Promise.withResolvers<void>();
     const second = await open(directory, storagePath, release.promise);
-    await second.bureau.waitForRecovery?.();
+    await second.bureau.recovery();
     const held = await referenceOf(second.bureau, runId);
     expect(held).toBeDefined();
     expect(held?.settledAt).toBeUndefined();
@@ -132,7 +132,7 @@ describe('a recovered file-agent run', () => {
   it('keeps its snapshot reference through maintenance while this process runs it, whatever the engine reports', async () => {
     const { directory, storagePath, runId } = await startRun();
     const second = await open(directory, storagePath);
-    await second.bureau.waitForRecovery?.();
+    await second.bureau.recovery();
     const engine = second.bureau.durableEngine();
     if (engine === undefined) throw new Error('Expected a durable engine.');
     // A recovered task is held by this process's run store, so reconciliation leaves its
@@ -150,7 +150,7 @@ describe('a recovered file-agent run', () => {
 
     for (const status of ['pending', 'running', 'suspended', 'completed']) {
       const spy = reporting(status);
-      await second.bureau.runDurableMaintenance();
+      await second.bureau.maintain();
       spy.mockRestore();
       const held = await referenceOf(second.bureau, runId);
       expect([status, held !== undefined, held?.settledAt]).toEqual([status, true, undefined]);
@@ -160,14 +160,14 @@ describe('a recovered file-agent run', () => {
   it('is not settled by a graceful shutdown that interrupts it: its task, its snapshot reference, and its cancel survive for the next boot', async () => {
     const { directory, storagePath, runId } = await startRun();
     const second = await open(directory, storagePath);
-    await second.bureau.waitForRecovery?.();
+    await second.bureau.recovery();
     expect(await taskStatusOf(second.bureau, runId)).toBe('working');
 
     // A graceful shutdown leaves a task this process recovered, not started, for the next boot.
     await second.bureau.dispose();
 
     const third = await open(directory, storagePath);
-    await third.bureau.waitForRecovery?.();
+    await third.bureau.recovery();
     expect(await durableStatusOf(third.bureau, runId)).toBe('running');
     expect(await taskStatusOf(third.bureau, runId)).toBe('working');
     const held = await referenceOf(third.bureau, runId);
@@ -255,7 +255,7 @@ describe('a recovered child run', () => {
     // The second process recovers the child run the first one is still holding.
     const second = await open(release.promise);
     cleanups.push(() => second.dispose());
-    await second.waitForRecovery?.();
+    await second.recovery();
 
     release.resolve();
 

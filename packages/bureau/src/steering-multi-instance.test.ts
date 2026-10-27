@@ -440,7 +440,7 @@ describe('durable steering across two Bureau processes', () => {
       expect(await stateIn(bureauA, 'k1', 'claude-sonnet-5')).toBe('superseded');
 
       bureauB = await openBureau(path);
-      await bureauB.waitForRecovery?.();
+      await bureauB.recovery();
       expect(await stateIn(bureauB, 'k2', 'claude-opus-4-8')).toBe('applied');
       expect(await stateIn(bureauB, 'k1', 'claude-sonnet-5')).toBe('superseded');
     } finally {
