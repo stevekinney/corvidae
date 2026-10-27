@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { waitForCondition } from '../../test';
+import { createBureau } from '../../create-bureau.ts';
 import { BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
 import { auditQueryOperation } from './audit-operations.ts';
 import {
@@ -311,5 +312,91 @@ describe('filters and paging', () => {
     );
 
     expect(bad.error?.data?.httpStatus).toBe(400);
+  });
+});
+
+describe('bureau.audit.query in process (COR-1705)', () => {
+  it('returns the records the operator reads over the wire, for the same filter', async () => {
+    const { opened } = await seed();
+
+    for (const filter of [{}, { type: 'tool.started' }, { limit: 3 }]) {
+      const wire = await rpc(opened.handler, 'bureau.audit.query', filter, 'operator-key');
+      const inProcess = await opened.bureau.audit.query(filter);
+
+      expect(wire.error).toBeUndefined();
+      expect(inProcess.records.length).toBeGreaterThan(0);
+      expect(wire.result).toEqual(JSON.parse(JSON.stringify(inProcess)));
+    }
+  });
+
+  it('returns the records an owner reads over the wire when it is given that owner', async () => {
+    const { opened, aliceRun } = await seed();
+
+    const wire = await rpc(opened.handler, 'bureau.audit.query', { limit: 2 }, 'alice-key');
+    const inProcess = await opened.bureau.audit.query({ limit: 2 }, { owner: OWNER.alice });
+
+    expect(inProcess.records.length).toBe(2);
+    expect(new Set(inProcess.records.map((record) => record.resource))).toEqual(
+      new Set([aliceRun]),
+    );
+    expect(wire.result).toEqual(JSON.parse(JSON.stringify(inProcess)));
+  });
+
+  it('applies the same redaction as the wire, so no secret or content leaves it either', async () => {
+    const { opened } = await seed();
+
+    const page = await opened.bureau.audit.query({ limit: 100 });
+
+    const serialized = JSON.stringify(page);
+    for (const sentinel of [ARGUMENT, TRANSCRIPT, ANSWER, SECRET, MEMORY]) {
+      expect([sentinel, serialized.includes(sentinel)]).toEqual([sentinel, false]);
+    }
+    expect(page.records.map((record) => record.type)).toEqual(
+      expect.arrayContaining(['credential.rotated', 'memory.write']),
+    );
+  });
+
+  it('hides a record with no owner from an owner, and shows it to the host', async () => {
+    const { opened } = await seed();
+    await opened.bureau.internals.auditTrail?.record({
+      runId: 'run-that-is-gone',
+      type: 'run.completed',
+      detail: { finishReason: 'stop' },
+    });
+
+    const owned = await opened.bureau.audit.query({ limit: 100 }, { owner: OWNER.alice });
+    const host = await opened.bureau.audit.query({ limit: 100 });
+
+    expect(owned.records.map((record) => record.resource)).not.toContain('run-that-is-gone');
+    expect(host.records.map((record) => record.resource)).toContain('run-that-is-gone');
+  });
+
+  it('refuses a cursor it did not issue and a filter outside the operation’s bounds as BAD_REQUEST', async () => {
+    const opened = await openBureau();
+    cleanups.push(() => opened.dispose());
+
+    for (const filter of [
+      { cursor: 'nonsense' },
+      { limit: 0 },
+      { limit: 101 },
+      { since: -1 },
+      { runId: '' },
+      { type: '' },
+    ]) {
+      const refusal = await opened.bureau.audit.query(filter).catch((error: unknown) => error);
+      expect([filter, (refusal as { code?: string }).code]).toEqual([filter, 'BAD_REQUEST']);
+    }
+  });
+});
+
+describe('a Bureau that keeps no audit trail', () => {
+  it('refuses bureau.audit.query as UNSUPPORTED_CAPABILITY', async () => {
+    const bare = await createBureau({ agents: {} });
+    cleanups.push(() => bare.dispose());
+    expect(bare.internals.auditTrail).toBeUndefined();
+
+    const refusal = await bare.audit.query().catch((error: unknown) => error);
+
+    expect((refusal as { code?: string }).code).toBe('UNSUPPORTED_CAPABILITY');
   });
 });
