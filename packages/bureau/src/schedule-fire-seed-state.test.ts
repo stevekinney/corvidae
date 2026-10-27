@@ -37,14 +37,14 @@ describe('a fire’s seed state', () => {
     const review = await reviewOf(bureau, fireId);
     await pollUntil(() => (seeds.has(fireId) ? true : undefined), 'the fire’s seed read');
 
-    await bureau.resolveReview({
+    await bureau.reviews.resolve({
       id: review.id,
       decision: 'approve',
       principal: OWNER.alice,
       payload: 'staging',
     });
     await pollUntil(async () => {
-      const task = await bureau.tasks.get(fireId);
+      const task = await bureau.internals.taskRegistry.get(fireId);
       return task?.status === 'completed' ? true : undefined;
     }, 'the fire to complete');
     await pollUntil(() => (seeds.has(fireId) ? undefined : true), 'the seed read to be dropped');

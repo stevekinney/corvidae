@@ -136,7 +136,7 @@ describe('a run reclaimed while the bureau is still being composed (COR-1509)', 
       () => bureau.getRun(run.id)?.status === 'completed',
       'the reclaimed run never completed',
     );
-    const auditTrail = bureau.auditTrail;
+    const auditTrail = bureau.internals.auditTrail;
     if (auditTrail === undefined) throw new Error('the bureau has no audit trail');
     const steps = await auditTrail.query({ runId: run.id, type: 'step.completed' });
     // The reclaimed run was reattached, so its session reached a terminal status rather than being

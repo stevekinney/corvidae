@@ -135,7 +135,7 @@ import type { Bureau, DiagnosticSink } from './types';
  * `revoked`/`canceled`/`superseded`) already reaches this trail's durable
  * write today, via `create-bureau.ts`'s `recordReviewDecision`/
  * `recordReviewStatusTransition` calling `AuditTrail.record()` directly
- * (the SAME out-of-band path `resolveReview`'s approve/deny always used) —
+ * (the SAME out-of-band path `reviews.resolve`'s approve/deny always used) —
  * this bypasses `AUDIT_EVENT_TYPES` entirely, by design (see
  * {@link AuditTrail.record}'s own doc comment). Those durable writes use
  * `review.<kind>.<status>` (kind-namespaced) type strings, never the bare
@@ -353,7 +353,7 @@ export interface AuditTrail {
   query(options?: AuditQueryOptions): Promise<AuditRecord[]>;
   /**
    * Write an out-of-band record directly into the durable trail, bypassing the
-   * bureau action-stream listener. Used by `resolveReview` (AB-20 review
+   * bureau action-stream listener. Used by `reviews.resolve` (AB-20 review
    * queue) to attribute a human's approve/deny decision to `entry.principal` —
    * a decision made outside any run's step loop, so it never appears on the
    * bureau's `action` event stream. A no-op when no KV store is configured

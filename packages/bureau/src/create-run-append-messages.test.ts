@@ -189,7 +189,7 @@ describe('createRun appendMessages and the task it admits', () => {
 
       const second = await open();
       try {
-        const history = await second.tasks.history(run.id);
+        const history = await second.internals.taskRegistry.history(run.id);
         expect(history?.map((message) => message.text)).toEqual(['plan my trip']);
       } finally {
         await second.dispose();
@@ -283,7 +283,7 @@ describe('Bureau.hasDurableEngine', () => {
       },
     });
     try {
-      expect(plain.hasDurableEngine).toBe(false);
+      expect(plain.internals.hasDurableEngine).toBe(false);
     } finally {
       await plain.dispose();
     }
@@ -300,7 +300,7 @@ describe('Bureau.hasDurableEngine', () => {
       durableOwnership: { ownership: 'none' },
     });
     try {
-      expect(durable.hasDurableEngine).toBe(true);
+      expect(durable.internals.hasDurableEngine).toBe(true);
     } finally {
       await durable.dispose();
       await fixture.dispose();

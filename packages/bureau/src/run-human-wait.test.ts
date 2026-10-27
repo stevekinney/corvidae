@@ -1,7 +1,7 @@
 /**
  * COR-1577 — a durable `bureau.run()` run that calls `requestHumanInput` parks, appears in
- * `listPendingReviews()` as a `human-wait` review addressed by its run id (it has no session),
- * and resumes after `resolveReview`. The engine's own state is the source of truth, so resolution
+ * `reviews.list()` as a `human-wait` review addressed by its run id (it has no session),
+ * and resumes after `reviews.resolve`. The engine's own state is the source of truth, so resolution
  * does not depend on the audit trail, and a review survives a restart with the id it had.
  */
 
@@ -101,8 +101,8 @@ async function start(
 }
 
 async function nextReview(bureau: Bureau<AgentDefinitions>, runId: string): Promise<PendingReview> {
-  await pollUntil(() => bureau.listPendingReviews().some((review) => review.runId === runId));
-  const review = bureau.listPendingReviews().find((candidate) => candidate.runId === runId);
+  await pollUntil(() => bureau.reviews.list().some((review) => review.runId === runId));
+  const review = bureau.reviews.list().find((candidate) => candidate.runId === runId);
   if (review === undefined) throw new Error('Expected a review.');
   return review;
 }
@@ -126,9 +126,9 @@ describe('a bureau.run() park', () => {
     });
     // It has no session: the run id is what addresses it.
     expect(review.sessionId).toBeUndefined();
-    expect(await bureau.getReview(review.id)).toMatchObject({ id: review.id, status: 'pending' });
+    expect(await bureau.reviews.get(review.id)).toMatchObject({ id: review.id, status: 'pending' });
 
-    const resolved = await bureau.resolveReview({
+    const resolved = await bureau.reviews.resolve({
       id: review.id,
       decision: 'approve',
       principal: 'operator',
@@ -139,7 +139,7 @@ describe('a bureau.run() park', () => {
     expect(resolved).toMatchObject({ id: review.id, kind: 'human-wait', decision: 'approve' });
     expect(result.finishReason).not.toBe('error');
     expect(seen.resumed.join('')).toContain('staging');
-    expect(bureau.listPendingReviews()).toEqual([]);
+    expect(bureau.reviews.list()).toEqual([]);
   });
 
   it('delivers the same denial and rejection sentinels a session park does', async () => {
@@ -153,13 +153,13 @@ describe('a bureau.run() park', () => {
     const second = bureau.run('rejecter', 'deploy');
     const firstReview = await nextReview(bureau, first.id);
     const secondReview = await nextReview(bureau, second.id);
-    await bureau.resolveReview({
+    await bureau.reviews.resolve({
       id: firstReview.id,
       decision: 'deny',
       principal: 'operator',
       reason: 'not now',
     });
-    await bureau.resolveReview({
+    await bureau.reviews.resolve({
       id: secondReview.id,
       decision: 'reject',
       principal: 'operator',
@@ -180,22 +180,22 @@ describe('a bureau.run() park', () => {
     const review = await nextReview(bureau, run.id);
 
     const refusal = await rejectionOf(
-      bureau.resolveReview({ id: review.id, decision: 'reject', principal: 'operator' }),
+      bureau.reviews.resolve({ id: review.id, decision: 'reject', principal: 'operator' }),
     );
 
     expect((refusal as BureauError).code).toBe('BAD_REQUEST');
-    expect(bureau.listPendingReviews().map((pending) => pending.id)).toEqual([review.id]);
+    expect(bureau.reviews.list().map((pending) => pending.id)).toEqual([review.id]);
   });
 
   it('answers a second resolve with NOT_FOUND once the first has landed', async () => {
     const bureau = await start({ asker: askingAgent(newSeen()) });
     const run = bureau.run('asker', 'deploy');
     const review = await nextReview(bureau, run.id);
-    await bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'operator' });
+    await bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'operator' });
     await run.result();
 
     const again = await rejectionOf(
-      bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'operator' }),
+      bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'operator' }),
     );
 
     expect((again as BureauError).code).toBe('NOT_FOUND');
@@ -211,7 +211,7 @@ describe('a bureau.run() park', () => {
     await yieldToPortableEventLoop();
 
     const stale = await rejectionOf(
-      bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'operator' }),
+      bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'operator' }),
     );
 
     seen.release();
@@ -230,12 +230,12 @@ describe('a bureau.run() park', () => {
     run.abort();
     await run.result();
     const refusal = await rejectionOf(
-      bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'operator' }),
+      bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'operator' }),
     );
 
     // The settled run has left the index, so the review is gone rather than in conflict.
     expect((refusal as BureauError).code).toBe('NOT_FOUND');
-    expect(bureau.listPendingReviews()).toEqual([]);
+    expect(bureau.reviews.list()).toEqual([]);
   });
 
   it('answers CONFLICT to a resolve after the engine cancelled the run, before the index heard', async () => {
@@ -245,7 +245,7 @@ describe('a bureau.run() park', () => {
 
     await bureau.durableEngine()!.cancel(run.id);
     const refusal = await rejectionOf(
-      bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'operator' }),
+      bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'operator' }),
     );
     await run.result().catch(() => undefined);
 
@@ -260,8 +260,8 @@ describe('a bureau.run() park', () => {
     const review = await nextReview(bureau, run.id);
 
     const outcomes = await Promise.allSettled([
-      bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'one' }),
-      bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'two' }),
+      bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'one' }),
+      bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'two' }),
     ]);
 
     seen.release();
@@ -283,9 +283,9 @@ describe('a bureau.run() park', () => {
     signal.mockRejectedValueOnce(new Error('transport lost'));
 
     const failed = await rejectionOf(
-      bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'operator' }),
+      bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'operator' }),
     );
-    const retried = await bureau.resolveReview({
+    const retried = await bureau.reviews.resolve({
       id: review.id,
       decision: 'approve',
       principal: 'operator',
@@ -322,9 +322,9 @@ describe('a bureau.run() park', () => {
       const run = bureau.run('asker', 'deploy');
       const review = await nextReview(bureau, run.id);
 
-      await bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'operator' });
+      await bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'operator' });
       const again = await rejectionOf(
-        bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'operator' }),
+        bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'operator' }),
       );
 
       seen.release();
@@ -376,7 +376,7 @@ describe('a bureau.run() park', () => {
     const run = bureau.run('refunder', 'refund it', { principal: 'alice' });
     await run.result();
 
-    expect(bureau.listPendingReviews()).toEqual([]);
+    expect(bureau.reviews.list()).toEqual([]);
   });
 });
 
@@ -410,15 +410,13 @@ describe('a second park request in one catalog step is refused (COR-1578)', () =
     expect(review.id).toBe(`human-wait:${run.id}:${review.signalName}:0`);
     // Let any second review that would be listed arrive before counting.
     await yieldToPortableEventLoop();
-    const reviews = bureau.listPendingReviews().filter((candidate) => candidate.runId === run.id);
+    const reviews = bureau.reviews.list().filter((candidate) => candidate.runId === run.id);
     expect(reviews.map((candidate) => candidate.id)).toEqual([review.id]);
 
-    await bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'operator' });
+    await bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'operator' });
     const result = await run.result();
     expect(result.finishReason).not.toBe('error');
-    expect(bureau.listPendingReviews().filter((candidate) => candidate.runId === run.id)).toEqual(
-      [],
-    );
+    expect(bureau.reviews.list().filter((candidate) => candidate.runId === run.id)).toEqual([]);
   });
 });
 
@@ -471,7 +469,7 @@ describe('requestHumanInput on a catalog run', () => {
 
     expect(childSeen.tools[0]).not.toContain('requestHumanInput');
     // The child's own park, if any, never became a review: only the parent's is listed.
-    expect(bureau.listPendingReviews().map((review) => review.runId)).toEqual([parent.id]);
+    expect(bureau.reviews.list().map((review) => review.runId)).toEqual([parent.id]);
   });
 });
 
@@ -505,7 +503,7 @@ describe('requestHumanInput on a goal attempt', () => {
     await pollUntil(() => seen.tools.length > 0);
 
     expect(seen.tools[0]).not.toContain('requestHumanInput');
-    expect(bureau.listPendingReviews()).toEqual([]);
+    expect(bureau.reviews.list()).toEqual([]);
   });
 });
 
@@ -558,16 +556,18 @@ describe('a bureau.run() park after a restart', () => {
     const restarted = await start({ asker: twoParks(newSeen()) }, options);
     const restored = await nextReview(restarted, run.id);
     expect(restored.id).toBe(first.id);
-    await restarted.resolveReview({ id: restored.id, decision: 'approve', principal: 'operator' });
+    await restarted.reviews.resolve({
+      id: restored.id,
+      decision: 'approve',
+      principal: 'operator',
+    });
     await pollUntil(() =>
-      restarted
-        .listPendingReviews()
-        .some((review) => review.id === `human-wait:${run.id}:second:1`),
+      restarted.reviews.list().some((review) => review.id === `human-wait:${run.id}:second:1`),
     );
-    const second = restarted.listPendingReviews().find((review) => review.runId === run.id);
+    const second = restarted.reviews.list().find((review) => review.runId === run.id);
 
     expect(second).toMatchObject({ kind: 'human-wait', signalName: 'second' });
-    await restarted.resolveReview({ id: second!.id, decision: 'approve', principal: 'operator' });
+    await restarted.reviews.resolve({ id: second!.id, decision: 'approve', principal: 'operator' });
     const finished = await restarted.waitForDurableRun(run.id);
     expect(finished?.status).toBe('completed');
   });
@@ -594,7 +594,7 @@ describe('a bureau.run() park after a restart', () => {
     expect(restored.sessionId).toBeUndefined();
     expect(await restarted.getOwner({ kind: 'review', id: restored.id })).toBe('alice');
 
-    await restarted.resolveReview({
+    await restarted.reviews.resolve({
       id: restored.id,
       decision: 'approve',
       principal: 'operator',
@@ -604,7 +604,7 @@ describe('a bureau.run() park after a restart', () => {
 
     expect(finished?.status).toBe('completed');
     expect(after.resumed.join('')).toContain('production');
-    expect(restarted.listPendingReviews()).toEqual([]);
+    expect(restarted.reviews.list()).toEqual([]);
   });
 });
 
@@ -632,7 +632,7 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
       expect(review.id).toBe(`human-wait:${run.id}:${signalName}:0`);
       expect(bytesOf(review.id)).toBeGreaterThan(MAXIMUM_DELIVERY_ID_BYTES);
 
-      const resolved = await bureau.resolveReview({
+      const resolved = await bureau.reviews.resolve({
         id: review.id,
         decision: 'approve',
         principal: 'operator',
@@ -646,7 +646,7 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
       const delivered = signalIdOf(signal.mock.calls[0]);
       expect(bytesOf(delivered)).toBeLessThanOrEqual(MAXIMUM_DELIVERY_ID_BYTES);
       expect(delivered).toBe(humanWaitDeliveryId(review.id));
-      expect(bureau.listPendingReviews()).toEqual([]);
+      expect(bureau.reviews.list()).toEqual([]);
     });
 
     it(`denies a ${label}-named park too`, async () => {
@@ -654,7 +654,7 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
       const run = bureau.run('asker', 'deploy');
       const review = await nextReview(bureau, run.id);
 
-      await bureau.resolveReview({
+      await bureau.reviews.resolve({
         id: review.id,
         decision: 'deny',
         principal: 'operator',
@@ -663,7 +663,7 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
       const result = await run.result();
 
       expect(result.finishReason).not.toBe('error');
-      expect(bureau.listPendingReviews()).toEqual([]);
+      expect(bureau.reviews.list()).toEqual([]);
     });
   }
 
@@ -676,9 +676,9 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
     signal.mockRejectedValueOnce(new Error('transport lost'));
 
     const failed = await rejectionOf(
-      bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'operator' }),
+      bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'operator' }),
     );
-    await bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'operator' });
+    await bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'operator' });
     await run.result();
 
     expect((failed as Error).message).toContain('transport lost');
@@ -715,13 +715,13 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
     const bureau = await start({ asker: twice });
     const run = bureau.run('asker', 'deploy');
     const first = await nextReview(bureau, run.id);
-    await bureau.resolveReview({
+    await bureau.reviews.resolve({
       id: first.id,
       decision: 'approve',
       principal: 'operator',
       payload: { environment: 'first' },
     });
-    await pollUntil(() => bureau.listPendingReviews().some((review) => review.id.endsWith(':1')));
+    await pollUntil(() => bureau.reviews.list().some((review) => review.id.endsWith(':1')));
 
     // The same delivery again, now that the run is parked on the same signal a second time.
     await bureau
@@ -734,12 +734,12 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
       );
     for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
 
-    expect(bureau.listPendingReviews().map((review) => review.id)).toEqual([
+    expect(bureau.reviews.list().map((review) => review.id)).toEqual([
       `human-wait:${run.id}:${names.ascii}:1`,
     ]);
     expect(seen.resumed.join('')).not.toContain('duplicate');
-    const second = bureau.listPendingReviews()[0]!;
-    await bureau.resolveReview({ id: second.id, decision: 'approve', principal: 'operator' });
+    const second = bureau.reviews.list()[0]!;
+    await bureau.reviews.resolve({ id: second.id, decision: 'approve', principal: 'operator' });
     await run.result();
     expect(seen.resumed.join('')).not.toContain('duplicate');
   });
@@ -759,7 +759,7 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
     // COR-1579: the failed attempt keeps its durable claim, so the retry after the restart makes
     // the same decision, payload included, to re-drive it; a different one would be refused.
     await rejectionOf(
-      crashed.resolveReview({
+      crashed.reviews.resolve({
         id: original.id,
         decision: 'approve',
         principal: 'operator',
@@ -771,7 +771,7 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
     const restarted = await start({ asker: askingAgent(after, names.ascii) }, options);
     const restored = await nextReview(restarted, run.id);
     const again = spyOn(restarted.durableEngine()!, 'signal');
-    await restarted.resolveReview({
+    await restarted.reviews.resolve({
       id: restored.id,
       decision: 'approve',
       principal: 'operator',

@@ -71,7 +71,7 @@ async function seed(): Promise<Seeded> {
   });
   for (const run of [alice, bob]) {
     await waitForCondition(async () => {
-      const completed = await opened.bureau.auditTrail?.query({
+      const completed = await opened.bureau.internals.auditTrail?.query({
         runId: run.id,
         type: 'run.completed',
       });
@@ -79,13 +79,13 @@ async function seed(): Promise<Seeded> {
     }, `run ${run.id} never reached its terminal audit record`);
   }
   // Out-of-band records that carry exactly what must never be served.
-  await opened.bureau.auditTrail?.record({
+  await opened.bureau.internals.auditTrail?.record({
     runId: alice.id,
     type: 'credential.rotated',
     detail: { apiKey: SECRET, authorization: `Bearer ${SECRET}` },
     principal: 'system:test',
   });
-  await opened.bureau.auditTrail?.record({
+  await opened.bureau.internals.auditTrail?.record({
     runId: alice.id,
     type: 'memory.write',
     detail: { content: MEMORY },
@@ -152,7 +152,9 @@ describe('what a record carries', () => {
   it('has no secret, transcript, tool argument, or memory content, for the owner or the operator', async () => {
     const { opened } = await seed();
     // The sentinels reach the audit trail itself; the operation is what keeps them out.
-    const stored = JSON.stringify(await opened.bureau.auditTrail?.query({ limit: 10_000 }));
+    const stored = JSON.stringify(
+      await opened.bureau.internals.auditTrail?.query({ limit: 10_000 }),
+    );
     for (const sentinel of [ARGUMENT, ANSWER, SECRET, MEMORY]) {
       expect(stored, sentinel).toContain(sentinel);
     }
@@ -203,7 +205,7 @@ describe('a record about a resource with no owner', () => {
   it('is read only through bureau.audit:read, and is hidden from every other caller', async () => {
     const { opened } = await seed();
     // The run it names is not one this Bureau holds, so the record has no owner to belong to.
-    await opened.bureau.auditTrail?.record({
+    await opened.bureau.internals.auditTrail?.record({
       runId: 'run-that-is-gone',
       type: 'run.completed',
       detail: { finishReason: 'stop' },
@@ -247,7 +249,7 @@ describe('filters and paging', () => {
   it('pages in order across an owner filter that drops rows, losing and repeating none', async () => {
     const opened = await openBureau();
     cleanups.push(() => opened.dispose());
-    const trail = opened.bureau.auditTrail!;
+    const trail = opened.bureau.internals.auditTrail!;
     const alice = await opened.bureau.createSchedule({
       agentName: 'default',
       spec: '1h',

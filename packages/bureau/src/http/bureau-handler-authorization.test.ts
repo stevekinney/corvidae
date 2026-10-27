@@ -297,10 +297,10 @@ async function parkRun(bureau: Bureau, principal: string | undefined, message = 
     ...(principal === undefined ? {} : { principal }),
   });
   await waitForCondition(
-    () => bureau.listPendingReviews().some((review) => review.runId === run.id),
+    () => bureau.reviews.list().some((review) => review.runId === run.id),
     `run ${run.id} never parked`,
   );
-  const review = bureau.listPendingReviews().find((candidate) => candidate.runId === run.id);
+  const review = bureau.reviews.list().find((candidate) => candidate.runId === run.id);
   return { run, reviewId: review!.id };
 }
 
@@ -493,7 +493,7 @@ describe('the reviews owner predicate', () => {
         JSON.stringify(resolveMissing).replaceAll('no-such-review', '<id>'),
       );
       // Bob's review is still pending, and Alice's own are within her reach.
-      expect(bureau.listPendingReviews().map((review) => review.id)).toContain(bob.reviewId);
+      expect(bureau.reviews.list().map((review) => review.id)).toContain(bob.reviewId);
       const own = await call(handler, 'bureau.reviews.get', { id: alice.reviewId }, 'alice-key');
       expect(own.result).toMatchObject({ id: alice.reviewId });
     });
@@ -509,7 +509,7 @@ describe('the reviews owner predicate', () => {
       );
 
       expect(resolved.result).toMatchObject({ id: alice.reviewId, receipt: 'applied' });
-      const entries = await bureau.auditTrail?.query({ runId: alice.run.id });
+      const entries = await bureau.internals.auditTrail?.query({ runId: alice.run.id });
       expect(
         entries
           ?.filter((entry) => entry.type.startsWith('review.'))
@@ -562,7 +562,7 @@ describe('the reviews owner predicate', () => {
 
   it('writes no audit entry for an owner denial', async () => {
     await withTwoOwners(async ({ bureau, handler, bob }) => {
-      const before = (await bureau.auditTrail?.query({})) ?? [];
+      const before = (await bureau.internals.auditTrail?.query({})) ?? [];
 
       await call(handler, 'bureau.reviews.list', {}, 'alice-key');
       await call(handler, 'bureau.reviews.get', { id: bob.reviewId }, 'alice-key');
@@ -577,7 +577,7 @@ describe('the reviews owner predicate', () => {
       );
       expect(events.status).toBe(404);
 
-      const after = (await bureau.auditTrail?.query({})) ?? [];
+      const after = (await bureau.internals.auditTrail?.query({})) ?? [];
       expect(after).toEqual(before);
     });
   });
@@ -732,7 +732,7 @@ describe('the local caller under allow', () => {
 
       expect(resolved.result).toMatchObject({ id: reviewId, receipt: 'applied' });
       expect(await bureau.getOwner({ kind: 'run', id: run.id })).toBe('anonymous:local');
-      const entries = await bureau.auditTrail?.query({ runId: run.id });
+      const entries = await bureau.internals.auditTrail?.query({ runId: run.id });
       expect(
         entries
           ?.filter((entry) => entry.type.startsWith('review.'))
@@ -930,7 +930,7 @@ describe('transcripts stay inside the Bureau', () => {
       const session = await bureau.getSession(alice.run.sessionId);
       expect(JSON.stringify(session?.conversationHistory)).toContain(SENTINEL);
       // Let the run finish, so its feeds hold every kind of event it publishes.
-      await bureau.resolveReview({
+      await bureau.reviews.resolve({
         id: alice.reviewId,
         decision: 'approve',
         principal: 'api-key:alice',
@@ -1156,10 +1156,10 @@ describe('the AG-UI routes owner predicate', () => {
       expect(frames[0]!.event).toMatchObject({ code: 'THREAD_NOT_FOUND' });
       expect(harness.bureau.listRuns()).toHaveLength(runsBefore);
       // The refused start left no trace in the audit trail, whatever the parked runs wrote since.
-      const audit = JSON.stringify(await harness.bureau.auditTrail?.query({}));
+      const audit = JSON.stringify(await harness.bureau.internals.auditTrail?.query({}));
       expect(audit).not.toContain('hijack');
       expect(audit).not.toContain('bob-on-alice');
-      expect(harness.bureau.listPendingReviews()).toHaveLength(2);
+      expect(harness.bureau.reviews.list()).toHaveLength(2);
     });
   });
 
@@ -1346,7 +1346,7 @@ describe('what bureau.tasks:write grants on the AG-UI routes', () => {
       expect(refused).toBe(missing);
       expect(refused).toContain('INTERRUPT_NOT_FOUND');
       expect(charges).toEqual([]);
-      expect(harness.bureau.listPendingReviews()).toHaveLength(1);
+      expect(harness.bureau.reviews.list()).toHaveLength(1);
       expect(harness.bureau.listRuns()).toHaveLength(runsBefore);
     } finally {
       await harness.dispose();
@@ -1382,7 +1382,7 @@ describe('what bureau.tasks:write grants on the AG-UI routes', () => {
       expect(refused).toContain('THREAD_NOT_FOUND');
       expect(harness.bureau.listRuns()).toHaveLength(runsBefore);
       // The refused start left no trace in the audit trail, whatever the parked runs wrote since.
-      const audit = JSON.stringify(await harness.bureau.auditTrail?.query({}));
+      const audit = JSON.stringify(await harness.bureau.internals.auditTrail?.query({}));
       expect(audit).not.toContain('intruder');
       expect(audit).not.toContain('butting in');
     } finally {

@@ -72,7 +72,7 @@ async function settledEventsOf(bureau: Bureau, fireId: string) {
 
 async function settled(bureau: Bureau, fireId: string): Promise<void> {
   await pollUntil(async () => {
-    const view = await bureau.tasks.get(fireId);
+    const view = await bureau.internals.taskRegistry.get(fireId);
     return view?.status === 'completed' ? true : undefined;
   }, 'the fire to settle');
 }
@@ -112,7 +112,7 @@ describe('the boot pass after event retention removed a fire’s settled event',
       current.runtime.setTime(at);
       await current.bureau.runDurableMaintenance(ORIGIN);
       expect(await settledEventsOf(current.bureau, fireId)).toHaveLength(0);
-      const view = await current.bureau.tasks.get(fireId);
+      const view = await current.bureau.internals.taskRegistry.get(fireId);
       expect(view?.status).toBe('completed');
 
       current = await openAt(path, `boot-${round}`, at);
@@ -130,7 +130,7 @@ describe('the boot pass after event retention removed a fire’s settled event',
 
     const events = await settledEventsOf(restart.bureau, fireId);
     expect(events).toHaveLength(1);
-    const record = await restart.bureau.tasks.record(fireId);
+    const record = await restart.bureau.internals.taskRegistry.record(fireId);
     expect(events[0]?.emittedAtMs).toBe(Date.parse(record?.settled?.at ?? ''));
     expect(events[0]?.emittedAtMs).toBeLessThan(twoDaysLater);
     await letGoOfTheDeadAppend(hold);

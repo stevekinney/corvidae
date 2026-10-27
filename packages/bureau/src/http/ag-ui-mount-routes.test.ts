@@ -471,11 +471,11 @@ describe('whether a thread is busy, decided from what the store holds', () => {
       async (harness) => {
         await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
         await settled(harness);
-        const id = harness.bureau.listPendingReviews()[0]!.id;
+        const id = harness.bureau.reviews.list()[0]!.id;
         const restarted = await harness.restart([say('A done.')]);
         const peer = await restarted.peer([say('B done.')]);
         try {
-          await restarted.bureau.resolveReview({
+          await restarted.bureau.reviews.resolve({
             id,
             decision: 'deny',
             principal: 'anonymous:local',
@@ -500,7 +500,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
       async (harness) => {
         await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
         await settled(harness);
-        const id = harness.bureau.listPendingReviews()[0]!.id;
+        const id = harness.bureau.reviews.list()[0]!.id;
         const peer = await harness.peer([say('B done.')]);
         try {
           const denied = await readAgUiStream(
@@ -556,7 +556,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
 
           expect(before[0]!.event).toMatchObject({ code: 'THREAD_BUSY' });
           // The binding expired by the clock Bureau uses, not only by the mount's.
-          expect(peer.bureau.listPendingReviews()).toEqual([]);
+          expect(peer.bureau.reviews.list()).toEqual([]);
           expect(after.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
         } finally {
           await peer.dispose();
@@ -581,7 +581,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
         try {
           await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
           await settled(harness);
-          const approvalId = harness.bureau.listPendingReviews()[0]!.id;
+          const approvalId = harness.bureau.reviews.list()[0]!.id;
           const before = await readAgUiStream(await peer.handler(startWithMessage('run-b')));
           await later.advance(400 * 24 * 60 * 60 * 1000);
           const stale = await peer.bureau.getSession('thread-1');
@@ -637,7 +637,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
       async (harness) => {
         await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
         await settled(harness);
-        const approvalId = harness.bureau.listPendingReviews()[0]!.id;
+        const approvalId = harness.bureau.reviews.list()[0]!.id;
         const gated = await harness.bureau.getSession('thread-1');
         const overrides = gated?.metadata['pendingApprovalOverrides'] as Record<
           string,
@@ -716,7 +716,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
         await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
         await settled(harness);
         // What a crash between the run's end and its session save leaves.
-        const store = harness.bureau.sessionStore!;
+        const store = harness.bureau.internals.sessionStore!;
         await store.update('thread-1', (session) =>
           session === undefined
             ? undefined
@@ -761,7 +761,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
       readonly landed: () => boolean;
       readonly release: () => void;
     } {
-      const store = harness.bureau.sessionStore!;
+      const store = harness.bureau.internals.sessionStore!;
       const update = store.update.bind(store);
       let release: (() => void) | undefined;
       let held = false;
@@ -927,7 +927,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
 describe('a start whose lease cannot be released', () => {
   it('still answers with the run it created, and says so on the console', async () => {
     await withHarness({ script: [say('Done.')], storage: 'sqlite' }, async (harness) => {
-      const kv = harness.bureau.kv!;
+      const kv = harness.bureau.internals.kv!;
       const write = kv.conditionalBatch.bind(kv);
       spyOn(kv, 'conditionalBatch').mockImplementation(async (conditions, operations) => {
         if (

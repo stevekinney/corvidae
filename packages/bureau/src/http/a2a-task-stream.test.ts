@@ -50,7 +50,7 @@ function standIn(
   let closed: ((error: unknown) => void) | undefined;
   let changed: ((view: TaskView) => void) | undefined;
   const bureau: A2AStreamBureau = {
-    getReview: async () => undefined,
+    reviews: { get: async () => undefined },
     eventHistory:
       overrides.eventHistory ??
       (async () => ({ events: [], hasMore: false, nextCursor: undefined })),
@@ -61,18 +61,20 @@ function standIn(
     },
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
-    tasks: {
-      record: async () => undefined,
-      get: async () => {
-        if (overrides.getDelayMs !== undefined) {
-          await new Promise((resolve) => setTimeout(resolve, overrides.getDelayMs));
-        }
-        return overrides.view ?? VIEW;
-      },
-      onSettled: () => () => undefined,
-      onChanged: (_taskId, listener) => {
-        changed = listener;
-        return () => undefined;
+    internals: {
+      taskRegistry: {
+        record: async () => undefined,
+        get: async () => {
+          if (overrides.getDelayMs !== undefined) {
+            await new Promise((resolve) => setTimeout(resolve, overrides.getDelayMs));
+          }
+          return overrides.view ?? VIEW;
+        },
+        onSettled: () => () => undefined,
+        onChanged: (_taskId, listener) => {
+          changed = listener;
+          return () => undefined;
+        },
       },
     },
   };

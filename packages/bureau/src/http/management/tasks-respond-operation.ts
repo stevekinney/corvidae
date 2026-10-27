@@ -4,7 +4,7 @@
  * The input is an A2A continuation's: answer text, an optional `signalName` or
  * `callId` that says which wait, or an approval `decision`, plus a caller-supplied
  * `messageId` that makes the command idempotent. It answers through the Bureau's
- * public `resolveReview` and never reaches into a session, so whatever identity a
+ * public `reviews.resolve` and never reaches into a session, so whatever identity a
  * review has (a session run's, a catalog run's) works through it unchanged.
  *
  * ## Who may answer
@@ -45,7 +45,7 @@ import {
 } from '../../command-ledger.ts';
 import { BureauError } from '../../create-bureau.ts';
 import type { TaskRegistry, TaskView } from '../../task-registry.ts';
-import type { Bureau } from '../../types.ts';
+import type { BureauReviews } from '../../types.ts';
 import { receiptFor, reviewFault, reviewReceiptSchema } from '../bureau-reviews-operations.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
 import {
@@ -140,7 +140,7 @@ export type TasksRespondLedger = CommandLedger<TasksRespondClaim, TasksRespondRe
 /** What the operation reads from the handler's `host`. */
 export type BureauTasksRespondOperationHost = BureauOwnershipHost & {
   readonly tasks: Pick<TaskRegistry, 'get' | 'ownerOf'>;
-  readonly reviews: Pick<Bureau, 'getReview' | 'resolveReview'>;
+  readonly reviews: Pick<BureauReviews, 'get' | 'resolve'>;
   readonly respondLedger: TasksRespondLedger;
   /** Commands in flight in this process, so two identical ones do not race one review. */
   readonly respondInFlight: Map<string, Promise<TasksRespondResult>>;
@@ -244,7 +244,7 @@ async function checkedSubmission(
   input: z.infer<typeof tasksRespondInput>,
 ): Promise<{ readonly value: unknown } | undefined> {
   // A task's view names its waits by identifier only: the schema is on the review.
-  const review = await host.reviews.getReview(reviewId);
+  const review = await host.reviews.get(reviewId);
   const schema = review?.kind === 'human-wait' ? review.inputSchema : undefined;
   if (input.data === undefined) {
     if (schema === undefined) return undefined;
@@ -396,7 +396,7 @@ async function respond({
     // The round the command reads the approval at, recorded with its claim.
     let readRound: number | undefined;
     if (wait?.kind === 'tool-approval') {
-      const read = await host.reviews.getReview(wait.reviewId).catch(() => undefined);
+      const read = await host.reviews.get(wait.reviewId).catch(() => undefined);
       readRound = read?.kind === 'tool-approval' ? read.round : undefined;
     }
     let claimed;
@@ -443,7 +443,7 @@ async function respond({
     if (reviewId === '') return refuse(notAwaiting ?? conflict('The task is not awaiting input'));
     let result: TasksRespondResult;
     try {
-      const review = await host.reviews.getReview(reviewId);
+      const review = await host.reviews.get(reviewId);
       if (review === undefined) return await refuse(resourceNotFound('task', input.taskId));
       const claimedRound = entry.claim.round;
       const currentRound = review.kind === 'tool-approval' ? review.round : undefined;
@@ -483,7 +483,7 @@ async function respond({
       } else if (review.status !== 'pending') {
         return await refuse(conflict('The review was already resolved'));
       } else {
-        const resolved = await host.reviews.resolveReview({
+        const resolved = await host.reviews.resolve({
           id: reviewId,
           decision,
           principal: actor,

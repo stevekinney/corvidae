@@ -179,7 +179,7 @@ export interface BureauQuiescenceReport {
    */
   readonly assetWork: readonly LeakedResource[];
   /**
-   * AB-369: every run `bureau.listAbortingRuns()` still names — `abortRun`
+   * AB-369: every run `bureau.internals.abortingTasks()` still names — `abortRun`
    * requested cancellation for it, but its `activeRun.closed()` has not yet
    * settled. Unlike `incomplete`, a non-empty row here DOES fold into
    * `quiescent` (see below): a regression in `abortRun`'s own
@@ -317,7 +317,7 @@ export async function assertBureauQuiescent<D extends AgentDefinitions = AgentDe
     }));
 
   const pendingWebhookDeliveries: LeakedResource[] = [];
-  const deliveries = (await bureau.webhookNotifier?.listDeliveries()) ?? [];
+  const deliveries = (await bureau.internals.webhookNotifier?.listDeliveries()) ?? [];
   for (const delivery of deliveries) {
     if (delivery.status !== 'pending') continue;
     pendingWebhookDeliveries.push({
@@ -370,7 +370,7 @@ export async function assertBureauQuiescent<D extends AgentDefinitions = AgentDe
   // and report a harness that settled cleanly during shutdown as
   // non-quiescent; reading here reflects the set as it stands at the
   // actual quiescence fence.
-  const abortingRuns: AbortingRun[] = [...bureau.listAbortingRuns()];
+  const abortingRuns: AbortingRun[] = [...bureau.internals.abortingTasks()];
 
   // Read AFTER `shutdown()` returns (AB-322): a bounded call races a
   // still-draining owner's real work via `Promise.race` (`create-bureau.ts`'s
@@ -380,7 +380,7 @@ export async function assertBureauQuiescent<D extends AgentDefinitions = AgentDe
   // each public surface below — see the module doc for why each is (or is
   // not) folded into `leaked`.
   const activeEvaluations: LeakedResource[] = (
-    bureau.onlineEvalSampler?.activeEvaluationSnapshots() ?? []
+    bureau.internals.onlineEvalSampler?.activeEvaluationSnapshots() ?? []
   ).map((snapshot) => ({
     kind: 'queue-item',
     identifier: snapshot.id,

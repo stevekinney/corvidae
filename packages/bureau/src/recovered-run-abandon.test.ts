@@ -1,6 +1,6 @@
 /**
  * COR-1590 — a run Bureau recovers that is abandoned without a terminal event tells whoever waits
- * on its session record that the record will not come (`whenRunRecorded` rejects with
+ * on its session record that the record will not come (`internals.whenTaskRecorded` rejects with
  * `TerminalSessionRecordAbandonedError`), the way a live run that is abandoned does
  * (`http/ag-ui-mount-terminal-snapshot.test.ts`).
  *
@@ -144,7 +144,7 @@ async function recoveredAbandonScenario(scope: ScenarioScope): Promise<void> {
     // No save of the run's end happens here, so nothing will ever record it: the wait says so,
     // while the Bureau is still open and not because it was shut down.
     await scope.phase('recovered step', () => generating.promise);
-    const recorded = bureau.whenRunRecorded(runId).then(
+    const recorded = bureau.internals.whenTaskRecorded(runId).then(
       () => 'resolved',
       (error: unknown) => (error instanceof Error ? error.name : 'rejected'),
     );

@@ -67,7 +67,7 @@ export class RunRemovedEvent extends Event {
 
 /**
  * Fired when an aborted run's teardown has settled: its `activeRun.closed()` resolved and the run
- * left `listAbortingRuns()`. `abortRun` returns before this, and the run's terminal status can
+ * left `internals.abortingTasks()`. `abortRun` returns before this, and the run's terminal status can
  * precede it, so a caller that must know the abort is fully finished (not merely that the run
  * stopped) waits for this rather than for a status.
  */
@@ -269,7 +269,7 @@ export class ReviewRequestedEvent extends ReviewLifecycleEvent {
   }
 }
 
-/** Fired when `resolveReview({ decision: 'approve' })` settles a review (AB-224). */
+/** Fired when `reviews.resolve({ decision: 'approve' })` settles a review (AB-224). */
 export class ReviewApprovedEvent extends ReviewLifecycleEvent {
   static readonly type = 'review.approved' as const;
 
@@ -278,7 +278,7 @@ export class ReviewApprovedEvent extends ReviewLifecycleEvent {
   }
 }
 
-/** Fired when `resolveReview({ decision: 'deny' })` settles a review (AB-224). */
+/** Fired when `reviews.resolve({ decision: 'deny' })` settles a review (AB-224). */
 export class ReviewDeniedEvent extends ReviewLifecycleEvent {
   static readonly type = 'review.denied' as const;
 
@@ -288,7 +288,7 @@ export class ReviewDeniedEvent extends ReviewLifecycleEvent {
 }
 
 /**
- * Fired when `resolveReview({ decision: 'reject' })` settles a review
+ * Fired when `reviews.resolve({ decision: 'reject' })` settles a review
  * (AB-224). Distinct from {@link ReviewDeniedEvent} — `reject` is AB-46's
  * new verb, never dispatched by the plain `deny` path.
  */

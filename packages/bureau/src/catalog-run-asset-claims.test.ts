@@ -279,7 +279,7 @@ async function durableStatusOf(bureau: Bureau, runId: string): Promise<string | 
 }
 
 async function taskStatusOf(bureau: Bureau, runId: string): Promise<string | undefined> {
-  const task = await bureau.tasks.get(runId);
+  const task = await bureau.internals.taskRegistry.get(runId);
   return task?.status;
 }
 
@@ -386,7 +386,7 @@ describe.each([
     const run = bureau.run('viewer', [image], { principal: alice.id });
     await waitForCondition(() => seen.length > 0, 'the run never reached its first step');
 
-    await bureau.tasks.cancel(run.id, 0);
+    await bureau.internals.taskRegistry.cancel(run.id, 0);
 
     await releasedHolders(bureau, assetIdOf(image), run.id);
     parked.open();
@@ -844,7 +844,7 @@ describe('a goal whose session is deleted before the hand-over claims for it', (
         const sessionId = decodeURIComponent(reference.holderId.split(':')[1]!);
         deletedSession = sessionId;
         deletedHolder = reference.holderId.split(':').slice(0, 3).join(':');
-        await bureau.sessionStore!.delete(sessionId);
+        await bureau.internals.sessionStore!.delete(sessionId);
       }
       return retain(...args);
     });

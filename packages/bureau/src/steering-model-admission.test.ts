@@ -170,7 +170,7 @@ describe('admission checks the model against the agent', () => {
     expect(retry).toEqual(first);
     expect(first.outcome === 'rejected' && first.failure.reason).toBe('model-not-allowed');
     const session = await bureau.getSession(run.sessionId);
-    const kv = bureau.kv!;
+    const kv = bureau.internals.kv!;
     const head = await readSteeringLogHead(kv, run.sessionId, session!.incarnation);
     const events = await readSteeringLogEntries(
       kv,
@@ -343,7 +343,7 @@ describe('a steering log written before the provider field existed', () => {
     const run = await startRun(bureau);
     await waitForRunState(bureau, run.id);
     const session = await bureau.getSession(run.sessionId);
-    const kv = bureau.kv!;
+    const kv = bureau.internals.kv!;
     // The record exactly as the previous version wrote it: a bare model string, no provider.
     const legacy = JSON.parse(
       JSON.stringify({

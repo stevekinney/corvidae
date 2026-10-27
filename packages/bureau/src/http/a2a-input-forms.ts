@@ -9,9 +9,9 @@
 
 import type { HumanInputSchema } from '@lostgradient/operative';
 
-import type { AuditRecord } from '../audit-trail.ts';
+import type { AuditRecord, AuditTrail } from '../audit-trail.ts';
 import type { TaskView } from '../task-registry.ts';
-import type { Bureau } from '../types.ts';
+import type { BureauReviews } from '../types.ts';
 
 /** A human wait that asks for structured input: what to ask, and the shape of the answer. */
 export type WaitForm = {
@@ -27,8 +27,14 @@ export type WaitForm = {
   readonly previousReviewId?: string | undefined;
 };
 
+/** The audit trail the forms read the closed waits from; a Bureau without one has none. */
+export type FormsAuditInternals = { readonly auditTrail?: AuditTrail | undefined };
+
 /** The part of a Bureau the forms read: a review, and the audit trail that holds the closed ones. */
-type FormsBureau = Pick<Bureau, 'getReview'> & Partial<Pick<Bureau, 'auditTrail'>>;
+type FormsBureau = {
+  readonly reviews: Pick<BureauReviews, 'get'>;
+  readonly internals?: FormsAuditInternals;
+};
 
 /** The ordinal a human-wait review id ends in; ordinals count the parks of a whole run. */
 function parkOrdinalOf(reviewId: string): number {
@@ -54,7 +60,7 @@ function closedFormWaitId(record: AuditRecord): string | undefined {
  * Empty without a trail.
  */
 async function recordedFormWaitIds(bureau: FormsBureau, runId: string): Promise<string[]> {
-  const records = await bureau.auditTrail
+  const records = await bureau.internals?.auditTrail
     ?.query({
       runId,
       filter: (record) => closedFormWaitId(record) !== undefined,
@@ -109,7 +115,7 @@ export async function formsOf(bureau: FormsBureau, view: TaskView): Promise<Wait
   const forms = await Promise.all(
     view.openWaits.map(async (wait): Promise<WaitForm | undefined> => {
       if (wait.kind !== 'human-wait') return undefined;
-      const review = await bureau.getReview(wait.reviewId).catch(() => undefined);
+      const review = await bureau.reviews.get(wait.reviewId).catch(() => undefined);
       if (review?.kind !== 'human-wait' || review.inputSchema === undefined) return undefined;
       return {
         reviewId: wait.reviewId,

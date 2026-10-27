@@ -111,7 +111,7 @@ async function example(console: Recorder, databasePath: string): Promise<void> {
     principal: 'api-key:alice',
   });
   await waitForCondition(
-    () => bureau.listPendingReviews().some((review) => review.runId === run.id),
+    () => bureau.reviews.list().some((review) => review.runId === run.id),
     'the run did not park on its question',
   );
 

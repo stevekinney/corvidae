@@ -442,7 +442,7 @@ describe('CancelTask', () => {
       );
       const canceled = await call(opened, 'asker', 'CancelTask', { id: working.id });
       await waitForCondition(async () => {
-        const view = await opened.bureau.tasks.get(working.id);
+        const view = await opened.bureau.internals.taskRegistry.get(working.id);
         return view?.status === 'canceled';
       }, 'canceled');
       const again = await call(opened, 'asker', 'CancelTask', { id: working.id });
@@ -489,7 +489,7 @@ describe('continuing a task', () => {
 
       expect(wrongContext.body.error.code).toBe(-32602);
       expect(late.body.error.code).toBe(-32004);
-      const still = await opened.bureau.tasks.get(parked.id);
+      const still = await opened.bureau.internals.taskRegistry.get(parked.id);
       expect(still?.status).toBe('input-required');
     });
   });
@@ -794,7 +794,7 @@ describe('ListTasks page tokens', () => {
       await send(opened, 'asker', { message: message('one') });
       await send(opened, 'asker', { message: message('two') });
       const alice = 'api-key:alice';
-      const native = await opened.bureau.tasks.list({
+      const native = await opened.bureau.internals.taskRegistry.list({
         principal: alice,
         owner: alice,
         agentName: 'asker',
@@ -808,7 +808,7 @@ describe('ListTasks page tokens', () => {
         pageSize: 1,
         pageToken: native.nextPageToken,
       });
-      const a2aTokenToNative = await opened.bureau.tasks
+      const a2aTokenToNative = await opened.bureau.internals.taskRegistry
         .list({
           principal: alice,
           owner: alice,
@@ -1083,7 +1083,7 @@ describe('the second review pass', () => {
       expect(['TASK_STATE_SUBMITTED', 'TASK_STATE_WORKING']).toContain(
         immediate.body.result.task.status.state,
       );
-      await opened.bureau.tasks.cancel(immediate.body.result.task.id, 0);
+      await opened.bureau.internals.taskRegistry.cancel(immediate.body.result.task.id, 0);
       await blocking;
     });
   });

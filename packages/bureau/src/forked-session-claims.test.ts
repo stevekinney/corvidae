@@ -112,7 +112,7 @@ describe('a forked session', () => {
     expect(source!.metadata[SESSION_OWNER_METADATA_KEY]).toBe(alice.id);
 
     const handle = createSessionHandle('original', {
-      store: bureau.sessionStore!,
+      store: bureau.internals.sessionStore!,
       agentName: 'painter',
     });
     const forked = await handle.fork();

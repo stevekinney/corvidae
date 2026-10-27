@@ -42,15 +42,18 @@ async function open(options: { cancelWaitMilliseconds?: number; stopping?: () =>
   });
   const bureau = opened.bureau;
   const stopping = options.stopping ?? (() => false);
-  const tasks: typeof bureau.tasks = {
-    ...bureau.tasks,
+  const tasks: typeof bureau.internals.taskRegistry = {
+    ...bureau.internals.taskRegistry,
     get: async (id) => {
-      const view = await bureau.tasks.get(id);
+      const view = await bureau.internals.taskRegistry.get(id);
       return view === undefined || !stopping() ? view : { ...view, status: 'working' };
     },
   };
   const served = new Proxy(bureau, {
-    get: (target, key, receiver) => (key === 'tasks' ? tasks : Reflect.get(target, key, receiver)),
+    get: (target, key, receiver) =>
+      key === 'internals'
+        ? { ...target.internals, taskRegistry: tasks }
+        : Reflect.get(target, key, receiver),
   });
   const runtime = createDefaultRuntimeServices();
   const host = buildBureauHandlerHost(bureau, ['runner']);
@@ -129,7 +132,7 @@ describe('CancelTask', () => {
       const answered = await fixture.cancel(id);
 
       expect(answered.status?.state).toBe(TaskState.TASK_STATE_WORKING);
-      const view = await fixture.bureau.tasks.get(id);
+      const view = await fixture.bureau.internals.taskRegistry.get(id);
       expect(view?.status).toBe('canceled');
     } finally {
       await fixture.opened.dispose();

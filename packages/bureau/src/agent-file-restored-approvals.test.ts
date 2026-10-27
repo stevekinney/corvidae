@@ -114,9 +114,7 @@ describe('a pending approval restored after a restart', () => {
 
     expect(createModelCatalog().descriptors.length).toBeGreaterThan(0);
     expect(
-      Object.fromEntries(
-        bureau.listPendingReviews().map((review) => [review.runId, review.agentName]),
-      ),
+      Object.fromEntries(bureau.reviews.list().map((review) => [review.runId, review.agentName])),
     ).toEqual({ [olderRunId]: 'alpha-file', [newestRunId]: 'bravo-file' });
   });
 });

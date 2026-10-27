@@ -1,6 +1,6 @@
 import { runWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -91,6 +91,18 @@ function workspaceFixture(files: Record<string, string> = {}): {
     ),
   });
   return { workspaceRoot, packageRoot };
+}
+
+/**
+ * Gives a scratch package the Svelte this workspace has installed. A component the probe compiles
+ * for the server imports `svelte/internal/server`; a scratch package under the system temporary
+ * directory has no `node_modules`, so without this link Bun would auto-install whatever Svelte the
+ * registry calls latest, and the probe would depend on the network and on that release.
+ */
+function linkInstalledSvelte(packageRoot: string): void {
+  const installed = dirname(Bun.resolveSync('svelte/package.json', import.meta.dir));
+  mkdirSync(join(packageRoot, 'node_modules'), { recursive: true });
+  symlinkSync(installed, join(packageRoot, 'node_modules/svelte'), 'dir');
 }
 
 describe('forbiddenImportReason', () => {
@@ -497,6 +509,7 @@ describe('import probe', () => {
   function probe(entrySource: string, extraFiles: Record<string, string> = {}): () => ProbeReport {
     try {
       const { packageRoot } = workspaceFixture({ 'src/index.ts': entrySource, ...extraFiles });
+      linkInstalledSvelte(packageRoot);
       const report = runImportProbe(packageRoot, join(packageRoot, 'src/index.ts'));
       return () => report;
     } catch (error) {

@@ -30,7 +30,7 @@ function harness(options: {
         value: options.value,
       }),
     },
-    getReview: async () => ({ kind: 'tool-approval', round: options.reviewRound ?? 0 }),
+    reviews: { get: async () => ({ kind: 'tool-approval', round: options.reviewRound ?? 0 }) },
   };
   const message = Message.fromJSON({
     messageId: 'm1',

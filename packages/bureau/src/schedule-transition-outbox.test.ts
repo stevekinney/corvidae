@@ -89,7 +89,7 @@ async function transitionKinds(
 }
 
 async function auditTypes(bureau: Bureau<AgentDefinitions>, scheduleId: string): Promise<string[]> {
-  const records = await bureau.auditTrail!.query({ runId: `schedule:${scheduleId}` });
+  const records = await bureau.internals.auditTrail!.query({ runId: `schedule:${scheduleId}` });
   return records.map((record) => record.type).filter((type) => type !== 'schedule.created');
 }
 

@@ -244,7 +244,7 @@ describe('a session deleted while its claims are being taken', () => {
         source: { kind: 'managed-asset' as const, assetId },
       })),
     });
-    await bureau.sessionStore!.save(
+    await bureau.internals.sessionStore!.save(
       createAgentSession({
         id: sessionId,
         agentName: 'echo',
@@ -264,7 +264,7 @@ describe('a session deleted while its claims are being taken', () => {
     spyOn(bureau.assets!, 'retain').mockImplementation(async (...args) => {
       if (!deleted && args[2].holderId.startsWith('session-row:')) {
         deleted = true;
-        await bureau.sessionStore!.delete('session-1');
+        await bureau.internals.sessionStore!.delete('session-1');
       }
       return retain(...args);
     });
@@ -272,7 +272,7 @@ describe('a session deleted while its claims are being taken', () => {
     await saveSession(bureau, 'session-1', assetId);
 
     expect(deleted).toBe(true);
-    expect(await bureau.sessionStore!.load('session-1')).toBeUndefined();
+    expect(await bureau.internals.sessionStore!.load('session-1')).toBeUndefined();
     expect(await holdersOf(bureau, assetId)).toEqual([]);
   });
 
@@ -286,7 +286,7 @@ describe('a session deleted while its claims are being taken', () => {
       if (args[0] === second) throw new Error('retention unavailable');
       if (!deleted && args[2].holderId.startsWith('session-row:')) {
         deleted = true;
-        await bureau.sessionStore!.delete('session-1');
+        await bureau.internals.sessionStore!.delete('session-1');
       }
       return retain(...args);
     });
@@ -316,7 +316,7 @@ describe('a session deleted while its claims are being taken', () => {
     const { assetId: compactedOut } = await admitImage(bureau);
     const { assetId: kept } = await admitImage(bureau);
     await saveSession(bureau, 'session-1', kept);
-    const session = await bureau.sessionStore!.load('session-1');
+    const session = await bureau.internals.sessionStore!.load('session-1');
     // Compaction removed a row the session once held; its claim outlived the row, so no walk of the
     // session's current rows reaches it.
     const gone = `${sessionRowHolderPrefix('session-1', session!.incarnation)}row-gone`;
@@ -339,7 +339,7 @@ describe('a session deleted while its claims are being taken', () => {
 
     await saveSession(bureau, 'session-1', assetId);
 
-    const session = await bureau.sessionStore!.load('session-1');
+    const session = await bureau.internals.sessionStore!.load('session-1');
     expect(await holdersOf(bureau, assetId)).toEqual([
       expect.stringContaining(sessionRowHolderPrefix('session-1', session!.incarnation)),
     ]);
@@ -352,7 +352,7 @@ describe('a session deleted while its claims are being taken', () => {
     expect(await holdersOf(bureau, assetId)).toHaveLength(1);
 
     // A store-level delete releases nothing, as a deletion by another process does not.
-    await bureau.sessionStore!.delete('session-1');
+    await bureau.internals.sessionStore!.delete('session-1');
     expect(await holdersOf(bureau, assetId)).toHaveLength(1);
 
     await bureau.runDurableMaintenance();

@@ -206,7 +206,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
       runId: run.id,
       reason: 'prepared-not-launched',
     });
-    expect(restarted.store.getRun(run.id)).toBeUndefined();
+    expect(restarted.internals.store.getRun(run.id)).toBeUndefined();
     await waitForCondition(
       async () => (await durableStatus(restarted, run.id)) === 'cancelled',
       'the prepared record was never cancelled',
@@ -244,7 +244,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
     await restarted.waitForRecovery!();
     cancel.mockRestore();
 
-    const task = await restarted.tasks.get(run.id);
+    const task = await restarted.internals.taskRegistry.get(run.id);
     expect(task?.status).toBe('canceled');
   });
 
@@ -339,7 +339,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
 
     expect(report.perRunFailures).toContainEqual({ runId, reason: 'prepared-not-launched' });
     expect(await durableStatus(restarted, runId)).toBe('cancelled');
-    const task = await restarted.tasks.get(runId);
+    const task = await restarted.internals.taskRegistry.get(runId);
     expect(task?.status).toBe('canceled');
   });
 

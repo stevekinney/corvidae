@@ -148,8 +148,8 @@ describe('a pending approval restored after a restart', () => {
     });
     cleanups.push(() => bureau.dispose());
     expect(
-      bureau
-        .listPendingReviews()
+      bureau.reviews
+        .list()
         .map((review) => review.runId)
         .toSorted(),
     ).toEqual(['run-newer', 'run-older']);

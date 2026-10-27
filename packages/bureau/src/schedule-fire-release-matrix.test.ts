@@ -118,10 +118,10 @@ async function expectNothingRemains(
 
 const stopped = {
   approved: async ({ bureau, review }: Context) => {
-    await bureau.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
+    await bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice });
   },
   denied: async ({ bureau, review }: Context) => {
-    await bureau.resolveReview({ id: review.id, decision: 'deny', principal: OWNER.alice });
+    await bureau.reviews.resolve({ id: review.id, decision: 'deny', principal: OWNER.alice });
   },
   expired: async ({ bureau }: Context) => {
     expect(await expireReviews(bureau, Date.now() + 60 * 60 * 1000)).toBe(1);
@@ -143,7 +143,7 @@ const stopped = {
     await pollUntil(async () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
       await bureau.runDurableMaintenance(Date.now());
-      return (await bureau.tasks.record(fireId)) === undefined ? true : undefined;
+      return (await bureau.internals.taskRegistry.record(fireId)) === undefined ? true : undefined;
     }, 'the fire’s task to leave retention');
   },
 };
@@ -256,7 +256,7 @@ describe('a fire with several approvals', () => {
       `approval:${fireId}:charge-B`,
     ]);
 
-    await bureau.resolveReview({
+    await bureau.reviews.resolve({
       id: `approval:${fireId}:charge-B`,
       decision: 'approve',
       principal: OWNER.alice,
@@ -478,7 +478,7 @@ describe('a cancel by a peer, with the holder alive', () => {
 
     // No restart: the holder still has the approval in memory, and the engine says canceled.
     const refusal = await rejectionOf(
-      holder.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice }),
+      holder.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice }),
     );
 
     expect((refusal as BureauError).code).toBe('CONFLICT');
@@ -501,7 +501,11 @@ describe('a restart keeps what the engine did not cancel', () => {
       toolbox: approvalToolbox(charges),
     });
     const restored = await reviewOf(restarted, context.fireId);
-    await restarted.resolveReview({ id: restored.id, decision: 'approve', principal: OWNER.alice });
+    await restarted.reviews.resolve({
+      id: restored.id,
+      decision: 'approve',
+      principal: OWNER.alice,
+    });
 
     expect(restored.id).toBe(context.review.id);
     expect(charges).toEqual([4242]);
@@ -544,7 +548,11 @@ describe('a restart keeps what the engine did not cancel', () => {
       toolbox: approvalToolbox(charges),
     });
     const restored = await reviewOf(restarted, fireId);
-    await restarted.resolveReview({ id: restored.id, decision: 'approve', principal: OWNER.alice });
+    await restarted.reviews.resolve({
+      id: restored.id,
+      decision: 'approve',
+      principal: OWNER.alice,
+    });
 
     expect(charges).toEqual([4242]);
   });

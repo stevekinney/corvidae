@@ -44,11 +44,11 @@ describe('a task’s own message history', () => {
       });
       const catalog = bureau.run('worker', 'summarize this', { principal: 'api-key:alice' });
       await waitForCondition(async () => {
-        return (await bureau.tasks.history(catalog.id)) !== undefined;
+        return (await bureau.internals.taskRegistry.history(catalog.id)) !== undefined;
       }, 'the catalog run was never recorded as a task');
 
-      const sessionHistory = await bureau.tasks.history(session.id);
-      const catalogHistory = await bureau.tasks.history(catalog.id);
+      const sessionHistory = await bureau.internals.taskRegistry.history(session.id);
+      const catalogHistory = await bureau.internals.taskRegistry.history(catalog.id);
       expect(sessionHistory?.map((message) => message.text)).toEqual(['plan my trip']);
       expect(catalogHistory?.map((message) => message.text)).toEqual(['summarize this']);
       const [entry] = sessionHistory ?? [];
@@ -57,7 +57,9 @@ describe('a task’s own message history', () => {
         messageId: expect.stringContaining('task-message'),
       });
       // A task has no transcript here: the session body is where that lives.
-      expect(JSON.stringify(await bureau.tasks.get(session.id))).not.toContain('plan my trip');
+      expect(JSON.stringify(await bureau.internals.taskRegistry.get(session.id))).not.toContain(
+        'plan my trip',
+      );
     } finally {
       await bureau.dispose();
     }
@@ -83,16 +85,16 @@ describe('a task’s own message history', () => {
       });
       await waitForCondition(() => first.getRun(run.id)?.status === 'completed', 'finish');
       await waitForCondition(async () => {
-        const task = await first.tasks.get(run.id);
+        const task = await first.internals.taskRegistry.get(run.id);
         return task?.status === 'completed';
       }, 'settled');
       await first.dispose();
 
       const second = await open();
       try {
-        const restored = await second.tasks.history(run.id);
+        const restored = await second.internals.taskRegistry.history(run.id);
         expect(restored?.map((message) => message.text)).toEqual(['before the restart']);
-        expect(await second.tasks.get(run.id)).toMatchObject({
+        expect(await second.internals.taskRegistry.get(run.id)).toMatchObject({
           id: run.id,
           owner: 'api-key:alice',
           status: 'completed',
@@ -127,8 +129,8 @@ describe('a task’s own message history', () => {
 
       await retireSettledTasks(bureau, runtime);
 
-      expect(await bureau.tasks.get(run.id)).toBeUndefined();
-      expect(await bureau.tasks.history(run.id)).toBeUndefined();
+      expect(await bureau.internals.taskRegistry.get(run.id)).toBeUndefined();
+      expect(await bureau.internals.taskRegistry.history(run.id)).toBeUndefined();
     } finally {
       await bureau.dispose();
     }
@@ -155,7 +157,7 @@ describe('a task’s own message history', () => {
         principal: 'api-key:alice',
       });
       await waitForCondition(() => bureau.getRun(run.id)?.status === 'completed', 'finish');
-      await bureau.kv?.set(
+      await bureau.internals.kv?.set(
         `${TASK_RECORD_KEY_PREFIX}${encodeStorageKeyComponent(run.id)}`,
         '{not json',
       );
@@ -196,8 +198,8 @@ describe('a task’s own message history', () => {
 
       const second = await open();
       try {
-        const task = await second.tasks.get(run.id);
-        const repeated = await second.tasks.cancel(run.id, 0);
+        const task = await second.internals.taskRegistry.get(run.id);
+        const repeated = await second.internals.taskRegistry.cancel(run.id, 0);
 
         expect(task).toMatchObject({ status: 'canceled', cleanup: 'cleaned-up' });
         expect(repeated).toEqual({ receipt: 'cleaned-up' });
@@ -256,7 +258,7 @@ describe('a task’s own message history', () => {
       expect(landed.value).toBe(true);
       const second = await open(fixture.configuration);
       try {
-        const task = await second.tasks.get(run.id);
+        const task = await second.internals.taskRegistry.get(run.id);
         expect(task?.status).toBe('completed');
       } finally {
         await second.dispose();
@@ -294,7 +296,7 @@ describe('a task’s own message history', () => {
       const first = await open(true);
       const run = first.run('asker', 'which environment?', { principal: 'api-key:alice' });
       await waitForCondition(
-        () => first.listPendingReviews().some((review) => review.runId === run.id),
+        () => first.reviews.list().some((review) => review.runId === run.id),
         'the run never parked',
       );
       await first.dispose();
@@ -303,7 +305,7 @@ describe('a task’s own message history', () => {
       expect(taskWriteFailures).toEqual([]);
       const second = await open(false);
       try {
-        const record = await second.tasks.record(run.id);
+        const record = await second.internals.taskRegistry.record(run.id);
         expect(record?.cleanup).toBeDefined();
       } finally {
         await second.dispose();

@@ -89,7 +89,7 @@ describe('a fire settled on another Bureau ends the stream this one serves', () 
     const { holder, peer } = await holderAndPeer(generate);
     const { fireId } = await fireOnce(holder, OWNER.alice);
     await pollUntil(async () => {
-      const view = await peer.tasks.get(fireId);
+      const view = await peer.internals.taskRegistry.get(fireId);
       return view?.status === 'completed' ? true : undefined;
     }, 'the fire to settle');
     await pollUntil(async () => {
@@ -98,7 +98,7 @@ describe('a fire settled on another Bureau ends the stream this one serves', () 
     }, 'the settled event');
 
     // A second settlement, as the recovery of a fire whose process died would make.
-    await peer.tasks.recordSettled(fireId, {
+    await peer.internals.taskRegistry.recordSettled(fireId, {
       at: new Date().toISOString(),
       status: 'completed',
       finishReason: null,
@@ -115,7 +115,7 @@ describe('a fire settled on another Bureau ends the stream this one serves', () 
     const { holder, peer } = await holderAndPeer(generate);
     const { fireId } = await fireOnce(holder, OWNER.alice);
     await pollUntil(async () => {
-      const view = await peer.tasks.get(fireId);
+      const view = await peer.internals.taskRegistry.get(fireId);
       return view?.status === 'completed' ? true : undefined;
     }, 'the fire to settle');
 

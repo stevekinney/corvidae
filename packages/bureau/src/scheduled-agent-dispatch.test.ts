@@ -245,7 +245,7 @@ describe('the origin of a session a fire creates (COR-1645)', () => {
     await bureau.runDurableMaintenance(schedule!.nextFireAt!);
     // The fire did run in the chat, and the chat is still a chat.
     await pollUntil(async () => {
-      const chat = await bureau.sessionStore!.load('shared-chat');
+      const chat = await bureau.internals.sessionStore!.load('shared-chat');
       return chat?.metadata['lastScheduledFireRunId'] === undefined ? undefined : true;
     }, 'the fire to run in the chat');
 
@@ -263,7 +263,7 @@ describe('a session or recovered run stored under the implicit "bureau" agent', 
       storage: { type: 'memory' },
     });
     bureaus.push(bureau);
-    await bureau.sessionStore!.save(
+    await bureau.internals.sessionStore!.save(
       createAgentSession({
         id: 'legacy-session',
         agentName: 'bureau',

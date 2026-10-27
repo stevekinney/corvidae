@@ -41,7 +41,10 @@ function open(
 
 async function startTask(bureau: Bureau<AgentDefinitions>): Promise<string> {
   const run = await bureau.createRun({ message: 'hold', agentName: 'worker', principal: OWNER });
-  await waitForCondition(async () => (await bureau.tasks.record(run.id)) !== undefined, 'record');
+  await waitForCondition(
+    async () => (await bureau.internals.taskRegistry.record(run.id)) !== undefined,
+    'record',
+  );
   return run.id;
 }
 
@@ -52,7 +55,7 @@ function surfacesOf(bureau: Bureau<AgentDefinitions>) {
 }
 
 async function createForm(bureau: Bureau<AgentDefinitions>, taskId: string) {
-  const record = await bureau.tasks.record(taskId);
+  const record = await bureau.internals.taskRegistry.record(taskId);
   if (record === undefined) throw new Error('the task has a record');
   return surfacesOf(bureau).create(
     {
@@ -134,7 +137,7 @@ describe('interactive surfaces on a Bureau', () => {
       await createForm(bureau, taskId);
       const evidence = surfacesOf(bureau).closed(taskId);
 
-      await bureau.tasks.cancel(taskId, 0);
+      await bureau.internals.taskRegistry.cancel(taskId, 0);
 
       expect(await evidence).toEqual({ status: 'completed' });
       const receipt = await surfacesOf(bureau).snapshot(
@@ -169,7 +172,7 @@ describe('interactive surfaces on a Bureau', () => {
     try {
       const taskId = await startTask(bureau);
       await createForm(bureau, taskId);
-      await bureau.tasks.cancel(taskId, 0);
+      await bureau.internals.taskRegistry.cancel(taskId, 0);
       await waitForCondition(async () => {
         const run = await bureau.getRun(taskId);
         return run?.status !== 'running';

@@ -69,7 +69,7 @@ describe('a peer answers a fire’s human wait', () => {
       // The peer does not hold the fire, so it does not list the wait, but it can answer it.
       expect(reviewsOf(peer, fireId)).toEqual([]);
 
-      const resolved = await peer.resolveReview({
+      const resolved = await peer.reviews.resolve({
         id: review.id,
         decision: 'approve',
         principal: OWNER.alice,
@@ -133,7 +133,7 @@ describe('a peer closing a fire’s last review ends the stream another instance
     );
     await sleep(100);
 
-    await peer.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
+    await peer.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice });
     const frames = await reading;
 
     expect(frames.map((frame) => (frame.data as { status?: string }).status)).toEqual([

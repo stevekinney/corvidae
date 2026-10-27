@@ -183,7 +183,7 @@ function sessionBodyReads(reads: BodyReads) {
 const newBodyReads = (): BodyReads => ({ mode: 'through', count: 0, rejectAt: undefined });
 
 const approve = (bureau: Bureau, id: string) =>
-  bureau.resolveReview({ id, decision: 'approve', principal: OWNER.alice });
+  bureau.reviews.resolve({ id, decision: 'approve', principal: OWNER.alice });
 
 async function refusalOf(bureau: Bureau, id: string): Promise<BureauError> {
   return (await rejectionOf(approve(bureau, id))) as BureauError;
@@ -255,7 +255,7 @@ describe('a restored fire approval whose snapshot cannot be read', () => {
     expect(refusal.code).toBe('CONFLICT');
     expect(refusal.message).toContain('could not be verified');
     expect(charges).toEqual([]);
-    const denied = await restarted.resolveReview({
+    const denied = await restarted.reviews.resolve({
       id: restored.id,
       decision: 'deny',
       principal: OWNER.alice,
@@ -435,7 +435,7 @@ async function parkedRunWithSkill(catalog: SkillCatalogOnDisk) {
     principal: OWNER.alice,
   });
   const review = await pollUntil(
-    () => first.listPendingReviews().find((candidate) => candidate.runId === run.id),
+    () => first.reviews.list().find((candidate) => candidate.runId === run.id),
     'the session run’s approval',
   );
   await pollForTime(
@@ -460,7 +460,7 @@ describe('a restored session-run approval whose snapshot cannot be read', () => 
       toolbox: chargeApprovalToolbox(charges),
     });
     const restored = await pollUntil(
-      () => restarted.listPendingReviews().find((candidate) => candidate.id === review.id),
+      () => restarted.reviews.list().find((candidate) => candidate.id === review.id),
       'the restored approval',
     );
 
@@ -469,7 +469,7 @@ describe('a restored session-run approval whose snapshot cannot be read', () => 
     expect(refusal.code).toBe('CONFLICT');
     expect(refusal.message).toContain('could not be verified');
     expect(charges).toEqual([]);
-    const denied = await restarted.resolveReview({
+    const denied = await restarted.reviews.resolve({
       id: restored.id,
       decision: 'deny',
       principal: OWNER.alice,
@@ -487,7 +487,7 @@ describe('a restored session-run approval whose snapshot cannot be read', () => 
       toolbox: chargeApprovalToolbox(charges),
     });
     const restored = await pollUntil(
-      () => restarted.listPendingReviews().find((candidate) => candidate.id === review.id),
+      () => restarted.reviews.list().find((candidate) => candidate.id === review.id),
       'the restored approval',
     );
     scheduledFireReviewStateOf(restarted).runToolboxesByRunId.delete(run.id);
@@ -507,10 +507,7 @@ describe('a restored fire approval whose stored skill the catalog now refuses', 
     await catalog.rewrite('Different instructions than the run had.');
     const charges: number[] = [];
     const restarted = await restartFire(catalog, path, charges);
-    const restored = await pollUntil(
-      () => restarted.listPendingReviews()[0],
-      'the restored approval',
-    );
+    const restored = await pollUntil(() => restarted.reviews.list()[0], 'the restored approval');
 
     const refusal = await refusalOf(restarted, restored.id);
 
@@ -655,7 +652,7 @@ describe('a restored session-run approval is decided under the snapshot read at 
       },
     });
     const restored = await pollUntil(
-      () => restarted.listPendingReviews().find((candidate) => candidate.id === parked.review.id),
+      () => restarted.reviews.list().find((candidate) => candidate.id === parked.review.id),
       'the restored approval',
     );
     return { ...parked, restarted, restored };
@@ -707,8 +704,8 @@ describe('a restored session-run approval is decided under the snapshot read at 
     expect(refusal.code).toBe('CONFLICT');
     expect(refusal.message).toContain("the active skills' allowed-tools exclude it");
     expect(charges).toEqual([]);
-    expect(restarted.listPendingReviews().some((review) => review.id === restored.id)).toBe(true);
-    const denied = await restarted.resolveReview({
+    expect(restarted.reviews.list().some((review) => review.id === restored.id)).toBe(true);
+    const denied = await restarted.reviews.resolve({
       id: restored.id,
       decision: 'deny',
       principal: OWNER.alice,
@@ -735,7 +732,7 @@ describe('a restored session-run approval is decided under the snapshot read at 
     const resolved = await approve(restarted, restored.id);
 
     expect(resolved.decision).toBe('approve');
-    expect(restarted.listPendingReviews().some((review) => review.id === restored.id)).toBe(false);
+    expect(restarted.reviews.list().some((review) => review.id === restored.id)).toBe(false);
   });
 
   it('is refused when the snapshot names another run', async () => {

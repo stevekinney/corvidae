@@ -206,7 +206,7 @@ describe('bureau.contexts.steer over a Bureau with a stubbed admission', () => {
         ...host,
         contexts: {
           getSession: opened.bureau.getSession,
-          sessionStore: opened.bureau.sessionStore,
+          internals: { sessionStore: opened.bureau.internals.sessionStore },
           submitSteeringCommand: submit,
         } as never,
       },

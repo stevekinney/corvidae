@@ -5,7 +5,7 @@
  *
  * Bureau settles a run whose tool call needs approval and runs the approved tool
  * out of band, so before this the session kept the `action_required` row for
- * ever and the host had to splice the outcome in by hand. `resolveReview` does
+ * ever and the host had to splice the outcome in by hand. `reviews.resolve` does
  * it now, for every caller: these tests drive it directly, never through an
  * adapter.
  */
@@ -113,7 +113,7 @@ async function parkedBureau(toolbox: Toolbox, diagnostics: string[] = []) {
   });
   const run = await bureau.createRun({ agentName: 'default', message: 'Charge the customer' });
   await settle(bureau, run.id);
-  const [review] = bureau.listPendingReviews();
+  const [review] = bureau.reviews.list();
   if (review === undefined || review.kind !== 'tool-approval') {
     throw new Error('expected one pending tool approval');
   }
@@ -141,7 +141,7 @@ describe('resolveReview writes the outcome of a tool approval into the session',
       const pendingRow = resultRow(await sessionRows(bureau, run.sessionId), 'call-1');
       expect(pendingRow.toolResult?.outcome).toBe('action_required');
 
-      await bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'alice' });
+      await bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'alice' });
 
       const rows = await sessionRows(bureau, run.sessionId);
       const replaced = resultRow(rows, 'call-1');
@@ -160,7 +160,7 @@ describe('resolveReview writes the outcome of a tool approval into the session',
     const charges: number[] = [];
     const { bureau, run, review } = await parkedBureau(approvalToolbox(charges));
     try {
-      await bureau.resolveReview({
+      await bureau.reviews.resolve({
         id: review.id,
         decision: 'deny',
         principal: 'alice',
@@ -179,7 +179,7 @@ describe('resolveReview writes the outcome of a tool approval into the session',
   it('records a denial with no reason as an error result that says it was denied', async () => {
     const { bureau, run, review } = await parkedBureau(approvalToolbox([]));
     try {
-      await bureau.resolveReview({ id: review.id, decision: 'deny', principal: 'alice' });
+      await bureau.reviews.resolve({ id: review.id, decision: 'deny', principal: 'alice' });
 
       const replaced = resultRow(await sessionRows(bureau, run.sessionId), 'call-1');
       expect(replaced.toolResult?.outcome).toBe('error');
@@ -192,7 +192,7 @@ describe('resolveReview writes the outcome of a tool approval into the session',
   it('records a rejection as an error result carrying the reason', async () => {
     const { bureau, run, review } = await parkedBureau(approvalToolbox([]));
     try {
-      const resolved = await bureau.resolveReview({
+      const resolved = await bureau.reviews.resolve({
         id: review.id,
         decision: 'reject',
         principal: 'alice',
@@ -214,7 +214,7 @@ describe('resolveReview writes the outcome of a tool approval into the session',
     try {
       const before = resultRow(await sessionRows(bureau, run.sessionId), 'call-1');
 
-      await bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'alice' });
+      await bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'alice' });
 
       const after = resultRow(await sessionRows(bureau, run.sessionId), 'call-1');
       expect(after).toEqual(before);
@@ -230,18 +230,18 @@ describe('resolveReview writes the outcome of a tool approval into the session',
     try {
       expect(review.round).toBe(0);
 
-      const first = await bureau.resolveReview({
+      const first = await bureau.reviews.resolve({
         id: review.id,
         decision: 'approve',
         principal: 'alice',
       });
-      const afterFirst = bureau.listPendingReviews();
-      const second = await bureau.resolveReview({
+      const afterFirst = bureau.reviews.list();
+      const second = await bureau.reviews.resolve({
         id: review.id,
         decision: 'approve',
         principal: 'alice',
       });
-      const afterSecond = bureau.listPendingReviews();
+      const afterSecond = bureau.reviews.list();
 
       expect(first.superseded).toBe(true);
       expect(second.superseded).toBe(true);
@@ -262,13 +262,13 @@ describe('fencing a resolution on the round the caller read (COR-1659)', () => {
     const { bureau, run, review } = await parkedBureau(regatingToolbox(charges));
     try {
       // The round read was 0; another resolver gets in between and supersedes it.
-      await bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'bob' });
-      const moved = bureau.listPendingReviews();
+      await bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'bob' });
+      const moved = bureau.reviews.list();
       expect(moved[0]).toMatchObject({ id: review.id, kind: 'tool-approval', round: 1 });
       const before = resultRow(await sessionRows(bureau, run.sessionId), 'call-1');
 
-      const error = await bureau
-        .resolveReview({ id: review.id, decision: 'deny', principal: 'alice', round: 0 })
+      const error = await bureau.reviews
+        .resolve({ id: review.id, decision: 'deny', principal: 'alice', round: 0 })
         .then(
           () => undefined,
           (rejection: unknown) => rejection,
@@ -278,30 +278,28 @@ describe('fencing a resolution on the round the caller read (COR-1659)', () => {
       expect((error as BureauError).code).toBe('CONFLICT');
       // Nothing took effect: the review is still pending at its own round, with no decision and no write.
       // Ages move with the clock; everything else about the pending review stays put.
-      const unchanged = bureau
-        .listPendingReviews()
-        .map(({ ageMilliseconds: _age, ...rest }) => rest);
+      const unchanged = bureau.reviews.list().map(({ ageMilliseconds: _age, ...rest }) => rest);
       expect(unchanged).toEqual(moved.map(({ ageMilliseconds: _age, ...rest }) => rest));
       expect(resultRow(await sessionRows(bureau, run.sessionId), 'call-1')).toEqual(before);
-      const reread = await bureau.getReview(review.id);
+      const reread = await bureau.reviews.get(review.id);
       expect(reread?.status).toBe('pending');
       expect(charges).toEqual([]);
 
       // The round the caller then reads decides, and a call naming no round is unfenced as before.
-      const current = await bureau.resolveReview({
+      const current = await bureau.reviews.resolve({
         id: review.id,
         decision: 'approve',
         principal: 'alice',
         round: 1,
       });
       expect(current.superseded).toBe(true);
-      const unfenced = await bureau.resolveReview({
+      const unfenced = await bureau.reviews.resolve({
         id: review.id,
         decision: 'approve',
         principal: 'alice',
       });
       expect(unfenced.superseded).toBe(true);
-      expect(bureau.listPendingReviews()[0]).toMatchObject({ round: 3 });
+      expect(bureau.reviews.list()[0]).toMatchObject({ round: 3 });
     } finally {
       await bureau.dispose();
     }
@@ -311,7 +309,7 @@ describe('fencing a resolution on the round the caller read (COR-1659)', () => {
     const charges: number[] = [];
     const { bureau, review } = await parkedBureau(approvalToolbox(charges));
     try {
-      const resolved = await bureau.resolveReview({
+      const resolved = await bureau.reviews.resolve({
         id: review.id,
         decision: 'approve',
         principal: 'alice',
@@ -328,7 +326,7 @@ describe('fencing a resolution on the round the caller read (COR-1659)', () => {
 describe('when the outcome cannot be written into the session', () => {
   /** Makes every session update that changes the conversation fail; the resolution's own writes pass. */
   function failConversationWrites(bureau: Bureau) {
-    const store = bureau.sessionStore!;
+    const store = bureau.internals.sessionStore!;
     const update = store.update.bind(store);
     return spyOn(store, 'update').mockImplementation((id, updater, options) =>
       update(
@@ -356,8 +354,8 @@ describe('when the outcome cannot be written into the session', () => {
     try {
       const failing = failConversationWrites(bureau);
 
-      const error = await bureau
-        .resolveReview({ id: review.id, decision: 'approve', principal: 'alice' })
+      const error = await bureau.reviews
+        .resolve({ id: review.id, decision: 'approve', principal: 'alice' })
         .then(
           () => undefined,
           (rejection: unknown) => rejection,
@@ -374,7 +372,7 @@ describe('when the outcome cannot be written into the session', () => {
       expect(diagnostics[0]).toContain('disk full');
       // The tool ran and the review is resolved: the failure is about the conversation only.
       expect(charges).toEqual([500]);
-      expect(bureau.listPendingReviews()).toHaveLength(0);
+      expect(bureau.reviews.list()).toHaveLength(0);
       const row = resultRow(await sessionRows(bureau, run.sessionId), 'call-1');
       expect(row.toolResult?.outcome).toBe('action_required');
     } finally {
@@ -418,11 +416,11 @@ describe('an approval resolved while its run is still going', () => {
         principal: 'alice',
       });
       await generate.reached('next-step');
-      await waitForCondition(() => bureau.listPendingReviews().length === 1, 'no review listed');
-      const [review] = bureau.listPendingReviews();
+      await waitForCondition(() => bureau.reviews.list().length === 1, 'no review listed');
+      const [review] = bureau.reviews.list();
 
-      const outcome = await bureau
-        .resolveReview({ id: review!.id, decision: 'approve', principal: 'alice' })
+      const outcome = await bureau.reviews
+        .resolve({ id: review!.id, decision: 'approve', principal: 'alice' })
         .then(
           () => undefined,
           (error: unknown) => error,
@@ -443,7 +441,7 @@ describe('createRun with neither message nor appendMessages', () => {
   it('starts a run from the session an approval resolution left, which the model then sees', async () => {
     const { bureau, run, review, seenByGenerate } = await parkedBureau(approvalToolbox([]));
     try {
-      await bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'alice' });
+      await bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'alice' });
 
       const next = await bureau.createRun({ agentName: 'default', sessionId: run.sessionId });
       await settle(bureau, next.id);

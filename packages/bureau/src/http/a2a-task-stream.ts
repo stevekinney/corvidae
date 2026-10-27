@@ -47,8 +47,13 @@ import { INTERACTIVE_SURFACE_EVENT_KINDS } from '../interactive-surface/store.ts
 import type { InteractiveSurface } from '../interactive-surface/types.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
 import { bearsSettlement } from '../task-resync.ts';
-import type { Bureau } from '../types.ts';
-import { formsOf, type WaitForm, withPreviousForms } from './a2a-input-forms.ts';
+import type { Bureau, BureauReviews } from '../types.ts';
+import {
+  type FormsAuditInternals,
+  formsOf,
+  type WaitForm,
+  withPreviousForms,
+} from './a2a-input-forms.ts';
 import {
   a2aStateOf,
   agentMessage,
@@ -79,13 +84,11 @@ const FOLLOW_POLL_MS = 1_000;
 /** The part of a Bureau a stream reads. */
 export type A2AStreamBureau = Pick<
   Bureau,
-  | 'eventHistory'
-  | 'subscribeEventHistory'
-  | 'addEventListener'
-  | 'removeEventListener'
-  | 'getReview'
-> & {
-  readonly tasks: Pick<TaskRegistry, 'get' | 'record' | 'onSettled' | 'onChanged'>;
+  'eventHistory' | 'subscribeEventHistory' | 'addEventListener' | 'removeEventListener'
+> & { readonly reviews: Pick<BureauReviews, 'get'> } & {
+  readonly internals: FormsAuditInternals & {
+    readonly taskRegistry: Pick<TaskRegistry, 'get' | 'record' | 'onSettled' | 'onChanged'>;
+  };
 };
 
 /** The durable event kinds that change a surface: each one makes a stream re-read its surfaces. */
@@ -402,7 +405,7 @@ async function withOpenWaits(
       openWaits.push(listed);
       continue;
     }
-    const review = await bureau.getReview(reviewId).catch(() => undefined);
+    const review = await bureau.reviews.get(reviewId).catch(() => undefined);
     if (review?.kind === 'human-wait') {
       openWaits.push({ kind: 'human-wait', reviewId, signalName: review.signalName });
     } else if (review?.kind === 'tool-approval') {
@@ -445,7 +448,7 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
     return options.a2ui === true ? withPreviousForms(bureau, view, forms) : forms;
   };
   const requested = requireCursor(options.lastEventId);
-  const initial = await bureau.tasks.get(taskId);
+  const initial = await bureau.internals.taskRegistry.get(taskId);
   if (initial === undefined) return;
   const retained = await readRetained(bureau, taskId, requested);
 
@@ -552,7 +555,7 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
           // history's own mapping, which may still be delivering a surface or a status, goes first,
           // so the end never overtakes it.
           await mapping.catch(() => undefined);
-          const stored = await bureau.tasks.record(taskId);
+          const stored = await bureau.internals.taskRegistry.record(taskId);
           if (stored?.resyncPending === true && !endedByHistory) {
             endedByRegistry = true;
             const reply = view.status === 'completed' ? await options.replyOf(view) : undefined;
@@ -586,7 +589,7 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
             recheck = {
               handle: options.timers.setTimeout(() => {
                 recheck = undefined;
-                void bureau.tasks.get(taskId).then(consider, () => undefined);
+                void bureau.internals.taskRegistry.get(taskId).then(consider, () => undefined);
               }, FOLLOW_POLL_MS),
             };
           }
@@ -602,8 +605,8 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
       wake?.();
     };
     stops.push(
-      bureau.tasks.onChanged(taskId, notified),
-      bureau.tasks.onSettled(taskId, notified),
+      bureau.internals.taskRegistry.onChanged(taskId, notified),
+      bureau.internals.taskRegistry.onSettled(taskId, notified),
       () => {
         watching = false;
         if (recheck !== undefined) options.timers.clearTimeout(recheck.handle);
@@ -611,7 +614,7 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
     );
     for (;;) {
       if (signal?.aborted === true || !watching) return;
-      await consider(await bureau.tasks.get(taskId));
+      await consider(await bureau.internals.taskRegistry.get(taskId));
       // With a history, the registry adds only a run's start; after it, the history follows.
       if (retained !== undefined && lastStatus !== 'submitted') return;
       if (retained === undefined && isTerminal(lastStatus)) return;
@@ -658,7 +661,7 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
       considering = chained(considering, async () => {
         if (!watching || element.status === lastStatus) return;
         lastStatus = element.status;
-        const read = (await bureau.tasks.get(taskId)) ?? initial;
+        const read = (await bureau.internals.taskRegistry.get(taskId)) ?? initial;
         const view =
           element.status === 'input-required' ? await withOpenWaits(bureau, read, openIds) : read;
         const forms = await formsFor(view);
@@ -690,7 +693,7 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
           // A surface event is a trigger, not a payload: the surfaces are re-read as they stand,
           // and each revision above what was sent goes out once, under this event's cursor.
           mapping = chained(mapping, async () => {
-            const view = (await bureau.tasks.get(taskId)) ?? initial;
+            const view = (await bureau.internals.taskRegistry.get(taskId)) ?? initial;
             const frame = await reconciler.reconcile(view, sentState, event.emittedAtMs);
             if (frame !== undefined) queue.push({ event: frame, cursor: event.cursor });
           }).catch((error: unknown) => queue.fail(error));
@@ -712,7 +715,7 @@ export async function* followTask(options: FollowTaskOptions): AsyncGenerator<St
         // Events are mapped one after another, so a slow reply lookup never lets a later event
         // overtake an earlier one.
         mapping = chained(mapping, async () => {
-          const read = (await bureau.tasks.get(taskId)) ?? initial;
+          const read = (await bureau.internals.taskRegistry.get(taskId)) ?? initial;
           // The waits an update names are the events', not the registry read's, which can lag.
           const view =
             status.status === 'input-required' ? await withOpenWaits(bureau, read, openIds) : read;

@@ -152,7 +152,7 @@ async function withCrashedAnswer(
       bureau: opened.bureau,
       completed: () =>
         waitForCondition(async () => {
-          const view = await opened.bureau.tasks.get(parked.id);
+          const view = await opened.bureau.internals.taskRegistry.get(parked.id);
           return view?.status === 'completed';
         }, 'the answered task never completed'),
     });
@@ -207,7 +207,11 @@ describe('a send whose deadline has already passed', () => {
       const again = await run.retry(message);
 
       expect(again.id).toBe(retried.id);
-      const listed = await run.bureau.tasks.enumerate({ agentName: 'asker', limit: 50, offset: 0 });
+      const listed = await run.bureau.internals.taskRegistry.enumerate({
+        agentName: 'asker',
+        limit: 50,
+        offset: 0,
+      });
       const expired = listed.tasks.filter((task) => task.finishReason === 'deadline-exceeded');
       expect(expired.map((task) => task.id)).toEqual([retried.id]);
     });

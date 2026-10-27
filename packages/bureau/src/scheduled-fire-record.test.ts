@@ -62,7 +62,7 @@ describe('the schedule.fired entry (COR-718)', () => {
       durable: false,
     });
     try {
-      const trail = bureau.auditTrail!;
+      const trail = bureau.internals.auditTrail!;
       const fire = fireOf(1);
 
       await Promise.all([recordScheduleFired(trail, fire), recordScheduleFired(trail, fire)]);

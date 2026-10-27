@@ -613,7 +613,7 @@ describe('faults', () => {
     ).toBeGreaterThanOrEqual(1);
     failing = false;
     // The file changed, so the write is in the audit trail even though its apply failed.
-    const audited = await served.bureau.auditTrail?.query({ runId: 'workflow:digest' });
+    const audited = await served.bureau.internals.auditTrail?.query({ runId: 'workflow:digest' });
     expect(audited?.map((entry) => entry.type)).toEqual(['workflow.created', 'workflow.paused']);
     await served.bureau.workflows?.refresh();
     const got = await ownerRpc(served.owner, 'bureau.workflows.get', { id: 'digest' });

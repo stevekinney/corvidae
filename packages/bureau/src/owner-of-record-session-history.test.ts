@@ -320,7 +320,7 @@ describe('the history of a deleted session (COR-718)', () => {
 
       // Hold the first authorization of the subscription on the session load, so Alice's
       // first queued event is still being judged while the id is deleted and recreated.
-      const store = bureau.sessionStore!;
+      const store = bureau.internals.sessionStore!;
       const originalLoad = store.load.bind(store);
       const reached = Promise.withResolvers<void>();
       const release = Promise.withResolvers<void>();
@@ -375,7 +375,7 @@ describe('the history of a deleted session (COR-718)', () => {
       // The deletion commits, and its drain is held before it can claim the entry, so no
       // `session.deleted` event is in the history yet. The incarnation each event was
       // recorded for is what separates the two owners, not a marker between them.
-      const store = bureau.sessionStore!;
+      const store = bureau.internals.sessionStore!;
       const outbox = store.outbox;
       const originalClaim = outbox.claim.bind(outbox);
       const claimReached = Promise.withResolvers<void>();
@@ -463,7 +463,7 @@ describe('the history of a deleted session (COR-718)', () => {
     const { bureau, directory } = await openBureau();
     try {
       await settled(bureau, BOB, 'swapped');
-      const store = bureau.sessionStore!;
+      const store = bureau.internals.sessionStore!;
       const originalLoad = store.load.bind(store);
       const reachedPostLoad = Promise.withResolvers<void>();
       const release = Promise.withResolvers<void>();

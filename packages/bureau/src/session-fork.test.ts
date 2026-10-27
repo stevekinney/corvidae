@@ -134,7 +134,7 @@ async function claimFork(
   commandId: string,
   claim: ForkLedgerClaim,
 ) {
-  const ledger = createForkLedger(bureau.kv, {
+  const ledger = createForkLedger(bureau.internals.kv, {
     clock: { now: () => Date.now(), nowISO: () => new Date().toISOString() },
     identifiers: { next: () => crypto.randomUUID() },
   });
@@ -261,7 +261,7 @@ describe('a parent deleted while it is being branched', () => {
   it('refuses the command as message-not-found, creates nothing, never resurrects the parent, and answers a retry the same way', async () => {
     const bureau = await openBureau();
     const run = await completedSession(bureau);
-    const store = bureau.sessionStore!;
+    const store = bureau.internals.sessionStore!;
     const load = store.load.bind(store);
     let loads = 0;
     // The parent is read once to check the branch point, and once more by the fork itself: the
@@ -322,7 +322,7 @@ describe('a message that is not a branch point', () => {
   it('refuses an assistant step whose run has no task record, as not a branch point', async () => {
     const bureau = await openBureau();
     const run = await completedSession(bureau);
-    await bureau.tasks.remove(run.id);
+    await bureau.internals.taskRegistry.remove(run.id);
 
     expect(await refusalOf(fork(bureau, run.sessionId, finalAssistantOf(run.id)))).toBe(
       'not-a-branch-point',
@@ -341,7 +341,10 @@ describe('a message that is not a branch point', () => {
       content: 'planted',
       id: `${stranger.id}:step:9`,
     } as never);
-    await bureau.sessionStore!.save({ ...session, conversationHistory: conversation.current });
+    await bureau.internals.sessionStore!.save({
+      ...session,
+      conversationHistory: conversation.current,
+    });
 
     expect(await refusalOf(fork(bureau, run.sessionId, `${stranger.id}:step:9`))).toBe(
       'not-a-branch-point',
@@ -429,7 +432,7 @@ describe('a message that is not a branch point', () => {
           : {}),
       } as never);
     }
-    await bureau.sessionStore!.save(
+    await bureau.internals.sessionStore!.save(
       createAgentSession({
         id: 'crafted',
         agentName: 'agent',
@@ -439,7 +442,7 @@ describe('a message that is not a branch point', () => {
       }),
     );
     const saved = (await bureau.getSession('crafted'))!;
-    await bureau.tasks.recordAdmission({
+    await bureau.internals.taskRegistry.recordAdmission({
       taskId: runId,
       contextId: 'crafted',
       incarnation: saved.incarnation,
@@ -447,7 +450,7 @@ describe('a message that is not a branch point', () => {
       owner: ALICE,
       message: 'go',
     });
-    await bureau.tasks.recordSettled(runId, {
+    await bureau.internals.taskRegistry.recordSettled(runId, {
       at: new Date().toISOString(),
       status: 'completed',
       finishReason: 'stop-condition',
@@ -586,7 +589,7 @@ describe('the parent’s model choice', () => {
     await steer(bureau, run.sessionId, OPUS_5);
     // The first attempt claimed the command, naming the contextId, and died.
     const ledger = createCommandLedger({
-      kv: bureau.kv!,
+      kv: bureau.internals.kv!,
       keyPrefix: FORK_LEDGER_KEY_PREFIX,
       clock: { now: () => Date.now(), nowISO: () => new Date().toISOString() },
       nextConflictId: () => crypto.randomUUID(),
@@ -615,7 +618,7 @@ describe('the parent’s model choice', () => {
     const run = await completedSession(bureau);
     await steer(bureau, run.sessionId, OPUS_5);
     const ledger = createCommandLedger({
-      kv: bureau.kv!,
+      kv: bureau.internals.kv!,
       keyPrefix: FORK_LEDGER_KEY_PREFIX,
       clock: { now: () => Date.now(), nowISO: () => new Date().toISOString() },
       nextConflictId: () => crypto.randomUUID(),
@@ -633,7 +636,7 @@ describe('the parent’s model choice', () => {
     // The fork was made, then the process died.
     const { createSessionHandle } = await import('@lostgradient/operative');
     await createSessionHandle(run.sessionId, {
-      store: bureau.sessionStore!,
+      store: bureau.internals.sessionStore!,
       agentName: 'agent',
     }).fork({ throughMessageId: finalAssistantOf(run.id), id: 'planned-fork', owner: ALICE });
     const count = await sessionCount(bureau);

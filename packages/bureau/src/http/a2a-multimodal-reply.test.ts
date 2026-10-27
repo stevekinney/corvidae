@@ -324,7 +324,7 @@ describe('a generated JSON document', () => {
   it('keeps the recorded data part when a later read cannot inspect the asset', async () => {
     await withAgents({ reporter: replying([jsonDocument({ ok: true })]) }, async (opened) => {
       const task = await sendTask(opened, 'reporter');
-      await opened.bureau.tasks.idle();
+      await opened.bureau.internals.taskRegistry.idle();
       const first = await getTask(opened, 'reporter', task.id);
       expect(first.artifacts[0].parts[0].data).toEqual({ ok: true });
       const assets = opened.bureau.assets!;
@@ -381,12 +381,12 @@ describe('a media task nobody read before a restart', () => {
     const id = (body.result?.task ?? body.result).id as string;
     let status: string | undefined;
     await waitForCondition(() => {
-      void opened.bureau.tasks.get(id).then((view) => {
+      void opened.bureau.internals.taskRegistry.get(id).then((view) => {
         status = view?.status;
       });
       return status === 'completed';
     }, 'settled');
-    await opened.bureau.tasks.idle();
+    await opened.bureau.internals.taskRegistry.idle();
     return id;
   }
 
@@ -440,8 +440,9 @@ describe('a media task nobody read before a restart', () => {
     });
     try {
       // This process never records the reply when the task settles; a later read must find it.
-      (opened.bureau.tasks as unknown as { onSettled: () => () => void }).onSettled = () => () =>
-        undefined;
+      (
+        opened.bureau.internals.taskRegistry as unknown as { onSettled: () => () => void }
+      ).onSettled = () => () => undefined;
       const id = await settledWithoutRead(opened, 'writer');
       restarted(opened, { history: true });
 
@@ -518,7 +519,7 @@ describe('the text bound on a reply', () => {
 describe('the settlement fold', () => {
   it('leaves no settled listener behind for a task that has settled', async () => {
     await withAgents({ writer: replying([{ type: 'text', text: 'Done.' }]) }, async (opened) => {
-      const tasks = opened.bureau.tasks as unknown as {
+      const tasks = opened.bureau.internals.taskRegistry as unknown as {
         onSettled: (taskId: string, listener: never) => () => void;
       };
       const original = tasks.onSettled.bind(tasks);
@@ -534,7 +535,7 @@ describe('the settlement fold', () => {
         };
       };
       await sendTask(opened, 'writer');
-      await opened.bureau.tasks.idle();
+      await opened.bureau.internals.taskRegistry.idle();
       expect(held).toBe(0);
     });
   });
@@ -562,7 +563,7 @@ describe('the settlement fold', () => {
       const id = (body.result?.task ?? body.result).id as string;
       await waitForCondition(() => reached, 'the fold reading the asset');
       let drained = false;
-      const idle = opened.bureau.tasks.idle().then(() => {
+      const idle = opened.bureau.internals.taskRegistry.idle().then(() => {
         drained = true;
       });
       await new Promise((resolve) => setTimeout(resolve, 50));

@@ -111,7 +111,7 @@ describe('a code-defined key', () => {
       expect([method, response.error?.data?.httpStatus]).toEqual([method, 404]);
     }
     expect(await readFile(ownerPath(served, 'alpha'), 'utf8')).toBe(before);
-    expect(await served.bureau.auditTrail?.query({ runId: 'agent:alpha' })).toEqual([]);
+    expect(await served.bureau.internals.auditTrail?.query({ runId: 'agent:alpha' })).toEqual([]);
   });
 
   it('answers NotFound to every write on a Bureau with no agent directory', async () => {
