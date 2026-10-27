@@ -927,7 +927,7 @@ describe('deployment isolation', () => {
 describe('transcripts stay inside the Bureau', () => {
   it('returns no session transcript content from any served operation', async () => {
     await withTwoOwners(async ({ bureau, alice }) => {
-      const session = await bureau.getSession(alice.run.sessionId);
+      const session = await bureau.contexts.get(alice.run.sessionId);
       expect(JSON.stringify(session?.conversationHistory)).toContain(SENTINEL);
       // Let the run finish, so its feeds hold every kind of event it publishes.
       await bureau.reviews.resolve({

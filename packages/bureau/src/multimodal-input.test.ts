@@ -286,7 +286,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
       { type: 'text', text: 'look at this' },
       { type: 'image', source },
     ] as const;
-    const admitted = await bureau.submitSessionInput(run.sessionId, {
+    const admitted = await bureau.contexts.input(run.sessionId, {
       id: 'input-a',
       principal: alice.id,
       deliveryMode: 'steer',
@@ -355,7 +355,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
     await stepZeroStarted.promise;
     const { source, bytes } = await admitImage(bureau);
     const payload = [{ type: 'image', source }] as const;
-    const admitted = await bureau.submitSessionInput(run.sessionId, {
+    const admitted = await bureau.contexts.input(run.sessionId, {
       id: 'input-named',
       principal: alice.id,
       deliveryMode: 'steer',
@@ -414,7 +414,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
     await stepZeroStarted.promise;
     const payload: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: 'as submitted' }];
 
-    const pending = bureau.submitSessionInput(run.sessionId, {
+    const pending = bureau.contexts.input(run.sessionId, {
       id: 'input-snapshot',
       principal: alice.id,
       deliveryMode: 'steer',
@@ -464,7 +464,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
     ]) {
       let thrown: unknown;
       try {
-        await bureau.submitSessionInput(run.sessionId, {
+        await bureau.contexts.input(run.sessionId, {
           id: `input-${JSON.stringify(payload).length}`,
           principal: alice.id,
           deliveryMode: 'steer',

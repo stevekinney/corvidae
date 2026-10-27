@@ -192,7 +192,7 @@ describe('D6 scheduled-fire path (#109)', () => {
           });
 
           const persisted = await waitForReal(async () => {
-            const session = await bureauB.getSession(recoveredSessionId);
+            const session = await bureauB.contexts.get(recoveredSessionId);
             if (!session) return false;
             return getMessages(session.conversationHistory).some(
               (message) =>
@@ -202,7 +202,7 @@ describe('D6 scheduled-fire path (#109)', () => {
           }, FIRE_TIMEOUT_MS);
           expect(persisted).toBe(true);
 
-          const session = await bureauB.getSession(recoveredSessionId);
+          const session = await bureauB.contexts.get(recoveredSessionId);
           expect(session).not.toBeNull();
           const messages = getMessages(session!.conversationHistory);
           expect(
@@ -274,7 +274,7 @@ describe('D6 scheduled-fire path (#109)', () => {
 
         // Despite the fire ending on maximum-steps (no final step), its transcript
         // was persisted to the session — the user turn is durably recorded.
-        const session = await bureau.getSession(sessionId);
+        const session = await bureau.contexts.get(sessionId);
         expect(session).not.toBeNull();
         const userTurns = getMessages(session!.conversationHistory).filter(
           (message) => message.role === 'user',

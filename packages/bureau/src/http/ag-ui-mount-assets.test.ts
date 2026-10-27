@@ -130,7 +130,7 @@ describe('a user message carrying a managed asset', () => {
         );
 
         expect(frames.at(-1)?.event.type).toBe(EventType.RUN_FINISHED);
-        const session = await harness.bureau.getSession('thread-1');
+        const session = await harness.bureau.contexts.get('thread-1');
         const row = session!.conversationHistory.messages['user-1']!;
         expect(row.content).toEqual([
           { type: 'text', text: 'What is this?' },
@@ -194,7 +194,7 @@ describe('a user message carrying a managed asset', () => {
         );
         // No run started and nothing was added to the thread.
         expect(harness.generate.callCount).toBe(0);
-        expect(await harness.bureau.getSession('thread-1')).toBeUndefined();
+        expect(await harness.bureau.contexts.get('thread-1')).toBeUndefined();
         // The owner's own use of it still works.
         const own = await readAgUiStream(
           await harness.handler(
@@ -240,7 +240,7 @@ describe('an asset reference and the asset scope', () => {
           expect(text(found)).toBe(`Asset "${assetId}" was not found`);
         }
         expect(harness.generate.callCount).toBe(0);
-        expect(await harness.bureau.getSession('thread-available')).toBeUndefined();
+        expect(await harness.bureau.contexts.get('thread-available')).toBeUndefined();
 
         // The credential that holds the scope starts the run on the same asset.
         const scoped = await readAgUiStream(
@@ -312,7 +312,7 @@ describe('an asset that is not available', () => {
           });
           // Nothing was committed: no run, no thread, no row for a later turn to trip over.
           expect(harness.generate.callCount).toBe(0);
-          expect(await harness.bureau.getSession('thread-1')).toBeUndefined();
+          expect(await harness.bureau.contexts.get('thread-1')).toBeUndefined();
 
           // A later turn on the same thread, with text only, runs.
           const later = await readAgUiStream(

@@ -149,7 +149,7 @@ describe('a schedule fire’s tool approval', () => {
     expect(charges).toEqual([4242]);
 
     // The conversation shows the executed result, not the approval as pending.
-    const session = await bureau.getSession(review.sessionId ?? '');
+    const session = await bureau.contexts.get(review.sessionId ?? '');
     const history = session?.conversationHistory;
     const row = history?.ids
       .map((id) => history.messages[id])
@@ -299,7 +299,7 @@ describe('a schedule fire’s tool approval after a restart', () => {
     expect(before).toEqual([]);
     expect(restarted.reviews.list()).toEqual([]);
     // Decided after the restart, the fire's authority and round leave its session as they do live.
-    const session = await restarted.getSession(restored.sessionId ?? '');
+    const session = await restarted.contexts.get(restored.sessionId ?? '');
     expect(Object.keys(session?.metadata['lastRequestAuthorities'] ?? {})).toEqual([]);
     expect(Object.keys(session?.metadata['pendingApprovalRounds'] ?? {})).toEqual([]);
   });

@@ -1,6 +1,6 @@
 /**
  * `bureau.contexts.fork`: branch a context (a Bureau session) after a completed agent reply, through
- * `Bureau.forkSession` (COR-1560).
+ * `Bureau.contexts.fork` (COR-1560).
  *
  * The new context shares the history through `throughMessageId`, is owned by the caller, records
  * where it came from (`parentContextId` and `forkedFromMessageId`, which `bureau.contexts.list` and
@@ -36,7 +36,7 @@ import { z } from 'zod';
 
 import { BureauError, BureauShuttingDownError } from '../../create-bureau.ts';
 import { SessionForkRefusedError } from '../../session-fork.ts';
-import type { Bureau, BureauInternals } from '../../types.ts';
+import type { BureauContexts, BureauInternals } from '../../types.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
 import { projectSteeringOutcome, steeringOutcomeSchema } from './contexts-steer-operation.ts';
 import {
@@ -47,7 +47,7 @@ import {
 
 /** What `bureau.contexts.fork` reads from the handler's `host`. */
 export type BureauContextsForkOperationHost = BureauOwnershipHost & {
-  readonly contexts: Pick<Bureau, 'getSession' | 'forkSession'> & {
+  readonly contexts: Pick<BureauContexts, 'get' | 'fork'> & {
     readonly internals: Pick<BureauInternals, 'sessionStore'>;
   };
 };
@@ -117,7 +117,7 @@ export const contextsForkOperation = defineOperation<
     // The one session loaded here is the one authorized and the one branched. A fork copies the
     // parent's history to its caller, so another owner's context needs the read scope as well as
     // the write scope: neither implies the other.
-    const session = await host.contexts.getSession(contextId);
+    const session = await host.contexts.get(contextId);
     const mayAct = (operatorScope: 'bureau.contexts:read' | 'bureau.contexts:write') =>
       session !== undefined &&
       host.ownership.mayAccess({
@@ -134,7 +134,7 @@ export const contextsForkOperation = defineOperation<
       throw resourceNotFound('context', contextId);
     }
     try {
-      const result = await host.contexts.forkSession(contextId, {
+      const result = await host.contexts.fork(contextId, {
         owner,
         commandId: input.commandId,
         throughMessageId: input.throughMessageId,

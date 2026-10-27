@@ -37,7 +37,7 @@ type MemberPath<
         }[keyof NonNullable<Type> & string]
       : never;
 
-/** A dotted path to a member of a {@link Bureau}, such as `reviews.resolve` or `listSessions`. */
+/** A dotted path to a member of a {@link Bureau}, such as `reviews.resolve` or `contexts.get`. */
 export type BureauMemberPath = MemberPath<Bureau>;
 
 /** What one served operation delegates to. */
@@ -72,12 +72,12 @@ export const OPERATION_MAP = {
   'bureau.tasks.events': { member: 'eventHistory' },
   'bureau.tasks.respond': { member: 'reviews.resolve' },
 
-  'bureau.contexts.list': { member: 'listSessions' },
-  'bureau.contexts.get': { member: 'getSession' },
-  'bureau.contexts.delete': { member: 'deleteSession' },
-  'bureau.contexts.input': { member: 'submitSessionInput' },
-  'bureau.contexts.steer': { member: 'submitSteeringCommand' },
-  'bureau.contexts.fork': { member: 'forkSession' },
+  'bureau.contexts.list': { member: 'contexts.list' },
+  'bureau.contexts.get': { member: 'contexts.get' },
+  'bureau.contexts.delete': { member: 'contexts.delete' },
+  'bureau.contexts.input': { member: 'contexts.input' },
+  'bureau.contexts.steer': { member: 'contexts.steer' },
+  'bureau.contexts.fork': { member: 'contexts.fork' },
 
   'bureau.reviews.list': { member: 'reviews.list' },
   'bureau.reviews.get': { member: 'reviews.get' },

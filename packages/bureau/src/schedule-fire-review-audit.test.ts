@@ -272,7 +272,7 @@ describe('a fire approval’s session prune commits before its in-memory state i
     expect((refusal as BureauError).code).toBe('NOT_FOUND');
     const state = scheduledFireReviewStateOf(bureau);
     expect(scheduledFireHoldings(state, fireId)).toContain('pendingApprovalOverrides');
-    const session = await bureau.getSession(SESSION);
+    const session = await bureau.contexts.get(SESSION);
     expect(Object.keys((session?.metadata['pendingApprovalOverrides'] as object) ?? {})).toEqual([
       review.id,
     ]);
@@ -284,7 +284,7 @@ describe('a fire approval’s session prune commits before its in-memory state i
       return (await bureau.internals.taskRegistry.record(fireId)) === undefined ? true : undefined;
     }, 'the fire’s task to leave retention');
 
-    const after = await bureau.getSession(SESSION);
+    const after = await bureau.contexts.get(SESSION);
     expect(Object.keys((after?.metadata['pendingApprovalOverrides'] as object) ?? {})).toEqual([]);
     expect(scheduledFireHoldings(state, fireId)).toEqual([]);
     expect(

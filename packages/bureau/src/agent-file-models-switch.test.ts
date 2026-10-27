@@ -96,7 +96,7 @@ const steer = (
   id: string,
   choice: { provider: string; model: string },
 ) =>
-  harness.bureau.submitSteeringCommand(sessionId, {
+  harness.bureau.contexts.steer(sessionId, {
     id,
     principal: 'alice',
     requestedValue: { target: 'model', override: choice.model, provider: choice.provider } as never,
@@ -176,7 +176,7 @@ describe('a file agent with a models list', () => {
     const outcome = await steer(harness, run.sessionId, 'unusable', GPT_4_1);
 
     expect(outcome.outcome === 'rejected' && outcome.failure.reason).toBe('model-not-allowed');
-    const steering = await harness.bureau.getSessionSteering(run.sessionId);
+    const steering = await harness.bureau.contexts.steering(run.sessionId);
     expect(steering?.model).toBeNull();
   });
 });
@@ -205,7 +205,7 @@ describe('an override that can no longer be used', () => {
     // No provider call was made for it, with the override or with the default.
     expect(resolver.calls).toHaveLength(callsBefore);
     // The session still reports the override it was switched to.
-    expect(await harness.bureau.getSessionSteering(first.sessionId)).toMatchObject({
+    expect(await harness.bureau.contexts.steering(first.sessionId)).toMatchObject({
       model: { provider: 'openai', model: 'gpt-4.1' },
     });
   });

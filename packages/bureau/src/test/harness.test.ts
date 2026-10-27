@@ -256,7 +256,7 @@ describe('createBureauTestHarness', () => {
   });
 
   describe('deliverSignal', () => {
-    it('is a thin wrapper over Bureau.signalSession, propagating its NOT_CONFIGURED error without a durable engine', async () => {
+    it('is a thin wrapper over BureauContexts.signal, propagating its NOT_CONFIGURED error without a durable engine', async () => {
       const harness = await harnessWithMemoryStorage();
 
       const summary = await harness.startSession({

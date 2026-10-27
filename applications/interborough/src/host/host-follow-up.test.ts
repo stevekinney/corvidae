@@ -103,7 +103,7 @@ describe('a follow-up sent while a barrier run is waiting', () => {
     const sent = await sendInput(host, 'thread-short', 'follow-up-1');
     barrier.release();
     const stream = await run;
-    const session = await host.bureau.getSession('thread-short');
+    const session = await host.bureau.contexts.get('thread-short');
 
     expect(sent.result?.receipt.state).toBe('accepted');
     expect(stream).toContain(BARRIER_FIRST_REPLY);

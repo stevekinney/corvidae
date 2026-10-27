@@ -109,8 +109,8 @@ describe('a multimodal exchange through A2A and AG-UI', () => {
       expect(received).toHaveLength(2);
       expect(received[0]).toEqual(received[1]);
 
-      const a2a = (await opened.bureau.getSession(task.contextId))!.conversationHistory;
-      const agUi = (await opened.bureau.getSession('contract-thread'))!.conversationHistory;
+      const a2a = (await opened.bureau.contexts.get(task.contextId))!.conversationHistory;
+      const agUi = (await opened.bureau.contexts.get('contract-thread'))!.conversationHistory;
       const rows = (history: typeof a2a) => ({
         user: Object.values(history.messages).find((row) => row.role === 'user')!.content,
         reply: Object.values(history.messages).find((row) => row.role === 'assistant')!.content,

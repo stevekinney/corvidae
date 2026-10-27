@@ -325,7 +325,7 @@ async function expiryDuringRun(open: (generate: GenerateFunction) => Promise<Any
     // run left `running`; this update lands behind it.
     await bureau.internals.sessionStore!.update('shared', (session) => session);
 
-    const session = await bureau.getSession('shared');
+    const session = await bureau.contexts.get('shared');
     expect(session?.incarnation).toBe(bobIncarnation);
     expect(JSON.stringify(session)).not.toContain('ALICE-SECRET');
     expect(await bureau.getOwner({ kind: 'session', id: 'shared' })).toBe(BOB);

@@ -64,7 +64,7 @@ async function recordedResultCode(
   callId: string,
 ): Promise<string | undefined> {
   return pollUntil(async () => {
-    const session = await bureau.getSession(sessionId);
+    const session = await bureau.contexts.get(sessionId);
     if (session === undefined) return undefined;
     return getMessages(session.conversationHistory).find(
       (message) => message.toolResult?.callId === callId,

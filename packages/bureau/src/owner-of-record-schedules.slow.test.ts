@@ -93,7 +93,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       expect(await bureau.getOwner({ kind: 'run', id: fire.runId })).toBe('api-key:alice');
       const sessionId = `sched-${summary!.id}-${fire.runId}`;
       expect(await bureau.getOwner({ kind: 'session', id: sessionId })).toBe('api-key:alice');
-      const session = await bureau.getSession(sessionId);
+      const session = await bureau.contexts.get(sessionId);
       expect(session?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('api-key:alice');
       expect(session?.metadata['lastRunOwningPrincipals']).toEqual({
         [fire.runId]: 'api-key:alice',
@@ -154,7 +154,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
 
       expect(await waitForReal(() => failed.length >= 1)).toBe(true);
       await bureau.schedules.cancel(summary!.id);
-      const session = await bureau.getSession(run.sessionId);
+      const session = await bureau.contexts.get(run.sessionId);
       expect(session?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('api-key:bob');
       expect(JSON.stringify(session?.conversationHistory)).not.toContain('tick');
 
@@ -264,7 +264,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       release.resolve();
 
       expect(await waitForReal(() => failed.length >= 1)).toBe(true);
-      const session = await bureau.getSession('raced-recurring');
+      const session = await bureau.contexts.get('raced-recurring');
       expect(session?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('api-key:bob');
       expect(JSON.stringify(session?.conversationHistory)).not.toContain('racing tick');
       // The failed run says only that the session was not found, never whose it is.

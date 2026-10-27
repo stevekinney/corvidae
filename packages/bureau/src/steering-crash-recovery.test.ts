@@ -150,7 +150,7 @@ const outcomes = {
     const bureau = await openBureau(directory);
     try {
       await bureau.waitForRecovery?.();
-      const differentTarget = await bureau.submitSteeringCommand(sessionId, {
+      const differentTarget = await bureau.contexts.steer(sessionId, {
         id: 'crash-cmd-2',
         principal: 'alice',
         requestedValue: { target: 'provider', override: 'anthropic' },
@@ -170,7 +170,7 @@ const outcomes = {
         message: 'Wait forever',
         principal: 'alice',
       });
-      const elsewhere = await bureau.submitSteeringCommand(other.sessionId, {
+      const elsewhere = await bureau.contexts.steer(other.sessionId, {
         id: 'crash-cmd-2',
         principal: 'alice',
         requestedValue: { target: 'model', override: 'claude-sonnet-5' },
@@ -202,7 +202,7 @@ const outcomes = {
     const bureau = await openBureau(directory);
     try {
       await bureau.waitForRecovery?.();
-      const again = await bureau.submitSteeringCommand(first.sessionId, {
+      const again = await bureau.contexts.steer(first.sessionId, {
         id: 'after-two-restarts',
         principal: 'alice',
         requestedValue: { target: 'model', override: 'claude-sonnet-5' },
@@ -210,7 +210,7 @@ const outcomes = {
       if (again.outcome !== 'accepted') throw new Error(`expected accepted, got ${again.outcome}`);
       expect(again.command.configVersion).toBe(2);
 
-      const next = await bureau.submitSteeringCommand(first.sessionId, {
+      const next = await bureau.contexts.steer(first.sessionId, {
         id: 'next-coordinate',
         principal: 'alice',
         requestedValue: { target: 'provider', override: 'anthropic' },
@@ -220,7 +220,7 @@ const outcomes = {
 
       // `opus` was superseded by `model` in the first process; folding
       // the log reproduces that state.
-      const superseded = await bureau.submitSteeringCommand(first.sessionId, {
+      const superseded = await bureau.contexts.steer(first.sessionId, {
         id: 'crash-cmd-3',
         principal: 'alice',
         requestedValue: { target: 'model', override: 'claude-opus-4-8' },
@@ -281,7 +281,7 @@ const outcomes = {
         principal: 'alice',
         sessionId,
       });
-      const outcome = await reader.submitSteeringCommand(sessionId, {
+      const outcome = await reader.contexts.steer(sessionId, {
         id: 'crash-cmd-2',
         principal: 'alice',
         requestedValue: { target: 'model', override: 'claude-sonnet-5' },

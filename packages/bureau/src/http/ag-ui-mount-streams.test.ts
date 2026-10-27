@@ -394,8 +394,8 @@ describe('the answer an onMaximumSteps handler leaves, for a client that attache
             ? detail
             : { ...detail, transcript: appendMessages(detail.transcript, tailRow) };
         };
-        const getSession = bureau.getSession.bind(bureau);
-        bureau.getSession = async (sessionId) => {
+        const getSession = bureau.contexts.get.bind(bureau);
+        bureau.contexts.get = async (sessionId) => {
           const session = await getSession(sessionId);
           return session === undefined
             ? session

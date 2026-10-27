@@ -83,13 +83,13 @@ describe('a queued input’s expiresAt', () => {
       });
       await stepZeroStarted.promise;
       const expiresAt = new Date(runtime.clock.now() + 1_000).toISOString();
-      await bureau.submitSessionInput(run.sessionId, {
+      await bureau.contexts.input(run.sessionId, {
         ...queued,
         id: 'input-late',
         payload: 'late',
         expiresAt,
       });
-      await bureau.submitSessionInput(run.sessionId, {
+      await bureau.contexts.input(run.sessionId, {
         ...queued,
         id: 'input-open',
         payload: 'no deadline',
@@ -100,7 +100,7 @@ describe('a queued input’s expiresAt', () => {
       await stepOneStarted.promise;
 
       expect(prompts[1]).toEqual(['Start', 'no deadline']);
-      const replay = await bureau.submitSessionInput(run.sessionId, {
+      const replay = await bureau.contexts.input(run.sessionId, {
         ...queued,
         id: 'input-late',
         payload: 'late',
@@ -137,7 +137,7 @@ describe('a queued input’s expiresAt', () => {
         principal: 'alice',
       });
       await stepZeroStarted.promise;
-      const session = await bureau.getSession(run.sessionId);
+      const session = await bureau.contexts.get(run.sessionId);
       const incarnation = session?.incarnation ?? '';
       const mailbox = createSessionInputMailbox(storage, run.sessionId, incarnation, 100, () =>
         runtime.clock.now(),
@@ -203,7 +203,7 @@ describe('a queued input’s expiresAt', () => {
         principal: 'alice',
       });
       await stepZeroStarted.promise;
-      await bureau.submitSessionInput(run.sessionId, {
+      await bureau.contexts.input(run.sessionId, {
         ...queued,
         id: 'input-past',
         payload: 'past',
@@ -245,7 +245,7 @@ describe('a queued input’s expiresAt', () => {
           new Date(runtime.clock.now() + year + 1).toISOString(),
           '9999-12-31T23:59:59.999Z',
         ].map((expiresAt, index) =>
-          bureau.submitSessionInput(run.sessionId, {
+          bureau.contexts.input(run.sessionId, {
             ...queued,
             id: `input-far-${index}`,
             payload: `far ${index}`,
@@ -285,8 +285,8 @@ describe('a queued input’s expiresAt', () => {
       });
       await stepZeroStarted.promise;
 
-      const refusal = await bureau
-        .submitSessionInput(run.sessionId, {
+      const refusal = await bureau.contexts
+        .input(run.sessionId, {
           ...queued,
           id: 'input-bad',
           payload: 'bad',

@@ -236,7 +236,7 @@ describe('a session run of a file agent', () => {
     const hash = bureau.agents
       .list()
       .find((listing) => listing.id === 'researcher')?.definitionHash;
-    const session = await bureau.getSession(created.sessionId);
+    const session = await bureau.contexts.get(created.sessionId);
     expect(session?.metadata['lastAgentDefinitionHash']).toBe(hash);
     expect(session?.agentName).toBe('researcher');
     const revisions = await bureau.agents.revisions('researcher');
@@ -277,7 +277,7 @@ describe('a session run of a file agent', () => {
     );
     expect(refusal).toBeInstanceOf(BureauError);
     expect((refusal as BureauError).code).toBe('NOT_FOUND');
-    expect(await bureau.listSessions()).toEqual([]);
+    expect(await bureau.contexts.list()).toEqual([]);
   });
 });
 

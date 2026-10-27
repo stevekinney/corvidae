@@ -73,7 +73,7 @@ async function submit(
   id: string,
   payload: string,
 ): Promise<string> {
-  const outcome = await bureau.submitSessionInput(sessionId, {
+  const outcome = await bureau.contexts.input(sessionId, {
     id,
     principal: 'alice',
     deliveryMode: 'steer',
@@ -125,7 +125,7 @@ if (mode === 'running') {
     process.stderr.write(`child: expected both inputs admitted, got ${outcomes.join(',')}\n`);
     process.exit(4);
   }
-  const session = await bureau.getSession(run.sessionId);
+  const session = await bureau.contexts.get(run.sessionId);
   killNow(run.sessionId, session?.incarnation ?? '', run.id);
 }
 
@@ -154,7 +154,7 @@ const run = await bureau.createRun({
   maximumSteps: 1,
 });
 await heldTerminalSave.reached;
-const endedSession = await bureau.getSession(run.sessionId);
+const endedSession = await bureau.contexts.get(run.sessionId);
 void seam
   .awaitWriteCommitted(admitsSessionInput)
   .then(() => killNow(run.sessionId, endedSession?.incarnation ?? '', run.id));

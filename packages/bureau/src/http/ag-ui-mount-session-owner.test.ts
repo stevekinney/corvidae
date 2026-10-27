@@ -100,7 +100,7 @@ async function withScene<T>(body: (scene: Scene) => Promise<T>): Promise<T> {
       'alice-message',
     );
     const bob = await startParked(harness, 'bob-key', BOB_THREAD, 'bob-run', BOB_MESSAGE);
-    const bobSession = await harness.bureau.getSession(BOB_THREAD);
+    const bobSession = await harness.bureau.contexts.get(BOB_THREAD);
     const bobRun = harness.bureau.getRun(bob.runId);
     if (bobSession === undefined || bobRun === undefined) throw new Error('bob has no session');
     const bobLiveRun: RunSummary = { ...bobRun, sessionId: ALICE_THREAD, status: 'running' };
@@ -125,7 +125,7 @@ describe('a thread whose session is another owner’s than the one authorized', 
     await withScene(async (scene) => {
       const handler = aliceHandlerOver({
         ...scene.harness.bureau,
-        getSession: async () => scene.bobSession,
+        contexts: { ...scene.harness.bureau.contexts, get: async () => scene.bobSession },
         listRuns: () => [scene.bobLiveRun],
       });
 
@@ -149,7 +149,7 @@ describe('a thread whose session is another owner’s than the one authorized', 
     await withScene(async (scene) => {
       const handler = aliceHandlerOver({
         ...scene.harness.bureau,
-        getSession: async () => scene.bobSession,
+        contexts: { ...scene.harness.bureau.contexts, get: async () => scene.bobSession },
         listRuns: () => [scene.bobLiveRun],
       });
 
@@ -168,7 +168,7 @@ describe('a thread whose session is another owner’s than the one authorized', 
       const runtime = createDefaultRuntimeServices();
       const handler = aliceHandlerOver({
         ...scene.harness.bureau,
-        getSession: async () => scene.bobSession,
+        contexts: { ...scene.harness.bureau.contexts, get: async () => scene.bobSession },
         listRuns: () => [scene.bobLiveRun],
       });
       // Another start holds the thread: a caller who may not use the thread must not learn that.
@@ -198,7 +198,10 @@ describe('a thread whose session is another owner’s than the one authorized', 
       let reads = 0;
       const handler = aliceHandlerOver({
         ...scene.harness.bureau,
-        getSession: async () => (reads++ === 0 ? undefined : scene.bobSession),
+        contexts: {
+          ...scene.harness.bureau.contexts,
+          get: async () => (reads++ === 0 ? undefined : scene.bobSession),
+        },
         listRuns: () => [scene.bobLiveRun],
       });
 
@@ -219,7 +222,7 @@ describe('a thread whose session is another owner’s than the one authorized', 
     await withScene(async (scene) => {
       const handler = aliceHandlerOver({
         ...scene.harness.bureau,
-        getSession: async () => scene.bobSession,
+        contexts: { ...scene.harness.bureau.contexts, get: async () => scene.bobSession },
         listRuns: () => [scene.bobLiveRun],
       });
 
@@ -262,8 +265,11 @@ describe('a run stream over a session or run that is another owner’s than the 
         ...scene.harness.bureau,
         internals: { ...scene.harness.bureau.internals, whenTaskRecorded: async () => undefined },
         getRun: () => undefined,
-        getSession: async () => scene.bobSession,
-        sessionInputsDeliveredBy: async () => [BOB_MESSAGE],
+        contexts: {
+          ...scene.harness.bureau.contexts,
+          get: async () => scene.bobSession,
+          inputsDeliveredBy: async () => [BOB_MESSAGE],
+        },
       };
 
       const response = openRunStream(environmentFor(bureau), {

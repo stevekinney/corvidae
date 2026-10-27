@@ -50,10 +50,13 @@ describe('a continuation’s admission', () => {
       });
       const submitted: Array<{ readonly incarnation?: string | undefined }> = [];
       const spying = Object.create(opened.bureau, {
-        submitSessionInput: {
-          value: (sessionId: string, request: { incarnation?: string }) => {
-            submitted.push(request);
-            return opened.bureau.submitSessionInput(sessionId, request as never);
+        contexts: {
+          value: {
+            ...opened.bureau.contexts,
+            input: (sessionId: string, request: { incarnation?: string }) => {
+              submitted.push(request);
+              return opened.bureau.contexts.input(sessionId, request as never);
+            },
           },
         },
       });
@@ -62,7 +65,7 @@ describe('a continuation’s admission', () => {
         publish: ['asker'],
         publicUrl: 'http://localhost',
       });
-      const session = await opened.bureau.getSession(started.contextId);
+      const session = await opened.bureau.contexts.get(started.contextId);
 
       const response = await handler(
         new Request('http://localhost/a2a/asker', {
@@ -151,10 +154,13 @@ describe('two continuations that name the same revision', () => {
     await withA2A({ asker: run.generate }, async (opened) => {
       const submitted: string[] = [];
       const spying = Object.create(opened.bureau, {
-        submitSessionInput: {
-          value: (sessionId: string, request: { id: string }) => {
-            submitted.push(request.id);
-            return opened.bureau.submitSessionInput(sessionId, request as never);
+        contexts: {
+          value: {
+            ...opened.bureau.contexts,
+            input: (sessionId: string, request: { id: string }) => {
+              submitted.push(request.id);
+              return opened.bureau.contexts.input(sessionId, request as never);
+            },
           },
         },
       });
@@ -214,11 +220,14 @@ describe('two continuations that name the same revision', () => {
     await withA2A({ asker: run.generate }, async (opened) => {
       let refuse = true;
       const spying = Object.create(opened.bureau, {
-        submitSessionInput: {
-          value: (sessionId: string, request: unknown) =>
-            refuse
-              ? Promise.resolve({ outcome: 'session-terminal' })
-              : opened.bureau.submitSessionInput(sessionId, request as never),
+        contexts: {
+          value: {
+            ...opened.bureau.contexts,
+            input: (sessionId: string, request: unknown) =>
+              refuse
+                ? Promise.resolve({ outcome: 'session-terminal' })
+                : opened.bureau.contexts.input(sessionId, request as never),
+          },
         },
       });
       const instance = {

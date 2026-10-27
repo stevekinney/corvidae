@@ -584,7 +584,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
           const approvalId = harness.bureau.reviews.list()[0]!.id;
           const before = await readAgUiStream(await peer.handler(startWithMessage('run-b')));
           await later.advance(400 * 24 * 60 * 60 * 1000);
-          const stale = await peer.bureau.getSession('thread-1');
+          const stale = await peer.bureau.contexts.get('thread-1');
           const overrides = stale?.metadata['pendingApprovalOverrides'] as Record<string, unknown>;
           // The expired approval is still in the session: nothing removed it.
           expect(Object.keys(overrides)).toContain(approvalId);
@@ -638,7 +638,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
         await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
         await settled(harness);
         const approvalId = harness.bureau.reviews.list()[0]!.id;
-        const gated = await harness.bureau.getSession('thread-1');
+        const gated = await harness.bureau.contexts.get('thread-1');
         const overrides = gated?.metadata['pendingApprovalOverrides'] as Record<
           string,
           { approvalBinding?: unknown }
@@ -739,7 +739,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
         // The Response resolves once the durable record has committed. Weft reports the
         // workflow `pending` until its inline launch runs, and that is still unsettled.
         const first = await harness.handler(startRequest(runAgentInput()));
-        const session = await harness.bureau.getSession('thread-1');
+        const session = await harness.bureau.contexts.get('thread-1');
         const durable = await harness.bureau.getDurableRun(
           session?.metadata['lastRunId'] as string,
         );
@@ -823,7 +823,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
           const [runA, runB] = harness.bureau.listRuns().map((run) => run.id);
           save.release();
           await waitForCondition(save.landed, 'run A’s terminal save never landed');
-          const afterSave = await harness.bureau.getSession('thread-1');
+          const afterSave = await harness.bureau.contexts.get('thread-1');
           expect(afterSave?.metadata['lastRunId']).toBe(runB);
           // A's own leftovers are released although B holds the marker.
           const leftovers = afterSave?.metadata;
@@ -862,7 +862,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
             const runB = peer.bureau.listRuns()[0]!.id;
             save.release();
             await waitForCondition(save.landed, 'run A’s terminal save never landed');
-            const afterSave = await peer.bureau.getSession('thread-1');
+            const afterSave = await peer.bureau.contexts.get('thread-1');
             expect(afterSave?.metadata['lastRunId']).toBe(runB);
             expect(afterSave?.metadata['lastRunStatus']).toBe('running');
 
@@ -885,11 +885,11 @@ describe('whether a thread is busy, decided from what the store holds', () => {
   it('is busy when the store cannot be read, rather than admitting a start on a guess', async () => {
     await withHarness({ script: [say('A done.'), say('B done.')] }, async (harness) => {
       await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
-      const getSession = harness.bureau.getSession.bind(harness.bureau);
+      const getSession = harness.bureau.contexts.get.bind(harness.bureau);
       // The read that checks the thread’s owner before the lease succeeds; the read under the
       // lease, which the busy decision is made from, does not.
       let reads = 0;
-      spyOn(harness.bureau, 'getSession').mockImplementation(async (...args) => {
+      spyOn(harness.bureau.contexts, 'get').mockImplementation(async (...args) => {
         reads += 1;
         if (reads === 2) throw new Error('store unavailable');
         return getSession(...args);
@@ -905,10 +905,10 @@ describe('whether a thread is busy, decided from what the store holds', () => {
   it('is busy when the durable run of the session’s last run cannot be read', async () => {
     await withHarness({ script: [say('A done.'), say('B done.')] }, async (harness) => {
       await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
-      const getSession = harness.bureau.getSession.bind(harness.bureau);
+      const getSession = harness.bureau.contexts.get.bind(harness.bureau);
       // The session says its last run is still running, so the busy decision reads the durable
       // run, and that read fails.
-      spyOn(harness.bureau, 'getSession').mockImplementation(async (...args) => {
+      spyOn(harness.bureau.contexts, 'get').mockImplementation(async (...args) => {
         const session = await getSession(...args);
         return session === undefined
           ? undefined
@@ -964,11 +964,11 @@ describe('a start whose thread lease was taken over before it created its run', 
         try {
           const held = Promise.withResolvers<void>();
           const reached = Promise.withResolvers<void>();
-          const getSession = harness.bureau.getSession.bind(harness.bureau);
+          const getSession = harness.bureau.contexts.get.bind(harness.bureau);
           let reads = 0;
           // The start reads the session to build its rows, then again to decide whether the
           // thread is busy: held there, it has decided nothing yet.
-          spyOn(harness.bureau, 'getSession').mockImplementation(async (...args) => {
+          spyOn(harness.bureau.contexts, 'get').mockImplementation(async (...args) => {
             reads += 1;
             if (reads === 2) {
               reached.resolve();
@@ -1121,7 +1121,7 @@ describe('door refusals are one-event streams', () => {
 
         expect(event.code).toBe('INVALID_INPUT');
         expect(event.message).toContain('unopenable-session-identifier');
-        expect(await harness.bureau.getSession(threadId)).toBeUndefined();
+        expect(await harness.bureau.contexts.get(threadId)).toBeUndefined();
       });
     },
   );

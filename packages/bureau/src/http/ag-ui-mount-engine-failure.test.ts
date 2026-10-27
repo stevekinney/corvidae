@@ -42,7 +42,7 @@ const noopTool = createTool({
 
 /** The session's transcript as `role:content` rows. */
 async function transcriptOf(bureau: Opened['bureau']): Promise<string[]> {
-  const session = await bureau.getSession('thread-1');
+  const session = await bureau.contexts.get('thread-1');
   return Object.values(session?.conversationHistory.messages ?? {}).map(
     (message) =>
       `${message.role}:${typeof message.content === 'string' ? message.content : '[parts]'}`,
@@ -65,7 +65,7 @@ describe('a durable run whose engine fails it (COR-1587)', () => {
         await stream.until(EventType.STEP_STARTED);
         await generate.reached('hold');
         if (withFollowUp) {
-          const admitted = await bureau.submitSessionInput('thread-1', {
+          const admitted = await bureau.contexts.input('thread-1', {
             id: 'follow-up-1',
             principal: 'anonymous:local',
             deliveryMode: 'steer',
@@ -82,7 +82,7 @@ describe('a durable run whose engine fails it (COR-1587)', () => {
         expect(stream.received.at(-1)?.event.type).toBe(EventType.RUN_ERROR);
         expect(typesOf(stream.received)).not.toContain(EventType.RUN_FINISHED);
         expect(bureau.listRuns()[0]?.status).toBe('error');
-        const session = await bureau.getSession('thread-1');
+        const session = await bureau.contexts.get('thread-1');
         expect(session?.metadata['lastRunStatus']).toBe('error');
       } finally {
         await stream.cancel().catch(() => undefined);
@@ -110,7 +110,7 @@ describe('a durable run the engine times out (COR-1587)', () => {
       expect(stream.received.at(-1)?.event.type).toBe(EventType.RUN_ERROR);
       expect(typesOf(stream.received)).not.toContain(EventType.RUN_FINISHED);
       expect(bureau.listRuns()[0]?.status).toBe('error');
-      const session = await bureau.getSession('thread-1');
+      const session = await bureau.contexts.get('thread-1');
       expect(session?.metadata['lastRunStatus']).toBe('error');
     } finally {
       await stream.cancel().catch(() => undefined);
@@ -194,7 +194,7 @@ describe('a durable run that fails after it committed a step (COR-1587)', () => 
     try {
       await stream.until(EventType.STEP_STARTED);
       await generate.reached('hold');
-      const admitted = await bureau.submitSessionInput('thread-1', {
+      const admitted = await bureau.contexts.input('thread-1', {
         id: 'follow-up-1',
         principal: 'anonymous:local',
         deliveryMode: 'steer',
@@ -216,7 +216,7 @@ describe('a durable run that fails after it committed a step (COR-1587)', () => 
       expect(await transcriptOf(bureau)).toEqual(
         expect.arrayContaining(['assistant:First.', 'user:One more thing']),
       );
-      const session = await bureau.getSession('thread-1');
+      const session = await bureau.contexts.get('thread-1');
       expect(session?.metadata['lastRunStatus']).toBe('error');
     } finally {
       await stream.cancel().catch(() => undefined);
@@ -317,7 +317,7 @@ describe('a durable run ended while its step is being committed (COR-1597)', () 
   }
 
   async function admitFollowUp(bureau: Opened['bureau']): Promise<void> {
-    const admitted = await bureau.submitSessionInput('thread-1', {
+    const admitted = await bureau.contexts.input('thread-1', {
       id: 'follow-up-1',
       principal: 'anonymous:local',
       deliveryMode: 'steer',
@@ -343,7 +343,7 @@ describe('a durable run ended while its step is being committed (COR-1597)', () 
       await stream.rest();
 
       const runId = bureau.listRuns()[0]!.id;
-      expect(await bureau.sessionInputsDeliveredBy(runId, 'thread-1')).toEqual(['follow-up-1']);
+      expect(await bureau.contexts.inputsDeliveredBy(runId, 'thread-1')).toEqual(['follow-up-1']);
       expect(await transcriptOf(bureau)).toEqual(expect.arrayContaining(['user:One more thing']));
       expect(typesOf(stream.received).slice(-2)).toEqual([
         EventType.MESSAGES_SNAPSHOT,
@@ -426,7 +426,7 @@ describe('a durable run ended while its step is being committed (COR-1597)', () 
       holding.release();
       await disposing;
 
-      const session = await bureau.getSession('thread-1');
+      const session = await bureau.contexts.get('thread-1');
       expect(session?.metadata['lastRunStatus']).toBe('aborted');
     } finally {
       holding.release();

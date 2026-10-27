@@ -86,6 +86,7 @@ import type {
   BureauAudit,
   BureauInternals,
   BureauReviews,
+  BureauContexts,
   BureauSchedules,
 } from '../types.ts';
 import { bureauReviewsOperations } from './bureau-reviews-operations.ts';
@@ -190,12 +191,6 @@ export type BureauHandlerSource = Pick<
   | 'lifecycle'
   | 'eventHistory'
   | 'subscribeEventHistory'
-  | 'getSession'
-  | 'getSessionSteering'
-  | 'submitSteeringCommand'
-  | 'forkSession'
-  | 'deleteSession'
-  | 'listSessions'
   | 'waitForRecovery'
   | 'createRun'
   | 'getRun'
@@ -212,8 +207,6 @@ export type BureauHandlerSource = Pick<
   | 'workflows'
   | 'goals'
   | 'memory'
-  | 'submitSessionInput'
-  | 'sessionInputsDeliveredBy'
   | 'assets'
   | 'surfaces'
   | 'addEventListener'
@@ -221,6 +214,18 @@ export type BureauHandlerSource = Pick<
 > & {
   readonly reviews: Pick<BureauReviews, 'list' | 'get' | 'resolve' | 'pendingOf'>;
   readonly audit: Pick<BureauAudit, 'query'>;
+  readonly contexts: Pick<
+    BureauContexts,
+    | 'list'
+    | 'get'
+    | 'delete'
+    | 'input'
+    | 'inputsDeliveredBy'
+    | 'steer'
+    | 'steering'
+    | 'fork'
+    | 'subscribeEvents'
+  >;
   readonly schedules: Pick<
     BureauSchedules,
     | 'create'
@@ -1043,7 +1048,19 @@ export function buildBureauHandlerHost(
       children: (runId) => bureau.children.list(runId),
     },
     taskHistory: bureau,
-    contexts: bureau,
+    contexts: {
+      list: (listOptions) => bureau.contexts.list(listOptions),
+      get: (id) => bureau.contexts.get(id),
+      delete: (id, deleteOptions) => bureau.contexts.delete(id, deleteOptions),
+      steering: (id) => bureau.contexts.steering(id),
+      input: (id, request) => bureau.contexts.input(id, request),
+      steer: (id, request) => bureau.contexts.steer(id, request),
+      fork: (id, request) => bureau.contexts.fork(id, request),
+      get lifecycle() {
+        return bureau.lifecycle;
+      },
+      internals: bureau.internals,
+    },
     agentModels: {
       describe: (agentName) => {
         const agent = bureau.agents.find(agentName);

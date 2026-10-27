@@ -96,13 +96,13 @@ describe('createBureau delivers admitted session input at the next step boundary
       });
       await stepZeroStarted.promise;
 
-      const first = await bureau.submitSessionInput(run.sessionId, {
+      const first = await bureau.contexts.input(run.sessionId, {
         id: 'input-a',
         principal: 'alice',
         deliveryMode: 'steer',
         payload: 'first',
       });
-      const second = await bureau.submitSessionInput(run.sessionId, {
+      const second = await bureau.contexts.input(run.sessionId, {
         id: 'input-b',
         principal: 'alice',
         deliveryMode: 'queue',
@@ -123,7 +123,7 @@ describe('createBureau delivers admitted session input at the next step boundary
       expect(prompts[2]).toEqual(['Start', 'first', 'second']);
 
       // Step 1's result is durable by now, so the receipt reads promoted.
-      const replay = await bureau.submitSessionInput(run.sessionId, {
+      const replay = await bureau.contexts.input(run.sessionId, {
         id: 'input-a',
         principal: 'alice',
         deliveryMode: 'steer',
@@ -132,7 +132,7 @@ describe('createBureau delivers admitted session input at the next step boundary
       expect(replay.outcome).toBe('replayed');
       if (replay.outcome !== 'replayed') throw new Error('expected replayed');
       expect(replay.receipt.state).toBe('promoted');
-      const replayB = await bureau.submitSessionInput(run.sessionId, {
+      const replayB = await bureau.contexts.input(run.sessionId, {
         id: 'input-b',
         principal: 'alice',
         deliveryMode: 'queue',
@@ -148,7 +148,7 @@ describe('createBureau delivers admitted session input at the next step boundary
 
       releaseStepTwo.resolve();
       await pollUntil(async () => {
-        const session = await bureau.getSession(run.sessionId);
+        const session = await bureau.contexts.get(run.sessionId);
         return session?.metadata['lastRunStatus'] === 'completed';
       });
     } finally {
@@ -182,7 +182,7 @@ describe('createBureau delivers admitted session input at the next step boundary
         ['input-a', 'sent while the agent was answering'],
         ['input-b', 'and a second thing'],
       ] as const) {
-        const admitted = await bureau.submitSessionInput(run.sessionId, {
+        const admitted = await bureau.contexts.input(run.sessionId, {
           id,
           principal: 'alice',
           deliveryMode: 'steer',
@@ -224,7 +224,7 @@ describe('createBureau delivers admitted session input at the next step boundary
         principal: 'alice',
       });
       await firstStarted.promise;
-      const admitted = await bureau.submitSessionInput(first.sessionId, {
+      const admitted = await bureau.contexts.input(first.sessionId, {
         id: 'input-a',
         principal: 'alice',
         deliveryMode: 'steer',
@@ -232,7 +232,7 @@ describe('createBureau delivers admitted session input at the next step boundary
       });
       expect(admitted.outcome).toBe('admitted');
 
-      await bureau.deleteSession(first.sessionId);
+      await bureau.contexts.delete(first.sessionId);
       hold.resolve();
 
       runNumber = 2;
@@ -269,7 +269,7 @@ describe('createBureau delivers admitted session input at the next step boundary
         sessionId: longId,
       });
       await started.promise;
-      const outcome = await bureau.submitSessionInput(run.sessionId, {
+      const outcome = await bureau.contexts.input(run.sessionId, {
         id: 'input-a',
         principal: 'alice',
         deliveryMode: 'steer',
@@ -302,7 +302,7 @@ describe('createBureau delivers admitted session input at the next step boundary
         sessionId: longId,
       });
       await started.promise;
-      const outcome = await bureau.submitSessionInput(run.sessionId, {
+      const outcome = await bureau.contexts.input(run.sessionId, {
         id: 'input-a',
         principal: 'alice',
         deliveryMode: 'steer',
@@ -353,7 +353,7 @@ describe('createBureau delivers admitted session input at the next step boundary
         principal: 'alice',
       });
       await stepZeroStarted.promise;
-      await bureau.submitSessionInput(run.sessionId, {
+      await bureau.contexts.input(run.sessionId, {
         id: 'input-a',
         principal: 'alice',
         deliveryMode: 'steer',
@@ -363,7 +363,7 @@ describe('createBureau delivers admitted session input at the next step boundary
       await stepOneStarted.promise;
 
       // The step already holds the input; the caller cancels it now.
-      const session = await bureau.getSession(run.sessionId);
+      const session = await bureau.contexts.get(run.sessionId);
       const mailbox = createSessionInputMailbox(
         storage,
         run.sessionId,

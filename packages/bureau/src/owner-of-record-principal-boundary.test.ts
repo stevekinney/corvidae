@@ -64,7 +64,7 @@ describe('a principal that is not text (COR-718)', () => {
         expect(plain).toMatchObject({ code: 'BAD_REQUEST' });
         expect(withReceipt).toMatchObject({ code: 'BAD_REQUEST' });
         expect(bureau.listRuns()).toEqual([]);
-        expect(await bureau.getSession('refused')).toBeUndefined();
+        expect(await bureau.contexts.get('refused')).toBeUndefined();
       } finally {
         await bureau.dispose();
       }
@@ -181,7 +181,7 @@ describe('a principal in a reserved namespace (COR-718)', () => {
 
         expect(refusal).toMatchObject({ code: 'BAD_REQUEST' });
         expect(bureau.listRuns()).toEqual([]);
-        expect(await bureau.getSession('reserved')).toBeUndefined();
+        expect(await bureau.contexts.get('reserved')).toBeUndefined();
       } finally {
         await bureau.dispose();
       }

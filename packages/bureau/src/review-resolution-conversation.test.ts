@@ -121,7 +121,7 @@ async function parkedBureau(toolbox: Toolbox, diagnostics: string[] = []) {
 }
 
 async function sessionRows(bureau: Bureau, sessionId: string): Promise<Message[]> {
-  const session = await bureau.getSession(sessionId);
+  const session = await bureau.contexts.get(sessionId);
   const history = session?.conversationHistory;
   if (history === undefined) throw new Error('expected the session to exist');
   return history.ids.map((id) => history.messages[id]!);
@@ -248,7 +248,7 @@ describe('resolveReview writes the outcome of a tool approval into the session',
       expect(afterFirst.map((pending) => pending.id)).toEqual([review.id]);
       expect(afterFirst[0]).toMatchObject({ kind: 'tool-approval', round: 1 });
       expect(afterSecond[0]).toMatchObject({ kind: 'tool-approval', round: 2 });
-      const stored = await bureau.getSession(review.sessionId);
+      const stored = await bureau.contexts.get(review.sessionId);
       expect(stored?.metadata['pendingApprovalRounds']).toEqual({ [review.id]: 2 });
     } finally {
       await bureau.dispose();

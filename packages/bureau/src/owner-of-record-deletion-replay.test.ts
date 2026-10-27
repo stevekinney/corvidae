@@ -95,7 +95,7 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
     const { bureau: first, base } = await openBlockedBureau(storage, blocked);
     await settled(first, 'api-key:alice', 'replayed');
     blocked.value = true;
-    await first.deleteSession('replayed').catch(() => undefined);
+    await first.contexts.delete('replayed').catch(() => undefined);
     expect(await deletionEntries(first, 'replayed')).toHaveLength(0);
     expect(await base.list(SIDE_RECORD_PREFIX)).toHaveLength(1);
     await first.dispose().catch(() => undefined);
@@ -128,10 +128,10 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
     const { bureau: first, base } = await openBlockedBureau(storage, blocked);
     await settled(first, 'api-key:alice', 'reused');
     blocked.value = true;
-    await first.deleteSession('reused').catch(() => undefined);
+    await first.contexts.delete('reused').catch(() => undefined);
     // The drain stays blocked, so Alice's deletion is still pending when Bob recreates the id.
     await settled(first, 'api-key:bob', 'reused');
-    await first.deleteSession('reused').catch(() => undefined);
+    await first.contexts.delete('reused').catch(() => undefined);
     expect(await base.list(SIDE_RECORD_PREFIX)).toHaveLength(2);
     await first.dispose().catch(() => undefined);
 
@@ -171,7 +171,7 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
     const { bureau: first, base } = await openBlockedBureau(storage, blocked);
     await settled(first, 'api-key:alice', 'retried');
     blocked.value = true;
-    await first.deleteSession('retried').catch(() => undefined);
+    await first.contexts.delete('retried').catch(() => undefined);
     await first.dispose().catch(() => undefined);
 
     const reading = { fails: true };
@@ -217,7 +217,7 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
     const { bureau: first, base } = await openBlockedBureau(storage, blocked);
     await settled(first, 'api-key:alice', 'poisoned');
     blocked.value = true;
-    await first.deleteSession('poisoned').catch(() => undefined);
+    await first.contexts.delete('poisoned').catch(() => undefined);
     await first.dispose().catch(() => undefined);
     const [sideKey] = await base.list(SIDE_RECORD_PREFIX);
     // Bytes that are not valid UTF-8, so every read of the record throws.
@@ -233,7 +233,7 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
     try {
       // Another session's deletion queues behind the poisoned one.
       await settled(second, 'api-key:bob', 'later');
-      await second.deleteSession('later');
+      await second.contexts.delete('later');
       await second.runDurableMaintenance();
       await waitForCondition(
         async () => (await deletionCount(second, 'later')) === 1,
@@ -255,7 +255,7 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
     const { bureau: first, base } = await openBlockedBureau(storage, blocked);
     await settled(first, 'api-key:alice', 'unreachable');
     blocked.value = true;
-    await first.deleteSession('unreachable').catch(() => undefined);
+    await first.contexts.delete('unreachable').catch(() => undefined);
     await first.dispose().catch(() => undefined);
 
     const reading = { fails: true };

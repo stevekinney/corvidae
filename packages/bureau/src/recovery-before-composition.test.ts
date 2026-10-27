@@ -141,7 +141,7 @@ describe('a run reclaimed while the bureau is still being composed (COR-1509)', 
     const steps = await auditTrail.query({ runId: run.id, type: 'step.completed' });
     // The reclaimed run was reattached, so its session reached a terminal status rather than being
     // left `running`, and its terminal event was delivered and recorded.
-    const session = await bureau.getSession(run.sessionId);
+    const session = await bureau.contexts.get(run.sessionId);
     expect(session?.metadata['lastRunStatus']).toBe('completed');
     const terminal = await auditTrail.query({ runId: run.id, type: 'run.completed' });
     expect(terminal).toHaveLength(1);
