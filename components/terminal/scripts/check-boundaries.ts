@@ -362,7 +362,9 @@ export type ImportProbeReport = {
  */
 export function runImportProbe(packageRoot: string, entry: string): ImportProbeReport {
   const result = Bun.spawnSync(
-    [process.execPath, join(import.meta.dir, 'import-probe.ts'), entry],
+    // `--no-install` keeps Bun from auto-installing a package the entry cannot resolve from the
+    // registry, which would make the report depend on the network and on whatever is latest.
+    [process.execPath, '--no-install', join(import.meta.dir, 'import-probe.ts'), entry],
     { cwd: packageRoot, timeout: 30_000 },
   );
   const output = result.stdout.toString().trim();
