@@ -19,18 +19,15 @@ import {
   createWeftMemoryRecordStorage,
   type MemoryGovernanceNotification,
 } from '@lostgradient/memory';
-import {
-  createAgent,
-  createMockGenerate,
-  stopWhen,
-  waitForRunState,
-} from '@lostgradient/operative';
+import { createAgent, createMockGenerate, stopWhen } from '@lostgradient/operative';
+import { waitForTaskState } from './test';
 import { MemoryStorage } from '@lostgradient/weft';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { createBureau } from './index';
 import type { AgentDefinitions } from './agent-catalog';
+import { startTaskFrom } from './test/task-start-request.ts';
 
 /**
  * Where a run's memory lives (COR-1546): the Bureau's identifier is the tenant, the run's owner of
@@ -110,11 +107,9 @@ describe('packages/bureau/README.md — Governed memory', () => {
       requestAuthorityValidator: () => true,
     });
 
-    const run = await bureau.createRun({
-      agentName: 'default',
-      message: 'Book the 9:40 to Denver.',
-      principal: 'alice', // the run's owner of record, whose partition its memory is written to
-      sessionId: 'session-42', // the memory belongs to the agent, so every chat of Alice's shares it
+    const run = await bureau.tasks.start('default', 'Book the 9:40 to Denver.', {
+      contextId: 'session-42',
+      principal: 'alice',
       requestContext: {
         authority: {
           principalId: 'user:alice',
@@ -125,7 +120,7 @@ describe('packages/bureau/README.md — Governed memory', () => {
         },
       },
     });
-    await waitForRunState(bureau, run.id);
+    await waitForTaskState(bureau, run.id);
 
     // The host reads memory with its own authority, never with the run's.
     const auditor = createMemoryAuthority({
@@ -163,12 +158,8 @@ describe('documented Bureau memory limits', () => {
       memory,
     });
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'Remember this.',
-        sessionId: 'session-1',
-      });
-      await waitForRunState(bureau, run.id);
+      const run = await bureau.tasks.start('default', 'Remember this.', { contextId: 'session-1' });
+      await waitForTaskState(bureau, run.id);
       const [stored] = await memory.list(auditorFor(BUREAU_ID, LOCAL_OWNER), {
         collection: DEFAULT_AGENT,
       });
@@ -184,7 +175,7 @@ describe('documented Bureau memory limits', () => {
     }
   });
 
-  it('writes a createRun answer with a <runId>:<step> dedupe key under a service principal with id bureau', async () => {
+  it('writes a tasks.start answer with a <runId>:<step> dedupe key under a service principal with id bureau', async () => {
     const { memory } = governedMemory();
     const bureau = await createBureau<AgentDefinitions>({
       id: BUREAU_ID,
@@ -197,12 +188,8 @@ describe('documented Bureau memory limits', () => {
       memory,
     });
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'Remember this.',
-        sessionId: 'session-1',
-      });
-      await waitForRunState(bureau, run.id);
+      const run = await bureau.tasks.start('default', 'Remember this.', { contextId: 'session-1' });
+      await waitForTaskState(bureau, run.id);
       const [stored] = await memory.list(auditorFor(BUREAU_ID, LOCAL_OWNER), {
         collection: DEFAULT_AGENT,
       });
@@ -251,12 +238,10 @@ describe('documented Bureau memory limits', () => {
         memory,
       });
       try {
-        const run = await bureau.createRun({
-          agentName: 'default',
-          message: 'Remember this.',
-          sessionId: 'session-1',
+        const run = await bureau.tasks.start('default', 'Remember this.', {
+          contextId: 'session-1',
         });
-        const settled = await waitForRunState(bureau, run.id);
+        const settled = await waitForTaskState(bureau, run.id);
         expect(settled.status).toBe('error');
         const reader = createGovernedMemory({
           storage: createWeftMemoryRecordStorage(storage),
@@ -335,10 +320,10 @@ describe('documented Bureau memory limits', () => {
           requestAuthorityValidator: () => true,
         });
         try {
-          const run = await bureau.createRun({
+          const run = await startTaskFrom(bureau, {
             agentName: 'default',
-            message: 'Remember this.',
-            sessionId: 'session-1',
+            input: 'Remember this.',
+            contextId: 'session-1',
             ...(grant.requestCapabilities === undefined
               ? {}
               : {
@@ -353,7 +338,7 @@ describe('documented Bureau memory limits', () => {
                   },
                 }),
           });
-          const settled = await waitForRunState(bureau, run.id);
+          const settled = await waitForTaskState(bureau, run.id);
           outcomes[sink] = { status: settled.status, events: [...events] };
           if (sink === 'collecting') {
             // Nothing was written, and the ledger holds both refusals.
@@ -383,28 +368,52 @@ describe('documented Bureau memory limits', () => {
   }
 
   for (const durability of ['in-memory', 'durable'] as const) {
-    it(`attaches no memory hooks to a ${durability} catalog run dispatched through bureau.run`, async () => {
+    it(`attaches no memory hooks to a ${durability} bureau.children child, while its parent task has both`, async () => {
       const { memory, notifications } = governedMemory();
+      const release = Promise.withResolvers<void>();
+      const parent = createAgent({
+        name: 'parent',
+        generate: async () => {
+          await release.promise;
+          return { content: 'Parent answer.', toolCalls: [] };
+        },
+      });
       const assistant = createAgent({
         name: 'assistant',
-        generate: createMockGenerate([{ content: 'Catalog answer.', toolCalls: [] }]),
+        generate: createMockGenerate([{ content: 'Child answer.', toolCalls: [] }]),
       });
       const bureau = await createBureau({
         id: BUREAU_ID,
-        agents: { assistant },
+        agents: { parent, assistant },
         memory,
         ...(durability === 'durable'
           ? { storage: { type: 'sqlite' as const, path: databasePath } }
           : {}),
       });
       try {
-        const run = bureau.run('assistant', 'Remember this.');
-        const result = await run.result();
-        expect(result.content).toBe('Catalog answer.');
-        expect(run.snapshot().durability === 'durable').toBe(durability === 'durable');
-        // No recall, no write, no denial: governed memory never heard from the run.
-        expect(notifications).toEqual([]);
+        const task = await bureau.tasks.start('parent', 'Plan.');
+        const dispatched = await bureau.children.dispatch({
+          parentRunId: task.id,
+          agentName: 'assistant',
+          input: 'Remember this.',
+          childRunId: 'memory-child',
+        });
+        expect(dispatched).toMatchObject({ outcome: 'started' });
+        const waited = await bureau.children.wait({
+          parentRunId: task.id,
+          childRunId: 'memory-child',
+        });
+        release.resolve();
+        await task.result();
+        expect(waited).toMatchObject({ outcome: 'settled', child: { status: 'completed' } });
+        const runsHeard = new Set(
+          notifications.map((notification) => notification.correlation?.runId),
+        );
+        // The parent, a task, recalled and wrote; the child it dispatched did neither.
+        expect(runsHeard.has(task.id)).toBe(true);
+        expect(runsHeard.has('memory-child')).toBe(false);
       } finally {
+        release.resolve();
         await bureau.dispose();
       }
     });

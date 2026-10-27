@@ -1,6 +1,6 @@
 /**
  * Fixtures for the tests of a schedule fire's reviews (COR-1596): a durable Bureau whose engine
- * timers are driven by hand, a fire that is one `runDurableMaintenance` tick away, and the tools
+ * timers are driven by hand, a fire that is one `maintain` tick away, and the tools
  * and models a fire asks a human with. Each test file calls `harness.dispose` after each test.
  */
 
@@ -210,7 +210,7 @@ export async function fireOnce(
   if (created === undefined || occurrence === null || occurrence === undefined) {
     throw new Error('The schedule has no first occurrence.');
   }
-  await bureau.runDurableMaintenance(occurrence);
+  await bureau.maintain(occurrence);
   const fireId = await pollUntil(async () => {
     const schedule = await bureau.schedules.get(created.id);
     return schedule?.currentWorkflowId;
@@ -234,7 +234,7 @@ export async function reviewOf(bureau: Bureau, runId: string): Promise<PendingRe
 }
 
 export async function durableStatus(bureau: Bureau, runId: string): Promise<string | undefined> {
-  const run = await bureau.getDurableRun(runId);
+  const run = await bureau.tasks.workflow(runId);
   return run?.status;
 }
 
@@ -433,7 +433,7 @@ export async function auditRecordsOf(
 
 /** The `review.*` kinds a run's durable history holds, oldest first. */
 export async function historyKinds(bureau: Bureau, runId: string): Promise<string[]> {
-  const page = await bureau.eventHistory({ kind: 'run', id: runId });
+  const page = await bureau.tasks.events(runId);
   if (!('events' in page)) return [];
   return page.events.filter((event) => event.kind.startsWith('review.')).map((event) => event.kind);
 }

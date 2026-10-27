@@ -112,11 +112,7 @@ function summarize(report: BureauShutdownReport) {
 /** A run offered once shutdown has started must be refused. */
 async function offerRunAfterAdmissionClosed(): Promise<string> {
   try {
-    await bureau.createRun({
-      agentName: 'default',
-      message: 'offered during shutdown',
-      principal: 'alice',
-    });
+    await bureau.tasks.start('default', 'offered during shutdown', { principal: 'alice' });
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
@@ -127,16 +123,16 @@ async function recover(): Promise<never> {
   const { runId } = JSON.parse(readFileSync(join(directory, 'bureau-started.json'), 'utf8')) as {
     runId: string;
   };
-  const report = await bureau.waitForRecovery?.();
+  const report = await bureau.recovery();
   // The previous process may have died holding the run's claim; maintenance
   // adopts it once the claim lapses.
   for await (const _turn of awakeTurns()) {
-    const durable = await bureau.getDurableRun(runId);
+    const durable = await bureau.tasks.workflow(runId);
     if (durable?.status !== undefined && TERMINAL_STATUSES.has(durable.status)) break;
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, POLL_DELAY_MS));
   }
-  const durable = await bureau.getDurableRun(runId);
+  const durable = await bureau.tasks.workflow(runId);
   writeMarker(directory, 'bureau-recovered', {
     recovery: report?.outcome,
     durableStatus: durable?.status,
@@ -163,17 +159,13 @@ handleShutdownSignals({
     writeMarker(directory, 'bureau-shutdown', {
       report: summarize(report),
       refusal,
-      runStatus: bureau.getRun(runId)?.status,
+      runStatus: bureau.tasks.detail(runId)?.status,
     });
     return report.unresolved === 0;
   },
 });
 
-const run = await bureau.createRun({
-  agentName: 'default',
-  message: 'signal shutdown run',
-  principal: 'alice',
-});
+const run = await bureau.tasks.start('default', 'signal shutdown run', { principal: 'alice' });
 const runId = run.id;
 await stepOneReached.promise;
 writeMarker(directory, 'bureau-started', { runId });

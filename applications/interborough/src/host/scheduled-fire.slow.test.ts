@@ -21,9 +21,9 @@ afterEach(async () => {
 /** The first scheduled run to reach a terminal state, with how it ended. */
 async function firstFinishedFire(host: Host) {
   for await (const _ of awakeTurns()) {
-    const runs = await host.bureau.listDurableRuns();
+    const runs = await host.bureau.tasks.workflows();
     for (const item of runs?.items ?? []) {
-      const state = await host.bureau.getDurableRun(item.id);
+      const state = await host.bureau.tasks.workflow(item.id);
       if (state?.status === 'completed' || state?.status === 'failed') return state;
     }
     await Bun.sleep(50);

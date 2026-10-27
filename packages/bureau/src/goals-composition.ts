@@ -98,7 +98,7 @@ export interface GoalsCompositionDependencies {
 }
 
 export interface GoalsComposition {
-  readonly goals: BureauGoals;
+  readonly goals: Omit<BureauGoals, 'events' | 'subscribeEvents'>;
   /** Whether `workflowId` is the controller of a goal this bureau stores. */
   ownsWorkflow(workflowId: string): Promise<boolean>;
   /**

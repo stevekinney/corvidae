@@ -148,12 +148,15 @@ describe('a completed task whose reply this instance cannot read yet', () => {
       let hidden = true;
       // The same Bureau, seen from an instance the run's reply has not reached yet.
       const bureau = Object.create(opened.bureau, {
-        getRun: { value: (id: string) => (hidden ? undefined : opened.bureau.getRun(id)) },
-        eventHistory: {
-          value: (...args: Parameters<typeof opened.bureau.eventHistory>) =>
-            hidden
-              ? Promise.resolve({ events: [], hasMore: false, nextCursor: undefined })
-              : opened.bureau.eventHistory(...args),
+        tasks: {
+          value: {
+            ...opened.bureau.tasks,
+            detail: (id: string) => (hidden ? undefined : opened.bureau.tasks.detail(id)),
+            events: (...args: Parameters<typeof opened.bureau.tasks.events>) =>
+              hidden
+                ? Promise.resolve({ events: [], hasMore: false, nextCursor: undefined })
+                : opened.bureau.tasks.events(...args),
+          },
         },
       }) as typeof opened.bureau;
       const runtime = createDefaultRuntimeServices();

@@ -21,6 +21,7 @@ import type {
 import { projectDescriptor, readGenerationProfile } from '@lostgradient/operative';
 
 import { AgentFileError } from './agent-file';
+import { type AgentModels, describeAgentModels } from './agent-models';
 import type {
   AgentCatalogChange,
   AgentFileCatalog,
@@ -102,7 +103,7 @@ export type AgentHasOutput<D extends AgentDefinitions, TName extends keyof D> =
   D[TName] extends RunnableAgent<unknown, infer H> ? H : false;
 
 /**
- * `bureau.run`'s return type, name-keyed and DISTRIBUTIVE over `TName`
+ * `bureau.tasks.start`'s handle type, name-keyed and DISTRIBUTIVE over `TName`
  * (review round 2, Codex) — required whenever a caller's static `name` type
  * is a union spanning both a schema-backed and a schema-less agent (e.g. a
  * name read from a variable typed `'schema' | 'plain'`, or a generic helper
@@ -110,7 +111,7 @@ export type AgentHasOutput<D extends AgentDefinitions, TName extends keyof D> =
  * key off `D[TName]` — an indexed access, not a naked type-parameter
  * reference — so neither one distributes over a union `TName` on its own;
  * wrapping them in `AgentRun<AgentOutput<D, TName>, AgentHasOutput<D,
- * TName>>` directly (as `Bureau.run`'s signature used to) computes `O`/`H`
+ * TName>>` directly (as `BureauTasks.start`'s signature could) computes `O`/`H`
  * against the COLLAPSED union `D[TName1] | D[TName2]` once, which can
  * resolve `AgentHasOutput` to the non-literal `boolean` and make `AgentRun`
  * select its `H = false` conditional branch regardless of which name was
@@ -204,6 +205,13 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
    * agent has neither a file nor a definition Bureau can show, so both are `null`.
    */
   detail(id: string): Promise<AgentFileDetail | undefined>;
+  /**
+   * The models the named agent allows a session to be switched to, and the one its next step would
+   * use with no override, against the deployment's model catalog as it is now (COR-1708), or
+   * `undefined` when no agent has that name. A file agent is selectable within its `models` list;
+   * a code-defined agent reports what its generation profile says.
+   */
+  models(name: string): AgentModels | undefined;
   /** The tools an agent file may name: the deployment's tool catalog, by name. */
   tools(): readonly AgentToolDescription[];
   /**
@@ -252,6 +260,11 @@ export interface CreateAgentCatalogOptions {
   readonly files?: AgentFileCatalog | undefined;
   /** Where file agents' run snapshots live. */
   readonly snapshots?: AgentSnapshotStore | undefined;
+  /**
+   * The deployment's model catalog as it is now, read on every {@link BureauAgentCatalog.models}
+   * call because the catalog can be replaced. Defaults to an empty catalog.
+   */
+  readonly descriptors?: (() => readonly BackendDescriptor[]) | undefined;
 }
 
 /**
@@ -278,6 +291,7 @@ export function createAgentCatalog<D extends AgentDefinitions>(
   const selectorAvailable = options?.selectorAvailable ?? false;
   const files = options?.files;
   const snapshots = options?.snapshots;
+  const descriptors = options?.descriptors ?? (() => []);
   // A file agent is rebuilt whenever its file changes, so its profile is cached by the object.
   const fileAgentProfiles = new WeakMap<object, AgentGenerationProfile>();
   const requireFiles = (): AgentFileCatalog => {
@@ -377,6 +391,10 @@ export function createAgentCatalog<D extends AgentDefinitions>(
       const code = byName.get(id);
       if (code !== undefined) return { ...codeListing(code), text: null, definition: null };
       return files?.detail(id);
+    },
+    models(name) {
+      const agent = byName.get(name)?.agent ?? files?.find(name);
+      return agent === undefined ? undefined : describeAgentModels(agent, descriptors());
     },
     tools() {
       return files?.tools() ?? [];

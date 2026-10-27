@@ -19,6 +19,7 @@ import {
   startRequest,
 } from './ag-ui-fixtures.test-support.ts';
 import { bureauMetadata, FrameReader, typesOf } from './ag-ui-stream.test-support.ts';
+import { listHeldTasks } from '../test';
 
 const THREAD = 't';
 const MESSAGE = 'Agent run exceeded maximumSteps (2).';
@@ -108,7 +109,7 @@ describe('the stream of a run that stops at its step limit', () => {
         code: 'MAXIMUM_STEPS',
         message: MESSAGE,
       });
-      expect(harness.bureau.listRuns()[0]!.status).toBe('error');
+      expect(listHeldTasks(harness.bureau)[0]!.status).toBe('error');
     });
   });
 
@@ -205,13 +206,13 @@ describe('a retry of the start of a run that already stopped at its step limit',
         async (harness) => {
           const first = await startOn(harness.handler);
           await first.reader.rest();
-          expect(harness.bureau.listRuns()[0]!.status).toBe('error');
+          expect(listHeldTasks(harness.bureau)[0]!.status).toBe('error');
 
           const retry = await startOn(harness.handler);
           await retry.reader.rest();
           const frames = retry.reader.received;
 
-          expect(harness.bureau.listRuns()).toHaveLength(1);
+          expect(listHeldTasks(harness.bureau)).toHaveLength(1);
           expect(retry.nativeRunId).toBe(first.nativeRunId);
           expect(typesOf(frames)).not.toContain(EventType.RUN_FINISHED);
           expect(frames.at(-1)!.event).toMatchObject({
@@ -275,7 +276,7 @@ describe('a peer stream of a run that stops at its step limit', () => {
       { ...STEP_LIMIT, script: [hold('a-generating'), say('one'), say('two')] },
       async (harness) => {
         const received = await followFromPeer(harness, (peer) => {
-          peer.bureau.eventHistory = async () => {
+          peer.bureau.tasks.events = async () => {
             throw new Error('The event history is unavailable.');
           };
         });
@@ -301,7 +302,7 @@ describe('a retry of the start of a run that already failed', () => {
       async (harness) => {
         const first = await startOn(harness.handler);
         await first.reader.rest();
-        expect(harness.bureau.listRuns()[0]!.status).toBe('error');
+        expect(listHeldTasks(harness.bureau)[0]!.status).toBe('error');
         expect(first.reader.received.at(-1)!.event).toMatchObject({
           type: EventType.RUN_ERROR,
           message: 'provider said no',
@@ -311,7 +312,7 @@ describe('a retry of the start of a run that already failed', () => {
         await retry.reader.rest();
         const frames = retry.reader.received;
 
-        expect(harness.bureau.listRuns()).toHaveLength(1);
+        expect(listHeldTasks(harness.bureau)).toHaveLength(1);
         expect(retry.nativeRunId).toBe(first.nativeRunId);
         expect(typesOf(frames)).not.toContain(EventType.RUN_FINISHED);
         expect(frames.at(-1)!.event).toMatchObject({

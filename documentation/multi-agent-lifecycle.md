@@ -136,15 +136,14 @@ Bureau accepts three kinds of parent:
 
 | Parent | Where its identifier comes from |
 | --- | --- |
-| A `createRun` run (deprecated API) | The `id` on the returned `RunSummary`. |
-| A durable `bureau.run` run (Bureau has a durable engine, and the catalog agent supports definition resolution, as every `createAgent` or `createLazyAgent` result does) | The returned handle's `id`, which `snapshot().id` always equals. The handle carries it from the moment `bureau.run` returns. Until the durable dispatch resolves, the snapshot is a placeholder: its `durability` is `'process-local'` and its `status` is `'created'`. Then `durability` is `'durable'`. Dispatch children under it once `bureau.getDurableRun(id)` returns the workflow, which can be a moment after the identifier appears. |
+| A task (`bureau.tasks.start`) | The returned handle's `id`, which `snapshot().id` always equals. The handle carries it from the moment `bureau.tasks.start` resolves, and the snapshot is durable at once when Bureau has a durable engine and the catalog agent supports definition resolution (as every `createAgent` or `createLazyAgent` result does). Dispatch children under it once `bureau.tasks.workflow(id)` returns the workflow, which can be a moment after the identifier appears. |
 | Another Bureau child | Its `childRunId`. Without `children.delegation`, children nest without limit, and a dispatch's `authority` is ignored. With it, a child may dispatch only as many levels below itself as its grant's `depth` allows, and a child of a top-level parent gets `depth: 0` unless the dispatch passes `authority.depth`. See [Budgets and delegated authority](#budgets-and-delegated-authority). |
 
-Do not take a parent's identifier from `bureau.listDurableRuns()`. It lists every durable run the engine holds, newest first, including other callers' runs and every durable child, so its first item is not necessarily the run you started. Dispatch's principal check does not catch that mistake: it compares the caller's principal with the parent's, not runs, so it accepts a dispatch under another run with the same principal or with none.
+Do not take a parent's identifier from `bureau.tasks.workflows()`. It lists every durable run the engine holds, newest first, including other callers' runs and every durable child, so its first item is not necessarily the run you started. Dispatch's principal check does not catch that mistake: it compares the caller's principal with the parent's, not runs, so it accepts a dispatch under another run with the same principal or with none.
 
-A non-durable `bureau.run` run cannot own Bureau children: once its dispatch resolves, its snapshot reports `durability: 'process-local'`, and dispatching under its `snapshot().id` returns `not-found`. Every read and write names the owning parent. Naming an unrelated parent reads as `not-found`, and so does a principal that fails its comparison: on `dispatch`, one other than the parent's, and on every other call, one other than the child record's. A caller cannot tell a wrong identifier from one it is not allowed to see.
+A task on a Bureau with no durable engine reports `durability: 'process-local'` and can own children that are process-local too: they die with the process and are not reattached after a restart. Every read and write names the owning parent. Naming an unrelated parent reads as `not-found`, and so does a principal that fails its comparison: on `dispatch`, one other than the parent's, and on every other call, one other than the child record's. A caller cannot tell a wrong identifier from one it is not allowed to see.
 
-The parent's principal, when it has one, owns every child under it: only that principal, or a trusted call, can dispatch there, and every child records that principal. A parent without one, such as a `createRun` or `bureau.run` run started without a `principal`, is owned by `anonymous:local`: its children inherit that owner, and only `anonymous:local`, or a trusted call that states no principal, can dispatch under it. Any other principal reads the parent, and every child under it, as `not-found`, and `list` shows it none of them.
+The parent's principal, when it has one, owns every child under it: only that principal, or a trusted call, can dispatch there, and every child records that principal. A parent without one, such as a task started without a `principal`, is owned by `anonymous:local`: its children inherit that owner, and only `anonymous:local`, or a trusted call that states no principal, can dispatch under it. Any other principal reads the parent, and every child under it, as `not-found`, and `list` shows it none of them.
 
 A `childRunId` that already names a run or workflow Bureau knows is rejected as `child-run-id-conflict` before anything is reserved, recorded, or started. Dispatching the same `childRunId` under the same parent again, even concurrently, returns `duplicate` with the existing record and starts nothing. That holds whatever the record's status, including a `'failed'` record left by `start-failed`, so a retry after a failed start needs a new `childRunId`.
 
@@ -215,7 +214,7 @@ Two separate mechanisms bound a child.
 
 Without `children.delegation`, `authority` is ignored, not rejected. It is not validated, no grant is issued, nothing is reserved against a budget, and the dispatch returns `started` with no `grant`. Depth, fan-out, and capabilities are then unbounded: a child dispatched with `authority: { depth: 0, budget: { concurrentChildren: 0 } }` can still dispatch as many children as it likes, as deep as it likes. The one check that remains is fail-closed: a parent that already holds a grant, left by a Bureau that had delegation configured, cannot dispatch at all (`delegation-invalid`).
 
-A top-level parent, a `createRun` or `bureau.run` run, holds no grant. Its dispatches are not checked against any grant and reserve no budget, so nothing bounds how many children it dispatches. Its `authority` sets the child's ceilings as given rather than narrowing anything: an omitted capability list or budget ceiling is unrestricted. `depth` is the exception, because it defaults to `0` under a top-level parent. A child dispatched without `authority.depth` therefore cannot dispatch a child of its own: every dispatch under it is rejected as `depth-exhausted`. Pass `depth: 1` to allow grandchildren, `depth: 2` for one more level, and so on.
+A top-level parent, a task, holds no grant. Its dispatches are not checked against any grant and reserve no budget, so nothing bounds how many children it dispatches. Its `authority` sets the child's ceilings as given rather than narrowing anything: an omitted capability list or budget ceiling is unrestricted. `depth` is the exception, because it defaults to `0` under a top-level parent. A child dispatched without `authority.depth` therefore cannot dispatch a child of its own: every dispatch under it is rejected as `depth-exhausted`. Pass `depth: 1` to allow grandchildren, `depth: 2` for one more level, and so on.
 
 A child dispatched while delegation is configured holds a grant, and the dispatches it makes can only narrow that grant. `depth` defaults to the parent's `depth - 1`, and each rule below applies:
 
@@ -245,9 +244,8 @@ A child is stopped by a request to that child, never by an accident of shared st
 
 Bureau applies the policy when:
 
-- `abortRun` aborts a `createRun` parent.
-- `cancelDurableRun` commits a cancellation.
-- A durable `bureau.run` parent settles as aborted through its own handle.
+- `bureau.tasks.cancel` aborts a parent this process holds, or commits a cancellation of one only the durable store holds.
+- A parent settles as aborted through its own handle (`abort(reason)`).
 - `children.cancel` cancels a child that has children of its own.
 - A child settles as `'aborted'` for any reason.
 - Recovery finds a parent cancelled or unrecoverable.
@@ -271,7 +269,7 @@ Bureau recovery never starts a child workflow. At boot it loads every running ch
 - Otherwise, when the parent was cancelled or cannot be recovered, the child's `parentCancellation` applies: a `'cascade'` child is cancelled and a `'detach'` child is reattached. Under an unrecoverable parent, only a `'detach'` child without a grant is left running.
 - A recovered child whose grant is missing, unreadable, tampered with, revoked, or expired is denied. Bureau writes `delegation.rejected` and cancels the child. A child that has a grant is also denied when the restarted Bureau has no `children.delegation` configured.
 
-Recovery needs the same persistent `storage` (for example SQLite or LMDB) with durable execution enabled, the same agent names, the same signal contracts, and the same delegation secret. A Bureau without storage keeps its topology in memory, so there is nothing to recover. Call `await bureau.waitForRecovery()` before presenting recovered state.
+Recovery needs the same persistent `storage` (for example SQLite or LMDB) with durable execution enabled, the same agent names, the same signal contracts, and the same delegation secret. A Bureau without storage keeps its topology in memory, so there is nothing to recover. Call `await bureau.recovery()` before presenting recovered state.
 
 ## Forking a session at a completed run
 
@@ -338,7 +336,7 @@ Bureau reports storage, audit, and cascade failures in the topology through `onD
 - **Child events in Bureau.** Bureau has no API to observe a child's `events`.
 - **Signal persistence.** Signals are in-memory in both packages. They are not persisted, replayed, or delivered across processes, and signals unacknowledged at a crash are lost.
 - **Operative recovery.** Operative's children are not recoverable, and `ChildWorkflowReattachedEvent` and `ChildWorkflowProgressEvent` are never dispatched.
-- **Parents Bureau cannot see.** An in-memory `bureau.run` run cannot own Bureau children.
+- **Parents Bureau cannot see.** A run that is not a task (a hand-written agent's own run) cannot own Bureau children.
 - **Authority without delegation.** Without `children.delegation`, a dispatch's `authority` is silently ignored: no grant, no validation, and no bound on depth, fan-out, or capabilities.
 - **Grant enforcement.** Grant capabilities, grant model authority, and the `steps`, `tokens`, `cost`, `toolCalls`, and `duration` ceilings are recorded but not enforced. There is no public grant revocation, no policy-change transition, and no audit record of a dispatch rejected by a grant or budget.
 - **Subagents and grants.** `createSubagentTool` has no `signals` option and issues no grants.
@@ -350,9 +348,8 @@ Bureau reports storage, audit, and cascade failures in the topology through `onD
 This example runs in [`packages/bureau/src/bureau-children-guide.test.ts`](../packages/bureau/src/bureau-children-guide.test.ts), which uses the same code with a different import path and a temporary SQLite file and asserts every commented result. A planner is the durable parent. It dispatches two researchers, inspects them, sends one a typed signal, cancels the other, and waits for the survivor:
 
 ```typescript
-import { createBureau, type Bureau } from '@lostgradient/bureau';
+import { createBureau, type Bureau, type TaskHandle } from '@lostgradient/bureau';
 import {
-  type AgentRun,
   createAgent,
   defineChildSignals,
   type GenerateFunction,
@@ -368,22 +365,14 @@ const untilAborted: GenerateFunction = ({ signal }) =>
     signal?.addEventListener('abort', () => reject(new Error('stopped')), { once: true });
   });
 
-// `bureau.run` returns its handle at once. The handle's snapshot names the
-// agent until the durable dispatch resolves, then carries the durable run
-// identifier. Children can be dispatched under it once the engine has the workflow.
+// A task's id is the id of its durable workflow, so the handle names the parent as soon as
+// `bureau.tasks.start` resolves. Children can be dispatched under it once the engine has the workflow.
 async function durableRunId(
-  bureau: Pick<Bureau, 'getDurableRun'>,
-  run: Pick<AgentRun, 'snapshot'>,
+  bureau: Pick<Bureau, 'tasks'>,
+  task: Pick<TaskHandle, 'id'>,
 ): Promise<string> {
-  for (;;) {
-    const { id, durability, status } = run.snapshot();
-    if (durability === 'durable') {
-      if (await bureau.getDurableRun(id)) return id;
-    } else if (status !== 'created') {
-      throw new Error(`Run "${id}" is not durable, so it cannot own Bureau children.`);
-    }
-    await Bun.sleep(5);
-  }
+  while (!(await bureau.tasks.workflow(task.id))) await Bun.sleep(5);
+  return task.id;
 }
 
 // Parent → child messages, shared by the dispatching host and the child's tools.
@@ -425,7 +414,7 @@ const bureau = await createBureau({
   children: { signals: { researcher: researchSignals } },
 });
 
-const plannerRun = bureau.run('planner', 'Plan the corvid report');
+const plannerRun = await bureau.tasks.start('planner', 'Plan the corvid report');
 const parentRunId = await durableRunId(bureau, plannerRun);
 
 await bureau.children.dispatch({
@@ -474,4 +463,4 @@ plannerRun.abort('report planned');
 await bureau.dispose();
 ```
 
-The planner's `generate` and the researcher's scripted `generate` stand in for real providers. `durableRunId` polls because the handle offers no promise that settles when its workflow exists; `Bun.sleep` keeps each wait short, and any short delay works. It reads only the planner's own handle, so other runs and children in the same Bureau cannot change its answer, and it throws when the run turns out not to be durable. If the process crashed after the dispatches, a new Bureau opened over the same `bureau.sqlite` file would reattach `research-ravens` without starting a second workflow, and the planner could signal and wait on it again by the same identifiers.
+The planner's `generate` and the researcher's scripted `generate` stand in for real providers. `durableRunId` polls because the handle offers no promise that settles when its workflow exists; `Bun.sleep` keeps each wait short, and any short delay works. It reads only the planner's own handle, so other runs and children in the same Bureau cannot change its answer. If the process crashed after the dispatches, a new Bureau opened over the same `bureau.sqlite` file would reattach `research-ravens` without starting a second workflow, and the planner could signal and wait on it again by the same identifiers.

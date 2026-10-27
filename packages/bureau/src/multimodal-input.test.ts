@@ -12,7 +12,7 @@ import {
   stopWhen,
   withBackendDescriptors,
 } from '@lostgradient/operative';
-import { decode, MemoryStorage, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { MemoryStorage, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import type { MediaContent } from 'conversationalist';
@@ -23,6 +23,7 @@ import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, base64Of, bob, pngBytes } from './testing/asset-fixtures.test-support';
 import type { Bureau } from './types';
+import { runTask } from './test';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -93,7 +94,7 @@ describe('bureau.run with a managed asset in the input (COR-716)', () => {
     const { source, bytes } = await admitImage(bureau);
     const parts: MediaContent[] = [{ type: 'image', source }];
 
-    const result = await bureau.run('echo', parts, { principal: alice.id }).result();
+    const result = await runTask(bureau, 'echo', parts, { principal: alice.id });
 
     expect(result.finishReason).not.toBe('error');
     const context = seen[0]!;
@@ -117,9 +118,9 @@ describe('bureau.run with a managed asset in the input (COR-716)', () => {
     const bureau = await openBureau({ seen });
     const { source } = await admitImage(bureau);
 
-    const result = await bureau
-      .run('echo', [{ type: 'image', source }], { principal: bob.id })
-      .result();
+    const result = await runTask(bureau, 'echo', [{ type: 'image', source }], {
+      principal: bob.id,
+    });
 
     expect(result.finishReason).toBe('error');
     expect(result.error).toBeInstanceOf(MediaAdmissionError);
@@ -134,9 +135,9 @@ describe('bureau.run with a managed asset in the input (COR-716)', () => {
     });
     const { source } = await admitImage(bureau);
 
-    const blocked = await bureau
-      .run('echo', [{ type: 'image', source }], { principal: alice.id })
-      .result();
+    const blocked = await runTask(bureau, 'echo', [{ type: 'image', source }], {
+      principal: alice.id,
+    });
 
     // Admission applies the policy at the step boundary, before the guardrail
     // runs: the run ends as a typed policy error and generate is never called.
@@ -156,9 +157,9 @@ describe('bureau.run with a managed asset in the input (COR-716)', () => {
     });
     const { source } = await admitImage(bureau);
 
-    const result = await bureau
-      .run('echo', [{ type: 'image', source }], { principal: alice.id })
-      .result();
+    const result = await runTask(bureau, 'echo', [{ type: 'image', source }], {
+      principal: alice.id,
+    });
 
     expect(result.finishReason).not.toBe('error');
     expect(seen).toHaveLength(1);
@@ -173,9 +174,9 @@ describe('bureau.run with a managed asset in the input (COR-716)', () => {
       await bureau.dispose();
     });
 
-    const result = await bureau
-      .run('echo', [{ type: 'image', source: { kind: 'managed-asset', assetId: 'a' } }])
-      .result();
+    const result = await runTask(bureau, 'echo', [
+      { type: 'image', source: { kind: 'managed-asset', assetId: 'a' } },
+    ]);
 
     expect(result.error).toBeInstanceOf(MediaAdmissionError);
     expect(seen).toHaveLength(0);
@@ -195,7 +196,7 @@ describe('bureau.run takes its input as it was when called (COR-716)', () => {
       });
       const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: 'as submitted' }];
 
-      const run = bureau.run('echo', parts);
+      const run = await bureau.tasks.start('echo', parts);
       parts[0]!.text = 'mutated';
       parts.push({ type: 'text', text: 'appended' });
       await run.result();
@@ -204,43 +205,6 @@ describe('bureau.run takes its input as it was when called (COR-716)', () => {
       expect(user?.content).toEqual([{ type: 'text', text: 'as submitted' }]);
     });
   }
-});
-
-describe('a durable catalog run records its input as submitted (COR-716)', () => {
-  it('writes the recovery record from the validated copy, not the caller’s edited array', async () => {
-    const storage = new MemoryStorage();
-    const gate = deferred();
-    const started = deferred();
-    const bureau = await createBureau({
-      agents: {
-        echo: createAgent({
-          generate: withBackendDescriptors(async () => {
-            started.resolve();
-            await gate.promise;
-            return { content: 'ok', toolCalls: [] };
-          }, anthropicDescriptors),
-        }),
-      },
-      storage,
-      durable: true,
-    });
-    cleanups.push(async () => {
-      gate.resolve();
-      await bureau.dispose();
-    });
-    const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: 'as submitted' }];
-
-    const run = bureau.run('echo', parts);
-    parts[0]!.text = 'mutated';
-    await started.promise;
-
-    const stored = await storage.get(`bureau-catalog-run:${run.id}`);
-    expect(stored).not.toBeNull();
-    const record = decode(stored!) as { input: unknown };
-    expect(record.input).toEqual([{ type: 'text', text: 'as submitted' }]);
-    gate.resolve();
-    await run.result();
-  });
 });
 
 describe('session input carrying a managed asset (COR-716)', () => {
@@ -275,18 +239,14 @@ describe('session input carrying a managed asset (COR-716)', () => {
       await bureau.dispose();
     });
 
-    const run = await bureau.createRun({
-      agentName: 'default',
-      message: 'Start',
-      principal: alice.id,
-    });
+    const run = await bureau.tasks.start('default', 'Start', { principal: alice.id });
     await stepZeroStarted.promise;
     const { source, bytes } = await admitImage(bureau);
     const payload = [
       { type: 'text', text: 'look at this' },
       { type: 'image', source },
     ] as const;
-    const admitted = await bureau.contexts.input(run.sessionId, {
+    const admitted = await bureau.contexts.input(run.contextId, {
       id: 'input-a',
       principal: alice.id,
       deliveryMode: 'steer',
@@ -295,7 +255,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
     expect(admitted.outcome).toBe('admitted');
 
     releaseStepZero.resolve();
-    await bureau.waitForDurableRun(run.id);
+    await bureau.tasks.wait(run.id);
     // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
     await yieldToPortableEventLoop();
 
@@ -348,15 +308,11 @@ describe('session input carrying a managed asset (COR-716)', () => {
       await bureau.dispose();
     });
 
-    const run = await bureau.createRun({
-      message: 'Start',
-      principal: alice.id,
-      agentName: 'echo',
-    });
+    const run = await bureau.tasks.start('echo', 'Start', { principal: alice.id });
     await stepZeroStarted.promise;
     const { source, bytes } = await admitImage(bureau);
     const payload = [{ type: 'image', source }] as const;
-    const admitted = await bureau.contexts.input(run.sessionId, {
+    const admitted = await bureau.contexts.input(run.contextId, {
       id: 'input-named',
       principal: alice.id,
       deliveryMode: 'steer',
@@ -364,7 +320,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
     });
     expect(admitted.outcome).toBe('admitted');
     releaseStepZero.resolve();
-    await bureau.waitForDurableRun(run.id);
+    await bureau.tasks.wait(run.id);
     // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
     await yieldToPortableEventLoop();
 
@@ -408,15 +364,11 @@ describe('session input carrying a managed asset (COR-716)', () => {
       releaseStepZero.resolve();
       await bureau.dispose();
     });
-    const run = await bureau.createRun({
-      agentName: 'default',
-      message: 'Start',
-      principal: alice.id,
-    });
+    const run = await bureau.tasks.start('default', 'Start', { principal: alice.id });
     await stepZeroStarted.promise;
     const payload: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: 'as submitted' }];
 
-    const pending = bureau.contexts.input(run.sessionId, {
+    const pending = bureau.contexts.input(run.contextId, {
       id: 'input-snapshot',
       principal: alice.id,
       deliveryMode: 'steer',
@@ -429,7 +381,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
     expect(admitted.outcome).toBe('admitted');
 
     releaseStepZero.resolve();
-    await bureau.waitForDurableRun(run.id);
+    await bureau.tasks.wait(run.id);
 
     const step = seen.find((context) => context.step === 1)!;
     const delivered = step.conversation
@@ -452,11 +404,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
       hold.resolve();
       await bureau.dispose();
     });
-    const run = await bureau.createRun({
-      agentName: 'default',
-      message: 'Start',
-      principal: alice.id,
-    });
+    const run = await bureau.tasks.start('default', 'Start', { principal: alice.id });
     // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
     await yieldToPortableEventLoop();
 
@@ -467,7 +415,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
     ]) {
       let thrown: unknown;
       try {
-        await bureau.contexts.input(run.sessionId, {
+        await bureau.contexts.input(run.contextId, {
           id: `input-${JSON.stringify(payload).length}`,
           principal: alice.id,
           deliveryMode: 'steer',

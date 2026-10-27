@@ -55,12 +55,12 @@ async function pollUntil(check: () => boolean | Promise<boolean>): Promise<true>
 }
 
 async function createRunningBureauSession(bureau: Bureau, principal = 'alice'): Promise<string> {
-  const run = await bureau.createRun({ agentName: 'default', message: 'hold open', principal });
+  const run = await bureau.tasks.start('default', 'hold open', { principal });
   await pollUntil(async () => {
-    const session = await bureau.contexts.get(run.sessionId);
+    const session = await bureau.contexts.get(run.contextId);
     return session?.metadata['lastRunStatus'] === 'running';
   });
-  return run.sessionId;
+  return run.contextId;
 }
 
 async function createDurableBureauWithRunningSession(
@@ -303,10 +303,8 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
 
       expect(
         await rejectionOf(
-          bureau.createRun({
-            agentName: 'default',
-            message: 'continue as bob',
-            sessionId,
+          bureau.tasks.start('default', 'continue as bob', {
+            contextId: sessionId,
             principal: 'bob',
           }),
         ),

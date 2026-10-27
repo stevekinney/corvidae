@@ -227,13 +227,13 @@ export async function workflowStatus(
   bureau: Bureau,
   workflowId: string,
 ): Promise<string | undefined> {
-  const state = await bureau.getDurableRun(workflowId);
+  const state = await bureau.tasks.workflow(workflowId);
   return state?.status;
 }
 
 /** The ids of the durable workflows whose id starts with `prefix`. */
 export async function durableIds(bureau: Bureau, prefix: string): Promise<string[]> {
-  const page = await bureau.listDurableRuns();
+  const page = await bureau.tasks.workflows();
   return (page?.items ?? []).filter((item) => item.id.startsWith(prefix)).map((item) => item.id);
 }
 

@@ -12,7 +12,7 @@
  * 3. no second fire is recorded for the same scheduled instant.
  *
  * Nothing waits on the clock: both Bureaus run `maintenance:
- * 'manual'`, so only `runDurableMaintenance(now)` ever ticks the schedule; the
+ * 'manual'`, so only `maintain(now)` ever ticks the schedule; the
  * child is awaited by process exit and its marker file; and `ownership: 'none'`
  * leaves no dead holder's claim to wait out.
  *
@@ -104,7 +104,7 @@ async function scheduleFireCrashScenario(backend: Backend, scope: ScenarioScope)
         );
       });
       releaseFire();
-      const report = await bureau.waitForRecovery?.();
+      const report = await bureau.recovery();
       expect(report?.outcome).toBe('clean');
 
       // (1) The definition survived intact.
@@ -119,15 +119,15 @@ async function scheduleFireCrashScenario(backend: Backend, scope: ScenarioScope)
 
       // (2) The interrupted fire is on record, and recovery drove it to a terminal state.
       expect(await settled).toBe(marker.fireId);
-      const fire = await bureau.getDurableRun(marker.fireId);
+      const fire = await bureau.tasks.workflow(marker.fireId);
       expect(fire?.status).toBe('completed');
       expect(generateCalls).toBeGreaterThan(0);
       expect(conversations.size).toBe(1);
       const afterRecovery = generateCalls;
 
       // (3) The recovered process fires nothing more for the instant that was already fired.
-      await bureau.runDurableMaintenance(marker.occurrence);
-      await bureau.runDurableMaintenance(marker.occurrence + INTERVAL_MS - 1);
+      await bureau.maintain(marker.occurrence);
+      await bureau.maintain(marker.occurrence + INTERVAL_MS - 1);
       const unchanged = await bureau.schedules.get(marker.scheduleId);
       expect(unchanged?.lastFireAt).toBe(marker.occurrence);
       expect(unchanged?.nextFireAt).toBe(marker.occurrence + INTERVAL_MS);
@@ -137,7 +137,7 @@ async function scheduleFireCrashScenario(backend: Backend, scope: ScenarioScope)
 
       // Control: the same drive does fire the next instant, so the checks above
       // were not passing because the tick was inert.
-      await bureau.runDurableMaintenance(marker.occurrence + INTERVAL_MS);
+      await bureau.maintain(marker.occurrence + INTERVAL_MS);
       const next = await bureau.schedules.get(marker.scheduleId);
       expect(next?.lastFireAt).toBe(marker.occurrence + INTERVAL_MS);
     } finally {

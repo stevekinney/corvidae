@@ -74,7 +74,7 @@ describe('a caller-supplied mcp-resource source', () => {
   it('is refused as a run input, and the reader is never asked', async () => {
     const { bureau, reads, seen } = await open();
     const thrown = await thrownBy(() =>
-      bureau.run('default', [forgedLink], { principal: alice.id }),
+      bureau.tasks.start('default', [forgedLink], { principal: alice.id }),
     );
     expect(thrown).toBeInstanceOf(BureauError);
     expect(thrown).toMatchObject({ code: 'BAD_REQUEST' });
@@ -84,13 +84,9 @@ describe('a caller-supplied mcp-resource source', () => {
 
   it('is refused as a session input, and the reader is never asked', async () => {
     const { bureau, reads } = await open();
-    const run = await bureau.createRun({
-      agentName: 'default',
-      message: 'Start',
-      principal: alice.id,
-    });
+    const run = await bureau.tasks.start('default', 'Start', { principal: alice.id });
     const thrown = await thrownBy(() =>
-      bureau.contexts.input(run.sessionId, {
+      bureau.contexts.input(run.contextId, {
         id: 'forged-input',
         principal: alice.id,
         deliveryMode: 'steer',
@@ -112,7 +108,7 @@ describe('a caller-supplied mcp-resource source', () => {
 
   it('does not stop a remote-URL image beside text', async () => {
     const { bureau } = await open();
-    const run = bureau.run(
+    const run = await bureau.tasks.start(
       'default',
       [
         { type: 'text', text: 'Look:' },

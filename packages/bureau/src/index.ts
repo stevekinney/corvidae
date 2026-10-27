@@ -198,7 +198,6 @@ export type {
   CommandLedgerPruneResult,
   CommandPayloadValue,
   CreateCommandLedgerOptions,
-  CreatedRunSummary,
   CreateRunCreationLedgerOptions,
   LocateRunCreationReceiptInput,
   RunCreationAttempt,
@@ -219,6 +218,8 @@ export {
   digestRunCreationPayload,
   RUN_CREATION_OPERATION_VERSION,
   RunCreationReceiptUnrecordedError,
+  serializeTaskInput,
+  serializeTaskRequestContext,
 } from './command-ledger';
 export { createAgentDiscoveryTool } from './create-agent-discovery-tool';
 export type {
@@ -235,6 +236,7 @@ export {
   createBureau,
   ReviewRoundChangedError,
   ScheduleLocatorUnavailableError,
+  TaskRespondError,
   UnknownScheduleAgentError,
 } from './create-bureau';
 export {
@@ -464,6 +466,15 @@ export type {
   AuditQueryRecord,
   BureauReviews,
   BureauContexts,
+  BureauTasks,
+  StartTaskOptions,
+  TaskHandle,
+  TaskInput,
+  TaskInspection,
+  TaskOutputOf,
+  TaskReceiptQuery,
+  TaskRespondRequest,
+  TaskRespondResult,
   BureauSchedules,
   BureauRunOptions,
   BureauShutdownOptions,

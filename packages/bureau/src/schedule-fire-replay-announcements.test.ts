@@ -30,7 +30,7 @@ afterEach(async () => {
 const stopAtApproval = stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls());
 
 async function reviewEvents(bureau: Bureau, runId: string) {
-  const page = await bureau.eventHistory({ kind: 'run', id: runId });
+  const page = await bureau.tasks.events(runId);
   if (!('events' in page)) return [];
   return page.events
     .filter((event) => event.kind.startsWith('review.'))

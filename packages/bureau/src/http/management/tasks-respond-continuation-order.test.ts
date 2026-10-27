@@ -12,14 +12,8 @@
  * the run has parked again, forcing that order, and check the task still reads `input-required`.
  */
 
-import {
-  createAgent,
-  type GenerateContext,
-  type GenerateFunction,
-  stopWhen,
-} from '@lostgradient/operative';
+import { type GenerateFunction } from '@lostgradient/operative';
 import { resolveStorage, type Storage } from '@lostgradient/weft';
-import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
@@ -60,17 +54,6 @@ function parksTwice(): GenerateFunction {
     return { content: 'done', toolCalls: [] };
   };
 }
-
-/** A catalog agent that parks on `first`, then on `second`, then finishes. */
-const asksTwice = createAgent({
-  generate: async (context: GenerateContext) => {
-    if (context.step === 0) return waitOn('first');
-    if (context.step === 1) return waitOn('second');
-    return { content: 'done', toolCalls: [] };
-  },
-  toolbox: createToolbox([]),
-  stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
-});
 
 type HeldStorage = {
   readonly storage: Storage;
@@ -146,7 +129,7 @@ const statuses = (frames: readonly SseFrame[]) =>
   );
 
 async function historyKinds(opened: OpenedBureau, runId: string): Promise<string[]> {
-  const page = await opened.bureau.eventHistory({ kind: 'run', id: runId });
+  const page = await opened.bureau.tasks.events(runId);
   return 'events' in page ? page.events.map((event) => event.kind) : [];
 }
 
@@ -158,14 +141,6 @@ async function countOf(opened: OpenedBureau, runId: string, kind: string): Promi
 async function errorOf(reply: ReturnType<typeof rpc>): Promise<unknown> {
   const body = await reply;
   return body.error;
-}
-
-function openSignals(opened: OpenedBureau, runId: string): string[] {
-  return opened.bureau.reviews
-    .list()
-    .flatMap((review) =>
-      review.runId === runId && review.kind === 'human-wait' ? [review.signalName] : [],
-    );
 }
 
 async function taskOf(opened: OpenedBureau, taskId: string): Promise<unknown> {
@@ -182,11 +157,7 @@ const waitingOnSecond = {
 describe('bureau.tasks.respond when the run parks again before the answer is recorded (COR-1607)', () => {
   it('keeps a session task input-required, in tasks.get and in its event stream', async () => {
     await withHeldBureau({ generate: parksTwice() }, async (opened, hold) => {
-      const run = await opened.bureau.createRun({
-        agentName: 'default',
-        message: 'park',
-        principal: OWNER.alice,
-      });
+      const run = await opened.bureau.tasks.start('default', 'park', { principal: OWNER.alice });
       await waitForCondition(
         async () => (await countOf(opened, run.id, 'review.requested')) === 1,
         'the run never parked on its first wait',
@@ -246,54 +217,9 @@ describe('bureau.tasks.respond when the run parks again before the answer is rec
       );
       expect(second.error).toBeUndefined();
       await waitForCondition(
-        () => opened.bureau.getRun(run.id)?.status === 'completed',
+        () => opened.bureau.tasks.detail(run.id)?.status === 'completed',
         'the run never finished after its second answer',
       );
-    });
-  });
-
-  it('keeps a catalog task input-required in tasks.get', async () => {
-    await withHeldBureau({ agents: { asksTwice } }, async (opened, hold) => {
-      const run = opened.bureau.run('asksTwice', 'which ones?', { principal: OWNER.alice });
-      await waitForCondition(
-        () => openSignals(opened, run.id).includes('first'),
-        'the run never parked on its first wait',
-      );
-
-      // Hold the decision record's `recorded` mark, which follows the signal.
-      hold.arm(
-        (payload) => payload.includes('review-decision:v1') && payload.includes('"recorded":true'),
-      );
-      let answered = false;
-      const answering = rpc(
-        opened.handler,
-        'bureau.tasks.respond',
-        { taskId: run.id, messageId: 'answer-first', answer: 'one' },
-        'alice-key',
-      ).finally(() => {
-        answered = true;
-      });
-      await waitForCondition(
-        () => hold.held() > 0 && openSignals(opened, run.id).includes('second'),
-        'the run never parked on its second wait',
-      );
-      expect(hold.held()).toBeGreaterThan(0);
-      expect(answered).toBe(false);
-      expect(await taskOf(opened, run.id)).toMatchObject(waitingOnSecond);
-
-      hold.release();
-      expect(await errorOf(answering)).toBeUndefined();
-      expect(await taskOf(opened, run.id)).toMatchObject(waitingOnSecond);
-
-      const second = await rpc(
-        opened.handler,
-        'bureau.tasks.respond',
-        { taskId: run.id, messageId: 'answer-second', answer: 'two', signalName: 'second' },
-        'alice-key',
-      );
-      expect(second.error).toBeUndefined();
-      const result = await run.result();
-      expect(result.content).toBe('done');
     });
   });
 });

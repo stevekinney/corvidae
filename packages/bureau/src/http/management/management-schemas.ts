@@ -55,8 +55,8 @@ export const taskViewSchema = z.object({
   actor: z.string().nullable(),
   /**
    * How the task's record was written: `schedule-fire` for a schedule's fire, `chat` when it
-   * recorded the session incarnation it ran in, and `catalog` otherwise (a `bureau.run()` dispatch,
-   * or a run in a Bureau without a session store, which records no incarnation). Only `chat` says
+   * recorded the session incarnation it ran in, and `catalog` otherwise (a task in a Bureau without a session store, which records no
+   * incarnation). Only `chat` says
    * `contextId` is a session; a `catalog` task's is its own handle unless the caller named a
    * session. A client that lists other owners' tasks and lists only its own sessions reads this
    * instead of asking the session store.

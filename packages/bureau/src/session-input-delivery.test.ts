@@ -84,20 +84,16 @@ describe('createBureau delivers admitted session input at the next step boundary
       return { content: 'done', toolCalls: [] };
     });
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'Start',
-        principal: 'alice',
-      });
+      const run = await bureau.tasks.start('default', 'Start', { principal: 'alice' });
       await stepZeroStarted.promise;
 
-      const first = await bureau.contexts.input(run.sessionId, {
+      const first = await bureau.contexts.input(run.contextId, {
         id: 'input-a',
         principal: 'alice',
         deliveryMode: 'steer',
         payload: 'first',
       });
-      const second = await bureau.contexts.input(run.sessionId, {
+      const second = await bureau.contexts.input(run.contextId, {
         id: 'input-b',
         principal: 'alice',
         deliveryMode: 'queue',
@@ -118,7 +114,7 @@ describe('createBureau delivers admitted session input at the next step boundary
       expect(prompts[2]).toEqual(['Start', 'first', 'second']);
 
       // Step 1's result is durable by now, so the receipt reads promoted.
-      const replay = await bureau.contexts.input(run.sessionId, {
+      const replay = await bureau.contexts.input(run.contextId, {
         id: 'input-a',
         principal: 'alice',
         deliveryMode: 'steer',
@@ -127,7 +123,7 @@ describe('createBureau delivers admitted session input at the next step boundary
       expect(replay.outcome).toBe('replayed');
       if (replay.outcome !== 'replayed') throw new Error('expected replayed');
       expect(replay.receipt.state).toBe('promoted');
-      const replayB = await bureau.contexts.input(run.sessionId, {
+      const replayB = await bureau.contexts.input(run.contextId, {
         id: 'input-b',
         principal: 'alice',
         deliveryMode: 'queue',
@@ -138,12 +134,12 @@ describe('createBureau delivers admitted session input at the next step boundary
 
       // A promotion rides the session outbox; it must not stop the drain from
       // reaching the session's later facts.
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
       expect(await bureau.internals.sessionStore?.outbox.pending()).toEqual([]);
 
       releaseStepTwo.resolve();
       await pollUntil(async () => {
-        const session = await bureau.contexts.get(run.sessionId);
+        const session = await bureau.contexts.get(run.contextId);
         return session?.metadata['lastRunStatus'] === 'completed';
       });
     } finally {
@@ -167,17 +163,13 @@ describe('createBureau delivers admitted session input at the next step boundary
       return { content: `answer ${context.step}`, toolCalls: [] };
     });
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'First',
-        principal: 'alice',
-      });
+      const run = await bureau.tasks.start('default', 'First', { principal: 'alice' });
       await stepZeroStarted.promise;
       for (const [id, payload] of [
         ['input-a', 'sent while the agent was answering'],
         ['input-b', 'and a second thing'],
       ] as const) {
-        const admitted = await bureau.contexts.input(run.sessionId, {
+        const admitted = await bureau.contexts.input(run.contextId, {
           id,
           principal: 'alice',
           deliveryMode: 'steer',
@@ -186,7 +178,7 @@ describe('createBureau delivers admitted session input at the next step boundary
         expect(admitted.outcome).toBe('admitted');
       }
       releaseStepZero.resolve();
-      await bureau.waitForDurableRun(run.id);
+      await bureau.tasks.wait(run.id);
 
       expect(prompts).toEqual([
         ['First'],
@@ -213,13 +205,9 @@ describe('createBureau delivers admitted session input at the next step boundary
     });
     try {
       runNumber = 1;
-      const first = await bureau.createRun({
-        agentName: 'default',
-        message: 'First',
-        principal: 'alice',
-      });
+      const first = await bureau.tasks.start('default', 'First', { principal: 'alice' });
       await firstStarted.promise;
-      const admitted = await bureau.contexts.input(first.sessionId, {
+      const admitted = await bureau.contexts.input(first.contextId, {
         id: 'input-a',
         principal: 'alice',
         deliveryMode: 'steer',
@@ -227,17 +215,15 @@ describe('createBureau delivers admitted session input at the next step boundary
       });
       expect(admitted.outcome).toBe('admitted');
 
-      await bureau.contexts.delete(first.sessionId);
+      await bureau.contexts.delete(first.contextId);
       hold.resolve();
 
       runNumber = 2;
-      const second = await bureau.createRun({
-        agentName: 'default',
-        message: 'Second',
+      const second = await bureau.tasks.start('default', 'Second', {
+        contextId: first.contextId,
         principal: 'alice',
-        sessionId: first.sessionId,
       });
-      await bureau.waitForDurableRun(second.id);
+      await bureau.tasks.wait(second.id);
 
       const secondRun = prompts.filter(({ run }) => run === 2);
       expect(secondRun).toEqual([{ run: 2, texts: ['Second'] }]);
@@ -257,14 +243,12 @@ describe('createBureau delivers admitted session input at the next step boundary
     });
     try {
       const longId = 's'.repeat(300);
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'Start',
+      const run = await bureau.tasks.start('default', 'Start', {
+        contextId: longId,
         principal: 'alice',
-        sessionId: longId,
       });
       await started.promise;
-      const outcome = await bureau.contexts.input(run.sessionId, {
+      const outcome = await bureau.contexts.input(run.contextId, {
         id: 'input-a',
         principal: 'alice',
         deliveryMode: 'steer',
@@ -290,14 +274,12 @@ describe('createBureau delivers admitted session input at the next step boundary
     });
     try {
       const longId = `session-${'x'.repeat(300)}`;
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'Start',
+      const run = await bureau.tasks.start('default', 'Start', {
+        contextId: longId,
         principal: 'alice',
-        sessionId: longId,
       });
       await started.promise;
-      const outcome = await bureau.contexts.input(run.sessionId, {
+      const outcome = await bureau.contexts.input(run.contextId, {
         id: 'input-a',
         principal: 'alice',
         deliveryMode: 'steer',
@@ -342,13 +324,9 @@ describe('createBureau delivers admitted session input at the next step boundary
       durable: true,
     });
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'Start',
-        principal: 'alice',
-      });
+      const run = await bureau.tasks.start('default', 'Start', { principal: 'alice' });
       await stepZeroStarted.promise;
-      await bureau.contexts.input(run.sessionId, {
+      await bureau.contexts.input(run.contextId, {
         id: 'input-a',
         principal: 'alice',
         deliveryMode: 'steer',
@@ -358,10 +336,10 @@ describe('createBureau delivers admitted session input at the next step boundary
       await stepOneStarted.promise;
 
       // The step already holds the input; the caller cancels it now.
-      const session = await bureau.contexts.get(run.sessionId);
+      const session = await bureau.contexts.get(run.contextId);
       const mailbox = createSessionInputMailbox(
         storage,
-        run.sessionId,
+        run.contextId,
         session?.incarnation ?? '',
         100,
       );
@@ -371,7 +349,7 @@ describe('createBureau delivers admitted session input at the next step boundary
         reason: 'changed my mind',
       });
       releaseStepOne.resolve();
-      await bureau.waitForDurableRun(run.id);
+      await bureau.tasks.wait(run.id);
 
       // The transcript holds it, so the receipt is promoted even though the
       // mailbox closed the command as cancelled.
@@ -382,7 +360,7 @@ describe('createBureau delivers admitted session input at the next step boundary
         storage,
         kv: textValueStore(storage),
         sessionMailbox: mailbox,
-        sessionId: run.sessionId,
+        sessionId: run.contextId,
         incarnation: session?.incarnation ?? '',
         id: 'input-a',
         principal: 'alice',

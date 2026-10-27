@@ -89,7 +89,10 @@ describe('SubscribeToTask across a lost run.completed append', () => {
     );
     const sentBody: Json = await sent.json();
     const taskId = sentBody.result.task.id;
-    await waitForCondition(() => opened.bureau.getRun(taskId)?.status === 'running', 'running');
+    await waitForCondition(
+      () => opened.bureau.tasks.detail(taskId)?.status === 'running',
+      'running',
+    );
 
     const streaming = drain(await opened.handler(rpc('SubscribeToTask', { id: taskId })));
     release();
@@ -129,7 +132,10 @@ describe('SubscribeToTask when neither the run.completed append nor its repair c
     );
     const sentBody: Json = await sent.json();
     const taskId = sentBody.result.task.id;
-    await waitForCondition(() => opened.bureau.getRun(taskId)?.status === 'running', 'running');
+    await waitForCondition(
+      () => opened.bureau.tasks.detail(taskId)?.status === 'running',
+      'running',
+    );
 
     const streaming = drain(await opened.handler(rpc('SubscribeToTask', { id: taskId })));
     release();

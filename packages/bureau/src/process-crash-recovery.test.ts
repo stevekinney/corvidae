@@ -164,8 +164,7 @@ async function recoveryScenario(backend: Backend, scope: ScenarioScope): Promise
     const [b, c] = racers as [Racer, Racer];
 
     for (const racer of racers) {
-      const report = await racer.bureau.waitForRecovery?.();
-      if (report === undefined) throw new Error('waitForRecovery is unavailable');
+      const report = await racer.bureau.recovery();
       expect(report.outcome).toBe('clean');
       expect(report.perRunFailures).toEqual([]);
     }
@@ -174,26 +173,23 @@ async function recoveryScenario(backend: Backend, scope: ScenarioScope): Promise
     const bureaus = racers.map((racer) => racer.bureau);
     await waitForBureauState(
       bureaus,
-      () => racers.some((racer) => racer.bureau.getRun(marker.runId)?.status === 'completed'),
+      () => racers.some((racer) => racer.bureau.tasks.detail(marker.runId)?.status === 'completed'),
       { runIds: [marker.runId] },
     );
     const winners = racers.filter(
-      (racer) => racer.bureau.getRun(marker.runId)?.status === 'completed',
+      (racer) => racer.bureau.tasks.detail(marker.runId)?.status === 'completed',
     );
     expect(winners).toHaveLength(1);
     const winner = winners[0] as Racer;
 
     for (const racer of racers) {
       // Weft's own result waiter: it settles after the durable commit, for the loser too.
-      await racer.bureau.waitForDurableRun(marker.runId);
-      const durableRun = await racer.bureau.getDurableRun(marker.runId);
+      await racer.bureau.tasks.wait(marker.runId);
+      const durableRun = await racer.bureau.tasks.workflow(marker.runId);
       expect(durableRun?.status).toBe('completed');
     }
 
-    const asOwner = await winner.bureau.eventHistory(
-      { kind: 'run', id: marker.runId },
-      { principal: 'alice' },
-    );
+    const asOwner = await winner.bureau.tasks.events(marker.runId, { principal: 'alice' });
     if ('outcome' in asOwner) {
       throw new Error(`expected a page for alice, got ${JSON.stringify(asOwner)}`);
     }
@@ -201,9 +197,9 @@ async function recoveryScenario(backend: Backend, scope: ScenarioScope): Promise
     expect(kinds.filter((kind) => kind === 'run.completed')).toHaveLength(1);
     expect(kinds).not.toContain('run.error');
     expect(kinds).not.toContain('run.aborted');
-    expect(
-      await winner.bureau.eventHistory({ kind: 'run', id: marker.runId }, { principal: 'mallory' }),
-    ).toEqual({ outcome: 'not-found' });
+    expect(await winner.bureau.tasks.events(marker.runId, { principal: 'mallory' })).toEqual({
+      outcome: 'not-found',
+    });
 
     // Fencing: the post-crash step ran once across both racers; step 0 never reran.
     expect(b.stepsAtOrAfterOne() + c.stepsAtOrAfterOne()).toBe(1);
@@ -238,10 +234,9 @@ async function recoveryScenario(backend: Backend, scope: ScenarioScope): Promise
     expect(indices).toEqual(indices.map((_, position) => position));
 
     // Continuity: the pre-crash cursor still resumes without a gap.
-    const resumed = await winner.bureau.eventHistory(
-      { kind: 'session', id: marker.sessionId },
-      { since: marker.sessionCursor },
-    );
+    const resumed = await winner.bureau.contexts.events(marker.sessionId, {
+      since: marker.sessionCursor,
+    });
     if ('outcome' in resumed) {
       throw new Error(`expected a resumable page, got ${JSON.stringify(resumed)}`);
     }

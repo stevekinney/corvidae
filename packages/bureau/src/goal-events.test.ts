@@ -1,5 +1,5 @@
 /**
- * COR-851 — a durable goal's audit history, read through `bureau.eventHistory`
+ * COR-851 — a durable goal's audit history, read through `bureau.goals.events`
  * over a real `createBureau`: what an operator sees, who may see it, and that a
  * restart neither loses nor repeats it.
  *
@@ -53,7 +53,7 @@ async function boot(agent = answerDone()) {
     diagnostics: createDiagnostics(),
   });
   cleanups.push(() => bureau.dispose());
-  await bureau.waitForRecovery?.();
+  await bureau.recovery();
   return bureau;
 }
 
@@ -70,7 +70,7 @@ async function goalEvents(
   goalRunId = 'g1',
   options?: { principal?: string },
 ): Promise<DurableEventEnvelope[]> {
-  const page = await bureau.eventHistory({ kind: 'goal', id: goalRunId }, options);
+  const page = await bureau.goals.events(goalRunId, options);
   if (!('events' in page) || 'owner' in page) {
     throw new Error(`expected an event page, got ${JSON.stringify(page)}`);
   }
@@ -79,7 +79,7 @@ async function goalEvents(
 
 const kinds = (events: readonly DurableEventEnvelope[]) => events.map((event) => event.kind);
 
-describe('a goal in bureau.eventHistory', () => {
+describe('a goal in bureau.goals.events', () => {
   it('shows the audit events of a goal that retries and then passes', async () => {
     database = createTestDatabase('events-retry');
     let calls = 0;
@@ -155,12 +155,12 @@ describe('a goal in bureau.eventHistory', () => {
     await ended(bureau, 'g1');
     await ended(bureau, 'g2');
 
-    const first = await bureau.eventHistory({ kind: 'goal', id: 'g1' }, { limit: 2 });
+    const first = await bureau.goals.events('g1', { limit: 2 });
     if (!('events' in first)) throw new Error('expected a page');
-    const rest = await bureau.eventHistory(
-      { kind: 'goal', id: 'g1' },
-      { limit: 10, ...(first.nextCursor === undefined ? {} : { since: first.nextCursor }) },
-    );
+    const rest = await bureau.goals.events('g1', {
+      limit: 10,
+      ...(first.nextCursor === undefined ? {} : { since: first.nextCursor }),
+    });
     if (!('events' in rest)) throw new Error('expected a page');
 
     expect(first.hasMore).toBe(true);
@@ -175,9 +175,7 @@ describe('a goal in bureau.eventHistory', () => {
     database = createTestDatabase('events-subscribe');
     const bureau = await boot();
     const seen: string[] = [];
-    const subscription = bureau.subscribeEventHistory({ kind: 'goal', id: 'g1' }, (event) =>
-      seen.push(event.kind),
-    );
+    const subscription = bureau.goals.subscribeEvents('g1', (event) => seen.push(event.kind));
     cleanups.push(() => subscription.unsubscribe());
 
     await bureau.goals.create(goalRequest());
@@ -203,7 +201,7 @@ describe('who may read a goal history', () => {
       'goal.succeeded',
     );
     expect(kinds(await goalEvents(bureau, 'g1'))).toContain('goal.succeeded');
-    expect(await bureau.eventHistory({ kind: 'goal', id: 'g1' }, { principal: 'bob' })).toEqual({
+    expect(await bureau.goals.events('g1', { principal: 'bob' })).toEqual({
       outcome: 'not-found',
     });
   });
@@ -211,11 +209,8 @@ describe('who may read a goal history', () => {
   it('answers a stranger exactly as it answers a goal that does not exist', async () => {
     const bureau = await owned();
 
-    const stranger = await bureau.eventHistory({ kind: 'goal', id: 'g1' }, { principal: 'bob' });
-    const absent = await bureau.eventHistory(
-      { kind: 'goal', id: 'never-created' },
-      { principal: 'bob' },
-    );
+    const stranger = await bureau.goals.events('g1', { principal: 'bob' });
+    const absent = await bureau.goals.events('never-created', { principal: 'bob' });
 
     expect(stranger).toEqual(absent);
   });
@@ -228,14 +223,8 @@ describe('who may read a goal history', () => {
     await createFleetEventFeed(storage).retain({ beforeSequence: 2 });
     const options = { since: '0' };
 
-    const owner = await bureau.eventHistory(
-      { kind: 'goal', id: 'g1' },
-      { ...options, principal: 'alice' },
-    );
-    const stranger = await bureau.eventHistory(
-      { kind: 'goal', id: 'g1' },
-      { ...options, principal: 'bob' },
-    );
+    const owner = await bureau.goals.events('g1', { ...options, principal: 'alice' });
+    const stranger = await bureau.goals.events('g1', { ...options, principal: 'bob' });
 
     // The owner really is told about the gap; the stranger learns nothing, not even that.
     expect(owner).toMatchObject({ outcome: 'gap', firstRetainedSequence: 2 });
@@ -251,7 +240,7 @@ describe('who may read a goal history', () => {
     expect(kinds(await goalEvents(bureau, 'g1', { principal: 'anonymous:local' }))).toContain(
       'goal.succeeded',
     );
-    expect(await bureau.eventHistory({ kind: 'goal', id: 'g1' }, { principal: 'anyone' })).toEqual({
+    expect(await bureau.goals.events('g1', { principal: 'anyone' })).toEqual({
       outcome: 'not-found',
     });
   });
@@ -260,7 +249,7 @@ describe('who may read a goal history', () => {
     const bureau = await owned();
     await bureau.goals.close('g1');
 
-    const page = await bureau.eventHistory({ kind: 'goal', id: 'g1' }, { principal: 'alice' });
+    const page = await bureau.goals.events('g1', { principal: 'alice' });
 
     expect('outcome' in page).toBe(false);
   });
@@ -356,8 +345,8 @@ describe('who may subscribe to a goal history', () => {
 
   function watch(bureau: Bureau, principal?: string) {
     const seen: string[] = [];
-    const subscription = bureau.subscribeEventHistory(
-      { kind: 'goal', id: 'g1' },
+    const subscription = bureau.goals.subscribeEvents(
+      'g1',
       (event) => seen.push(event.kind),
       principal === undefined ? undefined : { principal },
     );

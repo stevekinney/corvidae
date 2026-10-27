@@ -42,14 +42,9 @@ async function openBureau() {
 type OpenBureau = Awaited<ReturnType<typeof openBureau>>['bureau'];
 
 async function settled(bureau: OpenBureau, principal: string, sessionId: string) {
-  const run = await bureau.createRun({
-    agentName: 'default',
-    message: 'hello',
-    sessionId,
-    principal,
-  });
+  const run = await bureau.tasks.start('default', 'hello', { contextId: sessionId, principal });
   await waitForCondition(
-    () => bureau.getRun(run.id)?.status !== 'running',
+    () => bureau.tasks.detail(run.id)?.status !== 'running',
     `run ${run.id} never settled`,
   );
   return run;
@@ -60,7 +55,7 @@ async function read(
   sessionId: string,
   options: { principal?: string; since?: string } = {},
 ) {
-  return bureau.eventHistory({ kind: 'session', id: sessionId }, options);
+  return bureau.contexts.events(sessionId, options);
 }
 
 function eventsOf(page: Awaited<ReturnType<typeof read>>): readonly DurableEventEnvelope[] {
@@ -133,10 +128,11 @@ describe('the history of a deleted session (COR-718)', () => {
       const collected: DurableEventEnvelope[] = [];
       let since: string | undefined;
       for (;;) {
-        const page = await bureau.eventHistory(
-          { kind: 'session', id: 'paged' },
-          { principal: BOB, limit: 1, ...(since === undefined ? {} : { since }) },
-        );
+        const page = await bureau.contexts.events('paged', {
+          principal: BOB,
+          limit: 1,
+          ...(since === undefined ? {} : { since }),
+        });
         if (!('events' in page)) throw new Error(`expected events, got ${JSON.stringify(page)}`);
         collected.push(...page.events);
         if (!page.hasMore || page.nextCursor === undefined) break;
@@ -161,8 +157,8 @@ describe('the history of a deleted session (COR-718)', () => {
       const wanted = eventsOf(await read(bureau, 'followed', { principal: BOB }));
 
       const received: DurableEventEnvelope[] = [];
-      const subscription = bureau.subscribeEventHistory(
-        { kind: 'session', id: 'followed' },
+      const subscription = bureau.contexts.subscribeEvents(
+        'followed',
         (event) => {
           received.push(event);
         },
@@ -197,8 +193,8 @@ describe('the history of a deleted session (COR-718)', () => {
       const lastFormerSequence = Math.max(...sequences(former));
 
       const received: DurableEventEnvelope[] = [];
-      const subscription = bureau.subscribeEventHistory(
-        { kind: 'session', id: 'gone' },
+      const subscription = bureau.contexts.subscribeEvents(
+        'gone',
         (event) => {
           received.push(event);
         },
@@ -208,7 +204,7 @@ describe('the history of a deleted session (COR-718)', () => {
         // Bob's own session on a different id: its events prove his chain is live and in
         // order, so everything of Alice's queued ahead of them has been judged by now.
         const witnessReceived: DurableEventEnvelope[] = [];
-        const witness = bureau.subscribeEventHistory({ kind: 'session', id: 'gone' }, (event) => {
+        const witness = bureau.contexts.subscribeEvents('gone', (event) => {
           witnessReceived.push(event);
         });
         await waitForCondition(
@@ -280,15 +276,15 @@ describe('the history of a deleted session (COR-718)', () => {
 
       const asAlice: DurableEventEnvelope[] = [];
       const asBob: DurableEventEnvelope[] = [];
-      const alice = bureau.subscribeEventHistory(
-        { kind: 'session', id: 'retained-live' },
+      const alice = bureau.contexts.subscribeEvents(
+        'retained-live',
         (event) => {
           asAlice.push(event);
         },
         { principal: ALICE },
       );
-      const bob = bureau.subscribeEventHistory(
-        { kind: 'session', id: 'retained-live' },
+      const bob = bureau.contexts.subscribeEvents(
+        'retained-live',
         (event) => {
           asBob.push(event);
         },
@@ -335,8 +331,8 @@ describe('the history of a deleted session (COR-718)', () => {
       };
 
       const received: DurableEventEnvelope[] = [];
-      const subscription = bureau.subscribeEventHistory(
-        { kind: 'session', id: 'raced' },
+      const subscription = bureau.contexts.subscribeEvents(
+        'raced',
         (event) => {
           received.push(event);
         },
@@ -394,21 +390,19 @@ describe('the history of a deleted session (COR-718)', () => {
       const deletion = bureau.contexts.delete('pending');
       await claimReached.promise;
       expect(await store.load('pending')).toBeUndefined();
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'hello',
-        sessionId: 'pending',
+      const run = await bureau.tasks.start('default', 'hello', {
+        contextId: 'pending',
         principal: BOB,
       });
       await waitForCondition(
-        () => bureau.getRun(run.id)?.status !== 'running',
+        () => bureau.tasks.detail(run.id)?.status !== 'running',
         `run ${run.id} never settled`,
       );
 
       const page = await read(bureau, 'pending', { principal: BOB });
       const received: DurableEventEnvelope[] = [];
-      const subscription = bureau.subscribeEventHistory(
-        { kind: 'session', id: 'pending' },
+      const subscription = bureau.contexts.subscribeEvents(
+        'pending',
         (event) => {
           received.push(event);
         },
@@ -417,12 +411,9 @@ describe('the history of a deleted session (COR-718)', () => {
       try {
         // A trusted subscription is the proof that the replay has had time to be judged.
         const witnessed: DurableEventEnvelope[] = [];
-        const witness = bureau.subscribeEventHistory(
-          { kind: 'session', id: 'pending' },
-          (event) => {
-            witnessed.push(event);
-          },
-        );
+        const witness = bureau.contexts.subscribeEvents('pending', (event) => {
+          witnessed.push(event);
+        });
         await waitForCondition(
           () => witnessed.length >= former.length,
           'the trusted replay never arrived',
@@ -501,15 +492,15 @@ describe('the history of a deleted session (COR-718)', () => {
 
       const strangers: DurableEventEnvelope[] = [];
       const owners: DurableEventEnvelope[] = [];
-      const asBob = bureau.subscribeEventHistory(
-        { kind: 'session', id: 'live' },
+      const asBob = bureau.contexts.subscribeEvents(
+        'live',
         (event) => {
           strangers.push(event);
         },
         { principal: BOB },
       );
-      const asAlice = bureau.subscribeEventHistory(
-        { kind: 'session', id: 'live' },
+      const asAlice = bureau.contexts.subscribeEvents(
+        'live',
         (event) => {
           owners.push(event);
         },

@@ -100,7 +100,10 @@ async function open(options: { cancelWaitMilliseconds?: number; stopping?: () =>
       context(),
     );
     if (!('status' in sent)) throw new Error('expected a task');
-    await waitForCondition(() => bureau.getRun(sent.id)?.status === 'running', 'it never ran');
+    await waitForCondition(
+      () => bureau.tasks.detail(sent.id)?.status === 'running',
+      'it never ran',
+    );
     return sent.id;
   };
   const cancel = (id: string) =>

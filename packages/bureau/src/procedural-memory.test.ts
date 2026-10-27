@@ -30,7 +30,7 @@ import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
-import { waitForRunState } from './test';
+import { waitForTaskState } from './test';
 import type { Bureau } from './types';
 
 const TENANT = 'tenant-a';
@@ -223,12 +223,10 @@ describe('a procedure from proposal to revocation through public APIs (COR-770)'
       },
     });
     bureaus.push(bureau);
-    const run = await bureau.createRun({
-      message: 'Rotate the staging certificate.',
-      sessionId: 'session-1',
-      agentName: 'operator',
+    const run = await bureau.tasks.start('operator', 'Rotate the staging certificate.', {
+      contextId: 'session-1',
     });
-    await waitForRunState(bureau, run.id);
+    await waitForTaskState(bureau, run.id);
     // The procedure named reload_balancer, but the policy denied it, so it never ran.
     expect(ran).toEqual(['renew_certificate']);
 

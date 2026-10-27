@@ -52,7 +52,7 @@ async function open(fixture: ReturnType<typeof newFixture>): Promise<Bureau<Agen
     durableOwnership: { ownership: 'none' },
   });
   bureaus.push(bureau);
-  await bureau.waitForRecovery?.();
+  await bureau.recovery();
   return bureau;
 }
 
@@ -75,7 +75,7 @@ async function scheduleHistory(
   bureau: Bureau<AgentDefinitions>,
   scheduleId: string,
 ): Promise<readonly DurableEventEnvelope[]> {
-  const page = await bureau.eventHistory({ kind: 'schedule', id: scheduleId });
+  const page = await bureau.schedules.events(scheduleId);
   if (!('events' in page)) throw new Error(`expected a page, got ${JSON.stringify(page)}`);
   return page.events;
 }
@@ -266,7 +266,7 @@ describe('schedule transitions through the outbox (COR-194)', () => {
 
     const key = await commitWithoutRecording(fixture, 'schedule.paused', scheduleId);
     expect(await transitionKinds(bureau, scheduleId)).toEqual([]);
-    await bureau.runDurableMaintenance();
+    await bureau.maintain();
 
     expect(await transitionKinds(bureau, scheduleId)).toEqual(['schedule.paused']);
     expect(await auditTypes(bureau, scheduleId)).toEqual(['schedule.paused']);
@@ -303,7 +303,7 @@ describe('schedule transitions through the outbox (COR-194)', () => {
     }
     await commitWithoutRecording(fixture, 'schedule.paused', scheduleId);
 
-    await Promise.all([bureau.runDurableMaintenance(), bureau.schedules.resume(scheduleId)]);
+    await Promise.all([bureau.maintain(), bureau.schedules.resume(scheduleId)]);
 
     expect(await transitionKinds(bureau, scheduleId)).toEqual([
       'schedule.paused',

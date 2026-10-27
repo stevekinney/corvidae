@@ -33,6 +33,7 @@ import type {
   ServerFrame,
   BureauContexts,
   BureauReviews,
+  BureauTasks,
   BureauInternals,
 } from '../types.ts';
 import { toInterrupt } from './ag-ui-interrupts.ts';
@@ -56,18 +57,14 @@ import {
 import { type AgUiErrorCode, type EventStamp, stamp } from './ag-ui-vocabulary.ts';
 
 /** What a stream reads from the Bureau. */
-export type AgUiStreamBureau = Pick<
-  Bureau,
-  | 'getRun'
-  | 'subscribeLiveFrames'
-  | 'subscribeRunSnapshot'
-  | 'eventHistory'
-  | 'subscribeEventHistory'
-  | 'waitForDurableRun'
-  | 'children'
-  | 'getDurableRun'
-  | 'surfaces'
-> & { readonly reviews: Pick<BureauReviews, 'list' | 'pendingOf'> } & {
+export type AgUiStreamBureau = Pick<Bureau, 'frames' | 'children' | 'surfaces'> & {
+  readonly tasks: Pick<
+    BureauTasks,
+    'detail' | 'snapshot' | 'wait' | 'workflow' | 'events' | 'subscribeEvents'
+  >;
+} & {
+  readonly reviews: Pick<BureauReviews, 'list' | 'pendingOf'>;
+} & {
   readonly contexts: Pick<BureauContexts, 'get' | 'inputsDeliveredBy' | 'subscribeEvents'>;
 } & {
   readonly internals: Pick<BureauInternals, 'whenTaskRecorded'>;
@@ -179,10 +176,7 @@ async function readRunHistory(bureau: AgUiStreamBureau, nativeRunId: string): Pr
   let since: string | undefined;
   let terminal: ReadHistory['terminal'];
   for (;;) {
-    const page = await bureau.eventHistory(
-      { kind: 'run', id: nativeRunId },
-      since === undefined ? {} : { since },
-    );
+    const page = await bureau.tasks.events(nativeRunId, since === undefined ? {} : { since });
     if (!('events' in page)) break;
     for (const event of page.events) {
       lastCursorByKind.set(event.kind, event.cursor);
@@ -214,8 +208,11 @@ const TERMINAL_EVENTS: ReadonlySet<string> = new Set([
 ]);
 
 /** Whether this process holds the run and it has not recorded its end. */
-export function runIsGoing(bureau: Pick<Bureau, 'getRun'>, nativeRunId: string): boolean {
-  const detail = bureau.getRun(nativeRunId);
+export function runIsGoing(
+  bureau: { readonly tasks: Pick<BureauTasks, 'detail'> },
+  nativeRunId: string,
+): boolean {
+  const detail = bureau.tasks.detail(nativeRunId);
   if (detail === undefined) return false;
   if (detail.status !== 'running' && detail.status !== 'aborting') return false;
   return !detail.events.some((event) => TERMINAL_EVENTS.has(event.event));
@@ -229,7 +226,9 @@ export function runIsGoing(bureau: Pick<Bureau, 'getRun'>, nativeRunId: string):
  * only a human wait the run is parked on is.
  */
 export function interruptibleReviews(
-  bureau: Pick<Bureau, 'getRun'> & { readonly reviews: Pick<BureauReviews, 'list'> },
+  bureau: { readonly tasks: Pick<BureauTasks, 'detail'> } & {
+    readonly reviews: Pick<BureauReviews, 'list'>;
+  },
   nativeRunId: string,
 ): PendingReview[] {
   const pending = bureau.reviews.list().filter((review) => review.runId === nativeRunId);
@@ -244,12 +243,12 @@ export function interruptibleReviews(
  * child has no final text or its step count cannot be read from its durable run.
  */
 async function childResultRow(
-  bureau: Pick<Bureau, 'getDurableRun'>,
+  bureau: { readonly tasks: Pick<BureauTasks, 'workflow'> },
   record: BureauChildRecord,
 ): Promise<{ readonly id: string; readonly content: string } | undefined> {
   const content = record.status === 'completed' ? record.outcome?.content : undefined;
   if (content === undefined || content === '') return undefined;
-  const state = await bureau.getDurableRun(record.childRunId).catch(() => undefined);
+  const state = await bureau.tasks.workflow(record.childRunId).catch(() => undefined);
   const result: unknown = state?.result;
   const steps =
     typeof result === 'object' && result !== null
@@ -619,7 +618,7 @@ export function openRunStream(
   // The stream listens before it reads anything, so nothing falls between the
   // recorded history and the live tail; the buffered frames the history already
   // held are dropped by sequence.
-  unsubscribeFrames = bureau.subscribeLiveFrames((frame) => {
+  unsubscribeFrames = bureau.frames((frame) => {
     const relevant =
       (frame.type === 'event' || frame.type === 'stream:text-delta') &&
       frame.runId === request.nativeRunId;
@@ -773,7 +772,7 @@ export function openRunStream(
 
   const open = async (): Promise<void> => {
     if (request.child !== undefined) {
-      // The route authorized the run id on the owner `getOwner` reports, which reads run attribution
+      // The route authorized the run id on the owner `ownerOf` reports, which reads run attribution
       // before the child record. A child id can be chosen by whoever dispatches it, so the record
       // located under an authorized id can be another owner's; refuse it as a missing run.
       if (!runIsOwnedBy(request.child, request.owner)) {
@@ -794,8 +793,8 @@ export function openRunStream(
       surfaceSource = createSurfaceSource({
         surfaces: bureau.surfaces,
         subscribe: (listener, since) =>
-          bureau.subscribeEventHistory(
-            { kind: 'run', id: request.nativeRunId },
+          bureau.tasks.subscribeEvents(
+            request.nativeRunId,
             listener,
             since === undefined ? {} : { since },
           ),
@@ -811,7 +810,7 @@ export function openRunStream(
       surfaceSource.start(history?.fence);
     }
     const session = await readSessionOwnedBy(bureau, request.threadId, request.owner);
-    const detail: RunDetail | undefined = bureau.getRun(request.nativeRunId);
+    const detail: RunDetail | undefined = bureau.tasks.detail(request.nativeRunId);
     // A run held under another owner's name is not the one the route authorized. Nothing has been
     // written yet, so the stream is one error.
     if (detail !== undefined && !runIsOwnedBy(detail, request.owner)) {
@@ -821,7 +820,7 @@ export function openRunStream(
     // A run no process-local state names, held by another process or settled with an approval no
     // process restored, is streamed from its durable state.
     if (detail === undefined && pendingFor(bureau, request.nativeRunId).length === 0) {
-      const durable = await bureau.getDurableRun(request.nativeRunId).catch(() => undefined);
+      const durable = await bureau.tasks.workflow(request.nativeRunId).catch(() => undefined);
       if (durable !== undefined && durable !== null) {
         await openPeerStream(peerContext(), durable, history?.fence);
         return;
@@ -975,7 +974,7 @@ export function openRunStream(
     }
 
     try {
-      const subscription = bureau.subscribeRunSnapshot(request.nativeRunId, (next) => {
+      const subscription = bureau.tasks.snapshot(request.nativeRunId, (next) => {
         enqueue(async () => {
           const key = stateKey(next);
           if (key === lastState) return;

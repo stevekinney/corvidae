@@ -1134,7 +1134,7 @@ export function recoverGoalsAtBoot(
 /**
  * Why an entry of a recovery report is a failure rather than news, or
  * `undefined` when it is not one. The boot report folds these into its
- * per-run failures, so `waitForRecovery()` does not read clean over a goal that
+ * per-run failures, so `recovery()` does not read clean over a goal that
  * is stuck: one recovery gave up on, one with no controller and nothing to
  * restart it, one whose attempt could not be reconciled, one that has ended but
  * owes cleanup (a closure's pruning, or a run its ending overtook) it could not

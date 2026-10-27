@@ -44,7 +44,7 @@ import {
   type InteractiveSurfaces,
 } from '../interactive-surface/store.ts';
 import type { InteractiveSurface } from '../interactive-surface/types.ts';
-import type { Bureau } from '../types.ts';
+import type { DurableEventHistorySubscribe } from '../types.ts';
 import { type EventStamp, stamp } from './ag-ui-vocabulary.ts';
 
 /** The `activityType` of a surface's `ACTIVITY_SNAPSHOT`. */
@@ -112,8 +112,8 @@ const SURFACE_KINDS: ReadonlySet<string> = new Set([
   INTERACTIVE_SURFACE_EVENT_KINDS.frozen,
 ]);
 
-type HistorySubscription = ReturnType<Bureau['subscribeEventHistory']>;
-type HistoryEnvelope = Parameters<Parameters<Bureau['subscribeEventHistory']>[1]>[0];
+type HistorySubscription = ReturnType<DurableEventHistorySubscribe>;
+type HistoryEnvelope = Parameters<Parameters<DurableEventHistorySubscribe>[1]>[0];
 
 /** What a stream gives the source. */
 export type SurfaceSourceOptions = {

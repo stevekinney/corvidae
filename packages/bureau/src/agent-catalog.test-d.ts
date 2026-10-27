@@ -19,6 +19,7 @@ import type {
 } from './agent-catalog';
 import { createAgentCatalog } from './agent-catalog';
 import { createBureau } from './create-bureau';
+import type { TaskHandle } from './types';
 
 const plainAgent = createAgent({ generate: createMockGenerate([]), name: 'plain' });
 
@@ -48,7 +49,7 @@ const definitions = acceptAgentDefinitions({
 
 // Literal keys and each entry's own precise type must survive the generic
 // binding — this is the actual "const D" contract `createBureau` relies on
-// for `bureau.run(name, ...)`'s per-name output-type inference.
+// for `bureau.tasks.start(name, ...)`'s per-name output-type inference.
 declare const checkPlain: (typeof definitions)['plain'];
 declare const checkSchema: (typeof definitions)['schema'];
 void checkPlain;
@@ -66,10 +67,6 @@ void definitions;
 // ---------------------------------------------------------------------------
 
 type Definitions = typeof definitions;
-
-function expectType<T>(_value: T): void {
-  // Type-only assertion helper — no runtime behavior.
-}
 
 // Exact type-equality check (distributive-conditional trick) — `T extends U`
 // alone would accept `never`/`unknown`/any supertype, which is exactly the
@@ -115,26 +112,21 @@ expectEquals<AgentOutput<Definitions, 'lazySchema'>, { a: string }>();
 expectEquals<AgentOutput<Definitions, 'lazyPlain'>, never>();
 
 // ---------------------------------------------------------------------------
-// bureau.run(name, input) — literal-name output inference end to end. The
-// `.output()` accessor exists ONLY for a schema'd agent's dispatched run;
-// calling it on a no-schema agent's run is a compile error, not a value
-// fabricated as `unknown` (AB-15's OutputMethod<O, H> contract).
+// bureau.tasks.start(name, input) — literal-name output inference end to end. A schema'd agent's
+// task handle carries its schema's output type; an agent with no schema answers `unknown`, not a
+// value fabricated as a string.
 // ---------------------------------------------------------------------------
 
-async function bureauRunOutputInference() {
+async function bureauTaskOutputInference() {
   const bureau = await createBureau({
     agents: { plain: plainAgent, schema: schemaAgent },
   });
 
-  const schemaRun = bureau.run('schema', 'hi');
-  const output = await schemaRun.output();
-  expectType<{ a: string }>(output);
+  const schemaTask = await bureau.tasks.start('schema', 'hi');
+  expectEquals<typeof schemaTask, TaskHandle<{ a: string }>>();
 
-  const plainRun = bureau.run('plain', 'hi');
-  // @ts-expect-error — `plainRun.output` does not exist: the `plain` agent
-  // carries no `output` schema, so `AgentHasOutput` resolves `false` and
-  // `OutputMethod<O, false>` has no `output()` member at all.
-  void plainRun.output;
+  const plainTask = await bureau.tasks.start('plain', 'hi');
+  expectEquals<typeof plainTask, TaskHandle<unknown>>();
 
   // `bureau.agents.has` narrows a runtime string to a known literal name
   // where TypeScript permits it — inside the `if`, `name`'s type is one of
@@ -144,26 +136,11 @@ async function bureauRunOutputInference() {
     bureau.agents.get(name);
   }
 
-  // `bureau.run`'s return type must DISTRIBUTE over a union `name` (review
-  // round 2, Codex — see AgentRunForName's doc comment in ./agent-catalog.ts).
-  // Without distribution, calling with a name typed as a union collapses
-  // AgentHasOutput to `boolean`, which resolves AgentRun's own H-conditional
-  // to its `false` branch regardless of which agent is actually dispatched —
-  // `unwrap()` would then type as `Promise<string>` even when the runtime
-  // call resolves to the schema'd agent, silently lying about the schema
-  // branch's real output shape. Asserting the schema type still appears in
-  // the union return proves the distribution held.
+  // A name typed as a union of literal keys distributes: the handle's output type is the union of
+  // the named agents' outputs, which absorbs into `unknown` because `plain` has no schema.
   const unionName = 'schema' as 'plain' | 'schema';
-  const unionRun = bureau.run(unionName, 'hi');
-  const unionUnwrapped = unionRun.unwrap();
-  // expectType is an assignability check, not equality: the non-distributive
-  // regression's `unwrap(): Promise<string>` is itself assignable to
-  // `Promise<string> | Promise<{ a: string }>`, so an expectType assertion
-  // here would pass identically whether or not the regression is present.
-  // expectEquals (defined above, exact-type-equality) is required to make
-  // this a real tripwire.
-  expectEquals<typeof unionUnwrapped, Promise<string> | Promise<{ a: string }>>();
-  void unionUnwrapped;
+  const unionTask = await bureau.tasks.start(unionName, 'hi');
+  expectEquals<typeof unionTask, TaskHandle<unknown>>();
 
   // `find()`'s return type must widen to `AnyRunnableAgent` — the same
   // two-member union `AgentDefinitions` itself bounds values to — not the
@@ -194,7 +171,7 @@ async function bureauRunOutputInference() {
   type FindReturnType = Exclude<ReturnType<BureauAgentCatalog<Definitions>['find']>, undefined>;
   expectNotEquals<FindReturnType, RunnableAgent<unknown, boolean>>();
 }
-void bureauRunOutputInference;
+void bureauTaskOutputInference;
 
 // COR-1301 — an agent's descriptive metadata is readable through the catalog.
 const describedCatalogAgent = createAgent({

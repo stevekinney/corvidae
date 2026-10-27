@@ -1,13 +1,14 @@
 import type { ManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import type { GenerateFunction } from '@lostgradient/operative';
-import { createAgent, stopWhen, waitForRunState } from '@lostgradient/operative';
+import { createAgent, stopWhen } from '@lostgradient/operative';
+import { waitForTaskState } from '.';
 import { createProcessLocalApprovalStateStore, createTool, createToolbox } from 'armorer';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
-import type { Bureau, RunSummary } from '../types';
+import type { Bureau, TaskHandle } from '../types';
 import {
   BureauHarnessUnsupportedError,
   type BureauTestHarness,
@@ -21,6 +22,7 @@ import {
   createSqliteStorageFixture,
 } from './storage-fixtures';
 import type { AgentDefinitions } from '../agent-catalog';
+import { taskContent } from './run-task';
 
 function mockGenerate(content = 'Done.'): GenerateFunction {
   return async () => ({ content, toolCalls: [] });
@@ -40,7 +42,7 @@ async function waitForTerminalSnapshot(bureau: Bureau, runId: string): Promise<v
   await new Promise<void>((resolve, reject) => {
     const controller = new AbortController();
     try {
-      bureau.subscribeRunSnapshot(
+      bureau.tasks.snapshot(
         runId,
         (snapshot) => {
           if (snapshot.status === 'terminal') {
@@ -191,28 +193,28 @@ describe('createBureauTestHarness', () => {
     expect(typeof harness.runtime.pendingTimers).toBe('function');
   });
 
-  describe('startRun', () => {
-    it('dispatches a catalog agent and returns its AgentRun handle', async () => {
+  describe('startTask', () => {
+    it('starts a catalog agent as a task and registers its run for quiescence', async () => {
       const harness = await harnessWithMemoryStorage();
 
-      const run = harness.startRun('worker', 'hello');
+      const run = await harness.startTask({ agentName: 'worker', input: 'hello' });
 
-      expect(await run.unwrap()).toBe('worker done');
+      expect(await taskContent(run)).toBe('worker done');
     });
   });
 
-  describe('startSession', () => {
-    it('is a thin wrapper over Bureau.createRun', async () => {
+  describe('startTask over the default agent', () => {
+    it('is a thin wrapper over Bureau.tasks.start', async () => {
       const harness = await harnessWithMemoryStorage();
 
-      const summary = await harness.startSession({
+      const summary = await harness.startTask({
         agentName: 'default',
-        message: 'hello session',
+        input: 'hello session',
       });
-      await waitForRunState(harness.bureau, summary.id);
+      await waitForTaskState(harness.bureau, summary.id);
 
-      expect(summary.sessionId).toBeDefined();
-      expect(harness.bureau.getRun(summary.id)?.status).toBe('completed');
+      expect(summary.contextId).toBeDefined();
+      expect(harness.bureau.tasks.detail(summary.id)?.status).toBe('completed');
     });
   });
 
@@ -225,7 +227,7 @@ describe('createBureauTestHarness', () => {
         },
       });
 
-      const parent = await harness.startSession({ agentName: 'default', message: 'parent' });
+      const parent = await harness.startTask({ agentName: 'default', input: 'parent' });
       const child = harness.startChild(parent.id, 'helper', 'child input');
 
       expect(child.parentRunId).toBe(parent.id);
@@ -245,11 +247,11 @@ describe('createBureauTestHarness', () => {
     it('is a thin wrapper over Bureau.getDurableRun, returning undefined without a durable engine', async () => {
       const harness = await harnessWithMemoryStorage();
 
-      const summary = await harness.startSession({
+      const summary = await harness.startTask({
         agentName: 'default',
-        message: 'no durable engine here',
+        input: 'no durable engine here',
       });
-      await waitForRunState(harness.bureau, summary.id);
+      await waitForTaskState(harness.bureau, summary.id);
 
       expect(await harness.reattachDurable(summary.id)).toBeUndefined();
     });
@@ -259,14 +261,14 @@ describe('createBureauTestHarness', () => {
     it('is a thin wrapper over BureauContexts.signal, propagating its NOT_CONFIGURED error without a durable engine', async () => {
       const harness = await harnessWithMemoryStorage();
 
-      const summary = await harness.startSession({
+      const summary = await harness.startTask({
         agentName: 'default',
-        message: 'no durable engine here',
+        input: 'no durable engine here',
       });
-      await waitForRunState(harness.bureau, summary.id);
+      await waitForTaskState(harness.bureau, summary.id);
 
       expect(
-        await throwingRejectionOf(harness.deliverSignal(summary.sessionId, 'wake', {})),
+        await throwingRejectionOf(harness.deliverSignal(summary.contextId, 'wake', {})),
       ).toThrow(/durable/i);
     });
   });
@@ -311,11 +313,11 @@ describe('createBureauTestHarness', () => {
         },
       });
 
-      const summary = await harness.startSession({
+      const summary = await harness.startTask({
         agentName: 'default',
-        message: 'trigger approval',
+        input: 'trigger approval',
       });
-      await waitForRunState(harness.bureau, summary.id);
+      await waitForTaskState(harness.bureau, summary.id);
 
       const reviews = harness.bureau.reviews.list();
       expect(reviews).toHaveLength(1);
@@ -376,8 +378,8 @@ describe('createBureauTestHarness — durable backend (sqlite)', () => {
       expect(schedule?.id).toBeDefined();
       expect(schedule?.status).toBe('active');
 
-      const summary = await harness.startSession({ agentName: 'default', message: 'durable run' });
-      await waitForRunState(harness.bureau, summary.id);
+      const summary = await harness.startTask({ agentName: 'default', input: 'durable run' });
+      await waitForTaskState(harness.bureau, summary.id);
 
       const durableRun = await harness.reattachDurable(summary.id);
       expect(durableRun).toBeDefined();
@@ -428,8 +430,8 @@ describe('two concurrent harnesses are fully isolated', () => {
       let storageB: BureauStorageFixture;
       let harnessA: BureauTestHarness;
       let harnessB: BureauTestHarness;
-      let runA: RunSummary;
-      let runB: RunSummary;
+      let runA: TaskHandle;
+      let runB: TaskHandle;
       let eventsSeenByA: string[];
 
       beforeAll(async () => {
@@ -462,8 +464,8 @@ describe('two concurrent harnesses are fully isolated', () => {
       // frame from firing later, during the event-isolation hook's
       // subscription window, and being mistaken for cross-harness leakage.
       beforeAll(async () => {
-        runA = await harnessA.startSession({ agentName: 'default', message: 'on A' });
-        runB = await harnessB.startSession({ agentName: 'default', message: 'on B' });
+        runA = await harnessA.startTask({ agentName: 'default', input: 'on A' });
+        runB = await harnessB.startTask({ agentName: 'default', input: 'on B' });
         await waitForTerminalSnapshot(harnessA.bureau, runA.id);
       });
 
@@ -479,7 +481,7 @@ describe('two concurrent harnesses are fully isolated', () => {
       // hooks above.
       beforeAll(async () => {
         eventsSeenByA = [];
-        const unsubscribeA = harnessA.bureau.subscribeLiveFrames((frame) => {
+        const unsubscribeA = harnessA.bureau.frames((frame) => {
           eventsSeenByA.push(frame.type);
         });
         // try/finally: if startSession or waitForTerminalSnapshot throws, this
@@ -487,9 +489,9 @@ describe('two concurrent harnesses are fully isolated', () => {
         // harnessA into afterAll's teardown, which could mask the real
         // failure behind an unrelated dispose-time symptom.
         try {
-          const runOnBOnly = await harnessB.startSession({
+          const runOnBOnly = await harnessB.startTask({
             agentName: 'default',
-            message: 'B-only run',
+            input: 'B-only run',
           });
           await waitForTerminalSnapshot(harnessB.bureau, runOnBOnly.id);
         } finally {

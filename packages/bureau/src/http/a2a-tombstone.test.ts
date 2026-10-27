@@ -202,8 +202,8 @@ describe('a withdrawn agent with tasks', () => {
 
     served.advance(31 * 86_400_000);
     // The first pass expires the task's creation binding, which holds the task; the second removes it.
-    await served.harness.bureau.runDurableMaintenance();
-    await served.harness.bureau.runDurableMaintenance();
+    await served.harness.bureau.maintain();
+    await served.harness.bureau.maintain();
 
     const response = await rpc(served, 'GetTask', { id: finished.id });
     expect(response.status).toBe(404);
@@ -220,10 +220,8 @@ describe('a withdrawn agent with tasks', () => {
 
   it('reads as not found when its only tasks never came through A2A', async () => {
     const served = await serveWriter();
-    const run = await served.harness.bureau.createRun({
-      agentName: 'writer',
+    const run = await served.harness.bureau.tasks.start('writer', 'quick', {
       principal: 'api-key:alice',
-      message: 'quick',
     });
     await waitForCondition(async () => {
       const view = await served.harness.bureau.internals.taskRegistry.get(run.id);

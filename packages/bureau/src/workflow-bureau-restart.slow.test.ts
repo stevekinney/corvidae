@@ -103,13 +103,13 @@ for (const [label, ownership] of OWNERSHIPS) {
 
       const second = await startWorkflowBureau({ directory: workflows, overrides });
       cleanups.push(() => second.dispose());
-      const report = await second.bureau.waitForRecovery?.();
+      const report = await second.bureau.recovery();
       expect(report?.perRunFailures).toEqual([]);
       expect(report?.outcome).toBe('clean');
 
       await second.bureau.durableEngine()!.signal('waiter-run', 'go', null);
       for (const id of ['sleeper-run', 'waiter-run', 'midstep-run']) {
-        const state = await second.bureau.waitForDurableRun(id);
+        const state = await second.bureau.tasks.wait(id);
         expect(state?.status, id).toBe('completed');
       }
       expect(

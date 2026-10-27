@@ -65,12 +65,12 @@ export const OPERATION_MAP = {
   'operative.runs.events': { exempt: 'a transport subscription over a run’s event feed' },
   'bureau.agents.catalog': { exempt: 'composed from the catalog, the publication, and the models' },
 
-  'bureau.tasks.list': { member: 'internals.taskRegistry.list' },
-  'bureau.tasks.get': { member: 'internals.taskRegistry.get' },
-  'bureau.tasks.cancel': { member: 'internals.taskRegistry.cancel' },
-  'bureau.tasks.inspect': { member: 'getRun' },
-  'bureau.tasks.events': { member: 'eventHistory' },
-  'bureau.tasks.respond': { member: 'reviews.resolve' },
+  'bureau.tasks.list': { member: 'tasks.list' },
+  'bureau.tasks.get': { member: 'tasks.get' },
+  'bureau.tasks.cancel': { member: 'tasks.cancel' },
+  'bureau.tasks.inspect': { member: 'tasks.inspect' },
+  'bureau.tasks.events': { member: 'tasks.events' },
+  'bureau.tasks.respond': { member: 'tasks.respond' },
 
   'bureau.contexts.list': { member: 'contexts.list' },
   'bureau.contexts.get': { member: 'contexts.get' },
@@ -123,9 +123,8 @@ export const OPERATION_MAP = {
   'bureau.audit.query': { member: 'audit.query' },
 
   'bureau.agents.list': { member: 'agents.list' },
-  // Describes one catalog agent against the models catalog; no member does that yet, so the row
-  // names the lookup it starts from. `agents.models` replaces it when it is added in-process.
-  'bureau.agents.models': { member: 'agents.find' },
+  // Describes one catalog agent against the models catalog (COR-1708).
+  'bureau.agents.models': { member: 'agents.models' },
   'bureau.agents.definitions.create': { member: 'agents.create' },
   'bureau.agents.definitions.update': { member: 'agents.update' },
   'bureau.agents.definitions.delete': { member: 'agents.delete' },

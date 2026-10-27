@@ -40,7 +40,7 @@ function open(
 }
 
 async function startTask(bureau: Bureau<AgentDefinitions>): Promise<string> {
-  const run = await bureau.createRun({ message: 'hold', agentName: 'worker', principal: OWNER });
+  const run = await bureau.tasks.start('worker', 'hold', { principal: OWNER });
   await waitForCondition(
     async () => (await bureau.internals.taskRegistry.record(run.id)) !== undefined,
     'record',
@@ -153,7 +153,7 @@ describe('interactive surfaces on a Bureau', () => {
           representation: { kind: 'input-form' },
         },
       });
-      const page = await bureau.eventHistory({ kind: 'run', id: taskId }, { limit: 200 });
+      const page = await bureau.tasks.events(taskId, { limit: 200 });
       const kinds = 'events' in page ? page.events.map((event) => event.kind) : [];
       expect(kinds.filter((kind) => kind.startsWith('surface.'))).toEqual([
         'surface.created',
@@ -174,7 +174,7 @@ describe('interactive surfaces on a Bureau', () => {
       await createForm(bureau, taskId);
       await bureau.internals.taskRegistry.cancel(taskId, 0);
       await waitForCondition(async () => {
-        const run = await bureau.getRun(taskId);
+        const run = await bureau.tasks.detail(taskId);
         return run?.status !== 'running';
       }, 'the run stops');
       const surfaces = surfacesOf(bureau);
@@ -184,11 +184,11 @@ describe('interactive surfaces on a Bureau', () => {
       });
 
       await retireSettledTasks(bureau, runtime);
-      expect(await bureau.getRun(taskId)).toBeDefined();
+      expect(await bureau.tasks.detail(taskId)).toBeDefined();
 
       Reflect.set(surfaces, 'removeTask', removeTask);
       await retireSettledTasks(bureau, runtime);
-      expect(await bureau.getRun(taskId)).toBeUndefined();
+      expect(await bureau.tasks.detail(taskId)).toBeUndefined();
       expect(
         await surfaces.snapshot(
           { type: 'surface.snapshot', contractVersion: version, taskId, surfaceId: 'confirm' },

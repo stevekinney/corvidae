@@ -186,11 +186,11 @@ describe('the identity of every request', () => {
 
   test('Bureau owns what the local caller creates as anonymous:local', async () => {
     const host = await start();
-    const run = host.bureau.run('assistant', 'Who am I?');
+    const run = await host.bureau.tasks.start('assistant', 'Who am I?');
     await run.result();
     const [session] = await host.bureau.contexts.list();
     if (session === undefined) throw new Error('Expected the run to create a session.');
-    expect(await host.bureau.getOwner({ kind: 'session', id: session.id })).toBe('anonymous:local');
+    expect(await host.bureau.ownerOf({ kind: 'session', id: session.id })).toBe('anonymous:local');
   });
 });
 

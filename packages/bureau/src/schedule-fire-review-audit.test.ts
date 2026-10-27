@@ -281,7 +281,7 @@ describe('a fire approval’s session prune commits before its in-memory state i
     // The next release of the fire, here its task leaving retention, retries it.
     await runtime.advance(60_001);
     await pollUntil(async () => {
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
       return (await bureau.internals.taskRegistry.record(fireId)) === undefined ? true : undefined;
     }, 'the fire’s task to leave retention');
 

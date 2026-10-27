@@ -23,6 +23,7 @@ import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { startTaskFrom } from './test/task-start-request.ts';
 import { waitUntil, awakeTurns } from '@lostgradient/testing/wait-until';
 
 const ORIGIN = '2026-10-13T00:00:00.000Z';
@@ -102,8 +103,8 @@ async function withBureau(
 
 /** Creates a run and waits for it to finish. */
 async function settledRun(bureau: Bureau, message = 'work') {
-  const created = await bureau.createRun({ agentName: 'default', message, principal: 'alice' });
-  expect(await pollUntil(() => bureau.getRun(created.id)?.status === 'completed')).toBe(true);
+  const created = await bureau.tasks.start('default', message, { principal: 'alice' });
+  expect(await pollUntil(() => bureau.tasks.detail(created.id)?.status === 'completed')).toBe(true);
   return created;
 }
 
@@ -116,11 +117,11 @@ describe('retention.events', () => {
 
       // An event exactly as old as the window is not older than it.
       at(7 * DAY_MS);
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
       expect(await retentionFloor()).toBe(0);
 
       at(7 * DAY_MS + 1);
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
       expect(await retentionFloor()).toBeGreaterThan(0);
     });
   });
@@ -131,10 +132,10 @@ describe('retention.events', () => {
         await settledRun(bureau);
         await runtime.deferred.drain();
         at(60_000);
-        await bureau.runDurableMaintenance();
+        await bureau.maintain();
         expect(await retentionFloor()).toBe(0);
         at(60_001);
-        await bureau.runDurableMaintenance();
+        await bureau.maintain();
         expect(await retentionFloor()).toBeGreaterThan(0);
       },
       { retention: { events: { olderThan: 60_000 } } },
@@ -145,7 +146,7 @@ describe('retention.events', () => {
         await settledRun(bureau);
         await runtime.deferred.drain();
         at(1_000 * DAY_MS);
-        await bureau.runDurableMaintenance();
+        await bureau.maintain();
         expect(await retentionFloor()).toBe(0);
       },
       { retention: { events: 'forever' } },
@@ -177,20 +178,19 @@ describe('retention.events', () => {
     await withBureau(async ({ bureau, runtime, at }) => {
       const run = await settledRun(bureau);
       await runtime.deferred.drain();
-      const owner = { kind: 'run', id: run.id } as const;
-      const before = await bureau.eventHistory(owner);
+      const before = await bureau.tasks.events(run.id);
       if (!('events' in before)) throw new Error('expected a page of events');
       const cursor = before.events[0]?.cursor;
       expect(cursor).toBeDefined();
 
       at(8 * DAY_MS);
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
       // The run's own newer events keep arriving after the floor moves.
       const second = await settledRun(bureau, 'later');
       await runtime.deferred.drain();
 
       const received: DurableEventEnvelope[] = [];
-      const subscription = bureau.subscribeEventHistory(owner, (event) => received.push(event), {
+      const subscription = bureau.tasks.subscribeEvents(run.id, (event) => received.push(event), {
         since: cursor,
       });
       expect(
@@ -237,7 +237,7 @@ describe('the audit trail beside an advancing floor', () => {
 
         // The event window (2 days) advances the floor past the old run's
         // events; the audit window (1 day) then reaches its audit records.
-        await bureau.runDurableMaintenance();
+        await bureau.maintain();
 
         expect(await bureau.internals.auditTrail?.query({ runId: old.id })).toEqual([]);
         expect(await bureau.internals.auditTrail?.query({ runId: recent.id })).toEqual(
@@ -256,7 +256,7 @@ describe('the audit trail beside an advancing floor', () => {
         const before = await bureau.internals.auditTrail?.query({ runId: run.id });
         at(2 * DAY_MS);
 
-        await bureau.runDurableMaintenance();
+        await bureau.maintain();
 
         // The floor passed the run's events, but the audit window (5 days) has not.
         expect(await retentionFloor()).toBeGreaterThan(0);
@@ -274,7 +274,7 @@ describe('the audit trail beside an advancing floor', () => {
         const before = await bureau.internals.auditTrail?.query({ runId: run.id });
         at(30 * DAY_MS);
 
-        await bureau.runDurableMaintenance();
+        await bureau.maintain();
 
         // `'forever'` events: the floor stays put, so the clamp protects the record.
         expect(await retentionFloor()).toBe(0);
@@ -292,7 +292,7 @@ describe('the audit trail beside an advancing floor', () => {
         const before = await bureau.internals.auditTrail?.query({ runId: run.id });
         at(100 * DAY_MS);
 
-        await bureau.runDurableMaintenance();
+        await bureau.maintain();
 
         expect(await retentionFloor()).toBeGreaterThan(0);
         expect(await bureau.internals.auditTrail?.query({ runId: run.id })).toEqual(before);
@@ -310,12 +310,12 @@ describe('retention.tasks', () => {
 
       // A task exactly as old as the window is not older than it.
       at(30 * DAY_MS);
-      await bureau.runDurableMaintenance();
-      expect(bureau.getRun(run.id)).toBeDefined();
+      await bureau.maintain();
+      expect(bureau.tasks.detail(run.id)).toBeDefined();
 
       at(30 * DAY_MS + 1);
-      await bureau.runDurableMaintenance();
-      expect(bureau.getRun(run.id)).toBeUndefined();
+      await bureau.maintain();
+      expect(bureau.tasks.detail(run.id)).toBeUndefined();
     });
   });
 
@@ -325,22 +325,20 @@ describe('retention.tasks', () => {
     };
     await withBureau(
       async ({ bureau, at }) => {
-        const created = await bureau.createRun({
-          agentName: 'default',
-          message: 'fails',
-          principal: 'alice',
-        });
-        expect(await pollUntil(() => bureau.getRun(created.id)?.status === 'error')).toBe(true);
+        const created = await bureau.tasks.start('default', 'fails', { principal: 'alice' });
+        expect(await pollUntil(() => bureau.tasks.detail(created.id)?.status === 'error')).toBe(
+          true,
+        );
 
         // `run.error` is followed by `run.completed`, which closes the run and
         // starts its window; poll the passes until it has and the run goes.
         at(2 * DAY_MS);
         for await (const _turn of awakeTurns()) {
-          if (!(bureau.getRun(created.id) !== undefined)) break;
-          await bureau.runDurableMaintenance();
+          if (!(bureau.tasks.detail(created.id) !== undefined)) break;
+          await bureau.maintain();
           await new Promise((resolve) => setTimeout(resolve, 5));
         }
-        expect(bureau.getRun(created.id)).toBeUndefined();
+        expect(bureau.tasks.detail(created.id)).toBeUndefined();
       },
       {
         retention: { tasks: { olderThan: DAY_MS } },
@@ -356,17 +354,13 @@ describe('retention.tasks', () => {
       async ({ bureau, at }) => {
         const settled = await settledRun(bureau, 'short');
         hold.on = true;
-        const running = await bureau.createRun({
-          agentName: 'default',
-          message: 'long',
-          principal: 'alice',
-        });
+        const running = await bureau.tasks.start('default', 'long', { principal: 'alice' });
 
         at(365 * DAY_MS);
-        await bureau.runDurableMaintenance();
+        await bureau.maintain();
 
-        expect(bureau.getRun(running.id)?.status).toBe('running');
-        expect(bureau.getRun(settled.id)).toBeUndefined();
+        expect(bureau.tasks.detail(running.id)?.status).toBe('running');
+        expect(bureau.tasks.detail(settled.id)).toBeUndefined();
         gate.resolve();
       },
       {
@@ -385,11 +379,11 @@ describe('retention.tasks', () => {
         const second = await settledRun(bureau, 'two');
 
         at(2 * DAY_MS);
-        await bureau.runDurableMaintenance();
+        await bureau.maintain();
 
         expect(removed.toSorted()).toEqual([first.id, second.id].toSorted());
         // The deletion is also recorded as the durable `run.removed` event.
-        const history = await bureau.eventHistory({ kind: 'run', id: first.id });
+        const history = await bureau.tasks.events(first.id);
         expect(history).toMatchObject({ outcome: 'deleted-aggregate' });
       },
       { retention: { tasks: { olderThan: DAY_MS }, events: 'forever' } },
@@ -401,35 +395,37 @@ describe('retention.tasks', () => {
       async ({ bureau, at }) => {
         const request = {
           agentName: 'default',
-          message: 'Summarize the quarter.',
+          input: 'Summarize the quarter.',
           principal: 'alice',
-          runCreationRequestId: 'request-1',
+          commandId: 'request-1',
         };
         const locate = {
           principal: 'alice',
           agentName: 'default',
-          runCreationRequestId: 'request-1',
+          commandId: 'request-1',
         } as const;
-        const created = await bureau.createRun(request);
-        expect(await pollUntil(() => bureau.getRun(created.id)?.status === 'completed')).toBe(true);
+        const created = await startTaskFrom(bureau, request);
+        expect(await pollUntil(() => bureau.tasks.detail(created.id)?.status === 'completed')).toBe(
+          true,
+        );
         // Records when the run settled, which starts the binding's window.
-        expect(await bureau.locateRunCreationReceipt(locate)).toMatchObject({ status: 'recorded' });
+        expect(await bureau.tasks.receipt(locate)).toMatchObject({ status: 'recorded' });
 
         // `retention.tasks` equals the binding retention, and the horizon passes
         // before the ledger sweep has run: the binding is expired but stored.
         at(60_001);
-        expect(await bureau.locateRunCreationReceipt(locate)).toMatchObject({ status: 'expired' });
-        await bureau.runDurableMaintenance();
+        expect(await bureau.tasks.receipt(locate)).toMatchObject({ status: 'expired' });
+        await bureau.maintain();
 
         // The sweep deleted the binding in this pass, after the task step had
         // already seen it: the task survives, and the retry finds nothing bound.
-        expect(await bureau.locateRunCreationReceipt(locate)).toMatchObject({
+        expect(await bureau.tasks.receipt(locate)).toMatchObject({
           status: 'not-found',
         });
-        expect(bureau.getRun(created.id)).toBeDefined();
+        expect(bureau.tasks.detail(created.id)).toBeDefined();
 
-        await bureau.runDurableMaintenance();
-        expect(bureau.getRun(created.id)).toBeUndefined();
+        await bureau.maintain();
+        expect(bureau.tasks.detail(created.id)).toBeUndefined();
       },
       { retention: { tasks: { olderThan: 60_000 }, receipts: { olderThan: 60_000 } } },
     );
@@ -440,8 +436,8 @@ describe('retention.tasks', () => {
       async ({ bureau, at }) => {
         const run = await settledRun(bureau);
         at(10_000 * DAY_MS);
-        await bureau.runDurableMaintenance();
-        expect(bureau.getRun(run.id)).toBeDefined();
+        await bureau.maintain();
+        expect(bureau.tasks.detail(run.id)).toBeDefined();
       },
       { retention: { tasks: 'forever' } },
     );
@@ -466,7 +462,7 @@ function holdableGenerate(hold: { on: boolean }, gate: Promise<void>): GenerateF
   return async (...input) => (hold.on ? waits(...input) : finishes(...input));
 }
 
-describe('runDurableMaintenance in a fully ephemeral bureau (COR-1477)', () => {
+describe('maintain in a fully ephemeral bureau (COR-1477)', () => {
   it('reports true when task retention removed runs, and undefined when it removed none', async () => {
     const runtime = createManualRuntimeServices({ origin: ORIGIN });
     const bureau = await createBureau<AgentDefinitions>({
@@ -481,23 +477,21 @@ describe('runDurableMaintenance in a fully ephemeral bureau (COR-1477)', () => {
       retention: { tasks: { olderThan: DAY_MS } },
     });
     try {
-      const created = await bureau.createRun({
-        agentName: 'default',
-        message: 'work',
-        principal: 'alice',
-      });
-      expect(await pollUntil(() => bureau.getRun(created.id)?.status === 'completed')).toBe(true);
+      const created = await bureau.tasks.start('default', 'work', { principal: 'alice' });
+      expect(await pollUntil(() => bureau.tasks.detail(created.id)?.status === 'completed')).toBe(
+        true,
+      );
 
       // Inside the window: nothing to maintain.
-      expect(await bureau.runDurableMaintenance()).toBeUndefined();
-      expect(bureau.getRun(created.id)).toBeDefined();
+      expect(await bureau.maintain()).toBeUndefined();
+      expect(bureau.tasks.detail(created.id)).toBeDefined();
 
       runtime.setTime(ORIGIN_MS + DAY_MS + 1);
-      expect(await bureau.runDurableMaintenance()).toBe(true);
-      expect(bureau.getRun(created.id)).toBeUndefined();
+      expect(await bureau.maintain()).toBe(true);
+      expect(bureau.tasks.detail(created.id)).toBeUndefined();
 
       // Nothing left to remove.
-      expect(await bureau.runDurableMaintenance()).toBeUndefined();
+      expect(await bureau.maintain()).toBeUndefined();
     } finally {
       await bureau.dispose();
     }

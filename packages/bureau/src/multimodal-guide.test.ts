@@ -93,7 +93,7 @@ async function example(console: Recorder): Promise<void> {
   console.log(settled.value.state, settled.value.mediaType); // 'available' 'image/png'
 
   // Input: a run takes an ordered list of parts. The asset travels as a reference, never as bytes.
-  const viewing = bureau.run(
+  const viewing = await bureau.tasks.start(
     'viewer',
     [
       { type: 'text', text: 'What is in this picture?' },
@@ -106,7 +106,7 @@ async function example(console: Recorder): Promise<void> {
 
   // Output: media a model generates is admitted as the run's owner before anything sees it, so the
   // result holds a reference to an asset, and the bytes are read back through the asset service.
-  const painting = bureau.run('painter', 'Draw a pixel.', { principal: alice.id });
+  const painting = await bureau.tasks.start('painter', 'Draw a pixel.', { principal: alice.id });
   const painted = await painting.result();
   const image = painted.parts.find((part) => part.type === 'image');
   if (image?.source.kind !== 'managed-asset') throw new Error('generated media is an asset');

@@ -41,9 +41,9 @@
  *
  * ## Run creation
  *
- * {@link createRunCreationLedger} applies the ledger to `createRun`. The
+ * {@link createRunCreationLedger} applies the ledger to `tasks.start`. The
  * identity's target is the published agent the run is for, and its request
- * id is the caller-supplied `runCreationRequestId`, because no run exists to
+ * id is the caller-supplied `commandId`, because no run exists to
  * key on until the command has run. A claim carries the run and session
  * identifiers minted for the attempt, so a retry that finds a pending entry
  * knows which run to look for instead of starting another:
@@ -78,7 +78,7 @@
  * or whose run no longer exists, is measured from its own latest timestamp.
  */
 import { sha256HexSync } from '@lostgradient/cryptography';
-import type { RuntimeClock, RuntimeIdentifiers } from '@lostgradient/lifecycle';
+import type { RuntimeClock, RuntimeIdentifiers, RuntimeServices } from '@lostgradient/lifecycle';
 import {
   type ConditionalTextValueStore,
   encodeStorageKeyComponent,
@@ -88,8 +88,13 @@ import {
 
 import type { RunSummary } from './types';
 
-/** The version of the run-creation command contract the ledger keys on. */
-export const RUN_CREATION_OPERATION_VERSION = 'bureau.run-creation.v1';
+/**
+ * The version of the task-start command contract the ledger keys on. It is part of the ledger key,
+ * so a receipt recorded under an earlier version (`bureau.run-creation.v1`, whose digest covered
+ * the request's message, rows, session, system prompt, and step and token caps) is never read: a
+ * retry of such a request starts a fresh task.
+ */
+export const RUN_CREATION_OPERATION_VERSION = 'bureau.task-start.v2';
 
 /** Key prefix for every command-ledger record in the Bureau's text-value store. */
 const COMMAND_LEDGER_KEY_PREFIX = 'command-ledger:v1';
@@ -230,9 +235,10 @@ export class BureauLedgerConflictError extends Error {
 
 /**
  * A run was created and durably started, but the ledger could not record its
- * receipt. Unlike any other `createRun` failure, the run exists and keeps
- * executing: `runId` names it, and retrying the same request observes it and
- * records the receipt rather than creating another run.
+ * receipt. Unlike any other start failure, the run exists: `runId` names it.
+ * Bureau's `tasks.start` aborts it, since the caller that receives this error
+ * holds no handle to it, and retrying the same request observes it and
+ * records its receipt rather than creating another run.
  */
 export class RunCreationReceiptUnrecordedError extends Error {
   /** The caller-supplied idempotency key whose receipt was not recorded. */
@@ -788,18 +794,62 @@ export function digestCommandPayload(
  * legitimately differ between retries, so none of them belong here.
  */
 export interface RunCreationPayload {
-  /** Absent when the request appends rows instead, or answers the conversation as it stands. */
-  readonly message?: string | undefined;
-  /**
-   * The rows the request appends, serialized by {@link serializeAppendedMessages};
-   * absent when it appends none.
-   */
-  readonly appendMessages?: string | undefined;
-  /** The session the request names, trimmed; absent when it asks for a new one. */
-  readonly sessionId?: string | undefined;
-  readonly systemPrompt?: string | undefined;
-  readonly maximumSteps?: number | undefined;
-  readonly maximumTokens?: number | undefined;
+  /** The agent the task runs as. */
+  readonly agentName: string;
+  /** The task's input, serialized by {@link serializeTaskInput}. */
+  readonly input: string;
+  /** The context the start names, trimmed; absent when it asks for a new one. */
+  readonly contextId?: string | undefined;
+  /** The caller's request context, serialized by {@link serializeTaskRequestContext}. */
+  readonly requestContext?: string | undefined;
+}
+
+/**
+ * A task's input as the string its digest covers. Rows (`append`, and the rows of a seeding
+ * `conversation`) are serialized by {@link serializeAppendedMessages}, so two builds of the same
+ * row digest alike.
+ */
+export function serializeTaskInput(input: unknown): string {
+  if (typeof input === 'string' || Array.isArray(input)) return canonicalJson({ message: input });
+  const record = input as Record<string, unknown>;
+  if ('append' in record) {
+    return canonicalJson({
+      message: record['message'],
+      append: serializeAppendedMessages(record['append'] as object[]),
+    });
+  }
+  if ('conversation' in record) {
+    const history = record['conversation'] as {
+      readonly ids: readonly string[];
+      readonly messages: Readonly<Record<string, object>>;
+    };
+    const rows = history.ids.map((id) => history.messages[id]!);
+    return canonicalJson({ conversation: serializeAppendedMessages(rows) });
+  }
+  return canonicalJson({ continue: true });
+}
+
+/**
+ * The caller's request context as the string its digest covers: the authority, audience, and
+ * locale, which decide what the task may do. The per-attempt fields (`runId` and `sessionId`, which
+ * Bureau sets, and the trace context, credentials, deadline, and request id a transport mints for
+ * each attempt) are left out, so an exact retry digests the same. Absent when none was given.
+ */
+export function serializeTaskRequestContext(
+  requestContext:
+    | {
+        readonly authority: object;
+        readonly audience?: string | undefined;
+        readonly locale?: string | undefined;
+      }
+    | undefined,
+): string | undefined {
+  if (requestContext === undefined) return undefined;
+  return canonicalJson({
+    authority: requestContext.authority,
+    audience: requestContext.audience,
+    locale: requestContext.locale,
+  });
 }
 
 /** JSON with every object's keys sorted, so equal values serialize alike. */
@@ -836,18 +886,16 @@ export function serializeAppendedMessages(
 }
 
 /**
- * The digest of a run-creation request's payload. Pass resolved values, so a
- * retry that spells out a default it first omitted digests the same: both
- * would create the same run.
+ * The digest of a task-start command's payload: its agent, input, context, and request context.
+ * Pass the context the caller named, trimmed: an omitted context is minted afresh per attempt, so
+ * its minted id cannot be part of it.
  */
 export function digestRunCreationPayload(payload: RunCreationPayload): string {
   return digestCommandPayload({
-    message: payload.message,
-    appendMessages: payload.appendMessages,
-    sessionId: payload.sessionId,
-    systemPrompt: payload.systemPrompt,
-    maximumSteps: payload.maximumSteps,
-    maximumTokens: payload.maximumTokens,
+    agentName: payload.agentName,
+    input: payload.input,
+    contextId: payload.contextId,
+    requestContext: payload.requestContext,
   });
 }
 
@@ -880,7 +928,7 @@ export interface RunCreationLedgerResult {
   readonly summary: RunSummary;
 }
 
-/** `createRun`'s result: the run's summary, with its receipt when the request named a request id. */
+/** The result of starting a run: the run's summary, with its receipt when the request named a request id. */
 export type CreatedRunSummary = RunSummary & { readonly receipt?: RunCreationReceipt | undefined };
 
 /** What the Bureau can see of a claimed run when a retry arrives. */
@@ -921,7 +969,7 @@ export type RunCreationAttempt =
       /**
        * Record the created run's receipt. Rejects with
        * {@link RunCreationReceiptUnrecordedError} when the record cannot be
-       * written; the run still exists then.
+       * written; the run still exists then, and the caller decides its fate.
        */
       complete(summary: RunSummary): Promise<CreatedRunSummary>;
       release(cause: unknown): Promise<void>;
@@ -1365,6 +1413,39 @@ export function createRunCreationLedger(
           }
         },
       };
+    },
+  };
+}
+
+/** How often a {@link createPrunedCommandLedger} drops its expired bindings, at most. */
+const PRUNED_LEDGER_INTERVAL_MS = 3_600_000;
+
+/**
+ * A command ledger over `kv` under `keyPrefix` that drops its expired bindings at most once an
+ * hour, on a claim. A failed prune is ignored: the next one an hour later tries again.
+ */
+export function createPrunedCommandLedger<Claim, Result>(
+  kv: ConditionalTextValueStore,
+  keyPrefix: string,
+  conflictIdPrefix: string,
+  runtime: Pick<RuntimeServices, 'clock' | 'identifiers'>,
+): CommandLedger<Claim, Result> {
+  const ledger = createCommandLedger<Claim, Result>({
+    kv,
+    keyPrefix,
+    clock: runtime.clock,
+    nextConflictId: () => runtime.identifiers.next(conflictIdPrefix),
+  });
+  let prunedAt = runtime.clock.now();
+  return {
+    ...ledger,
+    async claim(identity, digest, claim) {
+      const now = runtime.clock.now();
+      if (now - prunedAt >= PRUNED_LEDGER_INTERVAL_MS) {
+        prunedAt = now;
+        await ledger.prune().catch(() => undefined);
+      }
+      return ledger.claim(identity, digest, claim);
     },
   };
 }

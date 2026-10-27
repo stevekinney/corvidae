@@ -11,9 +11,9 @@ import {
   MediaAdmissionError,
   stopWhen,
   type Toolbox,
-  waitForRunState,
   withBackendDescriptors,
 } from '@lostgradient/operative';
+import { closedTask, runTask, waitForTaskState } from './test';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { toolContent } from 'armorer/protocol';
@@ -85,7 +85,9 @@ describe.each([false, true])('a tool-returned image through Bureau (durable: %p)
       await bureau.dispose();
     });
 
-    const run = bureau.run('photographer', 'Take a snapshot', { principal: alice.id });
+    const run = await bureau.tasks.start('photographer', 'Take a snapshot', {
+      principal: alice.id,
+    });
     const result = await run.result();
     expect(result.finishReason).not.toBe('error');
 
@@ -126,7 +128,7 @@ describe.each([false, true])('a tool-returned image through Bureau (durable: %p)
     const audit = (await bureau.internals.auditTrail?.query({ runId: run.id })) ?? [];
     expect(JSON.stringify(audit)).not.toContain(snapshotBase64);
 
-    expect(await run.closed()).toEqual({ status: 'completed' });
+    expect(await closedTask(bureau, run)).toEqual({ status: 'completed' });
   });
 });
 
@@ -169,19 +171,17 @@ describe('a tool-returned image through an approved review', () => {
       await bureau.dispose();
     });
 
-    const run = await bureau.createRun({
-      agentName: 'photographer',
-      message: 'Take a snapshot',
+    const run = await bureau.tasks.start('photographer', 'Take a snapshot', {
       principal: alice.id,
     });
-    await waitForRunState(bureau, run.id);
+    await waitForTaskState(bureau, run.id);
     // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 10; turn++) await yieldToPortableEventLoop();
     const [review] = bureau.reviews.list();
     expect(review?.kind).toBe('tool-approval');
     await bureau.reviews.resolve({ id: review!.id, decision: 'approve', principal: alice.id });
 
-    const session = await bureau.contexts.get(run.sessionId);
+    const session = await bureau.contexts.get(run.contextId);
     const history = session!.conversationHistory;
     const row = history.ids
       .map((id) => history.messages[id]!)
@@ -246,7 +246,7 @@ describe('a tool-returned MCP resource link (COR-1634)', () => {
       await bureau.dispose();
     });
 
-    const run = bureau.run('charter', 'Show the chart', { principal: alice.id });
+    const run = await bureau.tasks.start('charter', 'Show the chart', { principal: alice.id });
     const result = await run.result();
     expect(result.finishReason).not.toBe('error');
     expect(reads).toEqual([
@@ -277,7 +277,7 @@ describe('a tool-returned MCP resource link (COR-1634)', () => {
     cleanups.push(async () => {
       await bureau.dispose();
     });
-    const result = await bureau.run('charter', 'Show the chart', { principal: alice.id }).result();
+    const result = await runTask(bureau, 'charter', 'Show the chart', { principal: alice.id });
     expect(result.finishReason).toBe('error');
     expect(result.error).toBeInstanceOf(MediaAdmissionError);
     expect((result.error as MediaAdmissionError).outcomes).toMatchObject([
@@ -295,7 +295,7 @@ describe('a tool-returned MCP resource link (COR-1634)', () => {
     cleanups.push(async () => {
       await bureau.dispose();
     });
-    const run = bureau.run('charter', 'Show the chart', { principal: alice.id });
+    const run = await bureau.tasks.start('charter', 'Show the chart', { principal: alice.id });
     const result = await run.result();
     expect(result.finishReason).toBe('error');
   });

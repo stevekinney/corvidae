@@ -44,14 +44,9 @@ async function openBureau() {
 type OpenBureau = Awaited<ReturnType<typeof openBureau>>['bureau'];
 
 async function settled(bureau: OpenBureau, principal: string, sessionId: string) {
-  const run = await bureau.createRun({
-    agentName: 'default',
-    message: 'hello',
-    sessionId,
-    principal,
-  });
+  const run = await bureau.tasks.start('default', 'hello', { contextId: sessionId, principal });
   await waitForCondition(
-    () => bureau.getRun(run.id)?.status !== 'running',
+    () => bureau.tasks.detail(run.id)?.status !== 'running',
     `run ${run.id} never settled`,
   );
   return run;
@@ -62,7 +57,7 @@ async function read(
   sessionId: string,
   options: { principal?: string; since?: string } = {},
 ) {
-  return bureau.eventHistory({ kind: 'session', id: sessionId }, options);
+  return bureau.contexts.events(sessionId, options);
 }
 
 function eventsOf(page: Awaited<ReturnType<typeof read>>): readonly DurableEventEnvelope[] {
@@ -142,8 +137,8 @@ describe('the history of an expired session (COR-718)', () => {
       const own = eventsOf(await read(bureau, 'expired-sub', { principal: BOB }));
 
       const received: DurableEventEnvelope[] = [];
-      const subscription = bureau.subscribeEventHistory(
-        { kind: 'session', id: 'expired-sub' },
+      const subscription = bureau.contexts.subscribeEvents(
+        'expired-sub',
         (event) => {
           received.push(event);
         },
@@ -170,7 +165,7 @@ describe('the history of an expired session (COR-718)', () => {
     try {
       await settled(bureau, ALICE, 'audited');
       expect(await expireEverything(bureau)).toBe(1);
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
 
       const trusted = await read(bureau, 'audited');
       expect(trusted).toMatchObject({ outcome: 'deleted-aggregate' });
@@ -189,7 +184,7 @@ describe('the history of an expired session (COR-718)', () => {
       const [entry] =
         (await bureau.internals.auditTrail?.query({ runId, type: 'session.deleted' })) ?? [];
       expect(entry?.detail).toMatchObject({ sessionId: 'audited', owner: ALICE });
-      expect(await bureau.getOwner({ kind: 'audit', runId, detail: entry?.detail })).toBe(ALICE);
+      expect(await bureau.ownerOf({ kind: 'audit', runId, detail: entry?.detail })).toBe(ALICE);
       await waitForCondition(async () => {
         const remaining = await bureau.internals.kv?.list(SIDE_RECORD_PREFIX);
         return remaining?.length === 0;
@@ -292,10 +287,8 @@ async function expiryDuringRun(open: (generate: GenerateFunction) => Promise<Any
   const { generate, release, reached } = gatedGenerate();
   const bureau = await open(generate);
   try {
-    const aliceRun = await bureau.createRun({
-      agentName: 'default',
-      message: 'ALICE-SECRET-PROMPT',
-      sessionId: 'shared',
+    const aliceRun = await bureau.tasks.start('default', 'ALICE-SECRET-PROMPT', {
+      contextId: 'shared',
       principal: ALICE,
     });
     await reached.promise;
@@ -303,14 +296,12 @@ async function expiryDuringRun(open: (generate: GenerateFunction) => Promise<Any
 
     // The session store knows nothing of runs: the expiry is Bureau's to handle.
     expect(await bureau.internals.sessionStore!.cleanup({ olderThan: -60_000 })).toBe(1);
-    const bobRun = await bureau.createRun({
-      agentName: 'default',
-      message: 'bob prompt',
-      sessionId: 'shared',
+    const bobRun = await bureau.tasks.start('default', 'bob prompt', {
+      contextId: 'shared',
       principal: BOB,
     });
     await waitForCondition(
-      () => bureau.getRun(bobRun.id)?.status !== 'running',
+      () => bureau.tasks.detail(bobRun.id)?.status !== 'running',
       'bob never settled',
     );
     const bobIncarnation = (await bureau.internals.sessionStore!.load('shared'))!.incarnation;
@@ -318,7 +309,7 @@ async function expiryDuringRun(open: (generate: GenerateFunction) => Promise<Any
 
     release.resolve();
     await waitForCondition(
-      () => bureau.getRun(aliceRun.id)?.status !== 'running',
+      () => bureau.tasks.detail(aliceRun.id)?.status !== 'running',
       'alice never settled',
     );
     // Alice's terminal save, if one was started, was queued on the store before her
@@ -328,8 +319,8 @@ async function expiryDuringRun(open: (generate: GenerateFunction) => Promise<Any
     const session = await bureau.contexts.get('shared');
     expect(session?.incarnation).toBe(bobIncarnation);
     expect(JSON.stringify(session)).not.toContain('ALICE-SECRET');
-    expect(await bureau.getOwner({ kind: 'session', id: 'shared' })).toBe(BOB);
-    expect(bureau.getRun(aliceRun.id)?.status).toBe('aborted');
+    expect(await bureau.ownerOf({ kind: 'session', id: 'shared' })).toBe(BOB);
+    expect(bureau.tasks.detail(aliceRun.id)?.status).toBe('aborted');
   } finally {
     release.resolve();
     await bureau.dispose();

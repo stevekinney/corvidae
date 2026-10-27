@@ -132,8 +132,8 @@ describe('a task’s A2A record, when removing it fails', () => {
 
       // The first task's removal fails once; the second's succeeds and retries the first's.
       faults.failures = 1;
-      await bureau.runDurableMaintenance();
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
+      await bureau.maintain();
       await waitForCondition(
         async () =>
           (await bureau.internals.kv?.get(keyOf(first.id))) === null &&
@@ -213,7 +213,7 @@ describe('retention removing a task whose run the Bureau no longer holds', () =>
       });
 
       runtime.setTime(Date.parse(ORIGIN) + 3 * DAY_MS);
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
 
       expect(await bureau.internals.taskRegistry.record('runless-task')).toBeUndefined();
       await waitForCondition(

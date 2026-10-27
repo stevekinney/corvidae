@@ -161,11 +161,14 @@ async function withService(
         card: () => ({ ...card, supportedInterfaces: [], signatures: [] }),
         bureau: restarted
           ? Object.create(opened.bureau, {
-              getRun: { value: () => undefined },
-              ...(locate === undefined ? {} : { locateRunCreationReceipt: { value: locate } }),
-              ...(pruned
-                ? { eventHistory: { value: async () => ({ events: [], hasMore: false }) } }
-                : {}),
+              tasks: {
+                value: {
+                  ...opened.bureau.tasks,
+                  detail: () => undefined,
+                  ...(locate === undefined ? {} : { receipt: locate }),
+                  ...(pruned ? { events: async () => ({ events: [], hasMore: false }) } : {}),
+                },
+              },
             })
           : opened.bureau,
         records,
@@ -210,8 +213,8 @@ async function withService(
       runtime: bureauRuntime,
       retireEarlierTasks: async () => {
         await bureauRuntime.advance(TASK_AGE_MILLISECONDS + 1);
-        await opened.bureau.runDurableMaintenance();
-        await opened.bureau.runDurableMaintenance();
+        await opened.bureau.maintain();
+        await opened.bureau.maintain();
       },
       records,
       bureau: opened.bureau,

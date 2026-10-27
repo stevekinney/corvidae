@@ -14,6 +14,7 @@ import { BureauError, createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { AgentDefinitions } from './agent-catalog';
+import { startTaskFrom } from './test/task-start-request.ts';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 
@@ -28,7 +29,7 @@ async function openBureau() {
 
 async function settle(bureau: Awaited<ReturnType<typeof openBureau>>, runId: string) {
   await waitForCondition(
-    () => bureau.getRun(runId)?.status !== 'running',
+    () => bureau.tasks.detail(runId)?.status !== 'running',
     `run ${runId} never settled`,
   );
 }
@@ -37,20 +38,16 @@ describe('the owner of a run and of its session (COR-718)', () => {
   it('records the stated principal as the run owner, on the summary, the liveness snapshot, and the session', async () => {
     const bureau = await openBureau();
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'hello',
-        principal: 'api-key:alice',
-      });
+      const run = await bureau.tasks.start('default', 'hello', { principal: 'api-key:alice' });
       await settle(bureau, run.id);
 
-      expect(bureau.getRun(run.id)?.principal).toBe('api-key:alice');
-      expect(bureau.getRun(run.id)?.liveness.owner).toBe('api-key:alice');
-      const session = await bureau.contexts.get(run.sessionId);
+      expect(bureau.tasks.detail(run.id)?.principal).toBe('api-key:alice');
+      expect(bureau.tasks.detail(run.id)?.liveness.owner).toBe('api-key:alice');
+      const session = await bureau.contexts.get(run.contextId);
       expect(session?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('api-key:alice');
       expect(session?.metadata['lastRunOwningPrincipals']).toEqual({ [run.id]: 'api-key:alice' });
-      expect(await bureau.getOwner({ kind: 'run', id: run.id })).toBe('api-key:alice');
-      expect(await bureau.getOwner({ kind: 'session', id: run.sessionId })).toBe('api-key:alice');
+      expect(await bureau.ownerOf({ kind: 'run', id: run.id })).toBe('api-key:alice');
+      expect(await bureau.ownerOf({ kind: 'session', id: run.contextId })).toBe('api-key:alice');
     } finally {
       await bureau.dispose();
     }
@@ -59,14 +56,14 @@ describe('the owner of a run and of its session (COR-718)', () => {
   it('gives a run created with no principal the owner anonymous:local', async () => {
     const bureau = await openBureau();
     try {
-      const run = await bureau.createRun({ agentName: 'default', message: 'hello' });
+      const run = await bureau.tasks.start('default', 'hello');
       await settle(bureau, run.id);
 
-      expect(bureau.getRun(run.id)?.principal).toBe('anonymous:local');
-      expect(bureau.getRun(run.id)?.liveness.owner).toBe('anonymous:local');
-      const session = await bureau.contexts.get(run.sessionId);
+      expect(bureau.tasks.detail(run.id)?.principal).toBe('anonymous:local');
+      expect(bureau.tasks.detail(run.id)?.liveness.owner).toBe('anonymous:local');
+      const session = await bureau.contexts.get(run.contextId);
       expect(session?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('anonymous:local');
-      expect(await bureau.getOwner({ kind: 'run', id: run.id })).toBe('anonymous:local');
+      expect(await bureau.ownerOf({ kind: 'run', id: run.id })).toBe('anonymous:local');
     } finally {
       await bureau.dispose();
     }
@@ -76,7 +73,7 @@ describe('the owner of a run and of its session (COR-718)', () => {
     const bureau = await openBureau();
     try {
       for (const kind of ['run', 'session', 'goal', 'schedule', 'review'] as const) {
-        expect(await bureau.getOwner({ kind, id: 'missing' })).toBeUndefined();
+        expect(await bureau.ownerOf({ kind, id: 'missing' })).toBeUndefined();
       }
     } finally {
       await bureau.dispose();
@@ -86,18 +83,14 @@ describe('the owner of a run and of its session (COR-718)', () => {
   it('refuses a run on a session another principal owns, as a session that does not exist', async () => {
     const bureau = await openBureau();
     try {
-      const first = await bureau.createRun({
-        agentName: 'default',
-        message: 'mine',
-        principal: 'api-key:alice',
-      });
+      const first = await bureau.tasks.start('default', 'mine', { principal: 'api-key:alice' });
       await settle(bureau, first.id);
 
       for (const principal of ['api-key:bob', undefined]) {
-        const attempt = bureau.createRun({
+        const attempt = startTaskFrom(bureau, {
           agentName: 'default',
-          message: 'yours now',
-          sessionId: first.sessionId,
+          input: 'yours now',
+          contextId: first.contextId,
           ...(principal === undefined ? {} : { principal }),
         });
         const refusal = await rejectionOf(attempt);
@@ -105,7 +98,7 @@ describe('the owner of a run and of its session (COR-718)', () => {
         expect(refusal).toMatchObject({ code: 'NOT_FOUND' });
       }
 
-      const session = await bureau.contexts.get(first.sessionId);
+      const session = await bureau.contexts.get(first.contextId);
       expect(session?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('api-key:alice');
       expect(session?.metadata['lastRunOwningPrincipals']).toEqual({ [first.id]: 'api-key:alice' });
     } finally {
@@ -116,23 +109,17 @@ describe('the owner of a run and of its session (COR-718)', () => {
   it('lets the owner start a second run on its own session, and keeps the session owner', async () => {
     const bureau = await openBureau();
     try {
-      const first = await bureau.createRun({
-        agentName: 'default',
-        message: 'one',
-        principal: 'api-key:alice',
-      });
+      const first = await bureau.tasks.start('default', 'one', { principal: 'api-key:alice' });
       await settle(bureau, first.id);
-      const second = await bureau.createRun({
-        agentName: 'default',
-        message: 'two',
-        sessionId: first.sessionId,
+      const second = await bureau.tasks.start('default', 'two', {
+        contextId: first.contextId,
         principal: 'api-key:alice',
       });
       await settle(bureau, second.id);
 
-      const session = await bureau.contexts.get(first.sessionId);
+      const session = await bureau.contexts.get(first.contextId);
       expect(session?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('api-key:alice');
-      expect(await bureau.getOwner({ kind: 'run', id: second.id })).toBe('api-key:alice');
+      expect(await bureau.ownerOf({ kind: 'run', id: second.id })).toBe('api-key:alice');
     } finally {
       await bureau.dispose();
     }
@@ -150,22 +137,15 @@ describe('the owner of a run and of its session (COR-718)', () => {
       durableOwnership: { ownership: 'none' },
     });
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'mine',
-        principal: 'api-key:alice',
-      });
+      const run = await bureau.tasks.start('default', 'mine', { principal: 'api-key:alice' });
       await settle(bureau, run.id);
 
-      const asOwner = await bureau.eventHistory(
-        { kind: 'session', id: run.sessionId },
-        { principal: 'api-key:alice' },
-      );
+      const asOwner = await bureau.contexts.events(run.contextId, { principal: 'api-key:alice' });
       expect('outcome' in asOwner).toBe(false);
       for (const principal of ['api-key:bob', 'anonymous:local']) {
-        expect(
-          await bureau.eventHistory({ kind: 'session', id: run.sessionId }, { principal }),
-        ).toEqual({ outcome: 'not-found' });
+        expect(await bureau.contexts.events(run.contextId, { principal })).toEqual({
+          outcome: 'not-found',
+        });
       }
     } finally {
       await bureau.dispose();
@@ -177,13 +157,7 @@ describe('the owner of a run and of its session (COR-718)', () => {
     const bureau = await openBureau();
     try {
       expect(
-        await rejectionOf(
-          bureau.createRun({
-            agentName: 'default',
-            message: 'x',
-            runCreationRequestId: 'request-1',
-          }),
-        ),
+        await rejectionOf(bureau.tasks.start('default', 'x', { commandId: 'request-1' })),
       ).toBeInstanceOf(BureauError);
     } finally {
       await bureau.dispose();
@@ -196,18 +170,11 @@ describe('two principals racing to create one new session (COR-718)', () => {
     const bureau = await openBureau();
     try {
       const outcomes = await Promise.allSettled([
-        bureau.createRun({
-          agentName: 'default',
-          message: 'from alice',
-          sessionId: 'raced',
+        bureau.tasks.start('default', 'from alice', {
+          contextId: 'raced',
           principal: 'api-key:alice',
         }),
-        bureau.createRun({
-          agentName: 'default',
-          message: 'from bob',
-          sessionId: 'raced',
-          principal: 'api-key:bob',
-        }),
+        bureau.tasks.start('default', 'from bob', { contextId: 'raced', principal: 'api-key:bob' }),
       ]);
 
       const winners = outcomes.filter((outcome) => outcome.status === 'fulfilled');
@@ -246,14 +213,14 @@ describe('the owner of a catalog run (COR-718)', () => {
         ...(durable ? { storage: { type: 'memory' as const }, durable: true } : {}),
       });
       try {
-        const owned = bureau.run('worker', 'work', { principal: 'api-key:alice' });
-        const unowned = bureau.run('worker', 'work');
+        const owned = await bureau.tasks.start('worker', 'work', { principal: 'api-key:alice' });
+        const unowned = await bureau.tasks.start('worker', 'work');
 
-        expect([durable, await bureau.getOwner({ kind: 'run', id: owned.id })]).toEqual([
+        expect([durable, await bureau.ownerOf({ kind: 'run', id: owned.id })]).toEqual([
           durable,
           'api-key:alice',
         ]);
-        expect([durable, await bureau.getOwner({ kind: 'run', id: unowned.id })]).toEqual([
+        expect([durable, await bureau.ownerOf({ kind: 'run', id: unowned.id })]).toEqual([
           durable,
           'anonymous:local',
         ]);
@@ -285,17 +252,11 @@ describe('durable history follows the owner of record (COR-718)', () => {
   it('reads a run created with no principal as owned by anonymous:local, and by no one else', async () => {
     const { bureau, directory } = await openDurableBureau();
     try {
-      const run = await bureau.createRun({ agentName: 'default', message: 'no principal' });
+      const run = await bureau.tasks.start('default', 'no principal');
       await settle(bureau, run.id);
 
-      const asLocal = await bureau.eventHistory(
-        { kind: 'run', id: run.id },
-        { principal: 'anonymous:local' },
-      );
-      const asStranger = await bureau.eventHistory(
-        { kind: 'run', id: run.id },
-        { principal: 'api-key:bob' },
-      );
+      const asLocal = await bureau.tasks.events(run.id, { principal: 'anonymous:local' });
+      const asStranger = await bureau.tasks.events(run.id, { principal: 'api-key:bob' });
 
       expect([verdict(asLocal), verdict(asStranger)]).toEqual(['page', 'not-found']);
     } finally {
@@ -320,7 +281,7 @@ describe('durable history follows the owner of record (COR-718)', () => {
       });
       await bureau.schedules.cancel(owned!.id);
       const read = async (id: string, principal: string) =>
-        verdict(await bureau.eventHistory({ kind: 'schedule', id }, { principal }));
+        verdict(await bureau.schedules.events(id, { principal }));
 
       expect([
         await read(owned!.id, 'api-key:alice'),
@@ -354,10 +315,10 @@ describe('the history of a live catalog run (COR-718)', () => {
       durableOwnership: { ownership: 'none' },
     });
     try {
-      const unowned = bureau.run('worker', 'work');
-      const owned = bureau.run('worker', 'work', { principal: 'api-key:alice' });
+      const unowned = await bureau.tasks.start('worker', 'work');
+      const owned = await bureau.tasks.start('worker', 'work', { principal: 'api-key:alice' });
       const history = async (id: string, principal: string) => {
-        const page = await bureau.eventHistory({ kind: 'run', id }, { principal });
+        const page = await bureau.tasks.events(id, { principal });
         return 'outcome' in page ? page.outcome : 'page';
       };
 

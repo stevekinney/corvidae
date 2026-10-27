@@ -12,6 +12,7 @@ import {
   OWNER,
   rpc,
 } from './management-fixtures.test-support.ts';
+import { startTaskFrom } from '../../test/task-start-request.ts';
 
 async function withBureau<T>(
   options: Parameters<typeof openBureau>[0],
@@ -48,13 +49,16 @@ async function finishedSession(
   opened: OpenedBureau,
   options: { principal: string; message: string; agentName?: string },
 ) {
-  const run = await opened.bureau.createRun({
+  const run = await startTaskFrom(opened.bureau, {
     agentName: 'default',
-    message: options.message,
+    input: options.message,
     principal: options.principal,
     ...(options.agentName === undefined ? {} : { agentName: options.agentName }),
   });
-  await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'completed', 'finish');
+  await waitForCondition(
+    () => opened.bureau.tasks.detail(run.id)?.status === 'completed',
+    'finish',
+  );
   await pause();
   return run;
 }
@@ -79,11 +83,11 @@ describe('bureau.contexts.list', () => {
       const body = await rpc(opened.handler, 'bureau.contexts.list', {}, 'alice-key');
 
       expect(contextsOf(body).map((context) => context.id)).toEqual([
-        second.sessionId,
-        first.sessionId,
+        second.contextId,
+        first.contextId,
       ]);
       expect(contextsOf(body)[0]).toMatchObject({
-        id: second.sessionId,
+        id: second.contextId,
         owner: OWNER.alice,
         agentName: 'default',
         title: 'second chat',
@@ -129,13 +133,13 @@ describe('bureau.contexts.list', () => {
       );
 
       expect(contextsOf(oldest).map((context) => context.id)).toEqual([
-        one.sessionId,
-        two.sessionId,
-        three.sessionId,
+        one.contextId,
+        two.contextId,
+        three.contextId,
       ]);
       expect(contextsOf(writers).map((context) => context.id)).toEqual([
-        three.sessionId,
-        one.sessionId,
+        three.contextId,
+        one.contextId,
       ]);
     });
   });
@@ -174,7 +178,7 @@ describe('bureau.contexts.list', () => {
         [OWNER.alice, 'a3'],
       ] as const) {
         const session = await finishedSession(opened, { principal, message });
-        created.push(session.sessionId);
+        created.push(session.contextId);
       }
       const alices = [created[4], created[2], created[0]];
 
@@ -237,7 +241,7 @@ describe('bureau.contexts.list', () => {
   it('never returns Bureau-internal session metadata: request authorities and skill snapshots', async () => {
     await withBureau(catalog, async (opened) => {
       const run = await finishedSession(opened, { principal: OWNER.alice, message: 'secrets' });
-      await opened.bureau.internals.sessionStore!.updateMetadata(run.sessionId, {
+      await opened.bureau.internals.sessionStore!.updateMetadata(run.contextId, {
         lastRequestAuthorities: { 'api-key:alice': 'AUTHORITY-SENTINEL' },
         skillSnapshots: { revision: 'SKILL-SNAPSHOT-SENTINEL' },
       });
@@ -246,7 +250,7 @@ describe('bureau.contexts.list', () => {
       const get = await rpc(
         opened.handler,
         'bureau.contexts.get',
-        { contextId: run.sessionId },
+        { contextId: run.contextId },
         'alice-key',
       );
 
@@ -265,7 +269,7 @@ describe('bureau.contexts origin', () => {
   it('reads a chat for a context that records no origin, as every context made before origins existed', async () => {
     await withBureau(catalog, async (opened) => {
       const run = await finishedSession(opened, { principal: OWNER.alice, message: 'a chat' });
-      const stored = await opened.bureau.internals.sessionStore!.load(run.sessionId);
+      const stored = await opened.bureau.internals.sessionStore!.load(run.contextId);
       // A person's chat writes no origin: the default is what the record reads as, not a stored value.
       expect(stored?.metadata['sessionOrigin']).toBeUndefined();
 
@@ -273,12 +277,12 @@ describe('bureau.contexts origin', () => {
       const get = await rpc(
         opened.handler,
         'bureau.contexts.get',
-        { contextId: run.sessionId },
+        { contextId: run.contextId },
         'alice-key',
       );
 
       expect(contextsOf(list).map((context) => context.origin)).toEqual(['chat']);
-      expect(get.result).toMatchObject({ id: run.sessionId, origin: 'chat' });
+      expect(get.result).toMatchObject({ id: run.contextId, origin: 'chat' });
     });
   });
 
@@ -288,16 +292,16 @@ describe('bureau.contexts origin', () => {
       const fire = await finishedSession(opened, { principal: OWNER.alice, message: 'fire' });
       const garbled = await finishedSession(opened, { principal: OWNER.alice, message: 'odd' });
       const store = opened.bureau.internals.sessionStore!;
-      await store.updateMetadata(goal.sessionId, { sessionOrigin: 'goal' });
-      await store.updateMetadata(fire.sessionId, { sessionOrigin: 'schedule' });
-      await store.updateMetadata(garbled.sessionId, { sessionOrigin: 'cron' });
+      await store.updateMetadata(goal.contextId, { sessionOrigin: 'goal' });
+      await store.updateMetadata(fire.contextId, { sessionOrigin: 'schedule' });
+      await store.updateMetadata(garbled.contextId, { sessionOrigin: 'cron' });
 
       const list = await rpc(opened.handler, 'bureau.contexts.list', {}, 'alice-key');
 
       const originOf = new Map(contextsOf(list).map((context) => [context.id, context.origin]));
-      expect(originOf.get(goal.sessionId)).toBe('goal');
-      expect(originOf.get(fire.sessionId)).toBe('schedule');
-      expect(originOf.get(garbled.sessionId)).toBe('chat');
+      expect(originOf.get(goal.contextId)).toBe('goal');
+      expect(originOf.get(fire.contextId)).toBe('schedule');
+      expect(originOf.get(garbled.contextId)).toBe('chat');
     });
   });
 
@@ -307,8 +311,8 @@ describe('bureau.contexts origin', () => {
       const goal = await finishedSession(opened, { principal: OWNER.alice, message: 'goal' });
       const fire = await finishedSession(opened, { principal: OWNER.alice, message: 'fire' });
       const store = opened.bureau.internals.sessionStore!;
-      await store.updateMetadata(goal.sessionId, { sessionOrigin: 'goal' });
-      await store.updateMetadata(fire.sessionId, { sessionOrigin: 'schedule' });
+      await store.updateMetadata(goal.contextId, { sessionOrigin: 'goal' });
+      await store.updateMetadata(fire.contextId, { sessionOrigin: 'schedule' });
 
       const chats = await rpc(
         opened.handler,
@@ -329,10 +333,10 @@ describe('bureau.contexts origin', () => {
         'alice-key',
       );
 
-      expect(contextsOf(chats).map((context) => context.id)).toEqual([chat.sessionId]);
+      expect(contextsOf(chats).map((context) => context.id)).toEqual([chat.contextId]);
       expect(chats.result?.['nextOffset']).toBeNull();
-      expect(contextsOf(goals).map((context) => context.id)).toEqual([goal.sessionId]);
-      expect(contextsOf(fires).map((context) => context.id)).toEqual([fire.sessionId]);
+      expect(contextsOf(goals).map((context) => context.id)).toEqual([goal.contextId]);
+      expect(contextsOf(fires).map((context) => context.id)).toEqual([fire.contextId]);
     });
   });
 
@@ -379,18 +383,14 @@ describe('bureau.contexts.list activity', () => {
   it('is running for a working session, awaiting-input for one waiting on a human, and idle otherwise', async () => {
     await withBureau({ generate: byMessage }, async (opened) => {
       const idle = await finishedSession(opened, { principal: OWNER.alice, message: 'idle' });
-      const running = await opened.bureau.createRun({
-        agentName: 'default',
-        message: 'hold',
+      const running = await opened.bureau.tasks.start('default', 'hold', {
         principal: OWNER.alice,
       });
-      const waiting = await opened.bureau.createRun({
-        agentName: 'default',
-        message: 'park',
+      const waiting = await opened.bureau.tasks.start('default', 'park', {
         principal: OWNER.alice,
       });
       await waitForCondition(
-        () => opened.bureau.getRun(running.id)?.status === 'running',
+        () => opened.bureau.tasks.detail(running.id)?.status === 'running',
         'running',
       );
       await waitForCondition(
@@ -404,9 +404,9 @@ describe('bureau.contexts.list activity', () => {
         contextsOf(body).map((context) => [context.id, context.activity]),
       );
       expect(activity).toEqual({
-        [idle.sessionId]: 'idle',
-        [running.sessionId]: 'running',
-        [waiting.sessionId]: 'awaiting-input',
+        [idle.contextId]: 'idle',
+        [running.contextId]: 'running',
+        [waiting.contextId]: 'awaiting-input',
       });
     });
   });
@@ -448,7 +448,7 @@ describe('bureau.contexts.get', () => {
         principal: OWNER.alice,
         message: 'the opening question',
       });
-      const session = await opened.bureau.contexts.get(run.sessionId);
+      const session = await opened.bureau.contexts.get(run.contextId);
       const transcript = Object.values(session!.conversationHistory.messages).map((message) =>
         typeof message.content === 'string' ? message.content : '',
       );
@@ -456,12 +456,12 @@ describe('bureau.contexts.get', () => {
       const body = await rpc(
         opened.handler,
         'bureau.contexts.get',
-        { contextId: run.sessionId },
+        { contextId: run.contextId },
         'alice-key',
       );
 
       expect(body.result).toMatchObject({
-        id: run.sessionId,
+        id: run.contextId,
         owner: OWNER.alice,
         title: 'the opening question',
         lastMessagePreview: 'Done.',
@@ -500,13 +500,13 @@ describe('bureau.contexts.get', () => {
       const stranger = await rpc(
         opened.handler,
         'bureau.contexts.get',
-        { contextId: run.sessionId },
+        { contextId: run.contextId },
         'bob-key',
       );
       const writeOnly = await rpc(
         opened.handler,
         'bureau.contexts.get',
-        { contextId: run.sessionId },
+        { contextId: run.contextId },
         'contexts-writer-key',
       );
       const missing = await rpc(
@@ -518,16 +518,16 @@ describe('bureau.contexts.get', () => {
       const operator = await rpc(
         opened.handler,
         'bureau.contexts.get',
-        { contextId: run.sessionId },
+        { contextId: run.contextId },
         'operator-key',
       );
 
       expect(stranger.error?.data?.httpStatus).toBe(404);
       expect(writeOnly.error?.data?.httpStatus).toBe(404);
-      expect(JSON.stringify(stranger).replaceAll(run.sessionId, '<id>')).toBe(
+      expect(JSON.stringify(stranger).replaceAll(run.contextId, '<id>')).toBe(
         JSON.stringify(missing).replaceAll('no-such-context', '<id>'),
       );
-      expect(operator.result).toMatchObject({ id: run.sessionId, owner: OWNER.alice });
+      expect(operator.result).toMatchObject({ id: run.contextId, owner: OWNER.alice });
     });
   });
 });

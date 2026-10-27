@@ -49,7 +49,7 @@ async function boot() {
     checkpointRetention: { keepLast: 1 },
   });
   cleanups.push(() => bureau.dispose());
-  await bureau.waitForRecovery?.();
+  await bureau.recovery();
   return bureau;
 }
 

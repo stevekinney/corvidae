@@ -233,7 +233,7 @@ async function waitsOn(harness: Harness, runId: string): Promise<number> {
 }
 
 async function durableStatus(harness: Harness, runId: string): Promise<string | undefined> {
-  const state = await harness.bureau.getDurableRun(runId);
+  const state = await harness.bureau.tasks.workflow(runId);
   return state?.status;
 }
 
@@ -558,7 +558,7 @@ describe('the owner of record on a peer', () => {
           const started = await startOn(harness.handler, as('alice-key'));
           await harness.generate.reached('a-generating');
 
-          const owner = await peer.bureau.getOwner({ kind: 'run', id: started.nativeRunId });
+          const owner = await peer.bureau.ownerOf({ kind: 'run', id: started.nativeRunId });
           harness.generate.release('a-generating');
           await started.reader.rest();
 

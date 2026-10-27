@@ -22,6 +22,7 @@ import { FrameReader, typesOf } from './ag-ui-stream.test-support.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
 import { createMemoryAssetStorage } from '../assets/storage';
 import type { AgentDefinitions } from '../agent-catalog';
+import { listHeldTasks } from '../test';
 
 const sleep = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
@@ -250,7 +251,8 @@ describe('a session that cannot be read at the end of a run that took input', ()
           get: async (id: string) => {
             // The thread is readable while the run is going and owned, and unreadable once it ended.
             if (
-              opened.bureau.getRun(opened.bureau.listRuns()[0]?.id ?? '')?.status === 'completed'
+              opened.bureau.tasks.detail(listHeldTasks(opened.bureau)[0]?.id ?? '')?.status ===
+              'completed'
             ) {
               throw new Error('The session store is unavailable.');
             }
@@ -311,7 +313,7 @@ describe('the other ways a run that took input can end', () => {
       });
       opened.generate.release('hold');
       await opened.generate.reached('second');
-      opened.bureau.abortRun(opened.bureau.listRuns()[0]!.id);
+      await opened.bureau.tasks.cancel(listHeldTasks(opened.bureau)[0]!.id);
       await stream.rest();
 
       expect(tail(stream, 2)).toEqual([EventType.MESSAGES_SNAPSHOT, EventType.RUN_FINISHED]);
@@ -389,7 +391,7 @@ describe('a run that reported an error and was then abandoned without a save', (
       await opened.generate.reached('second');
       opened.storage.arm();
       const recorded = opened.bureau.internals
-        .whenTaskRecorded(opened.bureau.listRuns()[0]!.id)
+        .whenTaskRecorded(listHeldTasks(opened.bureau)[0]!.id)
         .then(
           () => 'resolved',
           (error: unknown) => (error instanceof Error ? error.name : 'rejected'),
@@ -461,7 +463,7 @@ describe('the other ways a run that took input can end without its end being rec
     });
     opened.generate.release('hold');
     await opened.generate.reached('second');
-    const runId = opened.bureau.listRuns()[0]!.id;
+    const runId = listHeldTasks(opened.bureau)[0]!.id;
     // Disposing ends the run, and the save of its end settles the record: it does not stay pending.
     const recorded = opened.bureau.internals.whenTaskRecorded(runId).then(
       () => 'settled',
