@@ -151,3 +151,34 @@ test('turning tools.humanInput off leaves a chat with nothing to review, and tur
     }
   }
 });
+
+test('a change made through the API shows on an open page without a reload or a focus change', async ({
+  page,
+  request,
+}) => {
+  const original = await valueOf(request, 'tools.wakeup');
+  expect(original, 'wakeup is on to begin with').not.toBe(false);
+  const wakeupSwitch = settingRow(page, 'tools.wakeup').getByRole('switch', {
+    name: 'tools.wakeup',
+  });
+  try {
+    await page.goto('/settings');
+    await expect(wakeupSwitch).toHaveAttribute('aria-checked', 'true');
+
+    // Another caller changes it. The page hears of it on its settings stream, not on a timer.
+    const current = await snapshotOf(request);
+    await bureauCall(request, 'bureau.settings.update', {
+      patch: { 'tools.wakeup': false },
+      expectedRevision: current.revision,
+    });
+    await expect(wakeupSwitch).toHaveAttribute('aria-checked', 'false');
+  } finally {
+    const latest = await snapshotOf(request);
+    if (latest.values['tools.wakeup'] !== original) {
+      await bureauCall(request, 'bureau.settings.update', {
+        patch: { 'tools.wakeup': original },
+        expectedRevision: latest.revision,
+      });
+    }
+  }
+});

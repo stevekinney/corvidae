@@ -12,7 +12,8 @@
 import { HttpClientError } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import { callBureau, type Fetcher } from './bureau-client.ts';
+import { BUREAU_PATH, callBureau, type Fetcher } from './bureau-client.ts';
+import { readServerSentEventStream } from './live-source/sse-reader.ts';
 
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
 
@@ -171,5 +172,68 @@ export function settingsFaultOf(error: unknown): SettingsFault {
       return { kind: 'forbidden' };
     default:
       return { kind: 'other', message: error.message };
+  }
+}
+
+/** One change to the settings, as `bureau.settings.events` sends it: the new revision and the keys, never a value. */
+export const settingsChangeSchema = z.object({
+  kind: z.literal('settings.changed'),
+  /** The change's revision as a cursor; a stream opened with it in `Last-Event-ID` carries on from it. */
+  cursor: z.string(),
+  emittedAtMs: z.number(),
+  revision: z.number().int().nonnegative(),
+  /** The keys the change set. A resumed stream's first event names none. */
+  keys: z.array(z.string()),
+});
+
+/** One event of the settings stream. */
+export type SettingsChange = z.infer<typeof settingsChangeSchema>;
+
+/** The path of the one generic subscription route, for the settings stream. */
+export const SETTINGS_EVENTS_PATH = `${BUREAU_PATH}/v1/subscriptions/bureau.settings.events`;
+
+/**
+ * Opens the settings stream from `cursor` (or from now, when there is none) and yields each change
+ * as the Bureau sends it. The cursor goes in `Last-Event-ID`, which is how the Bureau resumes a
+ * stream: a stream resumed behind the current revision opens with one event for the current one. A
+ * refusal throws the `HttpClientError` the response's status makes, a stream that ends ends this
+ * generator, and a frame that does not parse is skipped: heartbeats are frames too.
+ */
+export async function* followSettingsEvents(options: {
+  readonly cursor?: string;
+  readonly signal?: AbortSignal;
+  readonly fetch?: Fetcher;
+  /** Called once the Bureau has accepted the subscription, before any event arrives. */
+  readonly onOpen?: () => void;
+}): AsyncGenerator<SettingsChange, void, void> {
+  const send = options.fetch ?? fetch;
+  const response = await send(SETTINGS_EVENTS_PATH, {
+    headers: {
+      accept: 'text/event-stream',
+      ...(options.cursor === undefined ? {} : { 'last-event-id': options.cursor }),
+    },
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
+  });
+  if (!response.ok) {
+    // A refusal on the REST surface is a flat `{ error: <message> }`; its status says what kind.
+    const body: unknown = await response.json().catch(() => undefined);
+    const message =
+      typeof body === 'object' && body !== null ? Reflect.get(body, 'error') : undefined;
+    throw new HttpClientError(
+      response.status,
+      typeof message === 'string' ? message : `The settings stream answered ${response.status}.`,
+    );
+  }
+  options.onOpen?.();
+  for await (const frame of readServerSentEventStream(response, options.signal)) {
+    if (frame.event !== 'settings.changed') continue;
+    let payload: unknown;
+    try {
+      payload = JSON.parse(frame.data);
+    } catch {
+      continue;
+    }
+    const parsed = settingsChangeSchema.safeParse(payload);
+    if (parsed.success) yield parsed.data;
   }
 }
