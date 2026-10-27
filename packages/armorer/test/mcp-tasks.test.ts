@@ -433,9 +433,10 @@ describe('cancellation, expiry and shutdown', () => {
 
     jest.advanceTimersByTime(5_001);
     jest.useRealTimers();
-    await waitUntil(
-      async () => (await getMcpTask(harness.mcp, taskId)).error?.code === INVALID_PARAMS,
-    );
+    await waitUntil(async () => {
+      const lookup = await getMcpTask(harness.mcp, taskId);
+      return lookup.error?.code === INVALID_PARAMS;
+    });
 
     expect(harness.signals[0]?.aborted).toBe(true);
     await harness.mcp.executionLifecycle.whenIdle();
