@@ -157,6 +157,7 @@ describe('every DTCG type is editable on a Source token', () => {
     const row = { ...sourceTokenRow(paths[type] ?? `coverage.${type}`, type), themeAware: true };
     const Editor = editorForToken(row);
     mounted = mount(Editor, { target, props: { controller, workbench, row } });
+    // load-proof: the editors flush through Svelte and the in-memory evaluator, so the update settles inside the microtask queue
     await new Promise((resolve) => setTimeout(resolve, 0));
     flushSync();
     await tick();

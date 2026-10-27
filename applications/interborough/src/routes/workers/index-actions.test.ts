@@ -105,6 +105,7 @@ describe('Workers route — Fleet overview tab', () => {
     const confirmButton = await findByRole('button', { name: 'Drain deployment' });
     await fireEvent.click(confirmButton);
 
+    // load-proof: the scripted JSON-RPC fetch resolves in memory, so the call is issued inside the click handler promise chain
     await new Promise((resolve) => setTimeout(resolve, 0));
     const drainCall = scripted.calls.find((call) => {
       try {
@@ -139,6 +140,7 @@ describe('Workers route — Fleet overview tab', () => {
 
     await fireEvent.click(await findByRole('button', { name: 'Resume' }));
 
+    // load-proof: the scripted JSON-RPC fetch resolves in memory, so the call is issued inside the click handler promise chain
     await new Promise((resolve) => setTimeout(resolve, 0));
     const resumeCall = scripted.calls.find((call) => {
       try {
@@ -180,6 +182,7 @@ describe('Workers route — Workers tab, worker selection and drain/resume', () 
     await fireEvent.input(reasonInput, { target: { value: 'rolling restart' } });
     await fireEvent.click(await findByRole('button', { name: 'Drain worker' }));
 
+    // load-proof: the scripted JSON-RPC fetch resolves in memory, so the call is issued inside the click handler promise chain
     await new Promise((resolve) => setTimeout(resolve, 0));
     const drainCall = scripted.calls.find((call) => {
       try {
@@ -212,6 +215,7 @@ describe('Workers route — Workers tab, worker selection and drain/resume', () 
 
     await fireEvent.click(await findByRole('button', { name: 'Resume' }));
 
+    // load-proof: the scripted JSON-RPC fetch resolves in memory, so the call is issued inside the click handler promise chain
     await new Promise((resolve) => setTimeout(resolve, 0));
     const resumeCall = scripted.calls.find((call) => {
       try {

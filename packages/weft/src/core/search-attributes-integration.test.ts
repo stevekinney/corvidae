@@ -1017,6 +1017,7 @@ for (const backend of storageBackends) {
         // Run an activity first to give time for the update to be queued
         yield* context.run(async () => {
           // This gives the engine time to process the update request
+          // load-proof: stretches an activity body so the update request queues first; the engine delivers the update through promise continuations and the test awaits its result
           await sleepForTesting(50);
           return 'activity-done';
         });

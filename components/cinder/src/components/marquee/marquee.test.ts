@@ -117,6 +117,7 @@ describe('Marquee', () => {
     expect(element?.getAttribute('data-cinder-manual-paused')).toBe('false');
 
     control.click();
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(getByRole('button', { name: 'Resume marquee animation' })).toBe(control);
@@ -125,6 +126,7 @@ describe('Marquee', () => {
     expect(element?.getAttribute('data-cinder-manual-resumed')).toBe('false');
 
     control.click();
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(getByRole('button', { name: 'Pause marquee animation' })).toBe(control);
@@ -160,6 +162,7 @@ describe('Marquee', () => {
 
     control.click();
     control.click();
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(element?.getAttribute('data-cinder-manual-resumed')).toBe('true');
@@ -167,6 +170,7 @@ describe('Marquee', () => {
     element?.dispatchEvent(
       new FocusEvent('focusout', { bubbles: true, relatedTarget: innerButton }),
     );
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(element?.getAttribute('data-cinder-manual-resumed')).toBe('true');
@@ -184,6 +188,7 @@ describe('Marquee', () => {
     try {
       control.click();
       control.click();
+      // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(element?.getAttribute('data-cinder-manual-resumed')).toBe('true');
@@ -191,6 +196,7 @@ describe('Marquee', () => {
       element?.dispatchEvent(
         new FocusEvent('focusout', { bubbles: true, relatedTarget: outsideButton }),
       );
+      // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(element?.getAttribute('data-cinder-manual-resumed')).toBe('false');
@@ -208,11 +214,13 @@ describe('Marquee', () => {
 
     control.click();
     control.click();
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(element?.getAttribute('data-cinder-manual-resumed')).toBe('true');
 
     element?.dispatchEvent(new PointerEvent('pointerleave', { bubbles: false }));
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(element?.getAttribute('data-cinder-manual-resumed')).toBe('false');
@@ -228,12 +236,14 @@ describe('Marquee', () => {
     control.click();
     control.click();
     control.focus();
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(document.activeElement).toBe(control);
     expect(element?.getAttribute('data-cinder-manual-resumed')).toBe('true');
 
     element?.dispatchEvent(new PointerEvent('pointerleave', { bubbles: false }));
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(element?.getAttribute('data-cinder-manual-resumed')).toBe('true');
@@ -309,6 +319,7 @@ describe('Marquee', () => {
       children: svgReferenceSnippet(),
     });
 
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     const duplicateTrack = container.querySelector('.cinder-marquee__item[aria-hidden="true"]');
@@ -326,6 +337,7 @@ describe('Marquee', () => {
       children: inlineStyleReferenceSnippet(),
     });
 
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     const duplicateTrack = container.querySelector('.cinder-marquee__item[aria-hidden="true"]');
@@ -342,6 +354,7 @@ describe('Marquee', () => {
       children: namedFormControlsSnippet(),
     });
 
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     const duplicateTrack = container.querySelector('.cinder-marquee__item[aria-hidden="true"]');
@@ -374,6 +387,7 @@ describe('Marquee', () => {
     try {
       const { container } = render(Marquee, { children: textSnippet('content') });
       // Let the effect's own eager, unbatched initial sync settle first.
+      // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       const primaryItem = container.querySelector<HTMLElement>(

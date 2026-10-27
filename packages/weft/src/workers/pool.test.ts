@@ -475,10 +475,12 @@ describe('WorkerPool', () => {
       });
 
       // Not yet disposed because workers are in use
+      // load-proof: negative window: asserts the pool is not disposed while a worker is in use; load can only delay a disposal, never complete one
       await sleepForTesting(10);
       expect(disposed).toBe(false);
 
       pool.release(w1);
+      // load-proof: negative window: asserts the pool is not disposed while a worker is in use; load can only delay a disposal, never complete one
       await sleepForTesting(10);
       expect(disposed).toBe(false);
 

@@ -2,7 +2,8 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
-import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
+import { requiredInstance, setupHappyDom, trackTimers } from '@lostgradient/testing';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import type { DataTableSelectionMode as RootDataTableSelectionMode } from '../../index.ts';
 import type { DataTableRow } from './data-table.types.ts';
 import type { DataTableSelectionMode } from './index.ts';
@@ -690,7 +691,7 @@ describe('DataTable — row selection', () => {
     expect(firstCheckbox?.checked).toBe(true);
 
     form.reset();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await waitFor(() => expect(selectedRowIds).toEqual([]));
     await tick();
 
     expect(selectedRowIds).toEqual([]);
@@ -725,8 +726,16 @@ describe('DataTable — row selection', () => {
     expect(selectedRowIds).toEqual(['ada']);
 
     form.addEventListener('reset', (event) => event.preventDefault());
-    form.dispatchEvent(new Event('reset', { bubbles: true, cancelable: true }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    const timers = trackTimers();
+    try {
+      form.dispatchEvent(new Event('reset', { bubbles: true, cancelable: true }));
+      await waitUntil(() => timers.active().size === 0, {
+        message: 'the component finishes its form-reset timer',
+      });
+    } finally {
+      timers.release();
+    }
+
     await tick();
 
     expect(selectedRowIds).toEqual(['ada']);

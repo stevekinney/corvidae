@@ -2,6 +2,7 @@ import { HANG_GUARD_MILLISECONDS, afterAwakeTime } from './hang-guard.ts';
 
 /** Hand control back for one full event-loop turn, then drain microtasks. */
 export async function yieldEventLoopTurn(): Promise<void> {
+  // load-proof: this is the turn a wait loop takes between two checks of its condition; the loop's condition and the hang guard decide when the wait ends, so the turn carries no assumption about how much work it lets run
   await new Promise<void>((resolve) => {
     const channel = new MessageChannel();
     channel.port1.addEventListener(

@@ -236,6 +236,7 @@ describe('workflow tags', () => {
         id: 'durable-tags',
         tags: ['alpha'],
       });
+      // load-proof: handle.addTags and removeTags await the engine's own durable write, so they do not depend on the workflow having parked; the yield is surplus
       await sleepForTesting(10);
 
       await handle.addTags('beta', 'alpha');
@@ -308,6 +309,7 @@ describe('workflow tags', () => {
         id: 'tag-limit-after-add',
         tags: Array.from({ length: MAX_WORKFLOW_TAGS - 1 }, (_, index) => `tag-${index}`),
       });
+      // load-proof: handle.addTags and removeTags await the engine's own durable write, so they do not depend on the workflow having parked; the yield is surplus
       await sleepForTesting(10);
 
       expect(await throwingRejectionOf(handle.addTags('overflow-a', 'overflow-b'))).toThrow(
@@ -335,6 +337,7 @@ describe('workflow tags', () => {
         id: 'tag-validation-context',
         tags: ['alpha'],
       });
+      // load-proof: handle.addTags and removeTags await the engine's own durable write, so they do not depend on the workflow having parked; the yield is surplus
       await sleepForTesting(10);
 
       expect(await throwingRejectionOf(handle.addTags(''))).toThrow(
@@ -359,6 +362,7 @@ describe('workflow tags', () => {
         id: workflowId,
         tags: ['alpha'],
       });
+      // load-proof: handle.addTags and removeTags await the engine's own durable write, so they do not depend on the workflow having parked; the yield is surplus
       await sleepForTesting(10);
 
       const addTagsPromise = handle.addTags('beta');
@@ -418,6 +422,7 @@ describe('workflow tags', () => {
         tags: ['nightly'],
         searchAttributes: { priority: 'high' },
       });
+      // load-proof: handle.addTags and removeTags await the engine's own durable write, so they do not depend on the workflow having parked; the yield is surplus
       await sleepForTesting(10);
 
       const attributes = await engine.getAttributes('tag-distinction');

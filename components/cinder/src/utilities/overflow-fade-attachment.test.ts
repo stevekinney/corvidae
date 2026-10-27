@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 import { setupHappyDom } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
+import { captureZeroDelayTimers } from '../test/zero-delay-timers.ts';
 import {
   animationFrameCallbacks,
   FakeMutationObserver,
@@ -140,20 +141,24 @@ describe('overflowFade', () => {
       configurable: true,
       value: undefined,
     });
+    const fallbackTimers = captureZeroDelayTimers(window);
     try {
       const cleanup = overflowFade()(node);
       setScrollMeasurements(node, { clientHeight: 100, scrollHeight: 160 });
       node.dispatchEvent(new Event('scroll'));
 
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await fallbackTimers.settled();
       expect(node.hasAttribute('data-cinder-overflows')).toBe(true);
 
       setScrollMeasurements(node, { clientHeight: 100, scrollHeight: 100 });
       node.dispatchEvent(new Event('scroll'));
       cleanup?.();
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      // The cancelled fallback timer must not apply the update: `settled` waits for a live timer to
+      // run and returns at once for one that was cleared.
+      await fallbackTimers.settled();
       expect(node.hasAttribute('data-cinder-overflows')).toBe(true);
     } finally {
+      fallbackTimers.release();
       restoreGlobal('requestAnimationFrame', requestAnimationFrameDescriptor);
       restoreGlobal('cancelAnimationFrame', cancelAnimationFrameDescriptor);
     }

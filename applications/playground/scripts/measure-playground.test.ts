@@ -160,6 +160,7 @@ describe('prerequisitesThenEnvironment (CIN-588 harness fix 4)', () => {
     let installedSvelte = '5.0.0';
     const environment = await prerequisitesThenEnvironment(
       async () => {
+        // load-proof: the prerequisite is an in-memory async function, and the assertion only orders it before the environment read
         await Bun.sleep(1);
         installedSvelte = '5.1.0';
       },

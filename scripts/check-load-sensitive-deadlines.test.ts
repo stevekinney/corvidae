@@ -3,8 +3,10 @@ import ts from 'typescript';
 import {
   collectPositionalBudgets,
   findDeadlineViolations,
+  findExportedSingleTurnYieldCalls,
   findPackageScriptViolations,
   findTestRunnerSpawnViolations,
+  singleTurnYieldAllowlistFindings,
 } from './check-load-sensitive-deadlines.ts';
 import { HANG_GUARD_MILLISECONDS } from './hang-guard.ts';
 
@@ -686,28 +688,146 @@ describe('a budget handed to a wait helper by position', () => {
 });
 
 describe('a single-turn yield used to let real work finish', () => {
-  test('reports sleepForTesting before an assertion that something happened', () => {
-    expect(
-      inspect(
-        "test('a', async () => {\n  start();\n  await sleepForTesting(10);\n  expect(worker.postMessage).toHaveBeenCalled();\n});",
-      ),
-    ).toEqual(['sleep-synchronization']);
+  test.each([
+    [
+      'sleepForTesting before an assertion that something happened',
+      "test('a', async () => {\n  start();\n  await sleepForTesting(10);\n  expect(worker.postMessage).toHaveBeenCalled();\n});",
+    ],
+    [
+      'sleepForTesting before an action, which no assertion reads',
+      "test('a', async () => {\n  start();\n  await sleepForTesting(10);\n  socket.send('go');\n});",
+    ],
+    [
+      'sleepForTesting in a setup hook',
+      'beforeEach(async () => {\n  start();\n  await sleepForTesting(10);\n});',
+    ],
+    [
+      'a setImmediate promise',
+      "test('a', async () => {\n  start();\n  await new Promise((resolve) => setImmediate(resolve));\n  socket.send('go');\n});",
+    ],
+    [
+      'a zero-delay setTimeout promise',
+      "test('a', async () => {\n  start();\n  await new Promise<void>((resolve) => setTimeout(resolve, 0));\n  socket.send('go');\n});",
+    ],
+    [
+      'Bun.sleep(0)',
+      "test('a', async () => {\n  start();\n  await Bun.sleep(0);\n  socket.send('go');\n});",
+    ],
+    [
+      'a same-file helper, at its definition',
+      "const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));\ntest('a', async () => {\n  await settle();\n  socket.send('go');\n});",
+    ],
+    [
+      'an exported helper whose body awaits the yield',
+      'export async function flush(): Promise<void> {\n  await sleepForTesting(10);\n}',
+    ],
+  ])('reports %s', (_name, source) => {
+    expect(inspect(source)).toEqual(['single-turn-settle']);
   });
 
   test.each([
     [
-      'an assertion of absence',
-      "test('a', async () => {\n  await sleepForTesting(10);\n  expect(calls).toEqual([]);\n});",
+      'an assertion of absence after a marked window',
+      "test('a', async () => {\n  // load-proof: microtask-only work, nothing real to wait for here\n  await sleepForTesting(10);\n  expect(calls).toEqual([]);\n});",
     ],
     [
       'fake timers, which advance it',
-      "test('a', async () => {\n  useFakeTimers();\n  await sleepForTesting(10);\n  expect(done()).toBe(true);\n});",
+      "test('a', async () => {\n  useFakeTimers();\n  await sleepForTesting(10);\n  socket.send('go');\n});",
     ],
     [
-      'a following wait, which carries the assertion',
-      "test('a', async () => {\n  await sleepForTesting(10);\n  await waitFor(ready);\n  expect(done()).toBe(true);\n});",
+      'a microtask drain, sleepForTesting(0)',
+      "test('a', async () => {\n  await sleepForTesting(0);\n  socket.send('go');\n});",
+    ],
+    [
+      'the last statement of a test',
+      "test('a', async () => {\n  start();\n  await sleepForTesting(10);\n});",
+    ],
+    [
+      'a teardown hook',
+      'afterEach(async () => {\n  server.stop();\n  await sleepForTesting(10);\n  cleanup();\n});',
+    ],
+    [
+      'a poll loop, which the loop rules read',
+      "test('a', async () => {\n  while (!ready()) {\n    await sleepForTesting(10);\n  }\n  socket.send('go');\n});",
+    ],
+    [
+      'a race, which timer-race reads',
+      "test('a', async () => {\n  await Promise.race([work(), new Promise((resolve) => setTimeout(resolve, 0))]);\n  socket.send('go');\n});",
+    ],
+    [
+      'a real wait of more than a turn, which the sleep rule reads',
+      "test('a', async () => {\n  const pending = work();\n  await Bun.sleep(5_000);\n  await pending;\n});",
+    ],
+    [
+      'a following wait',
+      "test('a', async () => {\n  // load-proof: only orders the wait below, which carries the assertion\n  await sleepForTesting(10);\n  await waitFor(ready);\n  expect(done()).toBe(true);\n});",
     ],
   ])('accepts %s', (_name, source) => {
     expect(inspect(source)).toEqual([]);
+  });
+
+  test('reads a marker on the exact statement only', () => {
+    expect(
+      inspect(
+        "test('a', async () => {\n  // load-proof: microtask-only work, nothing real to wait for here\n  await sleepForTesting(10);\n  await sleepForTesting(10);\n  socket.send('go');\n});",
+      ),
+    ).toEqual(['single-turn-settle']);
+  });
+});
+
+describe('an exported one-turn yield helper', () => {
+  function countCalls(source: string): number {
+    const parsed = ts.createSourceFile('fixture.test.ts', source, ts.ScriptTarget.Latest, true);
+    return findExportedSingleTurnYieldCalls(parsed).length;
+  }
+
+  test.each([
+    [
+      'yieldToEventLoop',
+      "test('a', async () => {\n  start();\n  await yieldToEventLoop();\n  go();\n});",
+    ],
+    [
+      'yieldToPortableEventLoop',
+      "test('a', async () => {\n  await yieldToPortableEventLoop();\n  go();\n});",
+    ],
+    ['yieldEventLoopTurn', "test('a', async () => {\n  await yieldEventLoopTurn();\n  go();\n});"],
+  ])('counts a call to %s', (_name, source) => {
+    expect(countCalls(source)).toBe(1);
+  });
+
+  test.each([
+    [
+      'a marked call',
+      "test('a', async () => {\n  // load-proof: only microtasks are pending after the awaited start\n  await yieldToEventLoop();\n  go();\n});",
+    ],
+    [
+      'a poll loop',
+      "test('a', async () => {\n  while (!ready()) await yieldToEventLoop();\n  go();\n});",
+    ],
+    [
+      'fake timers',
+      "test('a', async () => {\n  useFakeTimers();\n  await yieldToEventLoop();\n  go();\n});",
+    ],
+    ['another helper', "test('a', async () => {\n  await settleInlineLaunches();\n  go();\n});"],
+  ])('does not count %s', (_name, source) => {
+    expect(countCalls(source)).toBe(0);
+  });
+
+  test('a file may not gain calls, and its allowance can only shrink', () => {
+    expect(singleTurnYieldAllowlistFindings('a.test.ts', 3, 3)).toEqual([]);
+    expect(singleTurnYieldAllowlistFindings('a.test.ts', 4, 3)).toHaveLength(1);
+    expect(singleTurnYieldAllowlistFindings('a.test.ts', 1, 0)[0]).toContain('new call');
+    expect(singleTurnYieldAllowlistFindings('a.test.ts', 2, 3)[0]).toContain('lower the entry');
+    expect(singleTurnYieldAllowlistFindings('a.test.ts', 0, 3)[0]).toContain('delete it');
+  });
+});
+
+describe('a sleep that is handed its clock', () => {
+  test('is an injected timer, not a real single-turn yield', () => {
+    expect(
+      inspect(
+        "test('a', async () => {\n  const pending = sleep(0, runtime.timers);\n  await runtime.advance(0);\n  await pending;\n  expect(done()).toBe(true);\n});",
+      ),
+    ).toEqual([]);
   });
 });

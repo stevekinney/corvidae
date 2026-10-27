@@ -111,6 +111,7 @@ describe('Portal', () => {
     expect(wrapper?.hasAttribute('dir')).toBe(false);
 
     document.documentElement.setAttribute('dir', 'auto');
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(wrapper?.hasAttribute('dir')).toBe(false);
@@ -154,6 +155,7 @@ describe('Portal', () => {
     expect(wrapper?.getAttribute('dir')).toBe('rtl');
 
     source.setAttribute('dir', 'ltr');
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(wrapper?.getAttribute('dir')).toBe('ltr');
@@ -182,6 +184,7 @@ describe('Portal', () => {
     expect(wrapper?.getAttribute('dir')).toBe('rtl');
 
     source.style.direction = 'ltr';
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(wrapper?.getAttribute('dir')).toBe('ltr');

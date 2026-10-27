@@ -8,6 +8,7 @@ import { createScriptedPeer, type ScriptedPeerOptions } from './peer-client.test
 import { createA2APeerClient } from './peer-client.ts';
 
 /** Yields to timers, so a loop of in-memory requests cannot starve a task timeout. */
+// load-proof: the client's injected sleep seam replaces its real backoff delay and the client under test awaits it, so it is an input to the code, not a test-side wait for state
 const immediate = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 function connect(

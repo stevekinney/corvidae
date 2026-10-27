@@ -77,6 +77,7 @@ export async function sleepForTesting(milliseconds: number): Promise<void> {
   // Integration-style tests sometimes use this helper to let external
   // server/socket work breathe. Do not wait the requested wall-clock duration;
   // yield one minimal scheduler turn so real timers are not starved.
+  // load-proof: this is sleepForTesting's own single-turn yield; the guard reads each caller where it calls the helper, so this definition promises nothing about what the turn lets finish
   await new Promise<void>((resolve) => {
     setTimeout(resolve, 1);
   });
@@ -111,6 +112,7 @@ export async function yieldToEventLoop(): Promise<void> {
     return;
   }
 
+  // load-proof: this is yieldToEventLoop's own single-turn yield, a turn by contract; the guard reads each caller where it calls the helper, so this definition promises nothing about what the turn lets finish
   await new Promise<void>((resolve) => {
     setTimeout(resolve, 0);
   });

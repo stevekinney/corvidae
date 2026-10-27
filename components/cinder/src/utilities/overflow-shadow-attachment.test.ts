@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 import { setupHappyDom } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
+import { captureZeroDelayTimers } from '../test/zero-delay-timers.ts';
 import {
   FakeMutationObserver,
   FakeResizeObserver,
@@ -130,12 +131,13 @@ describe('overflowShadow', () => {
       configurable: true,
       value: undefined,
     });
+    const fallbackTimers = captureZeroDelayTimers(window);
     try {
       const cleanup = overflowShadow('block')(node);
       setScrollMeasurements(node, { clientHeight: 100, scrollHeight: 160 });
       FakeResizeObserver.instances[0]?.trigger();
 
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await fallbackTimers.settled();
       expect(node.hasAttribute('data-cinder-overflows-block')).toBe(true);
 
       // Schedule another pending fallback timer, then tear down WHILE it is
@@ -146,6 +148,7 @@ describe('overflowShadow', () => {
       FakeResizeObserver.instances[0]?.trigger();
       cleanup?.();
     } finally {
+      fallbackTimers.release();
       restoreGlobal('requestAnimationFrame', requestAnimationFrameDescriptor);
       restoreGlobal('cancelAnimationFrame', cancelAnimationFrameDescriptor);
     }

@@ -17,6 +17,7 @@ import type { TerminalGeometry, TerminalRendererFailure } from './terminal.types
 const bytes = (...values: number[]) => Uint8Array.from(values);
 
 /** Let every pending promise continuation run. */
+// load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
 const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 class FakeMediaQueryList extends EventTarget {
@@ -772,6 +773,7 @@ describe('settings and design tokens', () => {
     expect(engine.updates.at(-1)?.theme.background).toBe('#111111');
     s.host.style.setProperty('--cinder-surface-inset', '#222222');
     document.documentElement.setAttribute('data-theme', 'dark');
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
     document.documentElement.removeAttribute('data-theme');
     expect(engine.updates.at(-1)?.theme.background).toBe('#222222');

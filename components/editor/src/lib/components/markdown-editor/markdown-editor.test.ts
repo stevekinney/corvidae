@@ -56,8 +56,10 @@ function collectTeardownNoise(): NoiseCollector {
 }
 
 async function drainLateCallbacks(): Promise<void> {
+  // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
   await new Promise((resolve) => setTimeout(resolve, 0));
   await Promise.resolve();
+  // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 

@@ -7,7 +7,7 @@ import type { DataGridColumnDef, DataGridProps } from './data-grid.types.ts';
 
 setupHappyDom();
 
-const { cleanup, fireEvent, render } = await import('@testing-library/svelte');
+const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/svelte');
 const { default: DataGrid } = await import('./data-grid.svelte');
 
 afterEach(() => {
@@ -429,8 +429,9 @@ describe('DataGrid header keyboard resize and reorder (COR-1133)', () => {
     );
 
     const liveRegion = container.querySelector('[role="status"]');
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(liveRegion?.textContent).toContain('Customer column resized to 190 pixels');
+    await waitFor(() =>
+      expect(liveRegion?.textContent).toContain('Customer column resized to 190 pixels'),
+    );
   });
 
   test('Shift+ArrowLeft narrows the focused header column, clamped to minWidth', async () => {
@@ -469,8 +470,9 @@ describe('DataGrid header keyboard resize and reorder (COR-1133)', () => {
     expect(onColumnOrderChange).toHaveBeenCalledWith(['status', 'customer', 'total']);
 
     const liveRegion = container.querySelector('[role="status"]');
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(liveRegion?.textContent).toContain('Customer column moved to position 2');
+    await waitFor(() =>
+      expect(liveRegion?.textContent).toContain('Customer column moved to position 2'),
+    );
   });
 
   test('Meta+Shift+ArrowLeft (Cmd) also moves the focused header column', async () => {

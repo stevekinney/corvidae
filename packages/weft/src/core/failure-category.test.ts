@@ -1,4 +1,4 @@
-import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
+import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
 /**
  * Tests for WorkflowState.failureCategory — populated on all failed workflows
  * and indexed so it can be queried via engine.list({ attributes: ... }).
@@ -17,7 +17,7 @@ import { workflow } from './types.ts';
 
 /** Drain microtasks so fire-and-forget work completes. */
 async function flush(): Promise<void> {
-  await sleepForTesting(10);
+  await settleInlineLaunches();
 }
 
 describe('failureCategory on WorkflowState', () => {

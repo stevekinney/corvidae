@@ -28,6 +28,8 @@
  * `@lostgradient/testing`.
  */
 
+import { basename } from 'node:path';
+
 import type { SpawnOptions, Subprocess } from 'bun';
 
 /**
@@ -121,6 +123,74 @@ export function afterAwakeTime(
   return cancel;
 }
 
+// Bun subcommands that are the package manager's own: `--no-install` is a runtime flag, and in front
+// of one of these Bun reads it as a script name.
+const PACKAGE_MANAGER_COMMANDS = new Set([
+  'a',
+  'add',
+  'audit',
+  'c',
+  'create',
+  'i',
+  'info',
+  'init',
+  'install',
+  'link',
+  'outdated',
+  'patch',
+  'pm',
+  'publish',
+  'remove',
+  'rm',
+  'unlink',
+  'update',
+  'upgrade',
+  'why',
+  'x',
+]);
+// Runtime flags in front of the subcommand that take a separate value.
+const VALUE_FLAGS = new Set(['-e', '--eval', '-p', '--print', '-r', '--preload', '--cwd', '-c']);
+
+/**
+ * The argument list a test child should run with: Bun's runtime auto-install turned off.
+ *
+ * Bun installs a package a script imports but cannot resolve when no `node_modules` sits above the
+ * script, and a test that writes modules into the system temp directory and runs them has none. The
+ * install goes to the network, so the test passes or fails depending on the registry and on which
+ * release is current (a new `svelte` broke the terminal import probe that way). Every child that
+ * runs a Bun script, test or build therefore starts with `--no-install`, so it can resolve only
+ * from the workspace it runs in, or fails at once with "Cannot find package". Package-manager
+ * commands (`bun install`, `bun add`, `bun x`...) and a command that already chose
+ * (`--no-install`, `--install`, `-i`) are left as they are. Anything that is not Bun is returned
+ * unchanged.
+ */
+export function withoutAutoInstall(command: readonly string[]): string[] {
+  const [executable, ...rest] = command;
+  if (
+    executable === undefined ||
+    !(executable === process.execPath || basename(executable) === 'bun') ||
+    rest.some(
+      (argument) =>
+        argument === '--no-install' ||
+        argument === '-i' ||
+        argument === '--install' ||
+        argument.startsWith('--install='),
+    )
+  ) {
+    return [...command];
+  }
+  for (let index = 0; index < rest.length; index += 1) {
+    const argument = rest[index]!;
+    if (!argument.startsWith('-')) {
+      return PACKAGE_MANAGER_COMMANDS.has(argument)
+        ? [...command]
+        : [executable, '--no-install', ...rest];
+    }
+    if (VALUE_FLAGS.has(argument)) index += 1;
+  }
+  return [executable, '--no-install', ...rest];
+}
+
 export type HangGuardedSpawnOptions<
   In extends SpawnOptions.Writable,
   Out extends SpawnOptions.Readable,
@@ -134,7 +204,9 @@ export type HangGuardedSpawnOptions<
  * `Bun.spawn` with an awake-time hang guard in place of its `timeout` option. A child still
  * running when the guard elapses is killed with `killSignal` (SIGTERM by default), so its
  * `exitCode` and `signalCode` read as they would after `timeout`. Test files start every process
- * through this or `runWithHangGuard`; `scripts/check-test-process-spawns.ts` enforces it.
+ * through this or `runWithHangGuard`; `scripts/check-test-process-spawns.ts` enforces it, and so it
+ * is also the one place a Bun child is kept from auto-installing from the network
+ * (`withoutAutoInstall`).
  */
 export function spawnWithHangGuard<
   const In extends SpawnOptions.Writable = 'ignore',
@@ -142,7 +214,7 @@ export function spawnWithHangGuard<
   const Err extends SpawnOptions.Readable = 'inherit',
 >(command: string[], options?: HangGuardedSpawnOptions<In, Out, Err>): Subprocess<In, Out, Err> {
   const { hangGuardMilliseconds = HANG_GUARD_MILLISECONDS, ...spawnOptions } = options ?? {};
-  const child = Bun.spawn<In, Out, Err>(command, spawnOptions);
+  const child = Bun.spawn<In, Out, Err>(withoutAutoInstall(command), spawnOptions);
   // `killSignal` is typed as any string, but Bun accepts only signal names and numbers there.
   const killSignal = (spawnOptions.killSignal ?? 'SIGTERM') as NodeJS.Signals | number;
   const cancel = afterAwakeTime(hangGuardMilliseconds, () => child.kill(killSignal));

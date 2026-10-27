@@ -141,12 +141,14 @@ describe('useReducedMotion', () => {
   test('synchronizes the default preference from the public root attribute', async () => {
     mock = installMatchMediaMock(false);
     document.documentElement.dataset['reducedMotion'] = 'on';
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     const motion = useReducedMotion();
 
     expect(motion.current).toBe(true);
 
     document.documentElement.dataset['reducedMotion'] = 'off';
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     expect(motion.current).toBe(false);
     expect(document.documentElement.dataset['cinderReducedMotion']).toBe('false');

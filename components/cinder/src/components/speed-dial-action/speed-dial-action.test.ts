@@ -15,6 +15,7 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
+// load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
 async function flushQueuedFocus(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }

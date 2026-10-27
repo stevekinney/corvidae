@@ -93,6 +93,7 @@ function event(type: string, data: Record<string, unknown> = {}): WorkflowEvent 
 }
 
 /** Yields past pending microtasks/promise resolutions — for asserting a fake tail's internal `for await` had a chance to resume after `push()`, when there's no other observable condition to poll. */
+// load-proof: the scripted tail is an in-memory async iterator, so its for-await resumes through promise reactions alone
 function settle(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }

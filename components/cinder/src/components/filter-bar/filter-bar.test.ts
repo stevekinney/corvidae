@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
-import { createRawSnippet, tick } from 'svelte';
+import { createRawSnippet } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
@@ -9,7 +9,7 @@ import { setupHappyDom } from '@lostgradient/testing';
 // so we register happy-dom's globals first and then dynamic-import testing-library below.
 setupHappyDom();
 
-const { cleanup, fireEvent, render } = await import('@testing-library/svelte');
+const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/svelte');
 const { default: FilterBar } = await import('./filter-bar.svelte');
 
 /**
@@ -362,22 +362,18 @@ describe('FilterBar accessibility', () => {
         { key: 'queue', value: 'default', label: 'Queue' },
       ],
     });
-    // No waitFor / timeout knob (repository policy rejects any widened wait
-    // threshold): await the exact scheduling primitive the announcement
-    // uses instead of polling for it. `_VisuallyHiddenLiveRegion`'s $effect
-    // runs on the next `tick()`, and defers the actual text-set to the next
-    // task via `setTimeout(0)` (see its own doc comment for why: a same-task
-    // blank+set can be seen by some ATs as a single no-op). Awaiting `tick()`
-    // then a real zero-delay `setTimeout` puts this assertion on the far
-    // side of both of those without polling or a configurable deadline.
-    await tick();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    // `_VisuallyHiddenLiveRegion`'s $effect runs on the next `tick()`, and defers the actual
+    // text-set to the next task via `setTimeout(0)` (see its own doc comment for why: a same-task
+    // blank+set can be seen by some ATs as a single no-op). `waitFor` waits for that text with the
+    // shared hang-guard deadline, so no fixed delay decides the outcome.
     // Scoped to `[role="status"]` (not the broader `[aria-live]`) because
     // the embedded SearchField's Input also carries `aria-live="polite"` on
     // its always-mounted error node (CIN-315) and would otherwise collide —
     // `[aria-live]` matched Input's empty error node first in DOM order.
-    const liveRegion = container.querySelector('[role="status"]');
-    expect(liveRegion?.textContent).toContain('2 active filters');
+    await waitFor(() => {
+      const liveRegion = container.querySelector('[role="status"]');
+      expect(liveRegion?.textContent).toContain('2 active filters');
+    });
   });
 
   test('active controls row has accessible label for screen readers', () => {

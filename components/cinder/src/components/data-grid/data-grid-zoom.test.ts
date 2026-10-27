@@ -7,7 +7,7 @@ import type { DataGridColumnDef, DataGridProps } from './data-grid.types.ts';
 
 setupHappyDom();
 
-const { cleanup, fireEvent, render } = await import('@testing-library/svelte');
+const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/svelte');
 const { default: DataGrid } = await import('./data-grid.svelte');
 
 afterEach(() => cleanup());
@@ -68,10 +68,6 @@ async function focusFirstCustomerCell(container: HTMLElement): Promise<HTMLEleme
 
 function liveRegionText(container: HTMLElement): string | null | undefined {
   return container.querySelector('[role="status"]')?.textContent;
-}
-
-async function flushLiveRegion(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 describe('DataGrid zoom — scaling (COR-1139)', () => {
@@ -354,8 +350,7 @@ describe('DataGrid toolbar counts and zoom controls (COR-1140)', () => {
 
     expect(onZoomChange).toHaveBeenCalledWith(110);
     expect(container.querySelector('.cinder-data-grid__zoom-level')?.textContent).toBe('110%');
-    await flushLiveRegion();
-    expect(liveRegionText(container)).toContain('Zoom 110%');
+    await waitFor(() => expect(liveRegionText(container)).toContain('Zoom 110%'));
   });
 
   test('Zoom out/in buttons disable at the [50, 200] bounds', () => {

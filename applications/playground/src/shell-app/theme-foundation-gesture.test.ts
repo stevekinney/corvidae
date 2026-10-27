@@ -44,6 +44,7 @@ afterEach(() => {
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function settle(): Promise<void> {
+  // load-proof: the editors flush through Svelte and the in-memory evaluator, so the update settles inside the microtask queue
   await pause(0);
   flushSync();
   await tick();

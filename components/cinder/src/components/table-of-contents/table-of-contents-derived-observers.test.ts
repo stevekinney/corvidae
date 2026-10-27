@@ -222,6 +222,7 @@ describe('TableOfContents', () => {
 
     // An unrelated attribute mutation inside the target must not recompute.
     heading.setAttribute('data-highlight', 'true');
+    // load-proof: negative window: the assertion that follows only requires that nothing has fired once the microtask queue has drained
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(querySelectorAllSpy).toHaveBeenCalledTimes(0);
     expect(container.querySelector('a.cinder-table-of-contents__link')?.getAttribute('href')).toBe(
@@ -230,6 +231,7 @@ describe('TableOfContents', () => {
 
     // A heading id mutation must still recompute.
     heading.id = 'doc-8b-install-renamed';
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(querySelectorAllSpy.mock.calls.length).toBeGreaterThan(0);
     await waitFor(() => {

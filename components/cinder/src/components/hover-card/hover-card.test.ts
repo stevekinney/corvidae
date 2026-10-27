@@ -13,6 +13,7 @@ import {
   trackTimers,
 } from '@lostgradient/testing';
 import { quietFor } from '@lostgradient/testing/wait-until';
+import { captureZeroDelayTimers } from '../../test/zero-delay-timers.ts';
 
 setupHappyDom();
 
@@ -87,6 +88,7 @@ afterEach(() => {
 describe('HoverCard', () => {
   test('unmounting while an open timer is pending leaves no leaked timer', async () => {
     const timers = trackTimers();
+    const zeroDelayTimers = captureZeroDelayTimers();
     try {
       const { container, unmount } = render(HoverCard, {
         props: {
@@ -104,9 +106,10 @@ describe('HoverCard', () => {
 
       unmount(); // onDestroy(clearTimers) must clear it
       // Svelte releases its delegated event reference on the next task.
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      await zeroDelayTimers.settled();
       expectNoLeakedTimers(timers.active());
     } finally {
+      zeroDelayTimers.release();
       timers.release();
     }
   });

@@ -601,6 +601,7 @@ describe('handleWorkerWebSocketMessage', () => {
 
       // Give the pending digest time to resolve and the post-await commit
       // logic time to run (or, correctly, not run).
+      // load-proof: negative window: asserts nothing is sent or registered after the socket closed mid-digest; load can only delay the commit, never revive the socket
       await sleepForTesting(50);
 
       expect(ws.sentMessages).toHaveLength(0);

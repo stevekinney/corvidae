@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { createExecutionLifecycle } from '../src';
+import { waitUntil } from './fixtures/wait-until';
 
 /**
  * Split out of execution-lifecycle.test.ts (AB-292) so the
@@ -20,7 +21,9 @@ describe('execution lifecycle', () => {
       deadline: Date.now(),
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await waitUntil(() => handle.snapshot().state === 'abort-requested', {
+      message: 'the default runtime to fire the deadline',
+    });
 
     expect(handle.snapshot()).toMatchObject({
       state: 'abort-requested',

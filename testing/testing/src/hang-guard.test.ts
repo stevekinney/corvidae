@@ -1,7 +1,16 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'bun:test';
 
 import { quietFor } from '@lostgradient/testing/wait-until';
-import { afterAwakeTime, runWithHangGuard, spawnWithHangGuard } from './hang-guard.ts';
+import {
+  afterAwakeTime,
+  runWithHangGuard,
+  spawnWithHangGuard,
+  withoutAutoInstall,
+} from './hang-guard.ts';
 import { outcomeOf, rethrow } from './helpers/module-scope-outcome.ts';
 
 /**
@@ -138,4 +147,91 @@ describe('spawnWithHangGuard', () => {
 
 describe('runWithHangGuard', () => {
   it('resolves with the exit status and both streams', () => rethrow(leavesAFinishedChildAlone));
+});
+
+describe('withoutAutoInstall', () => {
+  const bun = process.execPath;
+
+  it.each([
+    ['a script', [bun, 'script.ts', 'argument'], [bun, '--no-install', 'script.ts', 'argument']],
+    ['a test run', ['bun', 'test', 'a.test.ts'], ['bun', '--no-install', 'test', 'a.test.ts']],
+    [
+      'a script run',
+      [bun, 'run', '--cwd', 'x', 'name'],
+      [bun, '--no-install', 'run', '--cwd', 'x', 'name'],
+    ],
+    ['a build', ['bun', 'build', 'entry.ts'], ['bun', '--no-install', 'build', 'entry.ts']],
+    ['a watched script', [bun, '--watch', 'a.ts'], [bun, '--no-install', '--watch', 'a.ts']],
+    ['an eval', [bun, '--eval', 'install'], [bun, '--no-install', '--eval', 'install']],
+    ['no arguments', [bun], [bun, '--no-install']],
+  ])('adds --no-install in front of %s', (_name, command, expected) => {
+    expect(withoutAutoInstall(command)).toEqual(expected);
+  });
+
+  it.each([
+    ['an install', [bun, 'install', '--frozen-lockfile']],
+    ['an add', ['bun', 'add', 'zod']],
+    ['a package-manager command after a flag', [bun, '--cwd', 'dir', 'pm', 'pack']],
+    ['bunx-style x', [bun, 'x', 'prettier']],
+    ['a command that already chose', [bun, '--no-install', 'a.ts']],
+    ['an explicit install mode', [bun, '--install=auto', 'a.ts']],
+    ['a command that is not Bun', ['git', 'status']],
+    ['an empty command', []],
+  ])('leaves %s as it is', (_name, command) => {
+    expect(withoutAutoInstall(command)).toEqual(command);
+  });
+
+  it('does not change its argument', () => {
+    const command = [bun, 'a.ts'];
+    withoutAutoInstall(command);
+    expect(command).toEqual([bun, 'a.ts']);
+  });
+});
+
+// A module written to the system temp directory has no `node_modules` above it, so Bun resolves a
+// package it imports by installing it from the registry. The registry here is a local server that
+// counts requests, so this proves the behavior without touching the network.
+const autoInstallProbe = await outcomeOf(async () => {
+  const requests: string[] = [];
+  const registry = Bun.serve({
+    port: 0,
+    fetch(request) {
+      requests.push(new URL(request.url).pathname);
+      return new Response('{}', { status: 404 });
+    },
+  });
+  const directory = await mkdtemp(join(tmpdir(), 'corvidae-auto-install-'));
+  try {
+    const entry = join(directory, 'fixture.ts');
+    await writeFile(entry, "import 'corvidae-no-such-package-for-the-auto-install-probe';\n");
+    const environment = {
+      ...process.env,
+      BUN_CONFIG_REGISTRY: `http://127.0.0.1:${registry.port}/`,
+    };
+
+    // The control: asking for auto-install by hand reaches the registry, so the probe can see it.
+    const installing = await runWithHangGuard([process.execPath, '--install=auto', entry], {
+      cwd: directory,
+      env: environment,
+    });
+    expect(installing.success).toBe(false);
+    expect(requests.length).toBeGreaterThan(0);
+
+    // The helper's default: the same fixture fails to resolve and the registry is never asked.
+    requests.length = 0;
+    const resolving = await runWithHangGuard([process.execPath, entry], {
+      cwd: directory,
+      env: environment,
+    });
+    expect(resolving.success).toBe(false);
+    expect(resolving.stderr.toString()).toContain('Cannot find package');
+    expect(requests).toEqual([]);
+  } finally {
+    registry.stop(true);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+describe('a Bun child started through the hang guard', () => {
+  it('never auto-installs a package it cannot resolve', () => rethrow(autoInstallProbe));
 });

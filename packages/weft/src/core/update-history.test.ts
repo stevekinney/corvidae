@@ -222,9 +222,11 @@ for (const backend of storageBackends) {
           (error: unknown) => error,
         );
       expect(timedOut).toBeInstanceOf(UpdateTimeoutError);
+      // load-proof: the next submitCoordinatedUpdate is awaited and queues behind the prior update through the engine's own promise chain, so the yield is surplus
       await sleepForTesting(2);
       const greeted = await engine.submitCoordinatedUpdate(id, 'greet', 'Ada', { timeout: 2_000 });
       expect(greeted.result).toBe('hello Ada');
+      // load-proof: the next submitCoordinatedUpdate is awaited and queues behind the prior update through the engine's own promise chain, so the yield is surplus
       await sleepForTesting(2);
       const exploded = await engine.submitCoordinatedUpdate(id, 'explode', null, {
         timeout: 2_000,

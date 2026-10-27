@@ -171,6 +171,7 @@ describe('tool activity frames', () => {
       rejectingObserver: 'onToolActivity',
     });
     expect(await harness.send()).toBeUndefined();
+    // load-proof: the mock transport and the session controller settle inside the promise chain, so this turn only drains microtasks
     await Bun.sleep(0);
     expect(harness.errors).toEqual([harness.thrown]);
   });

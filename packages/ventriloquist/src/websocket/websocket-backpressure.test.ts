@@ -73,6 +73,7 @@ describe('the host operation FIFO', () => {
       const before = client.frames.length;
       harness.process.releaseWrites();
       await harness.process.writes(3);
+      // load-proof: a negative window: the assertion that follows is that no further frame was sent, and load can delay a frame but never create one
       await Bun.sleep(0);
       expect(client.frames.length).toBe(before);
     });

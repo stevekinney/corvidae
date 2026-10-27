@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { KEYS, type BatchOperation, type Storage as WeftStorage } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
+import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
 import { decode, encode } from './codec.ts';
 import { Engine } from './engine.ts';
 import { normalizeHistoryPolicy } from './engine/validation.ts';
@@ -17,7 +17,7 @@ import { HISTORY_CIRCUIT_BREAKER_REASON, workflow } from './types.ts';
 
 /** Drain microtasks so fire-and-forget work completes. */
 async function flush(): Promise<void> {
-  await sleepForTesting(10);
+  await settleInlineLaunches();
 }
 
 const noop = async () => null;

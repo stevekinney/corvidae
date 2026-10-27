@@ -468,6 +468,7 @@ describe('WorkflowRefreshCoordinator', () => {
     coordinator.startPolling();
     await fetched;
     await warmed;
+    // load-proof: the installed-state commit runs inside the awaited fetch and warm promises on in-memory storage, so one extra turn is surplus
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(coordinator.diagnostics('checkout')[0]?.state).toBe('installed');
     await coordinator[Symbol.asyncDispose]();

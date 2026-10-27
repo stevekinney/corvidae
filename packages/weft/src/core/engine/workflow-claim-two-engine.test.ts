@@ -2869,6 +2869,7 @@ describe('COR-1386: a start-new purge settles the old run result waiter with the
   }
 
   /** Let every already-queued microtask and macrotask drain; only bounds a failure, never gates a pass. */
+  // load-proof: only bounds a failure (the awaited outcomes carry the assertions), so a pass never depends on how many turns this takes
   const drain = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
   it('gated release: result() taken before the signal resolves with the old run result after a start-new', async () => {

@@ -1,7 +1,11 @@
 /// <reference lib="dom" />
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
+import {
+  captureZeroDelayTimers,
+  type ZeroDelayTimerCapture,
+} from '../../test/zero-delay-timers.ts';
 import { makeItems, renderedRows, rowSnippet } from './virtual-list-test-helpers.ts';
 
 setupHappyDom();
@@ -34,7 +38,16 @@ afterEach(() => cleanup());
  * which is deterministic here without needing genuine motion.
  */
 describe('VirtualList — coalescing a held ArrowDown under smoothScroll (COR-374)', () => {
+  // happy-dom applies a `behavior: 'smooth'` write from a zero-delay timer on its own window, so
+  // the capture sees exactly the timers whose writes a test has to wait for.
+  let deferredWrites: ZeroDelayTimerCapture;
+
+  beforeEach(() => {
+    deferredWrites = captureZeroDelayTimers(window);
+  });
+
   afterEach(() => {
+    deferredWrites.release();
     cleanup();
     document.body.replaceChildren();
   });
@@ -60,10 +73,9 @@ describe('VirtualList — coalescing a held ArrowDown under smoothScroll (COR-37
     );
   }
 
-  /** Lets every timer- or frame-deferred write from the presses above settle. */
+  /** Waits for every timer-deferred write from the presses above, and any write those schedule. */
   async function letDeferredWritesApply(): Promise<void> {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await deferredWrites.settled();
   }
 
   function nextAnimationFrame(): Promise<void> {

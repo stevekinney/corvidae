@@ -278,6 +278,7 @@ describe('weft.events.subscribe operation', () => {
 
     const iterator = subscription.iterable[Symbol.asyncIterator]();
     const nextEnvelope = iterator.next();
+    // load-proof: the iterator is pending on in-memory storage before this yield returns, so the append is ordered after it by microtasks, not by timing
     await new Promise<void>((resolve) => setImmediate(resolve));
 
     await fleetFeed.append({
