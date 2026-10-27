@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
+import { quietFor } from '@lostgradient/testing/wait-until';
 
 setupHappyDom();
 
@@ -346,7 +347,7 @@ describe('ContextMenu', () => {
 
     await fireEvent.pointerDown(region, { pointerType: 'touch', clientX: 14, clientY: 18 });
     await fireEvent.pointerMove(region, { pointerType: 'touch', clientX: 40, clientY: 18 });
-    await Bun.sleep(20);
+    await quietFor(20);
 
     expect(queryMenu()).toBeNull();
   });

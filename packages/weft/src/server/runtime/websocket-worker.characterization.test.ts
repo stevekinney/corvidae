@@ -99,7 +99,7 @@ function registerMessageJson(
  * registration. Poll for that side effect instead of a fixed sleep.
  */
 async function waitForRegistrationSideEffect(predicate: () => boolean): Promise<void> {
-  await waitForCondition(predicate, { timeoutMs: 1_000, label: 'registration side effect' });
+  await waitForCondition(predicate, { label: 'registration side effect' });
 }
 
 function workerPrincipal() {
@@ -172,7 +172,7 @@ async function waitForResolvedTerminalRecord(
       const record = decodeRemoteTaskRecord(await storage.get(taskLedgerKey(operationId)));
       return record !== null && record.state === 'terminal';
     },
-    { timeoutMs: 1000, intervalMs: 10, label },
+    { intervalMs: 10, label },
   );
   const record = decodeRemoteTaskRecord(await storage.get(taskLedgerKey(operationId)));
   if (!isRemoteTaskTerminalResolved(record)) {
@@ -754,7 +754,6 @@ describe('handleWorkerWebSocketMessage', () => {
       );
 
       await waitForCondition(() => errorSpy.mock.calls.length > 0, {
-        timeoutMs: 1000,
         label: 'register handler rejection to be logged',
       });
 
@@ -1046,7 +1045,6 @@ describe('handleWorkerWebSocketMessage', () => {
       );
 
       await waitForCondition(async () => errorSpy.mock.calls.length > 0, {
-        timeoutMs: 1000,
         intervalMs: 10,
         label: 'taskResult resolution failure to be logged',
       });
@@ -1108,7 +1106,6 @@ describe('handleWorkerWebSocketMessage', () => {
       // console.error — the worker gets a `taskResultAck` with disposition
       // `dead-lettered` instead of an opaque silence.
       await waitForCondition(async () => ws.sentMessages.length > sentBeforeResult, {
-        timeoutMs: 1000,
         intervalMs: 10,
         label: 'lost-CAS completion commit to be acknowledged',
       });
@@ -1190,7 +1187,6 @@ describe('handleWorkerWebSocketMessage', () => {
       // failure is now acknowledged with disposition `dead-lettered` instead
       // of logged as a raw console.error.
       await waitForCondition(async () => ws.sentMessages.length > sentBeforeResult + 1, {
-        timeoutMs: 1000,
         intervalMs: 10,
         label: 'lost-CAS oversized-rejection commit to be acknowledged',
       });
@@ -1263,7 +1259,6 @@ describe('handleWorkerWebSocketMessage', () => {
       );
 
       await waitForCondition(async () => ws.sentMessages.length > sentBeforeResult, {
-        timeoutMs: 1000,
         intervalMs: 10,
         label: 'unassigned taskResult to be rejected',
       });
@@ -1352,7 +1347,6 @@ describe('handleWorkerWebSocketMessage', () => {
       );
 
       await waitForCondition(async () => wsIntruder.sentMessages.length > sentBeforeResult, {
-        timeoutMs: 1000,
         intervalMs: 10,
         label: 'worker-mismatch taskResult to be rejected',
       });
@@ -1445,7 +1439,6 @@ describe('handleWorkerWebSocketMessage', () => {
       handleWorkerWebSocketMessage(context, options, ws as never, taskResultFrame, NOOP_CLEANUP);
 
       await waitForCondition(async () => ws.sentMessages.length > sentBeforeResend, {
-        timeoutMs: 1000,
         intervalMs: 10,
         label: 'resend to be acknowledged',
       });
@@ -1531,7 +1524,6 @@ describe('handleWorkerWebSocketMessage', () => {
       );
 
       await waitForCondition(async () => ws.sentMessages.length > sentBeforeConflict, {
-        timeoutMs: 1000,
         intervalMs: 10,
         label: 'conflicting content to be rejected',
       });

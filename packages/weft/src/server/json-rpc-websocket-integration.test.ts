@@ -1,4 +1,5 @@
-import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
+import { quietFor } from '../../scripts/lib/wait-until.ts';
+import { waitForCondition } from '../testing/fake-timers.test-support.ts';
 /**
  * End-to-end integration — `serve()` WebSocket /jsonrpc endpoint wired to
  * the JSON-RPC WebSocket session adapter.
@@ -59,9 +60,8 @@ function waitForStatus(
   engine: Engine,
   workflowId: string,
   status: WaitableWorkflowStatus,
-  timeoutMilliseconds = 2_000,
 ): Promise<void> {
-  return waitForStatusWithTimeout(engine, workflowId, status, timeoutMilliseconds);
+  return waitForStatusWithTimeout(engine, workflowId, status);
 }
 
 /** WebSocket URL for the `/jsonrpc` endpoint of a running server. */
@@ -230,6 +230,7 @@ describe('serve() — WebSocket /jsonrpc', () => {
     // a timing regression where deliveries lag would previously
     // pass the sleep-based assertion vacuously; here the test only
     // passes if the promise explicitly times out.
+    // load-proof: no delivery may arrive after the unsubscribe, and a loaded host can only delay one
     const deliverPromise = waitForMessage(
       ws,
       (parsed: any) =>
@@ -267,7 +268,7 @@ describe('serve() — WebSocket /jsonrpc', () => {
       // runs. This short sleep is a cross-handler handoff, not a
       // correctness assertion — the test's real assertion is on
       // `leakedRejection`.
-      await sleepForTesting(50);
+      await quietFor(50);
     } finally {
       process.off('unhandledRejection', rejectionHandler);
     }
@@ -487,14 +488,16 @@ describe('serve() — WebSocket /jsonrpc', () => {
 
     // Close A — B must keep receiving deliveries.
     wsA.close();
-    await sleepForTesting(20);
+    // The client sees A's close handshake finish only after the server has handled the close.
+    await waitForCondition(() => wsA.readyState === WebSocket.CLOSED, {
+      label: "A's close handshake",
+    });
 
     const deliverBPromise = waitForMessage(
       wsB,
       (parsed: any) =>
         parsed?.method === 'weft.events.deliver' &&
         parsed?.params?.subscriptionId === subscriptionB,
-      1_000,
     );
 
     await engine.signal(handle.id, 'release', 'done');

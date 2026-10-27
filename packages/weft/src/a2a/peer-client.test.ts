@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { AgentCard } from '@a2a-js/sdk';
 
+import { yieldToPortableEventLoop } from '../testing/event-loop.ts';
 import { A2APeerError, ExtensionSupportRequiredError } from './peer-client-types.ts';
 import { createScriptedPeer, type ScriptedPeerOptions } from './peer-client.test-support.ts';
 import { createA2APeerClient } from './peer-client.ts';
@@ -290,7 +291,8 @@ describe('A2A peer client', () => {
       });
       const controller = new AbortController();
       const pending = client.send({ text: 'hi', signal: controller.signal }).catch((e) => e);
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // The request is in flight within a few turns of this process, however busy the host is.
+      for (let turn = 0; turn < 3; turn += 1) await yieldToPortableEventLoop();
       controller.abort('stop');
       expect(await pending).toBe('stop');
     });

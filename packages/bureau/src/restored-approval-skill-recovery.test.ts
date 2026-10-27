@@ -624,7 +624,7 @@ describe('a fire replayed after its process died before committing the step that
       },
     });
     const { fireId } = await fireOnce(first, OWNER.alice, SESSION);
-    await Promise.race([crash.reached, new Promise((resolve) => setTimeout(resolve, 3000))]);
+    await crash.reached;
     // The session holds the skill the step activated; the step never committed.
     await pollForTime(
       async () => ((await skillsRecorded(first, SESSION)) ? true : undefined),

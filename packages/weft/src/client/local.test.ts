@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 import { AsyncActivityTokenNotFoundError, Engine } from '../core/engine.ts';
 import { WorkflowCompletedEvent, WorkflowFailedEvent } from '../core/events.ts';
 import type { ScheduleSummary, WorkflowContext } from '../core/types.ts';
@@ -70,7 +71,7 @@ async function waitForWorkflowStatus(
   workflowId: string,
   status: 'running' | 'completed' | 'failed' | 'cancelled' | 'timed-out' | 'suspended',
 ): Promise<void> {
-  for (let attempt = 0; attempt < 5; attempt++) {
+  for await (const _turn of awakeTurns()) {
     const state = await engine.get(workflowId);
     if (state?.status === status) {
       return;

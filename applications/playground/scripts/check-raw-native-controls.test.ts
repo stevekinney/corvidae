@@ -510,7 +510,7 @@ describe('enforcement — real examples have no un-allowlisted raw controls', ()
     expect(
       result.flagged.map((occurrence) => `${occurrence.relativePath}:${occurrence.lineNumber}`),
     ).toEqual([]);
-  }, 30_000);
+  });
 
   test('the checked-in ALLOWLIST has no stale entries', async () => {
     const result = await resultPromise;
@@ -519,7 +519,7 @@ describe('enforcement — real examples have no un-allowlisted raw controls', ()
         (entry) => `${entry.relativePath}#${entry.tagName}[${entry.occurrenceIndex}]`,
       ),
     ).toEqual([]);
-  }, 30_000);
+  });
 });
 
 // ── renderReport ───────────────────────────────────────────────────────────────
@@ -603,13 +603,13 @@ describe('scan — live inventory against the real examples directory', () => {
     expect(Array.isArray(result.allowlisted)).toBe(true);
     expect(Array.isArray(result.flagged)).toBe(true);
     expect(Array.isArray(result.staleAllowlistEntries)).toBe(true);
-  }, 15_000);
+  });
 
   test('detects at least one raw control across all example files', async () => {
     const result = await scan(examplesDirectory);
     const total = result.allowlisted.length + result.flagged.length;
     expect(total).toBeGreaterThan(0);
-  }, 15_000);
+  });
 
   test('does NOT flag the navigation-bar menuToggle button (it is allowlisted)', async () => {
     const result = await scan(examplesDirectory);
@@ -623,7 +623,7 @@ describe('scan — live inventory against the real examples directory', () => {
       (occurrence) => occurrence.relativePath === 'navigation-bar/basic.example.svelte',
     );
     expect(navigationBarAllowlisted.length).toBeGreaterThan(0);
-  }, 15_000);
+  });
 
   test('does NOT flag the popover transformed-ancestor trigger button (it is allowlisted)', async () => {
     const result = await scan(examplesDirectory);
@@ -632,7 +632,7 @@ describe('scan — live inventory against the real examples directory', () => {
       (occurrence) => occurrence.relativePath === 'popover/transformed-ancestor.example.svelte',
     );
     expect(popoverFlagged).toHaveLength(0);
-  }, 30_000);
+  });
 
   test('every returned occurrence has a positive lineNumber and a non-empty relativePath', async () => {
     const result = await scan(examplesDirectory);
@@ -642,14 +642,14 @@ describe('scan — live inventory against the real examples directory', () => {
       expect(occurrence.relativePath.length).toBeGreaterThan(0);
       expect(RAW_CONTROL_TAG_NAMES).toContain(occurrence.tagName);
     }
-  }, 15_000);
+  });
 
   test('respects a custom empty allowlist (nothing is allowlisted)', async () => {
     const result = await scan(examplesDirectory, []);
     // With an empty allowlist all occurrences land in flagged.
     expect(result.allowlisted).toHaveLength(0);
     expect(result.flagged.length).toBeGreaterThan(0);
-  }, 15_000);
+  });
 
   test('results are sorted by relativePath then lineNumber', async () => {
     const result = await scan(examplesDirectory);
@@ -666,7 +666,7 @@ describe('scan — live inventory against the real examples directory', () => {
         }
       }
     }
-  }, 15_000);
+  });
 
   test('does NOT flag raw controls inside HTML/Svelte comments in real files', async () => {
     const result = await scan(examplesDirectory);
@@ -678,13 +678,13 @@ describe('scan — live inventory against the real examples directory', () => {
       occurrence.relativePath.includes('command-palette/search-recent-actions'),
     );
     expect(commandPaletteFlagged).toHaveLength(0);
-  }, 15_000);
+  });
 
   test('the canonical ALLOWLIST has no stale entries against the real files', async () => {
     const result = await scan(examplesDirectory);
     // If this fails, the file was refactored and the ALLOWLIST entry needs updating.
     expect(result.staleAllowlistEntries).toHaveLength(0);
-  }, 15_000);
+  });
 
   test('a deliberately stale allowlist entry is reported as stale', async () => {
     const staleEntry: AllowlistEntry = {
@@ -697,7 +697,7 @@ describe('scan — live inventory against the real examples directory', () => {
     const result = await scan(examplesDirectory, [staleEntry]);
     expect(result.staleAllowlistEntries).toHaveLength(1);
     expect(result.staleAllowlistEntries[0]?.occurrenceIndex).toBe(99);
-  }, 15_000);
+  });
 
   test('right tag on a line is exempted; wrong tag on the same line is still flagged', async () => {
     // This exercises that the allowlist is tag-specific: if a file had <button> and
@@ -721,7 +721,7 @@ describe('scan — live inventory against the real examples directory', () => {
     expect(navigationBarFlagged.length).toBeGreaterThan(0);
     // The wrongTagEntry itself is stale (no <input> at index 0 in that file).
     expect(result.staleAllowlistEntries.some((entry) => entry.tagName === 'input')).toBe(true);
-  }, 15_000);
+  });
 });
 
 describe('scan — inline marker line boundaries (temp fixtures)', () => {

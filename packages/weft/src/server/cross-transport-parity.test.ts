@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
 
+import { HANG_GUARD_MILLISECONDS } from '../../scripts/lib/hang-guard.ts';
+import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 import { Engine } from '../core/engine.ts';
 import type {
   BulkCancelResult,
@@ -84,10 +86,8 @@ async function waitForStatus(
   engine: Engine,
   workflowId: string,
   status: WorkflowStatus,
-  timeoutMilliseconds = 2_000,
 ): Promise<void> {
-  const deadline = Date.now() + timeoutMilliseconds;
-  while (Date.now() < deadline) {
+  for await (const _turn of awakeTurns()) {
     const state = await engine.get(workflowId);
     if (state?.status === status) return;
     await sleepForTesting(10);
@@ -145,7 +145,7 @@ async function postJsonRpcExpectError(
 function waitForMessage(
   webSocket: WebSocket,
   predicate: (parsed: unknown) => boolean,
-  timeoutMilliseconds = 3_000,
+  timeoutMilliseconds = HANG_GUARD_MILLISECONDS,
 ): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {

@@ -19,6 +19,7 @@ import { z } from 'zod';
 import { createBureau } from './create-bureau';
 import { readSteeringLogHead } from './steering-log';
 import type { AgentDefinitions } from './agent-catalog';
+import { awakeTurns, quietFor } from '@lostgradient/testing/wait-until';
 
 async function openBureau(path: string) {
   return createBureau<AgentDefinitions>({
@@ -75,11 +76,14 @@ describe('durable steering across two Bureau processes', () => {
         message: 'go',
         principal: 'alice',
       });
-      for (let attempt = 0; attempt < 200 && generateCalls === 0; attempt += 1) await Bun.sleep(10);
+      for await (const _turn of awakeTurns()) {
+        if (!(generateCalls === 0)) break;
+        await Bun.sleep(10);
+      }
       // B deletes the session; A learns of it from its poll and aborts the
       // run as its own deletion would, rather than letting it keep working.
       await bureauB.contexts.delete(run.sessionId);
-      for (let attempt = 0; attempt < 1_000; attempt += 1) {
+      for await (const _turn of awakeTurns()) {
         if (bureauA.getRun(run.id)?.status !== 'running') break;
         await Bun.sleep(10);
       }
@@ -93,7 +97,7 @@ describe('durable steering across two Bureau processes', () => {
       await bureauB.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 
   it('delivers a pause and a resume admitted in another process to the run', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-remote-delivery-'));
@@ -137,7 +141,10 @@ describe('durable steering across two Bureau processes', () => {
         message: 'go',
         principal: 'alice',
       });
-      for (let attempt = 0; attempt < 200 && generateCalls === 0; attempt += 1) await Bun.sleep(10);
+      for await (const _turn of awakeTurns()) {
+        if (!(generateCalls === 0)) break;
+        await Bun.sleep(10);
+      }
 
       // B pauses A's run. A learns of it from its own log poll, which the
       // test observes as A reading the pause's log entry; only then does the
@@ -157,7 +164,7 @@ describe('durable steering across two Bureau processes', () => {
       const pauseSequence = pauseHead.sequence;
       const pauseEntry = `:entry:${String(pauseSequence).padStart(12, '0')}`;
       readsByA.mockClear();
-      for (let attempt = 0; attempt < 1_000; attempt += 1) {
+      for await (const _turn of awakeTurns()) {
         if (readsByA.mock.calls.some(([key]) => key.endsWith(pauseEntry))) break;
         await Bun.sleep(10);
       }
@@ -166,7 +173,7 @@ describe('durable steering across two Bureau processes', () => {
       // The read entry is applied to the gate in the same fold.
       await Bun.sleep(0);
       releaseTool?.();
-      await Bun.sleep(300);
+      await quietFor(300);
       expect(bureauA.getRun(run.id)?.status).toBe('running');
       expect(generateCalls).toBe(1);
 
@@ -176,7 +183,7 @@ describe('durable steering across two Bureau processes', () => {
         requestedValue: { target: 'resume' },
       });
       expect(resumed.outcome).toBe('accepted');
-      for (let attempt = 0; attempt < 1_000; attempt += 1) {
+      for await (const _turn of awakeTurns()) {
         if (bureauA.getRun(run.id)?.status !== 'running') break;
         await Bun.sleep(10);
       }
@@ -188,7 +195,7 @@ describe('durable steering across two Bureau processes', () => {
       await bureauB.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 
   it('releases a paused run when another process deletes its session, without recreating it', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-remote-delete-'));
@@ -238,7 +245,10 @@ describe('durable steering across two Bureau processes', () => {
         message: 'go',
         principal: 'alice',
       });
-      for (let attempt = 0; attempt < 200 && generateCalls === 0; attempt += 1) await Bun.sleep(10);
+      for await (const _turn of awakeTurns()) {
+        if (!(generateCalls === 0)) break;
+        await Bun.sleep(10);
+      }
       const paused = await bureauA.contexts.steer(run.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'pause' },
@@ -246,14 +256,14 @@ describe('durable steering across two Bureau processes', () => {
       expect(paused.outcome).toBe('accepted');
       // The tool returns; the run stops at step 1's boundary, paused.
       releaseTool?.();
-      await Bun.sleep(200);
+      await quietFor(200);
       expect(bureauA.getRun(run.id)?.status).toBe('running');
       expect(generateCalls).toBe(1);
 
       // B deletes the session. Nothing in B knows A's run; A sees the
       // deletion from the paused run's own watch and releases it.
       await bureauB.contexts.delete(run.sessionId);
-      for (let attempt = 0; attempt < 1_000; attempt += 1) {
+      for await (const _turn of awakeTurns()) {
         if (bureauA.getRun(run.id)?.status !== 'running') break;
         await Bun.sleep(10);
       }
@@ -272,14 +282,17 @@ describe('durable steering across two Bureau processes', () => {
           message: 'again',
           principal: 'alice',
         });
-        for (let attempt = 0; attempt < 200 && generateCalls < 3; attempt += 1) await Bun.sleep(10);
+        for await (const _turn of awakeTurns()) {
+          if (!(generateCalls < 3)) break;
+          await Bun.sleep(10);
+        }
         const pausedAgain = await bureauA.contexts.steer(second.sessionId, {
           principal: 'alice',
           requestedValue: { target: 'pause' },
         });
         expect(pausedAgain.outcome).toBe('accepted');
         releaseSecondTool?.();
-        for (let attempt = 0; attempt < 200; attempt += 1) {
+        for await (const _turn of awakeTurns()) {
           if (intervals.mock.calls.some(([, delay]) => delay === 2_000)) break;
           await Bun.sleep(10);
         }
@@ -287,7 +300,7 @@ describe('durable steering across two Bureau processes', () => {
         expect(watchIndex).toBeGreaterThanOrEqual(0);
         const watch = intervals.mock.results[watchIndex]?.value;
         bureauA.abortRun(second.id);
-        for (let attempt = 0; attempt < 200; attempt += 1) {
+        for await (const _turn of awakeTurns()) {
           if (cleared.mock.calls.some(([handle]) => handle === watch)) break;
           await Bun.sleep(10);
         }
@@ -303,5 +316,5 @@ describe('durable steering across two Bureau processes', () => {
       await bureauB.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  });
 });

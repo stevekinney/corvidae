@@ -6,6 +6,7 @@
  * on. See `fixtures/workflows.ts` for the append-only contract this file
  * participates in.
  */
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import {
   activity,
   workflow,
@@ -13,7 +14,6 @@ import {
   type WorkflowHandle,
 } from '@lostgradient/weft';
 
-const ATTRIBUTE_PERSISTENCE_POLL_ATTEMPTS = 5;
 const ATTRIBUTE_PERSISTENCE_POLL_DELAY_MS = 20;
 
 interface OutreachCampaignInput {
@@ -97,18 +97,15 @@ const OUTREACH_RUNS: readonly OutreachRun[] = [
  * happen to provide.
  */
 async function waitForCommittedAttributes(engine: TaggedEngine, workflowId: string): Promise<void> {
-  for (let attempt = 1; attempt <= ATTRIBUTE_PERSISTENCE_POLL_ATTEMPTS; attempt++) {
+  for await (const _ of awakeTurns()) {
     const attributes = await engine.getAttributes(workflowId);
     if (attributes !== null) {
       return;
     }
-    if (attempt < ATTRIBUTE_PERSISTENCE_POLL_ATTEMPTS) {
-      await Bun.sleep(ATTRIBUTE_PERSISTENCE_POLL_DELAY_MS);
-    }
+    await Bun.sleep(ATTRIBUTE_PERSISTENCE_POLL_DELAY_MS);
   }
   throw new Error(
-    `seedTagged: expected search attributes for workflow ${workflowId} to be committed ` +
-      `within ${ATTRIBUTE_PERSISTENCE_POLL_ATTEMPTS} attempts — got none`,
+    `seedTagged: expected search attributes for workflow ${workflowId} to be committed — got none`,
   );
 }
 

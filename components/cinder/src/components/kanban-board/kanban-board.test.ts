@@ -3,6 +3,7 @@ import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { createRawSnippet, tick } from 'svelte';
 
 import { requiredInstance, requiredValue, setupHappyDom } from '@lostgradient/testing';
+import { quietFor } from '@lostgradient/testing/wait-until';
 import {
   findNextVisibleColumn,
   moveKanbanCard,
@@ -486,7 +487,7 @@ describe('KanbanBoard', () => {
 
     await fireEvent.keyDown(handle, { key: ' ' });
     await fireEvent.keyDown(handle, { key: 'ArrowRight' });
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await quietFor(10);
 
     expect(onColumnsChange).not.toHaveBeenCalled();
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('no available column');

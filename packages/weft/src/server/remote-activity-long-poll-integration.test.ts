@@ -102,7 +102,7 @@ describe('remote activity execution via LongPollWorker (COR-219)', () => {
         const record = await readOnlyTaskLedgerRecord(engine!);
         return record !== null && record.state === 'leased';
       },
-      { timeoutMs: 5_000, intervalMs: 25, label: 'task to be claimed via long-poll' },
+      { intervalMs: 25, label: 'task to be claimed via long-poll' },
     ).then(() => readOnlyTaskLedgerRecord(engine!));
 
     expect(leasedRecord?.state).toBe('leased');
@@ -225,7 +225,7 @@ describe('remote activity execution via LongPollWorker (COR-219)', () => {
         const record = await readOnlyTaskLedgerRecord(engine!);
         return record !== null && record.state === 'leased';
       },
-      { timeoutMs: 5_000, intervalMs: 25, label: 'task to be leased via long-poll' },
+      { intervalMs: 25, label: 'task to be leased via long-poll' },
     );
 
     await engine.cancel(handle.id);
@@ -237,7 +237,6 @@ describe('remote activity execution via LongPollWorker (COR-219)', () => {
         return record !== null && record.state === 'terminal' && record.disposition === 'cancelled';
       },
       {
-        timeoutMs: 5_000,
         intervalMs: 25,
         label: "durable task to resolve as cancelled via the worker's cooperative response",
       },

@@ -56,7 +56,7 @@ async function waitForRunning(engine: Engine, workflowId: string): Promise<void>
       const state = await engine.get(workflowId);
       return state?.status === 'running';
     },
-    { label: `workflow ${workflowId} to reach running`, timeoutMs: 500, intervalMs: 5 },
+    { label: `workflow ${workflowId} to reach running`, intervalMs: 5 },
   );
 }
 

@@ -35,7 +35,7 @@ async function completeEveryQueued(target: Engine, expected: number): Promise<vo
         const queued = await queuedOperationIds(target);
         return queued.some((id) => !completed.includes(id));
       },
-      { timeoutMs: 3_000, intervalMs: 10, label: 'a queued remote task' },
+      { intervalMs: 10, label: 'a queued remote task' },
     );
     for (const id of await queuedOperationIds(target)) {
       if (completed.includes(id)) continue;
@@ -109,7 +109,7 @@ describe('timeline entry taskOperationId', () => {
         const queued = await queuedOperationIds(engine!);
         return queued.length > 0;
       },
-      { timeoutMs: 3_000, intervalMs: 10, label: 'the first dispatch' },
+      { intervalMs: 10, label: 'the first dispatch' },
     );
     const [firstDispatch] = await queuedOperationIds(engine);
     await engine.failAsyncActivity(firstDispatch ?? '', new Error('first dispatch failed'));
@@ -119,7 +119,7 @@ describe('timeline entry taskOperationId', () => {
         const queued = await queuedOperationIds(engine!);
         return queued.some((id) => id !== firstDispatch);
       },
-      { timeoutMs: 3_000, intervalMs: 10, label: 'the retry dispatch' },
+      { intervalMs: 10, label: 'the retry dispatch' },
     );
     const afterRetry = await queuedOperationIds(engine);
     const retried = afterRetry.find((id) => id !== firstDispatch);
@@ -155,7 +155,7 @@ describe('timeline entry taskOperationId', () => {
         const state = await engine?.get('coordinated-remote-1');
         return state?.status === 'failed';
       },
-      { timeoutMs: 3_000, intervalMs: 10, label: 'the coordinated run to fail' },
+      { intervalMs: 10, label: 'the coordinated run to fail' },
     );
 
     const timeline = await engine.getTimeline('coordinated-remote-1');

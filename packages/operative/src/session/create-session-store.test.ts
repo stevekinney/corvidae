@@ -68,22 +68,26 @@ type BackingStore = ReturnType<typeof textValueStore>;
 
 /**
  * Wraps a store so the `get()` of `slowKey` resolves only after `get()` of
- * `fastKey` has resolved (or after a short grace period when `fastKey` is
- * never read), forcing a known resolution order regardless of scheduling.
+ * `fastKey` has resolved, forcing a known resolution order regardless of
+ * scheduling. The slow read waits only for a fast read that has been issued by
+ * then: a store that reads one key and skips the other never issues it, so
+ * there is nothing to order and the slow read is not held.
  */
 function withForcedGetOrder(backing: BackingStore, slowKey: string, fastKey: string): BackingStore {
   let fastResolved: () => void = () => undefined;
   const fastDone = new Promise<void>((resolve) => {
     fastResolved = resolve;
   });
+  let fastRequested = false;
   return new Proxy(backing, {
     get(target, property) {
       if (property === 'get') {
         return async (key: string) => {
+          if (key === fastKey) fastRequested = true;
           const value = await target.get(key);
           if (key === fastKey) fastResolved();
-          if (key === slowKey) {
-            await Promise.race([fastDone, new Promise((resolve) => setTimeout(resolve, 25))]);
+          if (key === slowKey && fastRequested) {
+            await fastDone;
           }
           return value;
         };

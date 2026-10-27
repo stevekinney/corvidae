@@ -355,7 +355,9 @@ describe('WorkerExecutionStrategy', () => {
       });
 
       // Allow the async acquire to complete
-      await sleepForTesting(10);
+      await waitForTestingCondition(() => mockWorkers[0]?.postMessage.mock.calls.length === 1, {
+        label: 'the run message to be sent',
+      });
 
       const worker = firstWorker();
       expect(mockPool.acquire).toHaveBeenCalled();
@@ -379,7 +381,12 @@ describe('WorkerExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await waitForTestingCondition(
+        () => (mockWorkers[0]?._listeners.get('message')?.size ?? 0) > 0,
+        {
+          label: 'the message listener to be attached',
+        },
+      );
 
       const worker = firstWorker();
       // Verify that message listeners were added to the worker
@@ -687,7 +694,12 @@ describe('WorkerExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await sleepForTesting(10);
+      await waitForTestingCondition(
+        () => (mockWorkers[0]?.postMessage.mock.calls.length ?? 0) > 0,
+        {
+          label: 'the run message to be sent',
+        },
+      );
 
       const worker = firstWorker();
       dispatchToMockWorker(

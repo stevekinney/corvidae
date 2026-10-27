@@ -4,6 +4,7 @@ import { rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 
+import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 import type { Engine } from '../core/engine.ts';
 import type { WorkflowStatus } from '../core/types.ts';
 import { BunSQLiteStorage } from '../storage/bun-sql.ts';
@@ -219,11 +220,9 @@ export async function waitForWorkflowStatus(
   engine: Engine,
   workflowId: string,
   status: WorkflowStatus,
-  timeoutMs = 500,
+  options: { hangGuardMilliseconds?: number } = {},
 ): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-
-  while (Date.now() < deadline) {
+  for await (const _turn of awakeTurns(options)) {
     const state = await engine.get(workflowId);
     if (state?.status === status) {
       return;

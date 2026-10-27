@@ -121,6 +121,7 @@ describe('Mailbox waitForAvailable', () => {
     const { mailbox } = createMailboxFixture();
     await admitOne(mailbox, { availableAfterMs: 10_000 });
     expect(
+      // load-proof: the signal is already aborted, so the wait ends at once and the deadline is never reached
       await mailbox.waitForAvailable({
         timeoutMs: 60_000,
         signal: AbortSignal.abort(),

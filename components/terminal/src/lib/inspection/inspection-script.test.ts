@@ -7,7 +7,7 @@ describe('test:inspection', () => {
       new URL('../../../package.json', import.meta.url),
     ).json();
     expect(manifest.scripts['test:inspection']).toBe(
-      'bun test --conditions browser --conditions svelte src/lib/inspection',
+      'bun ../../scripts/bun-test.ts --conditions browser --conditions svelte src/lib/inspection',
     );
   });
 

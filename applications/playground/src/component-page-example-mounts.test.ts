@@ -155,12 +155,9 @@ describe('createExampleMountHelpers().mountScenario', () => {
 
     // The example passes no highlighter; only the context the mount root
     // publishes can highlight it. Real Shiki loads its engine on first use.
-    await waitFor(
-      () => {
-        expect(element.querySelector('.cinder-code-block__highlighted pre.shiki')).not.toBeNull();
-      },
-      { timeout: 30_000 },
-    );
+    await waitFor(() => {
+      expect(element.querySelector('.cinder-code-block__highlighted pre.shiki')).not.toBeNull();
+    });
     expect(mountErrors['example-mount-code']).toBeUndefined();
     expect(
       element.querySelector('.example-mounts-code-probe')?.getAttribute('data-mount-id-prefix'),
@@ -170,7 +167,7 @@ describe('createExampleMountHelpers().mountScenario', () => {
     );
 
     cleanup();
-  }, 60_000);
+  });
 
   it('calls unmount exactly once and does not throw when no app was mounted', () => {
     (window as CinderWindow).__CINDER_SCENARIOS__ = {};

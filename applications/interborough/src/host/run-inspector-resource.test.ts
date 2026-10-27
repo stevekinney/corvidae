@@ -17,7 +17,7 @@ describe('the run inspector resource', () => {
     expect(digestOf(html)).toBe(contentDigest);
     expect(html).not.toMatch(/<script[^>]+src=/);
     expect(html).not.toMatch(/<link[^>]+href=/);
-  }, 30_000);
+  });
 
   it('declares deny-by-default security and links to its tool', async () => {
     const { resources, toolMeta } = await runInspectorMount();

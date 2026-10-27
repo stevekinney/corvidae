@@ -20,6 +20,7 @@ import {
   type WorkflowHandle,
 } from '@lostgradient/weft';
 
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import {
   ATTRIBUTE_SHOWCASE_RUN_ID,
   CHUNK_STREAMER_RUN_ID,
@@ -27,7 +28,6 @@ import {
   UPDATE_DESK_RUN_ID,
 } from './engine-console-ids.ts';
 
-const ATTRIBUTE_PERSISTENCE_POLL_ATTEMPTS = 25;
 const ATTRIBUTE_PERSISTENCE_POLL_DELAY_MS = 20;
 /** How long the `slow` update's handler takes: longer than the one-second timeout a spec gives it. */
 const SLOW_UPDATE_DELAY_MS = 2_500;
@@ -130,7 +130,7 @@ async function waitForCommittedAttributes(
   engine: EngineConsoleEngine,
   workflowId: string,
 ): Promise<void> {
-  for (let attempt = 1; attempt <= ATTRIBUTE_PERSISTENCE_POLL_ATTEMPTS; attempt++) {
+  for await (const _ of awakeTurns()) {
     if ((await engine.getAttributes(workflowId)) !== null) return;
     await Bun.sleep(ATTRIBUTE_PERSISTENCE_POLL_DELAY_MS);
   }

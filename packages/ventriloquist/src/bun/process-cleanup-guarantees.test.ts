@@ -3,6 +3,7 @@ import { describe, expect } from 'bun:test';
 import { rejectionOf } from '@lostgradient/testing';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { createDeferred } from '../session/fixtures/deferred.ts';
 import { flush, utf8 } from '../session/session.test-support.ts';
 import {
@@ -24,11 +25,9 @@ const MODES: OutputMode[] = ['pipe', 'pty'];
 const PTY_DIMENSIONS = { columns: 80, rows: 24 };
 
 /** Wait for `condition`, failing after about five seconds; a condition is a state, never a guess at timing. */
-async function eventually(condition: () => boolean): Promise<boolean> {
-  for (let attempt = 0; attempt < 1000 && !condition(); attempt += 1) {
-    await Bun.sleep(5);
-  }
-  return condition();
+async function eventually(condition: () => boolean): Promise<true> {
+  await waitUntil(condition, { message: 'eventually' });
+  return true;
 }
 
 /** A spawn that starts the real process and lets a test hand back a variation of it. */
@@ -130,11 +129,7 @@ const scenario3 = scenario(
     await hosted.backend.start();
     const cleanup = hosted.backend.cleanup();
     try {
-      const outcome = await Promise.race([
-        captured?.exited.then(() => 'ended'),
-        Bun.sleep(5000).then(() => 'still running'),
-      ]);
-      expect(outcome).toBe('ended');
+      expect(await captured?.exited.then(() => 'ended')).toBe('ended');
     } finally {
       stuck.resolve(0);
       captured?.kill('SIGKILL');
@@ -260,11 +255,13 @@ const scenario8 = scenario(
       }),
     );
     await hosted.backend.start();
-    const outcome = await Promise.race([
-      hosted.backend.write(utf8('lost')).then(() => 'settled'),
-      Bun.sleep(150).then(() => 'unsettled'),
-    ]);
-    expect(outcome).toBe('unsettled');
+    let settled = false;
+    void hosted.backend.write(utf8('lost')).then(() => {
+      settled = true;
+    });
+    // The write never settles; load can only delay a settlement, never bring it forward.
+    await quietFor(150);
+    expect(settled).toBe(false);
     expect(master.attempts).toBe(1);
     expect(await hosted.backend.cleanup()).toBe('complete');
   },
@@ -353,11 +350,13 @@ for (const mode of MODES) {
       await hosted.backend.start();
       const before = process.memoryUsage().rss;
       // A flooding producer that is buffered reaches gigabytes within a second.
-      const outcome = await Promise.race([
-        exit.promise,
-        Bun.sleep(500).then(() => 'still running' as const),
-      ]);
-      expect(outcome).toBe('still running');
+      let exited = false;
+      void exit.promise.then(() => {
+        exited = true;
+      });
+      // The process must still be running: a slow host can only delay its exit, not bring it forward.
+      await quietFor(500);
+      expect(exited).toBe(false);
       expect(process.memoryUsage().rss - before).toBeLessThan(96 * 1024 * 1024);
       expect(await hosted.backend.cleanup()).toBe('complete');
     },

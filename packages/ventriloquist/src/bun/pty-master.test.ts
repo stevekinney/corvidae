@@ -1,6 +1,7 @@
 import { rejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import type { PtyDevice } from './pty-device.ts';
 import { MASTER_FLAGS, MASTER_FLAG_COUNT, type MasterMessage } from './pty-master-loop.ts';
 import { createPtyMaster, type MasterWorker, type MasterWrite } from './pty-master.ts';
@@ -224,11 +225,9 @@ describe('a reader thread that dies', () => {
       endsWithIo: true,
       createWorker: () => new Worker(new URL('./no-such-worker-module.ts', import.meta.url).href),
     });
-    const outcome = await Promise.race([
-      rejectionOf(created.stream.getReader().read()).then(() => 'failed'),
-      Bun.sleep(3_000).then(() => 'still waiting'),
-    ]);
-    expect(outcome).toBe('failed');
+    expect(await rejectionOf(created.stream.getReader().read()).then(() => 'failed')).toBe(
+      'failed',
+    );
     expect(typeof (await created.stop())).toBe('boolean');
   });
 });
@@ -293,11 +292,13 @@ describe('writing a master', () => {
     async (code) => {
       const run = recordingWrite(() => code);
       const { created } = master({ write: run.write });
-      const outcome = await Promise.race([
-        created.write(new TextEncoder().encode('lost')).then(() => 'settled'),
-        Bun.sleep(30).then(() => 'unsettled'),
-      ]);
-      expect(outcome).toBe('unsettled');
+      let settled = false;
+      void created.write(new TextEncoder().encode('lost')).then(() => {
+        settled = true;
+      });
+      // The write never settles; load can only delay a settlement, never bring it forward.
+      await quietFor(30);
+      expect(settled).toBe(false);
       expect(run.calls()).toBe(1);
     },
   );
@@ -341,13 +342,15 @@ describe('writing a master', () => {
   test('a terminal that hangs up while the write is held makes it a lost write, not a held one', async () => {
     const run = recordingWrite((call) => (call === 1 ? 'EAGAIN' : 'EIO'));
     const { log, hold } = reports();
-    const outcome = await Promise.race([
-      master({ write: run.write })
-        .created.write(new TextEncoder().encode('lost'), hold)
-        .then(() => 'settled'),
-      Bun.sleep(60).then(() => 'unsettled'),
-    ]);
-    expect(outcome).toBe('unsettled');
+    let settled = false;
+    void master({ write: run.write })
+      .created.write(new TextEncoder().encode('lost'), hold)
+      .then(() => {
+        settled = true;
+      });
+    // The write never settles; load can only delay a settlement, never bring it forward.
+    await quietFor(60);
+    expect(settled).toBe(false);
     expect(log).toEqual(['held', 'resumed']);
   });
 
@@ -355,7 +358,7 @@ describe('writing a master', () => {
     const run = recordingWrite(() => 'EIO');
     const { log, hold } = reports();
     void master({ write: run.write }).created.write(new TextEncoder().encode('lost'), hold);
-    await Bun.sleep(30);
+    await quietFor(30);
     expect(log).toEqual([]);
   });
 
@@ -365,7 +368,7 @@ describe('writing a master', () => {
     void created.write(new TextEncoder().encode('stuck'));
     const calls = run.calls();
     created.close();
-    await Bun.sleep(40);
+    await quietFor(40);
     expect(run.calls()).toBe(calls);
   });
 });

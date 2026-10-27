@@ -16,6 +16,7 @@ import { join } from 'node:path';
 
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { startBrowserBuild, stopBrowserBuilds } from './browser-build.ts';
 
 const scratch = mkdtempSync(join(tmpdir(), 'interborough-dev-watch-'));
@@ -94,18 +95,23 @@ const reloading = spawnWithHangGuard(
  * rewritten until the second generation shows up.
  */
 async function reloadAfterFirstBuildStarts(): Promise<void> {
-  const deadline = Date.now() + 60_000;
   const logged = (text: string): boolean =>
     existsSync(reloadLog) && readFileSync(reloadLog, 'utf8').includes(text);
-  while (!logged('start 1 ')) {
-    if (Date.now() > deadline) throw new Error('The first generation never started its build.');
-    await Bun.sleep(25);
-  }
-  for (let rewrite = 0; !logged('start 2 '); rewrite += 1) {
-    if (Date.now() > deadline) throw new Error('The host was never reloaded.');
-    writeFileSync(generationModule, `export const generation = 2; // ${rewrite}\n`);
-    await Bun.sleep(300);
-  }
+  await waitUntil(() => logged('start 1 '), {
+    message: 'the first generation to start its build',
+    yieldTurn: () => Bun.sleep(25),
+  });
+  let rewrite = 0;
+  await waitUntil(
+    async () => {
+      if (logged('start 2 ')) return true;
+      writeFileSync(generationModule, `export const generation = 2; // ${rewrite}\n`);
+      rewrite += 1;
+      await Bun.sleep(300);
+      return false;
+    },
+    { message: 'the host to reload' },
+  );
 }
 const [reloadStderr, reloadCode] = await Promise.all([
   new Response(reloading.stderr).text(),

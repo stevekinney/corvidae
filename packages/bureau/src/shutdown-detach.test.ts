@@ -10,6 +10,7 @@ import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';
@@ -21,7 +22,7 @@ const bureaus: Bureau<AgentDefinitions>[] = [];
 const databasePaths: string[] = [];
 
 async function waitForReview(bureau: Bureau<AgentDefinitions>, runId: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt += 1) {
+  for await (const _turn of awakeTurns()) {
     if (bureau.reviews.list().some((review) => review.runId === runId)) return;
     await yieldToPortableEventLoop();
   }
@@ -213,7 +214,8 @@ describe('COR-1716 shutdown readiness baseline', () => {
       const shutdown = bureau.shutdown({ policy: 'detach', timeoutMilliseconds: 50 });
       for (let tick = 0; tick < 20; tick += 1) await Promise.resolve();
       release.resolve();
-      for (let tick = 0; tick < 100 && bureau.getRun(run.id)?.status === 'running'; tick += 1) {
+      for await (const _turn of awakeTurns()) {
+        if (bureau.getRun(run.id)?.status !== 'running') break;
         await yieldToPortableEventLoop();
       }
       expect(bureau.getRun(run.id)?.status).toBe('completed');
@@ -356,18 +358,11 @@ describe('COR-1716 shutdown readiness baseline', () => {
       durable: true,
     });
     bureaus.push(bureau);
-    const run = await bureau.createRun({ agentName: 'default', message: 'abort the tool' });
+    await bureau.createRun({ agentName: 'default', message: 'abort the tool' });
     await started.promise;
 
     const shutdown = bureau.shutdown({ policy: 'detach' });
     await aborted.promise;
-    for (
-      let attempt = 0;
-      attempt < 100 && bureau.getRun(run.id)?.status === 'running';
-      attempt += 1
-    ) {
-      await yieldToPortableEventLoop();
-    }
     const report = await shutdown;
 
     expect(report.policy).toBe('detach');

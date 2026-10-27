@@ -228,7 +228,7 @@ describe('buildComponentDocumentation', () => {
       }
     }
     expect(dangling).toEqual([]);
-  }, 60_000);
+  });
 
   it('rewrites non-component README links to GitHub source URLs', async () => {
     const payload = await buildComponentDocumentation(

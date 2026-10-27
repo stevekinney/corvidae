@@ -1,10 +1,12 @@
 /**
  * Guard against starting a child process inside a test body or hook in the default test gate.
  *
- * Bun gives every test, and every `beforeAll`/`beforeEach`/`afterAll`/`afterEach` hook, a
- * five-second clock. A test that spawns a process pays that process's boot and module load on
- * the clock, so on a host running several agents at once it times out, and it passes alone
- * (COR-1392, COR-1396, COR-1459). The fix is never a longer timeout. A test whose child only
+ * Bun gave every test, and every `beforeAll`/`beforeEach`/`afterAll`/`afterEach` hook, a
+ * five-second clock. A test that spawns a process paid that process's boot and module load on
+ * the clock, so on a host running several agents at once it timed out, and it passed alone
+ * (COR-1392, COR-1396, COR-1459). Every lane now runs with `scripts/test-deadlines.ts`'s timeout,
+ * twice the hang guard, so a loaded host no longer fails such a test, but the rule below stands: a
+ * child that never exits is bounded by the awake-time hang guard, not by a per-test clock. A test whose child only
  * runs repository logic calls that logic in process; a test whose child *is* the behavior —
  * real `git`, `tsc`, a SIGKILLed crash child, a fresh runtime — runs it at module scope with
  * top-level await, where no per-test timeout applies, and asserts on the recorded result.

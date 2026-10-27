@@ -524,19 +524,16 @@ describe('component-page live preview (#405)', () => {
     const factory = createLivePreviewMount({ mountErrors });
     const teardown = factory(CodeBlock, { code: 'SELECT 1;', language: 'sql' })(element);
     expect(mountErrors[LIVE_MOUNT_CONTAINER_ID]).toBeUndefined();
-    await waitFor(
-      () => {
-        expect(element.querySelector('.cinder-code-block__highlighted pre.shiki')).not.toBeNull();
-      },
-      { timeout: 30_000 },
-    );
+    await waitFor(() => {
+      expect(element.querySelector('.cinder-code-block__highlighted pre.shiki')).not.toBeNull();
+    });
     expect(element.querySelector('.cinder-code-block__highlighted pre.shiki')?.textContent).toBe(
       'SELECT 1;',
     );
     teardown();
 
     element.remove();
-  }, 60_000);
+  });
 
   test('passes the eager props object straight through to mount (invariant 7)', () => {
     // The props are passed by value at the call site — assert the exact object the

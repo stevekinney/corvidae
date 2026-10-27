@@ -106,12 +106,9 @@ describe('EngineStatusController (integration, real server)', () => {
     );
 
     try {
-      await waitFor(
-        () => {
-          expect(controller.fleetSource.reconnectAttempt).toBeGreaterThanOrEqual(5);
-        },
-        { timeout: 2000 },
-      );
+      await waitFor(() => {
+        expect(controller.fleetSource.reconnectAttempt).toBeGreaterThanOrEqual(5);
+      });
 
       await waitFor(() => {
         expect(controller.status).toBe('polling');

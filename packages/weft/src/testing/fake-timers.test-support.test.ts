@@ -203,6 +203,7 @@ describe('fake timer testing helpers', () => {
   it('waitForCondition includes the last real-timer predicate error in timeout failures', async () => {
     expect(
       await throwingRejectionOf(
+        // hang-guard-self-test: the predicate never succeeds, so no load can satisfy the wait
         waitForCondition(
           () => {
             throw new Error('still waiting');
@@ -216,16 +217,18 @@ describe('fake timer testing helpers', () => {
   it('waitForCondition checks the predicate at the real-timer timeout boundary', async () => {
     const startedAt = performance.now();
 
+    // hang-guard-self-test: the predicate holds once five milliseconds have passed, whatever the load
     await waitForCondition(() => performance.now() - startedAt >= 5, {
+      timeoutMs: 5,
       intervalMs: 50,
       label: 'real timer boundary',
-      timeoutMs: 5,
     });
   });
 
   it('waitForCondition returns a plain real-timer timeout when the predicate never throws', async () => {
     expect(
       await throwingRejectionOf(
+        // hang-guard-self-test: the predicate is never true, so no load can satisfy the wait
         waitForCondition(() => false, { timeoutMs: 5, intervalMs: 1, label: 'plain timeout' }),
       ),
     ).toThrow('Timed out after 5ms waiting for plain timeout');

@@ -12,6 +12,7 @@ import {
   setupHappyDom,
   trackTimers,
 } from '@lostgradient/testing';
+import { quietFor } from '@lostgradient/testing/wait-until';
 
 setupHappyDom();
 
@@ -300,7 +301,6 @@ describe('HoverCard', () => {
     await fireEvent.mouseEnter(wrapper);
     expect(queryHoverCard()).toBeNull();
 
-    await Bun.sleep(25);
     await waitFor(() => expect(queryHoverCard()).not.toBeNull());
   });
 
@@ -323,7 +323,6 @@ describe('HoverCard', () => {
     await fireEvent.mouseLeave(wrapper);
     expect(queryHoverCard()).not.toBeNull();
 
-    await Bun.sleep(25);
     await waitFor(() => expect(queryHoverCard()?.outerHTML ?? null).toBeNull());
   });
 
@@ -357,7 +356,7 @@ describe('HoverCard', () => {
 
     onOpenChange.mockClear();
     await fireEvent.mouseEnter(wrapper);
-    await Bun.sleep(5);
+    await quietFor(5);
 
     expect(onOpenChange).not.toHaveBeenCalledWith(true);
     expect(queryHoverCard()).toBeNull();
@@ -393,7 +392,7 @@ describe('HoverCard', () => {
 
     onOpenChange.mockClear();
     await fireEvent.focusIn(wrapper);
-    await Bun.sleep(5);
+    await quietFor(5);
 
     expect(onOpenChange).not.toHaveBeenCalledWith(true);
     expect(queryHoverCard()).toBeNull();
@@ -431,9 +430,7 @@ describe('HoverCard', () => {
     await fireEvent.focusOut(wrapper, { relatedTarget: document.body });
     onOpenChange.mockClear();
     await fireEvent.focusIn(wrapper);
-    await Bun.sleep(5);
-
-    expect(queryHoverCard()).not.toBeNull();
+    await waitFor(() => expect(queryHoverCard()).not.toBeNull());
   });
 
   test('hover card stays open when the pointer moves from trigger to card before close delay', async () => {
@@ -454,7 +451,7 @@ describe('HoverCard', () => {
     await waitFor(() => expect(queryHoverCard()).not.toBeNull());
     await fireEvent.mouseLeave(wrapper);
     await fireEvent.mouseEnter(requiredInstance(queryHoverCard(), HTMLElement));
-    await Bun.sleep(35);
+    await quietFor(35);
 
     expect(queryHoverCard()).not.toBeNull();
   });

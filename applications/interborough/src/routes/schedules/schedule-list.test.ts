@@ -14,6 +14,7 @@ import { flushSync } from 'svelte';
 
 import { HttpClient } from '@lostgradient/weft';
 
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { startLiveSourceTestServer } from '../../lib/live-source/live-source-test-server.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import ScheduleListHarness from './schedule-list-test-harness.test-harness.svelte';
@@ -188,9 +189,7 @@ describe('ScheduleList', () => {
       input: { warehouseId: 'wh-main' },
     });
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
-    // The last run is read from the engine, so the page opens once a run has completed.
-    const deadline = Date.now() + 8_000;
-    while (Date.now() < deadline) {
+    for await (const _ of awakeTurns()) {
       const runs = await client.list({ scheduleId: 'fired-probe', limit: 5 });
       if (runs.items.some((run) => run.status === 'completed')) break;
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -199,20 +198,18 @@ describe('ScheduleList', () => {
     try {
       render(ScheduleListHarness, { props: { client } });
 
-      await waitFor(
-        () =>
-          expect(
-            row('fired-probe')
-              ?.querySelector('[data-testid="schedule-last-fire"]')
-              ?.getAttribute('data-outcome'),
-          ).toBe('succeeded'),
-        { timeout: 5000 },
+      await waitFor(() =>
+        expect(
+          row('fired-probe')
+            ?.querySelector('[data-testid="schedule-last-fire"]')
+            ?.getAttribute('data-outcome'),
+        ).toBe('succeeded'),
       );
       expect(row('idle-probe')?.textContent).toContain('not fired yet');
     } finally {
       await server.stop();
     }
-  }, 10000);
+  });
 
   test('sets a cron expression it cannot put in words in monospace', async () => {
     const server = await startLiveSourceTestServer();
@@ -249,7 +246,7 @@ describe('ScheduleList', () => {
     } finally {
       await server.stop();
     }
-  }, 10000);
+  });
 
   test('a schedule whose last run failed says so', async () => {
     const server = await startLiveSourceTestServer();
@@ -261,8 +258,7 @@ describe('ScheduleList', () => {
       input: { orderId: 'order-1' },
     });
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
-    const deadline = Date.now() + 8_000;
-    while (Date.now() < deadline) {
+    for await (const _ of awakeTurns()) {
       const runs = await client.list({ scheduleId: 'failing-probe', limit: 5 });
       if (runs.items.some((run) => run.status === 'failed')) break;
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -271,19 +267,17 @@ describe('ScheduleList', () => {
     try {
       render(ScheduleListHarness, { props: { client } });
 
-      await waitFor(
-        () =>
-          expect(
-            row('failing-probe')
-              ?.querySelector('[data-testid="schedule-last-fire"]')
-              ?.getAttribute('data-outcome'),
-          ).toBe('failed'),
-        { timeout: 5000 },
+      await waitFor(() =>
+        expect(
+          row('failing-probe')
+            ?.querySelector('[data-testid="schedule-last-fire"]')
+            ?.getAttribute('data-outcome'),
+        ).toBe('failed'),
       );
     } finally {
       await server.stop();
     }
-  }, 10000);
+  });
 
   test('the actions menu resumes a paused schedule, opens its editor, and copies its identifier', async () => {
     const server = await startLiveSourceTestServer();
@@ -570,9 +564,7 @@ describe('ScheduleList', () => {
       props: { client },
     });
 
-    await waitFor(() => expect(getByRole('button', { name: 'Retry' })).not.toBeNull(), {
-      timeout: 3000,
-    });
+    await waitFor(() => expect(getByRole('button', { name: 'Retry' })).not.toBeNull());
   });
 
   test('a ?status= URL query param (dashboard-card deep link) pre-filters the status Select', async () => {

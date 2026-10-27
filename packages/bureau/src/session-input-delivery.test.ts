@@ -4,7 +4,7 @@ import {
   stopWhen,
   createAgent,
 } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { type Conversation, CURRENT_SCHEMA_VERSION } from 'conversationalist';
@@ -14,6 +14,7 @@ import { createBureau } from './create-bureau';
 import { admitSessionInput, createSessionInputMailbox } from './session-input-durability';
 import type { Bureau } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 /**
  * COR-1476 — input `submitSessionInput` admits reaches the live durable run at
@@ -42,15 +43,9 @@ function userTexts(conversation: Conversation): string[] {
     .map((message) => (typeof message.content === 'string' ? message.content : ''));
 }
 
-async function pollUntil(
-  check: () => boolean | Promise<boolean>,
-  attempts = 200,
-): Promise<boolean> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (await check()) return true;
-    await yieldToPortableEventLoop();
-  }
-  return check();
+async function pollUntil(check: () => boolean | Promise<boolean>): Promise<true> {
+  await waitUntil(check, { message: 'pollUntil' });
+  return true;
 }
 
 async function openBureau(generate: GenerateFunction): Promise<Bureau> {

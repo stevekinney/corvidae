@@ -23,6 +23,7 @@ import { BureauError } from './create-bureau';
 import {
   OWNER,
   readFrames,
+  type SseFrame,
   subscribeRequest,
 } from './http/management/management-fixtures.test-support.ts';
 import {
@@ -46,6 +47,7 @@ import type { DefaultAgentFields } from './testing/default-agent.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauOptions, PendingToolApprovalReview } from './types';
 import { expireReviews } from './testing/expired-reviews.test-support';
+import { awakeTurns, quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 
 const harness = createScheduleFireHarness();
 
@@ -72,15 +74,13 @@ const peerOptions = {
 async function eventually<T>(
   check: () => T | undefined | Promise<T | undefined>,
   what: string,
-  timeoutMs = 3_500,
 ): Promise<T> {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
+  for await (const _turn of awakeTurns()) {
     const value = await check();
     if (value !== undefined) return value;
-    if (Date.now() > deadline) throw new Error(`Condition was not met: ${what}`);
     await sleep(10);
   }
+  throw new Error(`Condition was not met: ${what}`);
 }
 
 /**
@@ -205,7 +205,7 @@ describe('a fire review a peer closes, with no stream open', () => {
       return only?.round === 1 ? only : undefined;
     }, 'the holder to list round 1');
     expect(listed.id).toBe(review.id);
-    await sleep(300);
+    await quietFor(300);
     expect(reviewsOf(holder, fireId).map((listed) => listed.id)).toEqual([review.id]);
   });
 });
@@ -239,7 +239,7 @@ describe('the fires a Bureau follows', () => {
     // The holder stops following, as if its subscription had been closed before the decision.
     fireReviewFollowerOf(holder).unfollow(fireId);
     await peer.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice });
-    await sleep(300);
+    await quietFor(300);
     expect(reviewsOf(holder, fireId)).toHaveLength(1);
 
     // Following it again reads the history the subscription had not.
@@ -376,10 +376,7 @@ describe('a canceled fire review recorded by two Bureaus at once', () => {
     void peer.reviews
       .resolve({ id: review.id, decision: 'approve', principal: OWNER.alice })
       .catch(() => undefined);
-    await Promise.all([
-      Promise.race([holdHolder.reached, sleep(5_000)]),
-      Promise.race([holdPeer.reached, sleep(5_000)]),
-    ]);
+    await Promise.all([holdHolder.reached, holdPeer.reached]);
     expect(holdHolder.held).toBe(true);
     expect(holdPeer.held).toBe(true);
     holdHolder.release();
@@ -388,7 +385,7 @@ describe('a canceled fire review recorded by two Bureaus at once', () => {
       const records = await auditRecordsOf(holder, fireId, 'review.tool-approval.canceled');
       return records.length > 0 ? true : undefined;
     }, 'the canceled review to be recorded');
-    await sleep(400);
+    await quietFor(400);
 
     expect(
       await auditRecordsOf(holder, fireId, 'review.tool-approval.canceled', review.id),
@@ -439,7 +436,7 @@ describe('a canceled review an earlier build recorded without the deduplication 
       const closed = (await durableStatus(bureau, fireId)) === 'cancelled';
       return closed ? true : undefined;
     }, 'the fire to be canceled');
-    await sleep(500);
+    await quietFor(500);
 
     const records = await auditRecordsOf(
       bureau,
@@ -472,7 +469,7 @@ describe('a decision whose round advances while its claim is being made', () => 
     const deciding = rejectionOf(
       holder.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice }),
     );
-    await Promise.race([hold.reached, sleep(3_000)]);
+    await hold.reached;
     expect(hold.held).toBe(true);
 
     // The peer re-gates the approval and gives up its claim of round 0 while the holder waits.
@@ -754,16 +751,19 @@ describe('a task stream whose notification fails after the review is dropped', (
       failOnce,
     );
     let ended = false;
+    const live: SseFrame[] = [];
     const frames = readFrames(
       await handlerOf(holder)(
         subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
       ),
-      { timeoutMs: 20_000 },
+      { into: live },
     ).finally(() => {
       ended = true;
     });
     frames.catch(() => undefined);
-    await sleep(150);
+    await waitUntil(() => live.length >= 1, {
+      message: 'the subscriber to receive its first frame',
+    });
 
     failing.armed = true;
     await peer.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice });
@@ -839,7 +839,6 @@ describe('the human wait of a fire', () => {
     const review = await reviewOf(holder, fireId);
     expect(review.kind).toBe('human-wait');
     expect(fireReviewFollowerOf(holder).followed()).toEqual([fireId]);
-    await sleep(150);
     const peer = await harness.open({ ...waitOptions, storage: await harness.sqliteStorage(path) });
 
     await peer.reviews.resolve({
@@ -912,16 +911,19 @@ describe('a close the holder cannot read durable state for', () => {
       failOnce,
     );
     let ended = false;
+    const live: SseFrame[] = [];
     const frames = readFrames(
       await handlerOf(holder)(
         subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
       ),
-      { timeoutMs: 20_000 },
+      { into: live },
     ).finally(() => {
       ended = true;
     });
     frames.catch(() => undefined);
-    await sleep(100);
+    await waitUntil(() => live.length >= 1, {
+      message: 'the subscriber to receive its first frame',
+    });
 
     failing.armed = true;
     await peer.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice });

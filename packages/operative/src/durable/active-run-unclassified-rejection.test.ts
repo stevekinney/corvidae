@@ -10,6 +10,7 @@ import { createToolbox } from 'armorer';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
 
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { stopWhen } from '../conditions/index';
 import { AgentRunError } from '../errors';
 import {
@@ -550,7 +551,7 @@ describe('a run a real engine failed before replay', () => {
         { id: runId, services: { marker: 1 } },
       );
       void handle.result().catch(() => {});
-      for (let turn = 0; turn < 500; turn++) {
+      for await (const _turn of awakeTurns()) {
         const state = await first.engine.get(runId);
         if (state?.status === 'running') break;
         await yieldToPortableEventLoop();

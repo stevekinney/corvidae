@@ -24,6 +24,7 @@
 import { ExtData, decode as msgpackDecode, encode as msgpackEncode } from '@msgpack/msgpack';
 import { describe, expect, it } from 'bun:test';
 
+import { quietFor } from '../../../scripts/lib/wait-until.ts';
 import { GENERATION_KEYS } from '../../storage/generation-keys.ts';
 import {
   KEYS,
@@ -1847,7 +1848,7 @@ describe('COR-1383: an old run terminal in-memory teardown must not wipe a same-
       await engineB.start('claim-race-echo', 'NEW', { id, onTerminalConflict: 'start-new' });
       release.resolve();
 
-      expect(await Promise.race([oldResult, Bun.sleep(1000).then(() => 'TIMEOUT')])).toBe('OLD');
+      expect(await oldResult).toBe('OLD');
       const internals = getInternals(engineA);
       expect(internals.checkpoints.has(id)).toBe(false);
       expect(internals.resultResolvers.has(id)).toBe(false);
@@ -1933,9 +1934,7 @@ describe('COR-1383: an old run terminal in-memory teardown must not wipe a same-
 
       expect(getInternals(engine).parkedInlineWorkflows.has(id)).toBe(true);
       await engine.signal(id, 'go');
-      expect(
-        await Promise.race([replacement.result(), Bun.sleep(1000).then(() => 'TIMEOUT')]),
-      ).toBe('ran');
+      expect(await replacement.result()).toBe('ran');
     } finally {
       release.resolve();
       await engine[Symbol.asyncDispose]();
@@ -1971,9 +1970,7 @@ describe('COR-1383: an old run terminal in-memory teardown must not wipe a same-
 
       expect(getInternals(engine).parkedInlineWorkflows.has(id)).toBe(true);
       await engine.signal(id, 'go');
-      expect(
-        await Promise.race([replacement.result(), Bun.sleep(1000).then(() => 'TIMEOUT')]),
-      ).toBe('ran');
+      expect(await replacement.result()).toBe('ran');
     } finally {
       release.resolve();
       await engine[Symbol.asyncDispose]();
@@ -1997,7 +1994,7 @@ describe('COR-1383: an old run terminal in-memory teardown must not wipe a same-
       };
       release.resolve();
       try {
-        expect(await Promise.race([oldResult, Bun.sleep(1000).then(() => 'TIMEOUT')])).toBe('OLD');
+        expect(await oldResult).toBe('OLD');
       } finally {
         storage.get = originalGet;
       }
@@ -2156,7 +2153,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
         await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
         gate.release.resolve();
         await oldDone;
-        await Bun.sleep(50);
+        await quietFor(50);
         await expectReplacementIntact(storage, engine, id, replacement, 'P1');
       } finally {
         gate.release.resolve();
@@ -2183,7 +2180,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
       await engineB[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
       gate.release.resolve();
       await oldDone;
-      await Bun.sleep(50);
+      await quietFor(50);
       await expectReplacementIntact(storage, engineB, id, replacement, 'P1');
     } finally {
       gate.release.resolve();
@@ -2220,7 +2217,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
 
       gate.release.resolve();
       await oldDone;
-      await Bun.sleep(50);
+      await quietFor(50);
 
       expect(await scratchKeys()).toEqual(before);
       await expectReplacementIntact(storage, engineB, id, replacement, 'P1');
@@ -2259,7 +2256,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
 
       gate.release.resolve();
       await oldDone;
-      await Bun.sleep(50);
+      await quietFor(50);
 
       expect(await storage.get(reviewKey('new'))).not.toBeNull();
       await expectReplacementIntact(storage, engineB, id, replacement, 'P1');
@@ -2282,7 +2279,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
       await engine.addTags(id, 'edited');
       gate.release.resolve();
       await oldDone;
-      await Bun.sleep(50);
+      await quietFor(50);
 
       expect(await slotHolders(storage, 'P1')).toEqual([]);
       expect(await storage.get(KEYS.workflowConcurrencyHolder(id))).toBeNull();
@@ -2343,7 +2340,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
       await gate.reached.promise;
       gate.release.resolve();
       await oldDone;
-      await Bun.sleep(50);
+      await quietFor(50);
 
       await expectReplacementIntact(storage, engineB, id, replacement, 'P1');
     } finally {
@@ -2398,7 +2395,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
       holdingGenerationReads = false;
       generationHold.release.resolve();
       await oldDone;
-      await Bun.sleep(50);
+      await quietFor(50);
 
       expect(await slotHolders(storage, 'P1')).toEqual([]);
       await expectReplacementIntact(storage, engineB, id, replacement, 'P2');
@@ -2433,7 +2430,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
 
       gate.release.resolve();
       await oldDone;
-      await Bun.sleep(50);
+      await quietFor(50);
 
       // The old engine's id-keyed cancel must not delete the replacement's execution deadline.
       expect(await storage.get(`timer-idx:deadline:${id}`)).not.toBeNull();
@@ -2495,7 +2492,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
 
       gate.release.resolve();
       await ticking;
-      await Bun.sleep(50);
+      await quietFor(50);
 
       expect(await scratchKeys()).toEqual(before);
       await expectReplacementIntact(storage, engineB, id, replacement, 'P1');
@@ -2541,7 +2538,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
 
       gate.release.resolve();
       await cancelled;
-      await Bun.sleep(50);
+      await quietFor(50);
 
       // The cancel meant the old run; the replacement is untouched and still running.
       const state = await engineA.get(id);
@@ -2688,7 +2685,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
     // Cancelling again locally finds the record already terminal and must still settle the waiter.
     await engineA.cancel(id);
 
-    const settled = await Promise.race([outcome, Bun.sleep(3_000).then(() => 'hung')]);
+    const settled = await outcome;
     expect(settled).toBe('rejected');
   });
 
@@ -2741,7 +2738,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
       gate.release.resolve();
       await cancelOld;
 
-      const settled = await Promise.race([oldOutcome, Bun.sleep(3_000).then(() => 'hung')]);
+      const settled = await oldOutcome;
       expect(settled).toContain('rejected:');
       expect(settled).not.toContain('P1:NEW');
       // The replacement's durable outcome is untouched.
@@ -2822,7 +2819,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
       await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
       gate.release.resolve();
       await oldDone;
-      await Bun.sleep(50);
+      await quietFor(50);
       await expectReplacementIntact(storage, engine, id, replacement, 'P1');
     } finally {
       gate.release.resolve();
@@ -2847,7 +2844,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
       await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
       gate.release.resolve();
       await oldDone;
-      await Bun.sleep(50);
+      await quietFor(50);
       expect(await slotHolders(storage, 'P1')).toEqual([]);
       await expectReplacementIntact(storage, engine, id, replacement, 'P2');
     } finally {

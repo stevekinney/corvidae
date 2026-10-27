@@ -79,7 +79,7 @@ describe('edge cases', () => {
     // 4.4-4.6s in CI under 2-core/13-suite contention, brushing Bun's default
     // 5000ms ceiling. The headroom keeps a correctness test from flaking on
     // throughput; it is not masking a hang.
-  }, 30_000);
+  });
 
   it('stops at maximumSteps when generate returns the same tool calls repeatedly', async () => {
     const echoTool = createTool({

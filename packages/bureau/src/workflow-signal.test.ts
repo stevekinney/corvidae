@@ -14,6 +14,7 @@ import {
 } from './testing/workflow-bureau.test-support';
 import { AGENT_STEP } from './testing/workflow-file-fixtures.test-support';
 import type { BureauWorkflows, WorkflowRunDetail } from './workflow-runtime';
+import { awakeTurns, quietFor } from '@lostgradient/testing/wait-until';
 
 const harnesses: WorkflowBureauHarness[] = [];
 afterEach(async () => {
@@ -32,7 +33,7 @@ const awaiting = (signal: string) => ({ kind: 'await-signal', signal });
 /** Wait until `id` is parked on `name`: its durable record lists the wait. */
 async function parked(harness: WorkflowBureauHarness, id: string, name: string): Promise<void> {
   const engine = harness.bureau.durableEngine()!;
-  for (let attempt = 0; attempt < 1000; attempt += 1) {
+  for await (const _turn of awakeTurns()) {
     const state = await engine.get(id);
     if (state?.waitingForSignals?.includes(name) === true) return;
     await Bun.sleep(5);
@@ -249,7 +250,7 @@ describe('delivering a signal to a waiting instance', () => {
     count: number,
   ): Promise<void> {
     const engine = harness.bureau.durableEngine()!;
-    for (let attempt = 0; attempt < 1000; attempt += 1) {
+    for await (const _turn of awakeTurns()) {
       const timeline = await engine.getTimeline(id);
       if (timeline.filter((entry) => entry.operationType === 'wait-signal').length >= count) return;
       await Bun.sleep(5);
@@ -276,7 +277,7 @@ describe('delivering a signal to a waiting instance', () => {
     // The retry finds the instance waiting again and carries the same id, so Weft drops it.
     const retried = await workflows.signal('again', 'one', { signalId: 'retry-me' });
     expect(retried.delivered).toEqual(['twice-run']);
-    await Bun.sleep(100);
+    await quietFor(100);
     expect(await statusOf(harness, 'twice-run')).toBe('running');
 
     // A different id is a new delivery, and it satisfies the second wait.

@@ -12,6 +12,7 @@ import {
   type Storage,
   type StorageConfiguration,
 } from '@lostgradient/weft';
+import { HANG_GUARD_MILLISECONDS, afterAwakeTime } from '@lostgradient/testing/hang-guard';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { z } from 'zod';
 
@@ -124,33 +125,32 @@ export function subscribeRequest(
 export type SseFrame = { id?: string; event?: string; data?: unknown };
 
 /**
- * Reads frames from a Server-Sent-Events response until the stream ends, `stop`
- * says it has enough, or `timeoutMs` passes (which fails the read rather than
- * hanging the test). The reader is cancelled either way.
+ * Reads frames from a Server-Sent-Events response until the stream ends or `stop` says it has
+ * enough. Frames are also pushed into `into` as they arrive. The reader is cancelled either way. The read has no deadline of its own beyond the
+ * awake-time hang guard, which fails it rather than hanging the test: how long a stream takes to
+ * deliver its frames depends on how busy the host is, so a shorter limit would fail healthy runs.
  */
 export async function readFrames(
   response: Response,
-  options: { stop?: (frames: readonly SseFrame[]) => boolean; timeoutMs?: number } = {},
+  options: {
+    stop?: (frames: readonly SseFrame[]) => boolean;
+    /** An array the frames are pushed into as they arrive, so a test can wait for one. */
+    into?: SseFrame[];
+  } = {},
 ): Promise<SseFrame[]> {
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
-  const frames: SseFrame[] = [];
+  const frames: SseFrame[] = options.into ?? [];
   let buffer = '';
-  const deadline = Date.now() + (options.timeoutMs ?? 2_000);
+  let hung = false;
+  // Cancelling the reader ends a pending `read()` with `done`, so a stalled stream falls out below.
+  const cancelGuard = afterAwakeTime(HANG_GUARD_MILLISECONDS, () => {
+    hung = true;
+    void reader.cancel().catch(() => undefined);
+  });
   try {
     for (;;) {
-      const remaining = deadline - Date.now();
-      if (remaining <= 0)
-        throw new Error(`The stream did not finish in time: ${JSON.stringify(frames)}`);
-      const next = await Promise.race([
-        reader.read(),
-        new Promise<never>((_resolve, reject) => {
-          setTimeout(
-            () => reject(new Error(`The stream stalled: ${JSON.stringify(frames)}`)),
-            remaining,
-          );
-        }),
-      ]);
+      const next = await reader.read();
       if (next.done) break;
       buffer += decoder.decode(next.value, { stream: true });
       for (;;) {
@@ -168,7 +168,9 @@ export async function readFrames(
       }
       if (options.stop?.(frames) === true) break;
     }
+    if (hung) throw new Error(`The stream stalled: ${JSON.stringify(frames)}`);
   } finally {
+    cancelGuard();
     await reader.cancel().catch(() => undefined);
   }
   return frames;

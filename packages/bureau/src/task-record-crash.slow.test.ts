@@ -31,6 +31,7 @@ import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test
 import { createAskingAgent, finishes } from './test/task-record-crash-agent';
 import type { Bureau, BureauReviews, BureauInternals } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 
 const CHILD = join(import.meta.dir, 'test', 'task-record-crash-child.ts');
 
@@ -135,7 +136,7 @@ async function disposedScenario(scope: ScenarioScope): Promise<void> {
       expect(durable?.status).toBe('running');
       expect(OPEN_STATES.has(await taskStatusOf(third, runId))).toBe(true);
       await third.internals.taskRegistry.cancel(runId, 0);
-      for (let attempt = 0; attempt < 400; attempt += 1) {
+      for await (const _turn of awakeTurns()) {
         if ((await taskStatusOf(third, runId)) === 'canceled') break;
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
@@ -178,7 +179,8 @@ const outcomes = {
         expect(history?.map((message) => message.text)).toEqual(['which environment?']);
         // The run was in flight across the crash, and it ends in this process: its task settles.
         let review = bureau.reviews.list().find((candidate) => candidate.runId === runId);
-        for (let attempt = 0; review === undefined && attempt < 400; attempt += 1) {
+        for await (const _turn of awakeTurns()) {
+          if (!(review === undefined)) break;
           await new Promise((resolve) => setTimeout(resolve, 10));
           review = bureau.reviews.list().find((candidate) => candidate.runId === runId);
         }
@@ -190,7 +192,7 @@ const outcomes = {
           payload: 'staging',
         });
         await bureau.waitForDurableRun(runId);
-        for (let attempt = 0; attempt < 400; attempt += 1) {
+        for await (const _turn of awakeTurns()) {
           const current = await bureau.internals.taskRegistry.get(runId);
           if (current?.status === 'completed') break;
           await new Promise((resolve) => setTimeout(resolve, 10));

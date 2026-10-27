@@ -14,6 +14,7 @@ import {
 } from './test/session-input-fixtures';
 import type { BureauDiagnostic } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { quietFor } from '@lostgradient/testing/wait-until';
 
 /**
  * COR-1476 — `submitSessionInput` writes the marker, commits the admission,
@@ -219,7 +220,7 @@ describe('submitSessionInput while the bureau shuts down (COR-1476)', () => {
       expect((refusal as Error).message).toContain('shutting down');
       // Shutdown waits for the held admission: across a real delay it has not
       // resolved, and nothing has settled.
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await quietFor(300);
       expect(events).toEqual([]);
 
       // Released, the admission finishes its protocol first, on a live engine.

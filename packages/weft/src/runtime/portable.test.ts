@@ -110,6 +110,7 @@ describe('portable runtime helpers', () => {
   describe('sleep', () => {
     it('resolves no earlier than the requested duration', async () => {
       const start = performance.now();
+      // load-proof: the test asserts only a lower bound on the elapsed time, which load can only lengthen
       await sleep(50);
       const elapsed = performance.now() - start;
       expect(elapsed).toBeGreaterThanOrEqual(40);

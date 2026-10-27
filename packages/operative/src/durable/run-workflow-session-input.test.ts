@@ -17,6 +17,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { noToolCalls } from '../conditions/predicates';
 import type { GenerateContext, GenerateFunction } from '../types';
 import { type CheckpointStore, createCheckpointStore } from './checkpoint-store';
@@ -958,7 +959,7 @@ describe('session input delivery store and gate (COR-1476)', () => {
   }
 
   async function until(check: () => Promise<boolean>): Promise<void> {
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    for await (const _turn of awakeTurns()) {
       if (await check()) return;
       await yieldToPortableEventLoop();
     }
@@ -1380,7 +1381,7 @@ describe("the gate's lease lifecycle (COR-1476)", () => {
   }
 
   async function until(check: () => Promise<boolean>): Promise<void> {
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    for await (const _turn of awakeTurns()) {
       if (await check()) return;
       await yieldToPortableEventLoop();
     }

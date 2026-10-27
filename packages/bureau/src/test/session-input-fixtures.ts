@@ -22,13 +22,13 @@ import {
   encodeStorageKeyComponent,
   resolveStorage,
   type Storage,
-  yieldToPortableEventLoop,
 } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 
 import type { AgentDefinitions } from '../agent-catalog';
 import { createBureau } from '../create-bureau';
 import type { Bureau, BureauOptions, BureauInternals } from '../types';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 export function deferred<T = void>() {
   let release!: (value: T) => void;
@@ -46,16 +46,8 @@ export function userTexts(conversation: GenerateContext['conversation']): string
 }
 
 /** Waits for a state to become true, yielding between reads; throws when it never does. */
-export async function pollUntil(
-  check: () => boolean | Promise<boolean>,
-  attempts = 400,
-): Promise<void> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (await check()) return;
-    await yieldToPortableEventLoop();
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
-  throw new Error('the condition never became true');
+export async function pollUntil(check: () => boolean | Promise<boolean>): Promise<void> {
+  await waitUntil(check, { message: 'pollUntil' });
 }
 
 const textDecoder = new TextDecoder();

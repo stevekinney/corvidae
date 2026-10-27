@@ -102,6 +102,7 @@ describe('operation test helpers', () => {
     try {
       expect(
         await throwingRejectionOf(
+          // hang-guard-self-test: the workflow does not exist, so no load can make it reach running
           waitForWorkflowStatus(engine, 'missing-workflow', 'running', {
             intervalMilliseconds: 1,
             timeoutMilliseconds: 1,
@@ -121,7 +122,6 @@ describe('operation test helpers', () => {
         await throwingRejectionOf(
           waitForWorkflowStatus(engine, 'invalid-interval-workflow', 'running', {
             intervalMilliseconds: 0,
-            timeoutMilliseconds: 1,
           }),
         ),
       ).toThrow('intervalMs must be a finite, positive number');

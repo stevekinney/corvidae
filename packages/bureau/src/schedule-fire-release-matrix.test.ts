@@ -19,6 +19,7 @@ import {
   createScheduleFireHarness,
   durableStatus,
   fireOnce,
+  followedBy,
   handlerOf,
   pollUntil,
   reviewOf,
@@ -384,7 +385,7 @@ async function fireForCrash() {
     async cancelAndCrash(cancel: () => void) {
       armed = true;
       cancel();
-      await Promise.race([reached.promise, new Promise((resolve) => setTimeout(resolve, 3000))]);
+      await reached.promise;
       expect(held).toBe(true);
     },
   };
@@ -463,7 +464,7 @@ describe('a cancel by a peer, with the holder alive', () => {
     });
     const { fireId } = await fireOnce(holder, OWNER.alice, SESSION);
     const review = await reviewOf(holder, fireId);
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await followedBy(holder, fireId);
     const peer = await harness.open({
       ...options,
       toolbox: approvalToolbox([]),

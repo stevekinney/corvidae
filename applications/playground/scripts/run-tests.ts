@@ -39,6 +39,7 @@ import { repositoryRoot, selectedFilesFor } from '../../../scripts/affected-test
 import { finishRun } from '../../../scripts/bun-test-junit.ts';
 import { readAllowlist } from '../../../scripts/check-test-durations.ts';
 import { rootScriptEnvironment } from '../../../scripts/environment-configuration.ts';
+import { TEST_TIMEOUT_ARGUMENT } from '../../../scripts/test-deadlines.ts';
 
 const TEST_ENV = {
   ...process.env,
@@ -233,12 +234,15 @@ async function runBunTest(
 ): Promise<number> {
   const reporter =
     reportPath === null ? [] : ['--reporter=junit', `--reporter-outfile=${reportPath}`];
-  const child = Bun.spawn(['bun', 'test', ...bunTestFlags(lane), ...reporter, ...args], {
-    cwd: PLAYGROUND_ROOT,
-    env: TEST_ENV,
-    stdout: 'inherit',
-    stderr: 'inherit',
-  });
+  const child = Bun.spawn(
+    ['bun', 'test', TEST_TIMEOUT_ARGUMENT, ...bunTestFlags(lane), ...reporter, ...args],
+    {
+      cwd: PLAYGROUND_ROOT,
+      env: TEST_ENV,
+      stdout: 'inherit',
+      stderr: 'inherit',
+    },
+  );
   return child.exited;
 }
 

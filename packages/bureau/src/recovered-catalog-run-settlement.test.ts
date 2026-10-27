@@ -26,7 +26,6 @@ import type { AgentDefinitions } from './agent-catalog';
 
 const PRINCIPAL = 'api-key:alice';
 const FILE = agentFileText({ model: KNOWN_MODEL }, 'Instructions.\n');
-const ATTEMPTS = 400;
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -99,12 +98,10 @@ describe('a recovered file-agent run', () => {
     await waitForCondition(
       async () => (await first.bureau.internals.taskRegistry.record(run.id)) !== undefined,
       'the task is recorded',
-      ATTEMPTS,
     );
     await waitForCondition(
       async () => (await referenceOf(first.bureau, run.id)) !== undefined,
       'the run holds a snapshot reference',
-      ATTEMPTS,
     );
     return { directory, storagePath, runId: run.id };
   }
@@ -123,16 +120,11 @@ describe('a recovered file-agent run', () => {
     await waitForCondition(
       async () => (await taskStatusOf(second.bureau, runId)) === 'completed',
       'the recovered run settled its task',
-      ATTEMPTS,
     );
-    await waitForCondition(
-      async () => {
-        const reference = await referenceOf(second.bureau, runId);
-        return typeof reference?.settledAt === 'string';
-      },
-      'the recovered run settled its snapshot reference',
-      ATTEMPTS,
-    );
+    await waitForCondition(async () => {
+      const reference = await referenceOf(second.bureau, runId);
+      return typeof reference?.settledAt === 'string';
+    }, 'the recovered run settled its snapshot reference');
   });
 
   it('keeps its snapshot reference through maintenance for as long as the engine reports it unfinished', async () => {
@@ -191,7 +183,6 @@ describe('a recovered file-agent run', () => {
     await waitForCondition(
       async () => (await taskStatusOf(third.bureau, runId)) === 'canceled',
       'the interrupted task can still be canceled',
-      ATTEMPTS,
     );
   });
 });
@@ -258,7 +249,6 @@ describe('a recovered child run', () => {
     await waitForCondition(
       () => first.reviews.list().some((review) => review.runId === parent.id),
       'the parent parks',
-      ATTEMPTS,
     );
     await first.children.dispatch({
       parentRunId: parent.id,
@@ -269,7 +259,6 @@ describe('a recovered child run', () => {
     await waitForCondition(
       async () => (await durableStatusOf(first, 'agent-run-child')) === 'running',
       'the child run is running',
-      ATTEMPTS,
     );
     // The second process recovers the child run the first one is still holding.
     const second = await open(release.promise);
@@ -281,7 +270,6 @@ describe('a recovered child run', () => {
     await waitForCondition(
       async () => (await durableStatusOf(second, 'agent-run-child')) === 'completed',
       'the recovered child run ended',
-      ATTEMPTS,
     );
     // Let the settlement the run's end published reach its subscribers.
     await second.internals.taskRegistry.idle();
