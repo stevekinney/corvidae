@@ -191,9 +191,9 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
       } catch (error) {
         return dependencies.badRequest(error instanceof Error ? error.message : String(error));
       }
+      const { kind } = request;
       const digest = schemaDigest(request);
-      const model =
-        hostModel !== undefined && hostModel.kinds.has(request.kind) ? hostModel : fallback();
+      const model = hostModel !== undefined && hostModel.kinds.has(kind) ? hostModel : fallback();
       const decision = await model.decide(request, {
         ...(principal === undefined ? {} : { principal }),
         ...(signal === undefined ? {} : { signal }),
@@ -202,7 +202,7 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
         runId: taskId ?? `decision:${crypto.randomUUID()}`,
         type: DECISION_MADE_AUDIT_TYPE,
         detail: {
-          kind: request.kind,
+          kind,
           provider: decision.provider,
           model: decision.model,
           ...(digest === undefined ? {} : { schemaSha256: digest }),
