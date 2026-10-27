@@ -28,6 +28,7 @@ describe('chat session controller', () => {
       hooks: { onStreamingChange: (value) => transitions.push(value) },
     });
     const pending = controller.adapter.sendMessage({ role: 'user', content: 'hi' }, []);
+    // load-proof: the mock transport and the session controller settle inside the promise chain, so this turn only drains microtasks
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     await controller.adapter.stopGenerating?.(conversation.ids[0]!);
     await pending;
@@ -54,6 +55,7 @@ describe('chat session controller', () => {
       },
     });
     const first = controller.adapter.sendMessage({ role: 'user', content: 'first' }, []);
+    // load-proof: the mock transport and the session controller settle inside the promise chain, so this turn only drains microtasks
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     await controller.adapter.stopGenerating?.('in-flight-assistant');
     await first;
@@ -107,6 +109,7 @@ describe('chat session controller', () => {
       },
     });
     const pending = controller.adapter.sendMessage({ role: 'user', content: 'hi' }, []);
+    // load-proof: the mock transport and the session controller settle inside the promise chain, so this turn only drains microtasks
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     await controller.adapter.stopGenerating?.(conversation.ids[0]!);
     await pending;
@@ -132,6 +135,7 @@ describe('chat session controller', () => {
       },
     });
     const pending = controller.adapter.sendMessage({ role: 'user', content: 'hi' }, []);
+    // load-proof: the mock transport and the session controller settle inside the promise chain, so this turn only drains microtasks
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     await controller.adapter.stopGenerating?.(conversation.ids[0]!);
     await pending;

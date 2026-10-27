@@ -921,6 +921,7 @@ describe('createRun with durable routing', () => {
       });
 
       const result = await activeRun.result;
+      // load-proof: a negative window: the assertion that follows is that no unhandled rejection was reported, and load can delay a report but never create one
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
       expect(result.finishReason).toBe('error');

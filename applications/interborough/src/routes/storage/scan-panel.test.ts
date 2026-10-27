@@ -116,6 +116,7 @@ describe('ScanPanel', () => {
     await fireEvent.input(getByLabelText('End (exclusive)'), { target: { value: 'app:z' } });
     await fireEvent.click(getByText('Scan'));
 
+    // load-proof: the stubbed fetch resolves in memory, so the request is issued inside the click handler promise chain
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(activeStub.calls[0]?.url).toContain('gte=app%3Aa');
     expect(activeStub.calls[0]?.url).toContain('lt=app%3Az');
@@ -183,6 +184,7 @@ describe('ScanPanel', () => {
 
       await fireEvent.change(getByLabelText('Prefix'), { target: { value: 'bureau-goal:' } });
       await fireEvent.click(getByText('Scan'));
+      // load-proof: the stubbed fetch resolves in memory, so the request is issued inside the click handler promise chain
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(new URL(activeStub.calls[1]?.url ?? '').searchParams.get('prefix')).toBe(
         'bureau-goal:',
@@ -200,6 +202,7 @@ describe('ScanPanel', () => {
       expect((view.getByLabelText('Prefix') as HTMLSelectElement).value).toBe('__other__');
       expect((view.getByLabelText('Other prefix') as HTMLInputElement).value).toBe('wf:');
       await fireEvent.click(view.getByText('Scan'));
+      // load-proof: the stubbed fetch resolves in memory, so the request is issued inside the click handler promise chain
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(new URL(activeStub.calls[0]?.url ?? '').searchParams.get('prefix')).toBe('wf:');
     });
@@ -213,6 +216,7 @@ describe('ScanPanel', () => {
       await view.rerender({ client: fakeClient(), knownPrefixes: KNOWN });
       expect((view.getByLabelText('Prefix') as HTMLSelectElement).value).toBe('bureau-goal:');
       await fireEvent.click(view.getByText('Scan'));
+      // load-proof: the stubbed fetch resolves in memory, so the request is issued inside the click handler promise chain
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(new URL(activeStub.calls[0]?.url ?? '').searchParams.get('prefix')).toBe(
         'bureau-goal:',
@@ -231,6 +235,7 @@ describe('ScanPanel', () => {
       await fireEvent.input(getByLabelText('Other prefix'), { target: { value: 'wf:' } });
       await fireEvent.click(getByText('Scan'));
 
+      // load-proof: the stubbed fetch resolves in memory, so the request is issued inside the click handler promise chain
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(new URL(activeStub.calls[0]?.url ?? '').searchParams.get('prefix')).toBe('wf:');
     });

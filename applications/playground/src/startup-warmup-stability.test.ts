@@ -46,6 +46,7 @@ describe('startup warmup stability', () => {
     const generationAtStart = await waitForPendingRebuild();
 
     expect(generationAtStart).toBe(generationBeforeDebounce + 1);
+    // load-proof: the rebuild generation is plain in-memory state, so nothing load-dependent follows the yield
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(isWarmupStable(generationAtStart, getRebuildGeneration(), 100, 100)).toBe(true);
   });

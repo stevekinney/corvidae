@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import { restoreRealTimers, sleepForTesting, useFakeTimers } from './fake-timers.test-support.ts';
+import { restoreRealTimers, useFakeTimers } from './fake-timers.test-support.ts';
+import { settleInlineLaunches } from './inline-launch-settle.test-support.ts';
 
 import { activity, type WorkflowContext } from '../core/types.ts';
 import { workflow } from '../core/types/workflow-function.ts';
@@ -11,7 +12,7 @@ import { TestEngine } from './test-engine.ts';
 // ---------------------------------------------------------------------------
 
 async function flush(): Promise<void> {
-  await sleepForTesting(10);
+  await settleInlineLaunches();
 }
 
 // ---------------------------------------------------------------------------

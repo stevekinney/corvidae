@@ -318,6 +318,7 @@ describe('a task that ends around a Create on a withdrawn agent’s mount', () =
       ...webhook(world.receiver),
     });
     // The request is admitted within a few turns of this process, however busy the host is.
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 3; turn += 1) await yieldEventLoopTurn();
     await cancelAndAwait(served, taskId);
     held.open();

@@ -19,20 +19,29 @@
  */
 
 import type { Engine } from '../core/engine.ts';
+import { getWorkflowIdFromEvent } from '../core/events/workflow-event-id.ts';
 import { WORKFLOW_TERMINAL_EVENT_TYPES } from '../core/events/workflow-events.ts';
 import type { WorkflowEvent } from '../core/types.ts';
-import { CLIENT_VISIBLE_EVENT_TYPES } from '../server/runtime/client-visible-events.ts';
+import {
+  CLIENT_VISIBLE_EVENT_TYPES,
+  serializeClientVisibleEventData,
+} from '../server/runtime/client-visible-events.ts';
 import { dropOverlappingLiveFrames } from './event-stream-transport.ts';
 import type { WorkflowEventTail } from './event-tail.ts';
 
 /**
  * The event kinds the server's watch channel broadcasts. The handle iterator
- * yields every workflow-scoped kind the engine dispatches, including some the
- * watch channel never sends (`activity:remote-queued`,
- * `task:attempt-transition`, and others), so the local tail drops anything
- * outside this set to deliver the same live records as the HTTP tail.
+ * yields every workflow-scoped kind the engine dispatches, including denied
+ * kinds and engine-scoped catalog events, so the local tail drops anything
+ * outside this set or without a workflow id to match the HTTP tail.
  */
 const CLIENT_VISIBLE_EVENT_TYPE_SET: ReadonlySet<string> = new Set(CLIENT_VISIBLE_EVENT_TYPES);
+
+function isWorkflowVisibleEvent(event: Event): boolean {
+  return (
+    CLIENT_VISIBLE_EVENT_TYPE_SET.has(event.type) && getWorkflowIdFromEvent(event) !== undefined
+  );
+}
 
 /**
  * Serialize a dispatched engine `Event` into a {@link WorkflowEvent}. Mirrors
@@ -45,11 +54,7 @@ const CLIENT_VISIBLE_EVENT_TYPE_SET: ReadonlySet<string> = new Set(CLIENT_VISIBL
  * produce identical {@link WorkflowEvent} records.
  */
 function serializeEngineEvent(event: Event): WorkflowEvent {
-  const raw: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(event)) {
-    if (key === 'type') continue;
-    raw[key] = value instanceof Error ? value.message : value;
-  }
+  const raw = serializeClientVisibleEventData(event);
   // JSON round-trip to match the server transport: drops `undefined` values and
   // normalizes the bag to the same shape the HTTP tail receives off the wire.
   const data = JSON.parse(JSON.stringify(raw)) as Record<string, unknown>;
@@ -162,7 +167,7 @@ export function createLocalWorkflowEventTail(
         if (typeof next === 'symbol') return;
         if (closed) return;
         if (next.done === true) return;
-        if (!CLIENT_VISIBLE_EVENT_TYPE_SET.has(next.value.type)) continue;
+        if (!isWorkflowVisibleEvent(next.value)) continue;
         deliverLive(serializeEngineEvent(next.value));
         if (terminated) return;
       }

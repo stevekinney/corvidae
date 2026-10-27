@@ -9,6 +9,7 @@ const { cleanup, fireEvent, render, screen, within } = await import('@testing-li
 const { default: SchemaForm } = await import('./schema-form.svelte');
 const { readSchemaFormData } = await import('./schema-form-validation.ts');
 
+// load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
 function flush(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }

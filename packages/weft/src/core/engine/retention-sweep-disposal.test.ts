@@ -213,6 +213,7 @@ describe('retention sweep disposal', () => {
     });
     // The held commit is the only thing disposal can be waiting on, so nothing
     // but the release below can let it finish.
+    // load-proof: negative window: disposal waits on a held commit that only the release below can free, so load can only delay it, never complete it
     await Bun.sleep(0);
     expect(disposalSettled).toBe(false);
 
@@ -251,6 +252,7 @@ describe('retention sweep disposal', () => {
     const disposal = engine[Symbol.asyncDispose]().then(() => {
       disposalSettled = true;
     });
+    // load-proof: negative window: disposal waits on a held commit that only the release below can free, so load can only delay it, never complete it
     await Bun.sleep(0);
     expect(disposalSettled).toBe(false);
 
@@ -276,6 +278,7 @@ describe('retention sweep disposal', () => {
     const disposal = engine[Symbol.asyncDispose]().then(() => {
       disposalSettled = true;
     });
+    // load-proof: negative window: disposal waits on a held commit that only the release below can free, so load can only delay it, never complete it
     await Bun.sleep(0);
     expect(disposalSettled).toBe(false);
 

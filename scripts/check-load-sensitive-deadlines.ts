@@ -47,9 +47,24 @@
  *     promise, an event, a registry or storage state), or, for something that must NOT happen, call
  *     `quietFor(n)`, which says so: load can only delay an event, never advance it. A sleep in a
  *     helper or double, inside a loop (a poll), in a teardown hook, or one after which nothing is
- *     asserted, is not read. `sleepForTesting(n)` yields ONE scheduler turn under real timers whatever
- *     `n` is, so it is read only before an assertion that something happened (`toBe(true)`,
- *     `toHaveBeenCalled()`, `toContain`...), where it bets that real work finishes inside that turn.
+ *     asserted, is not read. A one-turn yield is `single-turn-settle`'s.
+ *   - `single-turn-settle`: a pause that gives the event loop ONE turn and then goes on, whether an
+ *     assertion or an action follows. `sleepForTesting(n)` does exactly that under real timers, whatever
+ *     `n` is (it advances a fake clock, and does nothing like waiting `n` milliseconds otherwise); so do
+ *     `setImmediate`, a message port, a promise around `setTimeout(r, 0)` or `setTimeout(r)`, and
+ *     `Bun.sleep(0)`. What the next step needs (a socket, a message, a file, a child process) may need
+ *     more than one turn on a loaded host, so wait for that state or event instead. Where only
+ *     microtasks are pending, or nothing load-dependent follows, the yield carries `// load-proof:
+ *     <reason>`. Not read: a yield under fake timers, inside a loop (a poll), raced against work, last in
+ *     a test, or in a teardown hook; `sleepForTesting(0)`, which drains microtasks. A same-file helper
+ *     whose body is such a yield (`const settle = () => new Promise((r) => setTimeout(r, 0))`, `flush`,
+ *     `flushEffects`...) is read at its DEFINITION, because hundreds of calls would each need a marker
+ *     that says the same thing; the marker there states what the helper settles and why it is safe for
+ *     every caller. A helper in another file is read where it is defined, not where it is called, so
+ *     the calls to the exported one-turn yields (`yieldToEventLoop`, `yieldToPortableEventLoop`,
+ *     `yieldEventLoopTurn`) are counted per file against `single-turn-yield-allowlist.json`: the
+ *     calls that existed when the rule arrived stay unaudited, the list can only shrink, and a new
+ *     call needs a wait on the state or a marker.
  *   - `timer-rejection`: a `setTimeout` whose callback rejects or throws (through any parameter name),
  *     or an `AbortSignal.timeout`, with a delay below the hang guard: the timer half of a race.
  *   - `timer-race`: a timer promise raced against work, in `Promise.race`/`Promise.any`: `sleep(n)`,
@@ -166,7 +181,11 @@ export type DeadlineRule =
   | 'sleep-synchronization'
   | 'timer-rejection'
   | 'timer-race'
-  | 'quiet-window';
+  | 'quiet-window'
+  | 'single-turn-settle'
+  | 'real-timer-double'
+  | 'fixed-count-yield-loop'
+  | 'direct-bun-spawn';
 export type DeadlineViolation = {
   rule: DeadlineRule;
   line: number;
@@ -743,7 +762,302 @@ export function findDeadlineViolations(
     ...findTimerRejections(sourceFile, constants),
     ...findTimerRaces(sourceFile, constants),
     ...findPositiveQuietWindows(sourceFile),
+    ...withoutLinesAlreadyReported(findSingleTurnSettles(sourceFile, constants), violations),
+    ...findRealTimerDoubles(sourceFile, constants),
+    ...findDirectBunSpawns(sourceFile),
   ];
+}
+
+/** The settle findings on lines that no other rule has already reported. */
+function withoutLinesAlreadyReported(
+  settles: DeadlineViolation[],
+  others: DeadlineViolation[],
+): DeadlineViolation[] {
+  const reported = new Set(others.map((other) => other.line));
+  return settles.filter((settle) => !reported.has(settle.line));
+}
+
+// A promise that settles on the next macrotask rather than a clock: `setImmediate`, a message port,
+// or a `setTimeout` given no delay at all.
+const MACROTASK_TURN = /setImmediate|MessageChannel|setTimeout\(\s*\w+\s*\)/;
+
+/**
+ * Whether `expression` is a SINGLE-TURN yield: a promise that gives the event loop one turn and
+ * then settles, whatever the work the next step needs. That is `sleepForTesting(n)` under real
+ * timers (it ignores `n`), a timer of at most one millisecond (`setTimeout(r, 0)`, `Bun.sleep(0)`),
+ * and `setImmediate` or a message port. A timer that waits a real, longer time is `sleep-synchronization`'s.
+ */
+function isSingleTurnYield(
+  expression: ts.Expression,
+  context: TimerContext,
+  underFakeTimers: boolean,
+): boolean {
+  const operand = unwrap(expression);
+  const timer = timerPromiseOf(operand, context);
+  if (timer !== null) {
+    // Fake timers advance a virtual sleep.
+    if (timer.virtual && underFakeTimers) return false;
+    const value = resolveNumber(timer.delay, context.constants);
+    // `sleepForTesting(0)` is a microtask drain, which the code's own promise chain decides.
+    if (timer.singleTurn === true) return value !== 0;
+    return value !== null && value <= 1;
+  }
+  if (ts.isNewExpression(operand) && operand.expression.getText() === 'Promise') {
+    return MACROTASK_TURN.test(operand.getText());
+  }
+  return ts.isCallExpression(operand) && calleeName(operand) === 'setImmediate';
+}
+
+/** The operand a function's whole body awaits or returns, for a body that is one expression. */
+function soleOperand(body: ts.ConciseBody): ts.Expression | undefined {
+  if (!ts.isBlock(body)) return body;
+  const statement = body.statements.length === 1 ? body.statements[0] : undefined;
+  const expression =
+    statement !== undefined &&
+    (ts.isExpressionStatement(statement) || ts.isReturnStatement(statement))
+      ? statement.expression
+      : undefined;
+  if (expression === undefined) return undefined;
+  const unwrapped = unwrap(expression);
+  return ts.isAwaitExpression(unwrapped) ? unwrapped.expression : expression;
+}
+
+/**
+ * `single-turn-settle`: a pause that lets real work happen without waiting for it. `sleepForTesting(n)`
+ * yields ONE scheduler turn under real timers whatever `n` is, `setImmediate` and `setTimeout(r, 0)`
+ * yield one macrotask, and neither waits for the thing the next step needs, so a loaded host that has
+ * not finished by then breaks the step after it, whether that step is an assertion or an action. A
+ * single-turn yield that something follows must wait on the state or event instead, or carry
+ * `// load-proof: <reason>` saying why nothing load-dependent follows (the work is microtask-only, or
+ * the step is a negative window). Not read: a yield under fake timers, one inside a loop (a poll, which
+ * the loop rules read), one raced against work (`timer-race` reads it), the last statement of a test,
+ * and one in a teardown hook. A same-file helper whose body is a yield (`const settle = () => new
+ * Promise((r) => setTimeout(r, 0))`) is read at each of its calls, where the marker belongs; an
+ * exported one is read at its definition, because its callers are in files this one cannot see.
+ */
+function findSingleTurnSettles(
+  sourceFile: ts.SourceFile,
+  constants: ReadonlyMap<string, ts.Expression>,
+): DeadlineViolation[] {
+  const violations: DeadlineViolation[] = [];
+  const context = timerContext(sourceFile, constants);
+  const report = (node: ts.Node) => {
+    if (!isLoadProof(sourceFile, node)) {
+      violations.push(violation(sourceFile, node, 'single-turn-settle'));
+    }
+  };
+  const isHelperCandidate = (node: ts.Node): node is ts.FunctionLikeDeclaration =>
+    (ts.isArrowFunction(node) || ts.isFunctionExpression(node) || ts.isFunctionDeclaration(node)) &&
+    node.body !== undefined &&
+    // A registered callback, a `new Promise` executor and a timer callback are not helpers.
+    !(
+      ts.isCallExpression(node.parent) ||
+      ts.isNewExpression(node.parent) ||
+      ts.isPropertyAssignment(node.parent)
+    );
+  // The same-file helpers: name -> declaration, for those whose body is a single-turn yield.
+  const helpers = new Map<string, ts.FunctionLikeDeclaration>();
+  walk(sourceFile, (node) => {
+    if (!isHelperCandidate(node)) return;
+    const operand = soleOperand(node.body as ts.ConciseBody);
+    if (operand === undefined || !isSingleTurnYield(operand, context, false)) return;
+    const name = ts.isFunctionDeclaration(node)
+      ? node.name?.text
+      : ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)
+        ? node.parent.name.text
+        : undefined;
+    if (name !== undefined) helpers.set(name, node);
+  });
+  for (const declaration of helpers.values()) report(declaration);
+  const insideHelper = (node: ts.Node) =>
+    ts.findAncestor(node, (ancestor) => [...helpers.values()].includes(ancestor as never)) !==
+    undefined;
+
+  walk(sourceFile, (node) => {
+    if (!ts.isAwaitExpression(node) || insideHelper(node)) return;
+    const nearest = ts.findAncestor(
+      node,
+      (ancestor) => ts.isIterationStatement(ancestor, false) || ts.isFunctionLike(ancestor),
+    );
+    if (nearest !== undefined && ts.isIterationStatement(nearest, false)) return;
+    const raced = ts.findAncestor(
+      node,
+      (ancestor) =>
+        ts.isFunctionLike(ancestor) ||
+        (ts.isCallExpression(ancestor) &&
+          /^Promise\.(race|any)$/.test(unwrap(ancestor.expression).getText())),
+    );
+    if (raced !== undefined && !ts.isFunctionLike(raced)) return;
+    if (!isSingleTurnYield(node.expression, context, isUnderFakeTimers(node))) return;
+    // A test or hook body: a teardown hook checks nothing, and the last statement of a test has
+    // nothing after it to break.
+    const registration =
+      nearest !== undefined && ts.isCallExpression(nearest.parent) && isRegistration(nearest.parent)
+        ? nearest.parent
+        : null;
+    if (registration !== null) {
+      const registrationRoot = chainRoot(registration.expression);
+      if (ts.isIdentifier(registrationRoot) && registrationRoot.text.startsWith('after')) return;
+      const statement = ts.findAncestor(node, ts.isStatement);
+      if (
+        ts.isIdentifier(registrationRoot) &&
+        (registrationRoot.text === 'test' || registrationRoot.text === 'it') &&
+        statement !== undefined &&
+        ts.isBlock(statement.parent) &&
+        statement.parent.statements.at(-1) === statement &&
+        statement.parent.parent === nearest
+      ) {
+        return;
+      }
+    }
+    report(node);
+  });
+  return violations;
+}
+
+/**
+ * `real-timer-double`: a timer stand-in that runs the callback it is given on a REAL zero-delay
+ * timer: `setTimeout: (callback, ms) => { requested.push(ms); return setTimeout(callback, 0); }`.
+ * Such a double makes time pass "at once", but at the next macrotask, so a test that waits for the
+ * double to be ASKED for a timer (`requested.length >= 3`) and then acts races the callback: on a
+ * loaded host the action lands first and the follower sees a different order (the fire-review
+ * follower flake: a subscription "stayed up for the cap" before the cap's callback had run). The
+ * test must wait on the callback having RUN (a count of fired timers, an empty set of pending
+ * handles) and says so in `// load-proof: <reason>` above the double. A double that forwards to an
+ * injected manual runtime is virtual and is not read.
+ */
+function findRealTimerDoubles(
+  sourceFile: ts.SourceFile,
+  constants: ReadonlyMap<string, ts.Expression>,
+): DeadlineViolation[] {
+  const violations: DeadlineViolation[] = [];
+  walk(sourceFile, (node) => {
+    if (!(
+      ts.isArrowFunction(node) ||
+      ts.isFunctionExpression(node) ||
+      ts.isMethodDeclaration(node)
+    ))
+      return;
+    if (ts.isNewExpression(node.parent) || node.body === undefined) return;
+    const callback = node.parameters[0]?.name;
+    if (callback === undefined || !ts.isIdentifier(callback) || node.parameters.length < 2) return;
+    let found: ts.CallExpression | undefined;
+    walk(node.body, (child) => {
+      if (!ts.isCallExpression(child)) return;
+      if (!/^(globalThis\.)?setTimeout$/.test(unwrap(child.expression).getText())) return;
+      const [handler, delay] = child.arguments;
+      if (handler === undefined || delay === undefined) return;
+      const value = resolveNumber(delay, constants);
+      if (value === null || value > 1) return;
+      let mentionsCallback = false;
+      walk(handler, (inner) => {
+        if (ts.isIdentifier(inner) && inner.text === callback.text) mentionsCallback = true;
+      });
+      if (mentionsCallback) found = child;
+    });
+    if (found === undefined || isUnderFakeTimers(node) || isLoadProof(sourceFile, node)) return;
+    violations.push(violation(sourceFile, node, 'real-timer-double'));
+  });
+  return violations;
+}
+
+const SETTLE_HELPER_NAME =
+  /^(flush|settle|tick|yield|macrotask|drain|pause|nextTurn|waitOneTurn)\w*$|^sleepForTesting$/i;
+
+/** Whether a loop body does nothing but yield: every statement is `await <a yield or settle call>`. */
+function isYieldOnlyBody(body: ts.Statement): boolean {
+  const statements = ts.isBlock(body) ? body.statements : [body];
+  if (statements.length === 0) return false;
+  return statements.every((statement) => {
+    if (!ts.isExpressionStatement(statement)) return false;
+    const awaited = unwrap(statement.expression);
+    if (!ts.isAwaitExpression(awaited)) return false;
+    const operand = unwrap(awaited.expression);
+    if (isYield(operand)) return true;
+    if (!ts.isCallExpression(operand)) return false;
+    const name = calleeName(operand);
+    return (
+      name !== null && (SETTLE_HELPER_NAME.test(name) || EXPORTED_SINGLE_TURN_YIELDS.has(name))
+    );
+  });
+}
+
+/**
+ * `fixed-count-yield-loop`: `for (let turn = 0; turn < 30; turn++) await flush();` with no exit but
+ * the count. `iteration-cap-wait` reads a loop that leaves early and is capped; this one never
+ * looks at the state at all, so it is a settle written as a loop: it passes when 30 turns happened
+ * to be enough, and the host decides how much work 30 turns hold. Wait for the state with
+ * `waitUntil` or `awakeTurns`, or carry `// load-proof: <reason>` where the turns are not load
+ * (the work is a fixed number of microtask or immediate hops, or it is a negative window).
+ */
+export function findFixedCountYieldLoops(
+  sourceFile: ts.SourceFile,
+  constants: ReadonlyMap<string, ts.Expression>,
+): DeadlineViolation[] {
+  const violations: DeadlineViolation[] = [];
+  walk(sourceFile, (node) => {
+    if (!ts.isForStatement(node) || node.condition === undefined) return;
+    if (!capsAtNumber(node.condition, constants) || hasConditionalExit(node.statement)) return;
+    const { condition } = node;
+    if (
+      ts.isBinaryExpression(unwrap(condition)) &&
+      (unwrap(condition) as ts.BinaryExpression).operatorToken.kind ===
+        ts.SyntaxKind.AmpersandAmpersandToken
+    ) {
+      return;
+    }
+    let breaks = false;
+    walk(node.statement, (child) => {
+      if (ts.isBreakStatement(child) || ts.isReturnStatement(child)) breaks = true;
+    });
+    if (breaks || !isYieldOnlyBody(node.statement)) return;
+    if (isUnderFakeTimers(node) || isLoadProof(sourceFile, node)) return;
+    violations.push(violation(sourceFile, node, 'fixed-count-yield-loop'));
+  });
+  return violations;
+}
+
+const SPAWN_CALLEES = new Set([
+  'spawn',
+  'spawnSync',
+  'exec',
+  'execSync',
+  'execFile',
+  'execFileSync',
+  'fork',
+]);
+
+/**
+ * `direct-bun-spawn`: a test, test-support or fixture module that starts `bun` (`process.execPath`,
+ * `'bun'`, `Bun.which('bun')`) with `Bun.spawn`, `Bun.spawnSync` or a `child_process` function
+ * instead of `spawnWithHangGuard`/`runWithHangGuard`. The guarded spawns put `--no-install` in front
+ * of the child, so a module written outside the workspace cannot install what it imports from the
+ * registry; a direct spawn does not. Pass `--no-install` in the call itself, or carry
+ * `// load-proof: <reason>` where the child cannot reach the registry (it installs on purpose, or only
+ * runs a package-manager command). The hang guard modules that do the injecting are not read.
+ */
+function findDirectBunSpawns(sourceFile: ts.SourceFile): DeadlineViolation[] {
+  if (basename(sourceFile.fileName) === 'hang-guard.ts') return [];
+  const violations: DeadlineViolation[] = [];
+  walk(sourceFile, (node) => {
+    if (!ts.isCallExpression(node)) return;
+    const name = calleeName(node);
+    if (name === null || !SPAWN_CALLEES.has(name)) return;
+    const callee = unwrap(node.expression).getText();
+    if (name === 'spawn' && !/^(Bun\.spawn|spawn|cp\.spawn|childProcess\.spawn)$/.test(callee))
+      return;
+    const [first] = node.arguments;
+    const head =
+      first !== undefined && ts.isArrayLiteralExpression(unwrap(first))
+        ? (unwrap(first) as ts.ArrayLiteralExpression).elements[0]
+        : first;
+    if (head === undefined) return;
+    const headText = head.getText();
+    if (!/^(process\.execPath|'bun'|"bun"|`bun`|Bun\.which\(['"]bun['"]\))/.test(headText)) return;
+    if (node.getText().includes('--no-install') || isLoadProof(sourceFile, node)) return;
+    violations.push(violation(sourceFile, node, 'direct-bun-spawn'));
+  });
+  return violations;
 }
 
 // Yields that hand control to the event loop, so something outside the promise chain (a timer, a
@@ -1125,7 +1439,12 @@ function timerPromiseOf(
     if (delay === undefined) return null;
     if (ts.isIdentifier(callee)) {
       if (context.aliases.has(callee.text)) return { delay, virtual: false };
-      if (SLEEP_NAME.test(callee.text) && !context.injected.has(callee.text)) {
+      // `sleep(10, runtime.timers)` hands its clock in: that is an injected timer, not a real wait.
+      if (
+        SLEEP_NAME.test(callee.text) &&
+        !context.injected.has(callee.text) &&
+        operand.arguments.length <= 1
+      ) {
         return {
           delay,
           virtual: VIRTUAL_SLEEP.has(callee.text),
@@ -1172,29 +1491,6 @@ function timerPromiseOf(
     return found;
   }
   return null;
-}
-
-/**
- * Whether `body` asserts anything after `node`. A pause after which the test only closes what it
- * opened (`ws.close(); await pause(50);` and then nothing) checks nothing about the pause's length;
- * it is a pause before an assertion, or a setup step, that a slow host defeats.
- */
-/**
- * Whether the first assertion after `node` in its block reads as "something happened". A single-turn
- * yield before such an assertion bets that real work finishes inside one scheduler turn.
- */
-function positiveAssertionFollows(sourceFile: ts.SourceFile, node: ts.Node): boolean {
-  if (!ts.isBlock(node.parent)) return false;
-  const siblings = node.parent.statements;
-  for (const next of siblings.slice(siblings.indexOf(node as ts.Statement) + 1)) {
-    const text = next.getText(sourceFile);
-    if (!/\bexpect\(/.test(text)) {
-      if (containsAwait(next)) return false;
-      continue;
-    }
-    return POSITIVE_ASSERTION.test(text) && !/\.not\./.test(text);
-  }
-  return false;
 }
 
 function pausesBeforeAssertion(
@@ -1256,9 +1552,8 @@ function findSleepSynchronization(
       !isRegistration(body.parent) ||
       (timer.virtual && isUnderFakeTimers(node)) ||
       isLoadProof(sourceFile, node) ||
-      !(timer.singleTurn === true
-        ? positiveAssertionFollows(sourceFile, node)
-        : pausesBeforeAssertion(body.parent, body, node))
+      timer.singleTurn === true ||
+      !pausesBeforeAssertion(body.parent, body, node)
     ) {
       return;
     }
@@ -1494,6 +1789,107 @@ export function collectFiles(directory: string, tests: string[], runners: string
   }
 }
 
+// One-turn yields exported by a helper module. A call to one is not read where it is made, because
+// the file that calls it cannot see the yield (`single-turn-settle` reads a same-file helper at its
+// definition). The calls that existed when the rule arrived are counted per file in
+// `single-turn-yield-allowlist.json`, which can only shrink: a new call must wait on the state
+// instead, or carry `// load-proof: <reason>` directly above it.
+const EXPORTED_SINGLE_TURN_YIELDS = new Set([
+  'yieldToEventLoop',
+  'yieldToPortableEventLoop',
+  'yieldEventLoopTurn',
+]);
+const FIXED_COUNT_LOOP_ALLOWLIST = join(import.meta.dir, 'fixed-count-yield-loop-allowlist.json');
+const SINGLE_TURN_YIELD_ALLOWLIST = join(import.meta.dir, 'single-turn-yield-allowlist.json');
+
+/** The calls to an exported one-turn yield helper in `sourceFile` that carry no marker. */
+export function findExportedSingleTurnYieldCalls(sourceFile: ts.SourceFile): DeadlineViolation[] {
+  const violations: DeadlineViolation[] = [];
+  walk(sourceFile, (node) => {
+    if (!ts.isAwaitExpression(node)) return;
+    const operand = unwrap(node.expression);
+    if (!ts.isCallExpression(operand)) return;
+    const name = calleeName(operand);
+    if (name === null || !EXPORTED_SINGLE_TURN_YIELDS.has(name)) return;
+    const nearest = ts.findAncestor(
+      node,
+      (ancestor) => ts.isIterationStatement(ancestor, false) || ts.isFunctionLike(ancestor),
+    );
+    if (nearest !== undefined && ts.isIterationStatement(nearest, false)) return;
+    if (isUnderFakeTimers(node) || isLoadProof(sourceFile, node)) return;
+    violations.push(violation(sourceFile, node, 'single-turn-settle'));
+  });
+  return violations;
+}
+
+/** The same arithmetic for the fixed-count yield loops of one file. */
+export function fixedCountLoopAllowlistFindings(
+  file: string,
+  counted: number,
+  allowed: number,
+): string[] {
+  if (counted > allowed) {
+    return [
+      `${file} — fixed-count-yield-loop — ${counted - allowed} new loop(s) that yield a fixed number of times and look at nothing: wait on the state with waitUntil or awakeTurns, or add \`// load-proof: <reason>\` above the loop; never raise scripts/fixed-count-yield-loop-allowlist.json`,
+    ];
+  }
+  if (counted < allowed) {
+    return [
+      `${file} — fixed-count-yield-loop-allowlist — the allowlist says ${allowed} but the file has ${counted}: lower the entry in scripts/fixed-count-yield-loop-allowlist.json to ${counted}${counted === 0 ? ' (delete it)' : ''}`,
+    ];
+  }
+  return [];
+}
+
+/**
+ * The entries of an allowlist that are higher than the same allowlist on `origin/main`. A ratchet
+ * that only compares the file with itself lets a reviewed edit raise a count; this one refuses any
+ * count above the baseline. A baseline that is missing (the file is new, or there is no
+ * `origin/main`) refuses nothing.
+ */
+export function allowlistRaises(
+  name: string,
+  current: Record<string, number>,
+  baseline: Record<string, number> | null,
+): string[] {
+  if (baseline === null) return [];
+  return Object.entries(current)
+    .filter(([file, count]) => count > (baseline[file] ?? 0))
+    .map(
+      ([file, count]) =>
+        `${file} — ${name}-raise — the allowlist now allows ${count} where origin/main allows ${baseline[file] ?? 0}: an allowlist only shrinks; wait on the state or mark the site instead`,
+    );
+}
+
+function baselineAllowlist(path: string): Record<string, number> | null {
+  const shown = Bun.spawnSync(['git', 'show', `origin/main:${path}`], { cwd: root });
+  if (shown.exitCode !== 0) return null;
+  try {
+    return JSON.parse(shown.stdout.toString()) as Record<string, number>;
+  } catch {
+    return null;
+  }
+}
+
+/** The allowlist findings for one file: more calls than it allows, or an entry that is now too high. */
+export function singleTurnYieldAllowlistFindings(
+  file: string,
+  counted: number,
+  allowed: number,
+): string[] {
+  if (counted > allowed) {
+    return [
+      `${file} — single-turn-settle — ${counted - allowed} new call(s) to an exported one-turn yield (${[...EXPORTED_SINGLE_TURN_YIELDS].join(', ')}): wait on the state or event instead, or add \`// load-proof: <reason>\` above the call; never raise scripts/single-turn-yield-allowlist.json`,
+    ];
+  }
+  if (counted < allowed) {
+    return [
+      `${file} — single-turn-yield-allowlist — the allowlist says ${allowed} but the file has ${counted}: lower the entry in scripts/single-turn-yield-allowlist.json to ${counted}${counted === 0 ? ' (delete it)' : ''}`,
+    ];
+  }
+  return [];
+}
+
 // Real-browser smoke tests run only when this flag is set; none of `check`, `validate` or the
 // dev container sets it, so their Playwright launch and wait budgets are not blocking deadlines.
 const OPT_IN_BROWSER_GATE = /WEFT_BROWSER_SMOKE/;
@@ -1515,10 +1911,49 @@ async function scan(): Promise<string[]> {
       helperBudgets.set(name, [...new Set([...(helperBudgets.get(name) ?? []), ...positions])]);
     }
   }
+  const allowlist = (await Bun.file(SINGLE_TURN_YIELD_ALLOWLIST).json()) as Record<string, number>;
+  const counted = new Map<string, number>();
+  const countedLoops = new Map<string, number>();
+  const loopAllowlist = (await Bun.file(FIXED_COUNT_LOOP_ALLOWLIST).json()) as Record<
+    string,
+    number
+  >;
   for (const { path, sourceFile } of parsed) {
     for (const found of findDeadlineViolations(sourceFile, helperBudgets)) {
       findings.push(`${relative(root, path)}:${found.line} — ${found.rule} — ${found.text}`);
     }
+    const yields = findExportedSingleTurnYieldCalls(sourceFile).length;
+    if (yields > 0) counted.set(relative(root, path), yields);
+    const loops = findFixedCountYieldLoops(sourceFile, collectConstants(sourceFile)).length;
+    if (loops > 0) countedLoops.set(relative(root, path), loops);
+  }
+  for (const file of [
+    ...new Set([...countedLoops.keys(), ...Object.keys(loopAllowlist)]),
+  ].toSorted()) {
+    findings.push(
+      ...fixedCountLoopAllowlistFindings(
+        file,
+        countedLoops.get(file) ?? 0,
+        loopAllowlist[file] ?? 0,
+      ),
+    );
+  }
+  findings.push(
+    ...allowlistRaises(
+      'single-turn-yield-allowlist',
+      allowlist,
+      baselineAllowlist('scripts/single-turn-yield-allowlist.json'),
+    ),
+    ...allowlistRaises(
+      'fixed-count-yield-loop-allowlist',
+      loopAllowlist,
+      baselineAllowlist('scripts/fixed-count-yield-loop-allowlist.json'),
+    ),
+  );
+  for (const file of [...new Set([...counted.keys(), ...Object.keys(allowlist)])].toSorted()) {
+    findings.push(
+      ...singleTurnYieldAllowlistFindings(file, counted.get(file) ?? 0, allowlist[file] ?? 0),
+    );
   }
 
   for (const path of runners.toSorted()) {

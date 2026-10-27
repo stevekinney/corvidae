@@ -24,6 +24,7 @@ function withImmediateTimers<T>(run: () => T): T {
  * `withImmediateTimers` has restored the original) so every microtask the
  * validation promise chain scheduled has drained by the time we return.
  */
+// load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
 function flushValidation(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }

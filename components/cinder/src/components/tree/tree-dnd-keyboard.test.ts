@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { Snippet } from 'svelte';
-import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte';
+import { createRawSnippet, flushSync, mount, unmount } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 import type { TreeReorderTarget } from '../../_internal/tree-drag-controller.svelte.ts';
@@ -74,11 +74,6 @@ function dragHandle(container: HTMLElement, label: string): HTMLButtonElement {
   const handle = item.querySelector<HTMLButtonElement>('.cinder-tree-item__drag-handle');
   if (!handle) throw new Error(`Missing drag handle: ${label}`);
   return handle;
-}
-
-async function flushLiveRegion(): Promise<void> {
-  await new Promise<void>((resolve) => setTimeout(resolve, 0));
-  await tick();
 }
 
 function renderTree(
@@ -182,8 +177,9 @@ describe('Tree drag-and-drop reorder', () => {
       expect(handle.getAttribute('aria-pressed')).toBe('true');
       expect(treeItem(container, 'Alpha').hasAttribute('data-cinder-dragging')).toBe(true);
     });
-    await flushLiveRegion();
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Alpha, lifted');
+    await waitFor(() =>
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain('Alpha, lifted'),
+    );
   });
 
   test('ArrowDown then Space drops after the next visible item', async () => {

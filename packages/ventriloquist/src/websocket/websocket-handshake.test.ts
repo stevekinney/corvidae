@@ -104,6 +104,7 @@ describe('a successful handshake', () => {
         const client = connect(harness);
         await client.opened;
         client.hello();
+        // load-proof: a negative window: the assertions that follow are that nothing was created, and load can delay a creation but never cause one
         await Bun.sleep(0);
         expect(created).toBe(0);
         expect(harness.slot.current).toBeUndefined();
@@ -246,6 +247,7 @@ describe('a refused handshake', () => {
           expect(client.frames).toEqual([]);
           expect(created).toBe(0);
           expect(harness.slot.current).toBeUndefined();
+          // load-proof: a negative window: the assertion that follows is that no connection exists, and load can delay one but never create it
           await Bun.sleep(0);
           expect(harness.terminal.connectionCount).toBe(0);
         },
@@ -434,6 +436,7 @@ describe('a refused handshake', () => {
         const client = connect(harness);
         await client.opened;
         client.hello();
+        // load-proof: the hello reaches the pending authorization inside the promise chain on the in-memory harness; closing before or after that step ends the same way
         await Bun.sleep(0);
         client.socket.close(1000);
         await harness.closesHandled(1);

@@ -55,6 +55,7 @@ describe('DeletePanel', () => {
     await findByRole('dialog');
     await fireEvent.click(getByText('Delete'));
 
+    // load-proof: the stubbed fetch resolves in memory, so the request is issued inside the click handler promise chain
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(activeStub.calls).toHaveLength(1);
     expect(activeStub.calls[0]?.method).toBe('DELETE');

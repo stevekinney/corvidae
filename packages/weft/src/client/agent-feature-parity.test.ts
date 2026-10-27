@@ -1,4 +1,4 @@
-import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '../testing/fake-timers.test-support.ts';
 /**
  * Agent feature parity tests.
  *
@@ -137,7 +137,13 @@ function agentFeatureTests(getClient: () => WeftClient, getEngine: () => Engine,
       const handle = await client.start('streaming', null);
       // Workflow pauses on a signal after streaming so chunks are still in
       // storage (cleanup runs on terminal state).
-      await sleepForTesting(20);
+      await waitForCondition(
+        async () => {
+          const storedChunks = await client.getStreamChunks(handle.id, 'report');
+          return storedChunks.length === 3;
+        },
+        { label: 'the streamed chunks to be stored' },
+      );
 
       const chunks = await client.getStreamChunks(handle.id, 'report');
       expect(chunks).toHaveLength(3);

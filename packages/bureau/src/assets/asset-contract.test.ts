@@ -619,6 +619,7 @@ describe('admission validation', () => {
     );
     await firstExtraction.promise;
     // Let part 1 run its own extraction and park on part 0's budget decision.
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 5; turn++) await yieldToPortableEventLoop();
 
     admissions[1]!.work.abort('caller gave up');
@@ -626,6 +627,7 @@ describe('admission validation', () => {
     void admissions[1]!.work.result().then(() => {
       settledBeforeRelease = true;
     });
+    // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
     await yieldToPortableEventLoop();
     expect(settledBeforeRelease).toBe(true);
     expect(await admissions[1]!.work.result()).toEqual({

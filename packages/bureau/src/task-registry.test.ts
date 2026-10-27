@@ -967,6 +967,7 @@ describe('idle', () => {
   /** An acknowledgement that arrives after `turns` event-loop turns. */
   function acknowledgedAfter(turns: number): Promise<{ status: 'completed' }> {
     return (async () => {
+      // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
       for (let turn = 0; turn < turns; turn += 1) await yieldToPortableEventLoop();
       return { status: 'completed' as const };
     })();

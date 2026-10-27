@@ -25,6 +25,7 @@ function rawSnippet(markup: string) {
   }));
 }
 
+// load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
 async function flushEffects(): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
 }

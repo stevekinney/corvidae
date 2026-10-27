@@ -1176,6 +1176,7 @@ for (const mode of MULTI_ENGINE_MODES) {
         await engine1[Symbol.asyncDispose]();
         await drive;
         // Let any queued process warning flush before asserting there was none.
+        // load-proof: negative window: asserts no claim-lost warning is emitted after disposal; load can only delay a warning, never produce one
         await new Promise<void>((resolve) => setImmediate(resolve));
 
         expect(warnings).not.toContain('WeftWorkflowClaimLostWarning');

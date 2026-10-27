@@ -38,6 +38,7 @@ describe('Drawer', () => {
       children: emptySnippet,
     };
     const { container, rerender } = render(Drawer, { props });
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     // Begin closing (panel goes inert, focus falls back to document.body)…
@@ -46,6 +47,7 @@ describe('Drawer', () => {
     // …then reopen BEFORE the exit transition finishes.
     openValue = true;
     await rerender(props);
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     const body = requiredInstance(container.querySelector('.cinder-drawer__body'), HTMLElement);

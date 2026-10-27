@@ -365,7 +365,9 @@ describe('runStdioSession — engine-backed integration', () => {
       await engine.signal(handle.id, 'release', 'done');
       await waitForStatus(engine, handle.id, 'completed');
 
+      // load-proof: negative window for a late rejection: load can only delay an unhandled rejection, never produce one earlier, so the absence check cannot flip
       await new Promise<void>((resolve) => setImmediate(resolve));
+      // load-proof: negative window for a late rejection: load can only delay an unhandled rejection, never produce one earlier, so the absence check cannot flip
       await new Promise<void>((resolve) => setImmediate(resolve));
 
       function findPostCloseDeliver(): unknown {

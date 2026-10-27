@@ -767,6 +767,7 @@ describe('createLeaseManager', () => {
       throwOnNow = false; // let release() compute its own clock value normally
       // release() awaits the (contained) in-flight renewal and must still resolve.
       expect(await manager.release()).toBe(true);
+      // load-proof: negative window: asserts no unhandled rejection follows release(); load can only delay a rejection, never produce one earlier
       await new Promise((resolve) => setImmediate(resolve));
       expect(unhandled).toEqual([]);
     } finally {

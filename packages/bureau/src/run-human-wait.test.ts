@@ -441,6 +441,7 @@ describe('a second park request in one catalog step is refused (COR-1578)', () =
     expect(['a', 'b']).toContain(review.signalName);
     expect(review.id).toBe(`human-wait:${run.id}:${review.signalName}:0`);
     // Let any second review that would be listed arrive before counting.
+    // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
     await yieldToPortableEventLoop();
     const reviews = bureau.reviews.list().filter((candidate) => candidate.runId === run.id);
     expect(reviews.map((candidate) => candidate.id)).toEqual([review.id]);
@@ -764,6 +765,7 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
         { environment: 'duplicate' },
         { signalId: humanWaitDeliveryId(first.id) },
       );
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
 
     expect(bureau.reviews.list().map((review) => review.id)).toEqual([

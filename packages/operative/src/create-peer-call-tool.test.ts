@@ -228,6 +228,7 @@ describe('createPeerCallTool', () => {
     expect(first?.status).toBe('running');
     peer.client.send = send;
     registry.abortChild(first?.id ?? '', 'operator');
+    // load-proof: the abort handler and the scripted peer cancel inside the promise chain, with no timer or I/O pending, so a macrotask only drains continuations that a microtask drain would
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(registry.children()[0]?.status).toBe('aborted');
     expect(peer.cancels).toEqual(['operator']);
@@ -238,6 +239,7 @@ describe('createPeerCallTool', () => {
     const { registry, call } = setup(peer);
     await rejection(call({ message: 'find it' }));
     registry.abortChild(registry.children()[0]?.id ?? '', 'operator');
+    // load-proof: the abort handler and the scripted peer cancel inside the promise chain, with no timer or I/O pending, so a macrotask only drains continuations that a microtask drain would
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     await rejection(call({ message: 'the blue one', taskId: 'task-1', contextId: 'context-1' }));
@@ -304,6 +306,7 @@ describe('createPeerCallTool', () => {
     expect(events).toEqual(['started']);
 
     registry.abortChild(child?.id ?? '', 'operator');
+    // load-proof: the abort handler and the scripted peer cancel inside the promise chain, with no timer or I/O pending, so a macrotask only drains continuations that a microtask drain would
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(peer.cancels).toEqual(['operator']);

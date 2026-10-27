@@ -9,7 +9,7 @@ setupHappyDom();
 
 const nativeDataTransfer = globalThis.DataTransfer;
 
-const { render, fireEvent, cleanup, screen } = await import('@testing-library/svelte');
+const { render, fireEvent, cleanup, screen, waitFor } = await import('@testing-library/svelte');
 
 // Unmount renders between tests; shared document.body otherwise leaks activeElement/nodes.
 afterEach(() => {
@@ -571,6 +571,7 @@ describe('FileUpload validation and events', () => {
       },
     });
     input = requiredInstance(container.querySelector('#upload'), HTMLInputElement);
+    // load-proof: the component copies controlled files to the native input in a queueMicrotask, so draining the microtask queue is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     attachInputFiles(input, [selectedFile]);
@@ -627,9 +628,8 @@ describe('FileUpload validation and events', () => {
     await fireEvent.click(input);
     attachInputFiles(input, []);
     window.dispatchEvent(new Event('focus'));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(Array.from(input.files ?? [])).toEqual([firstFile]);
+    // The picker-return fallback restores the queue from a timer of its own.
+    await waitFor(() => expect(Array.from(input.files ?? [])).toEqual([firstFile]));
   });
 
   test('picker focus return restores the latest controlled queue', async () => {
@@ -641,14 +641,13 @@ describe('FileUpload validation and events', () => {
       props: { id: 'upload', multiple: true, files: [firstEntry] },
     });
     const input = requiredInstance(result.container.querySelector('#upload'), HTMLInputElement);
+    // load-proof: the component copies controlled files to the native input in a queueMicrotask, so draining the microtask queue is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     await fireEvent.click(input);
     await result.rerender({ id: 'upload', multiple: true, files: [secondEntry] });
     window.dispatchEvent(new Event('focus'));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(Array.from(input.files ?? [])).toEqual([secondFile]);
+    await waitFor(() => expect(Array.from(input.files ?? [])).toEqual([secondFile]));
   });
 
   test('single-file mode synchronizes only the first controlled entry to the native input', async () => {
@@ -665,6 +664,7 @@ describe('FileUpload validation and events', () => {
     });
     const input = requiredInstance(container.querySelector('#upload'), HTMLInputElement);
 
+    // load-proof: the component copies controlled files to the native input in a queueMicrotask, so draining the microtask queue is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(Array.from(input.files ?? [])).toEqual([firstFile]);
@@ -683,6 +683,7 @@ describe('FileUpload validation and events', () => {
       props: { id: 'upload', multiple: true, maxFiles: 3, files },
     });
     const input = requiredInstance(container.querySelector('#upload'), HTMLInputElement);
+    // load-proof: the component copies controlled files to the native input in a queueMicrotask, so draining the microtask queue is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(Array.from(input.files ?? [])).toEqual([firstFile, secondFile, thirdFile]);
 
@@ -835,10 +836,12 @@ describe('FileUpload validation and events', () => {
     const { rerender } = render(FileUpload, {
       props: { id: 'upload', files: [entry] },
     });
+    // load-proof: the component copies controlled files to the native input in a queueMicrotask, so draining the microtask queue is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
     const constructionsAfterSynchronization = constructions;
 
     await rerender({ id: 'upload', files: [{ ...entry, status: 'uploading', progress: 25 }] });
+    // load-proof: the component copies controlled files to the native input in a queueMicrotask, so draining the microtask queue is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(constructionsAfterSynchronization).toBeGreaterThan(0);
@@ -937,10 +940,12 @@ describe('FileUpload validation and events', () => {
     attachInputFiles(input, [firstFile]);
     await fireEvent.change(input);
     await fireEvent.click(container.querySelector('button[aria-label="Remove first.txt"]')!);
+    // load-proof: onFilesChange runs synchronously from the click and change handlers, so only the Svelte microtask flush is pending
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(onFilesChange).toHaveBeenLastCalledWith([]);
     attachInputFiles(input, [replacementFile]);
     await fireEvent.change(input);
+    // load-proof: onFilesChange runs synchronously from the click and change handlers, so only the Svelte microtask flush is pending
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(onFilesChange).toHaveBeenLastCalledWith([
@@ -1027,6 +1032,7 @@ describe('FileUpload validation and events', () => {
       },
     });
     input = requiredInstance(container.querySelector('#upload'), HTMLInputElement);
+    // load-proof: the component copies controlled files to the native input in a queueMicrotask, so draining the microtask queue is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     const firstRemoveButton = requiredInstance(
@@ -1093,15 +1099,16 @@ describe('FileUpload validation and events', () => {
     firstRemoveButton.focus();
 
     await fireEvent.click(firstRemoveButton);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(document.activeElement).toBe(
-      result.container.querySelector('.cinder-file-upload__remove'),
-    );
-    expect(result.container.querySelector('[aria-live="polite"]')?.textContent).toContain(
-      'first.txt removed',
-    );
+    // The consumer adopts the removal from its own timer, then the live region announces on another.
+    await waitFor(() => {
+      expect(
+        document.activeElement === result.container.querySelector('.cinder-file-upload__remove'),
+      ).toBe(true);
+      expect(result.container.querySelector('[aria-live="polite"]')?.textContent).toContain(
+        'first.txt removed',
+      );
+    });
   });
 
   test('an asynchronously removed last controlled row focuses browse', async () => {
@@ -1125,11 +1132,12 @@ describe('FileUpload validation and events', () => {
     removeButton.focus();
 
     await fireEvent.click(removeButton);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(document.activeElement).toBe(
-      result.container.querySelector('.cinder-file-upload__button'),
+    // The consumer adopts the removal from a timer of its own.
+    await waitFor(() =>
+      expect(
+        document.activeElement === result.container.querySelector('.cinder-file-upload__button'),
+      ).toBe(true),
     );
   });
 
@@ -1146,10 +1154,11 @@ describe('FileUpload validation and events', () => {
     rerender = result.rerender;
 
     await fireEvent.click(result.container.querySelector('.cinder-file-upload__remove')!);
-    await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(result.container.querySelector('[aria-live="polite"]')?.textContent).toContain(
-      'report.txt removed',
+    await waitFor(() =>
+      expect(result.container.querySelector('[aria-live="polite"]')?.textContent).toContain(
+        'report.txt removed',
+      ),
     );
   });
 
@@ -1206,6 +1215,7 @@ describe('FileUpload validation and events', () => {
       props: { id: 'upload', form: 'controlled-upload-form', files: [entry] },
     });
     const input = requiredInstance(container.querySelector('#upload'), HTMLInputElement);
+    // load-proof: the component copies controlled files to the native input in a queueMicrotask, so draining the microtask queue is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(Array.from(input.files ?? [])).toEqual([file]);
 
@@ -1225,11 +1235,13 @@ describe('FileUpload validation and events', () => {
       props: { controlledFiles: [firstEntry], nextControlledFiles: [secondEntry] },
     });
     const input = requiredInstance(container.querySelector('#upload'), HTMLInputElement);
+    // load-proof: the component copies controlled files to the native input in a queueMicrotask, so draining the microtask queue is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(Array.from(input.files ?? [])).toEqual([firstFile]);
     attachInputFiles(input, []);
 
     await fireEvent.click(container.querySelector('[data-testid="update-files-and-reset"]')!);
+    // load-proof: the form reset handler and the native input copy are microtasks, so draining the microtask queue is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(Array.from(input.files ?? [])).toEqual([secondFile]);
@@ -1245,6 +1257,7 @@ describe('FileUpload validation and events', () => {
     const form = document.createElement('form');
     form.id = 'external-upload-form';
     document.body.append(form);
+    // load-proof: input.form resolves from the DOM on read, so only the Svelte microtask flush is pending
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(input.form).toBe(form);
 
@@ -1271,6 +1284,7 @@ describe('FileUpload validation and events', () => {
     const input = requiredInstance(container.querySelector('#upload'), HTMLInputElement);
 
     await rerender({ id: 'upload', form: 'second-upload-form', onFilesChange });
+    // load-proof: input.form resolves from the DOM on read, so only the Svelte microtask flush is pending
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(input.form).toBe(secondForm);
     attachInputFiles(input, [file]);
@@ -1389,9 +1403,10 @@ describe('FileUpload drag state and accessibility', () => {
       HTMLDivElement,
     );
     await fireEvent(dropzone, createDropEvent('drop', files));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    const liveRegion = container.querySelector('.cinder-sr-only[aria-live="polite"]');
-    expect(liveRegion?.textContent).toContain('1 file accepted, 1 rejected');
+    await waitFor(() => {
+      const liveRegion = container.querySelector('.cinder-sr-only[aria-live="polite"]');
+      expect(liveRegion?.textContent).toContain('1 file accepted, 1 rejected');
+    });
   });
 
   test('the input remains keyboard-focusable', () => {
@@ -1666,11 +1681,12 @@ describe('FileUpload file list rendering', () => {
     retryButton.focus();
 
     await fireEvent.click(retryButton);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(document.activeElement).toBe(
-      result.container.querySelector('.cinder-file-upload__button'),
+    // The consumer adopts the retry from a timer of its own.
+    await waitFor(() =>
+      expect(
+        document.activeElement === result.container.querySelector('.cinder-file-upload__button'),
+      ).toBe(true),
     );
   });
 

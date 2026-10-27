@@ -97,6 +97,7 @@ describe('Portal', () => {
     expect(wrapper?.getAttribute('data-theme')).toBe('dark');
 
     document.documentElement.setAttribute('data-theme', 'light');
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(wrapper?.getAttribute('data-theme')).toBe('light');
@@ -125,6 +126,7 @@ describe('Portal', () => {
     expect(wrapper?.getAttribute('dir')).toBe('rtl');
 
     scopedAncestor.removeAttribute('dir');
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(wrapper?.getAttribute('dir')).toBe('ltr');
@@ -191,6 +193,7 @@ describe('Portal', () => {
     expect(wrapper?.hasAttribute('data-theme')).toBe(false);
 
     scopedAncestor.setAttribute('data-theme', 'dark');
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(wrapper?.getAttribute('data-theme')).toBe('dark');
@@ -216,6 +219,7 @@ describe('Portal', () => {
     expect(wrapper?.getAttribute('data-theme')).toBe('dark');
 
     host.setAttribute('data-theme', 'light');
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(wrapper?.getAttribute('data-theme')).toBe('light');

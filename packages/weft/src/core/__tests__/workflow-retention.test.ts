@@ -306,6 +306,7 @@ describe('workflow retention', () => {
     expect(overview.defaultRetention).toBeNull();
     expect(overview.nextSweepAt).toBeNull();
 
+    // load-proof: negative window: asserts the workflow record is retained when no retention is configured; load can only delay a sweep, never run one
     await sleepForTesting(50);
     expect(await engine.get(handle.id)).not.toBeNull();
 

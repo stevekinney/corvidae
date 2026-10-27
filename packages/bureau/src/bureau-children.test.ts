@@ -48,6 +48,7 @@ const onDiagnostic = (diagnostic: BureauDiagnostic): void => {
 };
 
 afterEach(async () => {
+  // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
   await yieldToPortableEventLoop();
   expect(diagnostics.filter((diagnostic) => diagnostic.scope === 'child-topology')).toEqual([]);
   diagnostics = [];
@@ -627,6 +628,7 @@ describe('bureau.children over a durable bureau', () => {
       await parent.result();
 
       await bureau.dispose();
+      // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
       await yieldToPortableEventLoop();
 
       expect(

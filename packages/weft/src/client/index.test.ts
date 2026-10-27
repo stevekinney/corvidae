@@ -1563,6 +1563,7 @@ describe('HttpClient request surface', () => {
     handle.addEventListener('workflow:completed', () => {
       completedCounts.second += 1;
     });
+    // load-proof: negative window: asserts no further socket or events call follows the terminal event; load can only delay one, never create it
     await sleepForTesting(10);
 
     expect(wsServer.sockets.length).toBe(socketsAfterTerminal);

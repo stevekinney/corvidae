@@ -1,4 +1,5 @@
-import { sleepForTesting, waitForCondition } from '../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '../testing/fake-timers.test-support.ts';
+import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
 /**
  * End-to-end crash recovery tests.
  *
@@ -26,7 +27,7 @@ import { DEFAULT_WORKFLOW_VERSION, VersionMismatchError } from './versioning.ts'
 
 /** Drain microtasks so fire-and-forget work completes. */
 async function flush(): Promise<void> {
-  await sleepForTesting(10);
+  await settleInlineLaunches();
 }
 
 function createStoredWorkflowState(

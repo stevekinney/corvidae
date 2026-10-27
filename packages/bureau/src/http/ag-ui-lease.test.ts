@@ -133,6 +133,7 @@ describe('a lease', () => {
       const releasing = held!.release();
       // Long enough for a release that does not wait to have read the record the renewal
       // is about to replace.
+      // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
       for (let turn = 0; turn < 3; turn += 1) await new Promise((resolve) => setImmediate(resolve));
       renewalMayLand.resolve();
       await renewing;

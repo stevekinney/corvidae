@@ -32,12 +32,17 @@ async function invokeFleetSubscription(
   liveEvents: readonly FleetEventEnvelope[] = [],
 ) {
   const fleetFeed = {
-    subscribe(options?: { filterEnvelope?: (envelope: FleetEventEnvelope) => boolean }) {
+    subscribe(options?: {
+      filterEnvelope?: (envelope: FleetEventEnvelope) => boolean;
+      fromCursor?: string;
+    }) {
       return (async function* subscriptionEvents() {
         const shouldDeliver = (event: FleetEventEnvelope): boolean =>
           options?.filterEnvelope?.(event) ?? true;
         const replayTail = replayEvents.reduce((tail, event) => Math.max(tail, event.sequence), -1);
+        const fromCursor = Number(options?.fromCursor ?? '-1');
         for (const event of replayEvents) {
+          if (event.sequence <= fromCursor) continue;
           if (shouldDeliver(event)) yield event;
         }
         for (const event of liveEvents) {
@@ -171,6 +176,25 @@ describe('weft.events.subscribe operation', () => {
     await subscription.close();
   });
 
+  it('delivers catalog and workflow-source events, then replays them after reconnecting from a cursor', async () => {
+    const events = [
+      fleetEvent(0, { kind: 'catalog:revision-installed', workflowId: undefined }),
+      fleetEvent(1, { kind: 'workflow-source:load-ready', workflowId: undefined }),
+    ];
+    const first = await invokeFleetSubscription({ fromCursor: '-1' }, events);
+    expect(hasFleetEventIterable(first)).toBe(true);
+    if (!hasFleetEventIterable(first)) throw new Error('expected first subscription result');
+    expect(await collectSequences(first.iterable)).toEqual([0, 1]);
+    await first.close();
+
+    const reconnect = await invokeFleetSubscription({ fromCursor: '0' }, events);
+    expect(hasFleetEventIterable(reconnect)).toBe(true);
+    if (!hasFleetEventIterable(reconnect))
+      throw new Error('expected reconnect subscription result');
+    expect(await collectSequences(reconnect.iterable)).toEqual([1]);
+    await reconnect.close();
+  });
+
   it('still accepts a bare kind, unchanged for existing callers', async () => {
     const started = fleetEvent(1, { kind: 'workflow:started' });
     const completed = fleetEvent(2, { kind: 'workflow:completed' });
@@ -278,6 +302,7 @@ describe('weft.events.subscribe operation', () => {
 
     const iterator = subscription.iterable[Symbol.asyncIterator]();
     const nextEnvelope = iterator.next();
+    // load-proof: the iterator is pending on in-memory storage before this yield returns, so the append is ordered after it by microtasks, not by timing
     await new Promise<void>((resolve) => setImmediate(resolve));
 
     await fleetFeed.append({

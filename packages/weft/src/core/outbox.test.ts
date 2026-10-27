@@ -304,8 +304,7 @@ describe('Outbox adapter runner', () => {
     let stateDuringSend: string | undefined;
     const release = adapter.block();
     const pending = outbox.deliverNext();
-    // Let the claim and the attempting commit land, then observe the record.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Wait for the send to reach the adapter (the claim and the attempting commit have landed), then observe the record.
     while (adapter.requests.length === 0) await new Promise((resolve) => setTimeout(resolve, 0));
     const observer = createOutboxFixture({ storage, clock }).outbox;
     stateDuringSend = await fieldOf(observer.receipt(deliveryId), 'state');

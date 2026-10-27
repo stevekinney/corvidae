@@ -324,6 +324,7 @@ describe('GET /v1/subscriptions/:operationName', () => {
     expect(host.closed.count).toBe(0);
 
     disconnect.abort();
+    // load-proof: abort() runs its listeners synchronously and the close handler settles in the promise chain, so a microtask drain observes the close
     await Bun.sleep(0);
 
     expect(host.closed.count).toBe(1);

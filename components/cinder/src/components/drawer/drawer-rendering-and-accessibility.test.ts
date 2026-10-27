@@ -136,6 +136,7 @@ describe('Drawer', () => {
     // Svelte schedules the open-focus effect with tick().then(). In happy-dom,
     // effects run synchronously but the tick().then() microtask needs to drain.
     // Wait for two microtask cycles to ensure both the effect and the tick resolve.
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise((resolve) => setTimeout(resolve, 0));
     const body = requiredInstance(container.querySelector('.cinder-drawer__body'), HTMLElement);
     expect(body).not.toBeNull();

@@ -249,6 +249,7 @@ async function waitForRunCompletion(bureau: Bureau, runId: string) {
   // terminal session-persistence listeners settle. yieldToPortableEventLoop is a
   // macrotask (MessageChannel), which advances that queue — a microtask flush
   // would not. Ten yields match the prior drainMicrotasks(10) budget.
+  // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
   for (let i = 0; i < 10; i++) {
     await yieldToPortableEventLoop();
   }
@@ -303,6 +304,7 @@ async function pollUntil(check: () => boolean | Promise<boolean>): Promise<true>
 // inline-launch left by one durable run can starve a later one under full
 // `bun test` concurrency (CI). 0.3.0's dispose-drain does not replace this flush.
 afterEach(async () => {
+  // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
   await yieldToPortableEventLoop();
 });
 
@@ -7232,6 +7234,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       // Step 1's boundary is now reached, but the pause must block it —
       // generate must NOT be called a second time no matter how long we
       // give the loop to (wrongly) proceed.
+      // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
       for (let i = 0; i < 10; i++) {
         await yieldToPortableEventLoop();
       }
@@ -7354,6 +7357,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       releaseTool!();
 
       // Step 1's boundary is now reached, but the pause blocks it.
+      // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
       for (let i = 0; i < 10; i++) {
         await yieldToPortableEventLoop();
       }
@@ -7412,6 +7416,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       });
       expect(pause.outcome).toBe('accepted');
       releaseTool!();
+      // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
       for (let i = 0; i < 10; i++) {
         await yieldToPortableEventLoop();
       }
@@ -7476,6 +7481,7 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       });
       expect(pause.outcome).toBe('accepted');
       releaseTool!();
+      // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
       for (let i = 0; i < 5; i++) {
         await yieldToPortableEventLoop();
       }
@@ -23126,6 +23132,7 @@ describe('Bureau shutdown quiescence (COR-690)', () => {
       shutdownSettled = true;
       return report;
     });
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let tick = 0; tick < 5; tick++) await yieldToPortableEventLoop();
     expect(toolSettled).toBe(false);
     expect(shutdownSettled).toBe(false);

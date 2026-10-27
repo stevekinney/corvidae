@@ -107,6 +107,7 @@ describe('Portal', () => {
     });
     await tick();
     document.documentElement.setAttribute('data-theme', 'dark');
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(wrapper?.getAttribute('data-theme')).toBe('light');
@@ -135,6 +136,7 @@ describe('Portal', () => {
     expect(wrapper?.getAttribute('data-theme')).toBe('light');
 
     document.documentElement.setAttribute('data-theme', 'contrast');
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(wrapper?.getAttribute('data-theme')).toBe('contrast');
@@ -170,6 +172,7 @@ describe('Portal', () => {
 
     document.documentElement.setAttribute('data-theme', 'contrast');
     document.documentElement.setAttribute('data-cinder-theme', 'light');
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(wrapper?.hasAttribute('data-theme')).toBe(false);
@@ -196,6 +199,7 @@ describe('Portal', () => {
     });
     await tick();
     document.documentElement.setAttribute('data-theme', 'light');
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(wrapper?.getAttribute('data-theme')).toBe('dark');

@@ -237,6 +237,7 @@ describe('RoutingDialog — one invocation at a time', () => {
 
     // The first preview finishes late, with its own generation and message.
     releaseFirst({ valid: true, message: 'Ready for build-a.', currentGeneration: 99 });
+    // load-proof: the scripted JSON-RPC fetch resolves in memory, so the call is issued inside the click handler promise chain
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(view.queryByText('Ready for build-a.')).toBeNull();

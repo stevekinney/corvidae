@@ -1,6 +1,6 @@
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -26,6 +26,16 @@ async function runPrettierOverridesProbe(): Promise<{
     '| Name | Description |\n' +
     '| --- | --- |\n' +
     '| `RunStepDetail` | A detail with enough prose to make Prettier want to wrap the table cell when proseWrap is not never. |\n';
+
+  // The probe lives outside the workspace, so nothing above it resolves `prettier`, and a child
+  // that may auto-install would fetch whatever release the registry serves today. Link the root's
+  // copy instead: the child resolves only what the repository locks and never reaches the network.
+  mkdirSync(join(temporaryDirectory, 'node_modules'));
+  symlinkSync(
+    join(repositoryRoot, 'node_modules', 'prettier'),
+    join(temporaryDirectory, 'node_modules', 'prettier'),
+    'dir',
+  );
 
   writeFileSync(
     scriptPath,

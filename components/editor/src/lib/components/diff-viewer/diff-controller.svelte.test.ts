@@ -48,16 +48,18 @@ describe('createDiffController tier boundaries (default thresholds)', () => {
 
 describe('createDiffController gating after the debounce fires', () => {
   const small = { manualThreshold: 10, debouncedThreshold: 5, debounceMs: 0 };
-  const settle = async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await tick();
-  };
-
   test('a document at the manual threshold is never computed on its own', async () => {
-    const controller = await mount('a'.repeat(10), small);
-    await settle();
-    expect(controller.state.isStale).toBe(true);
-    expect(controller.state.diffs).toEqual([]);
+    const clock = installFakeClock();
+    try {
+      const controller = await mount('a'.repeat(10), small);
+      // A gated document is never scheduled, so no amount of fake time computes it.
+      clock.advance(1_000);
+      await tick();
+      expect(controller.state.isStale).toBe(true);
+      expect(controller.state.diffs).toEqual([]);
+    } finally {
+      clock.restore();
+    }
   });
 
   test('a document at the debounced threshold waits for the debounce instead of computing at once', async () => {
@@ -76,10 +78,16 @@ describe('createDiffController gating after the debounce fires', () => {
   });
 
   test('a document one unit below the manual threshold is computed after the debounce', async () => {
-    const controller = await mount('a'.repeat(9), small);
-    await settle();
-    expect(controller.state.isStale).toBe(false);
-    expect(controller.state.diffs.length).toBeGreaterThan(0);
+    const clock = installFakeClock();
+    try {
+      const controller = await mount('a'.repeat(9), small);
+      clock.advance(0);
+      await tick();
+      expect(controller.state.isStale).toBe(false);
+      expect(controller.state.diffs.length).toBeGreaterThan(0);
+    } finally {
+      clock.restore();
+    }
   });
 });
 

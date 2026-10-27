@@ -86,6 +86,7 @@ describe('a graceful dispose between a run’s error and its durable commit', ()
       claimReleased = true;
     });
     const shuttingDown = harness.bureau.shutdown({ policy: 'detach' });
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let tick = 0; tick < 20; tick += 1) await yieldToPortableEventLoop();
     expect(claimReleased).toBe(false);
     commit.release();

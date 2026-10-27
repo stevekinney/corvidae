@@ -319,11 +319,13 @@ describe('durable steering across two Bureau processes', () => {
       });
       try {
         await runtime.advance(2_000);
+        // load-proof: the manual runtime runs the poll's timer inside advance(), and its reads against the in-memory store are promise continuations that settle in the microtask queue
         await Bun.sleep(0);
         const readsOfOnePoll = sessionReads;
         expect(readsOfOnePoll).toBeGreaterThan(0);
         await runtime.advance(2_000);
         await runtime.advance(2_000);
+        // load-proof: a negative window: the assertion is that no further poll read happened, and load can delay a read but never create one
         await Bun.sleep(0);
         expect(sessionReads).toBe(readsOfOnePoll);
       } finally {

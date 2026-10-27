@@ -49,6 +49,7 @@ describe('the catalogs A2uiSurface declares', () => {
         onDiagnostic: (diagnostic: A2uiDiagnostic) => diagnostics.push(diagnostic),
       },
     });
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(view.container.querySelector('[data-a2ui-id="root"]')).toBeNull();
     expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual(['unsupported-component']);
