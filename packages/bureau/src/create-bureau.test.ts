@@ -13626,7 +13626,7 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
 
       const outcome = await bureau.tasks.events(run.id);
       if ('outcome' in outcome) throw new Error(`expected a page, got ${outcome.outcome}`);
-      expect(outcome.events.map((event) => event.kind)).toEqual(['run.completed']);
+      expect(outcome.events.map((event) => event.kind)).toEqual(['run.completed', 'run.settled']);
       expect(outcome.events[0]?.owner).toEqual({ kind: 'run', id: run.id });
 
       // Same run, same terminal transition, through the audit trail's own
@@ -13841,7 +13841,7 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
         () => received.length > 0,
         'subscribeEventHistory never replayed the recorded run.completed event',
       );
-      expect(received.map((event) => event.kind)).toEqual(['run.completed']);
+      expect(received.map((event) => event.kind)).toEqual(['run.completed', 'run.settled']);
       expect(received[0]?.owner).toEqual({ kind: 'run', id: run.id });
 
       subscription.unsubscribe();
@@ -13886,7 +13886,7 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
       await new Promise<void>((resolve) =>
         createDefaultRuntimeServices().timers.setTimeout(resolve, 50),
       );
-      expect(owned).toEqual(['run.completed']);
+      expect(owned).toEqual(['run.completed', 'run.settled']);
       expect(stolen).toEqual([]);
 
       allowed.unsubscribe();
@@ -14006,7 +14006,10 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
 
       const allowedOutcome = await bureau.tasks.events(run.id, { principal: 'alice' });
       if ('outcome' in allowedOutcome) throw new Error('expected a page');
-      expect(allowedOutcome.events.map((event) => event.kind)).toEqual(['run.completed']);
+      expect(allowedOutcome.events.map((event) => event.kind)).toEqual([
+        'run.completed',
+        'run.settled',
+      ]);
 
       await bureau.shutdown();
     } finally {
@@ -14049,7 +14052,10 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
 
       const withoutPrincipal = await bureau.tasks.events(run.id);
       if ('outcome' in withoutPrincipal) throw new Error('expected a page');
-      expect(withoutPrincipal.events.map((event) => event.kind)).toEqual(['run.completed']);
+      expect(withoutPrincipal.events.map((event) => event.kind)).toEqual([
+        'run.completed',
+        'run.settled',
+      ]);
 
       await bureau.shutdown();
     } finally {
