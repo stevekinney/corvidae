@@ -7,10 +7,10 @@
    * cannot be edited. Below the form the host's own paths are shown, read-only: they are set by the
    * host and are not settings.
    *
-   * The settings are read again every few seconds and when the window regains focus, so a change
-   * made elsewhere shows here. (The Bureau also offers `bureau.settings.events`, but only over a
-   * WebSocket, and the host does not relay `/bureau` WebSockets to a browser, so the page does not
-   * subscribe to it.)
+   * The page subscribes to `bureau.settings.events` over Server-Sent Events (`settings-follower.ts`)
+   * and reads the settings again on each event, so a change made elsewhere shows here as it
+   * happens. It also reads them again when the window regains focus, which is how it catches up
+   * when the stream is down.
    *
    * Owner scoping does not apply: the settings are deployment-wide, and the caller holds the scopes
    * that read and change them (`bureau.settings:read`, `:write`). Whether the Bureau is failing or
@@ -18,15 +18,14 @@
    */
   import { Alert, Button } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
+  import { onMount } from 'svelte';
 
   import { RETRY_LABEL, SETTINGS_COPY, VIEW_COPY } from '../../app/copy.ts';
   import { getSettings, getSettingsSchema } from '../../lib/bureau-settings.ts';
   import { getHostPaths } from '../../lib/host-paths.ts';
   import { queryKeys } from '../../lib/query.ts';
   import SettingsEditor from './settings-editor.svelte';
-
-  /** How often the settings are read again, so a change made elsewhere shows. */
-  const REFRESH_MS = 5_000;
+  import { SettingsFollower } from './settings-follower.ts';
 
   const schema = createQuery(
     () => ({
@@ -42,11 +41,18 @@
     () => ({
       queryKey: queryKeys.settings.snapshot(),
       queryFn: ({ signal }) => getSettings({ signal }),
-      refetchInterval: REFRESH_MS,
       retry: false,
     }),
     undefined,
   );
+
+  // A change made elsewhere reaches the page as an event; the settings are read again on each one,
+  // and once the Bureau accepts the subscription, so none is missed in between.
+  onMount(() => {
+    const follower = new SettingsFollower({ onChange: () => void snapshot.refetch() });
+    follower.start();
+    return () => follower.dispose();
+  });
 
   const hostPaths = createQuery(
     () => ({

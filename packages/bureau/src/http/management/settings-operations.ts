@@ -18,7 +18,14 @@
  * @module settings-operations
  */
 
-import { defineOperation, type OperationFault } from '@lostgradient/weft';
+import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
+import {
+  createReplayAwareClosableIterable,
+  decodeCursor,
+  defineOperation,
+  encodeCursor,
+  type OperationFault,
+} from '@lostgradient/weft';
 import { z } from 'zod';
 
 import type { BureauSettings, SettingsChange } from '../../settings/types.ts';
@@ -28,6 +35,8 @@ import { unaryTransports as transports, unknownKeyPolicy } from './management-sc
 /** What the settings operations read from the handler's `host`. */
 export type BureauSettingsOperationHost = {
   readonly settings: BureauSettings;
+  /** The clock that stamps events; the default runtime's where the handler names none. */
+  readonly runtime?: Pick<RuntimeServices, 'clock'>;
 };
 
 const read = {
@@ -183,20 +192,41 @@ export const settingsUpdateOperation = defineOperation<
   },
 });
 
-const eventsInput = z.object({});
+const eventsInput = z.object({
+  // Checked in the schema, so a malformed cursor is `InvalidParams` on every transport. The cursor
+  // is a settings `revision`, in Weft's cursor encoding, and the SSE `id` of every event.
+  fromCursor: z
+    .string()
+    .min(1)
+    .refine((cursor) => decodeCursor(cursor) !== null, { message: 'Invalid cursor' })
+    .optional(),
+});
 
 const eventsEnvelope = z.object({ subscriptionId: z.string() });
 
 const changeSchema = z.object({
+  kind: z.literal('settings.changed'),
+  /** The change's `revision`, encoded; it resumes the stream through `fromCursor` or `Last-Event-ID`. */
+  cursor: z.string(),
+  emittedAtMs: z.number(),
   revision: z.number().int(),
+  /** The keys the change set; empty for the one catch-up event of a resume, which names no keys. */
   keys: z.array(z.string()),
 });
 
-/** Buffers every change from subscription onward until `signal` aborts. */
+type SettingsChangeEvent = z.infer<typeof changeSchema>;
+
+/**
+ * The events of one subscription. The subscription listens before it reads the current revision,
+ * so no change falls between the two; a buffered change at or below the revision already
+ * delivered is dropped, because revisions only increase.
+ */
 function changesOf(
   settings: BureauSettings,
   signal: AbortSignal,
-): AsyncIterable<z.infer<typeof changeSchema>> {
+  clock: Pick<RuntimeServices['clock'], 'now'>,
+  catchUp: () => SettingsChangeEvent | undefined,
+): AsyncIterable<SettingsChangeEvent> {
   const pending: SettingsChange[] = [];
   let wake: (() => void) | undefined;
   const unsubscribe = settings.subscribe((change) => {
@@ -211,11 +241,25 @@ function changesOf(
   signal.addEventListener('abort', onAbort, { once: true });
   return {
     async *[Symbol.asyncIterator]() {
+      let delivered = -1;
       try {
+        const first = catchUp();
+        if (first !== undefined) {
+          delivered = first.revision;
+          yield first;
+        }
         while (!signal.aborted) {
           const next = pending.shift();
           if (next !== undefined) {
-            yield { revision: next.revision, keys: [...next.keys] };
+            if (next.revision <= delivered) continue;
+            delivered = next.revision;
+            yield {
+              kind: 'settings.changed',
+              cursor: encodeCursor(next.revision),
+              emittedAtMs: clock.now(),
+              revision: next.revision,
+              keys: [...next.keys],
+            };
             continue;
           }
           await new Promise<void>((resolve) => {
@@ -244,31 +288,55 @@ export const settingsEventsOperation = defineOperation<
   kind: 'subscription',
   summary: 'Follow changes to the runtime settings',
   description:
-    'Delivers one event per change this process applies from the moment of subscription, its own or one another process made and this one re-read on its maintenance pass: the new `revision` and the keys it changed, never their values. There is no replay; read `bureau.settings.get` for the current values. Requires `bureau.settings:read`.',
+    'Delivers one event per change this process applies from the moment of subscription, its own or one another process made and this one re-read on its maintenance pass: the new `revision` and the keys it changed, never their values. Each event’s `cursor` is its revision and resumes the stream through `fromCursor` or `Last-Event-ID`: a resume delivers one event for the current revision, with no keys, when it is newer than the cursor, then live changes, so the intermediate changes are not replayed; read `bureau.settings.get` for the current values. A subscription without a cursor delivers live changes only. Requires `bureau.settings:read`.',
   destructive: false,
   tags: ['Settings'],
   inputSchema: eventsInput,
   outputSchema: eventsEnvelope,
-  producibleFaults: ['Forbidden'],
+  producibleFaults: ['InvalidParams', 'Forbidden'],
   eventSchema: changeSchema,
   access: read,
   discoverable: true,
-  // WebSocket only: with no replay there is no cursor for `Last-Event-ID` to resume from.
-  transports: { http: false, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
+  transports: { http: true, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
   unknownKeyPolicy,
-  invoke: ({ host }) => {
+  invoke: async ({ input, host }) => {
+    const clock = (host.runtime ?? createDefaultRuntimeServices()).clock;
     const controller = new AbortController();
-    const iterable = changesOf(host.settings, controller.signal);
-    subscriptionCount += 1;
-    const close = () => {
+    let catchUp: SettingsChangeEvent | undefined;
+    // Listen first, then read the current revision: a change made in between is buffered, and the
+    // generator drops it when the catch-up event already carries its revision.
+    const source = changesOf(host.settings, controller.signal, clock, () => catchUp);
+    try {
+      if (input.fromCursor !== undefined) {
+        const resumed = decodeCursor(input.fromCursor) ?? -1;
+        const { revision } = await host.settings.get();
+        if (revision > resumed) {
+          catchUp = {
+            kind: 'settings.changed',
+            cursor: encodeCursor(revision),
+            emittedAtMs: clock.now(),
+            revision,
+            keys: [],
+          };
+        }
+      }
+    } catch (error) {
       controller.abort();
-      return Promise.resolve();
-    };
-    return Promise.resolve({
+      throw error;
+    }
+    subscriptionCount += 1;
+    const iterable = createReplayAwareClosableIterable<SettingsChangeEvent>(
+      (onReplayComplete) => {
+        onReplayComplete();
+        return source;
+      },
+      { close: () => controller.abort() },
+    );
+    return {
       envelope: { subscriptionId: `settings-${subscriptionCount}` },
-      iterable: Object.assign(iterable, { close }),
-      close,
-    });
+      iterable,
+      close: () => iterable.close(),
+    };
   },
 });
 
