@@ -106,7 +106,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
 
     const result = await run.result();
     expect(result.finishReason).toBe('aborted');
-    await expect(run.closed()).resolves.toBeDefined();
+    expect(await run.closed()).toBeDefined();
   });
 
   test('detach leaves a durable parked run recoverable and reports it separately', async () => {
@@ -251,7 +251,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
     expect(report.detached).toBe(0);
     const result = await run.result();
     expect(result.finishReason).toBe('aborted');
-    await expect(run.closed()).resolves.toBeDefined();
+    expect(await run.closed()).toBeDefined();
   });
 
   test('detach retains abort behavior for catalog runs', async () => {
