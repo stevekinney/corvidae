@@ -118,9 +118,13 @@
     changedElsewhere = false;
   }
 
+  /** Puts the edits back. If the settings moved while they were being made, the form takes the settings as they are now. */
   function discard(): void {
-    form.discard();
     refusal = null;
+    stale = false;
+    changedElsewhere = false;
+    if (snapshot.revision === form.revision) form.discard();
+    else form.load(snapshot);
   }
 
   const groups = $derived(groupsOf(keys));
@@ -219,7 +223,7 @@
   .weft-settings-editor__group-title {
     margin: 0;
     padding-bottom: var(--cinder-space-2);
-    border-bottom: 1px solid var(--cinder-border-default);
+    border-bottom: 1px solid var(--cinder-border-muted);
     font-size: var(--cinder-text-lg);
     font-weight: 600;
   }

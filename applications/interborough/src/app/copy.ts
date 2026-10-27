@@ -559,6 +559,11 @@ export const SETTINGS_COPY = {
     description:
       'Reload to see what they are now. Reloading discards your changes, and saving them first would overwrite the change.',
   },
+  /** The settings could not be read again while the page already holds them. */
+  refreshFailed: {
+    title: 'The settings could not be refreshed',
+    description: 'What you see may be out of date. Your edits are kept.',
+  },
   saveFailed: 'The settings were not saved',
   forbidden: 'You may read the settings but not change them.',
   hostPaths: {

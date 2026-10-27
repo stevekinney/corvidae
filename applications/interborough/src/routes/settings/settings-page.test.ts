@@ -10,7 +10,7 @@ import { focusManager } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { SETTINGS_COPY } from '../../app/copy.ts';
+import { SETTINGS_COPY, VIEW_COPY } from '../../app/copy.ts';
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
 import { StubFault, type BureauStub } from '../../lib/bureau-stub.test-support.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
@@ -238,6 +238,37 @@ describe('a save', () => {
   });
 });
 
+describe('a refused save', () => {
+  test('says when the caller may read the settings but not change them', async () => {
+    const { container, findByRole } = open(servedSettings());
+    const form = await findByRole('form', { name: SETTINGS_COPY.formLabel });
+    stub?.on('bureau.settings.update', () => {
+      throw new StubFault('Forbidden', 403, 'Requires bureau.settings:write.');
+    });
+    await fireEvent.click(
+      row(container, 'tools.wakeup')?.querySelector('button[role="switch"]') as HTMLElement,
+    );
+    await fireEvent.click(within(form).getByRole('button', { name: SETTINGS_COPY.saveAction }));
+
+    await within(container).findByText(SETTINGS_COPY.forbidden);
+  });
+
+  test('says which key the deployment locked when the Bureau refuses it', async () => {
+    const served = servedSettings();
+    const { container, findByRole } = open(served);
+    const form = await findByRole('form', { name: SETTINGS_COPY.formLabel });
+    // The deployment locks the key after the page read the settings.
+    served.locked = new Set(['tools.wakeup']);
+    await fireEvent.click(
+      row(container, 'tools.wakeup')?.querySelector('button[role="switch"]') as HTMLElement,
+    );
+    await fireEvent.click(within(form).getByRole('button', { name: SETTINGS_COPY.saveAction }));
+
+    await within(container).findByText('Locked: tools.wakeup.');
+    expect(served.values['tools.wakeup']).toBe(true);
+  });
+});
+
 describe('a StaleRevision', () => {
   test('is answered with a prompt to reload, and nothing was saved', async () => {
     const served = servedSettings({ revision: 3 });
@@ -288,5 +319,56 @@ describe('a StaleRevision', () => {
     const prompt = await findByTestId('settings-reload-prompt');
     expect(prompt.textContent).toContain(SETTINGS_COPY.changedElsewhere.title);
     expect(row(container, 'tools.wakeup')?.dataset['dirty']).toBe('true');
+  });
+});
+
+describe('a page that follows the Bureau', () => {
+  test('keeps its edits when a read fails, and says the settings may be out of date', async () => {
+    const { container, findByRole, findByTestId } = open(servedSettings());
+    await findByRole('form', { name: SETTINGS_COPY.formLabel });
+    await fireEvent.click(
+      row(container, 'tools.wakeup')?.querySelector('button[role="switch"]') as HTMLElement,
+    );
+
+    stub?.on('bureau.settings.get', () => {
+      throw new StubFault('Internal', 500, 'Broke.');
+    });
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+
+    await findByTestId('settings-refresh-failed');
+    expect(row(container, 'tools.wakeup')?.dataset['dirty']).toBe('true');
+    expect(container.textContent).not.toContain(VIEW_COPY.settings.error.title);
+  });
+
+  test('takes in a change made elsewhere when the edits are discarded', async () => {
+    const served = servedSettings({ revision: 3 });
+    const { container, findByRole, findByTestId } = open(served);
+    const form = await findByRole('form', { name: SETTINGS_COPY.formLabel });
+    await fireEvent.click(
+      row(container, 'tools.wakeup')?.querySelector('button[role="switch"]') as HTMLElement,
+    );
+
+    served.values = { ...served.values, 'tools.decide': false };
+    served.revision = 4;
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    await findByTestId('settings-reload-prompt');
+    await fireEvent.click(within(form).getByRole('button', { name: SETTINGS_COPY.discardAction }));
+
+    expect(container.querySelector('[data-testid="settings-reload-prompt"]')).toBeNull();
+    expect(row(container, 'tools.wakeup')?.dataset['dirty']).toBe('false');
+    expect(
+      row(container, 'tools.decide')
+        ?.querySelector('button[role="switch"]')
+        ?.getAttribute('aria-checked'),
+    ).toBe('false');
+    // The next save names the revision the form took in.
+    await fireEvent.click(
+      row(container, 'tools.wakeup')?.querySelector('button[role="switch"]') as HTMLElement,
+    );
+    await fireEvent.click(within(form).getByRole('button', { name: SETTINGS_COPY.saveAction }));
+    await waitFor(() => expect(updates()).toHaveLength(1));
+    expect(updates()[0]?.params['expectedRevision']).toBe(4);
   });
 });

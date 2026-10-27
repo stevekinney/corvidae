@@ -63,7 +63,8 @@
     <p class="weft-settings__intro">{SETTINGS_COPY.intro}</p>
   </header>
 
-  {#if schema.isError || snapshot.isError}
+  <!-- A read that fails while the page holds the settings leaves the form as it is, edits and all. -->
+  {#if (schema.isError && schema.data === undefined) || (snapshot.isError && snapshot.data === undefined)}
     <Alert variant="danger">
       <p class="weft-settings__alert-title">{VIEW_COPY.settings.error.title}</p>
       <p class="weft-settings__alert-body">{VIEW_COPY.settings.error.description}</p>
@@ -84,6 +85,12 @@
     {#if !snapshot.data.persisted}
       <Alert variant="info" data-testid="settings-not-persisted">
         <p class="weft-settings__alert-body">{SETTINGS_COPY.notPersisted}</p>
+      </Alert>
+    {/if}
+    {#if snapshot.isError}
+      <Alert variant="warning" data-testid="settings-refresh-failed">
+        <p class="weft-settings__alert-title">{SETTINGS_COPY.refreshFailed.title}</p>
+        <p class="weft-settings__alert-body">{SETTINGS_COPY.refreshFailed.description}</p>
       </Alert>
     {/if}
     <SettingsEditor schema={schema.data} snapshot={snapshot.data} />
@@ -157,7 +164,7 @@
     flex-direction: column;
     gap: var(--cinder-space-2);
     padding-top: var(--cinder-space-4);
-    border-top: 1px solid var(--cinder-border-default);
+    border-top: 1px solid var(--cinder-border-muted);
   }
 
   .weft-settings__paths-title {
