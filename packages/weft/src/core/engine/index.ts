@@ -18,7 +18,11 @@ import { deserializeCheckpoint } from '../checkpoint.ts';
 import type { StoredStreamChunk } from '../context.ts';
 import { createHandleCacheFinalizer } from '../engine-helpers.ts';
 import type { TypedEventTarget, WeftEventMap } from '../events.ts';
-import { RemoteActivityQueuedEvent } from '../events.ts';
+import {
+  RemoteActivityQueuedEvent,
+  SignalDeliveredEvent,
+  StorageSizeReportedEvent,
+} from '../events.ts';
 import {
   WorkflowRevisionActivatedEvent,
   WorkflowRevisionDrainingEvent,
@@ -939,6 +943,22 @@ export class Engine<
     cleanupIntervalDisposalTracker.cleanupInterval = cleanupInterval;
     getInternals(this).cleanupInterval = cleanupInterval;
     getInternals(this).cleanupIntervalDisposalTracker = cleanupIntervalDisposalTracker;
+    getInternals(this).storageSizeReportInterval =
+      resolvedOptions.backgroundTaskMode === 'automatic' &&
+      resolvedOptions.storageSizeReportIntervalMs > 0 &&
+      typeof storage.sizeBytes === 'function'
+        ? setInterval(() => {
+            if (getInternals(this).disposed) return;
+            void storage
+              .sizeBytes?.()
+              .then((sizeBytes) => {
+                if (!getInternals(this).disposed) {
+                  this.dispatchEvent(new StorageSizeReportedEvent(sizeBytes));
+                }
+              })
+              .catch(() => {});
+          }, resolvedOptions.storageSizeReportIntervalMs)
+        : null;
     engineCleanupIntervalFinalizer.register(
       this,
       cleanupIntervalDisposalTracker,
@@ -1567,6 +1587,9 @@ export class Engine<
         // `releaseSignalWaiter`. The poll's ownership confirmation above is an
         // await, so the waiter can be replaced meanwhile.
         if (releaseSignalWaiter(internals, workflowId, waiterKey, waiter)) {
+          this.dispatchEvent(
+            new SignalDeliveredEvent(workflowId, waiterKey.slice(workflowId.length + 1)),
+          );
           waiter();
         }
       },

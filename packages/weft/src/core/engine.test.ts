@@ -10,6 +10,7 @@ import {
 } from '../testing/fake-timers.test-support.ts';
 import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
 
+import { BunSQLiteStorage } from '../storage/bun-sql.ts';
 import type {
   BatchOperation,
   ScanOptions,
@@ -45,6 +46,7 @@ import {
   CheckpointSizeWarningEvent,
   CleanupWarningEvent,
   DevelopmentWarningEvent,
+  StorageSizeReportedEvent,
   WorkflowCancelledEvent,
   WorkflowCompletedEvent,
   WorkflowFailedEvent,
@@ -7784,5 +7786,26 @@ describe('Engine decode and scoped-state guards', () => {
     expect(await engine.state.workflow<number>('state-cleanup', 'counter').get()).toBe(1);
 
     engine[Symbol.dispose]();
+  });
+
+  it('reports native storage size on its interval and stops after disposal', async () => {
+    useFakeTimers(0);
+    const storage = new BunSQLiteStorage(':memory:');
+    const engine = new Engine({ storage, storageSizeReportIntervalMs: 100 });
+    const reports: number[] = [];
+    engine.addEventListener(StorageSizeReportedEvent.type, (event) => {
+      if (event instanceof StorageSizeReportedEvent) reports.push(event.sizeBytes);
+    });
+
+    await advanceTimersByTime(100);
+    await flushMicrotasks();
+    expect(reports).toEqual([8_192]);
+
+    engine[Symbol.dispose]();
+    await advanceTimersByTime(100);
+    await flushMicrotasks();
+    expect(reports).toEqual([8_192]);
+    storage[Symbol.dispose]();
+    restoreRealTimers();
   });
 });

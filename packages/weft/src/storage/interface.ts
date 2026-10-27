@@ -177,6 +177,8 @@ export interface ScanOptions {
  * ```
  */
 export interface Storage extends Disposable {
+  /** Return the backend's total physical size in bytes when natively supported. */
+  sizeBytes?(): Promise<number>;
   /**
    * Self-report the backend's consistency and feature guarantees. Required on
    * every adapter so the engine and feature gates can act on an honest,

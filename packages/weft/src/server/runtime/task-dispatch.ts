@@ -1,3 +1,4 @@
+import { ActivityStartedEvent } from '../../core/events.ts';
 import { tagWorkflowEventGeneration } from '../../core/events/workflow-event-generation.ts';
 import {
   buildClaimAttemptRecordWrite,
@@ -337,6 +338,16 @@ async function selectAndReserveWorker(
       result.record.workflowExecutionToken,
     ),
   );
+  if (task.workflowId !== undefined) {
+    options.engine.dispatchEvent(
+      new ActivityStartedEvent(
+        result.record.operationId,
+        task.workflowId,
+        result.record.activityName,
+        result.record.attempt,
+      ),
+    );
+  }
 
   ws.send(
     JSON.stringify({

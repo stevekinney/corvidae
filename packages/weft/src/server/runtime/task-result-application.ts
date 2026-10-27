@@ -20,6 +20,7 @@
  * @module server/runtime/task-result-application
  */
 
+import { ActivityCompletedEvent } from '../../core/events.ts';
 import type { MetricsCollector } from '../../observability/metrics.ts';
 import type { ServeOptions } from '../index.ts';
 import { bridgeRemoteActivityResult } from './remote-activity-result-bridge.ts';
@@ -56,6 +57,16 @@ async function bridgeIfResolvedApplied(
 ): Promise<void> {
   if (!committed.ok || committed.disposition !== 'applied') return;
   if (committed.terminal?.disposition !== 'resolved') return;
+  if (committed.terminal.status === 'completed' && committed.completing?.workflowId !== undefined) {
+    options.engine.dispatchEvent(
+      new ActivityCompletedEvent(
+        committed.completing.operationId,
+        committed.completing.workflowId,
+        committed.completing.activityName,
+        Math.max(0, Date.now() - committed.completing.startedAt),
+      ),
+    );
+  }
   await bridgeRemoteActivityResult(
     options.engine,
     input.operationId,

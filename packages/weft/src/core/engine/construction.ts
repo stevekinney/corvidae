@@ -236,6 +236,7 @@ export function resolveNumericDefaults(
   | 'checkpointSizeWarningThreshold'
   | 'maxNestingDepth'
   | 'schedulerPollIntervalMs'
+  | 'storageSizeReportIntervalMs'
 > {
   return {
     checkpointHistory: defaultTo(options?.checkpointHistory, 10),
@@ -247,6 +248,11 @@ export function resolveNumericDefaults(
         'options.schedulerPollIntervalMs',
         DEFAULT_POLL_INTERVAL_MS,
       ) ?? DEFAULT_POLL_INTERVAL_MS,
+    storageSizeReportIntervalMs: normalizeNonNegativeSafeIntegerOption(
+      options?.storageSizeReportIntervalMs,
+      'options.storageSizeReportIntervalMs',
+      60_000,
+    ),
   };
 }
 
@@ -436,6 +442,18 @@ function normalizePositiveSafeIntegerOption(
   if (value === undefined) return defaultValue;
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
     throw new Error(`${fieldName} must be a positive safe integer when provided`);
+  }
+  return value;
+}
+
+function normalizeNonNegativeSafeIntegerOption(
+  value: unknown,
+  fieldName: string,
+  defaultValue: number,
+): number {
+  if (value === undefined) return defaultValue;
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${fieldName} must be a non-negative safe integer when provided`);
   }
   return value;
 }

@@ -156,6 +156,10 @@ export function disposeEngine(
   internals.remoteActivityBroker = null;
   internals.inlineStrategy = null;
   disposeEngineCleanupInterval(internals);
+  if (internals.storageSizeReportInterval !== null) {
+    clearInterval(internals.storageSizeReportInterval);
+    internals.storageSizeReportInterval = null;
+  }
   if (internals.retentionSweepInterval !== null) {
     clearInterval(internals.retentionSweepInterval ?? undefined);
     internals.retentionSweepInterval = null;

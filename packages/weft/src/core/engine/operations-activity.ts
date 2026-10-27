@@ -1,5 +1,6 @@
 import type { ContextOperationRequest } from '../context.ts';
 import { parsePerAttemptTimeoutMs } from '../context/activity-schedule-to-close.ts';
+import { ActivityCompletedEvent, ActivityStartedEvent } from '../events.ts';
 import type { ComposedActivityInterceptor, ComposedWorkflowInterceptor } from '../interceptor.ts';
 import { assertPayloadWithinLimit } from '../payload-size.ts';
 import type { ActivityContext, ActivityVerificationResult, OperationOutcome } from '../types.ts';
@@ -376,6 +377,17 @@ export async function executeActivity(
       headers,
     };
 
+    if (!isRemoteMode) {
+      internals.engine.dispatchEvent(
+        new ActivityStartedEvent(
+          operation.operationId,
+          workflowId,
+          operation.activityName,
+          attempt,
+        ),
+      );
+    }
+
     const result = await composedActivity.execute(activityInterception, async (interception) => {
       return invokeActivity(activityName, interception.input, headers);
     });
@@ -452,6 +464,7 @@ export async function executeActivityOperationResult(
       );
       return started.completedResult;
     }
+    const startedAt = internals.options.getNow();
     const result = await executeActivity(
       internals,
       workflowId,
@@ -472,6 +485,14 @@ export async function executeActivityOperationResult(
       started.attempt,
       speculativeState,
       true,
+    );
+    internals.engine.dispatchEvent(
+      new ActivityCompletedEvent(
+        operation.operationId,
+        workflowId,
+        operation.activityName,
+        Math.max(0, internals.options.getNow() - startedAt),
+      ),
     );
     const completedRecord = createCompletedActivityReconciliationRecord(
       started,
@@ -510,6 +531,7 @@ export async function executeActivityOperationResult(
     return result;
   }
 
+  const startedAt = internals.options.getNow();
   const result = await executeActivity(
     internals,
     workflowId,
@@ -532,6 +554,16 @@ export async function executeActivityOperationResult(
     operationAttempt,
     speculativeState,
   );
+  if (!internals.remoteActivityBroker) {
+    internals.engine.dispatchEvent(
+      new ActivityCompletedEvent(
+        operation.operationId,
+        workflowId,
+        operation.activityName,
+        Math.max(0, internals.options.getNow() - startedAt),
+      ),
+    );
+  }
 
   // Step succeeded durably: drop its tracked heartbeat. Guarded on the
   // non-speculative path only — a speculative step can still roll back and

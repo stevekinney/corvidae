@@ -6,7 +6,7 @@ import {
   storageConditionalBatch,
 } from '../../storage/interface.ts';
 import { decode, encode } from '../codec.ts';
-import { SignalReceivedEvent } from '../events.ts';
+import { SignalDeliveredEvent, SignalReceivedEvent } from '../events.ts';
 import type { ComposedWorkflowInterceptor } from '../interceptor.ts';
 import { encodePayloadWithinLimit } from '../payload-size.ts';
 import { validateSignalId } from '../signal-id.ts';
@@ -413,6 +413,7 @@ async function deliverBufferedSignals(
     }
 
     if (internals.parkedInlineWorkflows.has(workflowId)) {
+      callbacks.dispatchEvent(new SignalDeliveredEvent(workflowId, signalName));
       shouldResumeParkedWorkflow = true;
     }
   }

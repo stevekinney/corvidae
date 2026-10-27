@@ -412,6 +412,12 @@ export interface EngineOptions<TServices = unknown>
    * poller without waiting a full real poll cycle.
    */
   schedulerPollIntervalMs?: number;
+  /**
+   * Interval for reporting native storage size to alerting and observers.
+   * Defaults to 60 seconds; `0` disables reporting. Backends without the
+   * optional `Storage.sizeBytes()` capability produce no report.
+   */
+  storageSizeReportIntervalMs?: number;
   /** Enable BroadcastChannel for cross-worker event coordination. Default: false. */
   broadcastEvents?: boolean;
   /**
