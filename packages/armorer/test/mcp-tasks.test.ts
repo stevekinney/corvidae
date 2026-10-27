@@ -14,6 +14,7 @@ import {
   type MCPTaskRecord,
 } from '../src/integrations/mcp';
 import type { Tool } from '../src/is-tool';
+import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support';
 import { connectInProcessClient } from './fixtures/mcp-in-process-client';
 import {
   createStoreDouble,
@@ -723,8 +724,9 @@ describe('SDK client limitation', () => {
     );
     try {
       const outcome = client.callTool({ name: 'render-report', arguments: { title: 'Q3' } });
-      expect(outcome).rejects.toThrow("Unsupported result type 'task' for tools/call");
-      await outcome.catch(() => undefined);
+      expect(await throwingRejectionOf(outcome)).toThrow(
+        "Unsupported result type 'task' for tools/call",
+      );
     } finally {
       await client.close();
     }
