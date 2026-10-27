@@ -7085,11 +7085,12 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   /**
    * Requests cancellation of a task through `abortRun`, so the abort is tracked as every other
    * one is (`internals.abortingTasks()`). Does nothing once the task has settled or for a task
-   * this process does not hold. `abortRun` records its own reason, so `_reason` is not forwarded.
+   * this process does not hold. The reason reaches the run's abort signal and its children's
+   * parent-cancellation reason.
    */
-  function abortTask(id: string, _reason?: string): void {
+  function abortTask(id: string, reason?: string): void {
     if (store.getRun(id)?.status !== 'running') return;
-    abortRun(id);
+    abortRun(id, reason);
   }
 
   /**
@@ -10058,7 +10059,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
    * "this run has settled" — falsely true before settlement has actually
    * happened.
    */
-  function abortRun(id: string): RunSummary {
+  function abortRun(id: string, reason = 'Aborted via API'): RunSummary {
     const runState = store.getRun(id);
     if (!runState) throw new BureauError('Run not found', 'NOT_FOUND');
 
@@ -10078,7 +10079,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
 
     if (!abortingRunIds.has(id)) {
       abortingRunIds.set(id, runtimeServices.clock.now());
-      runState.activeRun.abort('Aborted via API');
+      runState.activeRun.abort(reason);
       // COR-1481 — the task records where its cleanup ended.
       void tasks.watchCleanup(id, runState.activeRun.closed());
       // Evict the transitional marker once cleanup genuinely settles — never
@@ -10103,7 +10104,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       // COR-772 — the explicit parent-cancellation policy. A child never
       // shares this run's abort signal; each running child's recorded
       // `parentCancellation` decides whether it is cancelled or detached.
-      detachBestEffortPromise(childTopology.parentCancelled(id, 'Aborted via API'));
+      detachBestEffortPromise(childTopology.parentCancelled(id, reason));
     }
 
     return {

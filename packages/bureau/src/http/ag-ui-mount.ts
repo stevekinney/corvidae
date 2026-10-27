@@ -654,7 +654,7 @@ export function createAgUiMount(
         // A start the thread already holds the rows of is the retry of one that
         // created them: it attaches to the run that did, rather than starting
         // another. A start that added new rows under a used runId falls through to
-        // createRun, whose ledger refuses the changed request. A runId that names a
+        // `tasks.start`, whose ledger refuses the changed request. A runId that names a
         // run of another thread is a conflict, not an attach to that run.
         if (appendMessages.length === 0) {
           const earlier = await bureau.tasks

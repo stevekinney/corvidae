@@ -56,13 +56,12 @@ async function boot() {
 const RESERVED: string[] = ['goal:g1', 'goal-g1-s0', 'goal-g1-a0', 'bureau-goal-audit:g1'];
 
 async function expectChildRunIdRefused(bureau: Bureau, childRunId: string): Promise<void> {
-  await bureau.tasks.start('planner', 'plan');
+  const parent = await bureau.tasks.start('planner', 'plan');
+  const parentRunId = parent.id;
   await pollUntil(async () => {
-    const parents = await durableIds(bureau, 'agent-run-');
-    return parents.length === 1;
+    const ids = await durableIds(bureau, parentRunId);
+    return ids.length === 1;
   });
-  const [parentRunId] = await durableIds(bureau, 'agent-run-');
-  if (parentRunId === undefined) throw new Error('the parent run never started');
 
   const outcome = await bureau.children.dispatch({
     parentRunId,

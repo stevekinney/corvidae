@@ -21,9 +21,7 @@ import {
 } from '@lostgradient/operative';
 import {
   type ConditionalTextValueStore,
-  decode,
   MemoryStorage,
-  resolveStorage,
   textValueStore,
   yieldToPortableEventLoop,
 } from '@lostgradient/weft';
@@ -33,7 +31,6 @@ import { z } from 'zod';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { BureauError, createBureau } from './create-bureau';
-import { CATALOG_RUN_RECOVERY_KEY_PREFIX } from './runtime-composition';
 import { rejectionOf, throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauDiagnostic } from './types';
 import type { AgentDefinitions } from './agent-catalog';
@@ -482,21 +479,16 @@ describe('bureau.children over an ephemeral bureau', () => {
 // ---------------------------------------------------------------------------
 
 describe('bureau.children over a durable bureau', () => {
-  /** The first durable `bureau.run` run not in `known` once it has started. */
+  /** The durable workflow of a started task, once its first checkpoint is listed. */
   async function startedDurableRun(
     bureau: Pick<Bureau, 'tasks'>,
-    known: readonly string[] = [],
+    task: { readonly id: string },
   ): Promise<string> {
-    let runId: string | undefined;
     await pollUntil(async () => {
       const runs = await bureau.tasks.workflows();
-      runId = runs?.items.find(
-        (item) => item.id.startsWith('agent-run-') && !known.includes(item.id),
-      )?.id;
-      return runId !== undefined;
+      return runs?.items.some((item) => item.id === task.id) === true;
     });
-    if (runId === undefined) throw new Error('the durable run never started');
-    return runId;
+    return task.id;
   }
 
   function hangingAgents() {
@@ -516,23 +508,22 @@ describe('bureau.children over a durable bureau', () => {
 
   it('refuses a child identifier that names another principal’s run, and leaves that run as it was', async () => {
     const path = databasePath('foreign-run-id');
-    // Owned here so the catalog recovery record can be read back byte for byte.
-    const storage = await resolveStorage({ type: 'sqlite', path });
     const bureau = await createBureau({
       agents: hangingAgents(),
-      storage,
+      storage: { type: 'sqlite', path },
       durable: true,
       onDiagnostic,
     });
 
     try {
-      await bureau.tasks.start('worker', 'alice’s private work', { principal: 'alice' });
-      const aliceRunId = await startedDurableRun(bureau);
-      await bureau.tasks.start('planner', 'mallory’s plan', { principal: 'mallory' });
-      const malloryRunId = await startedDurableRun(bureau, [aliceRunId]);
-      const recoveryKey = `${CATALOG_RUN_RECOVERY_KEY_PREFIX}${aliceRunId}`;
-      const recoveryRecord = decode((await storage.get(recoveryKey))!);
-      expect(recoveryRecord).toMatchObject({ agentName: 'worker', principal: 'alice' });
+      const aliceTask = await bureau.tasks.start('worker', 'alice’s private work', {
+        principal: 'alice',
+      });
+      const aliceRunId = await startedDurableRun(bureau, aliceTask);
+      const malloryTask = await bureau.tasks.start('planner', 'mallory’s plan', {
+        principal: 'mallory',
+      });
+      const malloryRunId = await startedDurableRun(bureau, malloryTask);
       const history = (principal: string) => bureau.tasks.events(aliceRunId, { principal });
       expect(await history('alice')).not.toEqual({ outcome: 'not-found' });
       expect(await history('mallory')).toEqual({ outcome: 'not-found' });
@@ -549,9 +540,10 @@ describe('bureau.children over a durable bureau', () => {
 
       expect(await history('alice')).not.toEqual({ outcome: 'not-found' });
       expect(await history('mallory')).toEqual({ outcome: 'not-found' });
-      expect(decode((await storage.get(recoveryKey))!)).toEqual(recoveryRecord);
       expect(await bureau.children.list(malloryRunId)).toEqual([]);
-      expect(await bureau.tasks.workflow(aliceRunId)).toMatchObject({ status: 'running' });
+      // Not settled: a task's workflow is pending until its first checkpoint commits.
+      const aliceWorkflow = await bureau.tasks.workflow(aliceRunId);
+      expect(['pending', 'running']).toContain(aliceWorkflow?.status ?? 'missing');
       // Alice's run is still the parent Bureau knows by that identifier.
       expect(
         await bureau.children.dispatch({
@@ -566,7 +558,6 @@ describe('bureau.children over a durable bureau', () => {
       });
     } finally {
       await bureau.dispose();
-      storage[Symbol.dispose]();
       await removeDatabase(path);
     }
   });
@@ -581,7 +572,7 @@ describe('bureau.children over a durable bureau', () => {
 
     try {
       const parent = await bureau.tasks.start('planner', 'plan');
-      const parentRunId = await startedDurableRun(bureau);
+      const parentRunId = await startedDurableRun(bureau, parent);
       const dispatch = (childRunId: string, parentCancellation: 'cascade' | 'detach') =>
         bureau.children.dispatch({
           parentRunId,
@@ -627,7 +618,7 @@ describe('bureau.children over a durable bureau', () => {
       });
 
       const parent = await bureau.tasks.start('planner', 'plan');
-      const parentRunId = await startedDurableRun(bureau);
+      const parentRunId = await startedDurableRun(bureau, parent);
       expect(
         await bureau.children.dispatch({
           parentRunId,
@@ -683,7 +674,7 @@ describe('bureau.children over a durable bureau', () => {
 
     try {
       const plannerRun = await bureau.tasks.start('planner', 'plan');
-      const parentRunId = await startedDurableRun(bureau);
+      const parentRunId = await startedDurableRun(bureau, plannerRun);
       // Its handle names the same durable run, as a createAgent parent's does.
       expect(await pollUntil(() => plannerRun.snapshot().id === parentRunId)).toBe(true);
       expect(plannerRun.snapshot().durability).toBe('durable');
@@ -741,8 +732,8 @@ describe('bureau.children over a durable bureau', () => {
     });
 
     try {
-      await bureau.tasks.start('planner', 'plan');
-      const parentRunId = await startedDurableRun(bureau);
+      const parentTask = await bureau.tasks.start('planner', 'plan');
+      const parentRunId = await startedDurableRun(bureau, parentTask);
       const middle = { parentRunId, childRunId: 'middle' };
       expect(
         await bureau.children.dispatch({ ...middle, agentName: 'slow', input: 'x' }),
@@ -817,11 +808,9 @@ describe('bureau.children across a process restart', () => {
       onDiagnostic,
       children: { signals: { worker: proceedSignals }, delegation },
     });
-    await bureauA.tasks.start('planner', 'plan');
+    const parentTask = await bureauA.tasks.start('planner', 'plan');
+    const parentRunId = parentTask.id;
     await pollUntil(() => parentAtStep1);
-    const runs = await bureauA.tasks.workflows();
-    const parentRunId = runs?.items.find((item) => item.id.startsWith('agent-run-'))?.id;
-    if (parentRunId === undefined) throw new Error('parent run was not checkpointed');
 
     const dispatched = await bureauA.children.dispatch({
       parentRunId,

@@ -1,10 +1,8 @@
 /**
- * COR-1481 — what boot recovery does for the task of a durable `bureau.run()` run.
+ * COR-1481 — what boot recovery does for the task of a durable run.
  *
- * - A catalog run that is over, and whose task retention removed, stays removed across a boot.
- * - A catalog run still in flight with no task record (the admission write was lost) gets
- *   exactly one, dated from the durable run.
- * - A catalog run recovered in flight settles its task when it ends, in the new process.
+ * - A run that is over, and whose task retention removed, stays removed across a boot.
+ * - A run recovered in flight settles its task when it ends, in the new process.
  */
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent, stopWhen } from '@lostgradient/operative';
@@ -53,7 +51,7 @@ async function open(fixture: ReturnType<typeof newFixture>) {
   return bureau;
 }
 
-describe('a catalog task across a boot', () => {
+describe('a task across a boot', () => {
   it('stays removed when retention removed it, and its message text is not written again', async () => {
     const fixture = newFixture();
     const first = await open(fixture);
@@ -76,36 +74,7 @@ describe('a catalog task across a boot', () => {
     expect(await second.internals.taskRegistry.history(run.id)).toBeUndefined();
   });
 
-  it('gets exactly one record, dated from the durable run, when it is in flight and was never recorded', async () => {
-    const fixture = newFixture();
-    const crashed = await open(fixture);
-    const run = await crashed.tasks.start('asker', 'which environment?', {
-      principal: 'api-key:alice',
-    });
-    await waitForCondition(
-      () => crashed.reviews.list().some((review) => review.runId === run.id),
-      'the run never parked',
-    );
-    await waitForCondition(
-      async () => (await crashed.internals.taskRegistry.record(run.id)) !== undefined,
-      'recorded',
-    );
-    // The admission write is lost: the record is gone while the durable run goes on.
-    await crashed.internals.taskRegistry.remove(run.id);
-    // This Bureau is not disposed: a graceful shutdown would cancel the parked run.
-
-    const restarted = await open(fixture);
-    await restarted.waitForRecovery?.();
-
-    const record = await restarted.internals.taskRegistry.record(run.id);
-    const durable = await restarted.tasks.workflow(run.id);
-    expect(record).toMatchObject({ taskId: run.id, owner: 'api-key:alice', agentName: 'asker' });
-    expect(record?.createdAt).toBe(new Date(durable!.createdAt).toISOString());
-    const listed = await restarted.internals.taskRegistry.enumerate({ limit: 50, offset: 0 });
-    expect(listed.tasks.filter((task) => task.id === run.id)).toHaveLength(1);
-  });
-
-  it('settles the task of a catalog run that was in flight across the restart and ends after it', async () => {
+  it('settles the task of a run that was in flight across the restart and ends after it', async () => {
     const fixture = newFixture();
     const crashed = await open(fixture);
     const run = await crashed.tasks.start('asker', 'which environment?', {
@@ -137,6 +106,7 @@ describe('a catalog task across a boot', () => {
     }, 'the task never settled');
     const record = await restarted.internals.taskRegistry.record(run.id);
     expect(record?.settled).toMatchObject({ status: 'completed' });
-    expect(record?.settled?.answer?.text).toBe('thanks');
+    // A task's answer lives in its context's durable history, not on the task record.
+    expect(record?.settled?.answer).toBeUndefined();
   });
 });

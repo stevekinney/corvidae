@@ -417,14 +417,11 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   /**
    * The typed agent catalog (AB-15, AB-22) — a plain literal map of agent
    * name to `RunnableAgent`, exposed read-only as {@link Bureau.agents} and
-   * dispatched by name through {@link Bureau.run}. Optional (COR-1701): omitted
-   * means `{}`, typed `Record<never, never>`, for a bureau that only uses the
-   * session/durability-backed `createRun` surface or file agents
-   * ({@link BureauOptions.agentSource}) and doesn't dispatch through the code
-   * catalog at all. There is no
-   * register/unregister lifecycle: the map is fixed for the bureau's
-   * lifetime, independent of and additive to `createRun` (a bureau may use
-   * either surface or both). Every run and schedule fire
+   * started by name through {@link BureauTasks.start}. Optional (COR-1701):
+   * omitted means `{}`, typed `Record<never, never>`, for a bureau that only
+   * runs file agents ({@link BureauOptions.agentSource}) and starts nothing
+   * from the code catalog. There is no register/unregister lifecycle: the map
+   * is fixed for the bureau's lifetime. Every task and schedule fire
    * belongs to one of these agents.
    *
    * The name `bureau` is reserved (it named the implicit Bureau-wide agent,
@@ -437,7 +434,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * `agentFileDirectory(path, { tools })` from `@lostgradient/bureau/sources` for a directory of
    * Markdown agent files (COR-1524): every `*.md` file in it is an agent whose identifier is the
    * filename without the extension, listed in {@link Bureau.agents} beside the code-defined ones
-   * and run by name through {@link Bureau.run} or a session run. See
+   * and started by name through {@link BureauTasks.start}. See
    * `documentation/agent-files.md`.
    *
    * Bureau keeps parsing, validation, snapshots, revisions, publication, and the write-through
@@ -506,9 +503,9 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   /**
    * Override for Weft-backed durable execution. Durable execution is **on by
    * default whenever a persistent `storage` backend (`sqlite`/`lmdb`) is
-   * configured** — every `createRun()` is then checkpointed on the same backend
+   * configured** — every task is then checkpointed on the same backend
    * and resumes from its last completed step after a crash, with the standard
-   * `run()`/`createRun()` event surface unchanged.
+   * run event surface unchanged.
    *
    * The default follows persistence because that is the only place resume is
    * real: a `memory` backend loses its checkpoints with the process, so it stays
@@ -559,7 +556,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * operative's `createFlowController`: a per-key concurrency cap, a rate
    * limit keyed by an arbitrary function of the trigger, and singleton
    * dedupe of concurrent identical triggers. Applies uniformly to both
-   * API-triggered runs (`createRun`) and durable schedule fires — the same
+   * API-triggered runs (`tasks.start`) and durable schedule fires — the same
    * policy instance tracks state across both surfaces. `concurrency`/`rateLimit`
    * default their grouping key to the run's `agentName`; `singleton`
    * requires an explicit key (there is no sane default identity for "this
@@ -569,16 +566,13 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   flowControl?: FlowControlPolicy;
   /**
    * F3, COR-1700 — whether a durable Bureau offers operative's `requestHumanInput` HITL tool.
-   * It is offered by default (COR-1577) to a durable `createRun` run (a Bureau-wide one, or one of
-   * a named catalog agent), to a schedule fire, and to a durable `bureau.run()` run of an agent
-   * that resolves definitions. It is never offered without a durable engine, whatever this option
+   * It is offered by default (COR-1577) to a durable task and to a schedule fire. It is never offered without a durable engine, whatever this option
    * says, nor to a child run, a goal attempt, or a workflow-file agent step. An agent file's
    * `tools:` list does not gate it. The tool is bound to that run's OWN event emitter and its real
    * `ctx.services` object — the only wiring under which a `HumanWaitParkedEvent` the tool
    * dispatches actually reaches `subscribeLiveFrames`/`store` listeners (including AB-13's
    * flow-control `markParked`) and `reviews.list` (AB-20). The park is a `human-wait`
-   * review: a `createRun` run's carries its `sessionId`, and a `bureau.run()` run's, which has no
-   * session, is addressed by its `runId` and resumed through the engine by that id. The agent
+   * review: a task's carries its context's id as `sessionId`, and `runId` is the task's id. The agent
    * must stop on the call (`stopWhen.toolCalled('requestHumanInput')`) for the run to park.
    *
    * Pass `false` to remove the tool. Passing `true` throws `BureauError` `BAD_REQUEST`: the tool
@@ -595,7 +589,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   humanInput?: BureauHumanInputOption;
   /**
    * AB-201, COR-1700 — whether a durable Bureau offers operative's `scheduleWakeup`
-   * self-scheduling tool to a durable `createRun` run, mirroring
+   * self-scheduling tool to a durable task, mirroring
    * {@link BureauOptions.humanInput}'s wiring exactly. It is offered by default: Bureau adds a
    * `scheduleWakeup` tool to each durable run's toolbox, bound to that run's real `ctx.services`
    * object so a call genuinely parks the workflow via `ctx.sleep` (AB-41's decision record)
@@ -876,9 +870,9 @@ export interface PendingHumanWaitReview {
   id: string;
   runId: string;
   /**
-   * The Bureau session the run belongs to. Absent for a run started with `bureau.run()`
-   * (COR-1577), which has no session: the run id is what addresses the review, and
-   * {@link Bureau.reviews.resolve} resumes it through the engine by that id.
+   * The Bureau session the run belongs to. Absent only for a review of a run that has no session,
+   * which is addressed by its run id; {@link Bureau.reviews.resolve} resumes it through the
+   * engine by that id.
    */
   sessionId?: string | undefined;
   agentName: string | undefined;
@@ -901,8 +895,8 @@ export interface PendingHumanWaitReview {
 export type PendingReview = PendingToolApprovalReview | PendingHumanWaitReview;
 
 /**
- * A review that belongs to a session: every tool approval, and a human wait of a `createRun`
- * run. Bureau's session code works in this type; a catalog run's human wait has no session.
+ * A review that belongs to a session: every tool approval, and a human wait of a task.
+ * Bureau's session code works in this type; a human wait of a run with no session lacks one.
  */
 export type SessionPendingReview =
   PendingToolApprovalReview | (PendingHumanWaitReview & { readonly sessionId: string });
@@ -1106,22 +1100,17 @@ export interface BureauChildrenOptions<D extends AgentDefinitions = AgentDefinit
 }
 
 /**
- * Per-call options accepted by {@link Bureau.run} — session/tracing/
- * attribution concerns that are properties of the CALL, not the agent (AB-15).
+ * Per-call options of a catalog dispatch (a child, a goal attempt, or a workflow step) —
+ * session/tracing/attribution concerns that are properties of the CALL, not the agent (AB-15).
+ * {@link StartTaskOptions} carries the same concerns for a task.
  * There is deliberately no `systemPrompt`, `maximumSteps`, or `maximumTokens`
  * override here: anything that shapes how the agent runs is fixed on the
  * catalog agent's own definition (`createAgent({ instructions, ... })`).
  */
 export interface BureauRunOptions {
   /**
-   * On the durable dispatch branch (a durable engine composed AND the named
-   * agent supports definition resolution), seeds the `ActiveRun`'s
-   * session-correlation key (defaulting to the minted run id when omitted).
-   * A no-op on the direct/in-memory dispatch branch — `AgentRunContext`
-   * (AB-15) carries no `sessionId` field, so a bare `RunnableAgent.run()`
-   * has nowhere to observe it. Accepted without error on either branch,
-   * since a caller cannot generally predict in advance which branch a
-   * given agent will take.
+   * Seeds the `ActiveRun`'s session-correlation key on the durable dispatch
+   * (defaulting to the minted run id when omitted).
    */
   sessionId?: string;
   signal?: AbortSignal;
@@ -1129,13 +1118,11 @@ export interface BureauRunOptions {
   withTraceContext?: <T>(parentContext: unknown, fn: () => Promise<T>) => Promise<T>;
   /**
    * AB-241 — the authenticated principal attributed with this run, forwarded
-   * into `AgentRunContext.principal` on both dispatch branches. The direct
-   * (in-memory) branch hands it straight to the agent's own `run()`; the
-   * durable branch additionally records it exactly as `Bureau.createRun`
-   * does — `LivenessSnapshot.owner` and the in-memory `runAttribution` map
-   * `eventHistory`'s principal gate consults — so audit entries and
-   * liveness observers see the same attribution either way. A non-string
-   * value throws synchronously (`BureauError` `BAD_REQUEST`).
+   * into `AgentRunContext.principal`. The dispatch records it as a task does —
+   * `LivenessSnapshot.owner` and the in-memory `runAttribution` map the
+   * event history's principal gate consults — so audit entries and
+   * liveness observers see the same attribution. A non-string
+   * value is `BAD_REQUEST`.
    */
   principal?: string;
 }
@@ -1178,7 +1165,7 @@ export interface BureauReviews {
    * {@link BureauReviews.list}. Otherwise it derives the park as recovery does: the park,
    * its ordinal and its prompt from the run's checkpoint, still pending while the engine's
    * `waitingForSignals` names its signal. A session run's review carries the session from the
-   * durable run input; a `bureau.run()` run's carries none. Empty for a run that is not parked on
+   * durable run input. Empty for a run that is not parked on
    * a human wait, or that this Bureau has no durable engine to read. Pending tool approvals are
    * not derived.
    */
@@ -2015,13 +2002,13 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
 
   /**
    * COR-772 — Bureau's durable parent-child topology: dispatch a catalog
-   * agent as the child of a run this bureau knows (a `createRun` run, a
-   * durable `bureau.run` run, or another child), then list, get, wait on,
+   * agent as the child of a run this bureau knows (a task, or another child),
+   * then list, get, wait on,
    * signal, and cancel it by its stable identifier — including after a
    * process restart. Every operation names the owning parent; naming an
    * unrelated parent reads as `not-found`. A child never shares its
    * parent's abort signal: cancelling a parent through `tasks.cancel`,
-   * its own `bureau.run` handle, or `children.cancel`
+   * its own `TaskHandle`, or `children.cancel`
    * applies each child's recorded `parentCancellation` policy instead. See
    * `child-topology.ts`.
    */
@@ -2083,7 +2070,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * dispose it, and must not register workflows on it or start its own background tasks.
    *
    * This is an admin surface for one local principal. Every operation on the engine, a cancel, a
-   * signal, a start, bypasses the checks `createRun` and the session verbs make on the caller's
+   * signal, a start, bypasses the checks `tasks.start` and the session verbs make on the caller's
    * ownership of a session or run, so a host that serves it must authenticate its callers
    * itself. Hand it only to a host that answers to a single trusted caller, such as a local
    * console.
@@ -2239,7 +2226,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * `'abort'` (the default when `policy` is omitted) aborts every active run
    * immediately, then awaits every drain. `'drain'` closes admission
    * identically but lets every already-active caller-owned agent run
-   * (`bureau.run`/session-owned) reach its own natural terminal result while
+   * (task-owned) reach its own natural terminal result while
    * Bureau-owned background work (online-evals, webhook notifier,
    * audit trail) is stopped/awaited exactly as under `'abort'`.
    *
@@ -2407,7 +2394,7 @@ export interface RunSummary {
   /**
    * The owner of record of the run: the principal it was created with
    * (e.g. `api-key:<id>`), from the run's attribution, or the owner its
-   * `bureau.run()` handle reports when no attribution was recorded (one
+   * liveness snapshot reports when no attribution was recorded (one
    * reader, shared with {@link Bureau.getOwner}). A run reattached after
    * durable recovery keeps it: it is rehydrated from the owning session's
    * `lastRunOwningPrincipals` (AB-359). A run created with no principal reads
@@ -2506,7 +2493,7 @@ export interface CreateRunRequest {
   sessionId?: string;
   /**
    * COR-1577 — the catalog agent to run. The run executes that agent's own `generate`, tools,
-   * system prompt and stop conditions, as `bureau.run(name, …)` would, with this Bureau's opt-in
+   * system prompt and stop conditions, as `tasks.start(name, …)` does, with this Bureau's opt-in
    * tools (`requestHumanInput`, `scheduleWakeup`) and memory around them.
    *
    * A session is bound to the agent of the run that created it. A later run names that same agent;
@@ -2542,7 +2529,7 @@ export interface CreateRunRequest {
   requestContext?: ToolRequestContext | undefined;
   /**
    * COR-424 — the caller's idempotency key for this run-creation command.
-   * When present, `createRun` records the command in a durable ledger keyed
+   * When present, the start records the command in a durable ledger keyed
    * by `(principal, agentName, runCreationRequestId, operation version)`,
    * with surrounding whitespace trimmed from the request id (the principal is
    * keyed exactly as the run records its owner), and a digest of the payload

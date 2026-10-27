@@ -1,16 +1,11 @@
 /**
  * COR-1481 — the child half of the task-record SIGKILL tests.
  *
- * Usage: `bun task-record-crash-child.ts <settlement|admission> <sqlitePath> <markerPath>`
+ * Usage: `bun task-record-crash-child.ts settlement <sqlitePath> <markerPath>`
  *
- * Stands up a durable Bureau over a storage wrapper that holds one kind of task-record write
- * for ever, then kills the process with SIGKILL once the durable state has gone as far as the
- * crash window needs:
- *
- * - `settlement`: a session run finishes, and its durable workflow is `completed`, while the
- *   write that records its settlement on the task is still held.
- * - `admission`: a durable `bureau.run()` run parks on a human wait, while the write that
- *   records its task is still held.
+ * Stands up a durable Bureau over a storage wrapper that holds the task-record write that
+ * records a settlement for ever, then kills the process with SIGKILL once the task's durable
+ * workflow is `completed`.
  *
  * No `dispose()`, no `shutdown()`, no flush: whatever the next process finds was on disk
  * before this one died. Not a test file: it is spawned by `task-record-crash.slow.test.ts`.
@@ -22,22 +17,17 @@ import { resolveStorage, type Storage } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 
 import { createBureau } from '../create-bureau';
-import { createAskingAgent, finishes } from './task-record-crash-agent';
+import { finishes } from './task-record-crash-agent';
 import type { AgentDefinitions } from '../agent-catalog';
 
 const [mode, storagePath, markerPath] = process.argv.slice(2);
 
-if (
-  (mode !== 'settlement' && mode !== 'admission') ||
-  storagePath === undefined ||
-  markerPath === undefined
-) {
-  process.stderr.write('usage: task-record-crash-child <settlement|admission> <path> <marker>\n');
+if (mode !== 'settlement' || storagePath === undefined || markerPath === undefined) {
+  process.stderr.write('usage: task-record-crash-child settlement <path> <marker>\n');
   process.exit(2);
 }
 
 let held = false;
-const CONTEXT_ID = 'crash-context';
 /** The arguments of a storage call as text, values (stored as bytes) decoded. */
 const textOf = (args: readonly unknown[]): string =>
   JSON.stringify(args, (_key, value: unknown) =>
@@ -46,7 +36,7 @@ const textOf = (args: readonly unknown[]): string =>
 const holdsThisWrite = (args: readonly unknown[]): boolean => {
   const text = textOf(args);
   if (!text.includes('bureau-task:v1:')) return false;
-  return mode === 'settlement' ? text.includes('\\"settled\\"') : text.includes('\\"history\\"');
+  return text.includes('\\"settled\\"');
 };
 
 const raw = await resolveStorage({ type: 'sqlite', path: storagePath });
@@ -67,7 +57,6 @@ const storage = new Proxy(raw, {
 const bureau = await createBureau<AgentDefinitions>({
   id: 'task-record-crash',
   agents: {
-    asker: createAskingAgent(),
     default: createAgent({
       generate: finishes,
       toolbox: createToolbox([]),
@@ -87,22 +76,9 @@ const kill = (runId: string): never => {
   return undefined as never;
 };
 
-if (mode === 'settlement') {
-  const run = await bureau.tasks.start('default', 'finish me', { principal: 'api-key:alice' });
-  for (;;) {
-    const durable = await bureau.tasks.workflow(run.id);
-    if (held && durable?.status === 'completed') kill(run.id);
-    await sleep(10);
-  }
-} else {
-  const run = await bureau.tasks.start('asker', 'which environment?', {
-    principal: 'api-key:alice',
-    contextId: CONTEXT_ID,
-  });
-  for (;;) {
-    if (held && bureau.reviews.list().some((review) => review.runId === run.id)) {
-      kill(run.id);
-    }
-    await sleep(10);
-  }
+const run = await bureau.tasks.start('default', 'finish me', { principal: 'api-key:alice' });
+for (;;) {
+  const durable = await bureau.tasks.workflow(run.id);
+  if (held && durable?.status === 'completed') kill(run.id);
+  await sleep(10);
 }

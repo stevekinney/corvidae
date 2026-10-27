@@ -408,26 +408,6 @@ describe('a start that fails before the run exists', () => {
     });
     expect(await stored(h.snapshots, attempt.runId)).toEqual({ reference: undefined, hashes: [] });
   });
-
-  it('keeps nothing when the recovery record cannot be written, for a child run', async () => {
-    const h = await harness();
-    const dispatcher = h.dispatcher(
-      claimRuntime({
-        claim: async () => true,
-        persist: async () => {
-          throw new Error('persist failed');
-        },
-      }),
-    );
-
-    const run = dispatcher.startChildRun({ ...child });
-    const result = await run.result();
-
-    expect(String(result.error)).toContain('persist failed');
-    expect(await h.snapshots.unsettledReferences()).toEqual([]);
-    const revisions = await h.snapshots.revisions('worker');
-    expect(revisions.length).toBe(0);
-  });
 });
 
 describe('a goal attempt whose agent cannot be persisted as a recovery record', () => {

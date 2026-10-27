@@ -1,8 +1,7 @@
 /**
- * COR-1584 — a run keeps the revision it started with. A run records the revision in the two
- * places it records its definition (the recovery record's `definitionRevision` and the session's
- * `lastAgentRevision`), and a run resumed after a restart is rebuilt from its snapshot with the
- * revision it recorded, not the revision the file has reached since.
+ * COR-1584 — a run keeps the revision it started with. A task's run records the revision on its
+ * context (`lastAgentRevision`), and a run resumed after a restart is rebuilt from its snapshot
+ * with the revision it recorded, not the revision the file has reached since.
  */
 import { join } from 'node:path';
 
@@ -12,10 +11,10 @@ import {
   createTemporaryDirectory,
   removeTemporaryPath,
 } from '@lostgradient/testing/temporary-path';
-import { decode, resolveStorage, type Storage } from '@lostgradient/weft';
+import { resolveStorage, type Storage } from '@lostgradient/weft';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
-import { CATALOG_RUN_RECOVERY_KEY_PREFIX } from './runtime-composition';
+import { SESSION_AGENT_REVISION_METADATA_KEY } from './runtime-composition';
 import { waitForCondition, waitForTaskState } from './test';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
@@ -50,18 +49,16 @@ function revisionOf(bureau: Bureau, id: string): number | undefined {
   return bureau.agents.list().find((listing) => listing.id === id)?.definitionRevision;
 }
 
-/** The recovery record of a run, read from the durable storage the Bureau was given. */
-async function recoveryRecordOf(storage: Storage, runId: string) {
-  const bytes = await storage.get(`${CATALOG_RUN_RECOVERY_KEY_PREFIX}${runId}`);
-  return bytes === null
-    ? undefined
-    : (decode(bytes) as { definitionRevision: number; agentDefinitionHash?: string });
-}
-
-/** The `definitionRevision` the run's recovery record holds. */
-async function recordedRevisionOf(storage: Storage, runId: string) {
-  const record = await recoveryRecordOf(storage, runId);
-  return record?.definitionRevision;
+/**
+ * The revision a task's run started with, as its context records it. A task always runs in a
+ * context, and the context carries the revision for the run it last started.
+ */
+async function recordedRevisionOf(
+  bureau: Bureau,
+  task: { readonly contextId: string },
+): Promise<unknown> {
+  const context = await bureau.contexts.get(task.contextId);
+  return context?.metadata[SESSION_AGENT_REVISION_METADATA_KEY];
 }
 
 /** A durable Bureau over storage the test owns, so the records can be read back. */
@@ -76,7 +73,7 @@ async function openDurable(
 }
 
 describe('a run of a file agent', () => {
-  it('records the revision it started with in its recovery record', async () => {
+  it('records the revision it started with on its context, run after run', async () => {
     const storage = await resolveStorage({ type: 'memory' });
     const harness = await openDurable(storage);
     await edit(harness, 'One.\n');
@@ -89,8 +86,8 @@ describe('a run of a file agent', () => {
     const later = await bureau.tasks.start('researcher', 'hello again');
     await later.result();
 
-    expect(await recordedRevisionOf(storage, run.id)).toBe(2);
-    expect(await recordedRevisionOf(storage, later.id)).toBe(3);
+    expect(await recordedRevisionOf(bureau, run)).toBe(2);
+    expect(await recordedRevisionOf(bureau, later)).toBe(3);
   });
 
   it('records the revision it started with on its session', async () => {
@@ -126,7 +123,7 @@ describe('a run of a code-defined agent', () => {
 
     expect(revisionOf(bureau, 'alpha')).toBe(4);
     expect(readGenerationProfile(bureau.agents.get('alpha')).revision).toBe(4);
-    expect(await recordedRevisionOf(storage, run.id)).toBe(4);
+    expect(await recordedRevisionOf(bureau, run)).toBe(4);
   });
 });
 
@@ -153,11 +150,11 @@ describe('a run resumed after a restart', () => {
     await edit(first, 'Version two.\n');
     const run = await first.bureau.tasks.start('researcher', 'long question');
     await waitForCondition(
-      async () => (await recoveryRecordOf(firstStorage, run.id)) !== undefined,
+      async () => (await recordedRevisionOf(first.bureau, run)) !== undefined,
       'the run is recorded',
       ATTEMPTS,
     );
-    expect(await recordedRevisionOf(firstStorage, run.id)).toBe(2);
+    expect(await recordedRevisionOf(first.bureau, run)).toBe(2);
     await edit(first, 'Version three.\n');
     expect(revisionOf(first.bureau, 'researcher')).toBe(3);
 
@@ -182,7 +179,7 @@ describe('a run resumed after a restart', () => {
     expect(resumed.length).toBeGreaterThan(0);
     expect(resumed.map((agentOptions) => agentOptions.revision)).toEqual(resumed.map(() => 2));
     expect(revisionOf(second.bureau, 'researcher')).toBe(3);
-    expect(await recordedRevisionOf(secondStorage, run.id)).toBe(2);
+    expect(await recordedRevisionOf(second.bureau, run)).toBe(2);
     built.mockRestore();
   });
 });

@@ -180,25 +180,6 @@ describe('a schedule fire’s tool approval', () => {
     expect(charges).toEqual([]);
     expect(bureau.reviews.list()).toEqual([]);
   });
-
-  it('leaves a bureau.run() approval unlisted, as COR-1302 requires', async () => {
-    const charges: number[] = [];
-    const bureau = await open({
-      agents: {
-        payer: createAgent({
-          generate: chargesOnce,
-          toolbox: approvalToolbox(charges),
-          stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
-        }),
-      },
-    });
-
-    const run = await bureau.tasks.start('payer', 'charge it', { principal: OWNER.alice });
-    await run.result();
-
-    expect(bureau.reviews.list()).toEqual([]);
-    expect(charges).toEqual([]);
-  });
 });
 
 describe('a schedule fire’s human wait after a restart', () => {

@@ -1843,16 +1843,12 @@ describe('createBureau', () => {
         durableOwnership: { ownership: 'none' },
       });
 
-      await bureauA.tasks.start('echo', 'Recover me');
+      // A task's workflow id is the task id, so the handle names the durable
+      // workflow to look for after the restart.
+      const recoverable = await bureauA.tasks.start('echo', 'Recover me');
+      const runId = recoverable.id;
       await pollUntil(() => bureauAReachedStep1);
       expect(bureauAReachedStep1).toBe(true);
-      // `AgentRun.snapshot().id` is the CATALOG NAME ('echo'), not the
-      // minted workflow id — read the real durable workflow id back off the
-      // engine's own listing, the same way `bureau.run()`'s own
-      // "checkpointed and discoverable" test does.
-      const beforeRestart = await bureauA.tasks.workflows();
-      const runId = beforeRestart?.items.find((item) => item.id.startsWith('agent-run-'))?.id;
-      expect(runId).toBeDefined();
       // Deliberately NOT disposing bureauA — see the interactive recovery
       // test's comment above for the graceful-shutdown-vs-crash rationale;
       // it applies identically here.
@@ -1925,16 +1921,12 @@ describe('createBureau', () => {
         durableOwnership: { ownership: 'none' },
       });
 
-      await bureauA.tasks.start('echo', 'Recover me');
+      // A task's workflow id is the task id, so the handle names the durable
+      // workflow to look for after the restart.
+      const recoverable = await bureauA.tasks.start('echo', 'Recover me');
+      const runId = recoverable.id;
       await pollUntil(() => bureauAReachedStep1);
       expect(bureauAReachedStep1).toBe(true);
-      // `AgentRun.snapshot().id` is the CATALOG NAME ('echo'), not the
-      // minted workflow id — read the real durable workflow id back off the
-      // engine's own listing, the same way `bureau.run()`'s own
-      // "checkpointed and discoverable" test does.
-      const beforeRestart = await bureauA.tasks.workflows();
-      const runId = beforeRestart?.items.find((item) => item.id.startsWith('agent-run-'))?.id;
-      expect(runId).toBeDefined();
 
       // Bureau B's catalog has NO "echo" agent at all — simulates a
       // deployment where the agent was retired between restarts.
@@ -1993,13 +1985,10 @@ describe('createBureau', () => {
         durableOwnership: { ownership: 'none' },
       });
 
-      await bureauA.tasks.start('echo', 'Recover me');
+      const recoverable = await bureauA.tasks.start('echo', 'Recover me');
+      const runId = recoverable.id;
       await pollUntil(() => bureauAReachedStep1);
       expect(bureauAReachedStep1).toBe(true);
-
-      const beforeRestart = await bureauA.tasks.workflows();
-      const runId = beforeRestart?.items.find((item) => item.id.startsWith('agent-run-'))?.id;
-      expect(runId).toBeDefined();
 
       // Bureau B's "echo" is a hand-written agent with no
       // OPERATIVE_RESOLVE_RUN_OPTIONS — same shape as the non-lazy
@@ -14052,7 +14041,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
     }
   });
 
-  it("AB-241: a durable bureau.run() catalog dispatch records options.principal in the same runAttribution map eventHistory's principal gate consults, exactly as Bureau.createRun does", async () => {
+  it('AB-241: a durable tasks.start dispatch records options.principal in the same runAttribution map the task events principal gate consults', async () => {
     const databasePath = createTemporaryPath('bureau-event-history-authz-catalog-run', '.sqlite');
 
     try {
@@ -14073,15 +14062,13 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
 
       // The attributed principal reads back successfully — never
       // 'not-found' — proving `runAttribution` (not merely
-      // `LivenessSnapshot.owner`) carries this catalog run's principal the
-      // same way it would for a `Bureau.createRun`-dispatched run. Unlike
-      // `createRun`, a catalog run keeps no durable event of its own kind
-      // recorded against it here (no bureau session backs this dispatch, and
-      // COR-1302 keeps its actions off the bureau's `'action'` stream), so an
-      // empty page is the expected shape — the AB-313 "never-recorded id
-      // reads as an ordinary empty page" convention, not a failure.
+      // `LivenessSnapshot.owner`) carries the task's principal. A task runs in
+      // a context, so its completion is recorded against it.
       const allowedOutcome = await bureau.tasks.events(runId, { principal: 'alice' });
-      expect(allowedOutcome).toEqual({ events: [], hasMore: false });
+      if ('outcome' in allowedOutcome) {
+        throw new Error(`expected the recorded events, got ${JSON.stringify(allowedOutcome)}`);
+      }
+      expect(allowedOutcome.events.map((event) => event.kind)).toContain('run.completed');
 
       await bureau.shutdown();
     } finally {
@@ -14120,7 +14107,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
     };
 
     try {
-      // Positive control, proving the `${identifierPrefix}-agent-run-1`
+      // Positive control, proving the `${identifierPrefix}-run-1`
       // format assumption below against a REAL dispatch before relying on
       // it for a run that (by design) never reaches `listDurableRuns()` —
       // a fresh manual runtime's own independent identifier sequence, so
@@ -14135,7 +14122,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
       });
       const controlRun = await controlBureau.tasks.start('echo', 'hi', { principal: 'alice' });
       await controlRun.result();
-      expect(controlRun.snapshot().id).toBe(`${controlRuntime.identifierPrefix}-agent-run-1`);
+      expect(controlRun.snapshot().id).toBe(`${controlRuntime.identifierPrefix}-run-1`);
       await controlBureau.dispose();
 
       const bureau = await createBureau({
@@ -14145,10 +14132,11 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
         runtime,
       });
 
-      const expectedRunId = `${runtime.identifierPrefix}-agent-run-1`;
-      const run = await bureau.tasks.start('throwing', 'hi', { principal: 'alice' });
-      const result = await run.result();
-      expect(result.error).toBeInstanceOf(Error);
+      const expectedRunId = `${runtime.identifierPrefix}-run-1`;
+      const failure = await rejectionOf(
+        bureau.tasks.start('throwing', 'hi', { principal: 'alice' }),
+      );
+      expect(failure).toBeInstanceOf(Error);
 
       // The attribution this run recorded under `expectedRunId` before the
       // resolver rejected must be gone — a supplied principal reads it as

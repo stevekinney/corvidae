@@ -171,7 +171,7 @@ const toolApprovalReviewSchema = z.object({
 
 const humanWaitReviewSchema = z.object({
   ...reviewCommonFields,
-  /** Absent for the park of a `bureau.run()` run, which has no session; its `runId` addresses it. */
+  /** Absent for the park of a run that has no session; its `runId` addresses it. */
   sessionId: z.string().optional(),
   kind: z.literal('human-wait'),
   signalName: z.string(),

@@ -7,7 +7,7 @@
  * below and nothing else. It serves Bureau's two event feeds and the review
  * queue, and Bureau's managed assets: the upload operations, `bureau.assets.get`,
  * and `GET /assets/{assetId}/content` (a mount, `assets-mount.ts`), which is why
- * it needs a Bureau with an asset service. It does not serve `bureau.run`, `getRun`, or `abortRun`: those reach
+ * it needs a Bureau with an asset service. It does not start a task: `bureau.tasks.start` reaches
  * outside callers through protocol adapters mounted with `mounts`.
  *
  * Access follows the decision document's owner of record plus operator scopes

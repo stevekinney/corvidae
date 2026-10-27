@@ -7,7 +7,7 @@
  * per-process temporary file, removed afterwards), and the delegation secret
  * (which the documentation leaves to the host's secret store) differ. Every
  * result the documentation claims in a comment is asserted. The tests for a
- * durable `bureau.run` parent's identifier, and for which principal owns a
+ * durable task parent's identifier, and for which principal owns a
  * child, check the addressing contract the guide states, using the same
  * `durableRunId` helper both examples use. Change the examples and the
  * documentation together.
@@ -26,7 +26,6 @@ import { z } from 'zod';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { type Bureau, createBureau, type TaskHandle } from './index';
-import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 
 let databasePath = '';
 
@@ -45,21 +44,15 @@ const untilAborted: GenerateFunction = ({ signal }) =>
     signal?.addEventListener('abort', () => reject(new Error('stopped')), { once: true });
   });
 
-// `bureau.tasks.start` resolves with the task's handle. The handle's snapshot carries the
-// run identifier once the durable dispatch has built the run. Children can be dispatched under it once the engine has the workflow.
+// A task's id is the id of its durable workflow, so the handle names the parent as soon as
+// `bureau.tasks.start` resolves. Children can be dispatched under it once the engine has the
+// workflow.
 async function durableRunId(
   bureau: Pick<Bureau, 'tasks'>,
-  run: Pick<TaskHandle, 'snapshot'>,
+  task: Pick<TaskHandle, 'id'>,
 ): Promise<string> {
-  for (;;) {
-    const { id, durability, status } = run.snapshot();
-    if (durability === 'durable') {
-      if (await bureau.tasks.workflow(id)) return id;
-    } else if (status !== 'created') {
-      throw new Error(`Run "${id}" is not durable, so it cannot own Bureau children.`);
-    }
-    await Bun.sleep(5);
-  }
+  while (!(await bureau.tasks.workflow(task.id))) await Bun.sleep(5);
+  return task.id;
 }
 
 describe('documentation/multi-agent-lifecycle.md — durable children in Bureau', () => {
@@ -187,7 +180,7 @@ describe('documentation/multi-agent-lifecycle.md — durable children in Bureau'
   });
 });
 
-describe('documentation/multi-agent-lifecycle.md — a durable bureau.run parent’s identifier', () => {
+describe('documentation/multi-agent-lifecycle.md — a durable task parent’s identifier', () => {
   it('reads each parent’s identifier from its own handle, whatever else the engine lists', async () => {
     const planner = createAgent({ name: 'planner', generate: untilAborted });
     const bureau = await createBureau({
@@ -196,8 +189,6 @@ describe('documentation/multi-agent-lifecycle.md — a durable bureau.run parent
     });
 
     const first = await bureau.tasks.start('planner', 'First plan');
-    // Until the durable dispatch resolves, the snapshot is a placeholder.
-    const placeholder = first.snapshot();
     const second = await bureau.tasks.start('planner', 'Second plan');
     const secondRunId = await durableRunId(bureau, second);
     const firstRunId = await durableRunId(bureau, first);
@@ -223,11 +214,6 @@ describe('documentation/multi-agent-lifecycle.md — a durable bureau.run parent
     await bureau.children.wait({ parentRunId: firstRunId, childRunId: 'first-plan-helper' });
     await bureau.dispose();
 
-    expect(placeholder).toMatchObject({
-      id: firstRunId,
-      durability: 'process-local',
-      status: 'created',
-    });
     expect(first.id).toBe(firstRunId);
     expect(second.id).toBe(secondRunId);
     expect(firstRunId).not.toBe(secondRunId);
@@ -242,13 +228,13 @@ describe('documentation/multi-agent-lifecycle.md — a durable bureau.run parent
     expect(createdAt).toEqual(createdAt.toSorted((left, right) => right - left));
   });
 
-  it('refuses a bureau.run run that is not durable, which cannot own children', async () => {
+  it('lets a task that is not durable own process-local children', async () => {
     const planner = createAgent({ name: 'planner', generate: untilAborted });
-    // No storage, so no durable engine: `bureau.run` runs the agent in memory.
+    // No storage, so no durable engine: the task runs the agent in memory.
     const bureau = await createBureau({ agents: { planner } });
 
     const run = await bureau.tasks.start('planner', 'Plan in memory');
-    const failure = await throwingRejectionOf(durableRunId(bureau, run));
+    const workflow = await bureau.tasks.workflow(run.id);
     const { id, durability } = run.snapshot();
     const dispatched = await bureau.children.dispatch({
       parentRunId: id,
@@ -260,10 +246,13 @@ describe('documentation/multi-agent-lifecycle.md — a durable bureau.run parent
     await run.result();
     await bureau.dispose();
 
-    expect(id).not.toBe('planner');
+    expect(id).toBe(run.id);
     expect(durability).toBe('process-local');
-    expect(failure).toThrow(`Run "${id}" is not durable, so it cannot own Bureau children.`);
-    expect(dispatched).toEqual({ outcome: 'not-found' });
+    expect(workflow).toBeUndefined();
+    expect(dispatched).toMatchObject({
+      outcome: 'started',
+      child: { parentRunId: id, workflow: { kind: 'process-local' } },
+    });
   });
 });
 

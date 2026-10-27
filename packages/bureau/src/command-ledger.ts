@@ -41,9 +41,9 @@
  *
  * ## Run creation
  *
- * {@link createRunCreationLedger} applies the ledger to `createRun`. The
+ * {@link createRunCreationLedger} applies the ledger to `tasks.start`. The
  * identity's target is the published agent the run is for, and its request
- * id is the caller-supplied `runCreationRequestId`, because no run exists to
+ * id is the caller-supplied `commandId`, because no run exists to
  * key on until the command has run. A claim carries the run and session
  * identifiers minted for the attempt, so a retry that finds a pending entry
  * knows which run to look for instead of starting another:
@@ -235,7 +235,7 @@ export class BureauLedgerConflictError extends Error {
 
 /**
  * A run was created and durably started, but the ledger could not record its
- * receipt. Unlike any other `createRun` failure, the run exists and keeps
+ * receipt. Unlike any other start failure, the run exists and keeps
  * executing: `runId` names it, and retrying the same request observes it and
  * records the receipt rather than creating another run.
  */
@@ -927,7 +927,7 @@ export interface RunCreationLedgerResult {
   readonly summary: RunSummary;
 }
 
-/** `createRun`'s result: the run's summary, with its receipt when the request named a request id. */
+/** The result of starting a run: the run's summary, with its receipt when the request named a request id. */
 export type CreatedRunSummary = RunSummary & { readonly receipt?: RunCreationReceipt | undefined };
 
 /** What the Bureau can see of a claimed run when a retry arrives. */

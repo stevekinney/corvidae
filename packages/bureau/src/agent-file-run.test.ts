@@ -64,7 +64,7 @@ function gated(answer: string) {
   };
 }
 
-describe('bureau.run of a file agent', () => {
+describe('tasks.start of a file agent', () => {
   it('runs the agent the file describes: its model, tools, and instructions', async () => {
     const { bureau, put, observed } = await start({ scripts: { [OPUS_5_5]: () => 'file reply' } });
     await put('researcher.md', RESEARCHER);
@@ -76,7 +76,7 @@ describe('bureau.run of a file agent', () => {
     expect(observed).toEqual([
       {
         model: OPUS_5_5,
-        tools: ['lookup-order', 'requestHumanInput'],
+        tools: ['lookup-order', 'requestHumanInput', 'scheduleWakeup'],
         systemPrompt: 'You are a careful researcher.',
       },
     ]);

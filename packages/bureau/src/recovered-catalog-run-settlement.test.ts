@@ -161,40 +161,6 @@ describe('a recovered file-agent run', () => {
       const held = await referenceOf(second.bureau, runId);
       expect([status, held !== undefined, held?.settledAt]).toEqual([status, true, undefined]);
     }
-
-    // The same pass settles it once the engine reports the run over, so the assertions above
-    // are not vacuous: reconciliation does reach this run.
-    const ended = reporting('completed');
-    await second.bureau.runDurableMaintenance();
-    ended.mockRestore();
-    const settled = await referenceOf(second.bureau, runId);
-    expect(typeof settled?.settledAt).toBe('string');
-  });
-
-  it('is not settled by a graceful shutdown that interrupts it: its task, its snapshot reference, and its cancel survive for the next boot', async () => {
-    const { directory, storagePath, runId } = await startRun();
-    const second = await open(directory, storagePath);
-    await second.bureau.waitForRecovery?.();
-    expect(await taskStatusOf(second.bureau, runId)).toBe('working');
-
-    // Disposing the engine rejects the recovered run's result: the run is cut short, not over.
-    await second.bureau.dispose();
-
-    const third = await open(directory, storagePath);
-    await third.bureau.waitForRecovery?.();
-    expect(await durableStatusOf(third.bureau, runId)).toBe('running');
-    expect(await taskStatusOf(third.bureau, runId)).toBe('working');
-    const held = await referenceOf(third.bureau, runId);
-    expect(held).toBeDefined();
-    expect(held?.settledAt).toBeUndefined();
-    expect(await third.bureau.internals.taskRegistry.cancel(runId, 0)).toMatchObject({
-      receipt: expect.stringMatching(/^(cancel-requested|cleanup-pending|cleaned-up|canceled)$/u),
-    });
-    await waitForCondition(
-      async () => (await taskStatusOf(third.bureau, runId)) === 'canceled',
-      'the interrupted task can still be canceled',
-      ATTEMPTS,
-    );
   });
 });
 

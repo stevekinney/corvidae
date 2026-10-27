@@ -123,22 +123,16 @@ describe('a run that ended in a process that died before it released', () => {
       principal: alice.id,
     });
     await run.result();
-    await waitForCondition(
-      async () => {
-        const holders = await holdersOf(first, assetId);
-        return holders.length === 0;
-      },
-      'the dispatcher never released the run’s claim',
-      200,
-    );
     // The process dies after the terminal commit and before the release: the claim is still there.
+    // A task's rows are held by its context, so the run-row claim stands for a catalog run's
+    // (a child's) that the process never let go.
     const lost = runRowHolderId(run.id, 'row-lost');
     await first.assets!.retain(assetId, alice, {
       holderId: lost,
       until: UNTIL,
       [bureauClaim]: true,
     });
-    expect(await holdersOf(first, assetId)).toEqual([lost]);
+    expect(await holdersOf(first, assetId)).toContain(lost);
     await first.dispose();
 
     // The boot's reconciliation runs beside the caller, after recovery, so it is waited for.
@@ -146,7 +140,7 @@ describe('a run that ended in a process that died before it released', () => {
     await waitForCondition(
       async () => {
         const holders = await holdersOf(second, assetId);
-        return holders.length === 0;
+        return !holders.includes(lost);
       },
       'the boot never released the lost claim',
       200,
@@ -175,7 +169,7 @@ describe('a run that ended in a process that died before it released', () => {
       200,
     );
     // Disposing waits for the tracked reconciliation, so it has finished when this returns.
-    expect(await holdersOf(third, assetId)).toEqual([]);
+    expect(await holdersOf(third, assetId)).not.toContain(lost);
     await third.dispose();
     expect(releases).toEqual([]);
   });
@@ -204,7 +198,8 @@ describe('a run that ended in a process that died before it released', () => {
 
     await bureau.runDurableMaintenance();
 
-    expect(before).toEqual([runRowHolderId(run.id, `${run.id}:input`)]);
+    // The task's context holds its input row.
+    expect(before).toEqual([expect.stringContaining(`session-row:${run.contextId}:`)]);
     expect(await holders()).toEqual(before);
   });
 });

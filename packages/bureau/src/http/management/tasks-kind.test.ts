@@ -1,6 +1,6 @@
 /**
  * A task says what its `contextId` names (COR-1689): a chat session, a schedule's fire in one, or a
- * catalog run's handle. A client that lists another owner's tasks cannot ask the session store,
+ * handle no chat has (a task of a Bureau with no session store). A client that lists another owner's tasks cannot ask the session store,
  * because it lists only its own sessions, so the kind is how it tells a chat to link from a handle
  * no chat has.
  */
@@ -43,14 +43,13 @@ describe('taskViewKindOf', () => {
 type KindedTask = { id: string; contextId: string; kind: string };
 
 describe('a task view’s kind', () => {
-  it('is chat for a session run, catalog for a bureau.run() dispatch, and schedule-fire for a fire', async () => {
+  it('is chat for a task and schedule-fire for a fire', async () => {
     await withBureau(async (opened) => {
       const chat = await opened.bureau.tasks.start('holder', 'work', { principal: OWNER.alice });
       await waitForCondition(
         () => opened.bureau.tasks.detail(chat.id)?.status === 'running',
         'the session run never started',
       );
-      const catalog = await opened.bureau.tasks.start('holder', 'work', { principal: OWNER.alice });
       await opened.bureau.internals.taskRegistry.recordAdmission({
         taskId: 'fire-1',
         contextId: 'fire-session',
@@ -62,11 +61,6 @@ describe('a task view’s kind', () => {
         message: undefined,
       });
       try {
-        await waitForCondition(
-          async () => (await opened.bureau.internals.taskRegistry.get(catalog.id)) !== undefined,
-          'the dispatch was never recorded as a task',
-        );
-
         const listed = await rpc(opened.handler, 'bureau.tasks.list', {}, 'alice-key');
         const kinds = new Map(
           ((listed.result?.['tasks'] ?? []) as KindedTask[]).map((task) => [task.id, task.kind]),
@@ -74,17 +68,16 @@ describe('a task view’s kind', () => {
         const fetched = await rpc(
           opened.handler,
           'bureau.tasks.get',
-          { taskId: catalog.id },
+          { taskId: chat.id },
           'alice-key',
         );
 
         expect(kinds.get(chat.id)).toBe('chat');
-        expect(kinds.get(catalog.id)).toBe('catalog');
         expect(kinds.get('fire-1')).toBe('schedule-fire');
-        expect(fetched.result).toMatchObject({ id: catalog.id, kind: 'catalog' });
+        expect(fetched.result).toMatchObject({ id: chat.id, kind: 'chat' });
       } finally {
-        catalog.abort('test over');
-        await closedTask(opened.bureau, catalog);
+        chat.abort('test over');
+        await closedTask(opened.bureau, chat);
       }
     });
   });

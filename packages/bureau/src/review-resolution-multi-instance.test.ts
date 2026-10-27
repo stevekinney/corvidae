@@ -283,7 +283,8 @@ describe('the by-run derivation (COR-1579)', () => {
       principal: 'api-key:alice',
     });
 
-    for (const runId of [sessionRun.id, catalogRun.id]) {
+    for (const task of [sessionRun, catalogRun]) {
+      const runId = task.id;
       const local = (await listed(a.bureau, runId)) as PendingHumanWaitReview;
       const peer = await derived(b.bureau, runId);
       expect(await b.bureau.reviews.pendingOf(runId)).toHaveLength(1);
@@ -295,10 +296,11 @@ describe('the by-run derivation (COR-1579)', () => {
         prompt: local.prompt,
         status: 'pending',
       });
-      expect(peer.sessionId).toBe(runId === sessionRun.id ? sessionRun.contextId : undefined);
+      expect(peer.sessionId).toBe(task.contextId);
     }
 
-    for (const runId of [sessionRun.id, catalogRun.id]) {
+    for (const task of [sessionRun, catalogRun]) {
+      const runId = task.id;
       const local = await listed(a.bureau, runId);
       await a.bureau.reviews.resolve({ id: local.id, decision: 'approve', principal: 'alice' });
     }

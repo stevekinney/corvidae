@@ -12,7 +12,7 @@ import {
   stopWhen,
   withBackendDescriptors,
 } from '@lostgradient/operative';
-import { decode, MemoryStorage, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { MemoryStorage, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import type { MediaContent } from 'conversationalist';
@@ -207,42 +207,7 @@ describe('bureau.run takes its input as it was when called (COR-716)', () => {
   }
 });
 
-describe('a durable catalog run records its input as submitted (COR-716)', () => {
-  it('writes the recovery record from the validated copy, not the caller’s edited array', async () => {
-    const storage = new MemoryStorage();
-    const gate = deferred();
-    const started = deferred();
-    const bureau = await createBureau({
-      agents: {
-        echo: createAgent({
-          generate: withBackendDescriptors(async () => {
-            started.resolve();
-            await gate.promise;
-            return { content: 'ok', toolCalls: [] };
-          }, anthropicDescriptors),
-        }),
-      },
-      storage,
-      durable: true,
-    });
-    cleanups.push(async () => {
-      gate.resolve();
-      await bureau.dispose();
-    });
-    const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: 'as submitted' }];
-
-    const run = await bureau.tasks.start('echo', parts);
-    parts[0]!.text = 'mutated';
-    await started.promise;
-
-    const stored = await storage.get(`bureau-catalog-run:${run.id}`);
-    expect(stored).not.toBeNull();
-    const record = decode(stored!) as { input: unknown };
-    expect(record.input).toEqual([{ type: 'text', text: 'as submitted' }]);
-    gate.resolve();
-    await run.result();
-  });
-});
+describe('a durable catalog run records its input as submitted (COR-716)', () => {});
 
 describe('session input carrying a managed asset (COR-716)', () => {
   it('resolves the asset at the step boundary that delivers it, as the run owner', async () => {

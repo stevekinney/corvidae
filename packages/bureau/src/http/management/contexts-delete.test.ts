@@ -125,7 +125,7 @@ describe('bureau.contexts.delete access', () => {
     });
   });
 
-  it('answers the id of a bureau.run dispatch, which owns no session, as a missing context', async () => {
+  it('answers the id of a task, which is not a context id, as a missing context', async () => {
     const worker = createAgent({ name: 'worker', generate: parkingUntilAborted });
     await withBureau({ agents: { worker } }, async (opened) => {
       const run = await opened.bureau.tasks.start('worker', 'catalog work', {
@@ -142,7 +142,11 @@ describe('bureau.contexts.delete access', () => {
         expect(body.error?.data?.httpStatus).toBe(404);
         // It is a task, even though it is not a context.
         const task = await rpc(opened.handler, 'bureau.tasks.get', { taskId: run.id }, 'alice-key');
-        expect(task.result).toMatchObject({ id: run.id, contextId: run.id, agentName: 'worker' });
+        expect(task.result).toMatchObject({
+          id: run.id,
+          contextId: run.contextId,
+          agentName: 'worker',
+        });
       } finally {
         run.abort('test over');
         await closedTask(opened.bureau, run);

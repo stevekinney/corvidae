@@ -3,6 +3,9 @@
 // compiling, a member that belongs behind `reviews`, `schedules`, `contexts`, `tasks`, or `internals` was declared on
 // `Bureau` again.
 
+import { createAgent, createMockGenerate } from '@lostgradient/operative';
+import { z } from 'zod';
+
 import type { BureauMemberPath } from './http/operation-map.ts';
 import type {
   Bureau,
@@ -12,6 +15,8 @@ import type {
   BureauInternals,
   BureauReviews,
   BureauSchedules,
+  StartTaskOptions,
+  TaskHandle,
 } from './types.ts';
 
 /** Compiles only when `Value` is `never`, so a member that returned names itself in the error. */
@@ -185,3 +190,50 @@ export const schedulesCreate: BureauMemberPath = 'schedules.create';
 export const contextsGet: BureauMemberPath = 'contexts.get';
 // @ts-expect-error -- the flat session method moved to `contexts`
 export const flatSessionMethod: BureauMemberPath = 'getSession';
+
+// COR-1707: a start has no per-request override of what an agent's definition decides.
+export type NoPerRequestAgentCaps = AssertNever<
+  Extract<keyof StartTaskOptions, 'systemPrompt' | 'maximumSteps' | 'maximumTokens'>
+>;
+
+// `tasks` declares the operations the project document names (`respond` joins them with the
+// in-process `respond`).
+export type TasksMembers = AssertNever<
+  Exclude<
+    | 'start'
+    | 'detail'
+    | 'get'
+    | 'list'
+    | 'cancel'
+    | 'receipt'
+    | 'workflow'
+    | 'workflows'
+    | 'wait'
+    | 'snapshot'
+    | 'events'
+    | 'subscribeEvents'
+    | 'inspect',
+    keyof BureauTasks
+  >
+>;
+
+// `tasks.start` resolves to a `TaskHandle` typed by the catalog entry's output, and to an untyped
+// one for a name known only at run time.
+type Equals<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
+type AssertEquals<A, B extends A, _Check = Equals<A, B> extends true ? true : never> = _Check;
+
+const researcher = createAgent({
+  generate: createMockGenerate([]),
+  name: 'researcher',
+  output: z.object({ answer: z.string() }),
+});
+declare const typedBureau: Bureau<{ readonly researcher: typeof researcher }>;
+declare const runtimeName: string;
+const typedStart = typedBureau.tasks.start('researcher', 'x');
+export type TypedStartIsATypedHandle = AssertEquals<
+  typeof typedStart,
+  Promise<TaskHandle<{ answer: string }>>
+>;
+const stringStart = typedBureau.tasks.start(runtimeName, 'x');
+export type StringStartIsAnUntypedHandle = AssertEquals<typeof stringStart, Promise<TaskHandle>>;

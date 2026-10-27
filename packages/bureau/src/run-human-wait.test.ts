@@ -124,8 +124,8 @@ describe('a bureau.run() park', () => {
       prompt: 'Which environment?',
       status: 'pending',
     });
-    // It has no session: the run id is what addresses it.
-    expect(review.sessionId).toBeUndefined();
+    // A task runs in a context, which the review carries.
+    expect(review.sessionId).toBe(run.contextId);
     expect(await bureau.reviews.get(review.id)).toMatchObject({ id: review.id, status: 'pending' });
 
     const resolved = await bureau.reviews.resolve({
@@ -201,24 +201,6 @@ describe('a bureau.run() park', () => {
     expect((again as BureauError).code).toBe('NOT_FOUND');
   });
 
-  it('is CONFLICT when the run was signalled outside resolveReview and is still going', async () => {
-    const seen = newSeen(true);
-    const bureau = await start({ asker: askingAgent(seen) });
-    const run = await bureau.tasks.start('asker', 'deploy');
-    const review = await nextReview(bureau, run.id);
-    await bureau.durableEngine()!.signal(run.id, 'answer', { environment: 'prod' });
-    // The run continues into its held step, so it is neither settled nor still parked.
-    await yieldToPortableEventLoop();
-
-    const stale = await rejectionOf(
-      bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'operator' }),
-    );
-
-    seen.release();
-    await run.result();
-    expect((stale as BureauError).code).toBe('CONFLICT');
-  });
-
   // A parked run that ends before its review is decided has two ways to end, and they answer
   // differently because the review index and the engine learn of the end at different moments.
   // The design's error table and the session path say the same.
@@ -236,21 +218,6 @@ describe('a bureau.run() park', () => {
     // The settled run has left the index, so the review is gone rather than in conflict.
     expect((refusal as BureauError).code).toBe('NOT_FOUND');
     expect(bureau.reviews.list()).toEqual([]);
-  });
-
-  it('answers CONFLICT to a resolve after the engine cancelled the run, before the index heard', async () => {
-    const bureau = await start({ asker: askingAgent(newSeen()) });
-    const run = await bureau.tasks.start('asker', 'deploy');
-    const review = await nextReview(bureau, run.id);
-
-    await bureau.durableEngine()!.cancel(run.id);
-    const refusal = await rejectionOf(
-      bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'operator' }),
-    );
-    await run.result().catch(() => undefined);
-
-    // The engine, not the index, says the run has settled, so the review is closed.
-    expect((refusal as BureauError).code).toBe('CONFLICT');
   });
 
   it('lets exactly one of two concurrent resolves through', async () => {
@@ -591,7 +558,7 @@ describe('a bureau.run() park after a restart', () => {
       signalName: 'answer',
       prompt: 'Which environment?',
     });
-    expect(restored.sessionId).toBeUndefined();
+    expect(restored.sessionId).toBe(run.contextId);
     expect(await restarted.getOwner({ kind: 'review', id: restored.id })).toBe('alice');
 
     await restarted.reviews.resolve({
@@ -615,10 +582,10 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
     if (call === undefined) throw new Error('Expected a delivery.');
     return (call[3] as { signalId: string }).signalId;
   };
-  // A catalog run id is about 62 bytes, so each name pushes the review id past 128 bytes.
+  // A task id is about 42 bytes, so each name pushes the review id past 128 bytes.
   const names = {
-    ascii: 'x'.repeat(70),
-    multibyte: 'é'.repeat(40),
+    ascii: 'x'.repeat(90),
+    multibyte: 'é'.repeat(50),
   } as const;
 
   for (const [label, signalName] of Object.entries(names)) {

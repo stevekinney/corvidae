@@ -1,7 +1,7 @@
 /**
  * COR-1700 — a durable Bureau offers `requestHumanInput` and `scheduleWakeup` by default, to the
  * run kinds that received them under the old `humanInput: true` / `wakeup: true` opt-ins:
- * session tasks (`createRun`), schedule fires, and durable catalog tasks (`bureau.run`). Child
+ * tasks (`tasks.start`, which always runs in a context) and schedule fires. Child
  * runs and goal attempts never receive them. `false` removes exactly one tool, `true` is refused
  * with `BAD_REQUEST`, and a non-durable Bureau offers neither whatever the options say.
  */
@@ -112,13 +112,6 @@ async function sessionTaskTools(options: ToolOptions & { durable?: boolean }): P
   return offered.flat();
 }
 
-async function catalogTaskTools(options: ToolOptions & { durable?: boolean }): Promise<string[]> {
-  const offered: Offered = [];
-  const bureau = await start({ asker: recordingAgent(offered) }, options);
-  await runTask(bureau, 'asker', 'go');
-  return offered.flat();
-}
-
 async function scheduleFireTools(options: ToolOptions): Promise<string[]> {
   const offered: Offered = [];
   const bureau = await harness.open({
@@ -150,14 +143,6 @@ describe('a durable Bureau offers the tools by default', () => {
       humanInput: { inputSchemas: { answer: { type: 'string' } } },
     });
     expect(tools).toContain('requestHumanInput');
-  });
-
-  it('offers requestHumanInput, not scheduleWakeup, to a durable catalog task', async () => {
-    const absent = await catalogTaskTools({});
-    expect(absent).toContain('requestHumanInput');
-    expect(absent).not.toContain('scheduleWakeup');
-
-    expect(await catalogTaskTools({ humanInput: false })).not.toContain('requestHumanInput');
   });
 
   it('offers requestHumanInput, not scheduleWakeup, to a schedule fire', async () => {
@@ -283,11 +268,8 @@ describe('a non-durable Bureau offers neither tool', () => {
   it('whatever the options say', async () => {
     for (const options of [{}, { humanInput: false, wakeup: false } as const]) {
       const session = await sessionTaskTools({ ...options, durable: false });
-      const catalog = await catalogTaskTools({ ...options, durable: false });
-      for (const tools of [session, catalog]) {
-        expect(tools).not.toContain('requestHumanInput');
-        expect(tools).not.toContain('scheduleWakeup');
-      }
+      expect(session).not.toContain('requestHumanInput');
+      expect(session).not.toContain('scheduleWakeup');
     }
     const withSchemas = await sessionTaskTools({
       humanInput: { inputSchemas: { answer: { type: 'string' } } },

@@ -203,8 +203,8 @@ export function findRunAgentName(runState: {
 
 /**
  * Run attribution resolved outside the operative store (AB-54 usage
- * analytics grouping): the agent and authenticated principal captured at
- * `createRun` time. Both are `undefined` when unresolved. `agentName` stays
+ * analytics grouping): the agent and authenticated principal captured when
+ * the task started. Both are `undefined` when unresolved. `agentName` stays
  * unresolved for a durably recovered run whose in-memory attribution was
  * lost to a process restart (`findRunAgentName`'s action-log heuristic is
  * the fallback). `principal` is rehydrated on recovery from the session's
@@ -221,8 +221,8 @@ export interface RunAttribution {
  * Maps a live RunState (which may contain non-serializable objects like
  * ActiveRun and Conversation) to a JSON-safe RunSummary DTO.
  *
- * `attribution` carries the agentName/principal resolved deterministically at
- * `createRun` time (see {@link RunAttribution}); when omitted (or its
+ * `attribution` carries the agentName/principal resolved deterministically when
+ * the task started (see {@link RunAttribution}); when omitted (or its
  * `agentName` is unset), `agentName` falls back to the {@link findRunAgentName}
  * heuristic scan of the run's own action log.
  */

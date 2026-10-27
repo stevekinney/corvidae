@@ -366,32 +366,4 @@ describe('documented Bureau memory limits', () => {
       });
     });
   }
-
-  for (const durability of ['in-memory', 'durable'] as const) {
-    it(`attaches no memory hooks to a ${durability} catalog run dispatched through bureau.run`, async () => {
-      const { memory, notifications } = governedMemory();
-      const assistant = createAgent({
-        name: 'assistant',
-        generate: createMockGenerate([{ content: 'Catalog answer.', toolCalls: [] }]),
-      });
-      const bureau = await createBureau({
-        id: BUREAU_ID,
-        agents: { assistant },
-        memory,
-        ...(durability === 'durable'
-          ? { storage: { type: 'sqlite' as const, path: databasePath } }
-          : {}),
-      });
-      try {
-        const run = await bureau.tasks.start('assistant', 'Remember this.');
-        const result = await run.result();
-        expect(result.content).toBe('Catalog answer.');
-        expect(run.snapshot().durability === 'durable').toBe(durability === 'durable');
-        // No recall, no write, no denial: governed memory never heard from the run.
-        expect(notifications).toEqual([]);
-      } finally {
-        await bureau.dispose();
-      }
-    });
-  }
 });
