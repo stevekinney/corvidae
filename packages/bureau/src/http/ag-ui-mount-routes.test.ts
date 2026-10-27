@@ -1279,6 +1279,12 @@ describe('attach', () => {
         const nativeRunId = String(bureauMetadata(starter.received[0]!.event)['runId']);
         const cursor = starter.received.findLast((frame) => frame.id !== undefined)?.id;
         expect(cursor).toBeString();
+        const starterFinished = starter.received.at(-1)!;
+        expect(starterFinished.id).toBe(cursor);
+        expect(bureauMetadata(starterFinished.event)).toMatchObject({
+          durable: true,
+          cursor,
+        });
         const opening = await readAgUiStream(
           await handler(attachRunRequest(nativeRunId, { 'Last-Event-ID': cursor! })),
         );
@@ -1288,6 +1294,103 @@ describe('attach', () => {
         const finished = opening.filter((frame) => frame.event.type === EventType.RUN_FINISHED);
         expect(finished).toHaveLength(1);
         expect(finished[0]!.event).toMatchObject({ outcome: { type: 'interrupt' } });
+        expect(finished[0]!.id).toBeUndefined();
+        expect(bureauMetadata(finished[0]!.event)).toMatchObject({ durable: false });
+        expect(bureauMetadata(finished[0]!.event)['cursor']).toBeUndefined();
+      },
+    );
+  });
+
+  it('falls back to the snapshot when retention gaps after cursor discovery', async () => {
+    await withHarness(
+      {
+        storage: 'sqlite',
+        toolbox: createToolbox(
+          [
+            createTool({
+              name: 'charge-card',
+              version: '1.0.0',
+              description: 'Charge a payment card',
+              input: z.object({ cents: z.number() }),
+              async execute() {
+                return { charged: true };
+              },
+            }),
+          ],
+          {
+            policy: {
+              beforeExecute: () => ({
+                allow: false,
+                status: 'needs_approval',
+                reason: 'Approval required',
+                action: { message: 'Approve' },
+              }),
+            },
+          },
+        ) as unknown as Toolbox,
+        script: [
+          {
+            kind: 'respond',
+            response: {
+              content: 'Charging.',
+              toolCalls: [{ id: 'call-1', name: 'charge-card', arguments: { cents: 500 } }],
+            },
+          },
+        ],
+      },
+      async ({ handler, bureau }) => {
+        const starter = new FrameReader(await handler(startRequest(runAgentInput())));
+        await starter.until(EventType.RUN_FINISHED);
+        const nativeRunId = String(bureauMetadata(starter.received[0]!.event)['runId']);
+        const cursor = starter.received.findLast((frame) => frame.id !== undefined)?.id;
+        expect(cursor).toBeString();
+        const events = bureau.tasks.events.bind(bureau.tasks);
+        let calls = 0;
+        spyOn(bureau.tasks, 'events').mockImplementation(async (taskId, options) => {
+          calls += 1;
+          const page = await events(taskId, options);
+          if (calls === 1) {
+            if (!('events' in page)) throw new Error('expected the first history page');
+            return {
+              ...page,
+              hasMore: true,
+              nextCursor: page.events.at(-1)?.cursor,
+            };
+          }
+          return {
+            outcome: 'gap',
+            requestedCursor: options?.since ?? '-1',
+            firstRetainedSequence: 999,
+          };
+        });
+
+        const opening = await readAgUiStream(
+          await handler(attachRunRequest(nativeRunId, { 'Last-Event-ID': cursor! })),
+        );
+        expect(calls).toBeGreaterThanOrEqual(2);
+        expect(opening.some((frame) => frame.event.type === EventType.MESSAGES_SNAPSHOT)).toBe(
+          true,
+        );
+      },
+    );
+  });
+
+  it('delivers later durable text exactly once across the history/live handoff', async () => {
+    await withHarness(
+      { script: [{ kind: 'block', barrier: 'hold' }, say('later')] },
+      async ({ handler, generate }) => {
+        const starter = new FrameReader(await handler(startRequest(runAgentInput())));
+        await starter.until(EventType.STEP_STARTED);
+        await generate.reached('hold');
+        generate.release('hold');
+        const attached = await readAgUiStream(await handler(attachThreadRequest('thread-1')));
+        await starter.rest();
+        const later = attached.filter(
+          (frame) =>
+            frame.event.type === EventType.TEXT_MESSAGE_CONTENT && frame.event.delta === 'later',
+        );
+        expect(later).toHaveLength(1);
+        expect(attached.at(-1)!.event.type).toBe(EventType.RUN_FINISHED);
       },
     );
   });
