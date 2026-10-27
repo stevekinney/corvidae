@@ -7105,23 +7105,20 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     });
   }
 
-  /** Requests cancellation of a task, doing nothing once it has settled or for one not held here. */
-  function abortTask(id: string, reason?: string): void {
-    const runState = store.getRun(id);
-    if (runState === undefined) {
-      if (findCatalogRun(id) === undefined) return;
-      abortRun(id);
-      return;
-    }
-    if (runState.status !== 'running') return;
-    if (reason === undefined) abortRun(id);
-    else {
-      runState.activeRun.abort(reason);
-      void tasks.watchCleanup(id, runState.activeRun.closed());
-    }
+  /**
+   * Requests cancellation of a task through `abortRun`, so the abort is tracked as every other
+   * one is (`internals.abortingTasks()`). Does nothing once the task has settled or for a task
+   * this process does not hold. `abortRun` records its own reason, so `_reason` is not forwarded.
+   */
+  function abortTask(id: string, _reason?: string): void {
+    if (store.getRun(id)?.status !== 'running') return;
+    abortRun(id);
   }
 
-  /** A task's liveness now: the held run's, else the terminal one its durable state implies. */
+  /**
+   * A task's liveness now, from the run this process holds. A task this process does not hold
+   * (a replay of a task another process ran) is `NOT_FOUND`.
+   */
   function taskSnapshot(id: string): LivenessSnapshot {
     const detail = getRun(id);
     if (detail !== undefined) return detail.liveness;
