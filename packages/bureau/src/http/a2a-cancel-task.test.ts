@@ -50,7 +50,10 @@ async function open(options: { cancelWaitMilliseconds?: number; stopping?: () =>
     },
   };
   const served = new Proxy(bureau, {
-    get: (target, key, receiver) => (key === 'tasks' ? tasks : Reflect.get(target, key, receiver)),
+    get: (target, key, receiver) =>
+      key === 'internals'
+        ? { ...target.internals, taskRegistry: tasks }
+        : Reflect.get(target, key, receiver),
   });
   const runtime = createDefaultRuntimeServices();
   const host = buildBureauHandlerHost(bureau, ['runner']);
