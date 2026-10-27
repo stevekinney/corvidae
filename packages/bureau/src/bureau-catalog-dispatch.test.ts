@@ -59,7 +59,6 @@ function createDispatcher(
     detachBestEffortPromise: () => {},
     createBureauError: (message, code) => Object.assign(new Error(message), { code }),
     validateAgentRunInput: () => {},
-    validateBureauRunOptions: () => {},
     onDurableRunAborted: () => {},
     ...(options.onCatalogRunEnded === undefined
       ? {}
@@ -133,8 +132,6 @@ describe('createCatalogDispatcher — startChildRun', () => {
     const run = dispatcher.startChildRun({ ...start, agentName: 'worker' });
     expect(run.id).toBe('child-1');
     expect(run.snapshot().id).toBe('child-1');
-    // A child is controlled through `children`, never through `getRun`/`abortRun`.
-    expect(dispatcher.findCatalogRun('child-1')).toBeUndefined();
     const result = await run.result();
     expect(result.error).toBeUndefined();
     expect(result.content).toBe('done');
@@ -255,7 +252,6 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       detachBestEffortPromise: () => {},
       createBureauError: (message, code) => Object.assign(new Error(message), { code }),
       validateAgentRunInput: () => {},
-      validateBureauRunOptions: () => {},
       onDurableRunAborted: () => {},
     });
 
@@ -327,7 +323,6 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
         detachBestEffortPromise: () => {},
         createBureauError: (message, code) => Object.assign(new Error(message), { code }),
         validateAgentRunInput: () => {},
-        validateBureauRunOptions: () => {},
         onDurableRunAborted: () => {},
       });
       return { dispatcher, engine, runAttribution, failFirst };
@@ -571,7 +566,6 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
         detachBestEffortPromise: () => {},
         createBureauError: (message, code) => Object.assign(new Error(message), { code }),
         validateAgentRunInput: () => {},
-        validateBureauRunOptions: () => {},
         onDurableRunAborted: () => {},
       });
       return { dispatcher, engine, generates: () => generates, fenceTargets };
@@ -676,7 +670,6 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
         detachBestEffortPromise: () => {},
         createBureauError: (message, code) => Object.assign(new Error(message), { code }),
         validateAgentRunInput: () => {},
-        validateBureauRunOptions: () => {},
         onDurableRunAborted: () => {},
       });
       return { dispatcher, records, writes, engine, runAttribution };
@@ -801,7 +794,6 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
         detachBestEffortPromise: () => {},
         createBureauError: (message, code) => Object.assign(new Error(message), { code }),
         validateAgentRunInput: () => {},
-        validateBureauRunOptions: () => {},
         onDurableRunAborted: () => {},
       });
       const refusal = await settle(
@@ -883,7 +875,6 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
         detachBestEffortPromise: () => {},
         createBureauError: (message, code) => Object.assign(new Error(message), { code }),
         validateAgentRunInput: () => {},
-        validateBureauRunOptions: () => {},
         onDurableRunAborted: () => {},
       });
 
@@ -948,37 +939,6 @@ describe('createCatalogDispatcher — telling Bureau a run settled (COR-1630)', 
     return { dispatcher, ended };
   }
 
-  it('reports a process-local bureau.run() with its id, its principal and its conversation', async () => {
-    const { dispatcher, ended } = observed(processLocal);
-
-    const run = dispatcher.runAgent('worker', 'work', { principal: 'alice' });
-    await run.result();
-
-    expect(ended).toHaveLength(1);
-    expect(ended[0]).toMatchObject({
-      runId: run.id,
-      principal: 'alice',
-      settled: { kind: 'result', finishReason: 'stop-condition' },
-    });
-    const settled = ended[0]?.settled;
-    expect(settled?.kind === 'result' && settled.conversation.getMessages().length).toBe(2);
-  });
-
-  it('reports a durable bureau.run()', async () => {
-    const { dispatcher, ended } = observed(await durableComposition());
-
-    const run = dispatcher.runAgent('worker', 'work', { principal: 'alice' });
-    await run.result();
-
-    expect(ended).toEqual([
-      expect.objectContaining({
-        runId: run.id,
-        principal: 'alice',
-        settled: expect.objectContaining({ kind: 'result' }),
-      }),
-    ]);
-  });
-
   it('reports a process-local child run under the id its topology recorded', async () => {
     const { dispatcher, ended } = observed(processLocal);
 
@@ -1015,38 +975,6 @@ describe('createCatalogDispatcher — telling Bureau a run settled (COR-1630)', 
     });
     await started.durablyStarted;
     await started.run.result();
-
-    expect(ended).toEqual([]);
-  });
-
-  it('does not report a hand-written agent, which holds no claims because it takes no media options', async () => {
-    const handWritten = {
-      name: 'hand-written',
-      hasOutput: false,
-      run: () =>
-        createAgent({
-          name: 'inner',
-          generate: async () => ({ content: 'done', toolCalls: [] }),
-          stopWhen: stopWhen.noToolCalls(),
-        }).run('work'),
-    };
-    const ended: CatalogRunEnded[] = [];
-    const dispatcher = createCatalogDispatcher({
-      agentCatalog: { find: () => handWritten as never },
-      runtime: processLocal,
-      runtimeServices: createManualRuntimeServices(),
-      getShutdownPromise: () => undefined,
-      catalogRuns: new Set(),
-      runAttribution: new Map(),
-      detachBestEffortPromise: () => {},
-      createBureauError: (message, code) => Object.assign(new Error(message), { code }),
-      validateAgentRunInput: () => {},
-      validateBureauRunOptions: () => {},
-      onDurableRunAborted: () => {},
-      onCatalogRunEnded: (end) => void ended.push(end),
-    });
-
-    await dispatcher.runAgent('hand-written', 'work').result();
 
     expect(ended).toEqual([]);
   });

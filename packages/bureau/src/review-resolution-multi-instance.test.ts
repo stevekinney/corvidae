@@ -279,7 +279,9 @@ describe('the by-run derivation (COR-1579)', () => {
     const b = await open(asking({ resumed: [] }), charges, { agents });
     const a = await open(asking({ resumed: [] }), charges, { agents });
     const sessionRun = await a.bureau.tasks.start('default', 'deploy', { principal: 'alice' });
-    const catalogRun = a.bureau.run('asker', 'deploy', { principal: 'api-key:alice' });
+    const catalogRun = await a.bureau.tasks.start('asker', 'deploy', {
+      principal: 'api-key:alice',
+    });
 
     for (const runId of [sessionRun.id, catalogRun.id]) {
       const local = (await listed(a.bureau, runId)) as PendingHumanWaitReview;

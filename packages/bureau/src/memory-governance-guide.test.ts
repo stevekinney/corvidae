@@ -383,7 +383,7 @@ describe('documented Bureau memory limits', () => {
           : {}),
       });
       try {
-        const run = bureau.run('assistant', 'Remember this.');
+        const run = await bureau.tasks.start('assistant', 'Remember this.');
         const result = await run.result();
         expect(result.content).toBe('Catalog answer.');
         expect(run.snapshot().durability === 'durable').toBe(durability === 'durable');

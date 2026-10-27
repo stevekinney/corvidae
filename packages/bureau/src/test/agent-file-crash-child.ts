@@ -53,7 +53,7 @@ const bureau = await createBureau<AgentDefinitions>({
 
 const runs: Array<{ name: string; kind: 'catalog' | 'session'; runId: string }> = [];
 for (const name of ['gone', 'edited']) {
-  const catalog = bureau.run(name, 'crash harness');
+  const catalog = await bureau.tasks.start(name, 'crash harness');
   runs.push({ name, kind: 'catalog', runId: catalog.id });
   const session = await bureau.tasks.start(name, 'crash harness');
   runs.push({ name, kind: 'session', runId: session.id });

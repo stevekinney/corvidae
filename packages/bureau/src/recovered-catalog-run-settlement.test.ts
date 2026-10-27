@@ -95,7 +95,9 @@ describe('a recovered file-agent run', () => {
     const first = await open(directory, storagePath);
     await first.put('researcher.md', FILE);
     await first.bureau.agents.refresh();
-    const run = first.bureau.run('researcher', 'long question', { principal: PRINCIPAL });
+    const run = await first.bureau.tasks.start('researcher', 'long question', {
+      principal: PRINCIPAL,
+    });
     await waitForCondition(
       async () => (await first.bureau.internals.taskRegistry.record(run.id)) !== undefined,
       'the task is recorded',

@@ -124,7 +124,7 @@ describe('a sessionless durable run recovered after a crash', () => {
     await admission.work.result();
     const image: MediaContent = { type: 'image', source: admission.source };
     const assetId = admission.assetId;
-    const run = first.run('viewer', [image], { principal: alice.id });
+    const run = await first.tasks.start('viewer', [image], { principal: alice.id });
     await waitForCondition(() => seenFirst.length > 0, 'the run never reached its first step');
     const before = await holdersOf(first, assetId);
 
@@ -204,7 +204,7 @@ describe('a sessionless durable run recovered after a crash', () => {
     };
 
     const first = await openBureau(store, { painter });
-    const run = first.run('painter', 'Draw', { principal: alice.id });
+    const run = await first.tasks.start('painter', 'Draw', { principal: alice.id });
     await reviewOf(first, run.id);
 
     const second = await openBureau(store, { painter });

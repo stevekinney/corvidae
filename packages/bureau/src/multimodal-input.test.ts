@@ -23,6 +23,7 @@ import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, base64Of, bob, pngBytes } from './testing/asset-fixtures.test-support';
 import type { Bureau } from './types';
+import { runTask } from './test';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -93,7 +94,7 @@ describe('bureau.run with a managed asset in the input (COR-716)', () => {
     const { source, bytes } = await admitImage(bureau);
     const parts: MediaContent[] = [{ type: 'image', source }];
 
-    const result = await bureau.run('echo', parts, { principal: alice.id }).result();
+    const result = await runTask(bureau, 'echo', parts, { principal: alice.id });
 
     expect(result.finishReason).not.toBe('error');
     const context = seen[0]!;
@@ -117,9 +118,9 @@ describe('bureau.run with a managed asset in the input (COR-716)', () => {
     const bureau = await openBureau({ seen });
     const { source } = await admitImage(bureau);
 
-    const result = await bureau
-      .run('echo', [{ type: 'image', source }], { principal: bob.id })
-      .result();
+    const result = await runTask(bureau, 'echo', [{ type: 'image', source }], {
+      principal: bob.id,
+    });
 
     expect(result.finishReason).toBe('error');
     expect(result.error).toBeInstanceOf(MediaAdmissionError);
@@ -134,9 +135,9 @@ describe('bureau.run with a managed asset in the input (COR-716)', () => {
     });
     const { source } = await admitImage(bureau);
 
-    const blocked = await bureau
-      .run('echo', [{ type: 'image', source }], { principal: alice.id })
-      .result();
+    const blocked = await runTask(bureau, 'echo', [{ type: 'image', source }], {
+      principal: alice.id,
+    });
 
     // Admission applies the policy at the step boundary, before the guardrail
     // runs: the run ends as a typed policy error and generate is never called.
@@ -156,9 +157,9 @@ describe('bureau.run with a managed asset in the input (COR-716)', () => {
     });
     const { source } = await admitImage(bureau);
 
-    const result = await bureau
-      .run('echo', [{ type: 'image', source }], { principal: alice.id })
-      .result();
+    const result = await runTask(bureau, 'echo', [{ type: 'image', source }], {
+      principal: alice.id,
+    });
 
     expect(result.finishReason).not.toBe('error');
     expect(seen).toHaveLength(1);
@@ -173,9 +174,9 @@ describe('bureau.run with a managed asset in the input (COR-716)', () => {
       await bureau.dispose();
     });
 
-    const result = await bureau
-      .run('echo', [{ type: 'image', source: { kind: 'managed-asset', assetId: 'a' } }])
-      .result();
+    const result = await runTask(bureau, 'echo', [
+      { type: 'image', source: { kind: 'managed-asset', assetId: 'a' } },
+    ]);
 
     expect(result.error).toBeInstanceOf(MediaAdmissionError);
     expect(seen).toHaveLength(0);
@@ -195,7 +196,7 @@ describe('bureau.run takes its input as it was when called (COR-716)', () => {
       });
       const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: 'as submitted' }];
 
-      const run = bureau.run('echo', parts);
+      const run = await bureau.tasks.start('echo', parts);
       parts[0]!.text = 'mutated';
       parts.push({ type: 'text', text: 'appended' });
       await run.result();
@@ -230,7 +231,7 @@ describe('a durable catalog run records its input as submitted (COR-716)', () =>
     });
     const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: 'as submitted' }];
 
-    const run = bureau.run('echo', parts);
+    const run = await bureau.tasks.start('echo', parts);
     parts[0]!.text = 'mutated';
     await started.promise;
 

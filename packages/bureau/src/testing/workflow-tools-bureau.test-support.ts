@@ -140,7 +140,7 @@ export async function startWorkflowToolsBureau(
         await settledRun(bureau, created.id);
         runId = created.id;
       } else {
-        const run = bureau.run(
+        const run = await bureau.tasks.start(
           callOptions.agent ?? 'scribe',
           'go',
           callOptions.principal === undefined ? {} : { principal: callOptions.principal },

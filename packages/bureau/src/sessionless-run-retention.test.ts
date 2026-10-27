@@ -16,7 +16,7 @@ import {
   waitForCondition,
   withBackendDescriptors,
 } from '@lostgradient/operative';
-import { waitForTaskState } from './test';
+import { waitForTaskState, closedTask } from './test';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 import type { MediaContent } from 'conversationalist';
@@ -220,7 +220,7 @@ describe.each([
     const image = await suppliedImage(bureau);
     const assetId = assetIdOf(image);
 
-    const run = bureau.run('viewer', [image], { principal: alice.id });
+    const run = await bureau.tasks.start('viewer', [image], { principal: alice.id });
     await waitForCondition(() => seen.length > 0, 'the run never reached its first step');
 
     const report = await pastTheFloor(environment, bureau);
@@ -242,7 +242,7 @@ describe.each([
     const bureau = await openBureau(environment, { viewer: viewer([]) }, extra);
     const image = await suppliedImage(bureau);
 
-    const run = bureau.run('viewer', [image], { principal: alice.id });
+    const run = await bureau.tasks.start('viewer', [image], { principal: alice.id });
     await run.result();
     await waitForCondition(
       () => isUnheld(bureau, assetIdOf(image)),
@@ -291,7 +291,7 @@ describe('a sessionless bureau.run() across a restart', () => {
       durable,
     );
     const image = await suppliedImage(first);
-    first.run('viewer', [image], { principal: alice.id });
+    await first.tasks.start('viewer', [image], { principal: alice.id });
     await waitForCondition(() => seen.length > 0, 'the run never reached its first step');
 
     // The recovered run is parked too, so it is still in flight when the floor passes.
@@ -318,7 +318,7 @@ describe('a sessionless bureau.run() across a restart', () => {
       { storage, durable: true },
     );
     const image = await suppliedImage(first);
-    first.run('viewer', [image], { principal: alice.id });
+    await first.tasks.start('viewer', [image], { principal: alice.id });
     await waitForCondition(() => seen.length > 0, 'the run never reached its first step');
     // The default `abort` policy cancels the durable run for good, so it has ended.
     await first.dispose();
@@ -439,9 +439,9 @@ describe.each([
     const bureau = await openBureau(environment, { painter }, extra);
     const claims = watchRunRowClaims(bureau);
 
-    const run = bureau.run('painter', 'Draw', { principal: alice.id });
+    const run = await bureau.tasks.start('painter', 'Draw', { principal: alice.id });
     const result = await run.result();
-    await run.closed();
+    await closedTask(bureau, run);
     const image = result.parts.find((part) => part.type === 'image');
     if (image === undefined || image.type !== 'image')
       throw new Error('the run generated no image');

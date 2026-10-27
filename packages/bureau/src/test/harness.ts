@@ -23,7 +23,7 @@
  * `assertBureauQuiescent` (`./quiescence.ts`) rather than reimplementing
  * shutdown-awaiting or leak detection here: this module's only quiescence
  * responsibility is exposing the PUBLIC bookkeeping `assertBureauQuiescent`
- * reads from — the `scope` every `startRun` root registers onto, and the
+ * reads from — the `scope` every `startTask` root registers onto, and the
  * `childRegistry` every `startChild` dispatch registers into by default.
  *
  * Out of scope here (AB-261's original boundary, now narrowed by AB-262
@@ -50,7 +50,7 @@ import {
 import type { ScheduleSummary, WorkflowState } from '@lostgradient/weft';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 
-import type { AgentDefinitions, AgentNames, AgentRunForName } from '../agent-catalog';
+import type { AgentDefinitions } from '../agent-catalog';
 import {
   ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS,
   createBureau,
@@ -59,7 +59,6 @@ import {
 import type {
   Bureau,
   BureauOptions,
-  BureauRunOptions,
   BureauShutdownOptions,
   DurableScheduleDefinition,
   ResolveReviewInput,
@@ -149,7 +148,7 @@ export interface BureauTestHarness<D extends AgentDefinitions = AgentDefinitions
   readonly storage: BureauStorageFixture;
 
   /**
-   * The `ResourceScope` (operative's test kit, AB-256) every `startRun`
+   * The `ResourceScope` (operative's test kit, AB-256) every `startTask`
    * root registers onto as it is dispatched. Exposed PUBLICLY so a test can
    * also register a timer or listener directly (`scope.register({kind:
    * 'timer', ... })`) to exercise a deliberate leak — `assertBureauQuiescent`
@@ -208,14 +207,10 @@ export interface BureauTestHarness<D extends AgentDefinitions = AgentDefinitions
    */
   close(shutdownOptions?: BureauShutdownOptions): Promise<BureauQuiescenceReport>;
 
-  /** Thin wrapper over `Bureau.run` — catalog-agent dispatch. */
-  startRun<TName extends AgentNames<D>>(
-    name: TName,
-    input: AgentInput,
-    options?: BureauRunOptions,
-  ): AgentRunForName<D, TName>;
-
-  /** Starts a task through `bureau.tasks.start`, from one {@link TaskStartRequest} object. */
+  /**
+   * Starts a task through `bureau.tasks.start`, from one {@link TaskStartRequest} object, and
+   * registers the run this process holds onto {@link scope} so `close()` reports it if it leaks.
+   */
   startTask(request: TaskStartRequest): Promise<TaskHandle>;
 
   /**
@@ -445,14 +440,11 @@ export async function createBureauTestHarness<D extends AgentDefinitions = Agent
       return closePromise;
     },
 
-    startRun(name, input, runOptions) {
-      const run = readyBureau.run(name, input, runOptions);
-      scope.register({ kind: 'run', identifier: run.snapshot().id, run });
-      return run;
-    },
-
-    startTask(request) {
-      return startTaskFrom(readyBureau, request);
+    async startTask(request) {
+      const task = await startTaskFrom(readyBureau, request);
+      const held = readyBureau.internals.store.getRun(task.id)?.activeRun;
+      if (held !== undefined) scope.register({ kind: 'run', identifier: task.id, run: held });
+      return task;
     },
 
     startChild(parentRunId, agentName, input, dispatchOptions) {

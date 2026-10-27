@@ -1036,7 +1036,11 @@ describe('who reaches the human wait of a bureau.run() run, through a real Burea
       storage: { type: 'memory' },
       durable: true,
     });
-    const run = bureau.run('asker', 'deploy', principal === undefined ? {} : { principal });
+    const run = await bureau.tasks.start(
+      'asker',
+      'deploy',
+      principal === undefined ? {} : { principal },
+    );
     await waitForCondition(
       () => bureau.reviews.list().some((review) => review.runId === run.id),
       'expected the catalog run to park and surface a pending review',

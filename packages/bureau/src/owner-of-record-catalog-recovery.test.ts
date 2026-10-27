@@ -45,8 +45,8 @@ describe('a catalog run recovered after a restart (COR-718)', () => {
       onDiagnostic,
     });
     try {
-      first.run('echo', 'unowned');
-      first.run('echo', 'owned', { principal: 'api-key:alice' });
+      await first.tasks.start('echo', 'unowned');
+      await first.tasks.start('echo', 'owned', { principal: 'api-key:alice' });
       await waitForCondition(() => reachedStepOne >= 2, 'both runs never reached step one');
       const listed = await first.tasks.workflows();
       const runIds = (listed?.items ?? [])

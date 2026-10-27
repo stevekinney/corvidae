@@ -95,9 +95,9 @@ if (mode === 'settlement') {
     await sleep(10);
   }
 } else {
-  const run = bureau.run('asker', 'which environment?', {
+  const run = await bureau.tasks.start('asker', 'which environment?', {
     principal: 'api-key:alice',
-    sessionId: CONTEXT_ID,
+    contextId: CONTEXT_ID,
   });
   for (;;) {
     if (held && bureau.reviews.list().some((review) => review.runId === run.id)) {

@@ -104,7 +104,6 @@ async function harness(): Promise<Harness> {
         detachBestEffortPromise: () => {},
         createBureauError: (message, code) => Object.assign(new Error(message), { code }),
         validateAgentRunInput: () => {},
-        validateBureauRunOptions: () => {},
         onDurableRunAborted: () => {},
         fileAgents,
       }),
@@ -410,7 +409,7 @@ describe('a start that fails before the run exists', () => {
     expect(await stored(h.snapshots, attempt.runId)).toEqual({ reference: undefined, hashes: [] });
   });
 
-  it('keeps nothing when the recovery record cannot be written, for a minted run id', async () => {
+  it('keeps nothing when the recovery record cannot be written, for a child run', async () => {
     const h = await harness();
     const dispatcher = h.dispatcher(
       claimRuntime({
@@ -421,7 +420,7 @@ describe('a start that fails before the run exists', () => {
       }),
     );
 
-    const run = dispatcher.runAgent('worker', 'work');
+    const run = dispatcher.startChildRun({ ...child });
     const result = await run.result();
 
     expect(String(result.error)).toContain('persist failed');
@@ -477,7 +476,7 @@ describe('a run that is not durable', () => {
 
   it('settles its reference when it is aborted while it is still resolving', async () => {
     const h = await harness();
-    const run = h.dispatcher(plain).runAgent('worker', 'work');
+    const run = h.dispatcher(plain).startChildRun({ ...child });
     run.abort('changed my mind');
     await run.result();
     await settled(h);
@@ -489,7 +488,7 @@ describe('a run that is not durable', () => {
 
   it('settles its reference when it runs to the end', async () => {
     const h = await harness();
-    const run = h.dispatcher(plain).runAgent('worker', 'work');
+    const run = h.dispatcher(plain).startChildRun({ ...child });
     await run.result();
     await settled(h);
     const ended = await h.snapshots.reference(run.id);

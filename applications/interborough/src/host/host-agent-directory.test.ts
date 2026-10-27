@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { startHost, type Host, type HostOptions } from './host.ts';
+import { runTask } from './run-task.test-support.ts';
 
 const FIXTURE_KEY = 'fixture-anthropic-key-9c1d';
 const directories: string[] = [];
@@ -129,7 +130,7 @@ describe('the host’s agent directory', () => {
       name: 'Researcher',
       owner: 'anonymous:local',
     });
-    const result = await host.bureau.run('researcher', 'Hello').result();
+    const result = await runTask(host.bureau, 'researcher', 'Hello');
     expect(result.content).toBe('A reply from a file agent.');
     expect(handed.at(-1)).toMatchObject({ provider: 'anthropic', model: 'claude-sonnet-5' });
     // Compared, not printed: a failure must not show the value.

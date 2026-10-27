@@ -40,7 +40,7 @@ describe('attaching by run to a bureau.run() run of a hand-written agent', () =>
     });
     try {
       const handler = createBureauHandler(bureau, { authentication, publish: [], agUi: {} });
-      const run = bureau.run('plain', 'hi', { principal: 'api-key:alice' });
+      const run = await bureau.tasks.start('plain', 'hi', { principal: 'api-key:alice' });
       expect(await bureau.getOwner({ kind: 'run', id: run.id })).toBe('api-key:alice');
 
       const stranger = await readAgUiStream(await handler(attachRunRequest(run.id, as('bob-key'))));

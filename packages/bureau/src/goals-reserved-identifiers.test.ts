@@ -55,17 +55,8 @@ async function boot() {
 
 const RESERVED: string[] = ['goal:g1', 'goal-g1-s0', 'goal-g1-a0', 'bureau-goal-audit:g1'];
 
-function thrown(action: () => unknown): unknown {
-  try {
-    action();
-  } catch (error) {
-    return error;
-  }
-  return undefined;
-}
-
 async function expectChildRunIdRefused(bureau: Bureau, childRunId: string): Promise<void> {
-  bureau.run('planner', 'plan');
+  await bureau.tasks.start('planner', 'plan');
   await pollUntil(async () => {
     const parents = await durableIds(bureau, 'agent-run-');
     return parents.length === 1;
@@ -111,16 +102,6 @@ describe('an id an ordinary caller chooses', () => {
     const error = await bureau.tasks
       .start('default', 'hello', { contextId: sessionId })
       .catch((e: unknown) => e);
-
-    expect(error).toBeInstanceOf(BureauError);
-    expect(error).toMatchObject({ code: 'BAD_REQUEST' });
-    expect((error as Error).message).toContain('reserved-identifier');
-  });
-
-  it.each(RESERVED)('may not be the session id %s of bureau.run', async (sessionId) => {
-    const bureau = await boot();
-
-    const error = thrown(() => bureau.run('worker', 'hello', { sessionId }));
 
     expect(error).toBeInstanceOf(BureauError);
     expect(error).toMatchObject({ code: 'BAD_REQUEST' });

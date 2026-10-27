@@ -948,7 +948,7 @@ describe('a bureau.run() run stays off the store scan (COR-1302)', () => {
     });
     const bureau = await open({ agents: { asker: agent } });
 
-    const run = bureau.run('asker', 'go', { principal: OWNER.alice });
+    const run = await bureau.tasks.start('asker', 'go', { principal: OWNER.alice });
     await reviewOf(bureau, run.id);
     // The run is on the store while it lives, which is what the guard keeps the scan off. A
     // `bureau.run()` approval never reaches the scan either way, so the wait is what shows it.

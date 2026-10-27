@@ -9,8 +9,6 @@ import type {
 } from '@lostgradient/lifecycle';
 import type { GovernedMemory, MemoryCapability } from '@lostgradient/memory';
 import type {
-  AgentInput,
-  AgentRun,
   AgentRunEventRegistry,
   AgentSession,
   CacheOptions,
@@ -75,7 +73,6 @@ import type {
   AgentHasOutput,
   AgentNames,
   AgentOutput,
-  AgentRunForName,
   BureauAgentCatalog,
 } from './agent-catalog';
 import type { BureauAssetOptions } from './assets/asset-service';
@@ -2015,41 +2012,6 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * the Bureau has none. Every workflow belongs to the deployment's owner of record.
    */
   readonly workflows: BureauWorkflows | undefined;
-
-  /**
-   * Dispatch to a named catalog agent (AB-15, AB-22) — synchronous, like
-   * `RunnableAgent.run`: it returns the `AgentRun` handle immediately, never
-   * `Promise<AgentRun>`, regardless of whether the named agent is a
-   * `createLazyAgent` entry still resolving. Synchronous throws are limited
-   * to an unknown `name`, a disposed bureau, and malformed `input`/`options`;
-   * every other failure (session, provider, tool, policy, or abort) settles
-   * through the returned handle.
-   *
-   * Independent of `createRun` below: `run` dispatches to a catalog
-   * `RunnableAgent` (agent-owned generate/tools/durability by construction);
-   * `createRun` keeps driving bureau-level `generate`/`provider` through the
-   * session/durable-execution machinery. A bureau may use either, both, or
-   * neither.
-   *
-   * When this bureau has a durable engine composed (a persistent `storage`
-   * backend, or `durable: true`) and the named agent supports the
-   * definition-resolution capability (every `createAgent`/`createLazyAgent`
-   * result does), the run is driven through that SAME durable engine so it
-   * survives a crash and resumes — exactly like a `createRun` run. Otherwise
-   * the agent's own in-memory `run()` is used directly.
-   */
-  run<TName extends AgentNames<D>>(
-    name: TName,
-    input: AgentInput,
-    options?: BureauRunOptions,
-  ): AgentRunForName<D, TName>;
-  /**
-   * COR-1524 — dispatch an agent by a name only known at run time: a file-based agent's
-   * identifier (see {@link BureauOptions.agentSource}). The handle is untyped, as the agent's
-   * output is. A name that matches neither a code-defined agent nor a file agent whose state is
-   * `ready` throws `BureauError` (`NOT_FOUND`), exactly as the typed overload does.
-   */
-  run(name: string, input: AgentInput, options?: BureauRunOptions): AgentRun<unknown, boolean>;
 
   /**
    * COR-772 — Bureau's durable parent-child topology: dispatch a catalog

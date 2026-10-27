@@ -193,7 +193,7 @@ describe('a schedule fire’s tool approval', () => {
       },
     });
 
-    const run = bureau.run('payer', 'charge it', { principal: OWNER.alice });
+    const run = await bureau.tasks.start('payer', 'charge it', { principal: OWNER.alice });
     await run.result();
 
     expect(bureau.reviews.list()).toEqual([]);

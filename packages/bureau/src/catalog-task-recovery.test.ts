@@ -57,7 +57,9 @@ describe('a catalog task across a boot', () => {
   it('stays removed when retention removed it, and its message text is not written again', async () => {
     const fixture = newFixture();
     const first = await open(fixture);
-    const run = first.run('answerer', 'EXPIRED-QUESTION', { principal: 'api-key:alice' });
+    const run = await first.tasks.start('answerer', 'EXPIRED-QUESTION', {
+      principal: 'api-key:alice',
+    });
     await run.result();
     await waitForCondition(async () => {
       const task = await first.internals.taskRegistry.get(run.id);
@@ -77,7 +79,9 @@ describe('a catalog task across a boot', () => {
   it('gets exactly one record, dated from the durable run, when it is in flight and was never recorded', async () => {
     const fixture = newFixture();
     const crashed = await open(fixture);
-    const run = crashed.run('asker', 'which environment?', { principal: 'api-key:alice' });
+    const run = await crashed.tasks.start('asker', 'which environment?', {
+      principal: 'api-key:alice',
+    });
     await waitForCondition(
       () => crashed.reviews.list().some((review) => review.runId === run.id),
       'the run never parked',
@@ -104,7 +108,9 @@ describe('a catalog task across a boot', () => {
   it('settles the task of a catalog run that was in flight across the restart and ends after it', async () => {
     const fixture = newFixture();
     const crashed = await open(fixture);
-    const run = crashed.run('asker', 'which environment?', { principal: 'api-key:alice' });
+    const run = await crashed.tasks.start('asker', 'which environment?', {
+      principal: 'api-key:alice',
+    });
     await waitForCondition(
       () => crashed.reviews.list().some((review) => review.runId === run.id),
       'the run never parked',

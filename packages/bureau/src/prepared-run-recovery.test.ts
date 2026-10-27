@@ -322,7 +322,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
       hook.release();
       await crashed.dispose();
     });
-    const run = crashed.run('researcher', 'prepared, never launched');
+    const run = await crashed.tasks.start('researcher', 'prepared, never launched');
     const runId = run.snapshot().id;
     await waitForCondition(
       async () => (await durableStatus(crashed, runId)) === 'pending',

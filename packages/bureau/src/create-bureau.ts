@@ -282,8 +282,6 @@ import {
   serializeActionDetail,
   serializeRunDetail,
   serializeRunState,
-  serializeUndispatchedCatalogRun,
-  serializeUndispatchedCatalogRunDetail,
   serializeUnknownError,
 } from './serialization';
 import { createCatalogTaskSettler } from './catalog-task-settlement';
@@ -297,7 +295,6 @@ import {
   type DurableEnd,
   type DurableEndReader,
   createCatalogSettlementTracker,
-  publishFreshCatalogRun,
   settlementForRejection,
 } from './catalog-run-settlement';
 import {
@@ -315,7 +312,6 @@ import {
   EXPIRY_ACTOR,
   ownerFromPrincipal,
   ownerOrLocal,
-  principalDefect,
   RECOVERY_ACTOR,
   SCHEDULER_ACTOR,
 } from './owner-of-record';
@@ -477,7 +473,6 @@ import type {
   BureauChildrenOptions,
   BureauOptions,
   BureauRecoveryReport,
-  BureauRunOptions,
   BureauShutdownOptions,
   BureauShutdownOwnerReport,
   BureauShutdownReport,
@@ -1200,7 +1195,13 @@ function taskRequestFieldsOf(
 ): Pick<CreateRunRequest & SessionTaskFields, 'message' | 'inputParts' | 'appendMessages'> {
   if (typeof input === 'string') return { message: input };
   if (Array.isArray(input)) {
-    assertAgentInput(input);
+    // COR-716: an ordered list of user text and media parts, checked as every start path checks it.
+    try {
+      assertAgentInput(input);
+    } catch (error) {
+      if (error instanceof AgentContractError) toBadRequest(`"input" is invalid: ${error.message}`);
+      throw error;
+    }
     return { inputParts: input };
   }
   if (typeof input !== 'object' || input === null) {
@@ -1209,6 +1210,9 @@ function taskRequestFieldsOf(
   if ('append' in input) return { appendMessages: input.append };
   if ('conversation' in input) {
     const history = input.conversation;
+    if (!isConversationHistory(history)) {
+      return toBadRequest('"input.conversation" must be a valid ConversationHistory');
+    }
     return { appendMessages: history.ids.map((id) => history.messages[id]!) };
   }
   if ('continue' in input) return {};
@@ -1322,42 +1326,40 @@ function validateAgentRunInput(input: unknown): asserts input is AgentInput {
   );
 }
 
-function validateBureauRunOptions(
-  options: BureauRunOptions | undefined,
-  // AB-241 review finding: a `principal` value re-read from `options` here
-  // (a second, independent property access) could differ from the value
-  // the caller snapshots before/after this call if `options.principal` is
-  // a getter/proxy whose result changes between reads — a JavaScript
-  // caller could observe a validated string on the first read and hand a
-  // non-string (or a different principal entirely) to whichever read
-  // actually gets persisted, bypassing this synchronous `BAD_REQUEST`.
-  // The caller captures `options?.principal` exactly ONCE and passes that
-  // captured value here, so this validates the SAME value every other
-  // consumer downstream (context, recovery record, liveness owner) uses.
-  capturedPrincipal: unknown,
-): asserts options is BureauRunOptions | undefined {
-  if (options === undefined) return;
-  // `typeof [] === 'object'` — without excluding arrays explicitly, a
-  // JavaScript caller passing `[]` (or any array) as `options` passed this
-  // guard as an empty options bag instead of the synchronous rejection the
-  // contract advertises for malformed options (review round 2, Codex).
+/**
+ * The options of one {@link BureauTasks.start} call, each read once. A caller-owned bag is read
+ * before the first `await` and never again, so a getter that answers differently on a later read
+ * cannot slip a value past this check. A malformed bag is `BAD_REQUEST` before anything is
+ * persisted; the owner and the context identifier are validated where the run is created.
+ */
+function snapshotStartOptions(options: StartTaskOptions): StartTaskOptions {
   if (options === null || typeof options !== 'object' || Array.isArray(options)) {
     toBadRequest('"options" must be an object');
   }
-  if (options.sessionId !== undefined && typeof options.sessionId !== 'string') {
-    toBadRequest('"options.sessionId" must be a string');
-  }
-  if (options.sessionId !== undefined) {
-    rejectReservedIdentifier('"options.sessionId"', options.sessionId.trim());
-  }
-  if (options.signal !== undefined && !(options.signal instanceof AbortSignal)) {
+  const {
+    contextId,
+    principal,
+    commandId,
+    requestContext,
+    signal,
+    traceContext,
+    withTraceContext,
+  } = options;
+  if (signal !== undefined && !(signal instanceof AbortSignal)) {
     toBadRequest('"options.signal" must be an AbortSignal');
   }
-  if (options.withTraceContext !== undefined && typeof options.withTraceContext !== 'function') {
+  if (withTraceContext !== undefined && typeof withTraceContext !== 'function') {
     toBadRequest('"options.withTraceContext" must be a function');
   }
-  const principalReason = principalDefect(capturedPrincipal, 'options.principal');
-  if (principalReason !== undefined) toBadRequest(principalReason);
+  return {
+    ...(contextId === undefined ? {} : { contextId }),
+    ...(principal === undefined ? {} : { principal }),
+    ...(commandId === undefined ? {} : { commandId }),
+    ...(requestContext === undefined ? {} : { requestContext }),
+    ...(signal === undefined ? {} : { signal }),
+    ...(traceContext === undefined ? {} : { traceContext }),
+    ...(withTraceContext === undefined ? {} : { withTraceContext }),
+  };
 }
 
 /**
@@ -4328,9 +4330,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         updatedAt: runState.actions.at(-1)?.timestamp,
       };
     }
-    return findCatalogRun(taskId) === undefined
-      ? undefined
-      : { phase: 'submitted', finishReason: undefined, error: undefined, updatedAt: undefined };
+    return undefined;
   }
 
   const tasks = createTaskRegistry({
@@ -7023,8 +7023,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   async function startTask(
     agentName: string,
     input: TaskInput,
-    startOptions: StartTaskOptions = {},
+    callerOptions: StartTaskOptions = {},
   ): Promise<TaskHandle> {
+    const startOptions = snapshotStartOptions(callerOptions);
     if (typeof agentName !== 'string' || agentName.trim().length === 0) {
       toBadRequest('"agentName" must be a non-empty string');
     }
@@ -9046,7 +9047,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       });
     };
     for (const record of await tasks.unsettled()) {
-      if (store.getRun(record.taskId) !== undefined || findCatalogRun(record.taskId)) continue;
+      if (store.getRun(record.taskId) !== undefined) continue;
       await settle(record.taskId, await durable.engine.get(record.taskId));
     }
     // COR-1594: a fire whose settlement was written but whose history event never was, because its
@@ -9833,8 +9834,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   function attributionOf(runId: string): RunAttribution | undefined {
     const recorded = runAttribution.get(runId);
     if (recorded?.principal !== undefined) return recorded;
-    const owner = findCatalogRun(runId)?.handle.snapshot().owner;
-    return owner === undefined ? recorded : { ...recorded, principal: owner };
+    return recorded;
   }
 
   /**
@@ -9844,11 +9844,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
    * names no run this Bureau knows.
    */
   async function runOwner(runId: string): Promise<string | undefined> {
-    if (
-      runAttribution.get(runId) !== undefined ||
-      store.getRun(runId) !== undefined ||
-      findCatalogRun(runId)
-    ) {
+    if (runAttribution.get(runId) !== undefined || store.getRun(runId) !== undefined) {
       return ownerOrLocal(attributionOf(runId)?.principal);
     }
     const child = await childTopologyStore.get(runId);
@@ -10024,17 +10020,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
 
   function getRun(id: string) {
     const runState = store.getRun(id);
-    if (!runState) {
-      // COR-1302: a `bureau.run()` handle whose run is not on `store` (not
-      // built yet, or never built) still resolves while it is unsettled.
-      const dispatched = findCatalogRun(id);
-      if (!dispatched) return undefined;
-      return serializeUndispatchedCatalogRunDetail(
-        id,
-        dispatched.handle.snapshot(),
-        undispatchedCatalogRunAttribution(id, dispatched.agentName),
-      );
-    }
+    if (!runState) return undefined;
 
     return serializeRunDetail(runState, getRunSessionIdentifier(runState), attributionOf(id));
   }
@@ -10050,20 +10036,6 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     }
 
     return runState.activeRun.subscribeSnapshot(observer, requestOptions);
-  }
-
-  /**
-   * COR-1302: the attribution an unsettled `bureau.run()` run reports before
-   * it is on `store`. The durable branch's recorded attribution wins, so the
-   * summary does not change once the run is registered; otherwise the catalog
-   * name the run was dispatched under.
-   */
-  function undispatchedCatalogRunAttribution(id: string, agentName: string): RunAttribution {
-    const recorded = attributionOf(id);
-    return {
-      agentName: recorded?.agentName ?? agentName,
-      ...(recorded?.principal === undefined ? {} : { principal: recorded.principal }),
-    };
   }
 
   /**
@@ -10088,25 +10060,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
    */
   function abortRun(id: string): RunSummary {
     const runState = store.getRun(id);
-    if (!runState) {
-      // COR-1302: a `bureau.run()` run aborted before its dispatch has built
-      // it is cancelled through its handle, which forwards the cancellation
-      // to the run once it exists (or settles the run `'aborted'` without
-      // ever starting it). Its parent-cancellation policy is applied by the
-      // handle's own settlement (`onDurableRunAborted`), as for any handle
-      // abort.
-      const dispatched = findCatalogRun(id);
-      if (!dispatched) throw new BureauError('Run not found', 'NOT_FOUND');
-      dispatched.handle.abort('Aborted via API');
-      void tasks.watchCleanup(id, dispatched.handle.closed());
-      return {
-        ...serializeUndispatchedCatalogRun(
-          id,
-          undispatchedCatalogRunAttribution(id, dispatched.agentName),
-        ),
-        status: 'aborting',
-      };
-    }
+    if (!runState) throw new BureauError('Run not found', 'NOT_FOUND');
 
     if (runState.status !== 'running') {
       // AB-369 review finding (PR #583, Codex): do NOT clear `abortingRunIds`
@@ -11466,7 +11420,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       now: runtimeServices.clock.now(),
       isLive: (runId) => {
         const status = store.getRun(runId)?.status;
-        return status === 'running' || status === 'aborting' || findCatalogRun(runId) !== undefined;
+        return status === 'running' || status === 'aborting';
       },
       durableState: async (reference) => {
         // Without a durable engine nothing outlives the process, so a reference from before this
@@ -18181,75 +18135,42 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     );
   }
 
-  const {
-    runAgent,
-    planChildRun,
-    startChildRun,
-    startGoalAttemptRun,
-    startWorkflowStepRun,
-    findCatalogRun,
-  } = createCatalogDispatcher({
-    agentCatalog,
-    runtime,
-    runtimeServices,
-    getShutdownPromise: () => shutdownPromise,
-    catalogRuns,
-    runAttribution,
-    detachBestEffortPromise,
-    createBureauError: (message, code) => new BureauError(message, code),
-    validateAgentRunInput,
-    validateBureauRunOptions,
-    registerCatalogRun,
-    // COR-1481 — a `bureau.run()` dispatch is a task: its record is written as the
-    // handle is returned (a write that fails is diagnosed, not thrown, because
-    // `bureau.run` returns synchronously), and its end is recorded from its result.
-    onCatalogRunAdmitted: ({ handle, agentName, owner, contextId, input }) => {
-      const taskId = handle.id;
-      catalogSettlements.follow(
-        publishFreshCatalogRun({
-          handle,
-          agentName,
-          admit: () =>
-            tasks.recordAdmission({
-              taskId,
-              contextId,
-              incarnation: '',
-              agentName,
-              owner,
-              message: originatingMessageText(input),
+  const { planChildRun, startChildRun, startGoalAttemptRun, startWorkflowStepRun } =
+    createCatalogDispatcher({
+      agentCatalog,
+      runtime,
+      runtimeServices,
+      getShutdownPromise: () => shutdownPromise,
+      catalogRuns,
+      runAttribution,
+      detachBestEffortPromise,
+      createBureauError: (message, code) => new BureauError(message, code),
+      validateAgentRunInput,
+      registerCatalogRun,
+      // COR-1630 — a run's asset claims are released when its handle settles, if the run ended.
+      onCatalogRunEnded: ({ runId, principal, settled }) =>
+        catalogSettlements.follow(
+          trackCatalogAssetRelease(
+            catalogRunAssets.releaseAfterHandle({
+              runId,
+              principalId: ownerOrLocal(principal),
+              settled,
             }),
-          hook: catalogRunSettlements,
-          durableEnd: catalogDurableEnd,
-          followCleanup: (closed) =>
-            void tasks.watchCleanup(taskId, closed as Promise<RunCleanupAcknowledgement>),
-          diagnose,
-        }),
-      );
-    },
-    // COR-1630 — a run's asset claims are released when its handle settles, if the run ended.
-    onCatalogRunEnded: ({ runId, principal, settled }) =>
-      catalogSettlements.follow(
-        trackCatalogAssetRelease(
-          catalogRunAssets.releaseAfterHandle({
-            runId,
-            principalId: ownerOrLocal(principal),
-            settled,
-          }),
+          ),
         ),
-      ),
-    fileAgents,
-    // COR-1577 — `requestHumanInput` for a durable `bureau.run()` run.
-    humanInput: runtime.durable !== undefined ? options.humanInput : false,
-    // COR-772 — a durable `bureau.run` parent aborted through its own handle
-    // is a cancelled parent like any other. Once shutdown has begun, dispose
-    // — not the policy — ends every live run, and boot recovery applies the
-    // policy to whatever it left running from the cancelled parent's
-    // durable state.
-    onDurableRunAborted: (runId, reason) => {
-      if (shutdownPromise) return;
-      void childTopology.parentCancelled(runId, reason);
-    },
-  });
+      fileAgents,
+      // COR-1577 — `requestHumanInput` for a durable `bureau.run()` run.
+      humanInput: runtime.durable !== undefined ? options.humanInput : false,
+      // COR-772 — a durable `bureau.run` parent aborted through its own handle
+      // is a cancelled parent like any other. Once shutdown has begun, dispose
+      // — not the policy — ends every live run, and boot recovery applies the
+      // policy to whatever it left running from the cancelled parent's
+      // durable state.
+      onDurableRunAborted: (runId, reason) => {
+        if (shutdownPromise) return;
+        void childTopology.parentCancelled(runId, reason);
+      },
+    });
 
   /**
    * COR-1527 — runs one `agent` step of a workflow file: a standalone durable run of the named
@@ -18681,16 +18602,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     agents: agentCatalog,
     workflows: workflowRuntime?.workflows,
     models,
-    // `runAgent`'s runtime signature is deliberately widened (`string`,
-    // `AgentRun<unknown, boolean>`) — it looks the agent up by a plain
-    // runtime string via `agentCatalog.find`, the same widening
-    // `BureauAgentCatalog.find` itself documents. The precise per-`TName`
-    // return type on `Bureau<D>['run']` is a caller-side compile-time
-    // narrowing this cast restores; at runtime the returned `AgentRun` IS
-    // exactly the named entry's own handle, unaffected by the cast.
-    run: runAgent as Bureau<D>['run'],
     // The topology is keyed by plain runtime strings; `D` only narrows which
-    // agent names a caller may pass, exactly as `run` above.
+    // agent names a caller may pass.
     children: childTopology.children as BureauChildren<AgentNames<D>>,
     peerCalls,
     // COR-1707: a goal's history is the `goal` owner of the history the Bureau serves.

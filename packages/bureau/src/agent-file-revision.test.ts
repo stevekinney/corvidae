@@ -656,7 +656,7 @@ describe('a Bureau restarted after an offline edit', () => {
     });
     await first.put('researcher.md', text('Before the restart.\n'));
     await first.bureau.agents.refresh();
-    const before = first.bureau.run('researcher', 'hello');
+    const before = await first.bureau.tasks.start('researcher', 'hello');
     await before.result();
     const beforeRecord = await recordOf(firstStorage, before.id);
     await first.dispose();
@@ -671,7 +671,7 @@ describe('a Bureau restarted after an offline edit', () => {
     });
     try {
       const listed = second.bureau.agents.list().find((entry) => entry.id === 'researcher');
-      const after = second.bureau.run('researcher', 'hello again');
+      const after = await second.bureau.tasks.start('researcher', 'hello again');
       await after.result();
       const afterRecord = await recordOf(secondStorage, after.id);
 

@@ -243,7 +243,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
   it('resolves quiescent, with every row empty, once a run has completed and nothing else is outstanding', async () => {
     const harness = await harnessWithMemoryStorage();
 
-    const run = harness.startRun('worker', 'hello');
+    const run = await harness.startTask({ agentName: 'worker', input: 'hello' });
     await run.result();
 
     const report = await harness.close();
@@ -266,7 +266,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
 
   it('close() is idempotent: a second call returns the exact same report without shutting down twice', async () => {
     const harness = await harnessWithMemoryStorage();
-    const run = harness.startRun('worker', 'hello');
+    const run = await harness.startTask({ agentName: 'worker', input: 'hello' });
     await run.result();
 
     const first = await harness.close();
@@ -278,7 +278,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
 
   it('close() never calls bureau.dispose() as a substitute for shutdown() — the shutdown report is what resolves the promise', async () => {
     const harness = await harnessWithMemoryStorage();
-    const run = harness.startRun('worker', 'hello');
+    const run = await harness.startTask({ agentName: 'worker', input: 'hello' });
     await run.result();
 
     const report = await harness.close();
@@ -296,7 +296,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
         },
       });
 
-      const parent = harness.startRun('worker', 'parent');
+      const parent = await harness.startTask({ agentName: 'worker', input: 'parent' });
       const child = harness.startChild(parent.snapshot().id, 'stuck', 'child input');
 
       try {
@@ -582,7 +582,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
       // fires the `AbortController` but does NOT yet call `engine.cancel()`
       // — that call is deferred to whenever `closed()` first runs its
       // `resolveDurableOutcome()`.
-      const run = harness.startRun('worker', 'go');
+      const run = await harness.startTask({ agentName: 'worker', input: 'go' });
       run.abort(
         'AB-339 regression: direct abort, harness closes without an explicit closed() await',
       );
@@ -630,7 +630,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
     // entirely, rather than waiting out `waitForCondition`'s full budget
     // for a timer that will never appear.
     const harness = await harnessWithMemoryStorage();
-    const run = harness.startRun('worker', 'hello');
+    const run = await harness.startTask({ agentName: 'worker', input: 'hello' });
     await run.result();
 
     const report = await harness.close({ timeoutMilliseconds: 50 });

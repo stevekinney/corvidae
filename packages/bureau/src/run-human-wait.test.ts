@@ -112,7 +112,7 @@ describe('a bureau.run() park', () => {
     const seen = newSeen();
     const bureau = await start({ asker: askingAgent(seen) });
 
-    const run = bureau.run('asker', 'deploy', { principal: 'alice' });
+    const run = await bureau.tasks.start('asker', 'deploy', { principal: 'alice' });
     const review = await nextReview(bureau, run.id);
 
     expect(review).toMatchObject({
@@ -149,8 +149,8 @@ describe('a bureau.run() park', () => {
     });
     const signal = spyOn(bureau.durableEngine()!, 'signal');
 
-    const first = bureau.run('denier', 'deploy');
-    const second = bureau.run('rejecter', 'deploy');
+    const first = await bureau.tasks.start('denier', 'deploy');
+    const second = await bureau.tasks.start('rejecter', 'deploy');
     const firstReview = await nextReview(bureau, first.id);
     const secondReview = await nextReview(bureau, second.id);
     await bureau.reviews.resolve({
@@ -176,7 +176,7 @@ describe('a bureau.run() park', () => {
 
   it('refuses a rejection without a reason and leaves the review pending', async () => {
     const bureau = await start({ asker: askingAgent(newSeen()) });
-    const run = bureau.run('asker', 'deploy');
+    const run = await bureau.tasks.start('asker', 'deploy');
     const review = await nextReview(bureau, run.id);
 
     const refusal = await rejectionOf(
@@ -189,7 +189,7 @@ describe('a bureau.run() park', () => {
 
   it('answers a second resolve with NOT_FOUND once the first has landed', async () => {
     const bureau = await start({ asker: askingAgent(newSeen()) });
-    const run = bureau.run('asker', 'deploy');
+    const run = await bureau.tasks.start('asker', 'deploy');
     const review = await nextReview(bureau, run.id);
     await bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'operator' });
     await run.result();
@@ -204,7 +204,7 @@ describe('a bureau.run() park', () => {
   it('is CONFLICT when the run was signalled outside resolveReview and is still going', async () => {
     const seen = newSeen(true);
     const bureau = await start({ asker: askingAgent(seen) });
-    const run = bureau.run('asker', 'deploy');
+    const run = await bureau.tasks.start('asker', 'deploy');
     const review = await nextReview(bureau, run.id);
     await bureau.durableEngine()!.signal(run.id, 'answer', { environment: 'prod' });
     // The run continues into its held step, so it is neither settled nor still parked.
@@ -224,7 +224,7 @@ describe('a bureau.run() park', () => {
   // The design's error table and the session path say the same.
   it('answers NOT_FOUND to a resolve after the run was aborted and has settled', async () => {
     const bureau = await start({ asker: askingAgent(newSeen()) });
-    const run = bureau.run('asker', 'deploy');
+    const run = await bureau.tasks.start('asker', 'deploy');
     const review = await nextReview(bureau, run.id);
 
     run.abort();
@@ -240,7 +240,7 @@ describe('a bureau.run() park', () => {
 
   it('answers CONFLICT to a resolve after the engine cancelled the run, before the index heard', async () => {
     const bureau = await start({ asker: askingAgent(newSeen()) });
-    const run = bureau.run('asker', 'deploy');
+    const run = await bureau.tasks.start('asker', 'deploy');
     const review = await nextReview(bureau, run.id);
 
     await bureau.durableEngine()!.cancel(run.id);
@@ -256,7 +256,7 @@ describe('a bureau.run() park', () => {
   it('lets exactly one of two concurrent resolves through', async () => {
     const seen = newSeen(true);
     const bureau = await start({ asker: askingAgent(seen) });
-    const run = bureau.run('asker', 'deploy');
+    const run = await bureau.tasks.start('asker', 'deploy');
     const review = await nextReview(bureau, run.id);
 
     const outcomes = await Promise.allSettled([
@@ -276,7 +276,7 @@ describe('a bureau.run() park', () => {
   it('delivers once when a failed delivery is retried', async () => {
     const seen = newSeen();
     const bureau = await start({ asker: askingAgent(seen) });
-    const run = bureau.run('asker', 'deploy');
+    const run = await bureau.tasks.start('asker', 'deploy');
     const review = await nextReview(bureau, run.id);
     const engine = bureau.durableEngine()!;
     const signal = spyOn(engine, 'signal');
@@ -319,7 +319,7 @@ describe('a bureau.run() park', () => {
     try {
       const seen = newSeen(true);
       const bureau = await start({ asker: askingAgent(seen) });
-      const run = bureau.run('asker', 'deploy');
+      const run = await bureau.tasks.start('asker', 'deploy');
       const review = await nextReview(bureau, run.id);
 
       await bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'operator' });
@@ -339,8 +339,8 @@ describe('a bureau.run() park', () => {
 
   it('is owned by the principal that dispatched it', async () => {
     const bureau = await start({ asker: askingAgent(newSeen()) });
-    const alice = bureau.run('asker', 'deploy', { principal: 'alice' });
-    const anonymous = bureau.run('asker', 'deploy');
+    const alice = await bureau.tasks.start('asker', 'deploy', { principal: 'alice' });
+    const anonymous = await bureau.tasks.start('asker', 'deploy');
     const aliceReview = await nextReview(bureau, alice.id);
     const anonymousReview = await nextReview(bureau, anonymous.id);
 
@@ -373,7 +373,7 @@ describe('a bureau.run() park', () => {
     });
     const bureau = await start({ refunder: agent });
 
-    const run = bureau.run('refunder', 'refund it', { principal: 'alice' });
+    const run = await bureau.tasks.start('refunder', 'refund it', { principal: 'alice' });
     await run.result();
 
     expect(bureau.reviews.list()).toEqual([]);
@@ -401,7 +401,7 @@ describe('a second park request in one catalog step is refused (COR-1578)', () =
     });
     const bureau = await start({ asker });
 
-    const run = bureau.run('asker', 'deploy', { principal: 'alice' });
+    const run = await bureau.tasks.start('asker', 'deploy', { principal: 'alice' });
     const review = await nextReview(bureau, run.id);
 
     // Which of the two parallel calls arrived first is not asserted; only that one parked.
@@ -435,9 +435,9 @@ describe('requestHumanInput on a catalog run', () => {
     bureaus.push(memoryOnly);
 
     const runs = [
-      withOption.run('asker', 'go'),
-      noOption.run('asker', 'go'),
-      memoryOnly.run('asker', 'go'),
+      await withOption.tasks.start('asker', 'go'),
+      await noOption.tasks.start('asker', 'go'),
+      await memoryOnly.tasks.start('asker', 'go'),
     ];
     await pollUntil(() => offered.tools.length > 0);
     await Promise.all(runs.slice(1).map((run) => run.result()));
@@ -456,7 +456,7 @@ describe('requestHumanInput on a catalog run', () => {
       parent: askingAgent(parentSeen),
       child: askingAgent(childSeen),
     });
-    const parent = bureau.run('parent', 'go');
+    const parent = await bureau.tasks.start('parent', 'go');
     await nextReview(bureau, parent.id);
 
     const dispatched = await bureau.children.dispatch({
@@ -550,7 +550,7 @@ describe('a bureau.run() park after a restart', () => {
       durableOwnership: { ownership: 'none' as const },
     };
     const crashed = await start({ asker: twoParks(newSeen()) }, options);
-    const run = crashed.run('asker', 'go');
+    const run = await crashed.tasks.start('asker', 'go');
     const first = await nextReview(crashed, run.id);
 
     const restarted = await start({ asker: twoParks(newSeen()) }, options);
@@ -576,7 +576,7 @@ describe('a bureau.run() park after a restart', () => {
     const databasePath = nextDatabasePath();
     const before = newSeen();
     const crashed = await over(databasePath, before);
-    const run = crashed.run('asker', 'deploy', { principal: 'alice' });
+    const run = await crashed.tasks.start('asker', 'deploy', { principal: 'alice' });
     const original = await nextReview(crashed, run.id);
     // The first Bureau is not disposed: a graceful shutdown would cancel the parked run and
     // leave nothing for the restart to recover.
@@ -627,7 +627,7 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
       const bureau = await start({ asker: askingAgent(seen, signalName) });
       const signal = spyOn(bureau.durableEngine()!, 'signal');
 
-      const run = bureau.run('asker', 'deploy');
+      const run = await bureau.tasks.start('asker', 'deploy');
       const review = await nextReview(bureau, run.id);
       expect(review.id).toBe(`human-wait:${run.id}:${signalName}:0`);
       expect(bytesOf(review.id)).toBeGreaterThan(MAXIMUM_DELIVERY_ID_BYTES);
@@ -651,7 +651,7 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
 
     it(`denies a ${label}-named park too`, async () => {
       const bureau = await start({ asker: askingAgent(newSeen(), signalName) });
-      const run = bureau.run('asker', 'deploy');
+      const run = await bureau.tasks.start('asker', 'deploy');
       const review = await nextReview(bureau, run.id);
 
       await bureau.reviews.resolve({
@@ -670,7 +670,7 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
   it('delivers once under the same derived id when a failed delivery is retried', async () => {
     const seen = newSeen();
     const bureau = await start({ asker: askingAgent(seen, names.ascii) });
-    const run = bureau.run('asker', 'deploy');
+    const run = await bureau.tasks.start('asker', 'deploy');
     const review = await nextReview(bureau, run.id);
     const signal = spyOn(bureau.durableEngine()!, 'signal');
     signal.mockRejectedValueOnce(new Error('transport lost'));
@@ -713,7 +713,7 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
       stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     });
     const bureau = await start({ asker: twice });
-    const run = bureau.run('asker', 'deploy');
+    const run = await bureau.tasks.start('asker', 'deploy');
     const first = await nextReview(bureau, run.id);
     await bureau.reviews.resolve({
       id: first.id,
@@ -752,7 +752,7 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
       durableOwnership: { ownership: 'none' as const },
     };
     const crashed = await start({ asker: askingAgent(newSeen(), names.ascii) }, options);
-    const run = crashed.run('asker', 'deploy');
+    const run = await crashed.tasks.start('asker', 'deploy');
     const original = await nextReview(crashed, run.id);
     const before = spyOn(crashed.durableEngine()!, 'signal');
     before.mockRejectedValueOnce(new Error('transport lost'));

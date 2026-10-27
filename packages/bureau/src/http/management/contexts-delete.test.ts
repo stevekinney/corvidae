@@ -8,7 +8,7 @@ import { describe, expect, it } from 'bun:test';
 import { BureauError } from '../../create-bureau.ts';
 import { createMemoryStorageFixture } from '../../test/storage-fixtures';
 import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
-import { listHeldTasks, waitForCondition } from '../../test';
+import { listHeldTasks, waitForCondition, closedTask } from '../../test';
 import type { ContextDeletionReport } from '../../types.ts';
 import { type BureauHandlerSource, createBureauHandler } from '../create-bureau-handler.ts';
 import {
@@ -128,7 +128,9 @@ describe('bureau.contexts.delete access', () => {
   it('answers the id of a bureau.run dispatch, which owns no session, as a missing context', async () => {
     const worker = createAgent({ name: 'worker', generate: parkingUntilAborted });
     await withBureau({ agents: { worker } }, async (opened) => {
-      const run = opened.bureau.run('worker', 'catalog work', { principal: OWNER.alice });
+      const run = await opened.bureau.tasks.start('worker', 'catalog work', {
+        principal: OWNER.alice,
+      });
       try {
         await waitForCondition(
           () => opened.bureau.tasks.detail(run.id)?.status === 'running',
@@ -143,7 +145,7 @@ describe('bureau.contexts.delete access', () => {
         expect(task.result).toMatchObject({ id: run.id, contextId: run.id, agentName: 'worker' });
       } finally {
         run.abort('test over');
-        await run.closed();
+        await closedTask(opened.bureau, run);
       }
     });
   });

@@ -1,4 +1,4 @@
-import type { LivenessSnapshot, RunState } from '@lostgradient/operative';
+import type { RunState } from '@lostgradient/operative';
 import { AgentRunError, finishReasonOfError } from '@lostgradient/operative';
 import { Conversation, currentConversationFromSnapshot } from 'conversationalist';
 
@@ -286,47 +286,5 @@ export function serializeRunDetail(
       })),
     })),
     transcript: latestTranscript(runState),
-  };
-}
-
-/**
- * COR-1302: the `RunSummary` of a `bureau.run()` run whose handle exists but
- * whose `ActiveRun` is not on Bureau's run store: the window before the
- * dispatch builds it, or the whole life of a catalog run that never builds one
- * (a hand-written agent, the durable branch's in-memory fallback). Nothing has
- * been recorded for it there, so it reports the run as running with no steps,
- * actions, or usage.
- */
-export function serializeUndispatchedCatalogRun(
-  id: string,
-  attribution: RunAttribution,
-): RunSummary {
-  return {
-    id,
-    sessionId: '',
-    status: 'running',
-    steps: 0,
-    usage: { prompt: 0, completion: 0, total: 0 },
-    finishReason: undefined,
-    error: undefined,
-    actionCount: 0,
-    agentName: attribution.agentName,
-    principal: attribution.principal,
-    startedAt: undefined,
-  };
-}
-
-/** COR-1302: {@link serializeUndispatchedCatalogRun}, with the handle's own liveness. */
-export function serializeUndispatchedCatalogRunDetail(
-  id: string,
-  liveness: LivenessSnapshot,
-  attribution: RunAttribution,
-): RunDetail {
-  return {
-    ...serializeUndispatchedCatalogRun(id, attribution),
-    liveness: serializeLivenessSnapshot(liveness),
-    events: [],
-    stepDetails: [],
-    transcript: undefined,
   };
 }

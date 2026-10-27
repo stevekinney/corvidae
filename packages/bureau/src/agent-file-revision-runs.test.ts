@@ -83,10 +83,10 @@ describe('a run of a file agent', () => {
     await edit(harness, 'Two.\n');
     const { bureau } = harness;
 
-    const run = bureau.run('researcher', 'hello');
+    const run = await bureau.tasks.start('researcher', 'hello');
     await run.result();
     await edit(harness, 'Three.\n');
-    const later = bureau.run('researcher', 'hello again');
+    const later = await bureau.tasks.start('researcher', 'hello again');
     await later.result();
 
     expect(await recordedRevisionOf(storage, run.id)).toBe(2);
@@ -121,7 +121,7 @@ describe('a run of a code-defined agent', () => {
     });
     const { bureau } = harness;
 
-    const run = bureau.run('alpha', 'hello');
+    const run = await bureau.tasks.start('alpha', 'hello');
     await run.result();
 
     expect(revisionOf(bureau, 'alpha')).toBe(4);
@@ -151,7 +151,7 @@ describe('a run resumed after a restart', () => {
     });
     await edit(first, 'Version one.\n');
     await edit(first, 'Version two.\n');
-    const run = first.bureau.run('researcher', 'long question');
+    const run = await first.bureau.tasks.start('researcher', 'long question');
     await waitForCondition(
       async () => (await recoveryRecordOf(firstStorage, run.id)) !== undefined,
       'the run is recorded',

@@ -119,7 +119,9 @@ describe('a run that ended in a process that died before it released', () => {
     const store = await createStore();
     const first = await openBureau(store);
     const { assetId, source } = await admitImage(first);
-    const run = first.run('viewer', [{ type: 'image', source }], { principal: alice.id });
+    const run = await first.tasks.start('viewer', [{ type: 'image', source }], {
+      principal: alice.id,
+    });
     await run.result();
     await waitForCondition(
       async () => {
@@ -186,7 +188,9 @@ describe('a run that ended in a process that died before it released', () => {
     });
     const bureau = await openBureau(store, parked);
     const { assetId, source } = await admitImage(bureau);
-    const run = bureau.run('viewer', [{ type: 'image', source }], { principal: alice.id });
+    const run = await bureau.tasks.start('viewer', [{ type: 'image', source }], {
+      principal: alice.id,
+    });
     const holders = async () => holdersOf(bureau, assetId);
     await waitForCondition(
       async () => {

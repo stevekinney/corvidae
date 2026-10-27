@@ -121,7 +121,7 @@ async function startLapsedCatalogRun(
     durableOwnership: leaseOptions,
   });
   bureaus.push(owner);
-  const run = owner.run('writer', 'go');
+  const run = await owner.tasks.start('writer', 'go');
   await started.promise;
   return { owner, runId: run.id };
 }

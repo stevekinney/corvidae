@@ -14,7 +14,7 @@ import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
-import { waitForTaskState } from './test';
+import { runTask, waitForTaskState } from './test';
 import { withResolvedOptions } from './testing/named-agent.test-support';
 import type { Bureau } from './types';
 
@@ -80,7 +80,7 @@ describe('a named agent’s structured output on a session run', () => {
     });
     bureaus.push(bureau);
 
-    const direct = await bureau.run('viaRun', 'question').result();
+    const direct = await runTask(bureau, 'viaRun', 'question');
     const run = await bureau.tasks.start('viaSession', 'question');
     await waitForTaskState(bureau, run.id);
 

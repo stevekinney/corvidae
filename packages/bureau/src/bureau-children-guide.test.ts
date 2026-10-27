@@ -14,7 +14,6 @@
  */
 
 import {
-  type AgentRun,
   createAgent,
   defineChildSignals,
   type GenerateFunction,
@@ -26,7 +25,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
-import { type Bureau, createBureau } from './index';
+import { type Bureau, createBureau, type TaskHandle } from './index';
 import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 
 let databasePath = '';
@@ -46,12 +45,11 @@ const untilAborted: GenerateFunction = ({ signal }) =>
     signal?.addEventListener('abort', () => reject(new Error('stopped')), { once: true });
   });
 
-// `bureau.run` returns its handle at once. The handle's snapshot names the
-// agent until the durable dispatch resolves, then carries the durable run
-// identifier. Children can be dispatched under it once the engine has the workflow.
+// `bureau.tasks.start` resolves with the task's handle. The handle's snapshot carries the
+// run identifier once the durable dispatch has built the run. Children can be dispatched under it once the engine has the workflow.
 async function durableRunId(
   bureau: Pick<Bureau, 'tasks'>,
-  run: Pick<AgentRun, 'snapshot'>,
+  run: Pick<TaskHandle, 'snapshot'>,
 ): Promise<string> {
   for (;;) {
     const { id, durability, status } = run.snapshot();
@@ -105,7 +103,7 @@ describe('documentation/multi-agent-lifecycle.md — durable children in Bureau'
       children: { signals: { researcher: researchSignals } },
     });
 
-    const plannerRun = bureau.run('planner', 'Plan the corvid report');
+    const plannerRun = await bureau.tasks.start('planner', 'Plan the corvid report');
     const parentRunId = await durableRunId(bureau, plannerRun);
 
     await bureau.children.dispatch({
@@ -197,10 +195,10 @@ describe('documentation/multi-agent-lifecycle.md — a durable bureau.run parent
       storage: { type: 'sqlite', path: databasePath },
     });
 
-    const first = bureau.run('planner', 'First plan');
+    const first = await bureau.tasks.start('planner', 'First plan');
     // Until the durable dispatch resolves, the snapshot is a placeholder.
     const placeholder = first.snapshot();
-    const second = bureau.run('planner', 'Second plan');
+    const second = await bureau.tasks.start('planner', 'Second plan');
     const secondRunId = await durableRunId(bureau, second);
     const firstRunId = await durableRunId(bureau, first);
 
@@ -249,7 +247,7 @@ describe('documentation/multi-agent-lifecycle.md — a durable bureau.run parent
     // No storage, so no durable engine: `bureau.run` runs the agent in memory.
     const bureau = await createBureau({ agents: { planner } });
 
-    const run = bureau.run('planner', 'Plan in memory');
+    const run = await bureau.tasks.start('planner', 'Plan in memory');
     const failure = await throwingRejectionOf(durableRunId(bureau, run));
     const { id, durability } = run.snapshot();
     const dispatched = await bureau.children.dispatch({
@@ -277,8 +275,8 @@ describe('documentation/multi-agent-lifecycle.md — which principal owns a Bure
       storage: { type: 'sqlite', path: databasePath },
     });
 
-    const shared = bureau.run('planner', 'A plan with no principal');
-    const owned = bureau.run('planner', 'The owner’s plan', { principal: 'owner' });
+    const shared = await bureau.tasks.start('planner', 'A plan with no principal');
+    const owned = await bureau.tasks.start('planner', 'The owner’s plan', { principal: 'owner' });
     const sharedRunId = await durableRunId(bureau, shared);
     const ownedRunId = await durableRunId(bureau, owned);
     const dispatch = (parentRunId: string, childRunId: string, principal?: string) =>
@@ -360,7 +358,7 @@ describe('packages/bureau/README.md — delegation grants for children', () => {
       children: { delegation: { secret: delegationSecret } },
     });
 
-    const root = bureau.run('planner', 'Plan the corvid report');
+    const root = await bureau.tasks.start('planner', 'Plan the corvid report');
     const parentRunId = await durableRunId(bureau, root);
 
     const lead = await bureau.children.dispatch({

@@ -22,6 +22,7 @@ import {
   createSqliteStorageFixture,
 } from './storage-fixtures';
 import type { AgentDefinitions } from '../agent-catalog';
+import { taskContent } from './run-task';
 
 function mockGenerate(content = 'Done.'): GenerateFunction {
   return async () => ({ content, toolCalls: [] });
@@ -192,17 +193,17 @@ describe('createBureauTestHarness', () => {
     expect(typeof harness.runtime.pendingTimers).toBe('function');
   });
 
-  describe('startRun', () => {
-    it('dispatches a catalog agent and returns its AgentRun handle', async () => {
+  describe('startTask', () => {
+    it('starts a catalog agent as a task and registers its run for quiescence', async () => {
       const harness = await harnessWithMemoryStorage();
 
-      const run = harness.startRun('worker', 'hello');
+      const run = await harness.startTask({ agentName: 'worker', input: 'hello' });
 
-      expect(await run.unwrap()).toBe('worker done');
+      expect(await taskContent(run)).toBe('worker done');
     });
   });
 
-  describe('startSession', () => {
+  describe('startTask over the default agent', () => {
     it('is a thin wrapper over Bureau.tasks.start', async () => {
       const harness = await harnessWithMemoryStorage();
 

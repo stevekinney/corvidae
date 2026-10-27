@@ -54,7 +54,7 @@ describe('the Interborough host', () => {
     const home = await createHome();
 
     const first = await start(home);
-    const run = first.bureau.run('assistant', 'Remember this run.');
+    const run = await first.bureau.tasks.start('assistant', 'Remember this run.');
     await run.result();
     const runsBefore = await first.bureau.tasks.workflows();
     const runIds = runsBefore?.items.map((item) => item.id) ?? [];

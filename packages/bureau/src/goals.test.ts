@@ -900,7 +900,7 @@ describe('bureau.goals', () => {
       validators: [createCheckValidator()],
     });
     await bureau.goals.create(goalRequest());
-    const run = bureau.run('worker', 'plain');
+    const run = await bureau.tasks.start('worker', 'plain');
 
     const result = await run.result();
     expect(result.content).toBe('done');

@@ -24,7 +24,7 @@ import {
 } from './schedule-fire-fixtures.test-support';
 import { createAgentSkills } from './agent-skills';
 import { removeSkillRoots, skillCatalogOnDisk } from './skill-policy-fixtures.test-support';
-import { waitForTaskState } from './test';
+import { runTask, waitForTaskState } from './test';
 import { AGENT_STEP, workflowFileText } from './testing/workflow-file-fixtures.test-support';
 import { startWorkflowBureau } from './testing/workflow-bureau.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
@@ -115,7 +115,7 @@ async function sessionTaskTools(options: ToolOptions & { durable?: boolean }): P
 async function catalogTaskTools(options: ToolOptions & { durable?: boolean }): Promise<string[]> {
   const offered: Offered = [];
   const bureau = await start({ asker: recordingAgent(offered) }, options);
-  await bureau.run('asker', 'go').result();
+  await runTask(bureau, 'asker', 'go');
   return offered.flat();
 }
 
@@ -174,7 +174,7 @@ describe('a durable Bureau offers the tools by default', () => {
       parent: parkingAgent([]),
       child: recordingAgent(childOffered),
     });
-    const parent = bureau.run('parent', 'go');
+    const parent = await bureau.tasks.start('parent', 'go');
     await pollUntil(() => bureau.reviews.list().some((review) => review.runId === parent.id));
 
     const dispatched = await bureau.children.dispatch({
@@ -208,7 +208,7 @@ describe('a durable Bureau offers the tools by default', () => {
         skills: createAgentSkills({ catalog: await catalog.discover() }),
       }),
     });
-    await bureau.run('asker', 'go').result();
+    await runTask(bureau, 'asker', 'go');
 
     expect(offered[0]).toContain('requestHumanInput');
     // `lock` allows only `deactivate_skill`: the Bureau's own tools are narrowed with the rest.
@@ -239,7 +239,7 @@ describe('a durable Bureau offers the tools by default', () => {
 
       // The control: the same agent, run directly on the same Bureau, is offered the tool.
       offered.length = 0;
-      await harness.bureau.run('writer', 'go').result();
+      await runTask(harness.bureau, 'writer', 'go');
       expect(offered.flat()).toContain('requestHumanInput');
     } finally {
       await harness.dispose();

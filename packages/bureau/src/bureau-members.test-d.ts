@@ -84,6 +84,7 @@ type RemovedTaskMembers = Extract<
   | 'listRuns'
   | 'abortRun'
   | 'cancelDurableRun'
+  | 'run'
 >;
 
 export type NoFlatReviewMembers = AssertNever<RemovedReviewMembers>;

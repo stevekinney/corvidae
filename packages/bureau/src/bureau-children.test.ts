@@ -526,9 +526,9 @@ describe('bureau.children over a durable bureau', () => {
     });
 
     try {
-      bureau.run('worker', 'alice’s private work', { principal: 'alice' });
+      await bureau.tasks.start('worker', 'alice’s private work', { principal: 'alice' });
       const aliceRunId = await startedDurableRun(bureau);
-      bureau.run('planner', 'mallory’s plan', { principal: 'mallory' });
+      await bureau.tasks.start('planner', 'mallory’s plan', { principal: 'mallory' });
       const malloryRunId = await startedDurableRun(bureau, [aliceRunId]);
       const recoveryKey = `${CATALOG_RUN_RECOVERY_KEY_PREFIX}${aliceRunId}`;
       const recoveryRecord = decode((await storage.get(recoveryKey))!);
@@ -580,7 +580,7 @@ describe('bureau.children over a durable bureau', () => {
     });
 
     try {
-      const parent = bureau.run('planner', 'plan');
+      const parent = await bureau.tasks.start('planner', 'plan');
       const parentRunId = await startedDurableRun(bureau);
       const dispatch = (childRunId: string, parentCancellation: 'cascade' | 'detach') =>
         bureau.children.dispatch({
@@ -626,7 +626,7 @@ describe('bureau.children over a durable bureau', () => {
         onDiagnostic,
       });
 
-      const parent = bureau.run('planner', 'plan');
+      const parent = await bureau.tasks.start('planner', 'plan');
       const parentRunId = await startedDurableRun(bureau);
       expect(
         await bureau.children.dispatch({
@@ -682,7 +682,7 @@ describe('bureau.children over a durable bureau', () => {
     });
 
     try {
-      const plannerRun = bureau.run('planner', 'plan');
+      const plannerRun = await bureau.tasks.start('planner', 'plan');
       const parentRunId = await startedDurableRun(bureau);
       // Its handle names the same durable run, as a createAgent parent's does.
       expect(await pollUntil(() => plannerRun.snapshot().id === parentRunId)).toBe(true);
@@ -741,7 +741,7 @@ describe('bureau.children over a durable bureau', () => {
     });
 
     try {
-      bureau.run('planner', 'plan');
+      await bureau.tasks.start('planner', 'plan');
       const parentRunId = await startedDurableRun(bureau);
       const middle = { parentRunId, childRunId: 'middle' };
       expect(
@@ -817,7 +817,7 @@ describe('bureau.children across a process restart', () => {
       onDiagnostic,
       children: { signals: { worker: proceedSignals }, delegation },
     });
-    bureauA.run('planner', 'plan');
+    await bureauA.tasks.start('planner', 'plan');
     await pollUntil(() => parentAtStep1);
     const runs = await bureauA.tasks.workflows();
     const parentRunId = runs?.items.find((item) => item.id.startsWith('agent-run-'))?.id;

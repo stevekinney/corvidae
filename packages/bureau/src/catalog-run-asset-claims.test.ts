@@ -316,7 +316,11 @@ describe.each([
     const history = seededConversation(early, last);
     const lastRowId = history.ids.at(-1)!;
 
-    const run = bureau.run('painter', { conversation: history }, { principal: alice.id });
+    const run = await bureau.tasks.start(
+      'painter',
+      { conversation: history },
+      { principal: alice.id },
+    );
     const result = await run.result();
     const generated = result.parts.find((part) => part.type === 'image');
     if (generated === undefined || generated.type !== 'image')
@@ -352,7 +356,7 @@ describe.each([
     const bureau = await openBureau(environment, { failing }, extra);
     const image = await suppliedImage(bureau);
 
-    const run = bureau.run('failing', [image], { principal: alice.id });
+    const run = await bureau.tasks.start('failing', [image], { principal: alice.id });
     const result = await run.result();
     expect(result.finishReason).toBe('error');
 
@@ -365,7 +369,7 @@ describe.each([
     const seen: GenerateContext[] = [];
     const bureau = await openBureau(environment, { viewer: viewer(parked.promise, seen) }, extra);
     const image = await suppliedImage(bureau);
-    const run = bureau.run('viewer', [image], { principal: alice.id });
+    const run = await bureau.tasks.start('viewer', [image], { principal: alice.id });
     await waitForCondition(() => seen.length > 0, 'the run never reached its first step');
     expect(heldByRun(await holdersOf(bureau, assetIdOf(image)), run.id)).toHaveLength(1);
 
@@ -383,7 +387,7 @@ describe.each([
     const seen: GenerateContext[] = [];
     const bureau = await openBureau(environment, { viewer: viewer(parked.promise, seen) }, extra);
     const image = await suppliedImage(bureau);
-    const run = bureau.run('viewer', [image], { principal: alice.id });
+    const run = await bureau.tasks.start('viewer', [image], { principal: alice.id });
     await waitForCondition(() => seen.length > 0, 'the run never reached its first step');
 
     await bureau.internals.taskRegistry.cancel(run.id, 0);
@@ -405,7 +409,7 @@ describe.each([
       },
     );
 
-    const run = bureau.run('viewer', [first, second], { principal: alice.id });
+    const run = await bureau.tasks.start('viewer', [first, second], { principal: alice.id });
     const result = await run.result();
     failure.mockRestore();
 
@@ -478,7 +482,7 @@ describe('a bureau.run() at shutdown', () => {
       { ...location, ...durable, onDiagnostic: diagnostics.onDiagnostic },
     );
     const image = await suppliedImage(first);
-    const run = first.run('viewer', [image], { principal: alice.id });
+    const run = await first.tasks.start('viewer', [image], { principal: alice.id });
     await waitForCondition(() => seen.length > 0, 'the run never reached its first step');
     expect(heldByRun(await holdersOf(first, assetIdOf(image)), run.id)).toHaveLength(1);
 
@@ -513,7 +517,7 @@ describe('a bureau.run() at shutdown', () => {
       { ...location, ...durable, onDiagnostic: diagnostics.onDiagnostic },
     );
     const image = await suppliedImage(first);
-    const run = first.run('viewer', [image], { principal: alice.id });
+    const run = await first.tasks.start('viewer', [image], { principal: alice.id });
     await waitForCondition(() => seen.length > 0, 'the run never reached its first step');
 
     const shutdown = first.shutdown({ policy: 'drain' });
@@ -539,7 +543,7 @@ describe('a bureau.run() at shutdown', () => {
       durableEngine,
     );
     const image = await suppliedImage(bureau);
-    const run = bureau.run('viewer', [image], { principal: alice.id });
+    const run = await bureau.tasks.start('viewer', [image], { principal: alice.id });
     await waitForCondition(() => seen.length > 0, 'the run never reached its first step');
     const engine = bureau.durableEngine();
     if (engine === undefined) throw new Error('Expected a durable engine.');
@@ -586,12 +590,10 @@ describe('a run recovered after a restart', () => {
     );
     const early = await suppliedImage(first);
     const last = await suppliedImage(first);
-    const run = first.run(
+    const run = await first.tasks.start(
       'viewer',
       { conversation: seededConversation(early, last) },
-      {
-        principal: alice.id,
-      },
+      { principal: alice.id },
     );
     await waitForCondition(() => seen.length > 0, 'the run never reached its first step');
     return { first, run, early, last };

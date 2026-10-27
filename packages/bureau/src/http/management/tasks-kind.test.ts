@@ -7,7 +7,7 @@
 import { createAgent } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
-import { waitForCondition } from '../../test';
+import { waitForCondition, closedTask } from '../../test';
 import { taskViewKindOf } from '../../task-registry.ts';
 import {
   openBureau,
@@ -50,7 +50,7 @@ describe('a task view’s kind', () => {
         () => opened.bureau.tasks.detail(chat.id)?.status === 'running',
         'the session run never started',
       );
-      const catalog = opened.bureau.run('holder', 'work', { principal: OWNER.alice });
+      const catalog = await opened.bureau.tasks.start('holder', 'work', { principal: OWNER.alice });
       await opened.bureau.internals.taskRegistry.recordAdmission({
         taskId: 'fire-1',
         contextId: 'fire-session',
@@ -84,7 +84,7 @@ describe('a task view’s kind', () => {
         expect(fetched.result).toMatchObject({ id: catalog.id, kind: 'catalog' });
       } finally {
         catalog.abort('test over');
-        await catalog.closed();
+        await closedTask(opened.bureau, catalog);
       }
     });
   });

@@ -60,6 +60,8 @@ export {
   createSqliteStorageFixture,
 } from './storage-fixtures';
 export { waitForCondition, waitForRunState } from '@lostgradient/operative';
+export { closedTask } from './closed-task';
 export { listHeldTasks } from './list-held-tasks';
+export { runTask, taskContent } from './run-task';
 export { waitForTaskState } from './wait-for-task-state';
 export { startTaskFrom, type TaskStartRequest } from './task-start-request';

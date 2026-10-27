@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { BureauError, UnknownScheduleAgentError } from './create-bureau';
-import { waitForTaskState } from './test';
+import { runTask, taskContent, waitForTaskState } from './test';
 import {
   agentFileText,
   KNOWN_MODEL,
@@ -69,10 +69,10 @@ describe('bureau.run of a file agent', () => {
     const { bureau, put, observed } = await start({ scripts: { [OPUS_5_5]: () => 'file reply' } });
     await put('researcher.md', RESEARCHER);
     await bureau.agents.refresh();
-    const run = bureau.run('researcher', 'hello');
+    const run = await bureau.tasks.start('researcher', 'hello');
     const result = await run.result();
     expect(result.finishReason).toBe('stop-condition');
-    expect(await run.unwrap()).toBe('file reply');
+    expect(await taskContent(run)).toBe('file reply');
     expect(observed).toEqual([
       {
         model: OPUS_5_5,
@@ -84,8 +84,8 @@ describe('bureau.run of a file agent', () => {
 
   it('still runs a code-defined agent by its key, with its precise type', async () => {
     const { bureau } = await start();
-    const run = bureau.run('alpha', 'hello');
-    expect(await run.unwrap()).toBe('alpha');
+    const run = await bureau.tasks.start('alpha', 'hello');
+    expect(await taskContent(run)).toBe('alpha');
   });
 
   it('is refused with NOT_FOUND for a name no agent has, and for a file that is invalid', async () => {
@@ -95,7 +95,7 @@ describe('bureau.run of a file agent', () => {
     for (const name of ['ghost', 'broken']) {
       let thrown: unknown;
       try {
-        bureau.run(name, 'hello');
+        await bureau.tasks.start(name, 'hello');
       } catch (error) {
         thrown = error;
       }
@@ -146,12 +146,12 @@ describe('bureau.run of a file agent', () => {
     await put('researcher.md', RESEARCHER);
     await bureau.agents.refresh();
     const first = bureau.agents.list().find((listing) => listing.id === 'researcher');
-    await bureau.run('researcher', 'one').result();
+    await runTask(bureau, 'researcher', 'one');
 
     await put('researcher.md', agentFileText({ model: OTHER_MODEL }, 'Second version.\n'));
     await bureau.agents.refresh();
     const second = bureau.agents.list().find((listing) => listing.id === 'researcher');
-    await bureau.run('researcher', 'two').result();
+    await runTask(bureau, 'researcher', 'two');
 
     expect(first?.definitionHash).not.toBe(second?.definitionHash);
     const revisions = await bureau.agents.revisions('researcher');
@@ -168,8 +168,8 @@ describe('bureau.run of a file agent', () => {
     const { bureau, put } = await start();
     await put('researcher.md', RESEARCHER);
     await bureau.agents.refresh();
-    await bureau.run('researcher', 'one').result();
-    await bureau.run('researcher', 'two').result();
+    await runTask(bureau, 'researcher', 'one');
+    await runTask(bureau, 'researcher', 'two');
     expect(await bureau.agents.revisions('researcher')).toHaveLength(1);
   });
 
@@ -180,16 +180,16 @@ describe('bureau.run of a file agent', () => {
     });
     await put('researcher.md', RESEARCHER);
     await bureau.agents.refresh();
-    const midRun = bureau.run('researcher', 'hello');
+    const midRun = await bureau.tasks.start('researcher', 'hello');
     await gate.started;
 
     await put('researcher.md', agentFileText({ model: OTHER_MODEL }, 'Edited instructions.\n'));
     await bureau.agents.refresh();
-    const after = bureau.run('researcher', 'hello again');
-    expect(await after.unwrap()).toBe('edited answer');
+    const after = await bureau.tasks.start('researcher', 'hello again');
+    expect(await taskContent(after)).toBe('edited answer');
 
     gate.release();
-    expect(await midRun.unwrap()).toBe('first answer');
+    expect(await taskContent(midRun)).toBe('first answer');
     expect(observed.map((seen) => [seen.model, seen.systemPrompt])).toEqual([
       [OPUS_5_5, 'You are a careful researcher.'],
       [OPUS_5, 'Edited instructions.'],
@@ -201,7 +201,7 @@ describe('bureau.run of a file agent', () => {
     const { bureau, put, directory } = await start({ scripts: { [OPUS_5_5]: gate.script } });
     await put('researcher.md', RESEARCHER);
     await bureau.agents.refresh();
-    const midRun = bureau.run('researcher', 'hello');
+    const midRun = await bureau.tasks.start('researcher', 'hello');
     await gate.started;
 
     await rm(join(directory, 'researcher.md'));
@@ -209,7 +209,7 @@ describe('bureau.run of a file agent', () => {
     expect(bureau.agents.list().some((listing) => listing.id === 'researcher')).toBe(false);
 
     gate.release();
-    expect(await midRun.unwrap()).toBe('survived');
+    expect(await taskContent(midRun)).toBe('survived');
   });
 });
 
@@ -224,7 +224,7 @@ describe('a session run of a file agent', () => {
     await put('researcher.md', RESEARCHER);
     await bureau.agents.refresh();
 
-    await bureau.run('researcher', 'hello').result();
+    await runTask(bureau, 'researcher', 'hello');
     const created = await bureau.tasks.start('researcher', 'hello');
     await waitForTaskState(bureau, created.id);
 
@@ -330,6 +330,7 @@ describe('createBureau with an agent directory', () => {
   it('writes an agent through the API that then runs', async () => {
     const { bureau } = await start({ scripts: { [OPUS_5_5]: () => 'created and run' } });
     await bureau.agents.create('writer', { model: KNOWN_MODEL, instructions: 'Write.\n' });
-    expect(await bureau.run('writer', 'go').unwrap()).toBe('created and run');
+    const result = await runTask(bureau, 'writer', 'go');
+    expect(result.content).toBe('created and run');
   });
 });

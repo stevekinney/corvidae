@@ -213,8 +213,8 @@ describe('the owner of a catalog run (COR-718)', () => {
         ...(durable ? { storage: { type: 'memory' as const }, durable: true } : {}),
       });
       try {
-        const owned = bureau.run('worker', 'work', { principal: 'api-key:alice' });
-        const unowned = bureau.run('worker', 'work');
+        const owned = await bureau.tasks.start('worker', 'work', { principal: 'api-key:alice' });
+        const unowned = await bureau.tasks.start('worker', 'work');
 
         expect([durable, await bureau.getOwner({ kind: 'run', id: owned.id })]).toEqual([
           durable,
@@ -315,8 +315,8 @@ describe('the history of a live catalog run (COR-718)', () => {
       durableOwnership: { ownership: 'none' },
     });
     try {
-      const unowned = bureau.run('worker', 'work');
-      const owned = bureau.run('worker', 'work', { principal: 'api-key:alice' });
+      const unowned = await bureau.tasks.start('worker', 'work');
+      const owned = await bureau.tasks.start('worker', 'work', { principal: 'api-key:alice' });
       const history = async (id: string, principal: string) => {
         const page = await bureau.tasks.events(id, { principal });
         return 'outcome' in page ? page.outcome : 'page';

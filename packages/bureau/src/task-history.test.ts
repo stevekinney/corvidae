@@ -40,7 +40,9 @@ describe('a task’s own message history', () => {
       const session = await bureau.tasks.start('default', 'plan my trip', {
         principal: 'api-key:alice',
       });
-      const catalog = bureau.run('worker', 'summarize this', { principal: 'api-key:alice' });
+      const catalog = await bureau.tasks.start('worker', 'summarize this', {
+        principal: 'api-key:alice',
+      });
       await waitForCondition(async () => {
         return (await bureau.internals.taskRegistry.history(catalog.id)) !== undefined;
       }, 'the catalog run was never recorded as a task');
@@ -280,7 +282,9 @@ describe('a task’s own message history', () => {
       });
     try {
       const first = await open(true);
-      const run = first.run('asker', 'which environment?', { principal: 'api-key:alice' });
+      const run = await first.tasks.start('asker', 'which environment?', {
+        principal: 'api-key:alice',
+      });
       await waitForCondition(
         () => first.reviews.list().some((review) => review.runId === run.id),
         'the run never parked',

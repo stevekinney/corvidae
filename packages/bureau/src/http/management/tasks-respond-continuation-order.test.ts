@@ -250,7 +250,9 @@ describe('bureau.tasks.respond when the run parks again before the answer is rec
 
   it('keeps a catalog task input-required in tasks.get', async () => {
     await withHeldBureau({ agents: { asksTwice } }, async (opened, hold) => {
-      const run = opened.bureau.run('asksTwice', 'which ones?', { principal: OWNER.alice });
+      const run = await opened.bureau.tasks.start('asksTwice', 'which ones?', {
+        principal: OWNER.alice,
+      });
       await waitForCondition(
         () => openSignals(opened, run.id).includes('first'),
         'the run never parked on its first wait',

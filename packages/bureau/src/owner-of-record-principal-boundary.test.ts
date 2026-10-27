@@ -108,14 +108,15 @@ describe('a principal that is not text (COR-718)', () => {
     },
   );
 
-  it.each(NOT_TEXT)('is refused by bureau.run (%s)', async (_label, principal) => {
+  it.each(NOT_TEXT)('is refused by tasks.start (%s)', async (_label, principal) => {
     const bureau = await createBureau({
       agents: { worker: createAgent({ name: 'worker', generate }) },
     });
     try {
-      expect(() => bureau.run('worker', 'work', { principal: principal as never })).toThrow(
-        '"options.principal" must be a string',
+      const error = await rejectionOf(
+        bureau.tasks.start('worker', 'work', { principal: principal as never }),
       );
+      expect((error as Error).message).toContain('principal');
     } finally {
       await bureau.dispose();
     }
@@ -215,12 +216,13 @@ describe('a principal in a reserved namespace (COR-718)', () => {
     },
   );
 
-  it.each(RESERVED)('is refused by bureau.run (%s)', async (_label, principal) => {
+  it.each(RESERVED)('is refused by tasks.start (%s)', async (_label, principal) => {
     const bureau = await createBureau({
       agents: { worker: createAgent({ name: 'worker', generate }) },
     });
     try {
-      expect(() => bureau.run('worker', 'work', { principal })).toThrow(/reserved/);
+      const error = await rejectionOf(bureau.tasks.start('worker', 'work', { principal }));
+      expect((error as Error).message).toMatch(/reserved/);
       expect(listHeldTasks(bureau)).toEqual([]);
     } finally {
       await bureau.dispose();

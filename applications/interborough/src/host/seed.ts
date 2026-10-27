@@ -8,20 +8,17 @@
  * the goal are Bureau state, so {@link seedBureau} creates each only when the Bureau does not
  * already hold it, and a restart adds nothing.
  *
- * A session run that names one of these agents (Chat, or `createRun({ agentName })`) runs that
+ * A task that names one of these agents (Chat, or `bureau.tasks.start(name, input)`) runs that
  * agent's script, tools, and stop conditions. The durable Bureau also offers every such run its
  * `requestHumanInput` tool, which it does by default.
  *
  * - `assistant`: answers every message with one fixed reply.
  * - `tool-runner`: looks an order up (a read-only tool), then asks to refund it (a mutating tool
  *   the toolbox holds for approval). The run stops on the pending approval, and the refund does
- *   not run until an operator approves it. Through a session run the review's `runId` is that
- *   run's id and the session's request context signs the approval. `bureau.run('tool-runner')`
- *   has no session, so it signs with {@link LOCAL_REQUEST_CONTEXT} instead.
+ *   not run until an operator approves it. The review's `runId` is the task's id and the task's
+ *   context supplies the request context that signs the approval.
  * - `request-human-input`: calls `requestHumanInput` with its question and parks until an
- *   operator answers the review, then thanks them. Through a session run the review carries the
- *   session's id; through `bureau.run('request-human-input')` there is no session, so the review
- *   is addressed by its run id and resolves the same way.
+ *   operator answers the review, then thanks them. The review carries the task's context id.
  * - `echo`: answers every message with the text of the last message it was sent. A reply that
  *   quotes parts of earlier replies reaches the model as Markdown block quotes ahead of the typed
  *   text, so the echo shows exactly what the agent received.
@@ -224,25 +221,6 @@ function repeated(steps: readonly ScriptedGenerateStep[]): ScriptedGenerateStep[
   return Array.from({ length: SCRIPT_REPETITIONS }, () => steps).flat();
 }
 
-/**
- * The identity a signed approval binds to when `tool-runner` is dispatched with `bureau.run`: the
- * one local caller, acting through `tool-runner`. A catalog dispatch has no session to supply a
- * request context, and approving a tool call needs a request principal, tenant, audience, agent,
- * and run, so they are constants here. A session run ignores this and uses the session's own.
- */
-const LOCAL_REQUEST_CONTEXT = {
-  authority: {
-    principalId: 'anonymous:local',
-    tenantId: 'interborough',
-    ownerId: 'anonymous:local',
-    capabilities: [],
-    authorizationRevision: '1',
-  },
-  audience: 'tenant',
-  agentId: 'tool-runner',
-  runId: 'tool-runner',
-} as const;
-
 function createLookupOrderTool() {
   return createTool({
     name: 'lookup-order',
@@ -306,7 +284,6 @@ export function createSeededAgents(approvalSecret: string, assistantGenerate?: G
       examples: ['Refund order 1234'],
       generate: toolRunnerGenerate(),
       toolbox: createToolRunnerToolbox(approvalSecret),
-      executeOptions: { requestContext: LOCAL_REQUEST_CONTEXT },
       stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()],
     }),
     'request-human-input': createAgent({
