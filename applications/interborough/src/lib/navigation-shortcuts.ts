@@ -17,6 +17,7 @@ export const NAVIGATION_SHORTCUTS: Readonly<Record<string, string>> = {
   '/storage': 't',
   '/system': 'y',
   '/audit': 'u',
+  '/settings': 'n',
 };
 
 /** How long after `g` the second key still counts. */
