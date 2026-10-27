@@ -19,6 +19,7 @@ Declare `"@lostgradient/bureau": "workspace:*"` in the consuming workspace's dep
   - [The `Bureau` Object](#the-bureau-object)
   - [The Bureau's own operations](#the-bureaus-own-operations)
   - [Tasks (`bureau.tasks`)](#tasks-bureautasks)
+  - [Decisions (`bureau.decisions`)](#decisions-bureaudecisions)
   - [`streamEventToFrame`](#streameventtoframe)
   - [The Audit Trail](#the-audit-trail)
   - [Run-creation receipts (COR-424)](#run-creation-receipts-cor-424)
@@ -192,6 +193,8 @@ Every field is optional. `createBureau({})` resolves a Bureau with no agents.
 | `agentSource` | `AgentSource` | COR-1702—where agent definitions are loaded from, watched in, and written back to. Pass `agentFileDirectory(path, { tools })` from `@lostgradient/bureau/sources` for a directory of Markdown agent files (COR-1524); `tools` is the deployment's tool catalog, the tools a file may name. Requires `models.generate`. See [`documentation/agent-files.md`](documentation/agent-files.md). |
 | `workflowSource` | `WorkflowSource` | COR-1702—where workflow definitions are loaded from, watched in, and written back to. Pass `workflowFileDirectory(path)` from `@lostgradient/bureau/sources` for a directory of JSON workflow files (COR-1527). Needs a durable engine. See [`documentation/workflow-files.md`](documentation/workflow-files.md). |
 | `models` | `{ catalog?: readonly BackendDescriptor[]; generate?: (row: BackendDescriptor) => GenerateFunction }` | The model rows the deployment offers and how a row becomes a `generate`, exposed as `bureau.models`. `catalog` defaults to `@lostgradient/operative`'s static `createModelCatalog()` rows; rows a host supplies are stamped `source: 'operator-override'`. `generate` is required with `agentSource`: it turns the catalog row an agent file's `model` resolved to into the `generate` the file runs with, because the host holds the credentials. See [`create-models.ts`](./src/models/create-models.ts). |
+| `decisions` | `{ model?: DecisionModel; fallbackModel?: string; maximumPerTask?: number }` | Who answers `bureau.decisions.decide` and the `decide` tool: `model` for the kinds it serves, a catalog row (`fallbackModel`, default `anthropic/claude-haiku-5-5`) for the rest, and `maximumPerTask` (default 20) as the per-task cap on the tool. See [Decisions](#decisions-bureaudecisions). |
+| `decide` | `false` | Leaves the `decide` tool out of every task's toolbox. It is offered by default to the run kinds that are offered `requestHumanInput`, when a decision model or `models.generate` can answer it. Passing `true` throws `BAD_REQUEST`. |
 | `modelPolicy` | `{ deployment?; bureau?; users?: Record<string, UserModelConfiguration>; policyRevision: number }` | AB-64/AB-250—deployment/Bureau model-policy invariants and the per-principal user configuration `bureau.models.plan`/a run's `SelectionGate` compose against, held in memory for the bureau's lifetime. Named policy profiles are keys of `users` and of each configuration's own `fallbackOrder`; there is no storage schema. `StartTaskOptions` gains no field for any of this. See [`model-policy.ts`](./src/model-policy.ts). |
 
 ### Per-agent guardrails and skills (COR-1367)
@@ -255,6 +258,7 @@ The most commonly used members:
 | `agents` | `BureauAgentCatalog<D>` | The typed, read-only agent catalog. See [`AgentDefinitions` and the Agent Catalog](#agentdefinitions-and-the-agent-catalog). |
 | `tasks` | `BureauTasks<D>` | Starts a task and reads, waits on, watches, and cancels it: `start(agentName, input, options?)`, `detail(id)`, `get(id)`, `list(query)`, `cancel(id, options?)`, `receipt(query)`, `workflow(id)`, `workflows(filter?, options?)`, `wait(id)`, `snapshot(id, observer, options?)`, `events(id, options?)`, `subscribeEvents(id, listener, options?)`, `inspect(id)`, and `respond(request)`. The `bureau.tasks.*` operations of `createBureauHandler` delegate to these members. See [Tasks](#tasks-bureautasks). |
 | `models` | `Models` | The model namespace, present regardless of `D`: `catalog()` returns the frozen `ModelCatalog` (the same object until `replace(rows)` commits; `revision` is 1 at boot and Bureau increments it on every `replace`, `stale` is always `false`, `generatedAt` is the runtime clock's time at the commit), `replace(rows)` swaps every row and validates agent files again, `generate(row)` is the host's `models.generate` (`NOT_CONFIGURED` when none was supplied), and `plan(request)` builds a `SelectionPlan`. |
+| `decisions` | `BureauDecisions` | Ask a model a typed question: `decide(request, options?)`. See [Decisions](#decisions-bureaudecisions). |
 | `memory` | `GovernedMemory \| undefined` | COR-41—the governed memory passed as `BureauOptions.memory`, for host-side reads, legal holds, and deletions under the host's own authority. The maintenance pass runs the retention sweep and deletion propagation itself. See [Governed memory](#governed-memory-cor-41). |
 | `children` | `BureauChildren` | COR-772—dispatch a catalog agent as the child of a run this bureau knows, then `list`/`get`/`wait`/`signal`/`cancel` it by its stable identifier, including after a restart. See [Parent-child topology](#parent-child-topology-cor-772). |
 | `goals` | `BureauGoals` | COR-851—create a durable goal, then `get`/`list`/`active`/`cancel`/`close` it and `recover` every unfinished one after a restart. Needs a durable engine. See [Durable goals](#durable-goals-cor-851). |
@@ -455,6 +459,76 @@ if (schedule !== undefined) {
 `bureau.dispose()` (and `bureau.shutdown()`) is safe to call more than once—the second call returns the same, already-settled promise rather than re-running teardown.
 
 **The manual-runtime rule (AB-338):** `shutdown()`'s bounded `timeoutMilliseconds` wait always sleeps on this bureau's own resolved `RuntimeServices.timers` (AB-260's deterministic contract), never a real timer directly. Under a real-globals runtime that is invisible—the wait just elapses. Under a `ManualRuntimeServices`, nothing advances that wait's timer on its own, so the CALLER owns advancing the clock (`runtime.advance(timeoutMilliseconds)`) far enough for a bounded `shutdown()` call to resolve, exactly as it owns advancing the clock for any other timer-driven behavior in that bureau. The one built-in exception is `bureau/test`'s `BureauTestHarness.close(shutdownOptions)` (below), which owns that advance itself.
+
+### Decisions (`bureau.decisions`)
+
+`bureau.decisions.decide` puts a typed question to a model and returns a typed answer. A request is one of four kinds: `boolean` (the value is a `boolean`), `choice` (pick one of at least two `options`; the value is the option's `key`), `scale` (rate on ordered `levels`; the value is the level's index), and `structured` (answer with an object that satisfies a Zod or Standard Schema; the value is the validated object). Each answer carries the `provider` and `model` that gave it, and its `usage`, `probability` and `rationale` when the model reports them. No decision value is stored.
+
+`decisions: { model?, fallbackModel?, maximumPerTask? }` on `createBureau` decides who answers. A `model` (a `DecisionModel`, such as operative's `typesafeJev`) answers the kinds in its `kinds`; every other kind goes to a language-model row of the model catalog, which needs `models.generate`. The fallback row is `fallbackModel` (`<provider>/<model>`, default `anthropic/claude-haiku-5-5`) when the catalog holds it, it is not `unavailable`, and it has structured output; otherwise it is the cheapest priced row with structured output that is not `unavailable` (ties by output price, then catalog order). With no such row, or when `models.generate` is absent or throws for it, `decide` rejects `BureauError` `NOT_CONFIGURED`. An answer that fails validation after one retry rejects with `DecisionSchemaError`.
+
+```ts
+import type { Bureau } from '@lostgradient/bureau';
+import { z } from 'zod';
+
+declare const bureau: Bureau;
+
+const approved = await bureau.decisions.decide({
+  kind: 'boolean',
+  question: 'Does this reply answer the customer’s question?',
+  context: 'Customer: where is my order?\nReply: It ships tomorrow.',
+});
+console.log(approved.value, approved.model);
+
+const triage = await bureau.decisions.decide(
+  {
+    kind: 'structured',
+    question: 'Triage this report.',
+    schema: z.object({ severity: z.enum(['low', 'high']), summary: z.string() }),
+  },
+  { principal: 'api-key:alice' },
+);
+console.log(triage.value.severity);
+```
+
+Every answer records a `decision.made` audit entry naming the kind, provider, model, principal, and, for `structured`, the SHA-256 of the schema's canonical JSON. It never carries the context or the value.
+
+The same operation is the control-plane command `bureau.decisions.decide`, which requires `bureau.decisions:write`, takes the schema as JSON Schema 2020-12 (at most 16 KiB, no `$id`, no `pattern`), and takes no ledger entry: a retry asks the model again. A durable Bureau also offers tasks a `decide` tool, to the run kinds that are offered `requestHumanInput`, whenever something can answer; `decide: false` leaves it out. The tool acts as the task's principal and refuses a call past `maximumPerTask` (default 20) with a typed result; the count is kept in memory, so a recovered task counts again from zero. Two helpers use the namespace: `createDecisionRouting(bureau.decisions)` is a `createSupervisor` routing strategy that asks a `choice` over the catalog's agents (one agent is returned without a decision, none throws `NOT_FOUND`), and `decisionValidator({ name, version, request, verdict })` is a goal validator, reported `stochastic`, that Bureau binds to its own `decisions` when it is passed in `validators`.
+
+```ts
+import {
+  createBureau,
+  createDecisionRouting,
+  createSupervisor,
+  decisionValidator,
+  type Bureau,
+} from '@lostgradient/bureau';
+
+const judge = decisionValidator({
+  name: 'reply-judge',
+  version: '1',
+  request: (input) => ({
+    kind: 'boolean',
+    question: 'Is this reply acceptable?',
+    context: input.result.content,
+  }),
+  verdict: (decision) =>
+    decision.value === true
+      ? { kind: 'pass', evidence: [] }
+      : { kind: 'fail', feedback: 'Make the reply more direct.', evidence: [], retryable: true },
+});
+
+const bureau: Bureau = await createBureau({
+  storage: { type: 'memory' },
+  durable: true,
+  validators: [judge],
+});
+
+const supervisor = createSupervisor({
+  agents: bureau.agents,
+  routing: createDecisionRouting(bureau.decisions),
+});
+console.log(supervisor !== undefined);
+```
 
 ### `streamEventToFrame`
 
