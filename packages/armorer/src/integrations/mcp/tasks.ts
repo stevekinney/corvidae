@@ -179,6 +179,8 @@ type LiveMcpTask = {
   abortWrite: Promise<unknown> | undefined;
   /** Orders this MCP task's writes: each waits for the one before it. */
   writes: Promise<unknown>;
+  /** Input rounds issued so far; each gets its own `inputRequests` key. */
+  round: number;
 };
 
 const MAXIMUM_WRITE_ATTEMPTS = 100;
@@ -186,6 +188,11 @@ const UNKNOWN_MCP_TASK_MESSAGE = 'Unknown, expired, or inaccessible MCP task.';
 
 const taskParameters = z.looseObject({ taskId: z.string() });
 const wireResult = z.looseObject({});
+
+/** The one outstanding `inputRequests` key of an `input_required` record. */
+function outstandingKey(record: MCPTaskRecord): string | undefined {
+  return Object.keys(record.inputRequests ?? {})[0];
+}
 
 function isTerminal(status: MCPTaskStatus): boolean {
   return status === 'completed' || status === 'failed' || status === 'cancelled';
@@ -316,7 +323,10 @@ export function createMcpTaskRuntime(options: {
         throw unknownMcpTask();
       }
       if (record.clientId !== clientId) throw unknownMcpTask();
-      if (isTerminal(record.status) || record.ownerId === ownerId) return record;
+      // A record this instance owns but no longer runs (a failed settle write) is an orphan too.
+      if (isTerminal(record.status) || (record.ownerId === ownerId && live.has(taskId))) {
+        return record;
+      }
       const failed: MCPTaskRecord = {
         ...finish('failed', {
           error: interrupted(
@@ -386,8 +396,10 @@ export function createMcpTaskRuntime(options: {
           await enqueue(entry, () => mutate(taskId, finish('completed', { result })));
           return;
         }
+        // The extension requires an `inputRequests` key to be unique for the task's lifetime.
+        entry.round += 1;
         const inputRequests: InputRequests = {
-          [MCP_ELICITATION_INPUT_KEY]: outcome.pending.inputRequest,
+          [`${MCP_ELICITATION_INPUT_KEY}:${entry.round}`]: outcome.pending.inputRequest,
         };
         await enqueue(entry, () =>
           mutate(taskId, (record) => ({ ...record, status: 'input_required', inputRequests })),
@@ -467,6 +479,7 @@ export function createMcpTaskRuntime(options: {
         expired: false,
         abortWrite: undefined,
         writes: Promise.resolve(),
+        round: 0,
       };
       live.set(taskId, entry);
       const unsubscribe = request.subscribeProgress((message) => {
@@ -534,15 +547,19 @@ export function createMcpTaskRuntime(options: {
             if (record.status !== 'input_required' || !entry) return {};
             // The SDK lifts `inputResponses` out of the params onto the request context.
             const inputResponses = context.mcpReq.inputResponses;
-            if (inputResponse(inputResponses, MCP_ELICITATION_INPUT_KEY).kind === 'missing') {
-              return {};
-            }
+            const outstanding = outstandingKey(record);
+            if (outstanding === undefined) return {};
+            // A response for any other key (a stale round, an unknown key) is ignored.
+            if (inputResponse(inputResponses, outstanding).kind === 'missing') return {};
+            // The compare-and-set fences delivery to the round that carries `outstanding`.
             const resumed = await mutate(taskId, (current) => {
-              if (current.status !== 'input_required') return undefined;
+              if (current.status !== 'input_required' || outstandingKey(current) !== outstanding) {
+                return undefined;
+              }
               const { inputRequests: _inputRequests, ...rest } = current;
               return { ...rest, status: 'working' };
             });
-            if (resumed) deliverInputResponse(entry.execution, inputResponses);
+            if (resumed) deliverInputResponse(entry.execution, inputResponses, outstanding);
             return {};
           }),
       );

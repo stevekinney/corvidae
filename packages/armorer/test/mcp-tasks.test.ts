@@ -490,16 +490,16 @@ describe('input and authorization', () => {
       task = expectResult(await getMcpTask(harness.mcp, taskId));
     }
     expect(task['status']).toBe('input_required');
-    expect(
-      (task['inputRequests'] as Record<string, { method: string }>)['elicitation']?.method,
-    ).toBe('elicitation/create');
+    const requests = task['inputRequests'] as Record<string, { method: string }>;
+    const key = Object.keys(requests)[0]!;
+    expect(requests[key]?.method).toBe('elicitation/create');
 
     await rpc(harness.mcp, 'tasks/update', { taskId, inputResponses: {} });
     expect(expectResult(await getMcpTask(harness.mcp, taskId))['status']).toBe('input_required');
 
     const update = await rpc(harness.mcp, 'tasks/update', {
       taskId,
-      inputResponses: { elicitation: { action: 'accept', content: { approved: true } } },
+      inputResponses: { [key]: { action: 'accept', content: { approved: true } } },
     });
     expect(update.error).toBeUndefined();
     const finished = await settled(harness.mcp, taskId);
@@ -509,6 +509,70 @@ describe('input and authorization', () => {
       content: [{ type: 'text', text: 'approved Q3' }],
     });
     expect(counter.runs).toBe(1);
+  });
+
+  it('fences tasks/update to the outstanding round: a stale first answer never answers the second question', async () => {
+    const answers: unknown[] = [];
+    const twoQuestions = createTool({
+      name: 'render-report',
+      description: 'asks twice',
+      input: z.object({ title: z.string() }),
+      metadata: { mcp: { taskBacked: true } },
+      async execute(_input, context) {
+        for (const message of ['First?', 'Second?']) {
+          answers.push(
+            await context.elicit?.({
+              mode: 'form',
+              message,
+              schema: {
+                type: 'object',
+                properties: { approved: { type: 'boolean' } },
+                required: ['approved'],
+              },
+            }),
+          );
+        }
+        return 'both answered';
+      },
+    });
+    const harness = await startHarness({ toolbox: [twoQuestions] });
+    const capabilities = { ...TASKS_CAPABILITIES, elicitation: {} };
+    const created = expectResult(
+      await rpc(
+        harness.mcp,
+        'tools/call',
+        { name: 'render-report', arguments: { title: 'Q3' } },
+        capabilities,
+      ),
+    );
+    const taskId = created['taskId'] as string;
+    const outstanding = async (previous?: string): Promise<string> => {
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        const task = expectResult(await getMcpTask(harness.mcp, taskId));
+        const key = Object.keys((task['inputRequests'] as object | undefined) ?? {})[0];
+        if (task['status'] === 'input_required' && key !== undefined && key !== previous) {
+          return key;
+        }
+        await Bun.sleep(1);
+      }
+      throw new Error('no outstanding input request');
+    };
+    const answer = { action: 'accept', content: { approved: true } };
+
+    const firstKey = await outstanding();
+    await rpc(harness.mcp, 'tasks/update', { taskId, inputResponses: { [firstKey]: answer } });
+    const secondKey = await outstanding(firstKey);
+    expect(secondKey).not.toBe(firstKey);
+
+    // Re-sending the first round's answer must not answer the second question.
+    await rpc(harness.mcp, 'tasks/update', { taskId, inputResponses: { [firstKey]: answer } });
+    expect(expectResult(await getMcpTask(harness.mcp, taskId))['status']).toBe('input_required');
+    expect(answers).toHaveLength(1);
+
+    await rpc(harness.mcp, 'tasks/update', { taskId, inputResponses: { [secondKey]: answer } });
+    const finished = await settled(harness.mcp, taskId);
+    expect(finished['status']).toBe('completed');
+    expect(answers).toHaveLength(2);
   });
 
   it('answers unknown, expired, and other-client ids with the same -32602 message', async () => {
@@ -610,6 +674,36 @@ describe('durability', () => {
     expect(firstReported).toEqual([]);
     expect(second.started()).toBe(0);
     await first.mcp.shutdown();
+  });
+
+  it('reads a record whose terminal write failed as failed with -32603, not working', async () => {
+    const store = createStoreDouble();
+    const reported: unknown[] = [];
+    const harness = await startHarness(
+      {
+        resources: (server) => {
+          Object.assign(server.server, { onerror: (error: unknown) => reported.push(error) });
+        },
+      },
+      store,
+    );
+    const taskId = await createMcpTask(harness);
+    // Batch 1 was the create; the completion write is batch 2 and is rejected once.
+    store.fault(store.batchCount + 1, 'reject');
+    harness.release('!');
+    for (let attempt = 0; attempt < 200 && reported.length === 0; attempt += 1) {
+      await Bun.sleep(1);
+    }
+    await harness.mcp.executionLifecycle.whenIdle();
+    await Bun.sleep(10);
+
+    const task = expectResult(await getMcpTask(harness.mcp, taskId));
+
+    expect(reported).toHaveLength(1);
+    expect(task).toMatchObject({ status: 'failed', error: { code: INTERNAL_ERROR } });
+    const cancel = await rpc(harness.mcp, 'tasks/cancel', { taskId });
+    expect(cancel.error).toBeUndefined();
+    expect(storedRecord(store, taskId)?.status).toBe('failed');
   });
 
   it('acknowledges tasks/update and tasks/cancel on an orphan, then reads it as failed', async () => {

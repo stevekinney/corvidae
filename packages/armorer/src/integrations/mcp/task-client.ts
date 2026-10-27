@@ -2,7 +2,6 @@ import type { CallToolResult } from '@modelcontextprotocol/server';
 
 import type { Tool, ToolContext } from '../../is-tool';
 import { toElicitResult, toToolElicitationRequest } from './elicitation';
-import { MCP_ELICITATION_INPUT_KEY } from './input-required';
 import { MCP_PROTOCOL_VERSION } from './server';
 import { MCP_TASKS_EXTENSION } from './tasks';
 import { fromMcpTools, type FromMCPToolsOptions, type MCPToolSource } from './tools';
@@ -224,8 +223,11 @@ export async function fromMcpEndpointTools(options: FromMcpEndpointToolsOptions)
     context: ToolContext | undefined,
     signal: AbortSignal | undefined,
   ) {
-    const requested = task.inputRequests?.[MCP_ELICITATION_INPUT_KEY];
-    if (!context?.elicit || requested?.method !== 'elicitation/create') {
+    const entry = Object.entries(task.inputRequests ?? {}).find(
+      ([, candidate]) => candidate.method === 'elicitation/create',
+    );
+    const [key, requested] = entry ?? [];
+    if (!context?.elicit || key === undefined || requested === undefined) {
       throw new MCPInputRequiredUnsupportedError(toolName);
     }
     // Raced against the call's signal so an abort cancels the MCP task instead of waiting for a user.
@@ -239,7 +241,7 @@ export async function fromMcpEndpointTools(options: FromMcpEndpointToolsOptions)
     ]);
     await send(
       'tasks/update',
-      { taskId, inputResponses: { [MCP_ELICITATION_INPUT_KEY]: toElicitResult(result) } },
+      { taskId, inputResponses: { [key]: toElicitResult(result) } },
       capabilities,
       signal,
     );
