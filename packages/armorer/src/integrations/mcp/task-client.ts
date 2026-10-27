@@ -187,7 +187,7 @@ export async function fromMcpEndpointTools(options: FromMcpEndpointToolsOptions)
         lastMessage = task.statusMessage;
         context?.progress({ message: lastMessage });
       }
-      if (task.status === 'completed') return (task.result ?? { content: [] }) as CallToolResult;
+      if (task.status === 'completed') return task.result ?? { content: [] };
       if (task.status === 'failed' || task.status === 'cancelled') {
         throw new MCPTaskClientError(
           `MCP task ${taskId} for "${toolName}" ended ${task.status}${
@@ -207,7 +207,7 @@ export async function fromMcpEndpointTools(options: FromMcpEndpointToolsOptions)
         delay(task.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS, signal),
         abortion(signal),
       ]);
-      task = (await send('tasks/get', { taskId }, capabilities, signal)) as WireTask;
+      task = await send('tasks/get', { taskId }, capabilities, signal);
     }
   }
 

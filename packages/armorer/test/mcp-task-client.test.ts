@@ -99,30 +99,28 @@ async function fixture(
 
   const delays: number[] = [];
   const requests: string[] = [];
-  const tools = new Map(
-    (
-      await fromMcpEndpointTools({
-        url: 'http://armorer.test/mcp',
-        fetch: async (input, init) => {
-          const body = JSON.parse(String(init.body)) as { method: string };
-          requests.push(body.method);
-          const response = await mcp.fetch(new Request(input, init));
-          if (body.method === 'tools/call') {
-            const payload = (await response.clone().json()) as { result?: { taskId?: string } };
-            if (payload.result?.taskId) taskIds.push(payload.result.taskId);
-          }
-          return response;
-        },
-        delay:
-          options.delay ??
-          (async (milliseconds) => {
-            delays.push(milliseconds);
-            gate.resolve();
-            await Bun.sleep(1);
-          }),
-      })
-    ).map((tool) => [tool.name, tool]),
-  );
+  const endpointTools = await fromMcpEndpointTools({
+    url: 'http://armorer.test/mcp',
+    fetch: async (input, init) => {
+      const request = new Request(input, init);
+      const body = JSON.parse(await request.clone().text()) as { method: string };
+      requests.push(body.method);
+      const response = await mcp.fetch(request);
+      if (body.method === 'tools/call') {
+        const payload = (await response.clone().json()) as { result?: { taskId?: string } };
+        if (payload.result?.taskId) taskIds.push(payload.result.taskId);
+      }
+      return response;
+    },
+    delay:
+      options.delay ??
+      (async (milliseconds) => {
+        delays.push(milliseconds);
+        gate.resolve();
+        await Bun.sleep(1);
+      }),
+  });
+  const tools = new Map(endpointTools.map((tool) => [tool.name, tool]));
   return { mcp, delays, requests, tools, gate, seen, store, taskIds };
 }
 
@@ -163,7 +161,7 @@ describe('fromMcpEndpointTools', () => {
     expect(asked).toBeUndefined();
     // Without a context.elicit the client declares no elicitation, so the tool takes its no-elicit path.
     const withElicit = await toolNamed(harness, 'asks-synchronously')
-      .execute({}, { elicit: async () => ({ action: 'accept' as const, content: {} }) } as never)
+      .execute({}, { elicit: async () => ({ action: 'accept', content: {} }) } as never)
       .then(
         () => undefined,
         (error: unknown) => error,
@@ -179,7 +177,7 @@ describe('fromMcpEndpointTools', () => {
     const controller = new AbortController();
 
     const outcome = toolNamed(harness, 'slow')
-      .execute({ title: 'Q3' }, { signal: controller.signal } as never)
+      .execute({ title: 'Q3' }, { signal: controller.signal })
       .then(
         () => undefined,
         (error: unknown) => error,
@@ -197,12 +195,15 @@ describe('fromMcpEndpointTools', () => {
     const harness = await fixture();
     const questions: string[] = [];
 
-    const result = await toolNamed(harness, 'asks').execute({}, {
-      elicit: async (request: { message: string }) => {
-        questions.push(request.message);
-        return { action: 'accept' as const, content: { ok: true } };
+    const result = await toolNamed(harness, 'asks').execute(
+      {},
+      {
+        elicit: async (request: { message: string }) => {
+          questions.push(request.message);
+          return { action: 'accept' as const, content: { ok: true } };
+        },
       },
-    } as never);
+    );
 
     expect(questions).toEqual(['Proceed?']);
     expect(JSON.stringify(result)).toContain('accept');

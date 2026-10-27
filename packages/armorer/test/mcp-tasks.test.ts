@@ -405,7 +405,8 @@ describe('cancellation, expiry and shutdown', () => {
     await Bun.sleep(10);
 
     expect(harness.signals[0]?.aborted).toBe(true);
-    expect((await getMcpTask(harness.mcp, taskId)).error?.code).toBe(INVALID_PARAMS);
+    const lookup = await getMcpTask(harness.mcp, taskId);
+    expect(lookup.error?.code).toBe(INVALID_PARAMS);
     await harness.mcp.executionLifecycle.whenIdle();
     await harness.mcp.shutdown();
     expect(harness.store.values.has(`${MCP_TASK_KEY_PREFIX}${taskId}`)).toBe(false);
@@ -583,7 +584,7 @@ describe('durability', () => {
     const harness = await startHarness(
       {
         resources: (server) => {
-          server.server.onerror = (error) => reported.push(error);
+          Object.assign(server.server, { onerror: (error: unknown) => reported.push(error) });
         },
       },
       store,

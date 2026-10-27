@@ -101,7 +101,72 @@ Accepted form answers are validated against the requested schema in both eras be
 
 ## MCP tasks
 
-MCP tasks are not implemented. The 2025-11 experimental task API was removed from the SDK in 2.0.0, and the 2026-07-28 Tasks extension (SEP-2663) is not implemented by the SDK at 2.3: its server lists every Tasks conformance scenario as an expected failure, and its client rejects a `tools/call` result of `resultType: 'task'`. No task API is exported. Long-running tools report progress and honor cancellation on a held-open request instead; Armorer's own execution tasks remain the in-process model.
+A tool can run as an *MCP task*, the 2026-07-28 Tasks extension (`io.modelcontextprotocol/tasks`): `tools/call` returns a handle right away and the client polls `tasks/get` until the result is ready, answers questions with `tasks/update`, and stops the work with `tasks/cancel`. An MCP task is unrelated to Armorer's own execution tasks (`createExecutionTask`); the name always carries the "MCP".
+
+Opting in is per tool, with `taskBacked: true` in `metadata.mcp` or in what the `toolConfiguration()` callback returns. The default stays synchronous, and `createMCP` needs a durable store for the records:
+
+```typescript
+import { createMCP, createTool, createToolbox, type MCPTaskStore } from 'armorer';
+import { z } from 'zod';
+
+declare const taskStore: MCPTaskStore;
+
+const report = createTool({
+  name: 'render-report',
+  description: 'renders a long report',
+  input: z.object({ title: z.string() }),
+  metadata: { mcp: { taskBacked: true } },
+  async execute({ title }, context) {
+    context.progress({ message: 'rendering' });
+    return `report: ${title}`;
+  },
+});
+
+const mcp = await createMCP(createToolbox([report]), {
+  taskStore,
+  tasks: { ttlMs: 600_000, pollIntervalMs: 1_000 },
+});
+```
+
+What a client sees:
+
+- `createMCP` rejects at construction, naming the tool, when a tool opts in and no `taskStore` is given. There is no in-memory default.
+- `server/discover` lists the extension only when at least one tool opts in, merged with any `capabilities.extensions` you supply. A 2025-11-25 `initialize` never lists it.
+- Only a 2026-07-28 client that declares the extension gets a handle. A 2025-11-25 client, a 2026-07-28 client that does not declare it, and a tool that did not opt in all get the synchronous result, and `tasks/get` is method-not-found on 2025-11-25. `toMcpTools` never serves MCP tasks, so it runs an opted-in tool synchronously.
+- The handle is returned only after the record has been committed to the store. If the store fails or refuses the create, `tools/call` answers `-32603` and the tool never starts.
+- A tool that returns or throws ends `completed`, with the same `result` the synchronous path sends (a throw is `isError: true`). `failed` is reserved for JSON-RPC errors: a shutdown or an orphan.
+- `context.progress({ message })` becomes the record's `statusMessage`; no notifications are sent.
+- `context.elicit(...)` moves the MCP task to `input_required` with one `elicitation` input request. `tasks/update` with that key delivers the answer into the same suspended execution, so the tool body runs once. A `tasks/update` without the key leaves the MCP task `input_required`.
+- `tasks/cancel` aborts `context.signal` and ends `cancelled`. Cancelling a finished MCP task is an empty acknowledgement.
+- `ttlMs` (default ten minutes) counts from creation. When it passes, the execution is aborted, the record is deleted, and the id reads as unknown. `pollIntervalMs` (default one second) is the interval advertised to clients. `tasks.now` replaces the clock used for `createdAt` and `lastUpdatedAt`.
+- Ids are random bearer tokens and each record is bound to the creating `authInfo.clientId` (or the empty string). An unknown, expired, or other-client id answers `-32602` with the same message on all three methods.
+- The extension defines no `tasks/list`, and `notifications/tasks` over `subscriptions/listen` is not implemented.
+
+#### One live instance per store
+
+The store is durable but the executions are not: they run in the process that created them. A store therefore belongs to **one live `createMCP` instance**. Every record carries an `ownerId` that is random per instance. After a restart (or when a second instance reads the store), a non-terminal record owned by another id is an orphan: nothing can finish, cancel, or answer it, so the first `tasks/get`, `tasks/update`, or `tasks/cancel` that reads it records it as `failed` with `-32603`. `tasks/get` returns that record; `tasks/update` and `tasks/cancel` acknowledge with an empty result. An interrupted execution is never re-run, and a late settle from an old instance loses its compare-and-set.
+
+Records are JSON at `mcp-task:<taskId>` with `version: 1`; a record with any other version makes `tasks/get`, `tasks/update`, and `tasks/cancel` answer `-32603`. Every write is a `conditionalBatch` on the value last read, so a terminal status is written once.
+
+`MCPTaskStore` is a subset of Weft's `ConditionalTextValueStore` (`get`, `set`, `delete`, `list(prefix)`, `conditionalBatch`), so `textValueStore(...)` from `@lostgradient/weft` is assignable to it with no adapter.
+
+#### Consuming MCP tasks
+
+The SDK 2.4 client rejects a task handle, so `fromMcpEndpointTools` sends raw 2026-07-28 JSON-RPC through an authenticated `fetch`. It lists the tools and returns Armorer tools whose calls declare the extension:
+
+```typescript
+import { fromMcpEndpointTools } from 'armorer';
+
+declare const authenticatedFetch: (input: string, init: RequestInit) => Promise<Response>;
+
+const tools = await fromMcpEndpointTools({
+  url: 'https://tools.example.com/mcp',
+  fetch: authenticatedFetch,
+  delay: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+});
+```
+
+A `complete` answer passes through. A task handle is polled with `tasks/get`, waiting `delay(pollIntervalMs)` between polls, until it resolves to the final result, so the caller just awaits `execute`. An `input_required` MCP task is answered through the calling tool's `context.elicit`. Aborting the call's signal sends `tasks/cancel`. A remote `failed` or `cancelled` status, or a JSON-RPC error such as `-32602` mid-poll, rejects with a message naming the status or code. A synchronous `input_required` answer throws `MCPInputRequiredUnsupportedError`; use `fromMcpClientTools` for those tools.
 
 ### Tool metadata mapping
 

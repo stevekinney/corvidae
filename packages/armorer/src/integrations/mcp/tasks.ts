@@ -219,7 +219,9 @@ export function createMcpTaskRuntime(options: {
     work.then(forget, forget);
     return work;
   };
-  const report = (work: Promise<unknown>) => track(work.catch(onError));
+  const report = (work: Promise<unknown>): void => {
+    void track(work.catch(onError));
+  };
   const timestamp = () => new Date(now()).toISOString();
   const keyOf = (taskId: string) => `${MCP_TASK_KEY_PREFIX}${taskId}`;
 
@@ -441,10 +443,12 @@ export function createMcpTaskRuntime(options: {
       (timer as { unref?: () => void }).unref?.();
       request.signal.addEventListener('abort', () => abortOutcome(entry, request), { once: true });
       if (request.signal.aborted) abortOutcome(entry, request);
-      track(runDriver(entry, request)).finally(() => {
-        clearTimeout(timer);
-        unsubscribe();
-      });
+      void track(runDriver(entry, request))
+        .finally(() => {
+          clearTimeout(timer);
+          unsubscribe();
+        })
+        .catch(onError);
 
       return {
         resultType: 'task',
@@ -507,7 +511,7 @@ export function createMcpTaskRuntime(options: {
     /** Resolves once every driver and background write this instance started has settled. */
     async whenIdle(): Promise<void> {
       while (background.size > 0) {
-        await Promise.allSettled([...background]);
+        await Promise.allSettled(background);
       }
     },
   };
@@ -517,10 +521,11 @@ export function createMcpTaskRuntime(options: {
 export type McpTaskRuntime = ReturnType<typeof createMcpTaskRuntime>;
 
 /** True when a request's client declared the Tasks extension. */
-export function clientDeclaresMcpTasks(capabilities: object | undefined): boolean {
-  const extensions = (capabilities as { extensions?: Record<string, unknown> } | undefined)
-    ?.extensions;
-  return extensions?.[MCP_TASKS_EXTENSION] !== undefined;
+export function clientDeclaresMcpTasks(
+  capabilities: { extensions?: object | undefined } | undefined,
+): boolean {
+  const extensions = capabilities?.extensions;
+  return extensions !== undefined && MCP_TASKS_EXTENSION in extensions;
 }
 
 type RequestHandler = (request: unknown, context: ServerContext) => Promise<unknown>;
@@ -536,7 +541,7 @@ function interceptCreationFailures(server: McpServer, failures: WeakMap<object, 
   const protocol = server.server as unknown as {
     _getRequestHandler?: (method: string) => RequestHandler | undefined;
   };
-  const inner = protocol._getRequestHandler?.('tools/call');
+  const inner = protocol['_getRequestHandler']?.('tools/call');
   if (!inner) {
     throw new TypeError('The MCP SDK no longer exposes the tools/call handler MCP tasks wrap.');
   }

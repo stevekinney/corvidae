@@ -11,11 +11,11 @@ export const TASKS_EXTENSION = 'io.modelcontextprotocol/tasks';
 export const TASKS_CAPABILITIES = { extensions: { [TASKS_EXTENSION]: {} } };
 
 export function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
-    resolve = done;
+  let settle!: (value: T) => void;
+  const promise = new Promise<T>((resolve) => {
+    settle = resolve;
   });
-  return { promise, resolve };
+  return { promise, resolve: settle };
 }
 
 /** An in-memory {@link MCPTaskStore} whose `conditionalBatch` calls can be held or made to fail. */
