@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { rejectionOf } from '../promise-outcome.test-support.ts';
+import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
 import { batchValidate, decideDue, run, type BatchValidateOptions } from './batch-validate.ts';
 import type { GateRunOptions, GateRunResult } from './gate-run.ts';
 import { healthFilePath } from './main-health.ts';

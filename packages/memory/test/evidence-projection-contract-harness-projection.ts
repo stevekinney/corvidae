@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { rebuildDerivedIndexes } from '../src/derived-indexes';
 import type {
   EvidenceProjectionRecord,
@@ -16,7 +17,6 @@ import {
   type EvidenceRecord,
   MemoryEvidenceValidationError,
 } from '../src/evidence-schema';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import {
   FIXED_AT,
   makeAssetEvidence,

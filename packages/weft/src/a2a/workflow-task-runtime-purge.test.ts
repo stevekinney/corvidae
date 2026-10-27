@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { type Message, type StreamResponse, type Task, TaskState } from '@a2a-js/sdk';
 import { TaskNotFoundError, UnsupportedOperationError } from '@a2a-js/sdk/errors';
 
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { NAMESPACE, onCleanup } from './push-delivery.test-support.ts';
 import { callerScope } from './store-support.ts';
 import { createTaskEventLog } from './task-event-log.ts';

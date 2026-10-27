@@ -15,6 +15,7 @@
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Engine } from '../core/engine.ts';
 import type { WorkflowInterceptor } from '../core/interceptor.ts';
 import type { RemoteTaskRecord } from '../core/task-ledger/task-ledger.ts';
@@ -27,7 +28,6 @@ import type { WorkflowContext } from '../core/types.ts';
 import { activity, workflow } from '../core/types.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import { waitForCondition } from '../testing/fake-timers.test-support.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { RemoteWorker } from '../worker/index.ts';
 import { serve, type WeftServer } from './index.ts';
 

@@ -8,8 +8,8 @@ import {
   UnsupportedOperationError,
 } from '@a2a-js/sdk/errors';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { workflow } from '../core/types.ts';
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { createPushFixture, onCleanup } from './push-delivery.test-support.ts';
 import { securitySchemesFromAuthConfig } from './security-schemes.ts';
 import { workflowAgentUnusedExecutor } from './workflow-agent-executor.ts';

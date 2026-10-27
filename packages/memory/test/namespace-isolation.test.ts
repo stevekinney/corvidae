@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createMemory } from '../src/create-memory';
 import { withNamespaceIsolation } from '../src/namespace-isolation';
 import { createInMemoryMemoryRecordStorage, createMockEmbedder } from '../src/test/index';
-import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { Memory } from '../src/types';
 
 const DIMENSION = 64;

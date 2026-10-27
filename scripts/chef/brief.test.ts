@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { rejectionOf } from '../promise-outcome.test-support.ts';
+import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
 import { charterRules, pathsIn, renderBrief, run, sectionOf } from './brief.ts';
 import type { FetchLike, IssueSummary } from './linear.ts';
 import { UsageError } from './process-runner.ts';

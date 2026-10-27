@@ -1,5 +1,5 @@
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
-import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 import { AsyncActivityTokenNotFoundError, Engine } from '../core/engine.ts';
 import { WorkflowCompletedEvent, WorkflowFailedEvent } from '../core/events.ts';
 import type { ScheduleSummary, WorkflowContext } from '../core/types.ts';

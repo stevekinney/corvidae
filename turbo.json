@@ -41,7 +41,7 @@
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
         "$TURBO_ROOT$/scripts/check-test-durations.ts",
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
-        "$TURBO_ROOT$/scripts/hang-guard.ts",
+        "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -60,7 +60,7 @@
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/scripts/check-test-durations.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
-        "$TURBO_ROOT$/scripts/hang-guard.ts",
+        "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
         "$TURBO_ROOT$/scripts/workspace-directories.ts"
       ]
@@ -86,13 +86,21 @@
         "{applications,components,packages,testing,internal}/*/package.json",
         "{applications,components,packages,testing,internal}/*/tsconfig*.json",
         "scripts/browser-fixtures/package.json",
-        "scripts/browser-fixtures/tsconfig*.json"
+        "scripts/browser-fixtures/tsconfig*.json",
+        "testing/testing/src/hang-guard.ts",
+        "testing/testing/src/helpers/promise-outcome.ts",
+        "testing/testing/src/wait-until.ts"
       ]
     },
     "//#test:self:slow": {
       "env": ["CODEX_CI", "NODE_ENV", "CORVIDAE_TEST_SELECTION"],
       "outputs": [],
-      "inputs": ["$TURBO_DEFAULT$"]
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "testing/testing/src/hang-guard.ts",
+        "testing/testing/src/helpers/promise-outcome.ts",
+        "testing/testing/src/wait-until.ts"
+      ]
     },
     "//#test:browser-fixtures": {
       "dependsOn": ["@lostgradient/browser-fixtures#transit"],
@@ -127,7 +135,7 @@
         "$TURBO_ROOT$/scripts/check-test-durations.ts",
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/documentation/runtime-contracts.md",
-        "$TURBO_ROOT$/scripts/hang-guard.ts",
+        "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -141,7 +149,7 @@
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
         "$TURBO_ROOT$/scripts/check-test-durations.ts",
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
-        "$TURBO_ROOT$/scripts/hang-guard.ts",
+        "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -193,7 +201,7 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
-        "$TURBO_ROOT$/scripts/hang-guard.ts",
+        "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts"
       ]
     },
@@ -207,7 +215,7 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
-        "$TURBO_ROOT$/scripts/hang-guard.ts",
+        "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts"
       ]
     },
@@ -228,7 +236,7 @@
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
         "$TURBO_ROOT$/scripts/check-test-durations.ts",
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
-        "$TURBO_ROOT$/scripts/hang-guard.ts",
+        "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -245,7 +253,7 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
-        "$TURBO_ROOT$/scripts/hang-guard.ts",
+        "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts"
       ]
     },
@@ -289,7 +297,7 @@
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
         "$TURBO_ROOT$/scripts/check-test-durations.ts",
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
-        "$TURBO_ROOT$/scripts/hang-guard.ts",
+        "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -305,7 +313,7 @@
         "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",
         "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts",
         "$TURBO_ROOT$/scripts/bun-test.ts",
-        "$TURBO_ROOT$/scripts/hang-guard.ts",
+        "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts"
       ]
     },
@@ -322,7 +330,7 @@
         "$TURBO_ROOT$/components/editor/src/**",
         "$TURBO_ROOT$/scripts/browser-fixtures/src/**",
         "$TURBO_ROOT$/scripts/bun-test.ts",
-        "$TURBO_ROOT$/scripts/hang-guard.ts",
+        "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts"
       ]
     },
@@ -341,7 +349,7 @@
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
         "$TURBO_ROOT$/scripts/check-test-durations.ts",
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
-        "$TURBO_ROOT$/scripts/hang-guard.ts",
+        "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",

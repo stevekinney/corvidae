@@ -3,7 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { type ListTasksRequest, TaskState } from '@a2a-js/sdk';
 import { RequestMalformedError, toJsonRpcError } from '@a2a-js/sdk/errors';
 
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   a2aStoreBackends,
   artifactFixture,

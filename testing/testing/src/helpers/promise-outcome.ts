@@ -7,10 +7,9 @@
  * bans both modifiers. Assert on `expect(await promise)` for a resolution, and
  * on these helpers for a rejection.
  *
- * The mirror publishes packages to separate targets, so this module is copied
- * byte-for-byte into each package that cannot import `@lostgradient/testing`.
- * The canonical copy is `testing/testing/src/helpers/promise-outcome.ts`, and
- * the checker fails if a copy drifts from it.
+ * Packages import it as `@lostgradient/testing/promise-outcome`. Root scripts
+ * import this file by path, because the root package depends on no workspace,
+ * so it imports nothing.
  */
 
 /**

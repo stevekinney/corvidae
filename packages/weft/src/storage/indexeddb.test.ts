@@ -1,6 +1,6 @@
 import { describe, expect, it, spyOn } from 'bun:test';
 
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   createFakeRequest,
   createFakeTransaction,

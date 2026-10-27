@@ -1,13 +1,13 @@
 import { MemoryStorage } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createInMemoryEvidenceProjectionStorage } from '../src/create-in-memory-evidence-projection-storage';
 import { createWeftEvidenceProjectionStorage } from '../src/create-weft-evidence-projection-storage';
 import type { TransformationStep } from '../src/evidence-projection-schema';
 import type { EvidenceProjectionStorage } from '../src/evidence-projection-storage';
 import { digestOfText, MemoryEvidenceValidationError } from '../src/evidence-schema';
 import { projectAssetChunks } from '../src/project-asset-chunks';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import {
   FIXED_AT,
   makeAssetEvidence,

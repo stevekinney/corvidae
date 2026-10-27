@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createStorageSkillProvider } from '../../src/skills/create-storage-skill-provider';
 import { findRecord } from '../../src/skills/discovery/catalog';
 import { discoverSkills } from '../../src/skills/discovery/discover';
 import type { SkillSource } from '../../src/skills/discovery/source';
 import { parseSkillMarkdown, SkillParseError } from '../../src/skills/parse-skill-markdown';
 import { createMockKeyValueStore } from '../../src/skills/test/index';
-import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 import { resourceBytes } from './support/resource-bytes';
 
 /**

@@ -10,7 +10,7 @@
 
 import type { Engine } from '../core/engine.ts';
 
-import { awakeTurns } from '../../scripts/lib/wait-until.ts';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
 
 /** Terminal and intermediate workflow statuses the tests wait on. */

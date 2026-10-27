@@ -18,8 +18,8 @@
  */
 import { describe, expect, it, mock, spyOn } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { ActivityRegistry } from '../activity-registry.ts';
 import type { RevisionRealmConfig } from '../realm/revision-realm-registry.ts';
 import { buildWorkflowManifestFromDefinition } from '../registry-workflow-manifest.ts';

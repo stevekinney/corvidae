@@ -1,7 +1,6 @@
 {
   "applications/interborough/src/lib/live-source/workflow-tail-source.integration.test.ts": 1,
   "applications/playground/src/shell-app/theme-color-editors.test.ts": 1,
-  "packages/armorer/test/fixtures/wait-until.ts": 1,
   "packages/operative/src/durable/active-run-adapter.test.ts": 5,
   "packages/operative/src/durable/create-run-engine-max-nesting-depth.test.ts": 1,
   "packages/operative/src/durable/create-run-engine-poller-unarmed.test.ts": 1,

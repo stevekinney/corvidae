@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 import type { Engine } from '../core/engine.ts';
 
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitForStatus } from './workflow-status.test-support.ts';
 
 describe('waitForStatus test helper', () => {

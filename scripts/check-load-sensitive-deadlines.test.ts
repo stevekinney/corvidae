@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import ts from 'typescript';
+import { HANG_GUARD_MILLISECONDS } from '../testing/testing/src/hang-guard.ts';
 import {
   allowlistRaises,
   collectPositionalBudgets,
@@ -9,7 +10,6 @@ import {
   findTestRunnerSpawnViolations,
   singleTurnYieldAllowlistFindings,
 } from './check-load-sensitive-deadlines.ts';
-import { HANG_GUARD_MILLISECONDS } from './hang-guard.ts';
 
 function inspect(source: string): string[] {
   const parsed = ts.createSourceFile('fixture.test.ts', source, ts.ScriptTarget.Latest, true);

@@ -14,7 +14,7 @@ import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
 
 import { describe, expect, it } from 'bun:test';
 
-import { awakeTurns } from '../../scripts/lib/wait-until.ts';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { type BatchOperation, KEYS, type ScanOptions } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import { decode, encode } from './codec.ts';

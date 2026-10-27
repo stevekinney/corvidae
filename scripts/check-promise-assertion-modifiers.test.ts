@@ -4,12 +4,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import ts from 'typescript';
 import {
-  CANONICAL_PROMISE_OUTCOME,
   collectScannedFiles,
-  findDriftedCopies,
   findPromiseAssertionModifierViolations,
   mayContainPromiseAssertionModifier,
-  PROMISE_OUTCOME_COPIES,
 } from './check-promise-assertion-modifiers';
 
 function inspect(source: string): string[] {
@@ -97,48 +94,6 @@ describe('scanned files', () => {
         'src/d.ts',
         'test/harness.ts',
       ]);
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
-  });
-});
-
-describe('promise-outcome copies', () => {
-  function repositoryWith(files: Record<string, string>): string {
-    const directory = mkdtempSync(join(tmpdir(), 'promise-outcome-copies-'));
-    for (const [file, contents] of Object.entries(files)) {
-      const path = join(directory, file);
-      mkdirSync(dirname(path), { recursive: true });
-      writeFileSync(path, contents);
-    }
-    return directory;
-  }
-
-  test('reports nothing when every copy matches the canonical module', async () => {
-    const files = Object.fromEntries(
-      [CANONICAL_PROMISE_OUTCOME, ...PROMISE_OUTCOME_COPIES].map((file): [string, string] => [
-        file,
-        'same\n',
-      ]),
-    );
-    const directory = repositoryWith(files);
-    try {
-      expect(await findDriftedCopies(directory)).toEqual([]);
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
-  });
-
-  test('reports a copy that differs or is missing', async () => {
-    // The first copy differs and the second is missing.
-    const [drifted, , ...rest] = PROMISE_OUTCOME_COPIES;
-    const files = Object.fromEntries(
-      [CANONICAL_PROMISE_OUTCOME, ...rest].map((file): [string, string] => [file, 'same\n']),
-    );
-    files[drifted!] = 'different\n';
-    const directory = repositoryWith(files);
-    try {
-      expect(await findDriftedCopies(directory)).toEqual(PROMISE_OUTCOME_COPIES.slice(0, 2));
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

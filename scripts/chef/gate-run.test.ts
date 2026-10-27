@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { quietFor } from '../wait-until.ts';
+import { quietFor } from '../../testing/testing/src/wait-until.ts';
 import {
   fakeSignals,
   fakeTree,

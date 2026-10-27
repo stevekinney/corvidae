@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, jest } from 'bun:test';
 import { z } from 'zod';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { awakeTurns, quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { createTool } from '../src/create-tool';
 import { createToolbox } from '../src/create-toolbox';
 import {
@@ -14,7 +16,6 @@ import {
   type MCPTaskRecord,
 } from '../src/integrations/mcp';
 import type { Tool } from '../src/is-tool';
-import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support';
 import { connectInProcessClient } from './fixtures/mcp-in-process-client';
 import {
   createStoreDouble,
@@ -25,7 +26,6 @@ import {
   type StoreDouble,
   type WireResponse,
 } from './fixtures/mcp-task-harness';
-import { awakeTurns, quietFor, waitUntil } from './fixtures/wait-until';
 
 /**
  * The 2026-07-28 Tasks extension (`io.modelcontextprotocol/tasks`) served by

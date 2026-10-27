@@ -23,6 +23,7 @@ import {
   UnsupportedContentError,
 } from 'conversationalist';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { z } from 'zod';
 import { noToolCalls } from '../src/conditions/predicates';
 import { createSlidingWindowStrategy } from '../src/context/compaction-strategies';
@@ -59,7 +60,6 @@ import {
 import { createSelectionGate } from '../src/selection-gate';
 import { createSessionStore } from '../src/session/create-session-store';
 import { createSessionHandle } from '../src/session/session-handle';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type {
   ContentSourceResolver,
   GenerateContext,

@@ -32,7 +32,7 @@ import {
   skillCatalogOnDisk,
   skillsRecorded,
 } from './skill-policy-fixtures.test-support';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau } from './types';
 import { createAgentSkills } from './agent-skills';
 

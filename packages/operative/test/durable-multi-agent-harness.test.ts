@@ -26,8 +26,8 @@ import { assertDefined } from './assert-defined';
 import { workflow, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createDurableMultiAgentHarness } from '../src/test/durable-multi-agent-harness';
-import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 
 // Drain the inline-launch queue between tests — a pending deferred launch
 // from one test can starve the next under full `bun test` concurrency.

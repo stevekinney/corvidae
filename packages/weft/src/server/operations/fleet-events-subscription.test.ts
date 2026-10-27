@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import type { FleetEventEnvelope } from '../fleet-event-feed.ts';
 import { createFleetEventFeed } from '../fleet-event-feed.ts';
 import { anonymousPrincipal } from '../principal.ts';

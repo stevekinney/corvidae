@@ -9,6 +9,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { DELETION_CLAIM_LEASE_MILLISECONDS } from '../../src/governance/deletion';
 import type { MemoryGovernanceLedger } from '../../src/governance/ledger';
 import type { MemoryDeletionReceipt } from '../../src/governance/ledger-types';
@@ -19,7 +20,6 @@ import {
   readRecordGovernance,
 } from '../../src/governance/record-governance';
 import type { MemoryRecordStorage } from '../../src/memory-record-storage';
-import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 import { controlledLane, intercept, park, type Park } from './concurrent-deletion-harness';
 import {
   DAY,

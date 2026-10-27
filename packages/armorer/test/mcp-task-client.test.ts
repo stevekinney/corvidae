@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createTool } from '../src/create-tool';
 import { createToolbox } from '../src/create-toolbox';
 import {
@@ -11,7 +12,6 @@ import {
 } from '../src/integrations/mcp';
 import type { Tool } from '../src/is-tool';
 import { createStoreDouble, deferred, rpc } from './fixtures/mcp-task-harness';
-import { waitUntil } from './fixtures/wait-until';
 
 /**
  * The raw-JSON-RPC consumer: `fromMcpEndpointTools` against a `createMCP`

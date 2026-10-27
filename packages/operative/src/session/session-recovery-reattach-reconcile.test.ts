@@ -2,9 +2,9 @@ import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgr
 import { afterEach, describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createAgentSession } from '../agent-session';
 import { AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION } from '../durable/run-workflow-result';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { createSessionStore } from './create-session-store';
 import { createSessionEngine } from './session-engine-test-fixture';
 import { createSessionHandle } from './session-handle';

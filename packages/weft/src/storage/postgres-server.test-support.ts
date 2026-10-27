@@ -3,7 +3,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { spawnWithHangGuard } from '../../scripts/lib/hang-guard.ts';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { readEnvironmentVariable } from '../runtime/environment-configuration.ts';
 
 /** A live PostgreSQL the storage suites can talk to, however it was obtained. */

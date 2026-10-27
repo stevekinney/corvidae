@@ -11,6 +11,10 @@ import { join } from 'node:path';
  * uniqueness from `mkdtemp` or `crypto.randomUUID()` instead, and
  * `scripts/check-process-identifier-test-paths.ts` fails the build for a test that names a path
  * after the process id.
+ *
+ * Bureau owns this module rather than importing `@lostgradient/testing/temporary-path`: its public
+ * storage fixtures (`storage-fixtures.ts`, `asset-storage-fixtures.ts`) allocate their paths with it
+ * at runtime, and `@lostgradient/testing` is only a development dependency of Bureau.
  */
 
 /** Directories this module made, and the directory that holds each path it handed out. */

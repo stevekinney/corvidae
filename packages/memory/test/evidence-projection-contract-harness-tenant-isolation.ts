@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { rebuildDerivedIndexes } from '../src/derived-indexes';
 import type { EvidenceProjectionStorage } from '../src/evidence-projection-storage';
 import { MemoryEvidenceValidationError } from '../src/evidence-schema';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import {
   makeAuthority,
   makeFact,

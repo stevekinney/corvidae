@@ -33,7 +33,7 @@ import {
   workerAgent,
   workflowStatus,
 } from './testing/goal-fixtures.test-support';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { spyOnPrune } from './testing/prune-spy.test-support';
 import type { Bureau } from './types';
 import { quietFor } from '@lostgradient/testing/wait-until';

@@ -19,7 +19,7 @@ import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau } from './types';
 
 const deploySchema: HumanInputSchema = {

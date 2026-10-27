@@ -12,6 +12,7 @@ import { createMockTool, createTestToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   CompletedRunIterationError,
   createAgentRun,
@@ -25,7 +26,6 @@ import { AbortAgentRunError, MaximumStepsExceededError } from '../src/errors';
 import { TOOL_CALL_POLICY } from '../src/liveness';
 import type { RunnableAgent } from '../src/runnable-agent';
 import { createBarrierRegistry, createMockGenerate, waitForCondition } from '../src/test/index';
-import { rejectionOf, throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type {
   CleanupAcknowledgement,
   ClosedOptions,

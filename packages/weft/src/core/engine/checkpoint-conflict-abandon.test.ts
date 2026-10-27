@@ -14,6 +14,7 @@
  */
 import { describe, expect, it, mock, spyOn } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS, type Storage } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import {
@@ -22,7 +23,6 @@ import {
   waitForCondition,
   yieldToEventLoop,
 } from '../../testing/fake-timers.test-support.ts';
-import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { decode, encode } from '../codec/api.ts';
 import { durableActivity, DurableActivityScopeError } from '../context/durable-activity.ts';
 import type { RemoteActivityBroker, RemoteActivityTaskRequest } from '../remote-activity-broker.ts';

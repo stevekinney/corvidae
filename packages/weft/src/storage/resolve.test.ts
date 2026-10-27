@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { HTTPStorage } from './http.ts';
 import { MemoryStorage } from './memory.ts';
 import { resolveStorage, type HTTPStorageConfiguration } from './resolve.ts';

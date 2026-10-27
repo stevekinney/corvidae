@@ -2,9 +2,9 @@ import { describe, expect, test } from 'bun:test';
 
 import { Webhook } from 'standardwebhooks';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { ApplicationDeliveryCancellationResult } from '../core/outbox-contract.ts';
 import { Outbox } from '../core/outbox.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   callContext,
   createConfiguration,

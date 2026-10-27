@@ -3,9 +3,9 @@ import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory } from 'conversationalist';
 
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createAgentSession } from '../agent-session';
 import { SessionOutboxAppendedEvent } from '../events';
-import { rejectionOf, throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import type { JSONValue } from '../types';
 import {
   createSessionStore,

@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import { HANG_GUARD_MILLISECONDS } from '../../scripts/lib/hang-guard.ts';
+import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import { executeCodegen } from './codegen.ts';
 
 const FIXTURE_DIR = resolve(import.meta.dir, '__fixtures__/codegen');

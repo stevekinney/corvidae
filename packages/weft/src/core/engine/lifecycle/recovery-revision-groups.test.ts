@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { rejectionOf } from '../../../testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { DynamicWorkflowSourceUnavailableError } from '../dynamic-source-errors.ts';
 import { WorkflowRevisionUnavailableError } from '../revision-errors.ts';
 import {

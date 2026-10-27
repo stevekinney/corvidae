@@ -9,13 +9,13 @@
  *
  * Module scope has no per-test timeout, so a scenario whose child never exits would otherwise
  * hold the whole run. `HANG_GUARD_MILLISECONDS` of awake time turns that hang into a failure of
- * the scenario's test; `hang-guard.ts` explains why the guard counts only time the process was
- * awake (COR-1541). It is a uniform hang detector, set far above any healthy run on a loaded host
- * and never a performance bound. A scenario that had a larger budget as a test passes it
- * explicitly: the mirror end-to-end syncs keep their 300 seconds.
+ * the scenario's test; `testing/testing/src/hang-guard.ts` explains why the guard counts only time
+ * the process was awake (COR-1541). It is a uniform hang detector, set far above any healthy run on
+ * a loaded host and never a performance bound. A scenario that had a larger budget as a test passes
+ * it explicitly: the mirror end-to-end syncs keep their 300 seconds.
  */
 
-import { afterAwakeTime, HANG_GUARD_MILLISECONDS } from './hang-guard.ts';
+import { afterAwakeTime, HANG_GUARD_MILLISECONDS } from '../testing/testing/src/hang-guard.ts';
 
 /** Runs `scenario` and returns what it threw, or `undefined` when it finished. */
 export async function outcomeOf(

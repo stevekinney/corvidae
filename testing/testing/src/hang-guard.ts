@@ -22,10 +22,9 @@
  * re-arms. The detector is injected rather than imported because this module is also loaded
  * outside the Bun test runner, where `bun:test` does not exist.
  *
- * This file has two byte-for-byte copies, kept equal by `scripts/check-test-support-copies.ts`:
- * `scripts/hang-guard.ts` for the root self-test suite, which may not depend on a workspace, and
- * `packages/weft/scripts/lib/hang-guard.ts`, because the Weft mirror cannot resolve
- * `@lostgradient/testing`.
+ * Root scripts import this file by its path rather than by package name: the root package may
+ * depend on no workspace, because turbo folds every workspace the root depends on into the global
+ * hash. It therefore imports nothing but Bun and Node built-ins.
  */
 
 import { basename } from 'node:path';

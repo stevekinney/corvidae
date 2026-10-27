@@ -18,7 +18,7 @@ import {
   createBureauEventRegistry,
 } from './bureau-events-operation.ts';
 import { BureauDisposedEvent, RunRegisteredEvent, RunRemovedEvent } from './events.ts';
-import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 
 function invoke(
   input: { bureauId: string; fromCursor?: string; kinds?: string | string[] },

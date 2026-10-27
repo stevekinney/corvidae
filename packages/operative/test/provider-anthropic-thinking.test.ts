@@ -31,6 +31,7 @@ import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   createAnthropicProvider,
   createAnthropicProviderStream,
@@ -44,7 +45,6 @@ import {
   createMockAnthropicClient,
   createMockAnthropicStreamingClient,
 } from '../src/providers/test/mock-clients.ts';
-import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { GenerateContext, StreamingHandle } from '../src/types.ts';
 
 function makeContext(): GenerateContext {

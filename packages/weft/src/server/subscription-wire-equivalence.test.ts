@@ -16,7 +16,7 @@ import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { awakeTurns } from '../../scripts/lib/wait-until.ts';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { createInMemoryEventBackend } from './in-memory-event-feed-backend.test-support.ts';
 import {
   createJsonRpcWebSocketSession,

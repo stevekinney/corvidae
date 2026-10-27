@@ -16,10 +16,10 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS, type BatchOperation } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { flushPortableMicrotasks, yieldToPortableEventLoop } from '../../testing/event-loop.ts';
-import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { deserializeCheckpoint, serializeCheckpoint } from '../checkpoint.ts';
 import { decode, encode } from '../codec/api.ts';
 import { Engine, ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING } from '../engine.ts';

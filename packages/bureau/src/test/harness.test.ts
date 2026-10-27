@@ -7,7 +7,7 @@ import { createProcessLocalApprovalStateStore, createTool, createToolbox } from 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau, TaskHandle } from '../types';
 import {
   BureauHarnessUnsupportedError,

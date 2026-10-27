@@ -10,9 +10,9 @@ import { settleInlineLaunches } from '../testing/inline-launch-settle.test-suppo
 
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { encodeStorageKeyComponent, KEYS as STORAGE_KEYS } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { rejectionOf, throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { encode } from './codec.ts';
 import { Engine, WorkflowTypeNotRegisteredForRecoveryError } from './engine.ts';
 import { WorkflowRecoverySkippedEvent, WorkflowResumedEvent } from './events.ts';

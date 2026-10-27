@@ -1,5 +1,5 @@
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { spawnWithHangGuard } from '../../scripts/lib/hang-guard.ts';
 import { sleepForTesting, waitForCondition } from '../testing/fake-timers.test-support.ts';
 
 import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';

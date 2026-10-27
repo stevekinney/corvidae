@@ -20,6 +20,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory } from 'conversationalist';
 import { z } from 'zod';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createDiagnosticAgentRun } from '../agent-run';
 import { createChildRunRegistry, dispatchChildRun } from '../child-run';
 import { stopWhen } from '../conditions/index';
@@ -53,7 +54,6 @@ import { UnsupportedRunResultVersionError } from '../run-envelope';
 import type { RunnableAgent } from '../runnable-agent';
 import { createManualDurableEngine, spyEngine, withTwoPhaseStart } from '../test/durable-engine';
 import { createManualCheckpointStore, createMockGenerate, waitForCondition } from '../test/index';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import type { RunOptions, RunResult } from '../types';
 import { createDurableActiveRun } from './active-run-create';
 import { createRecoveredRunEventSurface } from './active-run-event-surface';

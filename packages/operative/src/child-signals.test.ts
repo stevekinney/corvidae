@@ -19,6 +19,7 @@ import { describe, expect, it } from 'bun:test';
 import { getEventListeners } from 'node:events';
 import { z } from 'zod';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { dispatchChildRun } from './child-run';
 import {
   type ChildSignalPort,
@@ -31,7 +32,6 @@ import { createAgent } from './create-agent';
 import { createSubagentTool } from './create-subagent-tool';
 import type { AgentRunContext, RunnableAgent } from './runnable-agent';
 import { createMockGenerate } from './test/index';
-import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { GenerateResponse, RunResult } from './types';
 
 // ---------------------------------------------------------------------------

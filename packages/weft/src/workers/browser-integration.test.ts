@@ -12,7 +12,7 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { HANG_GUARD_MILLISECONDS } from '../../scripts/lib/hang-guard.ts';
+import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import type { WorkerInboundMessage, WorkerOutboundMessage } from '../core/types.ts';
 
 // ---------------------------------------------------------------------------

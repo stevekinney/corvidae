@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { workflow } from './core/types/workflow-function.ts';
 import type { WorkflowOperation, WorkflowReplay, WorkflowTimelineEntry } from './index.ts';
 import {
@@ -16,7 +17,6 @@ import {
   WorkflowAlreadyExistsError,
   WorkflowTeardownPendingError,
 } from './index.ts';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 
 describe('weft', () => {
   it('exports storage key helpers used by workspace consumers', () => {

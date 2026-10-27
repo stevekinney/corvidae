@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { MemoryAuthority } from '../../src/governance/authority';
 import type {
   CreateGovernedMemoryOptions,
@@ -15,7 +16,6 @@ import {
   type MemoryRecordReference,
   MemoryRecordVersionConflictError,
 } from '../../src/memory-record-storage';
-import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 import {
   createGovernedFixture,
   DAY,

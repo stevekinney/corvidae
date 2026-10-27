@@ -1,4 +1,4 @@
-import { HANG_GUARD_MILLISECONDS } from '../../../scripts/lib/hang-guard.ts';
+import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import type { Engine } from '../../core/engine.ts';
 import type { WorkflowStatus } from '../../core/types.ts';
 import { waitForCondition } from '../../testing/fake-timers.test-support.ts';

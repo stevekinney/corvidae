@@ -16,7 +16,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
-import { HANG_GUARD_MILLISECONDS, afterAwakeTime } from '../../scripts/lib/hang-guard.ts';
+import { HANG_GUARD_MILLISECONDS, afterAwakeTime } from '@lostgradient/testing/hang-guard';
 import { Engine } from '../core/engine.ts';
 import type { WorkflowContext } from '../core/types.ts';
 import { workflow } from '../core/types.ts';

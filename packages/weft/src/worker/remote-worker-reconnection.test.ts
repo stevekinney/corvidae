@@ -16,8 +16,8 @@ import { mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { HANG_GUARD_MILLISECONDS } from '../../scripts/lib/hang-guard.ts';
-import { awakeTurns } from '../../scripts/lib/wait-until.ts';
+import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { Engine } from '../core/engine.ts';
 import {
   decodeRemoteTaskRecord,

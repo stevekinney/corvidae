@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
 
-import { awakeTurns } from '../../scripts/lib/wait-until.ts';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { Engine } from '../core/engine.ts';
 import type { WorkflowContext } from '../core/types.ts';
 import { workflow } from '../core/types.ts';

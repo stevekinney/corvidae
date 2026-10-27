@@ -1,6 +1,7 @@
 import { MemoryStorage, WEFT_RESERVED_KEY_PREFIXES } from '@lostgradient/weft';
 import { beforeEach, describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { DEFAULT_MEMORY_KEY_PREFIX } from '../../src/create-weft-memory-record-storage';
 import { createMemoryAuthority } from '../../src/governance/authority';
 import {
@@ -10,7 +11,6 @@ import {
 } from '../../src/governance/ledger';
 import type { MemoryDeletionReceipt } from '../../src/governance/ledger-types';
 import { attributionFor } from '../../src/governance/record-governance';
-import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 
 const attribution = attributionFor(
   createMemoryAuthority({

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { UndeclaredWorkflowMessageError } from './engine/declared-messages.ts';
 import { ActivityResolutionError } from './engine/errors.ts';
 import { ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING, Engine } from './engine/index.ts';

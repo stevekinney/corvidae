@@ -1,5 +1,6 @@
 import { describe, expect, it, mock, spyOn } from 'bun:test';
 
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { outcomeOf, rethrow } from '../src/testing/module-scope-scenario.test-support.ts';
 import {
   assembleAllowanceLayers,
@@ -17,7 +18,6 @@ import {
   runCoverageShard,
   workflowEventFeedUncoveredLines,
 } from './check-coverage.ts';
-import { spawnWithHangGuard } from './lib/hang-guard.ts';
 
 /** An already-closed byte stream, standing in for a spawned child's empty stdout/stderr. */
 function closedByteStream(): ReadableStream<Uint8Array> {

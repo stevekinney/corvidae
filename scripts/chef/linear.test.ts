@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { rejectionOf, throwingRejectionOf } from '../promise-outcome.test-support.ts';
+import {
+  rejectionOf,
+  throwingRejectionOf,
+} from '../../testing/testing/src/helpers/promise-outcome.ts';
 import {
   blockIssue,
   commentPageLimit,

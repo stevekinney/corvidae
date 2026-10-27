@@ -1,7 +1,7 @@
 import { createClient } from '@libsql/client';
 import { describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   createDiskBackedTestFixture,
   sqliteDatabaseSidecarSuffixes,

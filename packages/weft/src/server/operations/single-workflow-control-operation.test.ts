@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { anonymousPrincipal } from '../principal.ts';
 import {
   createSingleWorkflowControlOperation,

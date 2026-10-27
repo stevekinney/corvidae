@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Conversation } from '../src/history';
 import { appendUserMessage, createConversationHistory } from '../src/index';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 
 describe('lifecycle state and revisions', () => {
   it('exposes a cached framework-neutral snapshot and stable subscriptions', () => {

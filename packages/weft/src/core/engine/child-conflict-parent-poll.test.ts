@@ -8,7 +8,8 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { quietFor } from '../../../scripts/lib/wait-until.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { KEYS, type Storage } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import {
@@ -17,7 +18,6 @@ import {
   waitForCondition,
   yieldToEventLoop,
 } from '../../testing/fake-timers.test-support.ts';
-import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { decode } from '../codec/api.ts';
 import { workflow, type WorkflowContext, type WorkflowState } from '../types.ts';
 import { WorkflowCheckpointConflictError } from './checkpoint-conflict-error.ts';

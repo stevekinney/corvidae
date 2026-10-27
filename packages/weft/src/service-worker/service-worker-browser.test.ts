@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 
-import { awakeTurns } from '../../scripts/lib/wait-until.ts';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { browserSmokeEnabled } from '../testing/browser-smoke-gate.test-support.ts';
 
 const repositoryRoot = new URL('../..', import.meta.url);

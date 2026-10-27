@@ -8,6 +8,9 @@
     },
     {
       "path": "../lifecycle/tsconfig.source.json"
+    },
+    {
+      "path": "../../testing/testing/tsconfig.source.json"
     }
   ]
 }

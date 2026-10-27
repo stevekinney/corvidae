@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { HookRegistry } from '../../src/hooks/hook-registry';
 import { mergeHookRegistries } from '../../src/hooks/merge-hook-registries';
 import type { HookPlanObservation } from '../../src/hooks/types';
-import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 
 /**
  * The value Bureau pins a registration to when it must hold final narrowing

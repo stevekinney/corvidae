@@ -26,7 +26,7 @@ import {
 } from './command-ledger';
 import { BureauError } from './create-bureau';
 import { createMemoryStorageFixture } from './test/storage-fixtures';
-import { rejectionOf, throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { RunSummary } from './types';
 
 const authority = {

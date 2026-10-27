@@ -9,9 +9,9 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS } from '../../storage/interface.ts';
 import { yieldToPortableEventLoop } from '../../testing/event-loop.ts';
-import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { Engine } from '../engine.ts';
 import { WorkflowFailedEvent } from '../events.ts';
 import { CheckpointCommitFailedError } from './checkpoint-commit-failed-error.ts';

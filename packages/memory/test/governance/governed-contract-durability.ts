@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { MemoryDeletionReceipt } from '../../src/governance/ledger-types';
 import {
   collectionNamespace,
@@ -10,10 +11,6 @@ import {
   type MemoryRecordReference,
   MemoryRecordVersionConflictError,
 } from '../../src/memory-record-storage';
-import {
-  rejectionOf,
-  throwingRejectionOf,
-} from '../../src/testing/promise-outcome.test-support.ts';
 import {
   createGovernedFixture,
   DAY,
