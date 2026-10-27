@@ -343,10 +343,37 @@ export function createJsonRpcWebSocketSession(
     }
 
     if (isSessionPrimitive(validation.method)) {
+      if (feed === undefined) {
+        await dispatchStandard(validation);
+        return;
+      }
       await handleSessionPrimitive(validation);
       return;
     }
 
+    const method = validation.method;
+    if (typeof method === 'string' && registry.get(method)?.kind === 'subscription') {
+      const request: SessionRequest = {
+        id: validation.id,
+        expectsResponse: validation.hasRequestId,
+      };
+      await startSubscription(request, () =>
+        executeSubscription(method, validation.params ?? {}, {
+          principal,
+          host: engine,
+          transport,
+          registry,
+        }),
+      );
+      return;
+    }
+
+    await dispatchStandard(validation);
+  }
+
+  async function dispatchStandard(
+    validation: ReturnType<typeof validateMessageFrame> & { ok: true },
+  ): Promise<void> {
     // Standard dispatch — the dispatcher handles parse-error / invalid-
     // request / notification elision / success / error mapping.
     const result = await dispatchJsonRpc(validation.parsed, {
@@ -360,8 +387,7 @@ export function createJsonRpcWebSocketSession(
       emit(result.response);
     }
     // Notifications over WS are fire-and-forget (no response frame).
-    // Batch / notification-batch paths are unreachable because we
-    // rejected arrays above.
+    // Batch / notification-batch paths are unreachable because we rejected arrays above.
   }
 
   async function close(): Promise<void> {

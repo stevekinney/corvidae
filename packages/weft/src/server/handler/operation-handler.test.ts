@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import * as weft from '../../index.ts';
@@ -36,11 +36,120 @@ const echoOperation = defineOperation({
   invoke: async ({ input }) => ({ message: input.message }),
 });
 
+const websocketEchoOperation = defineOperation({
+  name: 'probe.websocket.echo',
+  mcpExposable: false,
+  summary: 'websocket echo',
+  destructive: false,
+  inputSchema: z.object({ message: z.string() }),
+  outputSchema: z.object({ message: z.string() }),
+  access: { kind: 'public' as const },
+  transports: { http: false, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
+  unknownKeyPolicy: { http: 'reject' as const, jsonRpc: 'reject' as const },
+  invoke: async ({ input }) => ({ message: input.message }),
+});
+
+const websocketSubscriptionOperation = defineOperation({
+  name: 'probe.websocket.events',
+  mcpExposable: false,
+  kind: 'subscription',
+  summary: 'websocket events',
+  destructive: false,
+  inputSchema: z.object({}),
+  outputSchema: z.object({ subscriptionId: z.string(), cursor: z.string() }),
+  eventSchema: z.object({ value: z.string() }),
+  access: { kind: 'public' as const },
+  transports: { http: false, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
+  unknownKeyPolicy: { http: 'reject' as const, jsonRpc: 'reject' as const },
+  invoke: async () => ({
+    envelope: { subscriptionId: 'sub_probe', cursor: '-1' },
+    iterable: (async function* () {
+      yield { value: 'event' };
+    })(),
+    close: async () => undefined,
+  }),
+});
+
+let websocketServer: ReturnType<typeof Bun.serve> | undefined;
+
+afterEach(() => {
+  websocketServer?.stop(true);
+  websocketServer = undefined;
+});
+
 async function jsonOf(response: Response): Promise<Record<string, unknown>> {
   return (await response.json()) as Record<string, unknown>;
 }
 
 describe('createOperationHandler', () => {
+  it('exposes a Bun WebSocket handler for catalog JSON-RPC operations', async () => {
+    const handler = createOperationHandler({ operations: [websocketEchoOperation], host: {} });
+    websocketServer = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        if (request.headers.get('upgrade')?.toLowerCase() === 'websocket') {
+          if (await handler.upgrade(request, websocketServer!)) return undefined;
+        }
+        return handler(request);
+      },
+      websocket: handler.websocket,
+    });
+
+    const socket = new WebSocket(`ws://localhost:${websocketServer.port}/jsonrpc`);
+    const response = new Promise<Record<string, unknown>>((resolve, reject) => {
+      socket.addEventListener('message', (event) => resolve(JSON.parse(String(event.data))));
+      socket.addEventListener('error', () => reject(new Error('WebSocket failed')));
+    });
+    await new Promise<void>((resolve) => socket.addEventListener('open', () => resolve()));
+    socket.send(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'probe.websocket.echo',
+        params: { message: 'hi' },
+      }),
+    );
+    expect(await response).toMatchObject({ id: 1, result: { message: 'hi' } });
+    socket.close();
+  });
+
+  it('starts and delivers a catalog subscription over a real WebSocket', async () => {
+    const handler = createOperationHandler({
+      operations: [websocketSubscriptionOperation],
+      host: {},
+    });
+    websocketServer = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        if (request.headers.get('upgrade')?.toLowerCase() === 'websocket') {
+          if (await handler.upgrade(request, websocketServer!)) return undefined;
+        }
+        return handler(request);
+      },
+      websocket: handler.websocket,
+    });
+    const socket = new WebSocket(`ws://localhost:${websocketServer.port}/jsonrpc`);
+    const frames: Array<Record<string, unknown>> = [];
+    const received = new Promise<void>((resolve, reject) => {
+      socket.addEventListener('message', (event) => {
+        frames.push(JSON.parse(String(event.data)) as Record<string, unknown>);
+        if (frames.length === 2) resolve();
+      });
+      socket.addEventListener('error', () => reject(new Error('WebSocket failed')));
+    });
+    await new Promise<void>((resolve) => socket.addEventListener('open', () => resolve()));
+    socket.send(
+      JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'probe.websocket.events', params: {} }),
+    );
+    await received;
+    expect(frames[0]).toMatchObject({ id: 1, result: { subscriptionId: 'sub_probe' } });
+    expect(frames[1]).toMatchObject({
+      method: 'weft.events.deliver',
+      params: { subscriptionId: 'sub_probe', envelope: { value: 'event' } },
+    });
+    socket.close();
+  });
+
   it('is exported from the package entry point', () => {
     expect(weft.createOperationHandler).toBe(createOperationHandler);
     expect(weft.createOperationHandlerAuthenticator).toBe(createOperationHandlerAuthenticator);
