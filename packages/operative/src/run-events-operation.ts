@@ -12,7 +12,6 @@
 
 import {
   createReplayAwareClosableIterable,
-  decodeCursor,
   defineOperation,
   type OperationFault,
   type ReplayLiveSubscribeOptions,
@@ -53,11 +52,7 @@ const runEventsSubscriptionInput = z.object({
   // Checked here, in the schema, so a malformed cursor is `InvalidParams` over
   // every transport (a WebSocket subscribe, or `Last-Event-ID` on the HTTP
   // route) instead of an error thrown later from inside the feed.
-  fromCursor: z
-    .string()
-    .min(1)
-    .refine((cursor) => decodeCursor(cursor) !== null, { message: 'Invalid cursor' })
-    .optional(),
+  fromCursor: z.string().min(1).max(512).optional(),
 });
 
 const runEventsSubscriptionEnvelope = z.object({
@@ -172,6 +167,17 @@ export const runEventsSubscriptionOperation = defineOperation<
       };
       throw notFound;
     }
+    if (
+      input.fromCursor !== undefined &&
+      runFeed.feed.decodeCursor(input.fromCursor) === 'invalid'
+    ) {
+      const invalid: OperationFault = {
+        code: 'InvalidParams',
+        message: 'Invalid cursor',
+        data: { issues: [{ path: ['fromCursor'], message: 'Invalid cursor', code: 'custom' }] },
+      };
+      throw invalid;
+    }
 
     // Only the session's own signal is needed: `createAgentRunEventFeed`
     // binds the feed's lifetime into every subscription it hands out, so
@@ -187,7 +193,7 @@ export const runEventsSubscriptionOperation = defineOperation<
         ? undefined
         : new Set<string>(Array.isArray(input.kinds) ? input.kinds : [input.kinds]);
     const matches = (envelope: AgentRunEventEnvelope): boolean =>
-      kinds === undefined || kinds.has(envelope.kind);
+      envelope.kind === 'run.gap' || kinds === undefined || kinds.has(envelope.kind);
     const subscribeOptions: ReplayLiveSubscribeOptions<AgentRunEventEnvelope> = {
       ...(input.fromCursor === undefined ? {} : { fromCursor: input.fromCursor }),
       signal: controller.signal,

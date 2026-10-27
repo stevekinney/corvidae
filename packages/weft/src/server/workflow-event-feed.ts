@@ -1,6 +1,7 @@
 import type { WeftEventMap } from '../core/events.ts';
 import type { BatchOperation, ConditionalBatchCondition } from '../storage/interface.ts';
-import { drainLive, replayUpTo, shouldDeliverEnvelope } from './replay-live-feed-internals.ts';
+import { createReplayLiveFeed } from './replay-live-feed.ts';
+export { createReplayLiveFeed } from './replay-live-feed.ts';
 
 /** Discriminator string carried on every feed envelope. */
 export type FeedEventKind =
@@ -282,11 +283,20 @@ export type ReplayLiveFeedBackend<TEnvelope extends SequencedEventEnvelope> = {
   replay(options: { afterSequence: number; requestedCursor?: Cursor }): AsyncIterable<TEnvelope>;
   snapshotTailSequence(): Promise<number>;
   subscribeLive(listener: (envelope: TEnvelope) => void): () => void;
+  decodeCursor?(cursor: Cursor): { sequence: number } | 'gap' | 'invalid';
+  encodeCursor?(sequence: number): Cursor;
+  snapshotFirstRetainedSequence?(): Promise<number>;
+  createGapEnvelope?(options: {
+    requestedCursor: Cursor;
+    firstRetainedSequence: number;
+    continuationCursor: Cursor;
+  }): TEnvelope;
 };
 
 export type ReplayLiveFeed<TEnvelope extends SequencedEventEnvelope> = {
   replay(options?: { fromCursor?: Cursor; limit?: number }): AsyncIterable<TEnvelope>;
   subscribe(options?: ReplayLiveSubscribeOptions<TEnvelope>): AsyncIterable<TEnvelope>;
+  decodeCursor(cursor: Cursor): { sequence: number } | 'gap' | 'invalid';
   dispose(): void;
 };
 
@@ -299,109 +309,6 @@ export type ReplayLiveSubscribeOptions<TEnvelope extends SequencedEventEnvelope>
   createReplayLimitError?: (count: number, limit: number) => unknown;
   onReplayComplete?: () => void;
 };
-
-const DEFAULT_LIVE_BUFFER_SIZE = 1000;
-
-// ---------------------------------------------------------------------------
-// Implementation
-// ---------------------------------------------------------------------------
-
-export function createReplayLiveFeed<TEnvelope extends SequencedEventEnvelope>(
-  backend: ReplayLiveFeedBackend<TEnvelope>,
-  options?: WorkflowEventFeedOptions,
-): ReplayLiveFeed<TEnvelope> {
-  const bufferSize = options?.liveBufferSize ?? DEFAULT_LIVE_BUFFER_SIZE;
-
-  async function* replay(args?: { fromCursor?: Cursor; limit?: number }): AsyncIterable<TEnvelope> {
-    const afterSequence =
-      args?.fromCursor !== undefined ? decodeCursorOrThrow(args.fromCursor) : -1;
-    let yielded = 0;
-    for await (const envelope of backend.replay({
-      afterSequence,
-      ...(args?.fromCursor === undefined ? {} : { requestedCursor: args.fromCursor }),
-    })) {
-      if (args?.limit !== undefined && yielded >= args.limit) return;
-      yield envelope;
-      yielded += 1;
-    }
-  }
-
-  function subscribe(args?: ReplayLiveSubscribeOptions<TEnvelope>): AsyncIterable<TEnvelope> {
-    const buffer: TEnvelope[] = [];
-    let bufferOverflowed = false;
-    let waker: (() => void) | null = null;
-    let cleanedUp = false;
-    const signal = args?.signal;
-    const fromCursor = args?.fromCursor;
-    const requestedAfter = fromCursor !== undefined ? decodeCursorOrThrow(fromCursor) : -1;
-
-    const unsubscribe = backend.subscribeLive((envelope) => {
-      if (!shouldDeliverEnvelope(envelope, args)) return;
-      if (buffer.length >= bufferSize) {
-        bufferOverflowed = true;
-      } else {
-        buffer.push(envelope);
-      }
-      if (waker) {
-        const fire = waker;
-        waker = null;
-        fire();
-      }
-    });
-
-    const wake = () => {
-      if (waker) {
-        const fire = waker;
-        waker = null;
-        fire();
-      }
-    };
-
-    const cleanup = () => {
-      if (cleanedUp) return;
-      cleanedUp = true;
-      signal?.removeEventListener('abort', onAbort);
-      unsubscribe();
-      wake();
-    };
-
-    const onAbort = () => cleanup();
-    signal?.addEventListener('abort', onAbort, { once: true });
-    if (signal?.aborted) cleanup();
-
-    async function* generator(): AsyncIterable<TEnvelope> {
-      try {
-        if (signal?.aborted) return;
-
-        const snapshot = await backend.snapshotTailSequence();
-        yield* replayUpTo(backend, requestedAfter, snapshot, signal, args);
-        if (signal?.aborted) return;
-        args?.onReplayComplete?.();
-        yield* drainLive(
-          buffer,
-          snapshot,
-          signal,
-          () => bufferOverflowed,
-          (w) => {
-            waker = w;
-          },
-        );
-      } finally {
-        cleanup();
-      }
-    }
-
-    return generator();
-  }
-
-  return {
-    replay,
-    subscribe,
-    dispose() {
-      /* in-memory feed holds no feed-level state; no-op. */
-    },
-  };
-}
 
 /**
  * Build a `WorkflowEventFeed` over the given backend. Pass the result as

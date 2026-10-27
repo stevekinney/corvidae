@@ -25,7 +25,6 @@ import {
   bindFeedLifetime,
   createInMemoryReplayLiveBackend,
   createReplayLiveFeed,
-  encodeCursor,
   type InMemoryReplayLiveBackend,
   type ReplayLiveFeed,
   type SequencedEventEnvelope,
@@ -307,9 +306,17 @@ export type AgentRunEventFeedOptions = {
 export function createAgentRunEventFeed(options: AgentRunEventFeedOptions): AgentRunEventFeed {
   const now = options.now ?? (() => Date.now());
   const backend: InMemoryReplayLiveBackend<AgentRunEventEnvelope> =
-    createInMemoryReplayLiveBackend<AgentRunEventEnvelope>(
-      options.maxEvents === undefined ? {} : { maxEvents: options.maxEvents },
-    );
+    createInMemoryReplayLiveBackend<AgentRunEventEnvelope>({
+      ...(options.maxEvents === undefined ? {} : { maxEvents: options.maxEvents }),
+      createGapEnvelope: ({ requestedCursor, firstRetainedSequence, continuationCursor }) => ({
+        sequence: firstRetainedSequence - 1,
+        cursor: continuationCursor,
+        runId: options.runId,
+        kind: 'run.gap',
+        emittedAtMs: now(),
+        payload: { requestedCursor, firstRetainedSequence },
+      }),
+    });
   const lifetime = new AbortController();
   const feed = bindFeedLifetime(
     createReplayLiveFeed<AgentRunEventEnvelope>(backend),
@@ -325,7 +332,7 @@ export function createAgentRunEventFeed(options: AgentRunEventFeedOptions): Agen
       if (projected === undefined) return undefined;
       const envelope: AgentRunEventEnvelope = {
         sequence,
-        cursor: encodeCursor(sequence),
+        cursor: backend.encodeCursor?.(sequence) ?? String(sequence),
         runId: options.runId,
         kind: projected.kind,
         emittedAtMs: now(),

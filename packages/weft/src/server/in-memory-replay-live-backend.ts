@@ -28,6 +28,8 @@ import type {
   SequencedEventEnvelope,
 } from './workflow-event-feed.ts';
 
+const INCARNATION_PATTERN = /^([^:]+):(-1|\d+)$/;
+
 /** How many envelopes an in-memory log retains before dropping its oldest. */
 const DEFAULT_MAX_EVENTS = 10_000;
 
@@ -44,14 +46,40 @@ export type InMemoryReplayLiveBackend<TEnvelope extends SequencedEventEnvelope> 
 export type InMemoryReplayLiveBackendOptions = {
   /** Retention bound. Defaults to 10,000 envelopes. */
   maxEvents?: number;
+  createGapEnvelope?: (options: {
+    requestedCursor: Cursor;
+    firstRetainedSequence: number;
+    continuationCursor: Cursor;
+  }) => SequencedEventEnvelope;
 };
 
 export function createInMemoryReplayLiveBackend<TEnvelope extends SequencedEventEnvelope>(
   options: InMemoryReplayLiveBackendOptions = {},
 ): InMemoryReplayLiveBackend<TEnvelope> {
   const maxEvents = options.maxEvents ?? DEFAULT_MAX_EVENTS;
+  const incarnation = crypto.randomUUID();
   const log: TEnvelope[] = [];
   const listeners = new Set<(envelope: TEnvelope) => void>();
+  const decode = (cursor: Cursor): { sequence: number } | 'gap' | 'invalid' => {
+    if (cursor === '-1') return { sequence: -1 };
+    const structured = INCARNATION_PATTERN.exec(cursor);
+    if (structured !== null) {
+      const sequence = Number(structured[2]);
+      if (!Number.isSafeInteger(sequence)) return 'invalid';
+      return structured[1] === incarnation ? { sequence } : 'gap';
+    }
+    return /^\d+$/.test(cursor) ? 'gap' : 'invalid';
+  };
+  const retentionGap = (
+    replayOptions: { afterSequence: number; requestedCursor?: Cursor },
+    first: number,
+    decoded: { sequence: number } | 'gap' | 'invalid',
+  ) =>
+    log.length > 0 &&
+    first > 0 &&
+    replayOptions.afterSequence < first &&
+    decoded !== 'gap' &&
+    decoded !== 'invalid';
 
   return {
     async *replay(replayOptions: { afterSequence: number; requestedCursor?: Cursor }) {
@@ -59,6 +87,20 @@ export function createInMemoryReplayLiveBackend<TEnvelope extends SequencedEvent
       // consumer replaying history must not be handed live events out of the
       // same pass — the feed layer is what joins replay to live.
       const snapshot = [...log];
+      const firstRetainedSequence = snapshot[0]?.sequence ?? 0;
+      const requested = replayOptions.requestedCursor;
+      const decoded =
+        requested === undefined ? { sequence: replayOptions.afterSequence } : decode(requested);
+      if (
+        options.createGapEnvelope !== undefined &&
+        retentionGap(replayOptions, firstRetainedSequence, decoded)
+      ) {
+        yield options.createGapEnvelope({
+          requestedCursor: requested ?? String(replayOptions.afterSequence),
+          firstRetainedSequence,
+          continuationCursor: `${incarnation}:${firstRetainedSequence - 1}`,
+        }) as TEnvelope;
+      }
       for (const envelope of snapshot) {
         if (envelope.sequence > replayOptions.afterSequence) yield envelope;
       }
@@ -67,6 +109,31 @@ export function createInMemoryReplayLiveBackend<TEnvelope extends SequencedEvent
     async snapshotTailSequence() {
       return log.at(-1)?.sequence ?? -1;
     },
+
+    decodeCursor(cursor: Cursor) {
+      return decode(cursor);
+    },
+
+    encodeCursor(sequence: number) {
+      if (!Number.isSafeInteger(sequence) || sequence < -1)
+        throw new RangeError('Invalid sequence');
+      return `${incarnation}:${sequence}`;
+    },
+
+    async snapshotFirstRetainedSequence() {
+      return log[0]?.sequence ?? 0;
+    },
+
+    ...(options.createGapEnvelope === undefined
+      ? {}
+      : {
+          createGapEnvelope: ({ requestedCursor, firstRetainedSequence, continuationCursor }) =>
+            options.createGapEnvelope!({
+              requestedCursor,
+              firstRetainedSequence,
+              continuationCursor,
+            }) as TEnvelope,
+        }),
 
     subscribeLive(listener: (envelope: TEnvelope) => void) {
       listeners.add(listener);

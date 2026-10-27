@@ -7,7 +7,7 @@ import {
   type SequencedEventEnvelope,
 } from './workflow-event-feed.ts';
 
-type ProbeEnvelope = SequencedEventEnvelope & { readonly kind: string };
+type ProbeEnvelope = SequencedEventEnvelope & { readonly kind: string; readonly payload?: unknown };
 
 function envelope(sequence: number, kind = 'probe'): ProbeEnvelope {
   return { sequence, cursor: encodeCursor(sequence), kind };
@@ -112,10 +112,77 @@ describe('the in-memory replay-live backend', () => {
     for (let sequence = 0; sequence < 3; sequence += 1) backend.append(envelope(sequence));
 
     const resumed: ProbeEnvelope[] = [];
-    for await (const item of feed.replay({ fromCursor: encodeCursor(0) })) resumed.push(item);
+    for await (const item of feed.replay({
+      fromCursor: backend.encodeCursor?.(0) ?? encodeCursor(0),
+    }))
+      resumed.push(item);
 
     expect(resumed.map((item) => item.sequence)).toEqual([1, 2]);
     feed.dispose();
+  });
+
+  it('classifies incarnation cursors and emits a retention gap', async () => {
+    const makeGap = ({
+      requestedCursor,
+      firstRetainedSequence,
+      continuationCursor,
+    }: {
+      requestedCursor: string;
+      firstRetainedSequence: number;
+      continuationCursor: string;
+    }): ProbeEnvelope => ({
+      sequence: firstRetainedSequence - 1,
+      cursor: continuationCursor,
+      kind: 'gap',
+      payload: { requestedCursor, firstRetainedSequence },
+    });
+    const first = createInMemoryReplayLiveBackend<ProbeEnvelope>({
+      maxEvents: 2,
+      createGapEnvelope: makeGap,
+    });
+    first.append(envelope(0));
+    first.append(envelope(1));
+    first.append(envelope(2));
+    const currentCursor = first.encodeCursor?.(0) ?? '';
+    expect(first.decodeCursor?.(currentCursor)).toEqual({ sequence: 0 });
+    expect(first.decodeCursor?.('0')).toBe('gap');
+    expect(first.decodeCursor?.('bad')).toBe('invalid');
+    expect(first.decodeCursor?.('-1')).toEqual({ sequence: -1 });
+    const replayed: ProbeEnvelope[] = [];
+    for await (const item of createReplayLiveFeed(first).replay({ fromCursor: currentCursor }))
+      replayed.push(item);
+    expect(replayed.map((item) => item.kind)).toEqual(['gap', 'probe', 'probe']);
+    expect(replayed[0]?.payload).toEqual({
+      requestedCursor: currentCursor,
+      firstRetainedSequence: 1,
+    });
+  });
+
+  it('emits a gap when a cursor belongs to a previous backend instance', async () => {
+    const makeGap = ({
+      requestedCursor,
+      firstRetainedSequence,
+      continuationCursor,
+    }: {
+      requestedCursor: string;
+      firstRetainedSequence: number;
+      continuationCursor: string;
+    }): ProbeEnvelope => ({
+      sequence: firstRetainedSequence - 1,
+      cursor: continuationCursor,
+      kind: 'gap',
+      payload: { requestedCursor, firstRetainedSequence },
+    });
+    const previous = createInMemoryReplayLiveBackend<ProbeEnvelope>();
+    previous.append(envelope(0));
+    const cursor = previous.encodeCursor?.(0) ?? '';
+    const current = createInMemoryReplayLiveBackend<ProbeEnvelope>({ createGapEnvelope: makeGap });
+    current.append(envelope(0));
+    const replayed: ProbeEnvelope[] = [];
+    for await (const item of createReplayLiveFeed(current).replay({ fromCursor: cursor }))
+      replayed.push(item);
+    expect(replayed.map((item) => item.kind)).toEqual(['gap', 'probe']);
+    expect(replayed[0]?.payload).toEqual({ requestedCursor: cursor, firstRetainedSequence: 0 });
   });
 
   it('counts the replay cap against filtered-in envelopes only', async () => {

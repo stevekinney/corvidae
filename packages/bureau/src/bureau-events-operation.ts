@@ -12,7 +12,6 @@
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 import {
   createReplayAwareClosableIterable,
-  decodeCursor,
   defineOperation,
   type OperationFault,
   type ReplayLiveSubscribeOptions,
@@ -37,11 +36,7 @@ const bureauEventsSubscriptionInput = z.object({
   // Checked here, in the schema, so a malformed cursor is `InvalidParams` over
   // every transport (a WebSocket subscribe, or `Last-Event-ID` on the HTTP
   // route) instead of an error thrown later from inside the feed.
-  fromCursor: z
-    .string()
-    .min(1)
-    .refine((cursor) => decodeCursor(cursor) !== null, { message: 'Invalid cursor' })
-    .optional(),
+  fromCursor: z.string().min(1).max(512).optional(),
 });
 
 const bureauEventsSubscriptionEnvelope = z.object({
@@ -142,6 +137,17 @@ export function defineBureauEventsSubscriptionOperation(scope: BureauEventsAcces
           };
           throw notFound;
         }
+        if (
+          input.fromCursor !== undefined &&
+          bureauFeed.feed.decodeCursor(input.fromCursor) === 'invalid'
+        ) {
+          const invalid: OperationFault = {
+            code: 'InvalidParams',
+            message: 'Invalid cursor',
+            data: { issues: [{ path: ['fromCursor'], message: 'Invalid cursor', code: 'custom' }] },
+          };
+          throw invalid;
+        }
 
         // Only the session's own signal: the feed binds its own lifetime into
         // every subscription, so disposing the bureau ends this one too.
@@ -159,7 +165,8 @@ export function defineBureauEventsSubscriptionOperation(scope: BureauEventsAcces
           replayLimit: MAX_BUREAU_SUBSCRIPTION_REPLAY_EVENTS,
           // No `countReplayEnvelope`: the feed filters before counting, so the
           // cap already measures matching events.
-          filterEnvelope: (envelope) => kinds === undefined || kinds.has(envelope.kind),
+          filterEnvelope: (envelope) =>
+            envelope.kind === 'feed.gap' || kinds === undefined || kinds.has(envelope.kind),
         };
         const iterable = createReplayAwareClosableIterable<BureauEventEnvelope>(
           (onReplayComplete) =>

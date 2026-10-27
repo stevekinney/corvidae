@@ -143,9 +143,12 @@ export async function* replayUpTo<TEnvelope extends SequencedEventEnvelope>(
   snapshot: number,
   signal: AbortSignal | undefined,
   replayOptions: ReplayLiveSubscribeOptions<TEnvelope> | undefined,
+  requestedCursor?: string,
+  decodeCursor?: (cursor: string) => { sequence: number } | 'gap' | 'invalid',
 ): AsyncIterable<TEnvelope> {
   let replayCount = 0;
-  const backendOptions = createBackendReplayOptions(afterSequence, replayOptions?.fromCursor);
+  const replayAfter = replayAfterCursor(afterSequence, requestedCursor, decodeCursor);
+  const backendOptions = createBackendReplayOptions(replayAfter, replayOptions?.fromCursor);
   for await (const envelope of backend.replay(backendOptions)) {
     if (envelope.sequence > snapshot) break;
     if (signal?.aborted) return;
@@ -174,6 +177,17 @@ function createBackendReplayOptions(
   requestedCursor: string | undefined,
 ): { afterSequence: number; requestedCursor?: string } {
   return requestedCursor === undefined ? { afterSequence } : { afterSequence, requestedCursor };
+}
+
+export function replayAfterCursor(
+  afterSequence: number,
+  requestedCursor: string | undefined,
+  decodeCursor: ((cursor: string) => { sequence: number } | 'gap' | 'invalid') | undefined,
+): number {
+  if (requestedCursor === undefined || decodeCursor === undefined) return afterSequence;
+  const decoded = decodeCursor(requestedCursor);
+  if (decoded === 'invalid') throw new Error('Invalid cursor');
+  return decoded === 'gap' ? -1 : afterSequence;
 }
 
 export function shouldDeliverEnvelope<TEnvelope extends SequencedEventEnvelope>(

@@ -49,6 +49,7 @@ export function bindFeedLifetime<TEnvelope extends SequencedEventEnvelope>(
 ): ReplayLiveFeed<TEnvelope> {
   return {
     replay: (options) => feed.replay(options),
+    decodeCursor: (cursor) => feed.decodeCursor(cursor),
     subscribe: (options) =>
       feed.subscribe({
         ...options,
