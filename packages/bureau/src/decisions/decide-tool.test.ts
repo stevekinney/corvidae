@@ -156,6 +156,62 @@ describe('calling the decide tool', () => {
   });
 });
 
+describe('cancelling a task that is waiting on the decide tool', () => {
+  it('forwards the abort to the model and issues no validation retry', async () => {
+    const signals: Array<AbortSignal | undefined> = [];
+    let enteredModel!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enteredModel = resolve;
+    });
+    // A provider that answers badly once the abort lands: an unfixed `decide` would retry it.
+    const modelGenerate: GenerateFunction = async (context) => {
+      signals.push(context.signal);
+      enteredModel();
+      const signal = context.signal;
+      if (signal === undefined) throw new Error('the abort signal was not forwarded');
+      if (!signal.aborted) {
+        await new Promise<void>((resolve) => signal.addEventListener('abort', () => resolve()));
+      }
+      return { content: 'not json', toolCalls: [] };
+    };
+    const bureau = await open(
+      { worker: decidingAgent([], [], 1) },
+      { models: { generate: () => modelGenerate } },
+    );
+
+    const task = await bureau.tasks.start('worker', 'go');
+    await entered;
+    await bureau.tasks.cancel(task.id);
+    await task.result().catch(() => undefined);
+
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.aborted).toBe(true);
+  });
+
+  it('hands the tool call’s abort signal to the decision source', async () => {
+    const controller = new AbortController();
+    const seen: Array<AbortSignal | undefined> = [];
+    const toolbox = createDecideToolbox({
+      decisions: {
+        decide: async (_request, options) => {
+          seen.push(options?.signal);
+          return { value: true, provider: 'p', model: 'm' };
+        },
+      },
+      principal: undefined,
+      taskId: 't',
+      maximumPerTask: 20,
+    });
+
+    await toolbox.getTool('decide')!.execute(
+      { kind: 'boolean', question: 'Q?' } as never,
+      { signal: controller.signal } as never,
+    );
+
+    expect(seen).toEqual([controller.signal]);
+  });
+});
+
 describe('createDecideToolbox', () => {
   async function call(toolbox: ReturnType<typeof createDecideToolbox>, input: unknown) {
     const tool = toolbox.getTool('decide')!;

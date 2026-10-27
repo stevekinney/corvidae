@@ -84,6 +84,11 @@ function codeOf(error: unknown): string | undefined {
     : undefined;
 }
 
+/** The tool context's signal as an `AbortSignal`: an `AbortSignalLike` that is not one is dropped. */
+function abortSignalOf(signal: unknown): AbortSignal | undefined {
+  return signal instanceof AbortSignal ? signal : undefined;
+}
+
 function requestOf(input: z.infer<typeof decideInput>): DecisionRequest {
   const base = {
     question: input.question,
@@ -118,7 +123,9 @@ export function createDecideToolbox(options: DecideToolOptions): AnyToolbox {
     description:
       'Ask a model for a typed answer to one question: a yes/no, a choice among options, a rating on a scale, or an object that satisfies a JSON Schema. Returns { ok: true, value, ... } or { ok: false, refusal, message }.',
     input: decideInput,
-    execute: async (input): Promise<DecideToolResult> => {
+    execute: async (input, context): Promise<DecideToolResult> => {
+      // The caller owns `context`: read the signal once, before the first await.
+      const signal = abortSignalOf(context.signal);
       calls += 1;
       if (calls > options.maximumPerTask) {
         return {
@@ -141,6 +148,7 @@ export function createDecideToolbox(options: DecideToolOptions): AnyToolbox {
         const decision = await options.decisions.decide(request, {
           taskId: options.taskId,
           ...(options.principal === undefined ? {} : { principal: options.principal }),
+          ...(signal === undefined ? {} : { signal }),
         });
         return {
           ok: true,
