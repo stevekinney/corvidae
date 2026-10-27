@@ -14,12 +14,15 @@ import {
 } from '../operations/workflow-events-sse.ts';
 import { isAuthenticated, principalFromStdioLocal, type Principal } from '../principal.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
+import type { ConnectionLease } from '../runtime/context.ts';
 import type { WorkflowEventFeed } from '../workflow-event-feed.ts';
 
 export type LiveEventStreamContext = {
   workflowEventFeed?: WorkflowEventFeed;
   fleetEventFeed?: Pick<FleetEventFeed, 'subscribe'>;
   acquireWorkflowStreamConnection?: WorkflowStreamConnectionAcquirer;
+  acquireFleetEventSubscriber?: () => ConnectionLease;
+  acquireWorkflowEventSubscriber?: () => ConnectionLease;
 };
 
 type DispatchServerSentEventsBindingOptions = {

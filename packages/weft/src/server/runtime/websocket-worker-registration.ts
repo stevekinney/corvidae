@@ -220,6 +220,8 @@ function commitWorkerRegistration(
   // A build the catalog records as draining or removed joins drained, before anything can route to it.
   applyRecordedVersionState(context, manifest, versionState);
   context.workerSockets.set(message.workerId, ws);
+  context.connectionCounts.workers = context.workerSockets.size;
+  context.refreshConnectionMetrics();
   // The generation just committed — always defined immediately after a
   // successful `register()` call for this exact `workerId`.
   const sessionGeneration = context.registry.sessionIdentity(message.workerId)?.sessionGeneration;
