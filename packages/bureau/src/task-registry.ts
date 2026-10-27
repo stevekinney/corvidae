@@ -564,6 +564,8 @@ export interface CreateTaskRegistryOptions {
    * rejection is diagnosed, never thrown into the settlement.
    */
   readonly onFireSettled?: ((record: TaskRecord) => Promise<void>) | undefined;
+  /** Told once after a task's first terminal state is committed. */
+  readonly onSettled?: ((record: TaskRecord) => Promise<void>) | undefined;
 }
 
 /** The task state a settled run maps to. */
@@ -1206,7 +1208,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     taskId: string,
     settlement: Parameters<TaskRegistry['recordSettled']>[1],
   ): Promise<boolean> {
-    const captured: { settled?: TaskRecord } = {};
+    const captured: { settled?: TaskRecord; newlySettled: boolean } = { newlySettled: false };
     const recorded = await track(
       update(taskId, (record) => {
         // A task has more than one writer of its settlement (the action that ended the run,
@@ -1218,6 +1220,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
             ? (settlement.answer ?? record.settled?.answer)
             : undefined;
         const { answer: _ignored, ...rest } = settlement;
+        captured.newlySettled = record.settled === undefined;
         const next: TaskRecord = {
           ...record,
           settled: { ...rest, ...(answer === undefined ? {} : { answer }) },
@@ -1228,6 +1231,9 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     );
     if (recorded) await announceSettled(taskId);
     if (recorded && captured.settled !== undefined) await recordFireSettled(captured.settled);
+    if (recorded && captured.newlySettled && captured.settled !== undefined) {
+      await options.onSettled?.(captured.settled);
+    }
     return recorded;
   }
 
