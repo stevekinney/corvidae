@@ -376,7 +376,7 @@ async function deliverBufferedSignals(
   deliveries: BufferedSignalDelivery[],
   callbacks: SignalCallbacks,
 ): Promise<void> {
-  let shouldResumeParkedWorkflow = false;
+  let parkedSignalName: string | undefined;
 
   for (const { signalName, payload, options } of deliveries) {
     if (options?.emitPublicEvent !== false) {
@@ -387,40 +387,47 @@ async function deliverBufferedSignals(
     const waiterKey = `${workflowId}:${signalName}`;
     const waiter = internals.signalWaiters.get(waiterKey);
     if (waiter) {
-      // Guard the `await` itself, not just its result. An async call
-      // suspends at its first `await` even when the callee returns
-      // synchronously, so awaiting unconditionally would defer this waiter's
-      // resolution by a microtask under `ownership: 'none'`/`'lease'`, where
-      // the check is a no-op anyway. Those modes must stay byte-identical —
-      // mirrors `async-activity-completion.ts`'s own registry-gated await.
-      // A generation abandoned after a lost checkpoint race also discards here,
-      // in every ownership mode; for a healthy `'none'`/`'lease'` run the guard
-      // stays false and nothing is awaited.
-      if (
-        wakeNeedsOwnershipCheck(internals, workflowId) &&
-        (await confirmWakeOwnership(internals, workflowId, 'signal')) === 'discard'
-      ) {
-        continue;
-      }
-      // Invoke ONLY the waiter this call removed. Replay or a fresh park can
-      // replace it while the ownership read above is in flight; `release`
-      // correctly leaves the replacement alone, but calling the captured
-      // resolver anyway would advance the superseded generator.
-      if (releaseSignalWaiter(internals, workflowId, waiterKey, waiter)) {
-        waiter();
-      }
+      await deliverBufferedSignalToWaiter(internals, workflowId, waiterKey, waiter);
       continue;
     }
 
-    if (internals.parkedInlineWorkflows.has(workflowId)) {
-      callbacks.dispatchEvent(new SignalDeliveredEvent(workflowId, signalName));
-      shouldResumeParkedWorkflow = true;
+    if (isMatchingParkedSignal(internals, workflowId, signalName)) {
+      parkedSignalName = signalName;
     }
   }
 
-  if (shouldResumeParkedWorkflow) {
-    void callbacks.resumeParkedInlineWorkflow(workflowId);
+  if (parkedSignalName !== undefined) {
+    await callbacks.resumeParkedInlineWorkflow(workflowId);
+    callbacks.dispatchEvent(new SignalDeliveredEvent(workflowId, parkedSignalName));
   }
+}
+
+async function deliverBufferedSignalToWaiter(
+  internals: EngineInternals,
+  workflowId: string,
+  waiterKey: string,
+  waiter: () => void,
+): Promise<void> {
+  if (
+    wakeNeedsOwnershipCheck(internals, workflowId) &&
+    (await confirmWakeOwnership(internals, workflowId, 'signal')) === 'discard'
+  ) {
+    return;
+  }
+  if (releaseSignalWaiter(internals, workflowId, waiterKey, waiter)) waiter();
+}
+
+function isMatchingParkedSignal(
+  internals: EngineInternals,
+  workflowId: string,
+  signalName: string,
+): boolean {
+  const pending = internals.pendingTimelineEntries?.get(workflowId);
+  return (
+    internals.parkedInlineWorkflows.has(workflowId) &&
+    pending?.entry.operationType === 'wait-signal' &&
+    pending.entry.operationLabel === signalName
+  );
 }
 
 export async function hasBufferedSignal(

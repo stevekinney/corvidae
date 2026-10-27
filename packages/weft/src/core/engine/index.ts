@@ -18,7 +18,7 @@ import { deserializeCheckpoint } from '../checkpoint.ts';
 import type { StoredStreamChunk } from '../context.ts';
 import { createHandleCacheFinalizer } from '../engine-helpers.ts';
 import type { TypedEventTarget, WeftEventMap } from '../events.ts';
-import { RemoteActivityQueuedEvent } from '../events.ts';
+import { RemoteActivityQueuedEvent, SignalDeliveredEvent } from '../events.ts';
 import {
   WorkflowRevisionActivatedEvent,
   WorkflowRevisionDrainingEvent,
@@ -1564,6 +1564,9 @@ export class Engine<
           workflowId,
           this.#createInlineParkingCallbacks(),
         ),
+      dispatchSignalDelivered: (workflowId, signalName) => {
+        this.dispatchEvent(new SignalDeliveredEvent(workflowId, signalName));
+      },
       // Waking a signal waiter advances the workflow's generator, so it is a
       // claim-requiring wake path. `runOnce()` continues into signal polling
       // even after a failed renewal has dropped this engine's claim entry, so

@@ -1,6 +1,6 @@
 import type { ContextOperationRequest } from '../context.ts';
 import { parsePerAttemptTimeoutMs } from '../context/activity-schedule-to-close.ts';
-import { ActivityCompletedEvent, ActivityStartedEvent } from '../events.ts';
+import { ActivityStartedEvent } from '../events.ts';
 import type { ComposedActivityInterceptor, ComposedWorkflowInterceptor } from '../interceptor.ts';
 import { assertPayloadWithinLimit } from '../payload-size.ts';
 import type { ActivityContext, ActivityVerificationResult, OperationOutcome } from '../types.ts';
@@ -316,7 +316,7 @@ export async function executeActivity(
   // configured" check, so remote unavailability can never silently fall
   // through to a different mode (acceptance criterion 9).
   const isRemoteMode = Boolean(internals.remoteActivityBroker) && allowRemoteDispatch;
-  const invokeActivity: (
+  const invokeActivityImplementation: (
     activityName: string,
     input: unknown,
     headers: Map<string, string>,
@@ -359,6 +359,24 @@ export async function executeActivity(
             attemptAbortController,
           );
 
+  const invokeActivity = (
+    activityName: string,
+    input: unknown,
+    headers: Map<string, string>,
+  ): unknown => {
+    if (!isRemoteMode) {
+      internals.engine?.dispatchEvent(
+        new ActivityStartedEvent(
+          operation.operationId,
+          workflowId,
+          operation.activityName,
+          attempt,
+        ),
+      );
+    }
+    return invokeActivityImplementation(activityName, input, headers);
+  };
+
   const composedActivity = callbacks.getComposedActivityInterceptor();
   const executeWithActivityInterceptors = async (
     activityName: string,
@@ -376,17 +394,6 @@ export async function executeActivity(
       attempt,
       headers,
     };
-
-    if (!isRemoteMode) {
-      internals.engine.dispatchEvent(
-        new ActivityStartedEvent(
-          operation.operationId,
-          workflowId,
-          operation.activityName,
-          attempt,
-        ),
-      );
-    }
 
     const result = await composedActivity.execute(activityInterception, async (interception) => {
       return invokeActivity(activityName, interception.input, headers);
@@ -464,7 +471,6 @@ export async function executeActivityOperationResult(
       );
       return started.completedResult;
     }
-    const startedAt = internals.options.getNow();
     const result = await executeActivity(
       internals,
       workflowId,
@@ -485,14 +491,6 @@ export async function executeActivityOperationResult(
       started.attempt,
       speculativeState,
       true,
-    );
-    internals.engine.dispatchEvent(
-      new ActivityCompletedEvent(
-        operation.operationId,
-        workflowId,
-        operation.activityName,
-        Math.max(0, internals.options.getNow() - startedAt),
-      ),
     );
     const completedRecord = createCompletedActivityReconciliationRecord(
       started,
@@ -531,7 +529,6 @@ export async function executeActivityOperationResult(
     return result;
   }
 
-  const startedAt = internals.options.getNow();
   const result = await executeActivity(
     internals,
     workflowId,
@@ -554,17 +551,6 @@ export async function executeActivityOperationResult(
     operationAttempt,
     speculativeState,
   );
-  if (!internals.remoteActivityBroker) {
-    internals.engine.dispatchEvent(
-      new ActivityCompletedEvent(
-        operation.operationId,
-        workflowId,
-        operation.activityName,
-        Math.max(0, internals.options.getNow() - startedAt),
-      ),
-    );
-  }
-
   // Step succeeded durably: drop its tracked heartbeat. Guarded on the
   // non-speculative path only — a speculative step can still roll back and
   // re-run, so it relies on terminal cleanup to clear instead.

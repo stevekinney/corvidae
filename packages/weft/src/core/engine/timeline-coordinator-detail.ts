@@ -8,6 +8,35 @@ import {
   MAX_TIMELINE_DETAIL_STRING_LENGTH,
 } from './timeline-coordinator-constants.ts';
 
+export type ActivityCompletionReceipt = {
+  operationId: string;
+  workflowExecutionToken: string | undefined;
+  activityName: string;
+  duration: number;
+};
+
+export function captureActivityCompletionReceipt(
+  internals: EngineInternals,
+  workflowId: string,
+): ActivityCompletionReceipt | undefined {
+  const pending = internals.pendingTimelineEntries.get(workflowId);
+  const operation = internals.durableInlineOperations?.get(workflowId);
+  if (
+    pending?.entry.operationType !== 'activity' ||
+    pending.entry.status !== 'completed' ||
+    pending.entry.duration === undefined ||
+    operation?.type !== 'activity'
+  ) {
+    return undefined;
+  }
+  return {
+    operationId: operation.operationId,
+    workflowExecutionToken: operation.workflowExecutionToken,
+    activityName: pending.entry.operationLabel,
+    duration: Math.max(0, pending.entry.duration),
+  };
+}
+
 function boundedString(value: string): string {
   return value.length <= MAX_TIMELINE_DETAIL_STRING_LENGTH
     ? value

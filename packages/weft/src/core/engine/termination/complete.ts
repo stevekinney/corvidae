@@ -2,11 +2,13 @@ import type { BatchOperation } from '../../../storage/interface.ts';
 import { KEYS } from '../../../storage/interface.ts';
 import { decode, encode } from '../../codec.ts';
 import {
+  ActivityCompletedEvent,
   WorkflowCancelledEvent,
   WorkflowCompletedEvent,
   WorkflowFailedEvent,
   WorkflowTimedOutEvent,
 } from '../../events.ts';
+import { tagWorkflowEventGeneration } from '../../events/workflow-event-generation.ts';
 import { buildTimerBatchOperations, normalizeStorageTimestamp } from '../../scheduler.ts';
 import { WorkflowTimeoutError } from '../../timeouts.ts';
 import type {
@@ -46,6 +48,7 @@ import {
   startPendingTerminalSettlement,
   type PendingTerminalSettlement,
 } from '../terminal-settlement-pending.ts';
+import { captureActivityCompletionReceipt } from '../timeline-coordinator-detail.ts';
 import { releaseWorkflowConcurrencySlotForRun } from '../workflow-concurrency.ts';
 import { updateWorkflowState } from '../workflow-state-update.ts';
 import {
@@ -485,6 +488,7 @@ export async function completeWorkflow(
         return operations;
       };
       const completionOperations = buildOperations(state);
+      const activityCompletionReceipt = captureActivityCompletionReceipt(internals, workflowId);
 
       // completeWorkflow is a SELF-transition (ADR 0002): this engine is
       // finishing its own workflow.
@@ -502,11 +506,24 @@ export async function completeWorkflow(
       // must not be re-read after the awaits below.
       const claimEpoch = captureCurrentClaimEpoch(internals, workflowId);
       const executionToken = internals.checkpoints.get(workflowId)?.workflowExecutionToken;
-      return { duration, claimEpoch, executionToken, fence };
+      return { duration, claimEpoch, executionToken, fence, activityCompletionReceipt };
     },
   );
   if (!completionMetadata) return;
-  const { claimEpoch, executionToken, fence } = completionMetadata;
+  const { claimEpoch, executionToken, fence, activityCompletionReceipt } = completionMetadata;
+  if (activityCompletionReceipt !== undefined) {
+    callbacks.dispatchEvent(
+      tagWorkflowEventGeneration(
+        new ActivityCompletedEvent(
+          activityCompletionReceipt.operationId,
+          workflowId,
+          activityCompletionReceipt.activityName,
+          activityCompletionReceipt.duration,
+        ),
+        activityCompletionReceipt.workflowExecutionToken,
+      ),
+    );
+  }
   const isSuperseded = () => isSupersededBySameIdRun(internals, workflowId, executionToken);
 
   await releaseWorkflowConcurrencySlotForRun(internals, workflowId, fence);
