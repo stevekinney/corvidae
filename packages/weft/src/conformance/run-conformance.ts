@@ -79,6 +79,13 @@ export type RunConformanceReportOptions = {
    * registers shortens only this wait, so the checks that must succeed keep their long one.
    */
   replacementTimeoutMs?: number;
+  /**
+   * Resolves once the replacement worker's process has started, before the wait for it to register
+   * begins. A caller that shortens `replacementTimeoutMs` gates the short window on this, so a host
+   * slow to start the process cannot spend the window before the replacement exists. Defaults to
+   * resolving at once.
+   */
+  replacementStarted?: () => Promise<void>;
   serve: ConformanceServe;
 };
 
@@ -144,6 +151,7 @@ async function runConformanceChecks(
   timeoutMs: number,
   serve: ConformanceServe,
   replacementTimeoutMs: number = timeoutMs,
+  replacementStarted: () => Promise<void> = () => Promise.resolve(),
 ): Promise<ConformanceCheck[]> {
   const storage = new MemoryStorage();
   const engine = new Engine({ storage });
@@ -258,6 +266,7 @@ async function runConformanceChecks(
     );
 
     replacementWorker = startWorker(command, server);
+    await replacementStarted();
     const replacementWorkerId = await waitForReplacementWorker(
       server,
       workerId,
@@ -353,6 +362,7 @@ export async function runConformanceReport(
         options.timeoutMs,
         options.serve,
         options.replacementTimeoutMs,
+        options.replacementStarted,
       ),
     );
   } catch (error) {

@@ -48,7 +48,7 @@ describe('waitForCondition', () => {
     expect(
       await throwingRejectionOf(
         // hang-guard-self-test: the condition is never true, so no load can satisfy it in time
-        waitForCondition(neverTrue, 'expected failure message'),
+        waitForCondition(neverTrue, 'expected failure message', { hangGuardMilliseconds: 20 }),
       ),
     ).toThrow('expected failure message');
   });

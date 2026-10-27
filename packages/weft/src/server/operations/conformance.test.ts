@@ -18,6 +18,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { HANG_GUARD_MILLISECONDS } from '../../../scripts/lib/hang-guard.ts';
+import { waitUntil } from '../../../scripts/lib/wait-until.ts';
 import { executeConformance } from '../../cli/conformance.ts';
 import { createWeftClient } from '../../client/generated/operation-client.generated.ts';
 import { runConformanceReport } from '../../conformance/run-conformance.ts';
@@ -211,6 +212,9 @@ const replacementCleanup = await outcomeOf(async () => {
           timeoutMs: PASSING_RUN_TIMEOUT_MS,
           // load-proof: the replacement worker never registers, so no load can end the wait early
           replacementTimeoutMs: 500,
+          // The short window opens once the replacement has recorded its pid, so a loaded host
+          // cannot spend it before the process that proves the cleanup exists.
+          replacementStarted: () => waitUntil(() => existsSync(pidFile)),
           serve,
         }).then((report) => ({ target: name, startedAt: 0, completedAt: 0, ...report })),
     };

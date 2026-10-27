@@ -470,7 +470,7 @@ describe('createDurableMultiAgentHarness', () => {
         expect(
           await throwingRejectionOf(
             // hang-guard-self-test: the condition is never true, so no load can satisfy it in time
-            harness.waitForCondition(() => false, 'always false'),
+            harness.waitForCondition(() => false, 'always false', { hangGuardMilliseconds: 20 }),
           ),
         ).toThrow('always false');
       } finally {
