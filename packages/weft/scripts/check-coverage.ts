@@ -331,9 +331,9 @@ const COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer('COVERAGE_ALLOWANCE_OVE
     'src/server/json-rpc-websocket.ts',
     {
       reason:
-        'Transport disconnect and concurrency exits are behaviorally tested, but Bun does not deterministically attribute the emit() catch-block’s emitterBroken = true line (line 160).',
+        'Transport disconnect and concurrency exits are behaviorally tested, but Bun does not deterministically attribute the emit() catch-block’s emitterBroken = true line (line 157).',
       functions: 2,
-      lines: new Set([160]),
+      lines: new Set([157]),
       requireUncoveredLines: true,
     },
   ],
@@ -2028,6 +2028,8 @@ export function parseLcovFiles(content: string): Map<string, FileCoverageResult>
   let fileLineHit = 0;
   let fileFunctionTotal = 0;
   let fileFunctionHit = 0;
+  let observedAllowanceLines = new Set<number>();
+  let coveredAllowanceLines = new Set<number>();
 
   function finalizeCurrentFile(): void {
     if (!currentFile) {
@@ -2039,6 +2041,21 @@ export function parseLcovFiles(content: string): Map<string, FileCoverageResult>
     }
 
     const allowance = COVERAGE_ALLOWANCES.get(currentFile);
+    if (
+      allowance?.requireUncoveredLines === true &&
+      allowance.lines !== undefined &&
+      coveredAllowanceLines.size === 0
+    ) {
+      const missingLines = [...allowance.lines].filter(
+        (lineNumber) => !observedAllowanceLines.has(lineNumber),
+      );
+      if (missingLines.length > 0) {
+        throw new Error(
+          `Coverage allowance for ${currentFile}:${missingLines.join(', ')} is absent from the LCOV report. ` +
+            'Realign the stale allowance to an instrumented source line.',
+        );
+      }
+    }
     const ignoredFunctions = allowance?.functions ?? 0;
     const adjustedFunctionTotal = Math.max(0, fileFunctionTotal - ignoredFunctions);
     const adjustedFunctionHit = Math.min(fileFunctionHit, adjustedFunctionTotal);
@@ -2066,6 +2083,8 @@ export function parseLcovFiles(content: string): Map<string, FileCoverageResult>
     fileLineHit = 0;
     fileFunctionTotal = 0;
     fileFunctionHit = 0;
+    observedAllowanceLines = new Set();
+    coveredAllowanceLines = new Set();
   }
 
   for (const line of content.split('\n')) {
@@ -2097,6 +2116,10 @@ export function parseLcovFiles(content: string): Map<string, FileCoverageResult>
       const hitCount = parseInt(hitCountText, 10);
       const allowance = COVERAGE_ALLOWANCES.get(currentFile);
       const ignoredLines = allowance?.lines;
+      if (allowance?.requireUncoveredLines === true && ignoredLines?.has(lineNumber)) {
+        observedAllowanceLines.add(lineNumber);
+        if (hitCount > 0) coveredAllowanceLines.add(lineNumber);
+      }
 
       if (allowance !== undefined && ignoredLines?.has(lineNumber)) {
         if (hitCount > 0 && allowance.requireUncoveredLines === true) {
