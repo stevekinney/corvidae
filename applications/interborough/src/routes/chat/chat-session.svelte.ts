@@ -32,6 +32,7 @@ import {
 import { CHAT_COPY } from '../../app/copy.ts';
 import { sendContextInput, type Fetcher } from '../../lib/bureau-client.ts';
 import { messageWithAttachments, runFailureMessage } from '../../lib/chat-attachments.ts';
+import { AgUiHttpError } from './ag-ui-events.ts';
 import {
   createChatRunWiring,
   withAssetParts,
@@ -95,6 +96,10 @@ export class ChatSessionState {
   readonly #wiring: ChatRunWiring;
   readonly #abort = new AbortController();
   readonly sessionId: string;
+  #retryTimer: ReturnType<typeof setTimeout> | undefined;
+  #retryGeneration = 0;
+  #retryFailures = 0;
+  #attachedRun = false;
 
   constructor(options: ChatSessionOptions) {
     this.sessionId = options.sessionId;
@@ -154,6 +159,7 @@ export class ChatSessionState {
           // A busy thread is not told when it refused a resume: the next send repeats it. A start
           // refused as busy, and every other refusal, is.
           if (refusal?.resume !== true || !refusal.busy) this.failure = failure;
+          if (this.#attachedRun) this.#scheduleReconnect(error);
         },
       },
     });
@@ -259,9 +265,10 @@ export class ChatSessionState {
     void this.#readAgain();
   }
 
-  async #readAgain(): Promise<void> {
-    await this.attach({ rereading: true });
+  async #readAgain(): Promise<boolean> {
+    const reconnected = await this.attach({ rereading: true });
     this.#dropSettledAnswerRows();
+    return reconnected;
   }
 
   #stampAnnouncedAssets(): void {
@@ -293,6 +300,17 @@ export class ChatSessionState {
   /** Stops telling the person of the last failure. */
   dismissFailure(): void {
     this.failure = undefined;
+  }
+
+  /** Reopens an interrupted attach, preserving the last SSE cursor in the wiring. */
+  async reconnect(): Promise<boolean> {
+    if (this.attaching || this.#abort.signal.aborted) return false;
+    this.#retryGeneration += 1;
+    if (this.#retryTimer !== undefined) clearTimeout(this.#retryTimer);
+    this.#retryTimer = undefined;
+    this.#retryFailures = 0;
+    this.failure = undefined;
+    return this.attach({ rereading: true });
   }
 
   /** The tool approvals the conversation is waiting on. */
@@ -334,6 +352,8 @@ export class ChatSessionState {
       // The run is going, so the transcript is restored now and the person sees it while the run
       // carries on, not at its end. The terminal history replaces each of these rows with its own.
       this.restore(restored);
+      this.#attachedRun = true;
+      this.#retryFailures = 0;
       return true;
     } catch (error) {
       // The page opened on a session it could not read: it says so, and it is not an unhandled
@@ -346,25 +366,34 @@ export class ChatSessionState {
     }
   }
 
-  /**
-   * Puts the rows the Bureau holds ahead of the ones on screen. The person may have started typing
-   * while the transcript was being read, so what is on screen stays, and a row both have is the one
-   * on screen. It goes ahead of the row a turn is streaming into.
-   */
+  /** Replaces the transcript with the authoritative snapshot from the Bureau. */
   private restore(restored: ConversationHistory): void {
-    const current = this.conversation;
-    const known = new Set(current.ids);
-    this.conversation = {
-      ...current,
-      ids: [...restored.ids.filter((id) => !known.has(id)), ...current.ids],
-      messages: { ...restored.messages, ...current.messages },
-    };
+    this.conversation = restored;
+  }
+
+  #scheduleReconnect(error: unknown): void {
+    if (this.#abort.signal.aborted) return;
+    if (error instanceof AgUiHttpError && [403, 404, 410].includes(error.status)) return;
+    if (this.#retryFailures >= 8) return;
+    const generation = ++this.#retryGeneration;
+    const delay = Math.min(500 * 2 ** this.#retryFailures, 10_000);
+    this.#retryFailures += 1;
+    this.#retryTimer = setTimeout(() => {
+      this.#retryTimer = undefined;
+      if (generation !== this.#retryGeneration || this.#abort.signal.aborted) return;
+      void this.#readAgain().then((reconnected) => {
+        if (reconnected) this.#retryFailures = 0;
+      });
+    }, delay);
   }
 
   dispose(): void {
     // Leaving the page is not a stop: the run is the Bureau's, and it goes on.
     this.#wiring.detach();
     this.#abort.abort();
+    this.#retryGeneration += 1;
+    if (this.#retryTimer !== undefined) clearTimeout(this.#retryTimer);
+    this.#retryTimer = undefined;
     this.controller.dispose();
     void this.#wiring.discardAttach();
   }

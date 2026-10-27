@@ -89,6 +89,7 @@ import {
 import type { AgUiErrorCode } from './ag-ui-vocabulary.ts';
 import { type AgUiA2uiDeclaration, a2uiDeclarationOf } from './ag-ui-surface-source.ts';
 import { ownerOfPrincipal, type OwnerAccessPredicate } from './owner-predicate.ts';
+import { createAgUiLiveFeedRegistry } from './ag-ui-live-feed.ts';
 
 /** `createBureauHandler`'s `agUi` option. Omitted, nothing is mounted. */
 export type AgUiOptions = {
@@ -205,12 +206,17 @@ export function createAgUiMount(
 ): OperationHandlerMount {
   const pathPrefix = (options.pathPrefix ?? DEFAULT_AG_UI_PATH_PREFIX).replace(/\/+$/, '');
   const runtime = options.runtime ?? createDefaultRuntimeServices();
+  const liveFeeds = createAgUiLiveFeedRegistry(
+    (listener) => bureau.frames(listener),
+    options.liveBufferSize ?? DEFAULT_AG_UI_LIVE_BUFFER_SIZE,
+  );
   const environment: AgUiStreamEnvironment = {
     bureau,
     runtime,
     maxStreamDurationMs: options.maxStreamDurationMs ?? DEFAULT_AG_UI_MAX_STREAM_DURATION_MS,
     liveBufferSize: options.liveBufferSize ?? DEFAULT_AG_UI_LIVE_BUFFER_SIZE,
     keepAliveMs: options.keepAliveIntervalMs ?? DEFAULT_AG_UI_KEEP_ALIVE_INTERVAL_MS,
+    liveFeeds,
   };
   const now = (): number => runtime.clock.now();
   let resumeRun: ReturnType<typeof createResume> | undefined;

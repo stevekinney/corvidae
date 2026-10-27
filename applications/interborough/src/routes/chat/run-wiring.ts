@@ -613,6 +613,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
   /** The start the mount has not answered, so a retry of the same request is the same run. */
   let unanswered: { readonly fingerprint: string; readonly runId: string } | undefined;
   let attached: AsyncGenerator<unknown> | undefined;
+  let lastAttachCursor: string | undefined;
   let detached = false;
   /** The assets the turn on screen announced that no terminal frame has put on a row. */
   let unstamped: AssetAnnouncement[] = [];
@@ -978,11 +979,16 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
       return resultFor(toolCallId, resolution);
     },
     async attach(threadId, signal) {
-      const events = readEvents(() =>
-        send(`${AG_UI_PATH}/threads/${encodeURIComponent(threadId)}/run`, {
-          headers: { accept: 'text/event-stream' },
-          ...(signal === undefined ? {} : { signal }),
-        }),
+      const events = readEvents(
+        () =>
+          send(`${AG_UI_PATH}/threads/${encodeURIComponent(threadId)}/run`, {
+            headers: {
+              accept: 'text/event-stream',
+              ...(lastAttachCursor === undefined ? {} : { 'Last-Event-ID': lastAttachCursor }),
+            },
+            ...(signal === undefined ? {} : { signal }),
+          }),
+        { onCursor: (cursor) => (lastAttachCursor = cursor) },
       );
       const started = await events.next();
       if (
