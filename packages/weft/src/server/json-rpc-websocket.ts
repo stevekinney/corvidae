@@ -57,7 +57,6 @@ type ActiveSubscription = {
 
 type PendingSubscription = {
   readonly controller: AbortController;
-  close?: () => Promise<void>;
 };
 
 async function closeSubscriptionAfterClose(closeSubscription: () => Promise<void>): Promise<void> {
@@ -234,7 +233,6 @@ export function createJsonRpcWebSocketSession(
       closeStarted = true;
       await closeSubscription();
     };
-    pending.close = closeOnce;
     if (disposed || controller.signal.aborted) {
       await closeSubscriptionAfterClose(closeOnce);
       return;
@@ -433,7 +431,6 @@ export function createJsonRpcWebSocketSession(
     }
     for (const pending of pendingSubscriptions) {
       pending.controller.abort();
-      if (pending.close !== undefined) pendingCloses.push(pending.close().catch(() => {}));
     }
     subscriptions.clear();
     await Promise.all(pendingCloses);
