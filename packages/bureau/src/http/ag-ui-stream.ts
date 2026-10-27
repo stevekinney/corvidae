@@ -100,6 +100,8 @@ export type OpenRunStream = {
   readonly child?: BureauChildRecord | undefined;
   /** Replay the run from its first event, or only the step in flight behind a snapshot. */
   readonly replay: 'beginning' | 'open-step';
+  /** A durable SSE cursor the client has already consumed, when it is retained for this run. */
+  readonly resumeCursor?: string | undefined;
   readonly messagesSnapshot: boolean;
   /**
    * Replay of a call the run already settled, ahead of the live tail: a resume
@@ -162,6 +164,9 @@ type ReadHistory = {
         readonly recordedAs?: NativeTerminal['recordedAs'];
       }
     | undefined;
+  readonly resume:
+    | { readonly cursor: string; readonly after: ReadonlyArray<{ kind: string; payload: unknown }> }
+    | undefined;
 };
 
 const TERMINAL_OUTCOME: Readonly<Record<string, NativeTerminal['outcome']>> = {
@@ -170,15 +175,28 @@ const TERMINAL_OUTCOME: Readonly<Record<string, NativeTerminal['outcome']>> = {
   [RECORDED.runAborted]: 'aborted',
 };
 
-async function readRunHistory(bureau: AgUiStreamBureau, nativeRunId: string): Promise<ReadHistory> {
+async function readRunHistory(
+  bureau: AgUiStreamBureau,
+  nativeRunId: string,
+  resumeCursor?: string,
+): Promise<ReadHistory> {
   const lastCursorByKind = new Map<string, string>();
   let fence: string | undefined;
   let since: string | undefined;
   let terminal: ReadHistory['terminal'];
+  const after: Array<{ kind: string; payload: unknown }> = [];
+  let foundResume = resumeCursor === undefined;
   for (;;) {
     const page = await bureau.tasks.events(nativeRunId, since === undefined ? {} : { since });
     if (!('events' in page)) break;
     for (const event of page.events) {
+      if (resumeCursor !== undefined) {
+        if (foundResume) after.push({ kind: event.kind, payload: event.payload });
+        if (event.cursor === resumeCursor) {
+          foundResume = true;
+          after.length = 0;
+        }
+      }
       lastCursorByKind.set(event.kind, event.cursor);
       fence = event.cursor;
       const outcome = TERMINAL_OUTCOME[event.kind];
@@ -194,7 +212,12 @@ async function readRunHistory(bureau: AgUiStreamBureau, nativeRunId: string): Pr
     if (!page.hasMore || page.nextCursor === undefined) break;
     since = page.nextCursor;
   }
-  return { fence, lastCursorByKind, terminal };
+  return {
+    fence,
+    lastCursorByKind,
+    terminal,
+    resume: resumeCursor !== undefined && foundResume ? { cursor: resumeCursor, after } : undefined,
+  };
 }
 
 function pendingFor(bureau: AgUiStreamBureau, nativeRunId: string): PendingReview[] {
@@ -497,7 +520,9 @@ export function openRunStream(
 
   const finishAs = async (terminal: NativeTerminal): Promise<void> => {
     const closing = projector.closeOpen();
-    const history = await readRunHistory(bureau, request.nativeRunId).catch(() => undefined);
+    const history = await readRunHistory(bureau, request.nativeRunId, request.resumeCursor).catch(
+      () => undefined,
+    );
     const kind =
       terminal.recordedAs ??
       (terminal.outcome === 'completed'
@@ -782,7 +807,9 @@ export function openRunStream(
       await openChild(request.child);
       return;
     }
-    const history = await readRunHistory(bureau, request.nativeRunId).catch(() => undefined);
+    const history = await readRunHistory(bureau, request.nativeRunId, request.resumeCursor).catch(
+      () => undefined,
+    );
     // A client that went away during the read has already disposed the stream; a source started
     // now would never be stopped.
     if (ended) return;
@@ -851,7 +878,15 @@ export function openRunStream(
     // A run Bureau no longer holds has no events to replay, so a start retried
     // against it is shown the conversation as well, as an attach is.
     const answerRows = request.answerRows ?? [];
-    if (request.messagesSnapshot || detail === undefined || answerRows.length > 0) {
+    const hasOpenStep =
+      detail?.events.reduce<boolean>((open, event) => {
+        if (event.event === RECORDED.stepStarted) return true;
+        if (event.event === RECORDED.stepCompleted) return false;
+        return open;
+      }, false) ?? false;
+    const resumed =
+      request.resumeCursor !== undefined && history?.resume !== undefined && !hasOpenStep;
+    if (!resumed && (request.messagesSnapshot || detail === undefined || answerRows.length > 0)) {
       // The answers a resume delivered ride in the snapshot (a row the run has not appended yet).
       projector.holds(conversation?.ids ?? []);
       writeEvents([
@@ -884,7 +919,14 @@ export function openRunStream(
       if (openAt !== undefined) from = openAt;
     }
     let ending: NativeTerminal | undefined;
-    for (const event of recorded.slice(from)) {
+    const replayed = resumed
+      ? (history?.resume?.after ?? []).map((event) => ({
+          event: event.kind,
+          detail: event.payload,
+          sequence: 0,
+        }))
+      : recorded.slice(from);
+    for (const event of replayed) {
       highestSequence = Math.max(highestSequence, event.sequence);
       const projection = projector.handleRecorded(event.event, event.detail);
       writeEvents(projection.events);
