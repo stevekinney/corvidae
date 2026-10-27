@@ -3,6 +3,7 @@ import {
   createConversationHistory,
   type ChatStreamEvent,
 } from '@lostgradient/chat';
+import { rejectionOf } from '@lostgradient/testing';
 import { expect, test } from 'bun:test';
 import { ResumableMapper } from './resumable-mapper.ts';
 
@@ -130,17 +131,19 @@ test('a real empty snapshot clears every stale row and all partial mapper state'
 
 test('a disconnect immediately after TEXT_MESSAGE_START resumes with content, not another start', async () => {
   const mapper = new ResumableMapper(() => undefined);
-  await expect(
-    Array.fromAsync(
-      mapper.map(
-        source(
-          [started, { type: 'TEXT_MESSAGE_START', role: 'assistant', messageId: 'message' }],
-          true,
+  expect(
+    await rejectionOf(
+      Array.fromAsync(
+        mapper.map(
+          source(
+            [started, { type: 'TEXT_MESSAGE_START', role: 'assistant', messageId: 'message' }],
+            true,
+          ),
+          empty(),
         ),
-        empty(),
       ),
     ),
-  ).rejects.toBeInstanceOf(TypeError);
+  ).toBeInstanceOf(TypeError);
   const frames = await Array.fromAsync(
     mapper.map(
       source([
