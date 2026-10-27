@@ -245,6 +245,14 @@ import type { BureauGoals } from './goal-types';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
 import { composeBureauGoals } from './goals-composition';
 import { leaseEvidenceFromLostHealth } from './liveness-projection';
+import {
+  createDecisions,
+  type DecisionsComposition,
+  validateDecisionsOptions,
+} from './decisions/create-decisions';
+import { bindDecisionValidator } from './decisions/decision-validator';
+import type { DecideToolWiring } from './decisions/decide-tool';
+import type { DecisionSource } from './decisions/types';
 import { createModels, validateModelsOptions, type Models } from './models/create-models';
 import { createOnlineEvalSampler, type OnlineEvalSampler } from './online-evals';
 import {
@@ -1809,7 +1817,7 @@ function validateRetentionWindowOption(
  * COR-1700 — `humanInput` and `wakeup` are on by default for a durable Bureau, so `true` says
  * nothing and is refused: the only forms are `false`, and for `humanInput` an `inputSchemas` object.
  */
-function rejectOptInToolOption(name: 'humanInput' | 'wakeup', value: unknown): void {
+function rejectOptInToolOption(name: 'humanInput' | 'wakeup' | 'decide', value: unknown): void {
   if (value === undefined || value === false) return;
   if (name === 'humanInput' && typeof value === 'object' && value !== null) return;
   toBadRequest(
@@ -2085,6 +2093,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   // COR-1674: an unacceptable answer schema is a startup error, not a failure on the first park.
   rejectOptInToolOption('humanInput', options.humanInput);
   rejectOptInToolOption('wakeup', options.wakeup);
+  rejectOptInToolOption('decide', options.decide);
+  validateDecisionsOptions(options.decisions, toBadRequest);
   validateHumanInputOption(options.humanInput);
   validateRetentionOptions(options.retention);
   validateChildrenOption(options.children);
@@ -2231,7 +2241,28 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   const goalAttemptFenceHost = createGoalAttemptFenceHost();
   // Built first: two validators registered under one name and version are a
   // startup error, and it should fail before the durable engine exists.
-  const goalValidatorCatalog = createGoalValidatorCatalog(options.validators);
+  // COR-1709: a `decisionValidator` is bound to this Bureau's `decisions`, which exist only after
+  // the model catalog below, so it reaches them through this forwarder.
+  let decisions: Bureau['decisions'];
+  let decisionsComposition: DecisionsComposition | undefined;
+  const lateDecisions: DecisionSource = {
+    decide: (request, decideOptions) => decisions.decide(request, decideOptions),
+  };
+  // COR-1709: whether the `decide` tool is offered at all: not opted out, and something can answer.
+  const decideOffered = (): boolean =>
+    options.decide !== false && decisionsComposition?.configured === true;
+  // What a run owned by `owner` needs to be offered the tool; `undefined` when it is not offered.
+  const decideToolWiringFor = (owner: string | undefined): DecideToolWiring | undefined =>
+    decideOffered() && decisionsComposition !== undefined
+      ? {
+          decisions: lateDecisions,
+          maximumPerTask: decisionsComposition.maximumPerTask,
+          principal: owner,
+        }
+      : undefined;
+  const goalValidatorCatalog = createGoalValidatorCatalog(
+    options.validators?.map((validator) => bindDecisionValidator(validator, lateDecisions)),
+  );
   // COR-1510: a run the durable engine resumes on its own (a claim it reclaimed) before
   // `recoverDurableRuns` starts is still handed to `onRecoveredWorkflow`, ahead of its first step.
   // This hook waits for that function to be bound, which `recoverDurableRuns` does when it starts.
@@ -2291,6 +2322,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     // COR-1546: the resolved identifier, so the memory tenant a run writes under is `Bureau.id`.
     { ...options, id: bureauId, runtime: runtimeServices },
     {
+      decideToolFor: decideToolWiringFor,
       agentRunReferences: {
         reference: async (runId) => fileAgents?.snapshots.reference(runId),
         record: async (binding, runId) => fileAgents?.recordBoundRun(binding, runId),
@@ -2494,6 +2526,23 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       agents: agentsSnapshot,
       modelPolicy: options.modelPolicy,
     });
+    // COR-1709: decisions read the model catalog and write to the audit trail, which is built
+    // later in this function, so the trail is read at each call.
+    decisionsComposition = createDecisions({
+      options: options.decisions,
+      models,
+      canGenerate: options.models?.generate !== undefined,
+      notConfigured: (message, cause) => {
+        const error = new BureauError(message, 'NOT_CONFIGURED', 'generate');
+        if (cause !== undefined) error.cause = cause;
+        return error;
+      },
+      badRequest: toBadRequest,
+      audit: async (entry) => {
+        await auditTrailInstance?.record(entry);
+      },
+    });
+    decisions = decisionsComposition.decisions;
     // AB-15/AB-22: the typed agent catalog — a plain literal map, fixed for
     // the bureau's lifetime, dispatched by name through `bureau.run`.
     // Independent of `runtime` (bureau-level generate/toolbox/provider
@@ -7530,6 +7579,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       const servicesRef: { current?: DurableRunDeps } = {};
       const wantsHumanInput = humanInputEnabled(options.humanInput) && !!runtime.durable;
       const wantsWakeup = options.wakeup !== false && !!runtime.durable;
+      // COR-1709: offered to exactly the runs that are offered `requestHumanInput`.
+      const decideWiring = runtime.durable ? decideToolWiringFor(owner) : undefined;
       if (wantsHumanInput) {
         humanInputEmitter = new CompletableEventTarget<CombinedOperativeEventMap>();
       }
@@ -7541,6 +7592,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         inputSchemas: humanInputSchemasOf(options.humanInput),
         wakeup: wantsWakeup,
         runId,
+        ...(decideWiring === undefined ? {} : { decide: decideWiring }),
         ...(humanInputEmitter ? { humanInputEmitter } : {}),
       });
       const durableServicesOnServices =
@@ -18350,6 +18402,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       fileAgents,
       // COR-1577 — `requestHumanInput` for a durable `bureau.run()` run.
       humanInput: runtime.durable !== undefined ? options.humanInput : false,
+      decideToolFor: runtime.durable !== undefined ? decideToolWiringFor : undefined,
       // COR-772 — a durable `bureau.run` parent aborted through its own handle
       // is a cancelled parent like any other. Once shutdown has begun, dispose
       // — not the policy — ends every live run, and boot recovery applies the
@@ -18797,6 +18850,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     agents: agentCatalog,
     workflows: workflowRuntime?.workflows,
     models,
+    decisions,
     // The topology is keyed by plain runtime strings; `D` only narrows which
     // agent names a caller may pass.
     children: childTopology.children as BureauChildren<AgentNames<D>>,

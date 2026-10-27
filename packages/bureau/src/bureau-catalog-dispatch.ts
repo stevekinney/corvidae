@@ -41,6 +41,7 @@ import {
   wireDurableOptInTools,
 } from './runtime-composition';
 import type { RunAttribution } from './serialization';
+import type { DecideToolWiring } from './decisions/decide-tool';
 import { humanInputEnabled, humanInputSchemasOf } from './human-input-option';
 import type { BureauHumanInputOption, BureauRunOptions } from './types';
 
@@ -99,6 +100,13 @@ export interface CatalogDispatcherDependencies {
    * Bureau. Not to a child or a goal attempt, whose park nothing would be listening for.
    */
   readonly humanInput?: BureauHumanInputOption | undefined;
+  /**
+   * COR-1709 — what a run owned by `principalId` needs to be offered the `decide` tool, or
+   * `undefined` when it is not offered (`decide: false`, nothing can answer, or a non-durable
+   * Bureau). Offered to the runs that are offered `requestHumanInput`, whatever `humanInput` says.
+   */
+  readonly decideToolFor?:
+    ((principalId: string | undefined) => DecideToolWiring | undefined) | undefined;
   /**
    * COR-1524 — what a run of a file-based agent needs: its snapshot recorded before it starts,
    * and its reference settled when it ends. Absent when the Bureau has no agent directory.
@@ -267,6 +275,7 @@ export function createCatalogDispatcher({
   validateAgentRunInput,
   onDurableRunAborted,
   humanInput,
+  decideToolFor,
   registerCatalogRun,
   onCatalogRunEnded,
   fileAgents,
@@ -533,19 +542,25 @@ export function createCatalogDispatcher({
     const humanInputEmitter = offersHumanInput
       ? new CompletableEventTarget<CombinedOperativeEventMap>()
       : undefined;
+    // COR-1709: `decide` goes to the same run kinds, whatever `humanInput` says.
+    const decide =
+      runIdOverride === undefined && goalAttempt === undefined && workflowStep === undefined
+        ? decideToolFor?.(ownerOrLocal(principal))
+        : undefined;
     const composeResolvedOptions = (resolved: RunOptions): RunOptions => {
       const withRuntime: RunOptions = { runtime: runtimeServices, ...resolved };
       return {
         ...withRuntime,
-        ...(humanInputEmitter === undefined
+        ...(humanInputEmitter === undefined && decide === undefined
           ? {}
           : {
               toolbox: wireDurableOptInTools(withRuntime.toolbox, humanInputServices, {
-                humanInput: true,
+                humanInput: humanInputEmitter !== undefined,
                 inputSchemas: humanInputSchemasOf(humanInput),
                 wakeup: false,
                 runId,
-                humanInputEmitter,
+                ...(decide === undefined ? {} : { decide }),
+                ...(humanInputEmitter === undefined ? {} : { humanInputEmitter }),
               }),
             }),
         // COR-716 — the dispatching principal's asset resolver, unless the agent

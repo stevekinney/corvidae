@@ -51,7 +51,10 @@ function defaultSynthesis(results: SupervisorTaskResult[]): string {
 function describeAgents<D extends AgentDefinitions>(
   catalog: BureauAgentCatalog<D>,
 ): AgentDescriptor<D>[] {
-  return catalog.names().map((name) => ({ name }));
+  return catalog.entries().map(({ name, agent }) => {
+    const description: unknown = agent.description;
+    return typeof description === 'string' && description !== '' ? { name, description } : { name };
+  });
 }
 
 export function createSupervisor<D extends AgentDefinitions>(
