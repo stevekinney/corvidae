@@ -15,7 +15,11 @@ import { KEYS } from '../../storage/interface.ts';
 import type { FleetEventFeed } from '../fleet-event-feed.ts';
 import type { ServeOptions } from '../index.ts';
 import { claimNextSequence } from '../runtime-helpers.ts';
-import { CLIENT_VISIBLE_EVENT_TYPES, TOKEN_EVENT_TYPE } from './client-visible-events.ts';
+import {
+  CLIENT_VISIBLE_EVENT_TYPES,
+  serializeClientVisibleEventData,
+  TOKEN_EVENT_TYPE,
+} from './client-visible-events.ts';
 import type { ServerContext } from './context.ts';
 import { cancelTask } from './task-dispatch.ts';
 import { withRetry } from './websocket-worker.ts';
@@ -31,23 +35,10 @@ function workflowChannelPath(workflowId: string, connectionType: 'watch' | 'stre
  * `{ type: string; timestamp: number; data: Record<string, unknown> }`.
  */
 function serializeEvent(event: Event): string | null {
-  const data: Record<string, unknown> = {};
-
-  // Extract all public properties from the event into the nested data bag
-  for (const [key, value] of Object.entries(event)) {
-    if (key === 'type') continue;
-    // Serialize Error objects to plain strings
-    if (value instanceof Error) {
-      data[key] = value.message;
-    } else {
-      data[key] = value;
-    }
-  }
-
   const message: { type: string; timestamp: number; data: Record<string, unknown> } = {
     type: event.type,
     timestamp: Date.now(),
-    data,
+    data: serializeClientVisibleEventData(event),
   };
 
   return JSON.stringify(message);

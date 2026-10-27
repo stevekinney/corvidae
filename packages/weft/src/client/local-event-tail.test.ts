@@ -6,6 +6,7 @@ import {
   SignalReceivedEvent,
   WorkflowCompletedEvent,
 } from '../core/events.ts';
+import { WorkflowRevisionInstalledEvent } from '../core/events/catalog-events.ts';
 import type { WorkflowEvent, WorkflowState } from '../core/types.ts';
 import { sleepForTesting, withTimeout } from '../testing/fake-timers.test-support.ts';
 import { createLocalWorkflowEventTail } from './local-event-tail.ts';
@@ -107,22 +108,19 @@ describe('createLocalWorkflowEventTail', () => {
     expect(seen).toEqual(['signal:received', 'workflow:completed']);
   });
 
-  it('drops live events the server watch channel does not broadcast', async () => {
-    // Regression (COR-1605 review): the handle iterator now yields every
-    // workflow-scoped kind, but the HTTP tail only ever receives the watch
-    // channel's client-visible kinds. The local tail must deliver the same
-    // records, so a kind such as `activity:remote-queued` is filtered out.
+  it('delivers newly published workflow events but skips engine-scoped events', async () => {
     const handle = new FakeWorkflowHandle();
     const tail = createLocalWorkflowEventTail(fakeEngine(handle), 'wf-visible');
 
     await tail.whenConnected();
+    handle.dispatchEvent(new WorkflowRevisionInstalledEvent('checkout', 'r1'));
     handle.dispatchEvent(new RemoteActivityQueuedEvent('operation-1', 'wf-visible', 'remote'));
     handle.dispatchEvent(new SignalReceivedEvent('wf-visible', 'continue', 'go'));
     handle.dispatchEvent(new WorkflowCompletedEvent('wf-visible', 'done', 1));
 
     const seen = await drain(tail);
 
-    expect(seen).toEqual(['signal:received', 'workflow:completed']);
+    expect(seen).toEqual(['activity:remote-queued', 'signal:received', 'workflow:completed']);
   });
 
   it('serializes engine events into transport-neutral WorkflowEvent records', async () => {
