@@ -163,11 +163,7 @@ import {
   sessionRowHolderId,
   sessionRowHolderPrefix,
 } from './assets/row-asset-claims';
-import {
-  humanInputEnabled,
-  humanInputSchemasOf,
-  validateHumanInputOption,
-} from './human-input-option';
+import { humanInputSchemasOf, validateHumanInputOption } from './human-input-option';
 import type { AssetService } from './assets/types';
 import { createAssetClaimReconciler } from './asset-claim-reconciliation';
 import {
@@ -247,6 +243,14 @@ import { composeBureauGoals } from './goals-composition';
 import { leaseEvidenceFromLostHealth } from './liveness-projection';
 import { createDecisions, validateDecisionsOptions } from './decisions/create-decisions';
 import { createLateDecisions } from './decisions/late-decisions';
+import { createSettings, type SettingsComposition } from './settings/create-settings';
+import {
+  bootSettings,
+  enginePatchOf,
+  settingsDefaultsOf,
+  toolGrantOf,
+  validateSettingsOptions,
+} from './settings/settings-options';
 import { createModels, validateModelsOptions, type Models } from './models/create-models';
 import { createOnlineEvalSampler, type OnlineEvalSampler } from './online-evals';
 import {
@@ -310,6 +314,8 @@ import {
   TASK_STATUS_MESSAGE_LIMIT,
   type LiveTask,
   type TaskRecord,
+  type TaskRegistry,
+  type TaskToolGrant,
 } from './task-registry';
 import { createTaskResync, type TaskResync } from './task-resync';
 import {
@@ -343,6 +349,7 @@ import {
 } from './workflow-runtime';
 import { validateDefinitionSource } from './sources/validate-definition-source';
 import { collidingWorkflowToolName, createWorkflowTools } from './workflow-tools';
+import { createSettingsTools } from './settings/settings-tools';
 import { createWorkflowSnapshotStore } from './workflow-snapshot-store';
 import {
   type AgentStepRequest,
@@ -2126,6 +2133,29 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     }
   }
   const diagnose = resolveDiagnosticSink(options.onDiagnostic);
+  // COR-1710 — the settings: validated here, read in `bootSettings` below, before the engine.
+  const settingsLocked = validateSettingsOptions(options, toBadRequest);
+  const settingsDefaults = settingsDefaultsOf(options);
+  const diagnoseSettings = (message: string, cause?: unknown): void =>
+    diagnose({
+      level: 'warn',
+      scope: 'settings',
+      message,
+      ...(cause === undefined ? {} : { cause }),
+    });
+  let settingsComposition: SettingsComposition | undefined;
+  // COR-1710 — the task registry, for the grant a resumed task reads back; it is built after the
+  // runtime composition, whose recovery paths reach it only once composition has finished.
+  const taskRegistryHolder: { current?: TaskRegistry } = {};
+  /** The tools a task starting now is granted. Before the settings exist, the code options. */
+  const toolGrantNow = (): TaskToolGrant => toolGrantOf(currentSettings());
+  function currentSettings() {
+    return settingsComposition === undefined ? settingsDefaults : settingsComposition.current();
+  }
+  const settingsOf = (): SettingsComposition => {
+    if (settingsComposition === undefined) throw new Error('Settings are not composed yet.');
+    return settingsComposition;
+  };
   const ownsStore = !options.store;
   // AB-260 — resolve the injectable runtime-service seam exactly once,
   // before any subsystem is constructed. Every run, session, schedule,
@@ -2235,7 +2265,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   const goalAttemptFenceHost = createGoalAttemptFenceHost();
   // COR-1709: decisions read the model catalog, which is built after the validators and the
   // runtime, so both reach them through this holder.
-  const lateDecisions = createLateDecisions(options.decide);
+  const lateDecisions = createLateDecisions();
   // Built first: two validators registered under one name and version are a
   // startup error, and it should fail before the durable engine exists.
   const goalValidatorCatalog = createGoalValidatorCatalog(
@@ -2296,11 +2326,28 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
    * they never touched. Cleared with `runAttribution` in `deleteRun`.
    */
   const runSessionIncarnations = new Map<string, string>();
+  // COR-1710 — the stored settings, read after the asset service is ready (so nothing touches
+  // the engine's storage first, COR-716) and before the engine exists.
+  const booted = await bootSettings(
+    options,
+    settingsDefaults,
+    settingsLocked,
+    diagnoseSettings,
+  ).catch((error: unknown) =>
+    // A storage that cannot open fails here, after the asset service started, as the
+    // composition below would: stop the service and report the storage error.
+    shutdownThenRethrow(error, async () => assetServiceInstance?.shutdown()),
+  );
+  options = booted.options;
   const runtime = await createRuntimeComposition(
     // COR-1546: the resolved identifier, so the memory tenant a run writes under is `Bureau.id`.
     { ...options, id: bureauId, runtime: runtimeServices },
     {
-      decideToolFor: (owner) => lateDecisions.toolWiringFor(true, owner),
+      ownsStorage: booted.ownsStorage,
+      decideToolFor: (owner, offered) => lateDecisions.toolWiringFor(true, owner, offered),
+      toolGrantFor: async (taskId) =>
+        (await taskRegistryHolder.current?.recordToolGrant(taskId, toolGrantNow())) ??
+        toolGrantNow(),
       agentRunReferences: {
         reference: async (runId) => fileAgents?.snapshots.reference(runId),
         record: async (binding, runId) => fileAgents?.recordBoundRun(binding, runId),
@@ -2522,6 +2569,31 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         },
       }),
     );
+    // COR-1710: the settings, over the record read at boot. A live engine key is applied through
+    // `engine.reconfigure`, now for the stored values and on every later change.
+    settingsComposition = createSettings({
+      store: runtime.kv,
+      persisted: booted.persisted,
+      defaults: settingsDefaults,
+      locked: settingsLocked,
+      boot: booted.stored,
+      nowISO: runtimeServices.clock.nowISO,
+      diagnose: diagnoseSettings,
+      audit: async (entry) => {
+        await auditTrailInstance?.record(entry);
+      },
+      applyLive: (values, keys) => {
+        const engine = runtime.durable?.engine;
+        const patch = enginePatchOf(values, keys);
+        if (engine === undefined || patch === undefined) return;
+        const result = engine.reconfigure(patch);
+        if (result.outcome === 'rejected') {
+          diagnoseSettings(
+            `[bureau] The engine refused the settings ${result.keys.join(', ')}: ${result.message}`,
+          );
+        }
+      },
+    });
     // AB-15/AB-22: the typed agent catalog — a plain literal map, fixed for
     // the bureau's lifetime, dispatched by name through `bureau.run`.
     // Independent of `runtime` (bureau-level generate/toolbox/provider
@@ -2536,11 +2608,17 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     // `bureau.agents.list()` and a resumed run both see the directory as it is now.
     // COR-1529: with a workflow directory the catalog also holds the workflow tools. They read the
     // workflow runtime and the run's identity when called, which is after construction has finished.
+    // COR-1710: the settings tools are always in the catalog; an agent file that lists them gets them.
+    const settingsTools = createSettingsTools({
+      settings: () => settingsOf().settings,
+      ownerOf: (runId) => ownerOf({ kind: 'run', id: runId }),
+    });
     agentToolCatalog =
       options.workflowSource === undefined
-        ? (options.agentSource?.tools ?? {})
+        ? { ...options.agentSource?.tools, ...settingsTools }
         : {
             ...options.agentSource?.tools,
+            ...settingsTools,
             ...createWorkflowTools({
               workflows: () => workflowRuntime?.workflows,
               runIdentity: async (runId) => ({
@@ -4494,6 +4572,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         }),
     },
   });
+  taskRegistryHolder.current = tasks;
 
   /**
    * COR-1481 — the catalog-run settlement hook (`catalog-run-settlement.ts`): every `bureau.run()`
@@ -7556,10 +7635,13 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       // one's `onServices` property in the `createActiveRun` options object
       // literal, silently breaking whichever tool composed first.
       const servicesRef: { current?: DurableRunDeps } = {};
-      const wantsHumanInput = humanInputEnabled(options.humanInput) && !!runtime.durable;
-      const wantsWakeup = options.wakeup !== false && !!runtime.durable;
+      // COR-1710 — the tools this task is granted, read from the settings once and recorded on its
+      // admission record below, so its recovery offers the same ones.
+      const toolGrant = toolGrantNow();
+      const wantsHumanInput = toolGrant.humanInput !== false && !!runtime.durable;
+      const wantsWakeup = toolGrant.wakeup && !!runtime.durable;
       // COR-1709: offered to exactly the runs that are offered `requestHumanInput`.
-      const decideWiring = lateDecisions.toolWiringFor(!!runtime.durable, owner);
+      const decideWiring = lateDecisions.toolWiringFor(!!runtime.durable, owner, toolGrant.decide);
       if (wantsHumanInput) {
         humanInputEmitter = new CompletableEventTarget<CombinedOperativeEventMap>();
       }
@@ -7568,7 +7650,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       // (`runtime-composition.ts`), which used to omit it entirely.
       const runToolbox: BureauToolbox = wireDurableOptInTools(runRuntime.toolbox, servicesRef, {
         humanInput: wantsHumanInput,
-        inputSchemas: humanInputSchemasOf(options.humanInput),
+        inputSchemas: humanInputSchemasOf(toolGrant.humanInput),
         wakeup: wantsWakeup,
         runId,
         decide: decideWiring,
@@ -7707,6 +7789,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
           owner,
           // The text the run began with, whether it came as `message` or as an appended user row.
           message: request.message ?? (requestText === '' ? undefined : requestText),
+          tools: toolGrant,
         });
         // COR-1476 — inside the block below, so a gate that cannot be built
         // (its session read fails) ends the promoted run like any other start
@@ -12343,6 +12426,16 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     let tasksRemoved = 0;
 
     const pass = (async () => {
+      // COR-1710 — a settings change another process made applies from this pass on, ahead of the
+      // passes that read it.
+      try {
+        await settingsComposition?.reload();
+      } catch (error: unknown) {
+        diagnoseSettings(
+          `[bureau] Manual settings re-read failed: ${serializeUnknownError(error)}`,
+          error,
+        );
+      }
       if (hasDurableEngine) {
         try {
           await runtime.durable?.engine.runMaintenance(now);
@@ -12644,6 +12737,16 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       // from running this tick; each is diagnosed under its own message so
       // all three remain distinguishable in `onDiagnostic` output.
       const pass = (async () => {
+        // COR-1710 — a settings change another process made applies from this pass on, ahead of the
+        // passes that read it.
+        try {
+          await settingsComposition?.reload();
+        } catch (error: unknown) {
+          diagnoseSettings(
+            `[bureau] Automatic settings re-read failed: ${serializeUnknownError(error)}`,
+            error,
+          );
+        }
         try {
           await pruneStaleRunOwnership();
         } catch (error: unknown) {
@@ -18381,7 +18484,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       fileAgents,
       // COR-1577 — `requestHumanInput` for a durable `bureau.run()` run.
       humanInput: runtime.durable !== undefined ? options.humanInput : false,
-      decideToolFor: (owner) => lateDecisions.toolWiringFor(runtime.durable !== undefined, owner),
+      decideToolFor: (owner, offered) =>
+        lateDecisions.toolWiringFor(runtime.durable !== undefined, owner, offered),
+      toolGrant: toolGrantNow,
       // COR-772 — a durable `bureau.run` parent aborted through its own handle
       // is a cancelled parent like any other. Once shutdown has begun, dispose
       // — not the policy — ends every live run, and boot recovery applies the
@@ -18830,6 +18935,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     workflows: workflowRuntime?.workflows,
     models,
     decisions: lateDecisions.decisions,
+    // COR-1710: composed with the runtime, before this object exists.
+    settings: settingsOf().settings,
     // The topology is keyed by plain runtime strings; `D` only narrows which
     // agent names a caller may pass.
     children: childTopology.children as BureauChildren<AgentNames<D>>,
@@ -19083,6 +19190,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         actor: SCHEDULER_ACTOR,
         kind: 'schedule-fire',
         message: fire.message,
+        // COR-1710: the fire's grant, recorded once with it; a rebuilt fire reads it back.
+        tools: toolGrantNow(),
       });
     } catch (error) {
       diagnose({

@@ -43,6 +43,7 @@ import {
 import type { RunAttribution } from './serialization';
 import type { DecideToolWiring } from './decisions/decide-tool';
 import { humanInputEnabled, humanInputSchemasOf } from './human-input-option';
+import type { TaskToolGrant } from './task-registry';
 import type { BureauHumanInputOption, BureauRunOptions } from './types';
 
 type CatalogRunErrorCode = 'CONFLICT' | 'NOT_FOUND';
@@ -106,7 +107,14 @@ export interface CatalogDispatcherDependencies {
    * Bureau). Offered to the runs that are offered `requestHumanInput`, whatever `humanInput` says.
    */
   readonly decideToolFor?:
-    ((principalId: string | undefined) => DecideToolWiring | undefined) | undefined;
+    | ((principalId: string | undefined, offered: boolean) => DecideToolWiring | undefined)
+    | undefined;
+  /**
+   * COR-1710 — the tools a task starting now is granted, from `bureau.settings`. Read once per
+   * dispatch and recorded on the run's recovery record, so recovery offers the same tools. Without
+   * it, `humanInput` decides and `decide` is offered.
+   */
+  readonly toolGrant?: (() => TaskToolGrant) | undefined;
   /**
    * COR-1524 — what a run of a file-based agent needs: its snapshot recorded before it starts,
    * and its reference settled when it ends. Absent when the Bureau has no agent directory.
@@ -276,6 +284,7 @@ export function createCatalogDispatcher({
   onDurableRunAborted,
   humanInput,
   decideToolFor,
+  toolGrant,
   registerCatalogRun,
   onCatalogRunEnded,
   fileAgents,
@@ -533,8 +542,10 @@ export function createCatalogDispatcher({
     // COR-1577 — `requestHumanInput` on a `bureau.run()` run, wired as the session path wires it:
     // the tool parks the workflow through the run's own `ctx.services`, captured by `onServices`
     // as the engine starts it, and announces the park on the emitter the run's `ActiveRun` uses.
+    // COR-1710 — read once, offered from, and recorded on the recovery record below.
+    const grant = toolGrant?.();
     const offersHumanInput =
-      humanInputEnabled(humanInput) &&
+      (grant === undefined ? humanInputEnabled(humanInput) : grant.humanInput !== false) &&
       runIdOverride === undefined &&
       goalAttempt === undefined &&
       workflowStep === undefined;
@@ -545,7 +556,7 @@ export function createCatalogDispatcher({
     // COR-1709: `decide` goes to the same run kinds, whatever `humanInput` says.
     const decide =
       runIdOverride === undefined && goalAttempt === undefined && workflowStep === undefined
-        ? decideToolFor?.(ownerOrLocal(principal))
+        ? decideToolFor?.(ownerOrLocal(principal), grant?.decide ?? true)
         : undefined;
     const composeResolvedOptions = (resolved: RunOptions): RunOptions => {
       const withRuntime: RunOptions = { runtime: runtimeServices, ...resolved };
@@ -556,7 +567,9 @@ export function createCatalogDispatcher({
           : {
               toolbox: wireDurableOptInTools(withRuntime.toolbox, humanInputServices, {
                 humanInput: humanInputEmitter !== undefined,
-                inputSchemas: humanInputSchemasOf(humanInput),
+                inputSchemas: humanInputSchemasOf(
+                  grant === undefined ? humanInput : grant.humanInput,
+                ),
                 wakeup: false,
                 runId,
                 ...(decide === undefined ? {} : { decide }),
@@ -684,6 +697,8 @@ export function createCatalogDispatcher({
         // COR-851: the estimator this run is configured with, written with the
         // claim, so pricing the attempt later never resolves the agent again.
         ...(goalCostEstimation === undefined ? {} : { costEstimation: goalCostEstimation }),
+        // COR-1710: the grant the task started with, which its recovery offers again.
+        ...(grant === undefined ? {} : { tools: grant }),
       };
       let claimLost = false;
       try {
