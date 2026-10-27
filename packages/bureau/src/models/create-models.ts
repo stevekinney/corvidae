@@ -75,7 +75,9 @@ export interface ModelsDependencies<D extends AgentDefinitions> {
   /** Called after a `replace` commits, so agent files are validated against the new rows. */
   readonly onReplace: () => void;
   readonly agents: D;
-  readonly modelPolicy: BureauModelPolicyOptions | undefined;
+  /** The model policy, or a function that reads it each time a plan is made (COR-1710). */
+  readonly modelPolicy:
+    BureauModelPolicyOptions | (() => BureauModelPolicyOptions | undefined) | undefined;
 }
 
 /**

@@ -178,6 +178,10 @@ function definitionParameters(operation: CatalogOperation) {
   if (operation.name === 'bureau.agents.models') return { agentName: 'x' };
   // COR-1709: a complete request, so the call reaches its own check instead of failing validation.
   if (operation.name === 'bureau.decisions.decide') return { kind: 'boolean', question: 'Is it?' };
+  // COR-1710: a complete patch, so the call reaches its own check instead of failing validation.
+  if (operation.name === 'bureau.settings.update') {
+    return { patch: { 'tools.wakeup': false }, expectedRevision: 0 };
+  }
   if (operation.name.startsWith('bureau.assets.')) return ASSET_PARAMETERS;
   if (operation.name.startsWith('bureau.schedules.')) return SCHEDULE_PARAMETERS;
   if (operation.name.startsWith('bureau.goals.')) return GOAL_PARAMETERS;

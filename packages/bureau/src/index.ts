@@ -345,6 +345,26 @@ export type { DecisionRoutingOptions } from './decisions/decision-routing';
 export { decisionValidator } from './decisions/decision-validator';
 export type { DecisionValidatorOptions } from './decisions/decision-validator';
 export type { DecideRefusalReason, DecideToolResult } from './decisions/decide-tool';
+export {
+  SETTING_APPLY,
+  SETTING_KEYS,
+  settingsSchema,
+  type SettingApply,
+  type SettingKey,
+  type SettingsValues,
+} from './settings/settings-schema';
+export type {
+  BureauSettings,
+  SettingKeyState,
+  SettingsChange,
+  SettingsOptions,
+  SettingsRejectionReason,
+  SettingsSnapshot,
+  SettingsUpdateOptions,
+  SettingsUpdateResult,
+} from './settings/types';
+export { SETTINGS_TOOL_NAMES } from './settings/settings-tools';
+export type { TaskToolGrant } from './task-registry';
 export type {
   EvalScore,
   OnlineEvalJudge,

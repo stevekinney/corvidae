@@ -12,6 +12,7 @@ import { z } from 'zod';
 
 import { canonicalJson } from '../command-ledger.ts';
 import type { Models, ModelsOptions } from '../models/create-models.ts';
+import type { SettingsValues } from '../settings/settings-schema.ts';
 import type {
   BureauDecideOptions,
   BureauDecisions,
@@ -31,6 +32,14 @@ export const DECISION_MADE_AUDIT_TYPE = 'decision.made';
 /** What {@link createDecisions} composes `bureau.decisions` from. */
 export type DecisionsDependencies = {
   readonly options: DecisionsOptions | undefined;
+  /**
+   * The settings, read for every decision: the stored `decisions.*` values over the code options
+   * (COR-1710).
+   */
+  readonly settings: () => Pick<
+    SettingsValues,
+    'decisions.fallbackModel' | 'decisions.maximumPerTask'
+  >;
   /** The catalog the fallback row is chosen from and the `generate` it runs with. */
   readonly models: Pick<Models, 'catalog' | 'generate'>;
   /** The `models` option, whose `generate` the fallback needs. */
@@ -51,8 +60,8 @@ export type DecisionsDependencies = {
 /** `bureau.decisions` and what the Bureau itself needs from it. */
 export type DecisionsComposition = {
   readonly decisions: BureauDecisions;
-  /** {@link DecisionsOptions.maximumPerTask}, resolved. */
-  readonly maximumPerTask: number;
+  /** {@link DecisionsOptions.maximumPerTask}, resolved from the settings as they are now. */
+  readonly maximumPerTask: () => number;
   /**
    * Whether anything can answer a decision at all: a {@link DecisionsOptions.model} or a
    * `models.generate`. The `decide` tool is offered only to a Bureau where this holds.
@@ -162,11 +171,13 @@ export function schemaDigest(request: DecisionRequest): string | undefined {
 export function createDecisions(dependencies: DecisionsDependencies): DecisionsComposition {
   const { options } = dependencies;
   const hostModel = options?.model;
-  const fallbackModel = options?.fallbackModel ?? DEFAULT_DECISION_FALLBACK_MODEL;
-  const maximumPerTask = options?.maximumPerTask ?? DEFAULT_DECISIONS_PER_TASK;
+  const fallbackModelNow = (): string =>
+    dependencies.settings()['decisions.fallbackModel'] ?? DEFAULT_DECISION_FALLBACK_MODEL;
+  const maximumPerTask = (): number =>
+    dependencies.settings()['decisions.maximumPerTask'] ?? DEFAULT_DECISIONS_PER_TASK;
 
   function fallback(): DecisionModel {
-    const row = chooseFallbackRow(dependencies.models.catalog().descriptors, fallbackModel);
+    const row = chooseFallbackRow(dependencies.models.catalog().descriptors, fallbackModelNow());
     if (row === undefined) {
       throw dependencies.notConfigured(
         'No model can answer this decision: the model catalog has no available row with structured output and a price',

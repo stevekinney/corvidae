@@ -581,6 +581,9 @@ describe('createBureauHandler catalog', () => {
         'bureau.schedules.pause',
         'bureau.schedules.resume',
         'bureau.schedules.update',
+        'bureau.settings.get',
+        'bureau.settings.schema',
+        'bureau.settings.update',
         'bureau.tasks.cancel',
         'bureau.tasks.get',
         'bureau.tasks.inspect',
@@ -797,6 +800,8 @@ describe('the Bureau scope list', () => {
       'bureau.assets:write',
       'bureau.events:observe-all',
       'bureau.decisions:write',
+      'bureau.settings:read',
+      'bureau.settings:write',
     ]);
   });
 });

@@ -340,6 +340,12 @@ export interface ChildTopologyDependencies {
   readonly createBadRequest: (message: string) => Error;
   readonly signalContracts?: Readonly<Record<string, ChildSignalContract>> | undefined;
   readonly delegation?: BureauChildDelegationOptions | undefined;
+  /**
+   * The lifetime a grant is given when the dispatch names none, read for every dispatch. Falls
+   * back to {@link BureauChildDelegationOptions.defaultTimeToLiveMilliseconds} when it answers
+   * `undefined` or is absent.
+   */
+  readonly defaultTimeToLiveMilliseconds?: (() => number | undefined) | undefined;
 }
 
 /** Bureau's internal handle on the topology; `children` is the public surface. */
@@ -562,8 +568,12 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
   const contracts = dependencies.signalContracts ?? {};
   const delegation = dependencies.delegation;
   const policyVersion = delegation?.policyVersion ?? DEFAULT_POLICY_VERSION;
-  const defaultTimeToLive =
-    delegation?.defaultTimeToLiveMilliseconds ?? DEFAULT_TIME_TO_LIVE_MILLISECONDS;
+  // COR-1710: read for every dispatch, so a lifetime set while the Bureau runs applies to the
+  // grants issued from then on.
+  const defaultTimeToLive = (): number =>
+    dependencies.defaultTimeToLiveMilliseconds?.() ??
+    delegation?.defaultTimeToLiveMilliseconds ??
+    DEFAULT_TIME_TO_LIVE_MILLISECONDS;
 
   const tracked = new Map<string, TrackedChild>();
   const inFlight = new Set<Promise<unknown>>();
@@ -900,7 +910,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
         };
       }
     }
-    const timeToLive = authority?.timeToLiveMilliseconds ?? defaultTimeToLive;
+    const timeToLive = authority?.timeToLiveMilliseconds ?? defaultTimeToLive();
     const input = request.input;
     const unsigned: UnsignedDelegationGrant = {
       version: DELEGATION_GRANT_VERSION,

@@ -20,6 +20,7 @@ Declare `"@lostgradient/bureau": "workspace:*"` in the consuming workspace's dep
   - [The Bureau's own operations](#the-bureaus-own-operations)
   - [Tasks (`bureau.tasks`)](#tasks-bureautasks)
   - [Decisions (`bureau.decisions`)](#decisions-bureaudecisions)
+  - [Settings (`bureau.settings`)](#settings-bureausettings)
   - [`streamEventToFrame`](#streameventtoframe)
   - [The Audit Trail](#the-audit-trail)
   - [Run-creation receipts (COR-424)](#run-creation-receipts-cor-424)
@@ -194,6 +195,7 @@ Every field is optional. `createBureau({})` resolves a Bureau with no agents.
 | `workflowSource` | `WorkflowSource` | COR-1702—where workflow definitions are loaded from, watched in, and written back to. Pass `workflowFileDirectory(path)` from `@lostgradient/bureau/sources` for a directory of JSON workflow files (COR-1527). Needs a durable engine. See [`documentation/workflow-files.md`](documentation/workflow-files.md). |
 | `models` | `{ catalog?: readonly BackendDescriptor[]; generate?: (row: BackendDescriptor) => GenerateFunction }` | The model rows the deployment offers and how a row becomes a `generate`, exposed as `bureau.models`. `catalog` defaults to `@lostgradient/operative`'s static `createModelCatalog()` rows; rows a host supplies are stamped `source: 'operator-override'`. `generate` is required with `agentSource`: it turns the catalog row an agent file's `model` resolved to into the `generate` the file runs with, because the host holds the credentials. See [`create-models.ts`](./src/models/create-models.ts). |
 | `decisions` | `{ model?: DecisionModel; fallbackModel?: string; maximumPerTask?: number }` | Who answers `bureau.decisions.decide` and the `decide` tool: `model` for the kinds it serves, a catalog row (`fallbackModel`, default `anthropic/claude-haiku-5-5`) for the rest, and `maximumPerTask` (default 20) as the per-task cap on the tool. See [Decisions](#decisions-bureaudecisions). |
+| `settings` | `{ locked?: readonly SettingKey[] }` | COR-1710—names the settings the store may not override: `bureau.settings.update` refuses them with `locked`, and a stored value for them is ignored. See [Settings](#settings-bureausettings). |
 | `decide` | `false` | Leaves the `decide` tool out of every task's toolbox. It is offered by default to the run kinds that are offered `requestHumanInput`, when a decision model or `models.generate` can answer it. Passing `true` throws `BAD_REQUEST`. |
 | `modelPolicy` | `{ deployment?; bureau?; users?: Record<string, UserModelConfiguration>; policyRevision: number }` | AB-64/AB-250—deployment/Bureau model-policy invariants and the per-principal user configuration `bureau.models.plan`/a run's `SelectionGate` compose against, held in memory for the bureau's lifetime. Named policy profiles are keys of `users` and of each configuration's own `fallbackOrder`; there is no storage schema. `StartTaskOptions` gains no field for any of this. See [`model-policy.ts`](./src/model-policy.ts). |
 
@@ -529,6 +531,46 @@ const supervisor = createSupervisor({
 });
 console.log(supervisor !== undefined);
 ```
+
+### Settings (`bureau.settings`)
+
+`bureau.settings` is the part of a deployment's configuration you can change while it runs, by a person through a control-plane caller or by an agent through a tool. The code options you pass to `createBureau` are the defaults; a stored value overrides them, and `settings: { locked: [...] }` names the keys the store may not override. Each key is a dotted name and takes the value its code option takes, except that every duration is a number of milliseconds.
+
+A key is one of two kinds. A _live_ key takes effect at its next point of use: the next task start (`tools.*`), plan or step (`modelPolicy`), decision (`decisions.*`), maintenance pass (`retention.*`), admission (`sessionInput.principalBacklogLimit`), session (`sessionInput.sessionBacklogLimit`, which a running session keeps until it ends), dispatch (`children.delegation.defaultTimeToLiveMilliseconds`), or `engine.reconfigure` (the `engine.*` keys Weft reads at its point of use). A _restart_ key (`durable`, `maintenance`, `durableOwnership.ownership`, `workflowVersion`, and the engine's construction options) is stored and reported `pendingRestart` until a new `createBureau` over the same store reads it at boot. `flowControl`, `webhooks`, `storage`, and anything that is a function are not settings.
+
+```ts
+import { createBureau } from '@lostgradient/bureau';
+
+const bureau = await createBureau({
+  storage: { type: 'memory' },
+  settings: { locked: ['tools.humanInput'] },
+});
+
+const { values, revision, keys } = await bureau.settings.get();
+console.log(values['tools.wakeup'], keys['tools.wakeup'].apply, keys['tools.humanInput'].locked);
+
+const result = await bureau.settings.update(
+  { 'retention.tasks': { olderThan: 7 * 86_400_000 }, maintenance: 'manual' },
+  { expectedRevision: revision },
+);
+if (result.outcome === 'applied') {
+  console.log(result.revision, result.pendingRestart);
+} else {
+  console.log(result.reason, result.keys, result.currentRevision);
+}
+
+const stop = bureau.settings.subscribe((change) => console.log(change.revision, change.keys));
+console.log(Object.keys(bureau.settings.schema()));
+stop();
+```
+
+`update` never throws for a patch it refuses. It returns `{ outcome: 'applied', revision, pendingRestart }` or `{ outcome: 'rejected', reason, keys, message, currentRevision }`, where `reason` is `stale-revision` (the record changed since `expectedRevision`; nothing is written), `locked`, `unknown-key`, or `invalid-value`. A patch applies all or none. `get()` reports `persisted: false` for a Bureau without persistent storage, where the record lives in memory and a live update still applies.
+
+The record is stored under the key `settings` in Bureau's key-value store as `{ schemaVersion: 1, revision, values, updatedAt }`. Every value is checked by the schema and by the validator its consumer runs: Bureau's own option validators, and Weft's engine option resolution, including the workflow-claim timing under the ownership mode in force. `update` refuses a patch that fails either as `invalid-value`, before anything is written. A stored key the schema no longer has, or whose value either check refuses, is dropped from what this process applies with a `scope: 'settings'` diagnostic, and the code default applies; a check across keys drops only the stored keys it involves, so a bad value never stops a Bureau from booting or takes an unrelated setting with it. The dropped keys stay in the record, and an `update` writes them back as they were, because another build sharing the store may read them. Several processes on one store converge on the next maintenance pass, which re-reads the record: Weft's maintenance interval in `automatic` mode, your `maintain()` call in `manual` mode. A process's own `update` applies at once.
+
+A task's tools are read from `tools.humanInput`, `tools.wakeup`, and `tools.decide` once, when it starts, and recorded on its admission record as `tools: { humanInput, wakeup, decide }`. A task parked on `requestHumanInput` keeps the tool when the operator answers, and a task resumed after recovery rebuilds its toolbox from the recorded grant, not from the settings of the moment. A task recorded before the field existed resumes with the settings at resume, once.
+
+The control-plane operations are `bureau.settings.get`, `bureau.settings.schema`, `bureau.settings.update` (scope `bureau.settings:write`), and `bureau.settings.events`, a WebSocket subscription (scope `bureau.settings:read`, like `get` and `schema`). Every applied change records a `settings.changed` audit entry naming the keys and the new revision, never the values. The reserved tools `settings-get` and `settings-update` are in the tool catalog whenever the Bureau exists, and an agent file that lists them has them; they act as the task's principal. Because `settings-update` and the `bureau.settings:write` scope change deployment-wide behavior, grant them as you would any other operator authority.
 
 ### `streamEventToFrame`
 

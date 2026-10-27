@@ -191,7 +191,7 @@ function resultOfFailure(error: unknown, id: string): WorkflowToolResult {
 }
 
 /** The identifier of the run that made `context`'s call, when it carries one. */
-function runIdOf(context: ToolContext | undefined): string | undefined {
+export function runIdOf(context: ToolContext | undefined): string | undefined {
   const fromExecution = context?.executionContext?.['parentRunId'];
   if (typeof fromExecution === 'string' && fromExecution !== '') return fromExecution;
   return typeof context?.runId === 'string' && context.runId !== '' ? context.runId : undefined;
