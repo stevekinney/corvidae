@@ -228,9 +228,15 @@ export async function fromMcpEndpointTools(options: FromMcpEndpointToolsOptions)
     if (!context?.elicit || requested?.method !== 'elicitation/create') {
       throw new MCPInputRequiredUnsupportedError(toolName);
     }
-    const result = await context.elicit(
-      toToolElicitationRequest(requested.params as Parameters<typeof toToolElicitationRequest>[0]),
-    );
+    // Raced against the call's signal so an abort cancels the MCP task instead of waiting for a user.
+    const result = await Promise.race([
+      context.elicit(
+        toToolElicitationRequest(
+          requested.params as Parameters<typeof toToolElicitationRequest>[0],
+        ),
+      ),
+      abortion(signal),
+    ]);
     await send(
       'tasks/update',
       { taskId, inputResponses: { [MCP_ELICITATION_INPUT_KEY]: toElicitResult(result) } },

@@ -231,6 +231,33 @@ describe('fromMcpEndpointTools', () => {
     expect(JSON.stringify(result)).toContain('ok');
   });
 
+  it('cancels the MCP task when the call is aborted while waiting for an elicitation answer', async () => {
+    const harness = await fixture(patient);
+    const controller = new AbortController();
+    const outcome = toolNamed(harness, 'asks')
+      .execute({}, {
+        signal: controller.signal,
+        // Never answers: the user has walked away.
+        elicit: () => new Promise(() => undefined),
+      } as never)
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    for (let attempt = 0; attempt < 200 && !harness.requests.includes('tasks/get'); attempt += 1) {
+      await Bun.sleep(1);
+    }
+    await Bun.sleep(30);
+
+    controller.abort(new Error('caller gave up'));
+    const failure = await outcome;
+    await harness.mcp.executionLifecycle.whenIdle();
+
+    expect(failure).toBeInstanceOf(Error);
+    expect(harness.requests).toContain('tasks/cancel');
+    expect(harness.seen.aborted).toBe(false);
+  });
+
   it('rejects, naming the status or code, for a remote cancelled, failed, or -32602 MCP task', async () => {
     const rejection = async (harness: Fixture, act: (taskId: string) => Promise<unknown>) => {
       const started = toolNamed(harness, 'slow')
