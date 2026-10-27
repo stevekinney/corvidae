@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { EventType } from '@ag-ui/core';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 import type { RunEventRecord, ServerFrame } from '../types.ts';
 import { createAgUiLiveFeedRegistry, type AgUiLiveUpdate } from './ag-ui-live-feed.ts';
@@ -17,10 +18,14 @@ function fixture(
   recorded: () => RunEventRecord[] = () => [record(1, 'step.started', { step: 0 })],
 ) {
   const listeners = new Set<(frame: ServerFrame) => void>();
-  const registry = createAgUiLiveFeedRegistry((listener) => {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
-  }, retain);
+  const registry = createAgUiLiveFeedRegistry(
+    (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    retain,
+    async () => new Set(['run-1:step:0']),
+  );
   const feed = registry.forRun('run-1', context, recorded);
   const emit = (value: ServerFrame): void => {
     for (const listener of listeners) listener(value);
@@ -38,7 +43,7 @@ function fixture(
 }
 
 describe('shared AG-UI projection producer', () => {
-  test('allocates a distinct cursor per output and replays after a cut inside one source transition', () => {
+  test('allocates a distinct cursor per output and replays after a cut inside one source transition', async () => {
     const { feed, event, registry, listeners } = fixture();
     const updates: AgUiLiveUpdate[] = [];
     const first = feed.subscribe((update) => updates.push(update), undefined);
@@ -59,6 +64,7 @@ describe('shared AG-UI projection producer', () => {
     expect(second.opening).toEqual(output.slice(1));
     second.unsubscribe();
     event(3, 'run.completed', {});
+    await waitUntil(() => listeners.size === 0);
     expect(listeners.size).toBe(0);
     registry.dispose();
   });
@@ -131,10 +137,14 @@ describe('shared AG-UI projection producer', () => {
 
   test('subscribes before the history read and deduplicates by source sequence', () => {
     const listeners = new Set<(frame: ServerFrame) => void>();
-    const registry = createAgUiLiveFeedRegistry((listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    }, 8);
+    const registry = createAgUiLiveFeedRegistry(
+      (listener) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      8,
+      async () => new Set(['run-1:step:0']),
+    );
     const feed = registry.forRun('run-1', context, () => {
       for (const listener of listeners)
         listener({ type: 'event', ...record(1, 'step.started', { step: 0 }), runSeq: 1 });
@@ -182,7 +192,7 @@ test('an attachment created during notification receives only tail beyond its at
   registry.dispose();
 });
 
-test('a pending history read reserves the producer through native settlement', () => {
+test('a pending history read reserves the producer through native settlement', async () => {
   const { feed, event, listeners, registry } = fixture();
   const release = feed.reserve();
   event(2, 'generate.completed', { step: 0, response: { content: 'hello' } });
@@ -195,16 +205,21 @@ test('a pending history read reserves the producer through native settlement', (
     attached.opening.filter((entry) => entry.event.type === EventType.TEXT_MESSAGE_CONTENT),
   ).toHaveLength(1);
   attached.unsubscribe();
+  await waitUntil(() => listeners.size === 0);
   expect(listeners.size).toBe(0);
   registry.dispose();
 });
 
-test('a terminal frame buffered during bootstrap remains available to the first attachment', () => {
+test('a terminal frame buffered during bootstrap remains available to the first attachment', async () => {
   const listeners = new Set<(frame: ServerFrame) => void>();
-  const registry = createAgUiLiveFeedRegistry((listener) => {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
-  }, 8);
+  const registry = createAgUiLiveFeedRegistry(
+    (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    8,
+    async () => new Set(['run-1:step:0']),
+  );
   const feed = registry.forRun('run-1', context, () => {
     for (const listener of listeners)
       listener({ type: 'event', ...record(2, 'run.completed', {}), runSeq: 2 });
@@ -218,6 +233,82 @@ test('a terminal frame buffered during bootstrap remains available to the first 
     EventType.STEP_FINISHED,
   ]);
   attached.unsubscribe();
+  await waitUntil(() => listeners.size === 0);
   expect(listeners.size).toBe(0);
   registry.dispose();
+});
+
+for (const terminal of ['run.completed', 'run.aborted']) {
+  test(`${terminal} retains its final checkpoint until the stored rows cover it`, async () => {
+    const committed = Promise.withResolvers<ReadonlySet<string>>();
+    let source: ((frame: ServerFrame) => void) | undefined;
+    const registry = createAgUiLiveFeedRegistry(
+      (listener) => {
+        source = listener;
+        return () => {
+          source = undefined;
+        };
+      },
+      1,
+      () => committed.promise,
+    );
+    const feed = registry.forRun('run-1', context, () => [record(1, 'step.started', { step: 0 })]);
+    source!({
+      type: 'stream:text-delta',
+      runId: 'run-1',
+      content: 'Hello',
+      accumulated: 'Hello',
+      runSeq: 2,
+    });
+    source!({ type: 'event', ...record(3, terminal, {}), runSeq: 3 });
+    expect(source).toBeDefined();
+    const before = feed.subscribe(() => undefined, 'malformed');
+    expect(
+      before.opening.flatMap(({ event }) =>
+        event.type === EventType.TEXT_MESSAGE_CONTENT ? [event.delta] : [],
+      ),
+    ).toEqual(['Hello']);
+    before.unsubscribe();
+    expect(source).toBeDefined();
+    committed.resolve(new Set(['run-1:step:0']));
+    await waitUntil(() => source === undefined);
+    expect(source).toBeUndefined();
+    registry.dispose();
+  });
+}
+
+test('an abandoned terminal persistence barrier leaves the checkpoint recoverable until removal', async () => {
+  const committed = Promise.withResolvers<ReadonlySet<string>>();
+  let source: ((frame: ServerFrame) => void) | undefined;
+  const registry = createAgUiLiveFeedRegistry(
+    (listener) => {
+      source = listener;
+      return () => {
+        source = undefined;
+      };
+    },
+    1,
+    () => committed.promise,
+  );
+  const feed = registry.forRun('run-1', context, () => [record(1, 'step.started', { step: 0 })]);
+  source!({
+    type: 'stream:text-delta',
+    runId: 'run-1',
+    content: 'Hello',
+    accumulated: 'Hello',
+    runSeq: 2,
+  });
+  source!({ type: 'event', ...record(3, 'run.aborted', {}), runSeq: 3 });
+  committed.reject(new Error('ownership abandoned'));
+  await committed.promise.catch(() => undefined);
+  const recovered = feed.subscribe(() => undefined, 'malformed');
+  expect(
+    recovered.opening.flatMap(({ event }) =>
+      event.type === EventType.TEXT_MESSAGE_CONTENT ? [event.delta] : [],
+    ),
+  ).toEqual(['Hello']);
+  recovered.unsubscribe();
+  expect(source).toBeDefined();
+  registry.remove('run-1');
+  expect(source).toBeUndefined();
 });

@@ -617,7 +617,6 @@ export function openRunStream(
       );
     }
     dispose();
-    liveFeed?.settled();
     sink.finish(last, label.cursor);
   };
 

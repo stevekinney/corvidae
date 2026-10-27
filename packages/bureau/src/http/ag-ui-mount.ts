@@ -210,6 +210,12 @@ export function createAgUiMount(
   const liveFeeds = createAgUiLiveFeedRegistry(
     (listener) => bureau.frames(listener),
     options.liveBufferSize ?? DEFAULT_AG_UI_LIVE_BUFFER_SIZE,
+    async (runId, sessionId) => {
+      if (sessionId === undefined) return undefined;
+      await bureau.internals.whenTaskRecorded(runId);
+      const session = await bureau.contexts.get(sessionId);
+      return session === undefined ? undefined : new Set(session.conversationHistory.ids);
+    },
   );
   const removed = (event: { runId: string }): void => liveFeeds.remove(event.runId);
   bureau.addEventListener('run.removed', removed);

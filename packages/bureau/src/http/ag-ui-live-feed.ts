@@ -1,4 +1,4 @@
-import type { Event } from '@ag-ui/core';
+import { type Event, EventType } from '@ag-ui/core';
 
 import type { RunEventRecord, ServerFrame } from '../types.ts';
 import { RunProjector, type NativeTerminal, type Projection } from './ag-ui-projection.ts';
@@ -34,7 +34,6 @@ export type AgUiLiveFeed = {
     beginning?: boolean,
   ) => AgUiLiveSubscription;
   readonly closeOpen: () => Event[];
-  readonly settled: () => void;
   readonly reserve: () => () => void;
   readonly dispose: () => void;
 };
@@ -61,6 +60,7 @@ function createFeed(
   context: EventStamp,
   recorded: () => ReadonlyArray<RunEventRecord>,
   onDispose: () => void,
+  committedRows: () => Promise<ReadonlySet<string> | undefined>,
 ): AgUiLiveFeed {
   const prefix = `agui-live-v1.${encode(nativeRunId)}.${encode(epoch)}.`;
   const projector = new RunProjector(nativeRunId, context);
@@ -72,7 +72,8 @@ function createFeed(
   const buffered: ServerFrame[] = [];
   let terminal: NativeTerminal | undefined;
   let disposed = false;
-  let terminalObserved = false;
+  let settlementStarted = false;
+  let terminalRecorded = false;
   let reservations = 0;
   const emit = (update: AgUiLiveUpdate): void => {
     // A listener may synchronously attach another reader. That reader's cut
@@ -101,7 +102,7 @@ function createFeed(
     for (const envelope of envelopes) emit({ envelope });
     if (terminal !== undefined) {
       emit({ terminal });
-      if (!bootstrapping) releaseTerminal();
+      if (!bootstrapping) startSettlement();
     } else if (projection.parked) emit({ parked: true });
   };
   const process = (frame: ServerFrame): void => {
@@ -119,16 +120,6 @@ function createFeed(
     if (bootstrapping) buffered.push(frame);
     else process(frame);
   });
-  // Reading the local detail and projecting it are synchronous. Source callbacks
-  // caused by that read are held until its history has established the fence.
-  for (const event of recorded()) {
-    if (event.sequence <= highestRecorded) continue;
-    highestRecorded = event.sequence;
-    project(projector.handleRecorded(event.event, event.detail));
-  }
-  for (const frame of buffered) process(frame);
-  buffered.length = 0;
-  bootstrapping = false;
 
   const dispose = (): void => {
     if (disposed) return;
@@ -140,9 +131,43 @@ function createFeed(
     onDispose();
   };
   const releaseTerminal = (): void => {
-    if ((terminal !== undefined || terminalObserved) && listeners.size === 0 && reservations === 0)
-      dispose();
+    if (terminalRecorded && listeners.size === 0 && reservations === 0) dispose();
   };
+  const startSettlement = (): void => {
+    if (settlementStarted) return;
+    settlementStarted = true;
+    // Native terminal notifications precede the asynchronous session save. Keep
+    // recovery state until the actual save barrier and authoritative rows agree.
+    void committedRows().then(
+      (held) => {
+        if (disposed || held === undefined) return;
+        terminalRecorded = projector
+          .snapshot(held)
+          .every(
+            (event) =>
+              event.type === EventType.STEP_STARTED || event.type === EventType.STEP_FINISHED,
+          );
+        releaseTerminal();
+        return undefined;
+      },
+      () => {
+        // Abandoned ownership or a failed read cannot acknowledge persistence.
+        // The checkpoint remains recoverable until removal or mount disposal.
+      },
+    );
+  };
+  // Reading the local detail and projecting it are synchronous. Source callbacks
+  // caused by that read are held until its history has established the fence.
+  for (const event of recorded()) {
+    if (event.sequence <= highestRecorded) continue;
+    highestRecorded = event.sequence;
+    project(projector.handleRecorded(event.event, event.detail));
+  }
+  for (const frame of buffered) process(frame);
+  buffered.length = 0;
+  bootstrapping = false;
+
+  if (terminal !== undefined) startSettlement();
   return {
     subscribe(listener, resumeCursor, held = new Set(), beginning = false) {
       const cut = sequence;
@@ -194,10 +219,6 @@ function createFeed(
       };
     },
     closeOpen: () => projector.closeOpen(true),
-    settled() {
-      terminalObserved = true;
-      releaseTerminal();
-    },
     dispose,
   };
 }
@@ -206,6 +227,10 @@ function createFeed(
 export function createAgUiLiveFeedRegistry(
   frames: (listener: (frame: ServerFrame) => void) => () => void,
   retain: number,
+  committedRows: (
+    nativeRunId: string,
+    sessionId: string | undefined,
+  ) => Promise<ReadonlySet<string> | undefined>,
 ): AgUiLiveFeedRegistry {
   const epoch = crypto.randomUUID();
   const feeds = new Map<string, AgUiLiveFeed>();
@@ -213,8 +238,17 @@ export function createAgUiLiveFeedRegistry(
     forRun(nativeRunId, context, recorded) {
       const existing = feeds.get(nativeRunId);
       if (existing !== undefined) return existing;
-      const feed = createFeed(nativeRunId, epoch, retain, frames, context, recorded, () =>
-        feeds.delete(nativeRunId),
+      const feed = createFeed(
+        nativeRunId,
+        epoch,
+        retain,
+        frames,
+        context,
+        recorded,
+        () => {
+          feeds.delete(nativeRunId);
+        },
+        () => committedRows(nativeRunId, context.sessionId),
       );
       feeds.set(nativeRunId, feed);
       return feed;

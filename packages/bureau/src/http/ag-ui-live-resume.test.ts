@@ -2,11 +2,13 @@ import { expect, test } from 'bun:test';
 import { EventType } from '@ag-ui/core';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import type { ServerFrame } from '../types.ts';
+import { savesSessionAs } from '../test/session-input-fixtures.ts';
 import {
   attachRunRequest,
   openHarness,
   runAgentInput,
   startRequest,
+  type HarnessOptions,
 } from './ag-ui-fixtures.test-support.ts';
 import { bureauMetadata, FrameReader } from './ag-ui-stream.test-support.ts';
 
@@ -20,8 +22,14 @@ function attach(runId: string, cursor?: string): Request {
   return request;
 }
 
-async function setup(size = 32) {
-  const harness = await openHarness({ script, agUi: { liveBufferSize: size }, storage: 'sqlite' });
+async function setup(size = 32, onDiagnostic?: HarnessOptions['onDiagnostic']) {
+  const harness = await openHarness({
+    script,
+    agUi: { liveBufferSize: size },
+    storage: 'sqlite',
+    seamStorage: true,
+    ...(onDiagnostic === undefined ? {} : { onDiagnostic }),
+  });
   const listeners = new Set<(frame: ServerFrame) => void>();
   const original = harness.bureau.frames.bind(harness.bureau);
   harness.bureau.frames = (listener) => {
@@ -164,6 +172,133 @@ test('evicted, malformed, foreign, and future cursors restore the accumulated st
     }
     expect(h.listeners.size).toBe(1);
   } finally {
+    await h.dispose();
+  }
+});
+
+for (const outcome of ['completed', 'aborted'] as const) {
+  test(`an invalid cursor retains terminal ${outcome} output while the real session write is held`, async () => {
+    const h = await setup(2);
+    const held = h.seam!.holdWrite(savesSessionAs(outcome));
+    const opening = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
+    try {
+      h.delta('Hello', 'Hello');
+      await h.starter.until(EventType.TEXT_MESSAGE_CONTENT);
+      await h.starter.cancel();
+      const events = h.bureau.tasks.events.bind(h.bureau.tasks);
+      const reads = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
+      let calls = 0;
+      h.bureau.tasks.events = async (...arguments_) => {
+        const index = calls++;
+        if (index < opening.length) {
+          reads[index]!.resolve();
+          await opening[index]!.promise;
+        }
+        return events(...arguments_);
+      };
+      const before = new FrameReader(await h.handler(attach(h.runId, 'agui-live-v1.foreign')));
+      await reads[0]!.promise;
+      const after = new FrameReader(await h.handler(attach(h.runId, 'agui-live-v1.foreign')));
+      await reads[1]!.promise;
+      if (outcome === 'completed') h.generate.release('hold');
+      else void h.bureau.tasks.cancel(h.runId);
+      await held.reached;
+      const rejected = new FrameReader(await h.handler(attach(h.runId, 'malformed')));
+      await rejected.rest();
+      expect(rejected.received.map(({ event }) => event)).toMatchObject([
+        { type: EventType.RUN_ERROR, code: 'RUN_NOT_FOUND' },
+      ]);
+      opening[0]!.resolve();
+      await before.rest();
+      const contents = before.received.flatMap(({ event }) =>
+        event.type === EventType.TEXT_MESSAGE_CONTENT
+          ? [event.delta]
+          : event.type === EventType.MESSAGES_SNAPSHOT
+            ? event.messages.flatMap((row) =>
+                row.role === 'assistant' && typeof row.content === 'string' ? [row.content] : [],
+              )
+            : [],
+      );
+      expect(contents.join('')).toBe(outcome === 'completed' ? 'Hello world' : 'Hello');
+      expect(before.received.at(-1)?.event).toMatchObject({
+        type: EventType.RUN_FINISHED,
+        outcome: { type: outcome === 'completed' ? 'success' : 'cancelled' },
+      });
+      held.release();
+      await h.bureau.internals.whenTaskRecorded(h.runId);
+      opening[1]!.resolve();
+      await after.rest();
+      const rows = after.received.flatMap(({ event }) =>
+        event.type === EventType.MESSAGES_SNAPSHOT ? event.messages : [],
+      );
+      if (outcome === 'completed') {
+        expect(rows.filter((row) => row.content === 'Hello world')).toHaveLength(1);
+        expect(
+          after.received.filter(({ event }) => event.type === EventType.TEXT_MESSAGE_CONTENT),
+        ).toHaveLength(0);
+      }
+      if (outcome === 'aborted') {
+        expect(
+          after.received.flatMap(({ event }) =>
+            event.type === EventType.TEXT_MESSAGE_CONTENT ? [event.delta] : [],
+          ),
+        ).toEqual(['Hello']);
+      }
+      expect(after.received.at(-1)?.event).toMatchObject({
+        type: EventType.RUN_FINISHED,
+        outcome: { type: outcome === 'completed' ? 'success' : 'cancelled' },
+      });
+    } finally {
+      held.release();
+      for (const gate of opening) gate.resolve();
+      await h.dispose();
+    }
+  });
+}
+
+test('a failed terminal session save cannot discard recovery state or block the waiting reader', async () => {
+  const diagnostics: string[] = [];
+  const h = await setup(2, (diagnostic) => diagnostics.push(diagnostic.message));
+  const failure = h.seam!.failWrites(savesSessionAs('aborted'), new Error('held storage failure'));
+  const opening = Promise.withResolvers<void>();
+  try {
+    h.delta('Hello', 'Hello');
+    await h.starter.until(EventType.TEXT_MESSAGE_CONTENT);
+    await h.starter.cancel();
+    const entered = Promise.withResolvers<void>();
+    const events = h.bureau.tasks.events.bind(h.bureau.tasks);
+    let first = true;
+    h.bureau.tasks.events = async (...arguments_) => {
+      if (first) {
+        first = false;
+        entered.resolve();
+        await opening.promise;
+      }
+      return events(...arguments_);
+    };
+    const reader = new FrameReader(await h.handler(attach(h.runId, 'malformed')));
+    await entered.promise;
+    void h.bureau.tasks.cancel(h.runId);
+    await h.bureau.internals.whenTaskRecorded(h.runId);
+    expect(failure.attempts()).toBe(3);
+    expect(
+      diagnostics.some((message) => message.includes('Failed to persist aborted session state')),
+    ).toBe(true);
+    opening.resolve();
+    await reader.rest();
+    expect(
+      reader.received.flatMap(({ event }) =>
+        event.type === EventType.TEXT_MESSAGE_CONTENT ? [event.delta] : [],
+      ),
+    ).toEqual(['Hello']);
+    expect(reader.received.at(-1)?.event).toMatchObject({
+      type: EventType.RUN_FINISHED,
+      outcome: { type: 'cancelled' },
+    });
+    expect(h.listeners.size).toBe(1);
+  } finally {
+    failure.stop();
+    opening.resolve();
     await h.dispose();
   }
 });

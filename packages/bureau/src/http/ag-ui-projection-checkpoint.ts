@@ -1,15 +1,11 @@
 import { type Event, EventType } from '@ag-ui/core';
 
-/** The open step's semantic state, independent of the bounded resume log. */
+/** The latest step's semantic state, retained through its terminal persistence gap. */
 export class ProjectionCheckpoint {
   private events: Event[] = [];
 
   record(event: Event): void {
     if (event.type === EventType.STEP_STARTED) this.events = [];
-    if (event.type === EventType.STEP_FINISHED) {
-      this.events = [];
-      return;
-    }
     if (event.type === EventType.TEXT_MESSAGE_CONTENT) {
       const index = this.events.findIndex(
         (entry) =>
@@ -35,7 +31,7 @@ export class ProjectionCheckpoint {
           : [],
       ),
     );
-    return this.events.filter((event) => {
+    const events = this.events.filter((event) => {
       if ('messageId' in event && typeof event.messageId === 'string' && held.has(event.messageId))
         return false;
       if (
@@ -57,5 +53,15 @@ export class ProjectionCheckpoint {
       }
       return true;
     });
+    // A fully snapshotted closed step has no recovery payload left. Replaying
+    // only its boundaries would reopen a step the authoritative thread finished.
+    if (
+      events.some((event) => event.type === EventType.STEP_FINISHED) &&
+      events.every(
+        (event) => event.type === EventType.STEP_STARTED || event.type === EventType.STEP_FINISHED,
+      )
+    )
+      return [];
+    return events;
   }
 }

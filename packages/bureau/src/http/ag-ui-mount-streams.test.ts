@@ -447,7 +447,7 @@ describe('the answer an onMaximumSteps handler leaves, for a client that attache
 });
 
 describe('cleanup', () => {
-  it('retains only the active producer after disconnect, then releases it on native settlement', async () => {
+  it('retains the producer after disconnect until terminal transcript persistence', async () => {
     const runtime = createManualRuntimeServices();
     await withHarness(
       { script: [say('Hello.')], agUi: { runtime } },
@@ -472,6 +472,8 @@ describe('cleanup', () => {
         const nativeRunId = String(bureauMetadata(opening!.event)['runId']);
         await abandoned.cancel();
         await bureau.tasks.wait(nativeRunId);
+        await bureau.internals.whenTaskRecorded(nativeRunId);
+        await waitForCondition(() => listening === 0, 'persisted producers were not released');
 
         expect(listening).toBe(0);
         expect(runtime.pendingTimers()).toHaveLength(0);
