@@ -182,7 +182,10 @@ export type DeadlineRule =
   | 'timer-rejection'
   | 'timer-race'
   | 'quiet-window'
-  | 'single-turn-settle';
+  | 'single-turn-settle'
+  | 'real-timer-double'
+  | 'fixed-count-yield-loop'
+  | 'direct-bun-spawn';
 export type DeadlineViolation = {
   rule: DeadlineRule;
   line: number;
@@ -760,6 +763,8 @@ export function findDeadlineViolations(
     ...findTimerRaces(sourceFile, constants),
     ...findPositiveQuietWindows(sourceFile),
     ...withoutLinesAlreadyReported(findSingleTurnSettles(sourceFile, constants), violations),
+    ...findRealTimerDoubles(sourceFile, constants),
+    ...findDirectBunSpawns(sourceFile),
   ];
 }
 
@@ -906,6 +911,151 @@ function findSingleTurnSettles(
       }
     }
     report(node);
+  });
+  return violations;
+}
+
+/**
+ * `real-timer-double`: a timer stand-in that runs the callback it is given on a REAL zero-delay
+ * timer: `setTimeout: (callback, ms) => { requested.push(ms); return setTimeout(callback, 0); }`.
+ * Such a double makes time pass "at once", but at the next macrotask, so a test that waits for the
+ * double to be ASKED for a timer (`requested.length >= 3`) and then acts races the callback: on a
+ * loaded host the action lands first and the follower sees a different order (the fire-review
+ * follower flake: a subscription "stayed up for the cap" before the cap's callback had run). The
+ * test must wait on the callback having RUN (a count of fired timers, an empty set of pending
+ * handles) and says so in `// load-proof: <reason>` above the double. A double that forwards to an
+ * injected manual runtime is virtual and is not read.
+ */
+function findRealTimerDoubles(
+  sourceFile: ts.SourceFile,
+  constants: ReadonlyMap<string, ts.Expression>,
+): DeadlineViolation[] {
+  const violations: DeadlineViolation[] = [];
+  walk(sourceFile, (node) => {
+    if (!(
+      ts.isArrowFunction(node) ||
+      ts.isFunctionExpression(node) ||
+      ts.isMethodDeclaration(node)
+    ))
+      return;
+    if (ts.isNewExpression(node.parent) || node.body === undefined) return;
+    const callback = node.parameters[0]?.name;
+    if (callback === undefined || !ts.isIdentifier(callback) || node.parameters.length < 2) return;
+    let found: ts.CallExpression | undefined;
+    walk(node.body, (child) => {
+      if (!ts.isCallExpression(child)) return;
+      if (!/^(globalThis\.)?setTimeout$/.test(unwrap(child.expression).getText())) return;
+      const [handler, delay] = child.arguments;
+      if (handler === undefined || delay === undefined) return;
+      const value = resolveNumber(delay, constants);
+      if (value === null || value > 1) return;
+      let mentionsCallback = false;
+      walk(handler, (inner) => {
+        if (ts.isIdentifier(inner) && inner.text === callback.text) mentionsCallback = true;
+      });
+      if (mentionsCallback) found = child;
+    });
+    if (found === undefined || isUnderFakeTimers(node) || isLoadProof(sourceFile, node)) return;
+    violations.push(violation(sourceFile, node, 'real-timer-double'));
+  });
+  return violations;
+}
+
+const SETTLE_HELPER_NAME =
+  /^(flush|settle|tick|yield|macrotask|drain|pause|nextTurn|waitOneTurn)\w*$|^sleepForTesting$/i;
+
+/** Whether a loop body does nothing but yield: every statement is `await <a yield or settle call>`. */
+function isYieldOnlyBody(body: ts.Statement): boolean {
+  const statements = ts.isBlock(body) ? body.statements : [body];
+  if (statements.length === 0) return false;
+  return statements.every((statement) => {
+    if (!ts.isExpressionStatement(statement)) return false;
+    const awaited = unwrap(statement.expression);
+    if (!ts.isAwaitExpression(awaited)) return false;
+    const operand = unwrap(awaited.expression);
+    if (isYield(operand)) return true;
+    if (!ts.isCallExpression(operand)) return false;
+    const name = calleeName(operand);
+    return (
+      name !== null && (SETTLE_HELPER_NAME.test(name) || EXPORTED_SINGLE_TURN_YIELDS.has(name))
+    );
+  });
+}
+
+/**
+ * `fixed-count-yield-loop`: `for (let turn = 0; turn < 30; turn++) await flush();` with no exit but
+ * the count. `iteration-cap-wait` reads a loop that leaves early and is capped; this one never
+ * looks at the state at all, so it is a settle written as a loop: it passes when 30 turns happened
+ * to be enough, and the host decides how much work 30 turns hold. Wait for the state with
+ * `waitUntil` or `awakeTurns`, or carry `// load-proof: <reason>` where the turns are not load
+ * (the work is a fixed number of microtask or immediate hops, or it is a negative window).
+ */
+export function findFixedCountYieldLoops(
+  sourceFile: ts.SourceFile,
+  constants: ReadonlyMap<string, ts.Expression>,
+): DeadlineViolation[] {
+  const violations: DeadlineViolation[] = [];
+  walk(sourceFile, (node) => {
+    if (!ts.isForStatement(node) || node.condition === undefined) return;
+    if (!capsAtNumber(node.condition, constants) || hasConditionalExit(node.statement)) return;
+    const { condition } = node;
+    if (
+      ts.isBinaryExpression(unwrap(condition)) &&
+      (unwrap(condition) as ts.BinaryExpression).operatorToken.kind ===
+        ts.SyntaxKind.AmpersandAmpersandToken
+    ) {
+      return;
+    }
+    let breaks = false;
+    walk(node.statement, (child) => {
+      if (ts.isBreakStatement(child) || ts.isReturnStatement(child)) breaks = true;
+    });
+    if (breaks || !isYieldOnlyBody(node.statement)) return;
+    if (isUnderFakeTimers(node) || isLoadProof(sourceFile, node)) return;
+    violations.push(violation(sourceFile, node, 'fixed-count-yield-loop'));
+  });
+  return violations;
+}
+
+const SPAWN_CALLEES = new Set([
+  'spawn',
+  'spawnSync',
+  'exec',
+  'execSync',
+  'execFile',
+  'execFileSync',
+  'fork',
+]);
+
+/**
+ * `direct-bun-spawn`: a test, test-support or fixture module that starts `bun` (`process.execPath`,
+ * `'bun'`, `Bun.which('bun')`) with `Bun.spawn`, `Bun.spawnSync` or a `child_process` function
+ * instead of `spawnWithHangGuard`/`runWithHangGuard`. The guarded spawns put `--no-install` in front
+ * of the child, so a module written outside the workspace cannot install what it imports from the
+ * registry; a direct spawn does not. Pass `--no-install` in the call itself, or carry
+ * `// load-proof: <reason>` where the child cannot reach the registry (it installs on purpose, or only
+ * runs a package-manager command). The hang guard modules that do the injecting are not read.
+ */
+function findDirectBunSpawns(sourceFile: ts.SourceFile): DeadlineViolation[] {
+  if (basename(sourceFile.fileName) === 'hang-guard.ts') return [];
+  const violations: DeadlineViolation[] = [];
+  walk(sourceFile, (node) => {
+    if (!ts.isCallExpression(node)) return;
+    const name = calleeName(node);
+    if (name === null || !SPAWN_CALLEES.has(name)) return;
+    const callee = unwrap(node.expression).getText();
+    if (name === 'spawn' && !/^(Bun\.spawn|spawn|cp\.spawn|childProcess\.spawn)$/.test(callee))
+      return;
+    const [first] = node.arguments;
+    const head =
+      first !== undefined && ts.isArrayLiteralExpression(unwrap(first))
+        ? (unwrap(first) as ts.ArrayLiteralExpression).elements[0]
+        : first;
+    if (head === undefined) return;
+    const headText = head.getText();
+    if (!/^(process\.execPath|'bun'|"bun"|`bun`|Bun\.which\(['"]bun['"]\))/.test(headText)) return;
+    if (node.getText().includes('--no-install') || isLoadProof(sourceFile, node)) return;
+    violations.push(violation(sourceFile, node, 'direct-bun-spawn'));
   });
   return violations;
 }
@@ -1649,6 +1799,7 @@ const EXPORTED_SINGLE_TURN_YIELDS = new Set([
   'yieldToPortableEventLoop',
   'yieldEventLoopTurn',
 ]);
+const FIXED_COUNT_LOOP_ALLOWLIST = join(import.meta.dir, 'fixed-count-yield-loop-allowlist.json');
 const SINGLE_TURN_YIELD_ALLOWLIST = join(import.meta.dir, 'single-turn-yield-allowlist.json');
 
 /** The calls to an exported one-turn yield helper in `sourceFile` that carry no marker. */
@@ -1669,6 +1820,55 @@ export function findExportedSingleTurnYieldCalls(sourceFile: ts.SourceFile): Dea
     violations.push(violation(sourceFile, node, 'single-turn-settle'));
   });
   return violations;
+}
+
+/** The same arithmetic for the fixed-count yield loops of one file. */
+export function fixedCountLoopAllowlistFindings(
+  file: string,
+  counted: number,
+  allowed: number,
+): string[] {
+  if (counted > allowed) {
+    return [
+      `${file} — fixed-count-yield-loop — ${counted - allowed} new loop(s) that yield a fixed number of times and look at nothing: wait on the state with waitUntil or awakeTurns, or add \`// load-proof: <reason>\` above the loop; never raise scripts/fixed-count-yield-loop-allowlist.json`,
+    ];
+  }
+  if (counted < allowed) {
+    return [
+      `${file} — fixed-count-yield-loop-allowlist — the allowlist says ${allowed} but the file has ${counted}: lower the entry in scripts/fixed-count-yield-loop-allowlist.json to ${counted}${counted === 0 ? ' (delete it)' : ''}`,
+    ];
+  }
+  return [];
+}
+
+/**
+ * The entries of an allowlist that are higher than the same allowlist on `origin/main`. A ratchet
+ * that only compares the file with itself lets a reviewed edit raise a count; this one refuses any
+ * count above the baseline. A baseline that is missing (the file is new, or there is no
+ * `origin/main`) refuses nothing.
+ */
+export function allowlistRaises(
+  name: string,
+  current: Record<string, number>,
+  baseline: Record<string, number> | null,
+): string[] {
+  if (baseline === null) return [];
+  return Object.entries(current)
+    .filter(([file, count]) => count > (baseline[file] ?? 0))
+    .map(
+      ([file, count]) =>
+        `${file} — ${name}-raise — the allowlist now allows ${count} where origin/main allows ${baseline[file] ?? 0}: an allowlist only shrinks; wait on the state or mark the site instead`,
+    );
+}
+
+function baselineAllowlist(path: string): Record<string, number> | null {
+  const shown = Bun.spawnSync(['git', 'show', `origin/main:${path}`], { cwd: root });
+  if (shown.exitCode !== 0) return null;
+  try {
+    return JSON.parse(shown.stdout.toString()) as Record<string, number>;
+  } catch {
+    return null;
+  }
 }
 
 /** The allowlist findings for one file: more calls than it allows, or an entry that is now too high. */
@@ -1713,13 +1913,43 @@ async function scan(): Promise<string[]> {
   }
   const allowlist = (await Bun.file(SINGLE_TURN_YIELD_ALLOWLIST).json()) as Record<string, number>;
   const counted = new Map<string, number>();
+  const countedLoops = new Map<string, number>();
+  const loopAllowlist = (await Bun.file(FIXED_COUNT_LOOP_ALLOWLIST).json()) as Record<
+    string,
+    number
+  >;
   for (const { path, sourceFile } of parsed) {
     for (const found of findDeadlineViolations(sourceFile, helperBudgets)) {
       findings.push(`${relative(root, path)}:${found.line} — ${found.rule} — ${found.text}`);
     }
     const yields = findExportedSingleTurnYieldCalls(sourceFile).length;
     if (yields > 0) counted.set(relative(root, path), yields);
+    const loops = findFixedCountYieldLoops(sourceFile, collectConstants(sourceFile)).length;
+    if (loops > 0) countedLoops.set(relative(root, path), loops);
   }
+  for (const file of [
+    ...new Set([...countedLoops.keys(), ...Object.keys(loopAllowlist)]),
+  ].toSorted()) {
+    findings.push(
+      ...fixedCountLoopAllowlistFindings(
+        file,
+        countedLoops.get(file) ?? 0,
+        loopAllowlist[file] ?? 0,
+      ),
+    );
+  }
+  findings.push(
+    ...allowlistRaises(
+      'single-turn-yield-allowlist',
+      allowlist,
+      baselineAllowlist('scripts/single-turn-yield-allowlist.json'),
+    ),
+    ...allowlistRaises(
+      'fixed-count-yield-loop-allowlist',
+      loopAllowlist,
+      baselineAllowlist('scripts/fixed-count-yield-loop-allowlist.json'),
+    ),
+  );
   for (const file of [...new Set([...counted.keys(), ...Object.keys(allowlist)])].toSorted()) {
     findings.push(
       ...singleTurnYieldAllowlistFindings(file, counted.get(file) ?? 0, allowlist[file] ?? 0),

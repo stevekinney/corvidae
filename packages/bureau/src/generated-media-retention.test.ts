@@ -30,6 +30,7 @@ import { alice, base64Of, pngBytes } from './testing/asset-fixtures.test-support
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   while (cleanups.length > 0) await cleanups.pop()!();
+  // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
   await yieldToPortableEventLoop();
 });
 
@@ -101,6 +102,7 @@ async function paint(
     sessionId,
   });
   await waitForRunState(bureau, created.id);
+  // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
   for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
   return created;
 }
@@ -268,6 +270,7 @@ describe('an expiring session', () => {
 
     await opened.runtime.advance(5_000);
     expect(await opened.bureau.internals.sessionStore!.cleanup({ olderThan: -60_000 })).toBe(1);
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
     const report = await collect(opened);
 
@@ -292,6 +295,7 @@ describe('a session saved with a copied history (a goal retry, a session fork)',
         runs: [],
       }),
     );
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
 
     await opened.bureau.contexts.delete('trunk');

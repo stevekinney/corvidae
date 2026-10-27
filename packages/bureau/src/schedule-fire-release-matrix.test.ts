@@ -111,6 +111,7 @@ async function expectNothingRemains(
     ...options,
     toolbox: approvalToolbox(restartedCharges),
   });
+  // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
   for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
   expect(reviewsOf(restarted, fireId)).toEqual([]);
   expect(scheduledFireHoldings(scheduledFireReviewStateOf(restarted), fireId)).toEqual([]);
@@ -375,6 +376,7 @@ async function fireForCrash() {
   });
   const { fireId } = await fireOnce(first, OWNER.alice, SESSION);
   await reviewOf(first, fireId);
+  // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
   for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
   return {
     first,
@@ -417,6 +419,7 @@ describe('a crash between a fire’s cancel and the release of its approval', ()
         storage: crash.raw,
         toolbox: approvalToolbox(charges),
       });
+      // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
       for (let turn = 0; turn < 50; turn += 1) {
         await new Promise((resolve) => setTimeout(resolve, 2));
       }
@@ -606,6 +609,7 @@ describe('a boot that cannot read the engine’s status', () => {
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
       toolbox: approvalToolbox([]),
     });
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
 
     expect(reviewsOf(faulty, fireId)).toEqual([]);

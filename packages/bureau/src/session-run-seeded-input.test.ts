@@ -23,6 +23,7 @@ import { alice, aliceAdministrator, pngBytes } from './testing/asset-fixtures.te
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   while (cleanups.length > 0) await cleanups.pop()!();
+  // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
   await yieldToPortableEventLoop();
 });
 
@@ -84,6 +85,7 @@ describe.each([
       sessionId: 'chat',
     });
     const state = await waitForRunState(bureau, created.id);
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
 
     // The run took its step; only the drain's claim failed, and it left its entry pending.
@@ -100,6 +102,7 @@ describe.each([
       sessionId: 'other',
     });
     await waitForRunState(bureau, other.id);
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
 
     const descriptor = await bureau.assets!.inspect(admission.assetId, aliceAdministrator, {

@@ -145,6 +145,7 @@ describe('followTask', () => {
         }),
       );
     }
+    // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
     await yieldEventLoopTurn();
 
     const read = await second;

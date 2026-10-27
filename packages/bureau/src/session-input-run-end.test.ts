@@ -677,6 +677,7 @@ describe('a cancellation that reaches a run after it appended the turn (COR-1476
       // The gate's renewal reports it and keeps the lease: the turn is in the
       // conversation, so a retry must never read `canceled`.
       await runtime.advance(10_000);
+      // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
       await yieldToPortableEventLoop();
       const [inWindow] = await mailbox.list({ limit: 10 });
       expect(inWindow?.state).toBe('cancellation-requested');

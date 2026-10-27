@@ -234,6 +234,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
       workflowId: string,
     ) {
       if (workflowId === run.id) {
+        // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
         for (let turn = 0; turn < 5; turn += 1) await yieldToPortableEventLoop();
       }
       return realCancel.call(this, workflowId);

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import ts from 'typescript';
 import {
+  allowlistRaises,
   collectPositionalBudgets,
   findDeadlineViolations,
   findExportedSingleTurnYieldCalls,
@@ -829,5 +830,77 @@ describe('a sleep that is handed its clock', () => {
         "test('a', async () => {\n  const pending = sleep(0, runtime.timers);\n  await runtime.advance(0);\n  await pending;\n  expect(done()).toBe(true);\n});",
       ),
     ).toEqual([]);
+  });
+});
+
+describe('a timer double that fires on a real zero-delay timer', () => {
+  test('is reported, because a test that waits to be asked races the callback', () => {
+    expect(
+      inspect(
+        'const timers = {\n  setTimeout: (callback: () => void, ms?: number) => {\n    requested.push(ms ?? 0);\n    return setTimeout(callback, 0);\n  },\n};',
+      ),
+    ).toEqual(['real-timer-double']);
+  });
+
+  test.each([
+    [
+      'a marked double',
+      'const timers = {\n  // load-proof: tests wait for the pending set to empty, not for the ask\n  setTimeout: (callback: () => void, ms?: number) => setTimeout(callback, 0),\n};',
+    ],
+    [
+      'a double that forwards to a manual runtime',
+      'const timers = {\n  setTimeout: (callback: () => void, ms?: number) => runtime.timers.setTimeout(callback, 0),\n};',
+    ],
+    [
+      'a promise executor',
+      'const turn = new Promise((resolve, reject) => setTimeout(resolve, 0));',
+    ],
+    [
+      'a real delay',
+      'const timers = {\n  setTimeout: (callback: () => void, ms?: number) => setTimeout(callback, ms),\n};',
+    ],
+  ])('accepts %s', (_name, source) => {
+    expect(inspect(source)).toEqual([]);
+  });
+});
+
+describe('a Bun child started outside the hang guard', () => {
+  test.each([
+    ['Bun.spawn', "Bun.spawn([process.execPath, 'script.ts']);"],
+    ['Bun.spawnSync', "Bun.spawnSync(['bun', 'script.ts']);"],
+    [
+      'child_process spawn',
+      "import { spawn } from 'node:child_process';\nspawn(process.execPath, ['a.ts']);",
+    ],
+  ])('is reported for %s', (_name, source) => {
+    expect(inspect(source)).toEqual(['direct-bun-spawn']);
+  });
+
+  test.each([
+    [
+      'a call that passes --no-install',
+      "Bun.spawn([process.execPath, '--no-install', 'script.ts']);",
+    ],
+    ['the guarded spawn', "spawnWithHangGuard([process.execPath, 'script.ts']);"],
+    ['a command that is not Bun', "Bun.spawn(['git', 'status']);"],
+    [
+      'a marked call',
+      "// load-proof: only runs the package manager, which installs on purpose\nBun.spawn([process.execPath, 'install']);",
+    ],
+  ])('accepts %s', (_name, source) => {
+    expect(inspect(source)).toEqual([]);
+  });
+});
+
+describe('an allowlist ratchet against origin/main', () => {
+  test('refuses a count above the baseline and a new file, and allows equal or lower', () => {
+    const baseline = { 'a.test.ts': 3, 'b.test.ts': 1 };
+    expect(allowlistRaises('x', { 'a.test.ts': 3, 'b.test.ts': 0 }, baseline)).toEqual([]);
+    expect(allowlistRaises('x', { 'a.test.ts': 4 }, baseline)).toHaveLength(1);
+    expect(allowlistRaises('x', { 'c.test.ts': 1 }, baseline)).toHaveLength(1);
+  });
+
+  test('refuses nothing without a baseline', () => {
+    expect(allowlistRaises('x', { 'a.test.ts': 9 }, null)).toEqual([]);
   });
 });

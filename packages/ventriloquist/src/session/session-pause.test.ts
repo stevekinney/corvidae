@@ -28,6 +28,7 @@ const BUDGET = 65_536;
 
 /** Let the pumps run until they are waiting again: delivery goes on over several turns of the event loop. */
 async function settle(): Promise<void> {
+  // load-proof: the code under test yields with setImmediate after a fixed number of bytes, so the pumps need a number of event-loop iterations fixed by the byte counts, never by the load; thirty is more than any scenario here needs
   for (let turn = 0; turn < 30; turn += 1) await flush();
 }
 

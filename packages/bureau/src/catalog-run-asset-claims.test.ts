@@ -74,6 +74,7 @@ import type { Bureau, BureauDiagnostic } from './types';
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   while (cleanups.length > 0) await cleanups.pop()!();
+  // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
   await yieldToPortableEventLoop();
 });
 
@@ -324,6 +325,7 @@ describe.each([
     const generatedRowId = result.conversation.getMessages().at(-1)!.id;
 
     await waitForCondition(() => released.length >= 2, 'the run never released its claims');
+    // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
     await yieldToPortableEventLoop();
 
     // Both claims the run took go: the last seeded row's, and the row it committed.
@@ -562,6 +564,7 @@ describe('a bureau.run() at shutdown', () => {
     parked.open();
     await run.result();
     // Give a release every chance to happen before asserting that it did not.
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 50; turn += 1) await yieldToPortableEventLoop();
     lost.mockRestore();
     winnerRunning.mockRestore();

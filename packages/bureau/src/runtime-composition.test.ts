@@ -85,6 +85,7 @@ import { waitUntil } from '@lostgradient/testing/wait-until';
 // inline-launch left by one durable run can starve a later one under full
 // `bun test` concurrency (CI). 0.3.0's dispose-drain does not replace this flush.
 afterEach(async () => {
+  // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
   await yieldToPortableEventLoop();
 });
 

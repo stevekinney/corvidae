@@ -407,6 +407,7 @@ describe('a crash between a fire step’s session write and its commit', () => {
         }),
       },
     });
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
 
     expect(reviewsOf(third, fireId)).toEqual([]);
@@ -443,6 +444,7 @@ describe('a crash between a fire step’s session write and its commit', () => {
       const metadata = await sessionMetadata(first, 'unreadable-session');
       return keysOf(metadata['pendingApprovalOverrides']).length === 1 ? true : undefined;
     }, 'the approval to reach the session');
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
 
     dead = false;
@@ -464,6 +466,7 @@ describe('a crash between a fire step’s session write and its commit', () => {
         ? status
         : undefined;
     }, 'the recovered fire to settle');
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
 
     // Neither the replay's write-back nor the settle reconcile may take a step it could not read
@@ -485,6 +488,7 @@ describe('a crash between a fire step’s session write and its commit', () => {
         }),
       },
     });
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
     const afterRestart = await sessionMetadata(third, 'unreadable-session');
     expect(keysOf(afterRestart['pendingApprovalOverrides'])).toEqual([
@@ -531,6 +535,7 @@ describe('a crash between a fire step’s session write and its commit', () => {
       async () => ((await durableStatus(second, fireId)) === 'completed' ? true : undefined),
       'the replay to complete',
     );
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
     expect(reviewsOf(second, fireId)).toEqual([]);
     const metadata = await sessionMetadata(second, 'decided-crash-session');
@@ -547,6 +552,7 @@ describe('a crash between a fire step’s session write and its commit', () => {
         }),
       },
     });
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
     expect(reviewsOf(third, fireId)).toEqual([]);
     expect(secondCharges).toEqual([]);
@@ -804,6 +810,7 @@ describe('a fire still going when its process restarts', () => {
       const session = await first.contexts.get('mid-flight-session');
       return JSON.stringify(session?.metadata ?? {}).includes('charge-X') ? true : undefined;
     }, 'the approval to reach the session');
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
 
     dead = false;

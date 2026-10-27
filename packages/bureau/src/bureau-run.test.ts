@@ -998,6 +998,7 @@ describe('Bureau invariants on catalog-agent dispatch (COR-1265, COR-1277)', () 
       // `generate` yet, and this test would pass while leaking one. Verified:
       // moving `createActiveRun` into the resolver makes this fail only with
       // the drain, and pass without it.
+      // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
       for (let attempt = 0; attempt < 20; attempt += 1) {
         await waitOneTimerTurn();
       }

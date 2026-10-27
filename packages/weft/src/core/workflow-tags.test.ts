@@ -422,7 +422,7 @@ describe('workflow tags', () => {
         tags: ['nightly'],
         searchAttributes: { priority: 'high' },
       });
-      // load-proof: handle.addTags and removeTags await the engine's own durable write, so they do not depend on the workflow having parked; the yield is surplus
+      // load-proof: start() awaits the engine's own durable write of the tags and search attributes before it returns, so the reads below see them whether or not the workflow has parked; the yield is surplus
       await sleepForTesting(10);
 
       const attributes = await engine.getAttributes('tag-distinction');

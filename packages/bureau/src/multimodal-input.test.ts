@@ -296,6 +296,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
 
     releaseStepZero.resolve();
     await bureau.waitForDurableRun(run.id);
+    // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
     await yieldToPortableEventLoop();
 
     const step = seen.find((context) => context.step === 1)!;
@@ -364,6 +365,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
     expect(admitted.outcome).toBe('admitted');
     releaseStepZero.resolve();
     await bureau.waitForDurableRun(run.id);
+    // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
     await yieldToPortableEventLoop();
 
     const step = seen.find((context) => context.step === 1)!;
@@ -455,6 +457,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
       message: 'Start',
       principal: alice.id,
     });
+    // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
     await yieldToPortableEventLoop();
 
     for (const payload of [

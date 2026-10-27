@@ -149,7 +149,18 @@ const PACKAGE_MANAGER_COMMANDS = new Set([
   'x',
 ]);
 // Runtime flags in front of the subcommand that take a separate value.
-const VALUE_FLAGS = new Set(['-e', '--eval', '-p', '--print', '-r', '--preload', '--cwd', '-c']);
+const VALUE_FLAGS = new Set([
+  '-e',
+  '--eval',
+  '-p',
+  '--print',
+  '-r',
+  '--preload',
+  '--cwd',
+  '-c',
+  '--config',
+  '--filter',
+]);
 
 /**
  * The argument list a test child should run with: Bun's runtime auto-install turned off.
