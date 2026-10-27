@@ -179,6 +179,13 @@
           badge: undefined,
           badgeVariant: 'warning',
         },
+        {
+          view: 'settings',
+          path: '/settings',
+          icon: SlidersHorizontal,
+          badge: undefined,
+          badgeVariant: 'warning',
+        },
         { view: 'runs', path: '/runs', icon: Play, badge: undefined, badgeVariant: 'warning' },
         {
           view: 'schedules',
@@ -232,13 +239,6 @@
           view: 'audit',
           path: '/audit',
           icon: ScrollText,
-          badge: undefined,
-          badgeVariant: 'warning',
-        },
-        {
-          view: 'settings',
-          path: '/settings',
-          icon: SlidersHorizontal,
           badge: undefined,
           badgeVariant: 'warning',
         },

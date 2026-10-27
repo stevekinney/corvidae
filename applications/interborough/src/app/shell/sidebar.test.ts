@@ -73,8 +73,8 @@ function mount(scopes?: readonly AuthorizationScope[], engineStatus?: LiveSource
   });
 }
 
-const PRIMARY = ['Chat', 'Agents', 'Workflows', 'Runs', 'Schedules', 'Reviews'];
-const ENGINE = ['Overview', 'Workers', 'Storage', 'System', 'Audit', 'Settings'];
+const PRIMARY = ['Chat', 'Agents', 'Workflows', 'Settings', 'Runs', 'Schedules', 'Reviews'];
+const ENGINE = ['Overview', 'Workers', 'Storage', 'System', 'Audit'];
 
 describe('the sidebar', () => {
   test('holds a Work group and an Engine group, in order', () => {

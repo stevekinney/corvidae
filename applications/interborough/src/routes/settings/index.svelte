@@ -9,7 +9,8 @@
    *
    * The settings are read again every few seconds and when the window regains focus, so a change
    * made elsewhere shows here. (The Bureau also offers `bureau.settings.events`, but only over a
-   * WebSocket that the host does not relay, so the page cannot subscribe to it.)
+   * WebSocket, and the host does not relay `/bureau` WebSockets to a browser, so the page does not
+   * subscribe to it.)
    *
    * Owner scoping does not apply: the settings are deployment-wide, and the caller holds the scopes
    * that read and change them (`bureau.settings:read`, `:write`). Whether the Bureau is failing or

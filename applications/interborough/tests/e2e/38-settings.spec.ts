@@ -119,14 +119,14 @@ test('turning tools.humanInput off leaves a chat with nothing to review, and tur
     await saveHumanInput(page, false);
     expect(await valueOf(request, 'tools.humanInput'), 'the Bureau holds the change').toBe(false);
 
-    // A chat started now is not offered `requestHumanInput`, so its run settles without asking.
+    // A chat started now is not offered `requestHumanInput`, so its run completes without asking.
     const without = await startChat(page);
     await expect
       .poll(async () => {
         const task = await taskOfSession(request, without);
         return task.status;
       })
-      .not.toMatch(/^(pending|queued|running|waiting)/);
+      .toBe('completed');
     await page.goto('/reviews');
     await expect(page.getByRole('heading', { level: 1, name: 'Reviews' })).toBeVisible();
     await expect(reviewOf(page, without)).toHaveCount(0);
