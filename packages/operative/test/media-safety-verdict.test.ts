@@ -1,5 +1,5 @@
 import { HookRegistry } from '@lostgradient/lifecycle';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import type { MediaContent } from 'conversationalist';
@@ -12,6 +12,7 @@ import { createInputGuardrail } from '../src/guardrails/input-guardrail';
 import type { OperativeHookMap } from '../src/hooks';
 import { createSessionStore } from '../src/session/create-session-store';
 import { createSessionHandle } from '../src/session/session-handle';
+import { drainMicrotasks } from '../src/testing/drain-microtasks.test-support.ts';
 import type { ContentSourceResolver, GenerateContext, GenerateFunction } from '../src/types';
 
 const estimate: MediaCostEstimator = (part, position) => ({
@@ -47,7 +48,6 @@ function guardrailHooks() {
  */
 describe('a flagged asset never reaches generate (COR-716)', () => {
   it('a follow-up text turn does not carry a flagged asset the guardrail blocked on the previous turn', async () => {
-    await yieldToPortableEventLoop();
     const store = createSessionStore(textValueStore(new MemoryStorage()));
     const seen: GenerateContext[] = [];
     const generate: GenerateFunction = async (context) => {
@@ -73,7 +73,7 @@ describe('a flagged asset never reaches generate (COR-716)', () => {
     expect(first.finishReason).toBe('error');
     expect(first.error).toBeInstanceOf(MediaAdmissionError);
     expect(seen).toHaveLength(0);
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     await handle.run('thanks, anything else?').result();
     // The flagged asset is still in the history. If generate ran, it was handed the flagged bytes.

@@ -199,6 +199,7 @@ describe('recover() — successful reattach events', () => {
       })();
       await resultReady.promise;
       await commitStarted.promise;
+      // load-proof: negative window: the commit is held open until released and the run must neither complete nor clean up before it; load can only delay a wrongly early event, never produce one
       await yieldToPortableEventLoop();
       expect(events).not.toContain('run.completed');
       expect(events).not.toContain('run.tripwire');

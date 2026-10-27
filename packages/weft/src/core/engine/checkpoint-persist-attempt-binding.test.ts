@@ -19,9 +19,9 @@ import { KEYS, type Storage } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import {
   createDeferred,
+  drainMicrotasks,
   waitForCondition,
   waitForever,
-  yieldToEventLoop,
 } from '../../testing/fake-timers.test-support.ts';
 import { decode, encode } from '../codec/api.ts';
 import { workflow, type Checkpoint } from '../types.ts';
@@ -72,7 +72,7 @@ function persistInFlight(internals: EngineInternals, workflowId: string) {
     loseWith: async (error: unknown): Promise<void> => {
       loss.reject(error);
       await settled;
-      await yieldToEventLoop();
+      await drainMicrotasks();
     },
   };
 }
@@ -352,7 +352,7 @@ describe('the production persist entry points capture the attempt they persist f
 
         hold.releaseClassification();
         expect(await outcome).toBeInstanceOf(WorkflowCheckpointConflictError);
-        await yieldToEventLoop();
+        await drainMicrotasks();
 
         expect(isHeldGenerationAbandoned(internals, id)).toBe(false);
         expect(currentExecutionAttempt(internals, id)).toBe(relaunched);

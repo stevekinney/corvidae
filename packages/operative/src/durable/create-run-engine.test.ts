@@ -927,7 +927,7 @@ describe('createRunEngine inline-launch scheduling (COR-207)', () => {
 
       // Under 'manual' nothing is scheduled at all, so no number of event-loop
       // turns can dispatch the first turn; the fixed count is immaterial.
-      await yieldToPortableEventLoop();
+      // load-proof: negative window: under manual launch scheduling nothing is scheduled, so no number of turns can start the run; load can only delay a start that nothing queues, never produce one
       await yieldToPortableEventLoop();
 
       expect(startedRunIds).toHaveLength(0);

@@ -18,7 +18,7 @@ import {
 } from 'conversationalist';
 import { z } from 'zod';
 
-import { awakeTurns } from '@lostgradient/testing/wait-until';
+import { awakeTurns, waitUntil } from '@lostgradient/testing/wait-until';
 import { appendAgentInput } from '../agent-input';
 import { noToolCalls } from '../conditions/predicates';
 import type { MediaCostEstimator } from '../context/types';
@@ -26,6 +26,7 @@ import { GuardrailTripwireError } from '../errors';
 import { SteeringAppliedEvent } from '../events';
 import type { OperativeHookMap } from '../hooks';
 import type { EventDispatcher } from '../run-step';
+import { drainMicrotasks } from '../testing/drain-microtasks.test-support.ts';
 import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import type { GenerateContext, GenerateFunction, SteeringGate } from '../types';
 import type { CheckpointStore } from './checkpoint-store';
@@ -1167,7 +1168,7 @@ describe('durable agentRun workflow', () => {
         // recoverAll itself must not throw — the engine survives.
         const recoveredHandles = await b.engine.recoverAll();
         expect(recoveredHandles).toBeDefined();
-        await yieldToPortableEventLoop();
+        await drainMicrotasks();
 
         // The single unresolvable run is now terminally `failed` (not left
         // `running`, which a later boot would re-attempt forever).
@@ -2590,7 +2591,7 @@ describe('durable agentRun workflow', () => {
         // drains the microtask chain from `saveCursor`'s settle through
         // `ctx.sleep`'s own `scheduler.schedule()` durable-storage write, so a
         // single `runMaintenance` tick finds the timer already registered.
-        await yieldToPortableEventLoop();
+        await drainMicrotasks();
         await engine.runMaintenance(clock.advance(20));
         const result = await handle.result();
         expect(result.finishReason).toBe('stop-condition');
@@ -3168,7 +3169,7 @@ describe('durable agentRun workflow', () => {
         // Step 0 commits (schedules the wakeup), then fire its 20ms timer
         // explicitly via the manual clock.
         await waitForCursorSave(runId, 1);
-        await yieldToPortableEventLoop();
+        await drainMicrotasks();
         await engine.runMaintenance(clock.advance(20));
 
         // Step 1 (the continuation) commits: it sets both a new wakeup and a
@@ -3953,7 +3954,7 @@ describe('durable agentRun workflow', () => {
       );
       void handle.result().catch(() => {});
       await reached;
-      await yieldToPortableEventLoop();
+      await drainMicrotasks();
       a.engine[Symbol.dispose]();
 
       // Engine B: by replay time the live gate reports a floor of 3 (a later
@@ -4108,7 +4109,7 @@ describe('durable agentRun workflow', () => {
         );
         void handle.result().catch(() => {});
         await reached;
-        await yieldToPortableEventLoop();
+        await drainMicrotasks();
         engineA[Symbol.dispose]();
         expect(generateCalls).toBe(hangOnCall);
 
@@ -4197,10 +4198,11 @@ describe('durable agentRun workflow', () => {
           services,
         );
 
-        // Let the engine drive the workflow generator far enough to reach
-        // and block on the pause gate before asserting it never generated.
-        await yieldToPortableEventLoop();
-        await yieldToPortableEventLoop();
+        // Wait until the engine has driven the workflow generator to the pause gate and is blocked
+        // on it, then assert it never generated.
+        await waitUntil(() => resumeResolvers.length > 0, {
+          message: 'the driver to block on the pause gate',
+        });
         expect(generateCalls).toBe(0);
 
         paused = false;

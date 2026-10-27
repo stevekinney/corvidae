@@ -15,7 +15,9 @@ import {
   appendToolResult,
   appendUserMessage,
   createConversationHistory,
+  guardChatStreamEvents,
 } from '@lostgradient/chat';
+import { rejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 
 import { RESUME_ROUND_CHANGED_MESSAGE } from '@lostgradient/bureau';
@@ -1147,6 +1149,7 @@ describe('the assets a run announces', () => {
       { type: 'TEXT_MESSAGE_START', messageId: 'reply-1', role: 'assistant' },
       { type: 'TEXT_MESSAGE_CONTENT', messageId: 'reply-1', delta: 'Here.' },
       asset('reply-1', 1, 'asset-a', 'image/png'),
+      asset('reply-1', 1, 'asset-a', 'image/png'),
       asset('reply-1', 2, 'asset-b', 'audio/wav'),
       { type: 'TEXT_MESSAGE_END', messageId: 'reply-1' },
       finished(),
@@ -1811,4 +1814,69 @@ describe('a stop before the run’s first event', () => {
     expect(mounted.requestSignals[0]?.aborted).toBe(true);
     expect(sent).toHaveLength(1);
   });
+});
+
+test('a late obsolete transport cannot overwrite the current native run’s recoverable asset', async () => {
+  const conversation = appendUserMessage(empty(), 'Draw it');
+  const native = (nativeId: string, wireId: string) => ({
+    ...started(wireId),
+    metadata: { '@lostgradient/bureau': { runId: nativeId } },
+  });
+  const asset = (assetId: string) => ({
+    type: 'CUSTOM',
+    name: 'bureau.asset-part',
+    value: { messageId: 'reply', index: 0, assetId, mediaType: 'image/png' },
+  });
+  const encode = (event: unknown) => new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`);
+  let oldController: ReadableStreamDefaultController<Uint8Array> | undefined;
+  const { wiring } = wiringOver(
+    [
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            oldController = controller;
+            controller.enqueue(encode(native('old-native', 'old-wire')));
+          },
+        }),
+      ),
+      stream([
+        native('current-native', 'current-wire'),
+        { type: 'TEXT_MESSAGE_START', role: 'assistant', messageId: 'reply' },
+        { type: 'TEXT_MESSAGE_CONTENT', messageId: 'reply', delta: 'Here.' },
+        asset('current-asset'),
+      ]),
+      stream([
+        native('current-native', 'resumed-wire'),
+        { type: 'STATE_SNAPSHOT', snapshot: {} },
+        { type: 'TEXT_MESSAGE_END', messageId: 'reply' },
+        finished(undefined, 'resumed-wire'),
+      ]),
+    ],
+    () => conversation,
+  );
+  const old = ((await wiring.transport(request(conversation))) as AsyncIterable<ChatStreamEvent>)[
+    Symbol.asyncIterator
+  ]();
+  const opening = await old.next();
+  expect(opening.value).toMatchObject({ type: 'run.started' });
+  const pending = old.next();
+  const oldFailure = rejectionOf(pending);
+  expect(await rejectionOf(frames(wiring, conversation))).toBeInstanceOf(Error);
+  expect(wiring.drainAssets()).toHaveLength(1);
+  oldController!.enqueue(encode(asset('obsolete-asset')));
+  oldController!.enqueue(encode(finished(undefined, 'old-wire')));
+  oldController!.close();
+  expect(await oldFailure).toBeInstanceOf(Error);
+  await wiring.attach(THREAD);
+  const recovered = await Array.fromAsync(
+    guardChatStreamEvents(
+      (await wiring.transport(request(conversation))) as AsyncIterable<ChatStreamEvent>,
+    ),
+  );
+  const terminal = recovered.at(-1);
+  if (terminal?.type !== 'run.completed') throw new Error('Missing completion');
+  expect(terminal.conversation.messages['reply']?.metadata?.['bureau:assetParts']).toEqual([
+    { index: 0, assetId: 'current-asset', mediaType: 'image/png' },
+  ]);
+  expect(wiring.drainAssets()).toEqual([]);
 });

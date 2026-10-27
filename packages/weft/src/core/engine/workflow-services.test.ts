@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import { waitForCondition, yieldToEventLoop } from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
 import { settleInlineLaunches } from '../../testing/inline-launch-settle.test-support.ts';
 
 import { KEYS } from '../../storage/interface.ts';
@@ -40,8 +40,7 @@ async function tickEngine<TWorkflows extends object, TActivities extends object>
 ): Promise<void> {
   clock.now = nextNow;
   await engine.scheduler.tick(clock.now);
-  await yieldToEventLoop();
-  await yieldToEventLoop();
+  await settleInlineLaunches();
 }
 
 describe('ctx.services — launch path (inline)', () => {

@@ -7,7 +7,6 @@
  *   (c) the async iterator is independent of result-resolution state
  *   (d) a second `for await` on a completed run errors or replays predictably, never hangs
  */
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createMockTool, createTestToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
@@ -861,8 +860,10 @@ describe('AgentRun.abort()', () => {
   it('aborts an in-flight run and the result() promise rejects or resolves as aborted', async () => {
     // Use a generate that parks until aborted.
     let abortSignal: AbortSignal | undefined;
+    const generateEntered = Promise.withResolvers<void>();
     const parkingGenerate = async (context: GenerateContext) => {
       abortSignal = context.signal;
+      generateEntered.resolve();
       // Wait until aborted.
       await new Promise<void>((_resolve, reject) => {
         context.signal?.addEventListener('abort', () => reject(new Error('aborted')), {
@@ -882,8 +883,8 @@ describe('AgentRun.abort()', () => {
     });
     const run = createAgentRun(activeRun);
 
-    // Abort after a brief wait to let generate start.
-    await yieldToPortableEventLoop();
+    // Abort once generate has actually started.
+    await generateEntered.promise;
     run.abort('user cancelled');
 
     // The result() promise should settle (either resolve with finishReason='aborted'
@@ -901,7 +902,9 @@ describe('AgentRun.abort()', () => {
 
   it('emits a typed abort error and resolves result() with the same abort error contract', async () => {
     let eventError: AbortAgentRunError | undefined;
+    const generateEntered = Promise.withResolvers<void>();
     const parkingGenerate = async (context: GenerateContext) => {
+      generateEntered.resolve();
       await new Promise<void>((_resolve, reject) => {
         context.signal?.addEventListener(
           'abort',
@@ -923,7 +926,7 @@ describe('AgentRun.abort()', () => {
     });
     const run = createAgentRun(activeRun);
 
-    await yieldToPortableEventLoop();
+    await generateEntered.promise;
     run.abort('user cancelled');
 
     const result = await run.result();
@@ -951,8 +954,10 @@ describe('AgentRun[Symbol.dispose]()', () => {
 
   it('aborts an in-flight run when disposed', async () => {
     let signalSeen: AbortSignal | undefined;
+    const generateEntered = Promise.withResolvers<void>();
     const parkingGenerate = async (context: GenerateContext) => {
       signalSeen = context.signal;
+      generateEntered.resolve();
       await new Promise<void>((_resolve, reject) => {
         context.signal?.addEventListener('abort', () => reject(new Error('aborted')), {
           once: true,
@@ -971,7 +976,7 @@ describe('AgentRun[Symbol.dispose]()', () => {
     });
     const run = createAgentRun(activeRun);
 
-    await yieldToPortableEventLoop();
+    await generateEntered.promise;
     run[Symbol.dispose]();
 
     await withHangGuard(
