@@ -1285,6 +1285,9 @@ describe('attach', () => {
         expect(opening.some((frame) => frame.event.type === EventType.MESSAGES_SNAPSHOT)).toBe(
           false,
         );
+        const finished = opening.filter((frame) => frame.event.type === EventType.RUN_FINISHED);
+        expect(finished).toHaveLength(1);
+        expect(finished[0]!.event).toMatchObject({ outcome: { type: 'interrupt' } });
       },
     );
   });

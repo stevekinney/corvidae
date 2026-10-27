@@ -186,9 +186,13 @@ async function readRunHistory(
   let terminal: ReadHistory['terminal'];
   const after: Array<{ kind: string; payload: unknown }> = [];
   let foundResume = resumeCursor === undefined;
+  let resumeGap = false;
   for (;;) {
     const page = await bureau.tasks.events(nativeRunId, since === undefined ? {} : { since });
-    if (!('events' in page)) break;
+    if (!('events' in page)) {
+      if (resumeCursor !== undefined) resumeGap = true;
+      break;
+    }
     for (const event of page.events) {
       if (resumeCursor !== undefined) {
         if (foundResume) after.push({ kind: event.kind, payload: event.payload });
@@ -216,7 +220,10 @@ async function readRunHistory(
     fence,
     lastCursorByKind,
     terminal,
-    resume: resumeCursor !== undefined && foundResume ? { cursor: resumeCursor, after } : undefined,
+    resume:
+      resumeCursor !== undefined && foundResume && !resumeGap
+        ? { cursor: resumeCursor, after }
+        : undefined,
   };
 }
 
@@ -359,6 +366,7 @@ export function openRunStream(
   let surfaceSource: SurfaceSource | undefined;
   const buffer: ServerFrame[] = [];
   let highestSequence = -1;
+  let resumedEventKeys: Set<string> | undefined;
   let opened = false;
   let lastState = '';
   let lastRevision = 0;
@@ -621,6 +629,10 @@ export function openRunStream(
 
   const processFrame = async (frame: ServerFrame): Promise<void> => {
     if (frame.type === 'event') {
+      if (resumedEventKeys?.delete(JSON.stringify([frame.event, frame.detail]))) {
+        highestSequence = Math.max(highestSequence, frame.sequence);
+        return;
+      }
       if (frame.sequence <= highestSequence) return;
       highestSequence = frame.sequence;
       await apply(projector.handleRecorded(frame.event, frame.detail));
@@ -879,10 +891,10 @@ export function openRunStream(
     // against it is shown the conversation as well, as an attach is.
     const answerRows = request.answerRows ?? [];
     const hasOpenStep =
-      detail?.events.reduce<boolean>((open, event) => {
+      detail?.events.reduce<boolean>((stepOpen, event) => {
         if (event.event === RECORDED.stepStarted) return true;
         if (event.event === RECORDED.stepCompleted) return false;
-        return open;
+        return stepOpen;
       }, false) ?? false;
     const resumed =
       request.resumeCursor !== undefined && history?.resume !== undefined && !hasOpenStep;
@@ -926,6 +938,11 @@ export function openRunStream(
           sequence: 0,
         }))
       : recorded.slice(from);
+    if (resumed) {
+      resumedEventKeys = new Set(
+        (history?.resume?.after ?? []).map((event) => JSON.stringify([event.kind, event.payload])),
+      );
+    }
     for (const event of replayed) {
       highestSequence = Math.max(highestSequence, event.sequence);
       const projection = projector.handleRecorded(event.event, event.detail);
@@ -942,7 +959,9 @@ export function openRunStream(
         }
       }
     }
-    for (const event of recorded) highestSequence = Math.max(highestSequence, event.sequence);
+    if (!resumed) {
+      for (const event of recorded) highestSequence = Math.max(highestSequence, event.sequence);
+    }
 
     // A run parked on a human wait has finished its step natively (the park is
     // taken when the loop ends), so a stream that opens on it has no park event
@@ -983,6 +1002,8 @@ export function openRunStream(
         // and cursor: the run completed, and the interrupt is what is left.
         if (detail?.status === 'error' || detail?.status === 'aborted') {
           interruptNow(pending.map(toInterrupt));
+        } else if (resumed) {
+          interruptNow(pending.map(toInterrupt));
         } else {
           await finishAs({
             outcome: 'completed',
@@ -990,6 +1011,11 @@ export function openRunStream(
             tripwire: false,
           });
         }
+        return;
+      }
+      if (resumed) {
+        dispose();
+        sink.finish();
         return;
       }
       if (detail === undefined) {
