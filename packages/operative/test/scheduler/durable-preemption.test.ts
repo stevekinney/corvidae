@@ -635,10 +635,14 @@ describe('durable scheduler preemption (suspend/resume)', () => {
       blocking.releaseStep1({ content: 'bg final', toolCalls: [] });
 
       await bgResult;
-      // Give any abandoned driver its chance to (wrongly) re-fire the hook: an abandoned driver
-      // re-fires through the engine's deferred launch queue, so wait for the scheduler to go idle
-      // (no active task, nothing queued) instead of counting macrotask turns.
-      await waitFor(() => scheduler.getState().idle);
+      // Give any abandoned driver its chance to (wrongly) re-fire the hook. `idle` is already true
+      // here, so waiting on the scheduler would give it none. First drain the engine's deferred
+      // launch queue, which runs whatever start is still queued however long its flush takes.
+      await engine.flushInlineLaunches();
+      // load-proof: negative window: asserts no further hook fires after the run; load can only delay a wrongly re-fired hook, never create one
+      for (let i = 0; i < 5; i++) {
+        await yieldToPortableEventLoop();
+      }
 
       // The run's onRunComplete hook did NOT double-fire (preemptable runs are
       // hooks-free, so it fires ZERO times — the documented contract (durable
