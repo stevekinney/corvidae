@@ -192,6 +192,12 @@ describe('createOperationHandler', () => {
     });
     const socket = new WebSocket(`ws://localhost:${websocketServer.port}/jsonrpc`);
     const frames: Array<Record<string, unknown>> = [];
+    const started = new Promise<void>((resolve) => {
+      socket.addEventListener('message', (event) => {
+        const frame = JSON.parse(String(event.data)) as { id?: number };
+        if (frame.id === 1) resolve();
+      });
+    });
     const received = new Promise<void>((resolve, reject) => {
       socket.addEventListener('message', (event) => {
         frames.push(JSON.parse(String(event.data)) as Record<string, unknown>);
@@ -203,7 +209,7 @@ describe('createOperationHandler', () => {
     socket.send(
       JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'probe.websocket.unbounded', params: {} }),
     );
-    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+    await started;
     socket.send(
       JSON.stringify({
         jsonrpc: '2.0',
