@@ -100,13 +100,27 @@ export class ChatSessionState {
   #retryGeneration = 0;
   #retryFailures = 0;
   #attachedRun = false;
+  #readerAbort: AbortController | undefined;
+  #activeTurn: Promise<unknown> = Promise.resolve();
 
   constructor(options: ChatSessionOptions) {
     this.sessionId = options.sessionId;
     this.conversation = createConversationHistory({ id: options.sessionId });
     this.#wiring = createChatRunWiring({
       conversation: () => this.conversation,
-      ...(options.onRunStarted === undefined ? {} : { onRunStarted: options.onRunStarted }),
+      onRunStarted: () => {
+        this.#attachedRun = true;
+        options.onRunStarted?.();
+      },
+      onFrame: () => {
+        this.#retryFailures = 0;
+      },
+      onTerminal: () => {
+        this.#attachedRun = false;
+      },
+      onSnapshot: (history) => {
+        if (!this.#abort.signal.aborted) this.restore(history);
+      },
       agentName: options.agentName,
       ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
       onHumanRequests: (requests) => {
@@ -159,7 +173,8 @@ export class ChatSessionState {
           // A busy thread is not told when it refused a resume: the next send repeats it. A start
           // refused as busy, and every other refusal, is.
           if (refusal?.resume !== true || !refusal.busy) this.failure = failure;
-          if (this.#attachedRun) this.#scheduleReconnect(error);
+          if (this.#attachedRun && !this.#readerAbort?.signal.aborted)
+            this.#scheduleReconnect(error);
         },
       },
     });
@@ -173,7 +188,9 @@ export class ChatSessionState {
         // it, once, and not as a row of the resume, which the mount never reads.
         await this.#repeatOwedResume();
         if (this.#holdsAsAnswer(message)) return;
-        return adapter.sendMessage(messageWithAttachments(message, attachments), attachments);
+        const turn = adapter.sendMessage(messageWithAttachments(message, attachments), attachments);
+        this.#activeTurn = turn.catch(() => undefined);
+        return turn;
       },
       stopGenerating: async (...input: Parameters<NonNullable<typeof adapter.stopGenerating>>) => {
         if (this.streaming) this.stopping = true;
@@ -304,12 +321,15 @@ export class ChatSessionState {
 
   /** Reopens an interrupted attach, preserving the last SSE cursor in the wiring. */
   async reconnect(): Promise<boolean> {
-    if (this.attaching || this.#abort.signal.aborted) return false;
-    this.#retryGeneration += 1;
+    if (this.#abort.signal.aborted) return false;
+    const generation = ++this.#retryGeneration;
+    this.#readerAbort?.abort();
     if (this.#retryTimer !== undefined) clearTimeout(this.#retryTimer);
     this.#retryTimer = undefined;
     this.#retryFailures = 0;
     this.failure = undefined;
+    await this.#activeTurn;
+    if (generation !== this.#retryGeneration || this.#abort.signal.aborted) return false;
     return this.attach({ rereading: true });
   }
 
@@ -334,35 +354,40 @@ export class ChatSessionState {
    * failure, unless it is read again after a refusal: that one has a failure of its own to tell.
    */
   async #attach(rereading: boolean): Promise<boolean> {
+    const generation = ++this.#retryGeneration;
+    this.#readerAbort?.abort();
+    const readerAbort = new AbortController();
+    this.#readerAbort = readerAbort;
+    const signal = AbortSignal.any([this.#abort.signal, readerAbort.signal]);
     this.attaching = true;
     this.#attachFailed = false;
     try {
-      const restored = await this.#wiring.attach(this.sessionId, this.#abort.signal);
+      const restored = await this.#wiring.attach(this.sessionId, signal);
+      if (generation !== this.#retryGeneration || signal.aborted) return false;
       if (restored === undefined) {
         // Nothing is going, so the transcript is what the Bureau holds of the thread.
-        const history = await this.#wiring.history(this.sessionId, this.#abort.signal);
+        const history = await this.#wiring.history(this.sessionId, signal);
+        if (generation !== this.#retryGeneration || signal.aborted) return false;
         if (history !== undefined) this.restore(history);
+        this.#attachedRun = false;
         return false;
       }
-      // The stream's own events, not this row, are the transcript: the terminal history drops it.
-      // Errors are the controller's to report.
-      void this.controller.adapter
-        .sendMessage({ role: 'user', content: '', hidden: true }, [])
-        .catch(() => undefined);
-      // The run is going, so the transcript is restored now and the person sees it while the run
-      // carries on, not at its end. The terminal history replaces each of these rows with its own.
       this.restore(restored);
       this.#attachedRun = true;
-      this.#retryFailures = 0;
+      this.#activeTurn = this.controller.adapter
+        .sendMessage({ role: 'user', content: '', hidden: true }, [])
+        .catch(() => undefined);
       return true;
     } catch (error) {
       // The page opened on a session it could not read: it says so, and it is not an unhandled
       // rejection with an empty transcript.
+      if (generation !== this.#retryGeneration || signal.aborted) return false;
       this.#attachFailed = true;
       if (!rereading) this.failure = error instanceof Error ? error.message : String(error);
+      this.#scheduleReconnect(error);
       return false;
     } finally {
-      this.attaching = false;
+      if (this.#readerAbort === readerAbort) this.attaching = false;
     }
   }
 
@@ -374,10 +399,11 @@ export class ChatSessionState {
   #scheduleReconnect(error: unknown): void {
     if (this.#abort.signal.aborted) return;
     if (error instanceof AgUiHttpError && [403, 404, 410].includes(error.status)) return;
-    if (this.#retryFailures >= 8) return;
-    const generation = ++this.#retryGeneration;
-    const delay = Math.min(500 * 2 ** this.#retryFailures, 10_000);
     this.#retryFailures += 1;
+    if (this.#retryFailures >= 8) return;
+    if (this.#retryTimer !== undefined) clearTimeout(this.#retryTimer);
+    const generation = ++this.#retryGeneration;
+    const delay = Math.min(500 * 2 ** (this.#retryFailures - 1), 10_000);
     this.#retryTimer = setTimeout(() => {
       this.#retryTimer = undefined;
       void this.#retryAfter(generation);
@@ -386,14 +412,16 @@ export class ChatSessionState {
 
   async #retryAfter(generation: number): Promise<void> {
     if (generation !== this.#retryGeneration || this.#abort.signal.aborted) return;
-    const reconnected = await this.#readAgain();
-    if (reconnected) this.#retryFailures = 0;
+    await this.#activeTurn;
+    if (generation !== this.#retryGeneration || this.#abort.signal.aborted) return;
+    await this.#readAgain();
   }
 
   dispose(): void {
     // Leaving the page is not a stop: the run is the Bureau's, and it goes on.
     this.#wiring.detach();
     this.#abort.abort();
+    this.#readerAbort?.abort();
     this.#retryGeneration += 1;
     if (this.#retryTimer !== undefined) clearTimeout(this.#retryTimer);
     this.#retryTimer = undefined;

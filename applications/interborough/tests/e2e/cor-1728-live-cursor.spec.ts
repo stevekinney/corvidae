@@ -10,6 +10,8 @@ async function makeInspectable(page: Page): Promise<void> {
     let attachRequests = 0;
     let lastCursor: string | undefined;
     let forceSnapshot = false;
+    const requestedCursors: Array<string | null> = [];
+    const snapshots: number[] = [];
     const fetchWithProbe = async (
       input: RequestInfo | URL,
       init?: RequestInit,
@@ -26,27 +28,43 @@ async function makeInspectable(page: Page): Promise<void> {
       )
         return response;
       attachRequests += 1;
+      const attachment = attachRequests;
+      requestedCursors.push(headers.get('Last-Event-ID'));
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let pending = '';
       const body = new ReadableStream<Uint8Array>({
         start(controller) {
-          severs.add(() => controller.error(new TypeError('network error')));
+          let severed = false;
+          const sever = (): void => {
+            if (severed) return;
+            severed = true;
+            severs.delete(sever);
+            controller.error(new TypeError('network error'));
+            void reader.cancel('test transport cut').catch(() => undefined);
+          };
+          severs.add(sever);
           void (async () => {
             try {
               for (;;) {
                 const chunk = await reader.read();
                 if (chunk.done) {
-                  controller.close();
+                  if (!severed) controller.close();
                   return;
                 }
                 const text = decoder.decode(chunk.value, { stream: true });
                 pending += text;
-                for (const block of pending.split('\\n\\n').slice(0, -1)) {
-                  const id = block.split('\\n').find((line) => line.startsWith('id:'));
+                for (const block of pending.split('\n\n').slice(0, -1)) {
+                  const id = block.split('\n').find((line) => line.startsWith('id:'));
                   if (id !== undefined) lastCursor = id.slice(3).trim();
+                  const data = block.split('\n').find((line) => line.startsWith('data:'));
+                  if (
+                    data !== undefined &&
+                    (JSON.parse(data.slice(5)) as { type: string }).type === 'MESSAGES_SNAPSHOT'
+                  )
+                    snapshots.push(attachment);
                 }
-                pending = pending.slice(pending.lastIndexOf('\\n\\n') + 2);
+                pending = pending.slice(pending.lastIndexOf('\n\n') + 2);
                 controller.enqueue(chunk.value);
               }
             } catch (error) {
@@ -55,6 +73,8 @@ async function makeInspectable(page: Page): Promise<void> {
               } catch {
                 /* stream already ended */
               }
+            } finally {
+              severs.delete(sever);
             }
           })();
         },
@@ -67,6 +87,8 @@ async function makeInspectable(page: Page): Promise<void> {
       __severChatStreams: { value: () => [...severs].forEach((sever) => sever()) },
       __chatAttachRequests: { get: () => attachRequests },
       __lastLiveCursor: { get: () => lastCursor },
+      __requestedCursors: { get: () => requestedCursors },
+      __snapshotAttachments: { get: () => snapshots },
       __forceSnapshot: { set: (value: boolean) => (forceSnapshot = value) },
     });
   });
@@ -96,13 +118,26 @@ test('recovers a host-preserving drop from the real emitted cursor exactly once'
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
     await expect.poll(() => attachRequests(page)).toBe(1);
     await expect.poll(() => lastCursor(page)).toMatch(/^agui-live-v1\./);
-    await releaseBarrier(request);
+    const consumed = await lastCursor(page);
     await context.setOffline(true);
     await page.evaluate(() =>
       (window as unknown as { __severChatStreams: () => void }).__severChatStreams(),
     );
     await context.setOffline(false);
     await expect.poll(() => attachRequests(page)).toBeGreaterThan(1);
+    expect(
+      await page.evaluate(
+        () =>
+          (window as unknown as { __requestedCursors: Array<string | null> }).__requestedCursors[1],
+      ),
+    ).toBe(consumed);
+    expect(
+      await page.evaluate(
+        () => (window as unknown as { __snapshotAttachments: number[] }).__snapshotAttachments,
+      ),
+    ).toEqual([1]);
+    await expectWaiting(request, 1);
+    await releaseBarrier(request);
     await expect(page.getByText('The barrier opened.')).toHaveCount(1);
   } finally {
     await releaseBarrier(request);
@@ -123,7 +158,6 @@ test('reconnects with an invalid cursor through the authoritative snapshot exact
     await page.goto(`/chat/${threadId}`);
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
     await expect.poll(() => attachRequests(page)).toBe(1);
-    await releaseBarrier(request);
     await expect.poll(() => lastCursor(page)).toMatch(/^agui-live-v1\./);
     await page.evaluate(
       () => ((window as unknown as { __forceSnapshot: boolean }).__forceSnapshot = true),
@@ -134,6 +168,21 @@ test('reconnects with an invalid cursor through the authoritative snapshot exact
     );
     await context.setOffline(false);
     await expect.poll(() => attachRequests(page)).toBeGreaterThan(1);
+    expect(
+      await page.evaluate(
+        () =>
+          (window as unknown as { __requestedCursors: Array<string | null> }).__requestedCursors[1],
+      ),
+    ).toBe('agui-live-v1.invalid');
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => (window as unknown as { __snapshotAttachments: number[] }).__snapshotAttachments,
+        ),
+      )
+      .toEqual([1, 2]);
+    await expectWaiting(request, 1);
+    await releaseBarrier(request);
     await expect(page.getByText('The barrier opened.')).toHaveCount(1);
   } finally {
     await releaseBarrier(request);

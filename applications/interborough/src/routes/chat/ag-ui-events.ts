@@ -1,8 +1,8 @@
 /**
- * Reads an AG-UI event stream through `@ag-ui/client`'s own pipeline (`runHttpRequest` for the
- * response body, `transformHttpEventStream` for the Server-Sent Events), and hands the events
- * out as an async iterable, which is what `@lostgradient/chat`'s AG-UI transport takes.
+ * Reads Bureau's SSE frames without losing their opaque IDs. The pinned AG-UI
+ * schema validates each event before the application's transport consumes it.
  */
+import { EventType } from '@ag-ui/core';
 import { EventSchemas } from '@ag-ui/core/schemas';
 
 export class AgUiHttpError extends Error {
@@ -15,8 +15,14 @@ export class AgUiHttpError extends Error {
   }
 }
 
-export type AgUiEventFrame = { readonly event: unknown; readonly id: string | undefined };
-type ReadEventsOptions = { readonly onCursor?: (cursor: string) => void };
+export type AgUiEventFrame = {
+  readonly event: ReturnType<typeof EventSchemas.parse>;
+  readonly id: string | undefined;
+};
+type ReadEventsOptions = {
+  readonly onCursor?: (cursor: string | undefined) => void;
+  readonly onFrame?: () => void;
+};
 
 function parseBlock(block: string): AgUiEventFrame | undefined {
   let id: string | undefined;
@@ -27,9 +33,9 @@ function parseBlock(block: string): AgUiEventFrame | undefined {
   }
   if (data.length === 0) return undefined;
   const event: unknown = JSON.parse(data.join('\n'));
-  if (!EventSchemas.safeParse(event).success)
-    throw new Error('The AG-UI stream carried an invalid event.');
-  return { event, id };
+  const parsed = EventSchemas.safeParse(event);
+  if (!parsed.success) throw new Error('The AG-UI stream carried an invalid event.');
+  return { event: parsed.data, id };
 }
 
 export async function* readEventFrames(
@@ -45,6 +51,7 @@ export async function* readEventFrames(
     for (;;) {
       const result = await reader.read();
       pending += decoder.decode(result.value ?? new Uint8Array(), { stream: !result.done });
+      pending = pending.replaceAll('\r\n', '\n');
       const blocks = pending.split('\n\n');
       pending = blocks.pop() ?? '';
       for (const block of blocks) {
@@ -67,7 +74,12 @@ export async function* readEvents(
   options: ReadEventsOptions = {},
 ): AsyncGenerator<unknown> {
   for await (const frame of readEventFrames(open)) {
-    if (frame.id !== undefined) options.onCursor?.(frame.id);
+    options.onFrame?.();
+    // Replacing the transcript invalidates the old cursor until the complete
+    // snapshot/checkpoint opening has supplied its new cut ID.
+    if (frame.event.type === EventType.MESSAGES_SNAPSHOT || frame.id !== undefined) {
+      options.onCursor?.(frame.id || undefined);
+    }
     yield frame.event;
   }
 }

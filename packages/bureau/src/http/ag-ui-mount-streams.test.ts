@@ -19,7 +19,12 @@ import {
   runAgentInput,
   startRequest,
 } from './ag-ui-fixtures.test-support.ts';
-import { FrameReader, parseAgUiFrames, typesOf } from './ag-ui-stream.test-support.ts';
+import {
+  bureauMetadata,
+  FrameReader,
+  parseAgUiFrames,
+  typesOf,
+} from './ag-ui-stream.test-support.ts';
 import { listHeldTasks } from '../test';
 
 async function withHarness<T>(
@@ -263,8 +268,8 @@ describe('the revision of the state a stream reports', () => {
   });
 });
 
-describe('text deltas that arrive while a stream is still opening', () => {
-  it('are dropped, because the replay and the next delta carry everything they would', async () => {
+describe('the shared live producer', () => {
+  it('does not create another raw-frame subscription for a second attachment', async () => {
     await withHarness(
       { script: [{ kind: 'block', barrier: 'hold' }, say('Done.')] },
       async ({ handler, bureau, generate }) => {
@@ -272,19 +277,11 @@ describe('text deltas that arrive while a stream is still opening', () => {
         await starter.until(EventType.STEP_STARTED);
         await generate.reached('hold');
         const runId = listHeldTasks(bureau)[0]!.id;
-        // A delta from before the stream's replay was read reaches its listener
-        // while it is still buffering.
+        let additionalSubscriptions = 0;
         const subscribe = bureau.frames.bind(bureau);
         bureau.frames = (listener) => {
-          const stop = subscribe(listener);
-          listener({
-            type: 'stream:text-delta',
-            runId,
-            content: 'stale',
-            accumulated: 'stale',
-            runSeq: 1,
-          });
-          return stop;
+          additionalSubscriptions += 1;
+          return subscribe(listener);
         };
 
         const attached = new FrameReader(await handler(attachRunRequest(runId)));
@@ -296,6 +293,7 @@ describe('text deltas that arrive while a stream is still opening', () => {
           .filter((frame) => frame.event.type === EventType.TEXT_MESSAGE_CONTENT)
           .map((frame) => (frame.event as unknown as { delta: string }).delta);
         expect(text).toEqual(['Done.']);
+        expect(additionalSubscriptions).toBe(0);
         await starter.rest();
       },
     );
@@ -367,7 +365,7 @@ describe('the answer an onMaximumSteps handler leaves', () => {
 });
 
 describe('the answer an onMaximumSteps handler leaves, for a client that attached', () => {
-  it('is not announced again when the snapshot the attach opened with already holds its row', async () => {
+  it('uses the snapshot row identity when the shared producer later announces that answer', async () => {
     await withHarness(
       { script: [{ kind: 'block', barrier: 'hold' }, say('Done.')] },
       async ({ handler, bureau, generate }) => {
@@ -430,9 +428,14 @@ describe('the answer an onMaximumSteps handler leaves, for a client that attache
         expect(
           attached.received.some((frame) => frame.event.type === EventType.MESSAGES_SNAPSHOT),
         ).toBe(true);
+        const messages = attached.received.filter(
+          (frame) => frame.event.type === EventType.TEXT_MESSAGE_START,
+        );
+        expect(messages).toHaveLength(1);
+        expect(messages[0]!.event).toMatchObject({ messageId: tailRow.id });
         expect(
-          attached.received.filter((frame) => frame.event.type === EventType.TEXT_MESSAGE_START),
-        ).toEqual([]);
+          attached.received.filter((frame) => frame.event.type === EventType.TEXT_MESSAGE_CONTENT),
+        ).toMatchObject([{ event: { messageId: tailRow.id, delta: tailRow.content } }]);
         expect(tail.at(-1)!.event).toMatchObject({
           type: EventType.RUN_ERROR,
           code: 'MAXIMUM_STEPS',
@@ -444,7 +447,7 @@ describe('the answer an onMaximumSteps handler leaves, for a client that attache
 });
 
 describe('cleanup', () => {
-  it('leaves no listener, timer, or snapshot subscription once every stream has ended', async () => {
+  it('retains only the active producer after disconnect, then releases it on native settlement', async () => {
     const runtime = createManualRuntimeServices();
     await withHarness(
       { script: [say('Hello.')], agUi: { runtime } },
@@ -465,8 +468,10 @@ describe('cleanup', () => {
         const abandoned = new FrameReader(
           await handler(startRequest(runAgentInput({ runId: 'r-2', threadId: 'thread-2' }))),
         );
-        await abandoned.next();
+        const opening = await abandoned.next();
+        const nativeRunId = String(bureauMetadata(opening!.event)['runId']);
         await abandoned.cancel();
+        await bureau.tasks.wait(nativeRunId);
 
         expect(listening).toBe(0);
         expect(runtime.pendingTimers()).toHaveLength(0);

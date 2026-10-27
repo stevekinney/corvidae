@@ -73,6 +73,7 @@ import {
 } from '../../lib/bureau-assets.ts';
 import { BUREAU_PATH, getThreadMessages, type Fetcher } from '../../lib/bureau-client.ts';
 import { readEvents } from './ag-ui-events.ts';
+import { ResumableMapper } from './resumable-mapper.ts';
 
 /** The AG-UI mount's path, under the Bureau's. */
 export const AG_UI_PATH = `${BUREAU_PATH}/ag-ui`;
@@ -124,6 +125,9 @@ export type HumanRequest = {
 };
 
 export type ChatRunWiringOptions = {
+  readonly onFrame?: () => void;
+  readonly onTerminal?: () => void;
+  readonly onSnapshot?: (history: ConversationHistory) => void;
   /**
    * The conversation on screen. A run that follows an approval shows its tool call again, and a
    * run attached to shows the thread it restores, for a client that did not watch them happen; the
@@ -614,6 +618,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
   let unanswered: { readonly fingerprint: string; readonly runId: string } | undefined;
   let attached: AsyncGenerator<unknown> | undefined;
   let lastAttachCursor: string | undefined;
+  let attachGeneration = 0;
   let detached = false;
   /** The assets the turn on screen announced that no terminal frame has put on a row. */
   let unstamped: AssetAnnouncement[] = [];
@@ -731,6 +736,15 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
           // A run that has begun is waiting on nobody.
           options.onHumanRequests?.([]);
         }
+        if (
+          isRecord(event) &&
+          event['type'] === 'RUN_ERROR' &&
+          (event['code'] === 'STREAM_DEADLINE' || event['code'] === 'STREAM_OVERFLOW')
+        ) {
+          throw new Error(String(event['message']));
+        }
+        if (isRecord(event) && (event['type'] === 'RUN_FINISHED' || event['type'] === 'RUN_ERROR'))
+          options.onTerminal?.();
         const announcement = announcementOf(event);
         if (announcement !== undefined) announced.push(announcement);
         const ended = interruptsOf(event);
@@ -899,13 +913,22 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     }
     const input = runInput(conversation, resume, request.attachments);
     const events = untilAnswered(
-      readEvents(() =>
-        send(`${AG_UI_PATH}/agents/${encodeURIComponent(options.agentName())}/run`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
-          body: JSON.stringify(input),
-          signal: gate.signal,
-        }),
+      readEvents(
+        () =>
+          send(`${AG_UI_PATH}/agents/${encodeURIComponent(options.agentName())}/run`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
+            body: JSON.stringify(input),
+            signal: gate.signal,
+          }),
+        {
+          onCursor: (cursor) => {
+            if (!gate.signal.aborted) lastAttachCursor = cursor;
+          },
+          onFrame: () => {
+            if (!gate.signal.aborted) options.onFrame?.();
+          },
+        },
       ),
       resume.entries,
     );
@@ -928,6 +951,8 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
       { conversation: withoutHiddenRows(request.conversation) },
     );
   }
+
+  const mapper = new ResumableMapper((history) => options.onSnapshot?.(history));
 
   const transport: ChatSessionTransport = (request) => {
     refusal = undefined;
@@ -953,11 +978,9 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     unstamped = announced;
     // An attach reads a thread the page may know nothing of yet: its first rows come from the
     // snapshot, and the row the controller appended to start the turn is not one of them.
-    const frames = mapAGUIEventsToChatStream(
+    const frames = mapper.map(
       observe(opened.events, request.signal, attachedStream === undefined, announced, gate),
-      {
-        conversation: withoutHiddenRows(request.conversation),
-      },
+      withoutHiddenRows(request.conversation),
     );
     return parkApprovals(
       frames,
@@ -979,6 +1002,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
       return resultFor(toolCallId, resolution);
     },
     async attach(threadId, signal) {
+      const current = ++attachGeneration;
       const events = readEvents(
         () =>
           send(`${AG_UI_PATH}/threads/${encodeURIComponent(threadId)}/run`, {
@@ -988,7 +1012,14 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
             },
             ...(signal === undefined ? {} : { signal }),
           }),
-        { onCursor: (cursor) => (lastAttachCursor = cursor) },
+        {
+          onCursor: (cursor) => {
+            if (!signal?.aborted && current === attachGeneration) lastAttachCursor = cursor;
+          },
+          onFrame: () => {
+            if (!signal?.aborted && current === attachGeneration) options.onFrame?.();
+          },
+        },
       );
       const started = await events.next();
       if (
@@ -1005,13 +1036,9 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
       // the page never held.
       const snapshot = await events.next();
       const opening = [started.value, ...(snapshot.done === true ? [] : [snapshot.value])];
-      // Pull one more opening frame so the decoder observes the first live
-      // cursor before returning control to the session. This is normally the
-      // recorded STEP_STARTED projection; a valid cursor resume may have no
-      // snapshot and still needs its first frame consumed here.
-      if (snapshot.done !== true) {
-        const firstLive = await events.next();
-        if (firstLive.done !== true) opening.push(firstLive.value);
+      if (signal?.aborted || current !== attachGeneration) {
+        await events.return(undefined);
+        return undefined;
       }
       const opened = opening;
       const messages =
@@ -1024,8 +1051,18 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
           ? mergeAGUIMessages(createConversationHistory({ id: threadId }), messages)
           : options.conversation();
       attached = (async function* () {
-        yield* opened;
-        yield* events;
+        try {
+          for (const event of opened) {
+            if (signal?.aborted || current !== attachGeneration) return;
+            yield event;
+          }
+          for await (const event of events) {
+            if (signal?.aborted || current !== attachGeneration) return;
+            yield event;
+          }
+        } finally {
+          await events.return(undefined);
+        }
       })();
       return restored;
     },

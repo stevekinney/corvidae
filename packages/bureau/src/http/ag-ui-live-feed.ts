@@ -1,37 +1,51 @@
-import type { ServerFrame } from '../types.ts';
+import type { Event } from '@ag-ui/core';
 
-type LiveFrame = {
-  readonly frame: ServerFrame;
+import type { RunEventRecord, ServerFrame } from '../types.ts';
+import { RunProjector, type NativeTerminal, type Projection } from './ag-ui-projection.ts';
+import type { EventStamp } from './ag-ui-vocabulary.ts';
+
+export type AgUiLiveEnvelope = {
+  readonly event: Event;
   readonly sequence: number;
   readonly cursor: string;
 };
 
+export type AgUiLiveUpdate =
+  | { readonly envelope: AgUiLiveEnvelope }
+  | { readonly terminal: NativeTerminal }
+  | { readonly parked: true }
+  | { readonly removed: true };
+
 export type AgUiLiveSubscription = {
-  readonly opening: ReadonlyArray<LiveFrame>;
+  readonly opening: ReadonlyArray<{ readonly event: Event; readonly cursor?: string }>;
+  readonly cursor: string;
+  readonly snapshotRequired: boolean;
   readonly resumed: boolean;
+  readonly removed: boolean;
+  readonly terminal: NativeTerminal | undefined;
   readonly unsubscribe: () => void;
 };
 
 export type AgUiLiveFeed = {
   readonly subscribe: (
-    listener: (frame: LiveFrame) => void,
-    resumeCursor?: string,
+    listener: (update: AgUiLiveUpdate) => void,
+    resumeCursor: string | undefined,
+    held?: ReadonlySet<string>,
+    beginning?: boolean,
   ) => AgUiLiveSubscription;
-  /** Seeds recorded events that were emitted before this mount first observed the run. */
-  readonly bootstrap: (
-    events: ReadonlyArray<{
-      readonly sequence: number;
-      readonly event: string;
-      readonly detail: unknown;
-      readonly timestamp: number;
-    }>,
-  ) => void;
-  readonly resumes: (resumeCursor: string | undefined) => boolean;
+  readonly closeOpen: () => Event[];
+  readonly settled: () => void;
+  readonly reserve: () => () => void;
   readonly dispose: () => void;
 };
 
 export type AgUiLiveFeedRegistry = {
-  readonly forRun: (nativeRunId: string) => AgUiLiveFeed;
+  readonly forRun: (
+    nativeRunId: string,
+    context: EventStamp,
+    recorded: () => ReadonlyArray<RunEventRecord>,
+  ) => AgUiLiveFeed;
+  readonly remove: (nativeRunId: string) => void;
   readonly dispose: () => void;
 };
 
@@ -39,122 +53,156 @@ function encode(value: string): string {
   return btoa(value).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
 }
 
-function cursorOf(nativeRunId: string, epoch: string, sequence: number): string {
-  return `agui-live-v1.${encode(nativeRunId)}.${encode(epoch)}.${sequence}`;
-}
-
-function decode(value: string): string | undefined {
-  try {
-    return atob(
-      value.replaceAll('-', '+').replaceAll('_', '/') + '='.repeat((4 - (value.length % 4)) % 4),
-    );
-  } catch {
-    return undefined;
-  }
-}
-
 function createFeed(
   nativeRunId: string,
   epoch: string,
   retain: number,
   subscribeFrames: (listener: (frame: ServerFrame) => void) => () => void,
+  context: EventStamp,
+  recorded: () => ReadonlyArray<RunEventRecord>,
   onDispose: () => void,
 ): AgUiLiveFeed {
+  const prefix = `agui-live-v1.${encode(nativeRunId)}.${encode(epoch)}.`;
+  const projector = new RunProjector(nativeRunId, context);
+  const retained: AgUiLiveEnvelope[] = [];
+  const listeners = new Set<(update: AgUiLiveUpdate) => void>();
   let sequence = 0;
+  let highestRecorded = -1;
+  let bootstrapping = true;
+  const buffered: ServerFrame[] = [];
+  let terminal: NativeTerminal | undefined;
   let disposed = false;
-  const retained: LiveFrame[] = [];
-  const listeners = new Set<(frame: LiveFrame) => void>();
-  const recorded = new Set<string>();
-  let sourceSequence = 0;
-  const keyOf = (event: string, detail: unknown): string => JSON.stringify([event, detail]);
-  const append = (frame: ServerFrame): void => {
-    if (disposed || !('runId' in frame) || frame.runId !== nativeRunId) return;
-    if (frame.type !== 'event' && frame.type !== 'stream:text-delta') return;
-    if (frame.type === 'event') {
-      const key = keyOf(frame.event, frame.detail);
-      if (recorded.has(key)) return;
-      recorded.add(key);
+  let terminalObserved = false;
+  let reservations = 0;
+  const emit = (update: AgUiLiveUpdate): void => {
+    // A listener may synchronously attach another reader. That reader's cut
+    // already includes this update, so it must not also receive it as tail.
+    const currentListeners = Array.from(listeners);
+    for (const listener of currentListeners) listener(update);
+  };
+  const append = (event: Event): AgUiLiveEnvelope => {
+    const envelope = Object.freeze({
+      event: structuredClone(event),
+      sequence: ++sequence,
+      cursor: `${prefix}${sequence}`,
+    });
+    retained.push(envelope);
+    if (retained.length > retain) retained.shift();
+    return envelope;
+  };
+  const project = (projection: Projection): void => {
+    const envelopes = projection.events.map(append);
+    if (projection.terminal !== undefined) {
+      envelopes.push(...projector.closeOpen().map(append));
+      terminal = projection.terminal;
     }
-    sourceSequence = Math.max(
-      sourceSequence,
-      frame.type === 'event' ? frame.sequence : sourceSequence,
-    );
-    const live = { frame, sequence: ++sequence, cursor: cursorOf(nativeRunId, epoch, sequence) };
-    retained.push(live);
-    while (retained.length > retain) retained.shift();
-    for (const listener of listeners) listener(live);
+    // Publish only after the whole source transition has committed its checkpoint
+    // and output suffix, including when a listener attaches reentrantly.
+    for (const envelope of envelopes) emit({ envelope });
+    if (terminal !== undefined) {
+      emit({ terminal });
+      if (!bootstrapping) releaseTerminal();
+    } else if (projection.parked) emit({ parked: true });
+  };
+  const process = (frame: ServerFrame): void => {
+    if (disposed || terminal !== undefined || !('runId' in frame) || frame.runId !== nativeRunId)
+      return;
+    if (frame.type === 'event') {
+      if (frame.sequence <= highestRecorded) return;
+      highestRecorded = frame.sequence;
+      project(projector.handleRecorded(frame.event, frame.detail));
+    } else if (frame.type === 'stream:text-delta') {
+      project(projector.handleTextDelta(frame.content, frame.accumulated));
+    }
   };
   const unsubscribeFrames = subscribeFrames((frame) => {
-    append(frame);
+    if (bootstrapping) buffered.push(frame);
+    else process(frame);
   });
+  // Reading the local detail and projecting it are synchronous. Source callbacks
+  // caused by that read are held until its history has established the fence.
+  for (const event of recorded()) {
+    if (event.sequence <= highestRecorded) continue;
+    highestRecorded = event.sequence;
+    project(projector.handleRecorded(event.event, event.detail));
+  }
+  for (const frame of buffered) process(frame);
+  buffered.length = 0;
+  bootstrapping = false;
 
+  const dispose = (): void => {
+    if (disposed) return;
+    disposed = true;
+    unsubscribeFrames();
+    emit({ removed: true });
+    listeners.clear();
+    retained.length = 0;
+    onDispose();
+  };
+  const releaseTerminal = (): void => {
+    if ((terminal !== undefined || terminalObserved) && listeners.size === 0 && reservations === 0)
+      dispose();
+  };
   return {
-    subscribe(listener, resumeCursor?: string) {
-      if (disposed) return { opening: [], resumed: false, unsubscribe: () => undefined };
-      listeners.add(listener);
-      const parts = resumeCursor?.split('.') ?? [];
-      const native =
-        parts.length === 4 && parts[0] === 'agui-live-v1' ? decode(parts[1]!) : undefined;
-      const cursorEpoch =
-        parts.length === 4 && parts[0] === 'agui-live-v1' ? decode(parts[2]!) : undefined;
-      const requested =
-        parts.length === 4 && /^\d+$/.test(parts[3] ?? '') ? Number(parts[3]) : undefined;
+    subscribe(listener, resumeCursor, held = new Set(), beginning = false) {
+      const cut = sequence;
+      const terminalAtCut = terminal;
+      const tail = (update: AgUiLiveUpdate): void => {
+        if ('envelope' in update && update.envelope.sequence <= cut) return;
+        if ('terminal' in update && terminalAtCut !== undefined) return;
+        listener(update);
+      };
+      listeners.add(tail);
+      const suffix = resumeCursor?.startsWith(prefix) ? resumeCursor.slice(prefix.length) : '';
+      const requested = /^(0|[1-9]\d*)$/.test(suffix) ? Number(suffix) : NaN;
       const floor = retained[0]?.sequence ?? sequence + 1;
       const resumed =
-        native === nativeRunId &&
-        cursorEpoch === epoch &&
-        requested !== undefined &&
+        !disposed &&
+        Number.isSafeInteger(requested) &&
         requested >= floor - 1 &&
         requested <= sequence;
+      const cursor = `${prefix}${sequence}`;
+      const checkpoint = projector.snapshot(held);
       return {
-        opening: resumed ? retained.filter((item) => item.sequence > requested) : retained.slice(),
         resumed,
-        unsubscribe: () => listeners.delete(listener),
+        removed: disposed,
+        cursor,
+        snapshotRequired: !resumed && (!beginning || floor > 1),
+        terminal,
+        opening: resumed
+          ? retained.filter((item) => item.sequence > requested)
+          : beginning && floor === 1
+            ? retained.slice()
+            : checkpoint.map((event, index) => ({
+                event,
+                ...(index === checkpoint.length - 1 ? { cursor } : {}),
+              })),
+        unsubscribe() {
+          listeners.delete(tail);
+          releaseTerminal();
+        },
       };
     },
-    bootstrap(events) {
-      for (const event of events) {
-        const key = keyOf(event.event, event.detail);
-        if (recorded.has(key)) continue;
-        append({
-          type: 'event',
-          runId: nativeRunId,
-          event: event.event,
-          detail: event.detail,
-          sequence: event.sequence,
-          timestamp: event.timestamp,
-          runSeq: ++sourceSequence,
-        });
-      }
+    reserve() {
+      reservations += 1;
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        reservations -= 1;
+        releaseTerminal();
+      };
     },
-    resumes(resumeCursor) {
-      const parts = resumeCursor?.split('.') ?? [];
-      const native =
-        parts.length === 4 && parts[0] === 'agui-live-v1' ? decode(parts[1]!) : undefined;
-      const cursorEpoch =
-        parts.length === 4 && parts[0] === 'agui-live-v1' ? decode(parts[2]!) : undefined;
-      const requested =
-        parts.length === 4 && /^\d+$/.test(parts[3] ?? '') ? Number(parts[3]) : undefined;
-      const floor = retained[0]?.sequence ?? sequence + 1;
-      return (
-        native === nativeRunId &&
-        cursorEpoch === epoch &&
-        requested !== undefined &&
-        requested >= floor - 1 &&
-        requested <= sequence
-      );
+    closeOpen: () => projector.closeOpen(true),
+    settled() {
+      terminalObserved = true;
+      releaseTerminal();
     },
-    dispose() {
-      if (disposed) return;
-      disposed = true;
-      unsubscribeFrames();
-      listeners.clear();
-      retained.length = 0;
-      onDispose();
-    },
+    dispose,
   };
 }
 
+/** A mount owns one projection and one source subscription per active native run. */
 export function createAgUiLiveFeedRegistry(
   frames: (listener: (frame: ServerFrame) => void) => () => void,
   retain: number,
@@ -162,14 +210,17 @@ export function createAgUiLiveFeedRegistry(
   const epoch = crypto.randomUUID();
   const feeds = new Map<string, AgUiLiveFeed>();
   return {
-    forRun(nativeRunId) {
+    forRun(nativeRunId, context, recorded) {
       const existing = feeds.get(nativeRunId);
       if (existing !== undefined) return existing;
-      const feed = createFeed(nativeRunId, epoch, retain, frames, () => {
-        feeds.delete(nativeRunId);
-      });
+      const feed = createFeed(nativeRunId, epoch, retain, frames, context, recorded, () =>
+        feeds.delete(nativeRunId),
+      );
       feeds.set(nativeRunId, feed);
       return feed;
+    },
+    remove(nativeRunId) {
+      feeds.get(nativeRunId)?.dispose();
     },
     dispose() {
       for (const feed of feeds.values()) feed.dispose();

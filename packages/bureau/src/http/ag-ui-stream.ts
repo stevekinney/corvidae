@@ -1,9 +1,9 @@
 /**
  * One AG-UI stream over one native run.
  *
- * A stream is a subscriber, never a consumer: it listens to Bureau's live frames
- * with a listener of its own, reads the run's recorded history without
- * advancing anything, and when the client goes away, or the stream reaches its
+ * A stream subscribes to a mount-owned projection for an active local run, or
+ * reads recorded history for a settled/peer run. Each attachment has its own
+ * output sink. When the client goes away, or the stream reaches its
  * maximum duration, or it falls too far behind, the stream ends and the native
  * run does not notice. Several streams, native observers, and telemetry can
  * watch one run at once.
@@ -12,10 +12,10 @@
  * continues a run replays the run's events from the beginning, because its
  * client holds none of them; one that attaches opens with the conversation as a
  * `MESSAGES_SNAPSHOT` and replays only the step still in flight, because
- * everything earlier is in the snapshot. Either way the snapshot and the live
- * tail meet without a gap: the stream subscribes first, buffers what arrives,
- * reads the recorded history, and drops the buffered events the history already
- * held, by the store's own sequence number.
+ * everything earlier is in the snapshot. For active local runs the producer
+ * cuts its checkpoint and retained output suffix synchronously after the
+ * conversation read, and buffers only outputs beyond that cut. The legacy
+ * recorded path joins its buffer by the store's sequence number.
  *
  * @module ag-ui-stream
  */
@@ -55,7 +55,11 @@ import {
   type SurfaceSource,
 } from './ag-ui-surface-source.ts';
 import { type AgUiErrorCode, type EventStamp, stamp } from './ag-ui-vocabulary.ts';
-import type { AgUiLiveFeedRegistry } from './ag-ui-live-feed.ts';
+import type {
+  AgUiLiveFeedRegistry,
+  AgUiLiveSubscription,
+  AgUiLiveUpdate,
+} from './ag-ui-live-feed.ts';
 
 /** What a stream reads from the Bureau. */
 export type AgUiStreamBureau = Pick<Bureau, 'frames' | 'children' | 'surfaces'> & {
@@ -250,6 +254,16 @@ export function runIsGoing(
   return !detail.events.some((event) => TERMINAL_EVENTS.has(event.event));
 }
 
+/** The recorded opening of the still-running step, or the end when no step is open. */
+function openStepOffset(events: RunDetail['events']): number {
+  let offset = events.length;
+  for (const [index, event] of events.entries()) {
+    if (event.event === RECORDED.stepStarted) offset = index;
+    if (event.event === RECORDED.stepCompleted) offset = events.length;
+  }
+  return offset;
+}
+
 /**
  * The reviews of a run that a client can be asked to answer now: the ones the
  * interrupt that ends the AG-UI run would carry. A run that is still going has
@@ -359,18 +373,26 @@ export function openRunStream(
     sessionId: request.threadId,
     now: () => runtime.clock.now(),
   };
-  const projector = new RunProjector(request.nativeRunId, stampContext);
   const liveFeed =
-    request.child === undefined ? environment.liveFeeds?.forRun(request.nativeRunId) : undefined;
-  let liveResumed = false;
-  let sawLiveFrame = false;
+    request.child === undefined && runIsGoing(bureau, request.nativeRunId)
+      ? environment.liveFeeds?.forRun(
+          request.nativeRunId,
+          stampContext,
+          () => bureau.tasks.detail(request.nativeRunId)?.events ?? [],
+        )
+      : undefined;
+  const projector =
+    liveFeed === undefined ? new RunProjector(request.nativeRunId, stampContext) : undefined;
+  let liveSubscription: AgUiLiveSubscription | undefined;
+  const releaseProducer = liveFeed?.reserve();
 
   let sink: AgUiSink;
   let ended = false;
   let unsubscribeFrames: (() => void) | undefined;
   let unsubscribeSnapshots: (() => void) | undefined;
   let surfaceSource: SurfaceSource | undefined;
-  const buffer: Array<{ readonly frame: ServerFrame; readonly cursor: string }> = [];
+  const buffer: ServerFrame[] = [];
+  const projected: AgUiLiveUpdate[] = [];
   let highestSequence = -1;
   let resumedEventKeys: Set<string> | undefined;
   let opened = false;
@@ -390,11 +412,8 @@ export function openRunStream(
     unsubscribeSnapshots = undefined;
     surfaceSource?.stop();
     buffer.length = 0;
-    const detail = bureau.tasks.detail(request.nativeRunId);
-    const startedStep = detail?.events.some((event) => event.event === RECORDED.stepStarted);
-    if (!runIsGoing(bureau, request.nativeRunId) || (!sawLiveFrame && !startedStep)) {
-      liveFeed?.dispose();
-    }
+    projected.length = 0;
+    releaseProducer?.();
   };
 
   const enqueue = (task: () => Promise<void>): void => {
@@ -538,7 +557,7 @@ export function openRunStream(
   };
 
   const finishAs = async (terminal: NativeTerminal): Promise<void> => {
-    const closing = projector.closeOpen();
+    const closing = projector?.closeOpen() ?? [];
     const history = await readRunHistory(bureau, request.nativeRunId, request.resumeCursor).catch(
       () => undefined,
     );
@@ -598,12 +617,12 @@ export function openRunStream(
       );
     }
     dispose();
-    liveFeed?.dispose();
+    liveFeed?.settled();
     sink.finish(last, label.cursor);
   };
 
   const interruptNow = (interrupts: Interrupt[]): void => {
-    writeEvents(projector.closeOpen());
+    writeEvents(projector?.closeOpen() ?? liveFeed?.closeOpen() ?? []);
     if (ended) return;
     const last = stamp(
       {
@@ -642,7 +661,8 @@ export function openRunStream(
     }
   };
 
-  const processFrame = async (frame: ServerFrame, cursor?: string): Promise<void> => {
+  const processFrame = async (frame: ServerFrame): Promise<void> => {
+    if (projector === undefined) return;
     if (frame.type === 'event') {
       if (resumedEventKeys?.delete(JSON.stringify([frame.event, frame.detail]))) {
         highestSequence = Math.max(highestSequence, frame.sequence);
@@ -650,53 +670,40 @@ export function openRunStream(
       }
       if (frame.sequence <= highestSequence) return;
       highestSequence = frame.sequence;
-      await apply(projector.handleRecorded(frame.event, frame.detail), cursor);
+      await apply(projector.handleRecorded(frame.event, frame.detail));
       return;
     }
     if (frame.type === 'stream:text-delta') {
-      await apply(projector.handleTextDelta(frame.content, frame.accumulated), cursor);
+      await apply(projector.handleTextDelta(frame.content, frame.accumulated));
     }
   };
 
   const drain = async (): Promise<void> => {
     for (;;) {
       if (ended) return;
-      const item = buffer.shift();
-      if (item === undefined) return;
-      await processFrame(item.frame, item.cursor || undefined);
+      const update = projected.shift();
+      if (update !== undefined) {
+        if ('envelope' in update) writeEvents([update.envelope.event], update.envelope.cursor);
+        else if ('removed' in update) fail('RUN_NOT_FOUND', 'The run was removed');
+        else await apply({ events: [], ...update });
+        continue;
+      }
+      const frame = buffer.shift();
+      if (frame === undefined) return;
+      await processFrame(frame);
     }
   };
 
-  // The stream listens before it reads anything, so nothing falls between the
-  // recorded history and the live tail; the buffered frames the history already
-  // held are dropped by sequence.
-  const subscribe = (listener: (frame: ServerFrame, cursor?: string) => void): (() => void) => {
-    if (liveFeed === undefined) {
-      return bureau.frames((frame) => {
-        if (ended || !('runId' in frame) || frame.runId !== request.nativeRunId) return;
-        if (frame.type !== 'event' && frame.type !== 'stream:text-delta') return;
-        listener(frame);
-      });
-    }
-    const subscription = liveFeed.subscribe(
-      (item) => listener(item.frame, item.cursor),
-      request.resumeCursor,
-    );
-    liveResumed = subscription.resumed;
-    for (const item of subscription.opening) listener(item.frame, item.cursor);
-    return subscription.unsubscribe;
-  };
-  const receive = (frame: ServerFrame, cursor?: string): void => {
-    if (ended) return;
-    if (opened) sawLiveFrame = true;
-    buffer.push({ frame, cursor: cursor ?? '' });
-    if (opened) enqueue(drain);
-  };
-  // The mount-owned feed is already subscribed to bureau.frames. Defer only this
-  // attachment listener until the recorded detail is available, so bootstrap can
-  // fill the gap for events emitted before the first HTTP attach without creating
-  // a second producer or racing a history read.
-  if (liveFeed === undefined) unsubscribeFrames = subscribe(receive);
+  // Only legacy child/peer/settled paths own a raw subscription. An active local
+  // run's sole subscriber and projector belong to the mount's producer.
+  if (liveFeed === undefined) {
+    unsubscribeFrames = bureau.frames((frame) => {
+      if (ended || !('runId' in frame) || frame.runId !== request.nativeRunId) return;
+      if (frame.type !== 'event' && frame.type !== 'stream:text-delta') return;
+      buffer.push(frame);
+      if (opened) enqueue(drain);
+    });
+  }
 
   /**
    * A child run's stream. Bureau holds no run for a child, only its record, so
@@ -856,7 +863,7 @@ export function openRunStream(
     const history = await readRunHistory(
       bureau,
       request.nativeRunId,
-      liveResumed ? undefined : request.resumeCursor,
+      liveFeed === undefined ? request.resumeCursor : undefined,
     ).catch(() => undefined);
     // A client that went away during the read has already disposed the stream; a source started
     // now would never be stopped.
@@ -892,10 +899,6 @@ export function openRunStream(
       fail('RUN_NOT_FOUND', `Run "${request.nativeRunId}" was not found`);
       return;
     }
-    if (liveFeed !== undefined) {
-      if (!liveFeed.resumes(request.resumeCursor)) liveFeed.bootstrap(detail?.events ?? []);
-      unsubscribeFrames = subscribe(receive);
-    }
     // A run no process-local state names, held by another process or settled with an approval no
     // process restored, is streamed from its durable state.
     if (detail === undefined && pendingFor(bureau, request.nativeRunId).length === 0) {
@@ -907,6 +910,24 @@ export function openRunStream(
     }
     const conversation: ConversationHistory | undefined =
       detail?.transcript ?? session?.conversationHistory;
+    if (liveFeed !== undefined) {
+      liveSubscription = liveFeed.subscribe(
+        (update) => {
+          if (ended) return;
+          projected.push(update);
+          if (opened) enqueue(drain);
+        },
+        request.resumeCursor,
+        new Set(conversation?.ids ?? []),
+        request.replay === 'beginning',
+      );
+      unsubscribeFrames = liveSubscription.unsubscribe;
+      releaseProducer?.();
+      if (liveSubscription.removed) {
+        fail('RUN_NOT_FOUND', 'The run was removed');
+        return;
+      }
+    }
     const fence = history?.fence;
     const liveness = detail?.liveness;
     // A run Bureau no longer holds (recovered after a restart, or removed by
@@ -930,28 +951,36 @@ export function openRunStream(
     // A run Bureau no longer holds has no events to replay, so a start retried
     // against it is shown the conversation as well, as an attach is.
     const answerRows = request.answerRows ?? [];
-    const hasOpenStep =
-      detail?.events.reduce<boolean>((stepOpen, event) => {
-        if (event.event === RECORDED.stepStarted) return true;
-        if (event.event === RECORDED.stepCompleted) return false;
-        return stepOpen;
-      }, false) ?? false;
+    const recorded = detail?.events ?? [];
+    const openOffset = openStepOffset(recorded);
+    const hasOpenStep = openOffset < recorded.length;
     const resumed =
-      liveResumed ||
+      liveSubscription?.resumed === true ||
       (request.resumeCursor !== undefined && history?.resume !== undefined && !hasOpenStep);
-    if (!resumed && (request.messagesSnapshot || detail === undefined || answerRows.length > 0)) {
+    if (
+      !resumed &&
+      (request.messagesSnapshot ||
+        detail === undefined ||
+        answerRows.length > 0 ||
+        liveSubscription?.snapshotRequired === true)
+    ) {
       // The answers a resume delivered ride in the snapshot (a row the run has not appended yet).
-      projector.holds(conversation?.ids ?? []);
-      writeEvents([
-        stamp(
-          {
-            type: EventType.MESSAGES_SNAPSHOT,
-            messages: snapshotMessagesWithAnswers(conversation, answerRows),
-          },
-          stampContext,
-          { durable: false, ...(fence === undefined ? {} : { cursor: fence }) },
-        ),
-      ]);
+      projector?.holds(conversation?.ids ?? []);
+      writeEvents(
+        [
+          stamp(
+            {
+              type: EventType.MESSAGES_SNAPSHOT,
+              messages: snapshotMessagesWithAnswers(conversation, answerRows),
+            },
+            stampContext,
+            { durable: false, ...(fence === undefined ? {} : { cursor: fence }) },
+          ),
+        ],
+        liveSubscription !== undefined && liveSubscription.opening.length === 0
+          ? liveSubscription.cursor
+          : undefined,
+      );
     }
     writeEvents([stateSnapshot(snapshot)]);
     lastState = stateKey(snapshot);
@@ -960,27 +989,18 @@ export function openRunStream(
 
     // Replay what the client has not seen, through the same projection the live
     // tail uses, so a replayed step and a live one cannot differ.
-    const recorded = detail?.events ?? [];
-    let from = 0;
-    if (request.replay === 'open-step') {
-      from = recorded.length;
-      let openAt: number | undefined;
-      for (const [index, event] of recorded.entries()) {
-        if (event.event === RECORDED.stepStarted) openAt = index;
-        if (event.event === RECORDED.stepCompleted) openAt = undefined;
-      }
-      if (openAt !== undefined) from = openAt;
-    }
+    const from = request.replay === 'open-step' ? openOffset : 0;
     let ending: NativeTerminal | undefined;
-    const replayed = resumed
-      ? liveResumed
+    const replayed =
+      liveSubscription !== undefined
         ? []
-        : (history?.resume?.after ?? []).map((event) => ({
-            event: event.kind,
-            detail: event.payload,
-            sequence: 0,
-          }))
-      : recorded.slice(from);
+        : resumed
+          ? (history?.resume?.after ?? []).map((event) => ({
+              event: event.kind,
+              detail: event.payload,
+              sequence: 0,
+            }))
+          : recorded.slice(from);
     if (resumed) {
       resumedEventKeys = new Set(
         (history?.resume?.after ?? []).map((event) => JSON.stringify([event.kind, event.payload])),
@@ -988,14 +1008,9 @@ export function openRunStream(
     }
     for (const event of replayed) {
       highestSequence = Math.max(highestSequence, event.sequence);
+      if (projector === undefined) break;
       const projection = projector.handleRecorded(event.event, event.detail);
-      const bufferedCursor = buffer.find(
-        (item) =>
-          item.frame.type === 'event' &&
-          item.frame.event === event.event &&
-          JSON.stringify(item.frame.detail) === JSON.stringify(event.detail),
-      )?.cursor;
-      writeEvents(projection.events, bufferedCursor || undefined);
+      writeEvents(projection.events);
       if (ended) return;
       if (projection.terminal !== undefined) ending = projection.terminal;
       else if (projection.parked === true) {
@@ -1010,6 +1025,12 @@ export function openRunStream(
     }
     if (!resumed) {
       for (const event of recorded) highestSequence = Math.max(highestSequence, event.sequence);
+    }
+
+    if (liveSubscription !== undefined) {
+      for (const envelope of liveSubscription.opening)
+        writeEvents([envelope.event], envelope.cursor);
+      ending = liveSubscription.terminal;
     }
 
     // A run parked on a human wait has finished its step natively (the park is
@@ -1029,7 +1050,7 @@ export function openRunStream(
     // replay, which the replay's events do not include: the next delta carries
     // the text accumulated so far, so replaying a stale one would only repeat it.
     for (let index = buffer.length - 1; index >= 0; index -= 1) {
-      if (buffer[index]!.frame.type === 'stream:text-delta') buffer.splice(index, 1);
+      if (buffer[index]!.type === 'stream:text-delta') buffer.splice(index, 1);
     }
     opened = true;
     void flushSurfaces();

@@ -137,7 +137,8 @@ const PROTOCOL_VERSION = '1.0';
 const SETTLED_TASK_STATES: ReadonlySet<TaskState> = new Set(['completed', 'failed', 'canceled']);
 
 /** What the mount reads from the Bureau. */
-export type AgUiBureau = AgUiStreamBureau &
+export type AgUiBureau = Pick<Bureau, 'addEventListener' | 'removeEventListener'> &
+  AgUiStreamBureau &
   Pick<Bureau, 'assets'> & {
     readonly tasks: Pick<
       BureauTasks,
@@ -209,6 +210,16 @@ export function createAgUiMount(
   const liveFeeds = createAgUiLiveFeedRegistry(
     (listener) => bureau.frames(listener),
     options.liveBufferSize ?? DEFAULT_AG_UI_LIVE_BUFFER_SIZE,
+  );
+  const removed = (event: { runId: string }): void => liveFeeds.remove(event.runId);
+  bureau.addEventListener('run.removed', removed);
+  bureau.addEventListener(
+    'bureau.disposed',
+    () => {
+      liveFeeds.dispose();
+      bureau.removeEventListener('run.removed', removed);
+    },
+    { once: true },
   );
   const environment: AgUiStreamEnvironment = {
     bureau,
