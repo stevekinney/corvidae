@@ -13,10 +13,12 @@ import type { ContextOperationRequest } from '../context.ts';
 import { hasPendingAttributeChanges } from '../context/context-presence.ts';
 import { EMPTY_EVENT_HEAD, EventLog } from '../event-log.ts';
 import {
+  ActivityCompletedEvent,
   AttributesChangedEvent,
   CheckpointSizeWarningEvent,
   DevelopmentWarningEvent,
 } from '../events.ts';
+import { tagWorkflowEventGeneration } from '../events/workflow-event-generation.ts';
 import { buildIndexOperations } from '../search-attributes.ts';
 import type { SearchAttributeValue, WorkflowTimelineEntry } from '../types.ts';
 import { retryCheckpointBatch } from './checkpoint-commit-retry.ts';
@@ -48,12 +50,34 @@ import { commitFencedEngineWriteAllowingPreconditionFailure } from './fenced-wri
 import type { EngineInternals } from './internals.ts';
 import { getTimelineInputSummary, getTimelineOperationLabel } from './state-utilities.ts';
 import { buildPendingTimelineOperation } from './termination.ts';
+import {
+  captureActivityCompletionReceipts,
+  type ActivityCompletionReceipt,
+} from './timeline-coordinator-detail.ts';
 import { notifyWorkflowFeedCommit } from './workflow-feed.ts';
 
 type PendingTimelineEntryValue = {
   startedAt: number;
   entry: WorkflowTimelineEntry;
 };
+
+function dispatchActivityCompletionReceipt(
+  callbacks: Pick<PersistCheckpointCallbacks, 'dispatchEvent'>,
+  workflowId: string,
+  receipt: ActivityCompletionReceipt,
+): void {
+  callbacks.dispatchEvent(
+    tagWorkflowEventGeneration(
+      new ActivityCompletedEvent(
+        receipt.operationId,
+        workflowId,
+        receipt.activityName,
+        receipt.duration,
+      ),
+      receipt.workflowExecutionToken,
+    ),
+  );
+}
 
 export type PersistCheckpointOptions = {
   timeline?: 'record-operation' | 'preserve-pending';
@@ -360,6 +384,7 @@ async function commitCheckpoint(
   callbacks: PersistCheckpointCallbacks,
   options: PersistCheckpointOptions,
 ): Promise<void> {
+  const activityCompletionReceipts = captureActivityCompletionReceipts(internals, workflowId);
   dispatchCheckpointSizeWarning(internals, workflowId, commit, callbacks);
   const nextPendingTimelineEntry =
     options.timeline === 'preserve-pending'
@@ -441,6 +466,9 @@ async function commitCheckpoint(
     nextPendingTimelineEntry,
     pendingSideEffects !== undefined,
   );
+  for (const receipt of activityCompletionReceipts) {
+    dispatchActivityCompletionReceipt(callbacks, workflowId, receipt);
+  }
   // Archival runs only after the truncation has committed durably; it is a
   // best-effort export, never a rollback trigger (see ArchiveAdapter). The
   // Promise.resolve().then(...) wrapper turns synchronous adapter throws into

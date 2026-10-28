@@ -158,6 +158,7 @@ import type {
   ReviewRejectedEvent,
   ReviewRevokedEvent,
   ReviewSupersededEvent,
+  RunSettledEvent,
   RunRemovedEvent,
 } from './events';
 import { resolveDiagnosticSink, serializeActionDetail } from './serialization';
@@ -2378,6 +2379,12 @@ export function createDurableEventProducer<D extends AgentDefinitions = AgentDef
   };
   bureau.addEventListener('run.removed', runRemovedListener);
 
+  const runSettledListener = (event: RunSettledEvent): void => {
+    if (signal?.aborted) return;
+    sink({ kind: 'run', id: event.runId }, 'run.settled', { runId: event.runId });
+  };
+  bureau.addEventListener('run.settled', runSettledListener);
+
   // AB-372 — `deleteSession` dispatches `SessionDeletedEvent` directly onto
   // the bureau-level emitter (never through `'action'`; see this module's
   // top-of-file doc comment), so it needs its own listener the same way
@@ -2735,6 +2742,7 @@ export function createDurableEventProducer<D extends AgentDefinitions = AgentDef
       bureau.removeEventListener('schedule.resumed', scheduleTransitionListener);
       bureau.removeEventListener('schedule.cancelled', scheduleTransitionListener);
       bureau.removeEventListener('run.removed', runRemovedListener);
+      bureau.removeEventListener('run.settled', runSettledListener);
       bureau.removeEventListener('session.created', sessionCreatedListener);
       bureau.removeEventListener('session.saved', sessionSavedListener);
       bureau.removeEventListener('session.deleted', sessionDeletedListener);

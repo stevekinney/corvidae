@@ -8,6 +8,7 @@ import { clearPendingAtomicWorkflowCommitSideEffects } from '../checkpoint-side-
 import type { EngineInternals } from '../internals.ts';
 import { settleSleepTimerAcknowledgements } from '../sleep-timer-acknowledgements.ts';
 import { parseTerminalCleanupTimerId, workflowFeedListenerKey } from '../state-utilities.ts';
+import { forgetBranchActivityReceipts } from '../timeline-coordinator-detail.ts';
 import {
   releaseWorkflowConcurrencySlot,
   releaseWorkflowConcurrencySlotForRun,
@@ -401,6 +402,7 @@ export function cleanupTerminalWorkflowMemory(
   releaseLaunchCheckpoint(internals, workflowId);
   internals.heartbeatDetails.delete(workflowId);
   internals.lastHeartbeatDetailsByStep.delete(workflowId);
+  forgetBranchActivityReceipts(internals, workflowId);
   for (const [token, pending] of internals.pendingAsyncActivities) {
     if (pending.workflowId === workflowId) {
       internals.pendingAsyncActivities.delete(token);

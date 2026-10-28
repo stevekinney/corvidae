@@ -27,11 +27,13 @@ import {
   browserBuildOptions,
   BUILD_ASSET_DIRECTORY,
   buildApplication,
+  buildInputPaths,
   CURATED_SHIKI_REGISTRIES,
   curatedShikiPlugin,
   DEFAULT_BUILD_DIRECTORY,
   ENTRY_HTML_PATH,
   exitWhenStandardInputCloses,
+  linkedStylesheets,
   PACKAGE_DIRECTORY,
   parseBuildArguments,
   replaceDirectory,
@@ -217,6 +219,14 @@ describe('retainPreviousAssets', () => {
 
 describe('browserBuildOptions', () => {
   const entrypoints = ['index.html'];
+
+  it('links source maps in development and ships none in production', () => {
+    const development = browserBuildOptions({ entrypoints, outdir: 'out', development: true });
+    const production = browserBuildOptions({ entrypoints, outdir: 'out', development: false });
+
+    expect(development.sourcemap).toBe('linked');
+    expect(production.sourcemap).toBe('none');
+  });
 
   it('compiles NODE_ENV in and the Svelte plugin for the mode asked for', () => {
     const production = browserBuildOptions({ entrypoints, outdir: 'out', development: false });
@@ -423,6 +433,69 @@ describe('buildApplication', () => {
   });
 });
 
+describe('stylesheets', () => {
+  it('reads the href of each stylesheet link and nothing else', () => {
+    expect(
+      linkedStylesheets(
+        '<link rel="modulepreload" href="/assets/a.js"><link rel="stylesheet" crossorigin href="/assets/b.css"><link href="/assets/c.css" rel="stylesheet">',
+      ),
+    ).toEqual(['/assets/b.css', '/assets/c.css']);
+  });
+
+  it('drops the stylesheets and maps the page does not link, from the disk, the file list and the metafile', async () => {
+    const outdir = join(mkdtempSync(join(scratch, 'build-')), 'build');
+    const files: Record<string, string> = {
+      'index.html': '<link rel="stylesheet" crossorigin href="/assets/page-aaaaaaaa.css">',
+      'assets/page-aaaaaaaa.css': 'page',
+      'assets/page-aaaaaaaa.css.map': 'page map',
+      'assets/lazy-bbbbbbbb.css': 'duplicate',
+      'assets/lazy-bbbbbbbb.css.map': 'duplicate map',
+      'assets/lazy-bbbbbbbb.js': 'lazy',
+    };
+    const metafile = {
+      inputs: {},
+      outputs: {
+        './assets/page-aaaaaaaa.css': { inputs: {} },
+        './assets/lazy-bbbbbbbb.css': { inputs: {} },
+        './assets/lazy-bbbbbbbb.js': { inputs: {} },
+      },
+    };
+
+    const result = await buildApplication({
+      outdir,
+      bundle: async (configuration) => {
+        const staging = configuration.outdir ?? '';
+        for (const [name, contents] of Object.entries(files)) {
+          mkdirSync(join(staging, name, '..'), { recursive: true });
+          writeFileSync(join(staging, name), contents);
+        }
+        return {
+          success: true,
+          outputs: Object.keys(files).map((name) => ({ path: join(staging, name) })),
+          logs: [],
+          metafile,
+        } as unknown as Bun.BuildOutput;
+      },
+    });
+
+    expect(result.files).toEqual([
+      'assets/lazy-bbbbbbbb.js',
+      'assets/page-aaaaaaaa.css',
+      'assets/page-aaaaaaaa.css.map',
+      'index.html',
+    ]);
+    expect(readdirSync(join(outdir, 'assets')).toSorted()).toEqual([
+      'lazy-bbbbbbbb.js',
+      'page-aaaaaaaa.css',
+      'page-aaaaaaaa.css.map',
+    ]);
+    expect(Object.keys(result.metafile.outputs).toSorted()).toEqual([
+      './assets/lazy-bbbbbbbb.js',
+      './assets/page-aaaaaaaa.css',
+    ]);
+  });
+});
+
 describe('runBuildCommand', () => {
   it('builds with the default options and logs where and how many files it wrote', async () => {
     const lines: string[] = [];
@@ -452,7 +525,64 @@ describe('runBuildCommand', () => {
   });
 });
 
+describe('the recorded build inputs', () => {
+  const metafile = {
+    inputs: {
+      'index.html': { bytes: 1, imports: [] },
+      'src/main.ts': { bytes: 1, imports: [] },
+      '../../components/chat/src/index.ts': { bytes: 1, imports: [] },
+      'wasm-asset:/somewhere/onig.wasm.binary.wasm': { bytes: 1, imports: [] },
+    },
+    outputs: {},
+  } as Bun.BuildMetafile;
+
+  it('names every input as an absolute path, resolved against the working directory', () => {
+    expect(buildInputPaths(metafile, '/repository/applications/interborough')).toEqual([
+      '/repository/applications/interborough/index.html',
+      '/repository/applications/interborough/src/main.ts',
+      '/repository/components/chat/src/index.ts',
+    ]);
+  });
+
+  it('writes them to the --inputs-file when the command is given one, and only then', async () => {
+    const inputsFile = join(scratch, 'inputs', 'inputs.json');
+    mkdirSync(dirname(inputsFile), { recursive: true });
+    const build = { directory: 'x', files: [], metafile } as unknown as Awaited<
+      ReturnType<typeof buildApplication>
+    >;
+    const received: unknown[] = [];
+    await runBuildCommand(
+      () => {},
+      async (options) => {
+        received.push(options);
+        return build;
+      },
+      ['--development', '--inputs-file', inputsFile],
+    );
+
+    expect(received).toEqual([{ development: true }]);
+    expect(await Bun.file(inputsFile).json()).toEqual(buildInputPaths(metafile));
+    expect(readdirSync(dirname(inputsFile))).toEqual(['inputs.json']);
+
+    rmSync(inputsFile);
+    await runBuildCommand(
+      () => {},
+      async () => build,
+      ['--development'],
+    );
+    expect(existsSync(inputsFile)).toBe(false);
+  });
+});
+
 describe('parseBuildArguments', () => {
+  it('reads --inputs-file and refuses one without a file', () => {
+    expect(parseBuildArguments(['--inputs-file', '/tmp/inputs.json']).inputsFile).toBe(
+      '/tmp/inputs.json',
+    );
+    expect(() => parseBuildArguments(['--inputs-file'])).toThrow('--inputs-file needs a file');
+    expect(() => parseBuildArguments(['--inputs-file', ' '])).toThrow('--inputs-file needs a file');
+  });
+
   it('builds for production into the default directory when given nothing', () => {
     expect(parseBuildArguments([])).toEqual({ development: false, exitWithParent: false });
   });

@@ -9,13 +9,29 @@
  * "previous build" by copying the shared one. Nothing asserts on how long a build takes.
  */
 import { afterAll, describe, expect, it } from 'bun:test';
-import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { outcomeOf, rethrow } from '@lostgradient/testing';
 
-import { type ApplicationBuild, BUILD_ASSET_DIRECTORY, buildApplication } from './build.ts';
+import { DEV_RELOAD_ROUTE } from '../src/host/dev-reload.ts';
+import {
+  type ApplicationBuild,
+  BUILD_ASSET_DIRECTORY,
+  buildApplication,
+  linkedStylesheets,
+  PACKAGE_DIRECTORY,
+  REPOSITORY_ROOT,
+} from './build.ts';
 
 const scratch = mkdtempSync(join(tmpdir(), 'interborough-build-slow-'));
 const outdir = join(scratch, 'build');
@@ -78,11 +94,24 @@ describe('buildApplication', () => {
     }
     expect(assets.some((file) => file.endsWith('.js'))).toBe(true);
     expect(assets.some((file) => file.endsWith('.css'))).toBe(true);
+    // Production ships no source maps and links none.
+    expect(result.files.some((file) => file.endsWith('.map'))).toBe(false);
+    for (const file of assets.filter((name) => name.endsWith('.js'))) {
+      expect(await Bun.file(join(result.directory, file)).text(), file).not.toContain(
+        'sourceMappingURL',
+      );
+    }
 
     const html = await Bun.file(join(result.directory, 'index.html')).text();
     expect(html).toMatch(/<script type="module" crossorigin src="\/assets\/[^"]+\.js">/);
     expect(html).toMatch(/<link rel="stylesheet" crossorigin href="\/assets\/[^"]+\.css">/);
     expect(html).not.toContain('main.ts');
+    // The development reload client is injected by the development host at request time, so a
+    // production build carries neither the script nor the route it opens (COR-1745).
+    for (const file of result.files) {
+      const content = await Bun.file(join(result.directory, file)).text();
+      expect(content, file).not.toContain(DEV_RELOAD_ROUTE);
+    }
     // The metafile is returned, never written into the directory the host serves.
     expect(result.files.some((file) => file.includes('metafile'))).toBe(false);
     // A successful build leaves no staging directory of its own behind.
@@ -118,6 +147,74 @@ describe('buildApplication', () => {
   });
 });
 
+describe('buildApplication stylesheets', () => {
+  /** The first custom property Cinder's token stylesheet declares, which opens its root block. */
+  function firstCinderToken(): string {
+    const tokens = readFileSync(
+      join(REPOSITORY_ROOT, 'components', 'cinder', 'src', 'styles', 'tokens-base.css'),
+      'utf8',
+    );
+    const property = /^\s*(--[\w-]+)\s*:/m.exec(tokens)?.[1];
+    if (property === undefined) throw new Error('tokens-base.css declares no custom property');
+    return property;
+  }
+
+  async function emittedStylesheets(result: ApplicationBuild): Promise<Map<string, string>> {
+    const sheets = new Map<string, string>();
+    for (const file of result.files.filter((name) => name.endsWith('.css'))) {
+      sheets.set(file, await Bun.file(join(result.directory, file)).text());
+    }
+    return sheets;
+  }
+
+  it('emits Cinder’s root token block in exactly one stylesheet, and the page links it', async () => {
+    const result = sharedBuild();
+    const sheets = await emittedStylesheets(result);
+    const token = `${firstCinderToken()}:`;
+
+    const holders = [...sheets].filter(([, css]) => css.includes(token)).map(([file]) => file);
+    expect(holders).toHaveLength(1);
+    // Every stylesheet on disk is the one the page links: lazy routes make no copies of their own.
+    expect([...sheets.keys()]).toEqual(holders);
+    const html = await Bun.file(join(result.directory, 'index.html')).text();
+    expect(linkedStylesheets(html).map((href) => href.replace(/^\//, ''))).toEqual(holders);
+    // The disk holds nothing the build did not report.
+    const onDisk = readdirSync(join(result.directory, BUILD_ASSET_DIRECTORY)).map(
+      (name) => `${BUILD_ASSET_DIRECTORY}/${name}`,
+    );
+    expect(onDisk.filter((file) => file.endsWith('.css'))).toEqual(holders);
+  });
+
+  it('keeps the CSS of lazily imported routes in that one stylesheet', () => {
+    const { files, metafile } = sharedBuild();
+
+    const [stylesheet] = files.filter((file) => file.endsWith('.css'));
+    const inputs = Object.keys(metafile.outputs[`./${stylesheet}`]?.inputs ?? {});
+    // `workflow-detail.css` is imported only by a lazily loaded route.
+    expect(
+      inputs.some((input) => input.endsWith('routes/workflows/detail/workflow-detail.css')),
+    ).toBe(true);
+  });
+
+  it('still injects component style blocks into the JavaScript of the component that owns them', async () => {
+    const result = sharedBuild();
+    const component = readFileSync(
+      join(PACKAGE_DIRECTORY, 'src', 'routes', 'settings', 'setting-row.svelte'),
+      'utf8',
+    );
+    const selector = /<style>\s*(\.[\w-]+)/.exec(component)?.[1];
+    if (selector === undefined) throw new Error('setting-row.svelte has no leading style rule');
+
+    let injected = false;
+    for (const file of result.files.filter((name) => name.endsWith('.js'))) {
+      const code = await Bun.file(join(result.directory, file)).text();
+      // Svelte scopes the rule with a `svelte-<hash>` class and keeps the hash beside the CSS.
+      if (code.includes(`${selector}.svelte-`)) injected = true;
+    }
+    expect(injected, selector).toBe(true);
+  });
+});
+
 describe('buildApplication Chat highlighting', () => {
   it('gives Chat’s highlighter the curated registries and not Shiki’s complete ones', async () => {
     const { metafile } = sharedBuild();
@@ -127,6 +224,51 @@ describe('buildApplication Chat highlighting', () => {
       true,
     );
     expect(inputs.some((input) => /shiki\/dist\/(?:langs|themes)/.test(input))).toBe(false);
+  });
+});
+
+describe('buildApplication source maps', () => {
+  /**
+   * A build through the real `Bun.build` and the application's real build options over a two-file
+   * entry whose dynamic import makes a chunk, because the map must land beside the chunk under
+   * `assets/`. The entry is small on purpose: the shared production build is the only full bundle
+   * this file makes.
+   */
+  async function builtFiles(development: boolean): Promise<ApplicationBuild> {
+    const source = mkdtempSync(join(scratch, 'sourcemap-entry-'));
+    const entry = join(source, 'entry.ts');
+    writeFileSync(entry, "export const load = () => import('./lazy.ts');\n");
+    writeFileSync(join(source, 'lazy.ts'), 'export const answer: number = 42;\n');
+    return buildApplication({
+      outdir: join(mkdtempSync(join(scratch, 'sourcemap-')), 'build'),
+      development,
+      bundle: (configuration) => Bun.build({ ...configuration, entrypoints: [entry] }),
+    });
+  }
+
+  it('writes a linked map beside each chunk in development', async () => {
+    const result = await builtFiles(true);
+
+    const chunks = result.files.filter((file) => file.endsWith('.js'));
+    expect(chunks.some((file) => file.startsWith(`${BUILD_ASSET_DIRECTORY}/`))).toBe(true);
+    for (const chunk of chunks) {
+      const map = `${chunk}.map`;
+      expect(result.files, chunk).toContain(map);
+      expect(existsSync(join(result.directory, map)), map).toBe(true);
+      const code = await Bun.file(join(result.directory, chunk)).text();
+      expect(code, chunk).toContain(`//# sourceMappingURL=/${map}`);
+    }
+  });
+
+  it('writes no map and no link in production', async () => {
+    const result = await builtFiles(false);
+
+    expect(result.files.some((file) => file.endsWith('.map'))).toBe(false);
+    for (const chunk of result.files.filter((file) => file.endsWith('.js'))) {
+      expect(await Bun.file(join(result.directory, chunk)).text(), chunk).not.toContain(
+        'sourceMappingURL',
+      );
+    }
   });
 });
 

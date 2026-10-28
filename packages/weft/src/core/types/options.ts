@@ -17,11 +17,9 @@ import type {
 } from './services-resolution.ts';
 import type { WorkflowLogRecord } from './workflow-log.ts';
 import type { WorkflowVisibilityIndexOptions } from './workflow-visibility-index-options.ts';
-
 // ---------------------------------------------------------------------------
 // Start options for engine.start()
 // ---------------------------------------------------------------------------
-
 /**
  * Options accepted by `engine.start(type, input, options?)`.
  *
@@ -412,6 +410,8 @@ export interface EngineOptions<TServices = unknown>
    * poller without waiting a full real poll cycle.
    */
   schedulerPollIntervalMs?: number;
+  /** Storage-size report interval in ms, at most 2147483647; defaults to 60s, `0` disables. */
+  storageSizeReportIntervalMs?: number;
   /** Enable BroadcastChannel for cross-worker event coordination. Default: false. */
   broadcastEvents?: boolean;
   /**
