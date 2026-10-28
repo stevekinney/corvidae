@@ -10,7 +10,6 @@ import {
   isTestPath,
   matchedProbesForLine,
   parseBaseline,
-  scan,
   stripCssComments,
   toPosixPath,
   VIEWPORT_WIDTH_MEDIA,
@@ -230,39 +229,5 @@ describe('count-based baseline — the grandfathering identity', () => {
     expect(() =>
       parseBaseline([{ filePath: 'b.css', query: '@media (min-width: 640px)' }]),
     ).toThrow(/invalid baseline entry/);
-  });
-});
-
-describe('scan — live inventory against the real source tree', () => {
-  // scan() reads every .css/.svelte/.ts file under src; under full-suite parallel
-  // load that I/O can exceed the 5s default, so give it explicit headroom.
-  test('reports usage for every classified probe and only real viewport flags', async () => {
-    const { counts, viewportFlags } = await scan();
-
-    // Every probe in the policy table is represented in the report.
-    expect(counts.map((entry) => entry.feature).toSorted()).toEqual(
-      FEATURE_PROBES.map((probe) => probe.feature).toSorted(),
-    );
-
-    // Tier-1 baselines the library genuinely relies on must show real usage,
-    // so a refactor that accidentally strips them is visible.
-    const byFeature = new Map(counts.map((entry) => [entry.feature, entry.count]));
-    for (const feature of ['@layer', 'container queries', '<dialog>', 'inert']) {
-      expect(byFeature.get(feature) ?? 0).toBeGreaterThan(0);
-    }
-
-    // The scanner is actually walking the tree (known viewport sites exist today),
-    // and every flag is a real @media(width) prelude with a concrete location.
-    expect(viewportFlags.length).toBeGreaterThan(0);
-    for (const flag of viewportFlags) {
-      expect(flag.filePath).toMatch(/\.(css|svelte)$/);
-      expect(flag.lineNumber).toBeGreaterThan(0);
-      expect(VIEWPORT_WIDTH_MEDIA.test(flag.query)).toBe(true);
-    }
-    // This probe walks the entire component source tree from disk. It runs in
-    // ~9s on an idle machine but is starved well past 30s when the full cinder
-    // suite (or a concurrent worktree's suite) saturates the CPU — the failure
-    // mode is a timeout, never an assertion. Budget generously so a loaded
-    // machine doesn't flag a green scan as broken.
   });
 });

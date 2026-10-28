@@ -7952,6 +7952,12 @@ function createParkedActiveRun(): {
 }
 
 /** A `beforeExecute` policy that always requires approval. */
+/** The ids in a session's approval-resolution-started marker (COR-1717: a list of records). */
+function startedApprovalIds(metadata: Record<string, unknown> | undefined): unknown[] {
+  const started = metadata?.['approvalResolutionStartedIds'];
+  return Array.isArray(started) ? started.map((record) => (record as { id?: unknown }).id) : [];
+}
+
 function createNeedsApprovalToolbox(approvalSecret: string, charges: number[]) {
   return createToolbox(
     [
@@ -9744,7 +9750,9 @@ describe('createBureau review queue (AB-20)', () => {
     expect(bureau.reviews.list()).toHaveLength(0);
 
     const persistedSession = await bureau.contexts.get(run.contextId);
-    expect(persistedSession?.metadata['approvalResolutionStartedIds']).toContain(review!.id);
+    expect(persistedSession?.metadata['approvalResolutionStartedIds']).toEqual([
+      expect.objectContaining({ id: review!.id }),
+    ]);
     expect(persistedSession?.metadata['pendingApprovalOverrides']).toHaveProperty(review!.id);
     expect(diagnostics).toEqual([]);
     await bureau.dispose();
@@ -10062,9 +10070,7 @@ describe('createBureau review queue (AB-20)', () => {
     const persistedSession = await bureau.contexts.get(run.contextId);
     expect(persistedSession?.metadata['resolvedReviewIds'] ?? []).not.toContain(review!.id);
     expect(persistedSession?.metadata['pendingApprovalOverrides']).toHaveProperty(review!.id);
-    expect(persistedSession?.metadata['approvalResolutionStartedIds'] ?? []).not.toContain(
-      review!.id,
-    );
+    expect(startedApprovalIds(persistedSession?.metadata)).not.toContain(review!.id);
     const approvedRecords = await bureau.internals.auditTrail!.query({
       runId: run.id,
       type: 'review.tool-approval.approved',
@@ -21174,9 +21180,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
       // re-gated would have persisted a REPLACEMENT override with a
       // different token instead.
       const persistedSession = await bureau.contexts.get(review.sessionId!);
-      expect(persistedSession?.metadata['approvalResolutionStartedIds'] ?? []).not.toContain(
-        review.id,
-      );
+      expect(startedApprovalIds(persistedSession?.metadata)).not.toContain(review.id);
       if (review.kind !== 'tool-approval') throw new Error('expected a tool-approval review');
       const originalApprovalToken = review.approval.approvalToken;
       if (originalApprovalToken === undefined) {
