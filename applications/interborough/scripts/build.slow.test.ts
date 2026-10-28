@@ -159,7 +159,7 @@ describe('buildApplication source maps', () => {
   it('writes a linked map beside each chunk in development', async () => {
     const result = await builtFiles(true);
 
-    const chunks = result.files.filter((file) => /\.js$/.test(file));
+    const chunks = result.files.filter((file) => file.endsWith('.js'));
     expect(chunks.some((file) => file.startsWith(`${BUILD_ASSET_DIRECTORY}/`))).toBe(true);
     for (const chunk of chunks) {
       const map = `${chunk}.map`;
