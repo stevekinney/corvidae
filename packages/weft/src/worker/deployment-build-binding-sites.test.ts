@@ -317,6 +317,23 @@ describe('an automatic worker upgrade', () => {
     await expectOnlyOwnShardMoved(storage, 'build-2', 'run-1', before);
     await expectNoStamp(storage, 'build-1');
   });
+
+  it('is refused when the run is not under an auto-upgrade policy', async () => {
+    const storage = await upgradingRun();
+
+    expect(
+      await rejectionOf(
+        recordWorkflowWorkerUpgrade(
+          storage,
+          { mode: 'pinned' },
+          binding('build-1'),
+          binding('build-2'),
+        ),
+      ),
+    ).toMatchObject({ message: 'Worker upgrade requires auto-upgrade policy.' });
+
+    expect(await runOf(storage, 'run-1')).toEqual({ status: 'running', buildId: 'build-1' });
+  });
 });
 
 describe('bindWorkflowWorkerAtStart', () => {
