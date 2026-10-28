@@ -429,7 +429,7 @@ export class WebExtensionStorage implements Storage {
     assertUserStorageKey(key);
     await this.#withMutationLock(async () => {
       const keyspace = await this.#getKeyspace();
-      if (!(key in keyspace)) return;
+      if (!Object.hasOwn(keyspace, key)) return;
       delete keyspace[key];
       await this.#writeKeyspace(keyspace);
     });

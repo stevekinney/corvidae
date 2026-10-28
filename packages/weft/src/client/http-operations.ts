@@ -241,7 +241,13 @@ async function callRestOperation(
   };
 
   for (const [field, source] of Object.entries(binding.inputSources)) {
-    projectRestInput(projection, operationName, field, source, fields[field]);
+    projectRestInput(
+      projection,
+      operationName,
+      field,
+      source,
+      Object.hasOwn(fields, field) ? fields[field] : undefined,
+    );
   }
 
   const query = projection.searchParameters.toString();
@@ -275,7 +281,9 @@ export function httpClientOperationTransport(
 ): CatalogTransport {
   const jsonRpc = httpClientCatalogTransport(baseUrl, headers);
   return (operationName, input) => {
-    const restBinding = restBindings[operationName];
+    const restBinding = Object.hasOwn(restBindings, operationName)
+      ? restBindings[operationName]
+      : undefined;
     return restBinding === undefined
       ? jsonRpc(operationName, input)
       : callRestOperation(baseUrl, headers, operationName, restBinding, input);

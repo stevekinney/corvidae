@@ -19,5 +19,6 @@ function rawEnvironment(): Record<string, string | undefined> {
 
 /** Reads one exact environment variable name, or `undefined` when it is not set. */
 export function readEnvironmentVariable(name: string): string | undefined {
-  return rawEnvironment()[name];
+  const environment = rawEnvironment();
+  return Object.hasOwn(environment, name) ? environment[name] : undefined;
 }

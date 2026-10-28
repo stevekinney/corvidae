@@ -108,7 +108,7 @@ function inputJsonSchema(operation: ErasedOperation): OpenApiSchema {
 
 function fieldSchema(operation: ErasedOperation, field: string): OpenApiSchema {
   const properties = asPlainObject(inputJsonSchema(operation)['properties']);
-  return asPlainObject(properties[field]);
+  return asPlainObject(Object.hasOwn(properties, field) ? properties[field] : undefined);
 }
 
 function requiredInputFields(operation: ErasedOperation): Set<string> {

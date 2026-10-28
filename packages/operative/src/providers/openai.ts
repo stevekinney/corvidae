@@ -326,7 +326,7 @@ export function createOpenAIProviderStream(
           for (const [field, value] of Object.entries(choice.delta)) {
             if (field === 'content' || field === 'tool_calls' || field === 'role') continue;
             if (value === undefined || value === null) continue;
-            const previous = assembled[field];
+            const previous = Object.hasOwn(assembled, field) ? assembled[field] : undefined;
             assembled[field] =
               typeof value === 'string' && typeof previous === 'string' ? previous + value : value;
           }

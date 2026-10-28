@@ -9,6 +9,7 @@
  * provenance tracer instead of re-deriving evaluation.
  */
 
+import { ownEntry } from '../../_internal/own-entry.ts';
 import { NO_PALETTE, paletteOf, validatePalettes } from './authoring-palette.ts';
 import { PROFILES, selectProfile } from './authoring-profiles.ts';
 import { collectCinderExtensions, traceProvenance } from './authoring-provenance.ts';
@@ -111,7 +112,7 @@ function collectScales(
   for (const [path, extensions] of baseExtensions) {
     const scale = extensions['scale'];
     if (scale === undefined) continue;
-    if (typeof scale !== 'string' || scaleGroups[scale] === undefined) {
+    if (typeof scale !== 'string' || ownEntry(scaleGroups, scale) === undefined) {
       const shown = typeof scale === 'string' ? scale : JSON.stringify(scale);
       throw new Error(`Token "${path}" declares unknown scale "${shown}".`);
     }
@@ -249,7 +250,9 @@ export function buildAuthoringCatalogue(
     dtcgVersion: '2025.10',
     contexts: contexts.map(({ id, theme, motion }) => ({ id, theme, motion })),
     layerStacks,
-    profiles: Object.fromEntries([...usedProfiles].toSorted().map((id) => [id, PROFILES[id]!])),
+    profiles: Object.fromEntries(
+      [...usedProfiles].toSorted().map((id) => [id, ownEntry(PROFILES, id)!]),
+    ),
     scales,
     records,
   };

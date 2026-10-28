@@ -57,7 +57,7 @@ function decodeHtmlEntities(value: string): string {
       return Number.isNaN(codePoint) ? match : String.fromCodePoint(codePoint);
     }
 
-    return NAMED_ENTITIES[entity] ?? match;
+    return (Object.hasOwn(NAMED_ENTITIES, entity) ? NAMED_ENTITIES[entity] : undefined) ?? match;
   });
 }
 

@@ -3,6 +3,7 @@ import FileTextIcon from '@lucide/svelte/icons/file-text';
 import ImageIcon from '@lucide/svelte/icons/image';
 import TableIcon from '@lucide/svelte/icons/table';
 
+import { ownEntry } from '../../_internal/own-entry.ts';
 import type { FileUploadEntry } from './file-upload.types.ts';
 
 const INTERACTIVE_ARIA_ROLES = [
@@ -235,7 +236,7 @@ export function formatAcceptDescription(accept: string | undefined): string {
     .map((token) => token.trim().toLowerCase())
     .filter(Boolean)
     .map((token) => {
-      const knownLabel = ACCEPT_TOKEN_LABELS[token];
+      const knownLabel = ownEntry(ACCEPT_TOKEN_LABELS, token);
       if (knownLabel) return knownLabel;
       if (token.startsWith('.')) return token.slice(1).toUpperCase();
       if (token.endsWith('/*')) return `${token.slice(0, -2)} files`;

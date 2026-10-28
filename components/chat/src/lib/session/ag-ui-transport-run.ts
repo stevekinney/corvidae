@@ -5,6 +5,7 @@ import {
 } from '@ag-ui/core';
 import { mergeAGUIMessages, type TokenUsage } from 'conversationalist';
 import type { ConversationHistory } from '../components/chat/conversation-model.ts';
+import { getOwn } from '../utilities/get-own.ts';
 import { AGUIChatTransportError } from './ag-ui-transport-error.ts';
 import {
   protocolError,
@@ -221,7 +222,7 @@ function sharesAnyRow(
   );
   return messages.some(
     (message) =>
-      base.messages[message.id] !== undefined ||
+      getOwn(base.messages, message.id) !== undefined ||
       (message.role === 'assistant' &&
         (message.toolCalls ?? []).some((call) => calls.has(call.id))),
   );

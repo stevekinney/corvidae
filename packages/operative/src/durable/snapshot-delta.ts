@@ -94,7 +94,11 @@ export function diffConversationSnapshot(
     baseDigest: base.integrity.digest,
     digest: next.integrity.digest,
     fields: Object.entries(next).map(
-      ([key, value]) => [key, fieldChange(baseRecord[key], value)] as const,
+      ([key, value]) =>
+        [
+          key,
+          fieldChange(Object.hasOwn(baseRecord, key) ? baseRecord[key] : undefined, value),
+        ] as const,
     ),
   };
 }
@@ -121,7 +125,7 @@ export function applyConversationSnapshotDelta(
       rebuilt[key] = change.value;
       continue;
     }
-    const baseValue = baseRecord[key];
+    const baseValue = Object.hasOwn(baseRecord, key) ? baseRecord[key] : undefined;
     if (!Array.isArray(baseValue) || baseValue.length !== change.retained) {
       throw new Error(
         `Durable run conversation delta expects ${change.retained} retained "${key}" entries.`,

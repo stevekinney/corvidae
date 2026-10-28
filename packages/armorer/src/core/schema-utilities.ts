@@ -162,7 +162,7 @@ export function schemasLooselyMatch(target: ToolSchema, incoming: ToolSchema): b
   if (!targetShape || !checkShape) return false;
   const keys = Object.keys(checkShape);
   if (!keys.length) return true;
-  return keys.every((key) => key in targetShape);
+  return keys.every((key) => Object.hasOwn(targetShape, key));
 }
 
 export function isZodSchema(value: unknown): value is ToolSchema {

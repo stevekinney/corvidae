@@ -133,7 +133,9 @@ export function planSessionInputPromotion(
 ): SessionInputDeliveryRecords {
   const next: SessionInputDeliveryRecords = { ...records };
   for (const delivery of deliveries) {
-    const record = records[delivery.commandId];
+    const record = Object.hasOwn(records, delivery.commandId)
+      ? records[delivery.commandId]
+      : undefined;
     if (record === undefined || record.runId !== runId) {
       throw new Error(
         `Run "${runId}" cannot promote session input "${delivery.id}": ${
@@ -163,7 +165,7 @@ export async function readSessionInputPromotion(
   commandId: string,
 ): Promise<SessionInputPromotion | undefined> {
   const records = parseSessionInputDeliveries(await kv.get(sessionInputDeliveriesKey(sessionId)));
-  return records[commandId]?.promotion;
+  return Object.hasOwn(records, commandId) ? records[commandId]?.promotion : undefined;
 }
 
 export interface SessionInputDeliveryStoreOptions {
@@ -226,7 +228,7 @@ export function createSessionInputDeliveryStore(
         const liveness = new Map<string, boolean>();
         let changed = false;
         for (const commandId of commandIds) {
-          const record = next[commandId];
+          const record = Object.hasOwn(next, commandId) ? next[commandId] : undefined;
           if (record === undefined) {
             next[commandId] = { runId: owner, claimedAt: new Date(now).toISOString() };
             outcomes.set(commandId, 'claimed');

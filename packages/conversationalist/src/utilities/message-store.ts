@@ -1,9 +1,10 @@
 import type { ConversationHistory as Conversation, Message } from '../types';
+import { getOwn } from './type-helpers';
 
 export function getOrderedMessages(conversation: Conversation): Message[] {
   const ordered: Message[] = [];
   for (const id of conversation.ids) {
-    const message = conversation.messages[id];
+    const message = getOwn(conversation.messages, id);
     if (message) {
       ordered.push(message);
     }

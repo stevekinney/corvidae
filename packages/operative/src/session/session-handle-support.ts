@@ -1,7 +1,7 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import type { WorkflowState } from '@lostgradient/weft';
 import type { ConversationHistory } from 'conversationalist';
-import { Conversation, createConversationHistory } from 'conversationalist';
+import { Conversation, createConversationHistory, getOwn } from 'conversationalist';
 
 import type { RunEvent } from '../agent-run';
 import type { AgentSession, RunRef } from '../agent-session';
@@ -41,7 +41,7 @@ export function historyThroughMessage(
   const ids = history.ids.slice(0, index + 1);
   const messages: Record<string, ConversationHistory['messages'][string]> = {};
   for (const id of ids) {
-    const message = history.messages[id];
+    const message = getOwn(history.messages, id);
     if (message !== undefined) messages[id] = message;
   }
   return structuredClone({ ...history, ids, messages });
@@ -98,18 +98,20 @@ export function appendConversationMessages(
   const messages: Record<string, ConversationHistory['messages'][string]> = {};
 
   for (const id of ids) {
-    const candidateMessage = candidate.messages[id];
-    const baseMessage = base.messages[id];
+    const candidateMessage = getOwn(candidate.messages, id);
+    const baseMessage = getOwn(base.messages, id);
     const message =
       candidateMessage &&
-      (!baseMessage || !messagesAreEqual(candidateMessage, baseMessage) || !current.messages[id])
+      (!baseMessage ||
+        !messagesAreEqual(candidateMessage, baseMessage) ||
+        !getOwn(current.messages, id))
         ? candidateMessage
-        : (current.messages[id] ?? candidateMessage);
+        : (getOwn(current.messages, id) ?? candidateMessage);
     if (message) messages[id] = message;
   }
 
   for (const [position, id] of ids.entries()) {
-    const message = messages[id];
+    const message = getOwn(messages, id);
     if (message) messages[id] = { ...message, position };
   }
 

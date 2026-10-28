@@ -13,6 +13,7 @@
  * No Node imports: TB05's value validation and the browser runtime reuse this.
  */
 
+import { ownEntry } from '../../_internal/own-entry.ts';
 import type { ProfileDefinition, ProfileRange } from './authoring-types.ts';
 import type { TokenType } from './types.ts';
 
@@ -260,7 +261,7 @@ export function selectProfile(
   if (matched.length > 1) {
     throw new Error(`${where} has contradictory usage profiles: ${matched.join(', ')}.`);
   }
-  const profile = profiles[matched[0]!];
+  const profile = ownEntry(profiles, matched[0]!);
   if (!profile) throw new Error(`${where} maps to unknown profile "${matched[0]}".`);
   if (!subject.hasRecipe && (subject.type === undefined || !profile.types.includes(subject.type))) {
     throw new Error(

@@ -1,0 +1,23 @@
+{
+  "description": "Dynamic reads allowed to use a key the code does not control, checked by scripts/check-inherited-key-reads.ts. Each entry names the file, the expression as written, how many such sites the file holds, and why no inherited key such as constructor can reach them. The list can only shrink: --shrink drops stale entries and lowers counts.",
+  "entries": [
+    {
+      "file": "src/components/data-grid/data-grid-hydration-data.ts",
+      "expression": "row[`metric${index}`]",
+      "count": 1,
+      "reason": "the key is the literal prefix `metric` followed by an index"
+    },
+    {
+      "file": "src/components/navigation-bar/navigation-bar-interaction-snippet-helpers.ts",
+      "expression": "clicks[key]",
+      "count": 3,
+      "reason": "a documentation demo: the keys are the data-key attributes of the demo buttons"
+    },
+    {
+      "file": "src/components/source-diff-viewer/source-diff-viewer.path-normalization.ts",
+      "expression": "escapes[next]",
+      "count": 1,
+      "reason": "the key is one character following a backslash, and no inherited name is one character long"
+    }
+  ]
+}

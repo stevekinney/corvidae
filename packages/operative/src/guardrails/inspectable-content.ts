@@ -196,7 +196,9 @@ function replaceMetadataString(
   let cursor: JSONValue = metadata;
   for (const key of path.slice(0, -1)) {
     if (cursor === null || typeof cursor !== 'object') return part;
-    cursor = (cursor as Record<string, JSONValue>)[String(key)] as JSONValue;
+    const container = cursor as Record<string, JSONValue>;
+    if (!Object.hasOwn(container, String(key))) return part;
+    cursor = container[String(key)] as JSONValue;
   }
   const last = path.at(-1);
   if (last === undefined || cursor === null || typeof cursor !== 'object') return part;

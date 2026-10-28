@@ -10,6 +10,15 @@ export function hasOwnProperty<X extends object, Y extends PropertyKey>(
 }
 
 /**
+ * Reads `record[key]` only when `key` is an own property, so an inherited name such as
+ * `constructor` or `toString` finds nothing instead of an `Object.prototype` member.
+ */
+export function getOwn<T>(record: Readonly<Record<string, T>>, key: string): T | undefined {
+  const value = record[key];
+  return Object.hasOwn(record, key) ? value : undefined;
+}
+
+/**
  * Objects `deepFreeze` has finished freezing. Every object reachable from one
  * is frozen too, so a member can never change again: it is safe to share and
  * needs no second walk.

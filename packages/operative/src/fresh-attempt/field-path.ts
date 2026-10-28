@@ -15,10 +15,11 @@ export function formatFieldPath(segments: readonly PropertyKey[]): string {
 export function valueAtFieldPath(root: unknown, segments: readonly PropertyKey[]): unknown {
   let current = root;
   for (const segment of segments) {
-    current =
-      typeof current === 'object' && current !== null
-        ? (current as Record<PropertyKey, unknown>)[segment]
-        : undefined;
+    if (typeof current !== 'object' || current === null || !Object.hasOwn(current, segment)) {
+      current = undefined;
+      continue;
+    }
+    current = (current as Record<PropertyKey, unknown>)[segment];
   }
   return current;
 }

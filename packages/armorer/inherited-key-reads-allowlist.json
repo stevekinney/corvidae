@@ -1,0 +1,29 @@
+{
+  "description": "Dynamic reads allowed to use a key the code does not control, checked by scripts/check-inherited-key-reads.ts. Each entry names the file, the expression as written, how many such sites the file holds, and why no inherited key such as constructor can reach them. The list can only shrink: --shrink drops stale entries and lowers counts.",
+  "entries": [
+    {
+      "file": "src/core/inspect.ts",
+      "expression": "shape[key]",
+      "count": 1,
+      "reason": "the keys come from getSchemaKeys(schema), which is Object.keys of the same shape"
+    },
+    {
+      "file": "src/integrations/openapi/index.ts",
+      "expression": "requestBody?.content[jsonMediaType]",
+      "count": 1,
+      "reason": "jsonMediaType is found among Object.keys(content), so it is an own key"
+    },
+    {
+      "file": "src/protocol/content-parts.ts",
+      "expression": "source[field]",
+      "count": 1,
+      "reason": "the field names come from the SOURCE_FIELDS table, whose kind was just checked with Object.hasOwn"
+    },
+    {
+      "file": "src/protocol/materialization.ts",
+      "expression": "record[key]",
+      "count": 1,
+      "reason": "the keys are Object.keys(current), and `record` is `current`"
+    }
+  ]
+}

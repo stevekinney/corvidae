@@ -168,7 +168,7 @@ export class ChartInteraction {
       next = targets[0];
     } else if (event.key === 'End') {
       next = targets.at(-1);
-    } else if (event.key in keyOffsets) {
+    } else if (Object.hasOwn(keyOffsets, event.key)) {
       const nextIndex =
         (currentIndex + (keyOffsets[event.key] ?? 0) + targets.length) % targets.length;
       next = targets[nextIndex] ?? this.activeTarget;

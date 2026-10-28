@@ -1,0 +1,17 @@
+{
+  "description": "Dynamic reads allowed to use a key the code does not control, checked by scripts/check-inherited-key-reads.ts. Each entry names the file, the expression as written, how many such sites the file holds, and why no inherited key such as constructor can reach them. The list can only shrink: --shrink drops stale entries and lowers counts.",
+  "entries": [
+    {
+      "file": "src/bungalow.ts",
+      "expression": "environment[variable]",
+      "count": 1,
+      "reason": "the variable is built by bungalowHomeVariable as an upper-case name ending in `_HOME`, and no inherited name is upper-case"
+    },
+    {
+      "file": "src/resolve-root.ts",
+      "expression": "options.environment[variable]",
+      "count": 1,
+      "reason": "the variable is built by bungalowHomeVariable as an upper-case name ending in `_HOME`, and no inherited name is upper-case"
+    }
+  ]
+}

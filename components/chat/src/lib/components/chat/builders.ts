@@ -1,3 +1,4 @@
+import { getOwn } from '../../utilities/get-own.ts';
 import type { ConversationHistory, Message } from './conversation-model.ts';
 
 /**
@@ -77,7 +78,7 @@ function markMessageDeliveryStatus(
   messageId: string,
   status: 'failed' | 'sending',
 ): ConversationHistory {
-  const message = history.messages[messageId];
+  const message = getOwn(history.messages, messageId);
   if (!message || message.metadata?.[DELIVERY_STATUS_METADATA_KEY] === status) return history;
 
   return {
@@ -119,7 +120,7 @@ export function clearMessageDeliveryStatus(
   history: ConversationHistory,
   messageId: string,
 ): ConversationHistory {
-  const message = history.messages[messageId];
+  const message = getOwn(history.messages, messageId);
   if (!message || !message.metadata || !(DELIVERY_STATUS_METADATA_KEY in message.metadata)) {
     return history;
   }
@@ -148,7 +149,7 @@ export function markMessageFollowUp(
   history: ConversationHistory,
   messageId: string,
 ): ConversationHistory {
-  const message = history.messages[messageId];
+  const message = getOwn(history.messages, messageId);
   if (!message || isFollowUpMessage(message)) return history;
   return {
     ...history,
@@ -171,7 +172,7 @@ export function promoteFollowUpMessage(
   history: ConversationHistory,
   messageId: string,
 ): ConversationHistory {
-  const message = history.messages[messageId];
+  const message = getOwn(history.messages, messageId);
   if (!message) return history;
   const metadata = { ...message.metadata };
   delete metadata[FOLLOW_UP_METADATA_KEY];

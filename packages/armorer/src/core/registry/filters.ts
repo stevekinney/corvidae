@@ -12,7 +12,7 @@ import {
   type ToolPredicate,
 } from '../query-predicates';
 import type { ToolRisk } from '../risk';
-import type { JsonObject } from '../serialization/json';
+import type { JsonObject, JsonValue } from '../serialization/json';
 import { scoreEmbeddingMatch } from './embedding-scoring';
 import { getQueryEmbeddingInfo } from './embeddings';
 import type {
@@ -247,13 +247,18 @@ function matchesRiskPermissions(
   return permissions.every((permission) => availablePermissions.includes(permission));
 }
 
+/** A metadata field read only when the tool's metadata owns it, so `constructor` finds nothing. */
+function ownMetadataValue(metadata: JsonObject, key: string): JsonValue | undefined {
+  return Object.hasOwn(metadata, key) ? metadata[key] : undefined;
+}
+
 export function metadataHasKeys(
   metadata: JsonObject | undefined,
   keys: readonly string[],
 ): boolean {
   if (!metadata) return false;
   for (const key of keys) {
-    if (!(key in metadata)) return false;
+    if (!Object.hasOwn(metadata, key)) return false;
   }
   return true;
 }
@@ -264,7 +269,7 @@ export function metadataEquals(
 ): boolean {
   if (!metadata) return false;
   for (const [key, value] of Object.entries(eq)) {
-    if (metadata[key] !== value) return false;
+    if (ownMetadataValue(metadata, key) !== value) return false;
   }
   return true;
 }
@@ -275,7 +280,7 @@ export function metadataContains(
 ): boolean {
   if (!metadata) return false;
   return Object.entries(contains).every(([key, needle]) =>
-    needle === undefined ? true : metadataValueContains(metadata[key], needle),
+    needle === undefined ? true : metadataValueContains(ownMetadataValue(metadata, key), needle),
   );
 }
 
@@ -307,7 +312,7 @@ export function metadataStartsWith(
     if (prefix === undefined) {
       continue;
     }
-    const value = metadata[key];
+    const value = ownMetadataValue(metadata, key);
     if (typeof value !== 'string') return false;
     if (!value.startsWith(prefix)) return false;
   }
@@ -323,7 +328,7 @@ export function metadataInRange(
     if (!range) {
       continue;
     }
-    const value = metadata[key];
+    const value = ownMetadataValue(metadata, key);
     if (typeof value !== 'number') return false;
     if (range.min !== undefined && value < range.min) return false;
     if (range.max !== undefined && value > range.max) return false;

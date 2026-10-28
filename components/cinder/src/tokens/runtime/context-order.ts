@@ -1,3 +1,4 @@
+import { ownEntry } from '../../_internal/own-entry.ts';
 import { collectEntries, type CorpusEntry } from './corpus.ts';
 import { mergeAndExpandExtends } from './resolve.ts';
 import { normalizeSourcePath, parseResolutionOrder, sourcesForEntry } from './resolver-order.ts';
@@ -52,7 +53,7 @@ function modifierValuesWithDefaults(
 ): Record<string, string> {
   const modifierValues: Record<string, string> = {};
   for (const modifierName of Object.keys(resolver.modifiers)) {
-    const value = named[modifierName] ?? resolver.modifiers[modifierName]!.default;
+    const value = ownEntry(named, modifierName) ?? resolver.modifiers[modifierName]!.default;
     if (value === undefined) {
       throw new Error(
         `${describeCaller} does not name a value for modifier "${modifierName}", and modifier ` +

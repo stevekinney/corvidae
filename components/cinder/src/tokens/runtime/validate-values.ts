@@ -89,7 +89,7 @@ export function validateCompositeMembers(
   for (const name of Object.keys(value))
     if (!allowedMembers.has(name)) addIssue(issues, path, `unknown composite member ${name}`);
   for (const [name, type] of Object.entries(members)) {
-    if (!(name in value)) {
+    if (!Object.hasOwn(value, name)) {
       addIssue(issues, path, `composite value must include ${name}`);
       continue;
     }

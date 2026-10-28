@@ -1,3 +1,4 @@
+import { ownEntry } from '../../_internal/own-entry.ts';
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 export type JsonSchemaObject = Record<string, unknown>;
@@ -219,7 +220,7 @@ function mergeInitialValueWithFieldDefaults(field: SchemaFormField, value: unkno
     for (const child of field.fields) {
       const seededValue = Object.hasOwn(value, child.key)
         ? value[child.key]
-        : defaultRecord[child.key];
+        : ownEntry(defaultRecord, child.key);
       result[child.key] =
         seededValue === undefined
           ? defaultValueForField(child)
@@ -289,7 +290,7 @@ export function getValueAtPath(value: unknown, path: readonly string[]): unknown
       const index = Number(segment);
       current = Number.isInteger(index) ? current[index] : undefined;
     } else if (isRecord(current)) {
-      current = current[segment];
+      current = ownEntry(current, segment);
     } else {
       return undefined;
     }
@@ -312,7 +313,7 @@ export function setValueAtPath(value: unknown, path: readonly string[], next: un
   }
 
   const copy: Record<string, unknown> = isRecord(value) ? { ...value } : {};
-  copy[head] = setValueAtPath(copy[head], tail, next);
+  copy[head] = setValueAtPath(ownEntry(copy, head), tail, next);
   return copy;
 }
 

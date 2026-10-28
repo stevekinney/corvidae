@@ -282,10 +282,10 @@ function buildAttributeIndexOperations(
   previous: Record<string, SearchAttributeValue>,
   current: Record<string, SearchAttributeValue>,
 ): BatchOperation[] {
-  const oldValue = previous[attributeName];
-  const newValue = current[attributeName];
-  const hadOld = attributeName in previous;
-  const hasNew = attributeName in current;
+  const hadOld = Object.hasOwn(previous, attributeName);
+  const hasNew = Object.hasOwn(current, attributeName);
+  const oldValue = hadOld ? previous[attributeName] : undefined;
+  const newValue = hasNew ? current[attributeName] : undefined;
 
   if (Array.isArray(oldValue) || Array.isArray(newValue)) {
     return buildArrayTransitionOperations({

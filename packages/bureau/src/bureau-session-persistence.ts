@@ -4,6 +4,7 @@ import {
   Conversation,
   type ConversationHistory,
   createConversationHistory,
+  getOwn,
 } from 'conversationalist';
 
 import {
@@ -48,18 +49,20 @@ function appendConversationMessages(
   const messages: Record<string, ConversationHistory['messages'][string]> = {};
 
   for (const id of ids) {
-    const candidateMessage = candidate.messages[id];
-    const baseMessage = base.messages[id];
+    const candidateMessage = getOwn(candidate.messages, id);
+    const baseMessage = getOwn(base.messages, id);
     const message =
       candidateMessage &&
-      (!baseMessage || !messagesAreEqual(candidateMessage, baseMessage) || !current.messages[id])
+      (!baseMessage ||
+        !messagesAreEqual(candidateMessage, baseMessage) ||
+        !getOwn(current.messages, id))
         ? candidateMessage
-        : (current.messages[id] ?? candidateMessage);
+        : (getOwn(current.messages, id) ?? candidateMessage);
     if (message) messages[id] = message;
   }
 
   for (const [position, id] of ids.entries()) {
-    const message = messages[id];
+    const message = getOwn(messages, id);
     if (message) messages[id] = { ...message, position };
   }
 

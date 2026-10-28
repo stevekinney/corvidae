@@ -30,7 +30,10 @@ export function scoreTagMatches(
   weight: number,
   weights: Record<string, number>,
 ): number {
-  return matches.reduce((score, tag) => score + weight * (weights[tag.toLowerCase()] ?? 1), 0);
+  return matches.reduce((score, tag) => {
+    const name = tag.toLowerCase();
+    return score + weight * ((Object.hasOwn(weights, name) ? weights[name] : undefined) ?? 1);
+  }, 0);
 }
 
 export function scoreTagMatchesValue(

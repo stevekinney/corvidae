@@ -9,7 +9,7 @@
     "./sources": "./src/sources/index.ts"
   },
   "scripts": {
-    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json && bun ../../scripts/check-documentation-coverage.ts",
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json && bun ../../scripts/check-inherited-key-reads.ts && bun ../../scripts/check-documentation-coverage.ts",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
     "typecheck": "tsc -b tsconfig.json && bun run typecheck:documentation",
     "typecheck:documentation": "bun ../../scripts/check-documentation-code-blocks.ts",

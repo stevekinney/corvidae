@@ -1,5 +1,6 @@
 import { isFollowUpMessage } from '../components/chat/builders.ts';
 import type { ConversationHistory } from '../components/chat/conversation-model.ts';
+import { getOwn } from '../utilities/get-own.ts';
 
 export function findOwningUser(
   history: ConversationHistory,
@@ -8,7 +9,7 @@ export function findOwningUser(
 ): string {
   const position = history.ids.indexOf(toolCallId);
   for (let index = position - 1; index >= 0; index -= 1) {
-    const message = history.messages[history.ids[index]!];
+    const message = getOwn(history.messages, history.ids[index]!);
     // A follow-up row never owns the run, so the search walks past it.
     if (message?.role === 'user' && !isFollowUpMessage(message)) return message.id;
   }
@@ -24,7 +25,7 @@ export function rebuildApprovalState(
   toolOwners.clear();
   pendingApprovals.clear();
   for (const id of history.ids) {
-    const message = history.messages[id];
+    const message = getOwn(history.messages, id);
     if (!message) continue;
     if (message.role === 'tool-call' && message.toolCall)
       toolOwners.set(message.toolCall.id, findOwningUser(history, id, activeUserMessageId));
@@ -43,7 +44,7 @@ export function latestResolvedApprovalOwner(
   let latestOwner: string | undefined;
   let latestPosition = -1;
   for (const owner of resolvedApprovalOwners) {
-    if (isFollowUpMessage(history.messages[owner])) continue;
+    if (isFollowUpMessage(getOwn(history.messages, owner))) continue;
     const position = history.ids.indexOf(owner);
     if (position > latestPosition) {
       latestOwner = owner;

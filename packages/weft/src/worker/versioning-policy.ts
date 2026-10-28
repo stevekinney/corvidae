@@ -10,7 +10,7 @@ import {
   type DeploymentSelection,
   type WorkerDeploymentVersion,
 } from './deployment-routing.ts';
-import type { WorkerExecutionRequirement } from './manifest/types.ts';
+import type { WorkerExecutionRequirement, WorkerManifest } from './manifest/types.ts';
 import { NoRoutedWorkerDeploymentError } from './no-routed-deployment-error.ts';
 import { commitWorkerBinding } from './worker-binding-commit.ts';
 
@@ -75,6 +75,16 @@ export async function resolveWorkflowWorkerStartBinding(
   throw new NoRoutedWorkerDeploymentError(options.workflowType, options.workflowRevision);
 }
 
+/** The manifest's workflow of this type, if it declares one itself, so `constructor` finds nothing. */
+function ownManifestWorkflow(
+  manifest: WorkerManifest,
+  workflowType: string,
+): WorkerManifest['workflows'][string] | undefined {
+  return Object.hasOwn(manifest.workflows, workflowType)
+    ? manifest.workflows[workflowType]
+    : undefined;
+}
+
 function matchingDeploymentNames(
   versions: readonly WorkerDeploymentVersion[],
   options: Readonly<{ workflowType: string; workflowRevision: string }>,
@@ -83,7 +93,7 @@ function matchingDeploymentNames(
     .filter(
       (version) =>
         version.state === 'ready' &&
-        version.manifest.workflows[options.workflowType]?.workflowRevision ===
+        ownManifestWorkflow(version.manifest, options.workflowType)?.workflowRevision ===
           options.workflowRevision,
     )
     .map((version) => version.deploymentName)
@@ -101,7 +111,7 @@ function deploymentCandidates(
       (version) =>
         version.deploymentName === deploymentName &&
         version.state === 'ready' &&
-        version.manifest.workflows[options.workflowType]?.workflowRevision ===
+        ownManifestWorkflow(version.manifest, options.workflowType)?.workflowRevision ===
           options.workflowRevision,
     )
     .map((version) => ({
@@ -135,7 +145,7 @@ function bindingFromDeploymentSelection(
     checkpointId: string;
   }>,
 ): WorkflowWorkerBinding {
-  const workflow = selection.candidate.manifest.workflows[options.workflowType]!;
+  const workflow = ownManifestWorkflow(selection.candidate.manifest, options.workflowType)!;
   const activity = Object.entries(workflow.activities).toSorted(([left], [right]) =>
     left.localeCompare(right),
   )[0];

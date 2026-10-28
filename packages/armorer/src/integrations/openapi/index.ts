@@ -261,12 +261,12 @@ function createOperationTool(options: CreateOperationToolOptions): Tool {
       const record = isRecord(params) ? params : {};
       const url = buildRequestUrl(baseUrl, path, pathParameterKeys, record);
       for (const queryParameter of queryParameterKeys) {
-        appendQueryParameter(url, queryParameter.name, record[queryParameter.key]);
+        appendQueryParameter(url, queryParameter.name, ownArgument(record, queryParameter.key));
       }
 
       const headers: Record<string, string> = {};
       for (const headerParameter of headerParameterKeys) {
-        const value = record[headerParameter.key];
+        const value = ownArgument(record, headerParameter.key);
         if (value !== undefined) {
           headers[headerParameter.name] = toParameterString(value);
         }
@@ -418,7 +418,7 @@ function buildRequestUrl(
 ): URL {
   let interpolated = path;
   for (const { name, key } of pathParameters) {
-    const value = params[key];
+    const value = ownArgument(params, key);
     interpolated = interpolated.replaceAll(
       `{${name}}`,
       encodeURIComponent(toParameterString(value)),
@@ -504,6 +504,11 @@ function dereference(value: unknown, root: OpenAPISpec, seen: Set<unknown> = new
   return value;
 }
 
+/** A tool-call argument read only when the call supplied it, so `constructor` is never an argument. */
+function ownArgument(params: Record<string, unknown>, key: string): unknown {
+  return Object.hasOwn(params, key) ? params[key] : undefined;
+}
+
 function resolveRef(ref: string, root: OpenAPISpec): unknown {
   if (!ref.startsWith('#/')) {
     throw new Error(`createToolboxFromOpenAPI: cannot resolve non-local $ref "${ref}"`);
@@ -515,7 +520,7 @@ function resolveRef(ref: string, root: OpenAPISpec): unknown {
 
   let current: unknown = root;
   for (const segment of segments) {
-    if (!isRecord(current) || !(segment in current)) {
+    if (!isRecord(current) || !Object.hasOwn(current, segment)) {
       throw new Error(`createToolboxFromOpenAPI: unresolved $ref "${ref}"`);
     }
     current = current[segment];

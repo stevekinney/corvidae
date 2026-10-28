@@ -43,7 +43,7 @@ export function normalizeBarData(
 }
 
 function readBarCategory(datum: BarChartDatum, categoryKey: string): NormalizedXValue {
-  if (!(categoryKey in datum)) {
+  if (!Object.hasOwn(datum, categoryKey)) {
     throw new Error(
       `[cinder/bar-chart] rule=invalid-bar-category key="${categoryKey}": category key is missing.`,
     );
@@ -62,7 +62,7 @@ function readBarCategory(datum: BarChartDatum, categoryKey: string): NormalizedX
 }
 
 function readBarValue(datum: BarChartDatum, series: BarChartSeries, categoryLabel: string) {
-  if (!(series.valueKey in datum)) {
+  if (!Object.hasOwn(datum, series.valueKey)) {
     throw new Error(
       `[cinder/bar-chart] rule=missing-bar-value-key key="${series.valueKey}": value key is missing.`,
     );

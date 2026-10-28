@@ -402,7 +402,9 @@ export class LongPollWorker implements Disposable {
 
   async #executeKnownTask(task: PolledTask, taskAbortController: AbortController): Promise<void> {
     const delivery = this.#requireDelivery();
-    const activityFunction = this.#activities[task.activityName];
+    const activityFunction = Object.hasOwn(this.#activities, task.activityName)
+      ? this.#activities[task.activityName]
+      : undefined;
     if (activityFunction === undefined) {
       await delivery.deliver({
         operationId: task.operationId,

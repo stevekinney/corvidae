@@ -205,7 +205,7 @@ function redact(
   key: string | undefined,
 ): unknown {
   if (key !== undefined) {
-    const fieldClass = fieldClasses[key] ?? 'never-exported';
+    const fieldClass = Object.hasOwn(fieldClasses, key) ? fieldClasses[key] : 'never-exported';
     if (fieldClass === 'never-exported') return undefined;
     if (fieldClass === 'tenant-private' && options.audience === 'public') return undefined;
     if (fieldClass === 'operator-private' && options.audience !== 'operator') return undefined;
