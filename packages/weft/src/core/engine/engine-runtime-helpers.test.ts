@@ -89,8 +89,9 @@ describe('engine runtime helpers', () => {
   });
 
   it('reports the storage size when a live engine ticks', async () => {
-    const storage = new MemoryStorage();
-    storage.sizeBytes = () => Promise.resolve(42);
+    const storage = Object.assign(new MemoryStorage(), {
+      sizeBytes: () => Promise.resolve(42),
+    });
     await using engine = new Engine({ storage });
     const reported: number[] = [];
     engine.addEventListener(StorageSizeReportedEvent.type, (event) => {
@@ -111,19 +112,20 @@ describe('engine runtime helpers', () => {
   });
 
   it('swallows a failed storage size read from a live engine', async () => {
-    const storage = new MemoryStorage();
     let settled = false;
-    storage.sizeBytes = () => {
-      const failure = Promise.reject(new Error('size unavailable'));
-      void failure
-        .then(undefined, () => {})
-        .then(() => {})
-        .then(() => {})
-        .then(() => {
-          settled = true;
-        });
-      return failure;
-    };
+    const storage = Object.assign(new MemoryStorage(), {
+      sizeBytes: () => {
+        const failure = Promise.reject(new Error('size unavailable'));
+        void failure
+          .then(undefined, () => {})
+          .then(() => {})
+          .then(() => {})
+          .then(() => {
+            settled = true;
+          });
+        return failure;
+      },
+    });
     await using engine = new Engine({ storage });
     const tracker = {
       disposed: false,
