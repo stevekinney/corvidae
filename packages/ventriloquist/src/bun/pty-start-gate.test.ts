@@ -174,6 +174,25 @@ describe('the PTY start gate', () => {
     }
   });
 
+  // spawn-free: the child is a plain object holding a number that is no open descriptor, so only the failure paths run.
+  test('a channel the host can no longer write to or close is released and abandoned without throwing', () => {
+    // Far above any descriptor this process can hold, so the write and the close both fail with EBADF.
+    const missing = 1_073_741_823;
+    expect(() => fstatSync(missing)).toThrow();
+    const unwritable = {
+      pid: 1,
+      exited: Promise.resolve(0),
+      signalCode: null,
+      stdio: [null, null, null, missing],
+      kill() {},
+    };
+    expect(releaseGate(unwritable)).toBe(true);
+    expect(abandonGate(unwritable)).toBe(true);
+    const unclosable = { ...unwritable, stdio: [null, null, null, missing] };
+    expect(abandonGate(unclosable)).toBe(true);
+    expect(releaseGate(unclosable)).toBe(true);
+  });
+
   // spawn-free: the child is a plain object with no process behind it, so only the descriptor lookup runs.
   test('a child without the channel cannot be released or abandoned', () => {
     const bare = { pid: 1, exited: Promise.resolve(0), signalCode: null, kill() {} };

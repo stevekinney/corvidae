@@ -19,7 +19,7 @@ const validReport = {
       id: 'launch',
       passed: true,
       observations: [],
-      versions: { bun: '1.4.2' },
+      versions: { bun: '1.4.4' },
       metrics: { duration: { value: 1, unit: 'milliseconds' } },
     },
   ],
@@ -75,7 +75,7 @@ describe('terminal evidence schema', () => {
     };
     const workload = {
       fixtureId: 'fixture',
-      environment: { hardware: 'arm64/darwin', runtime: 'Bun 1.4.2' },
+      environment: { hardware: 'arm64/darwin', runtime: 'Bun 1.4.4' },
       plan: {
         durationMilliseconds: 1,
         sampleCount: 1,
@@ -208,7 +208,7 @@ describe('terminal evidence schema', () => {
     };
     const browserWorkload = {
       fixtureId: 'browser-assets-and-csp',
-      environment: { hardware: 'arm64/darwin', runtime: 'Bun 1.4.2', browser: 'Chromium' },
+      environment: { hardware: 'arm64/darwin', runtime: 'Bun 1.4.4', browser: 'Chromium' },
       plan,
       control: {
         passed: true as const,
@@ -358,7 +358,7 @@ describe('terminal evidence schema', () => {
     const control = { ...observed, durationMilliseconds: 3, raw: { ...observed.raw, duration: 3 } };
     const workload = {
       fixtureId: 'overflow',
-      environment: { hardware: 'arm64/darwin', runtime: 'Bun 1.4.2' },
+      environment: { hardware: 'arm64/darwin', runtime: 'Bun 1.4.4' },
       plan: {
         durationMilliseconds: 1_000,
         sampleCount: 1,

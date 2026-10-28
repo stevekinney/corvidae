@@ -44,13 +44,16 @@ function definedEntries(environment: Record<string, string | undefined>): Record
  */
 function exitStatus(result: {
   exitCode: number | null;
-  signalCode?: string | null;
+  signalCode?: string | number | null;
   stderr: { toString(): string };
 }): { code: number; stderr: string } {
   const stderr = result.stderr.toString();
   if (result.exitCode !== null) return { code: result.exitCode, stderr };
   const signal = result.signalCode ?? 'unknown';
-  const number = (osConstants.signals as Record<string, number | undefined>)[signal] ?? 0;
+  const number =
+    typeof signal === 'number'
+      ? signal
+      : ((osConstants.signals as Record<string, number | undefined>)[signal] ?? 0);
   return { code: 128 + number, stderr: `${stderr}terminated by signal ${signal}\n` };
 }
 

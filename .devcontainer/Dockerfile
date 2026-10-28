@@ -8,7 +8,7 @@ FROM node:24.21.0-trixie-slim AS node
 
 # The tag is the workspace's `packageManager` Bun version; `scripts/dev-container.test.ts`
 # fails when the two drift apart.
-FROM oven/bun:1.4.2
+FROM oven/bun:1.4.4
 
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=node /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
@@ -21,7 +21,7 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 # `main` cluster is never created. Validation itself needs `git` (Weft's coverage check
 # lists files with `git ls-files`, and several suites shell out to it). `python3`, `make`,
 # and `g++` are node-gyp's toolchain: on linux/arm64, `better-sqlite3` and
-# `msgpackr-extract` find no prebuilt binary for the Node version Bun 1.4.2 reports, and
+# `msgpackr-extract` find no prebuilt binary for the Node version Bun 1.4.4 reports, and
 # their install scripts fall back to compiling, which fails `bun install` without it.
 # `lsof` is what `scripts/chef/leftovers.ts` uses to find processes still running inside a
 # worktree; without it every worktree reads as unchecked in the container.
