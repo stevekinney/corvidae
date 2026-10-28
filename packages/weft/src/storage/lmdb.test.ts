@@ -85,6 +85,41 @@ describe('LMDBStorage', () => {
     fixtureCleanups.length = 0;
   });
 
+  it('includes a key equal to the prefix in reverse scans and key listings, as forward ones do', async () => {
+    const storage = createStorage();
+    await storage.batch(
+      ['k:', 'k:a', 'k:b', 'k9'].map((key) => ({
+        type: 'put' as const,
+        key,
+        value: encode(key),
+      })),
+    );
+
+    const forwardKeys = await collect(storage.keys('k:'));
+    const reverseKeys = await collect(storage.keys('k:', { reverse: true }));
+    const reverseEntries = await collect(storage.scan('k:', { reverse: true }));
+
+    expect(forwardKeys).toEqual(['k:', 'k:a', 'k:b']);
+    expect(reverseKeys).toEqual(['k:b', 'k:a', 'k:']);
+    expect(reverseEntries.map(([key]) => key)).toEqual(['k:b', 'k:a', 'k:']);
+    storage[Symbol.dispose]();
+  });
+
+  it('skips a key equal to the prefix range end when scanning in reverse', async () => {
+    const storage = createStorage();
+    // 'k;' is exactly the exclusive upper bound of the 'k:' prefix, where a reverse range starts.
+    await storage.batch(
+      ['k:a', 'k:b', 'k;'].map((key) => ({ type: 'put' as const, key, value: encode(key) })),
+    );
+
+    const reverseKeys = await collect(storage.keys('k:', { reverse: true }));
+    const reverseEntries = await collect(storage.scan('k:', { reverse: true }));
+
+    expect(reverseKeys).toEqual(['k:b', 'k:a']);
+    expect(reverseEntries.map(([key]) => key)).toEqual(['k:b', 'k:a']);
+    storage[Symbol.dispose]();
+  });
+
   it('conditionalBatch refreshes the read snapshot before the next read', async () => {
     const storage = createStorage();
     await storage.put('condition:match', encode('before'));

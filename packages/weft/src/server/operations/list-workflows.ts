@@ -88,8 +88,9 @@ export const listWorkflowsOperation = defineOperation({
         ...(validatedTags !== undefined ? { tags: validatedTags } : {}),
       });
     } catch (error) {
-      if (error instanceof ListFilterValidationError) throw toUnprocessable(error);
-      throw error;
+      // `normalizeListFilter` raises only `ListFilterValidationError` for any input the operation
+      // schema lets through; anything else is a defect and propagates untouched.
+      throw error instanceof ListFilterValidationError ? toUnprocessable(error) : error;
     }
 
     try {

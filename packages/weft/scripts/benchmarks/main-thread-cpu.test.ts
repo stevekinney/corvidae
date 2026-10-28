@@ -7,6 +7,7 @@ describe('startMainThreadCpuClock', () => {
     const readCpuMilliseconds = startMainThreadCpuClock();
     const wallStarted = performance.now();
 
+    // load-proof: the sleep is the idle period under measurement, not a wait for state; load only lengthens wall time, which the lower bound allows, and the CPU clock excludes it.
     await Bun.sleep(100);
 
     expect(performance.now() - wallStarted).toBeGreaterThanOrEqual(95);

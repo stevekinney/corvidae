@@ -439,6 +439,18 @@ describe('TaskQueue', () => {
       expect(queue.isTracked('stale-1')).toBe(false);
     });
 
+    it('rejects a maxAge that is negative, infinite or not a number', () => {
+      using queue = new TaskQueue();
+      const task = makeTask({ operationId: 'kept-1' });
+      queue.enqueue('default', task);
+
+      for (const invalid of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+        expect(() => queue.removeStale(invalid)).toThrow(RangeError);
+      }
+      expect(() => queue.removeStale(-1)).toThrow('maxAge must be a finite, non-negative number');
+      expect(queue.isTracked('kept-1')).toBe(true);
+    });
+
     it('does not remove tasks younger than maxAge', () => {
       using queue = new TaskQueue();
       const task = makeTask({ operationId: 'fresh-1' });

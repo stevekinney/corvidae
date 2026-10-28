@@ -142,6 +142,25 @@ describe('resolveStorage', () => {
     storage[Symbol.dispose]();
   });
 
+  it.each([
+    ['with an auth token', { authToken: 'secret-token' }],
+    ['without an auth token', {}],
+  ])('resolves Turso storage %s', async (_label, extra) => {
+    const storage = await resolveStorage({ type: 'turso', url: 'file::memory:', ...extra });
+    expect(storage.constructor.name).toBe('TursoStorage');
+    await storage.put('turso', new Uint8Array([7]));
+    expect(await storage.get('turso')).toEqual(new Uint8Array([7]));
+    storage[Symbol.dispose]();
+  });
+
+  it('rejects a Turso auth token that is not a string', async () => {
+    expect(
+      await throwingRejectionOf(
+        resolveStorage({ type: 'turso', url: 'file::memory:', authToken: 42 } as never),
+      ),
+    ).toThrow('Turso storage configuration field "authToken" must be a string.');
+  });
+
   it('rejects unknown storage configuration variants', async () => {
     expect(await throwingRejectionOf(resolveStorage({ type: 'nope' } as never))).toThrow(
       'Unsupported storage configuration type: nope',

@@ -1,0 +1,131 @@
+/**
+ * Failure-path tests for `TursoStorage` against a real libSQL driver: a client that cannot be
+ * built, a write batch that keeps hitting a locked database, and a transaction that fails for a
+ * reason other than contention while its rollback fails too.
+ */
+
+import { describe, expect, it, spyOn } from 'bun:test';
+import { createRequire } from 'node:module';
+
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import {
+  createDiskBackedTestFixture,
+  sqliteDatabaseSidecarSuffixes,
+} from '../testing/storage-backends.test-support.ts';
+import { SQLITE_UPSERT_VALUE_BY_KEY } from './sqlite-key-value-queries.ts';
+import { TursoStorage } from './turso.ts';
+
+// The adapter loads the driver through `createRequire`, which yields the CommonJS build. The probe
+// below must come from that same build to share the transaction class the adapter's own uses.
+const { createClient } = createRequire(import.meta.url)(
+  '@libsql/client',
+) as typeof import('@libsql/client');
+
+function encode(value: string): Uint8Array {
+  return new TextEncoder().encode(value);
+}
+
+describe('TursoStorage client construction', () => {
+  it('surfaces a driver construction failure on every attempt instead of memoizing it', async () => {
+    const storage = new TursoStorage({ url: 'gopher://nowhere' });
+
+    expect(await throwingRejectionOf(storage.get('a'))).toThrow('URL_SCHEME_NOT_SUPPORTED');
+    expect(await throwingRejectionOf(storage.get('a'))).toThrow('URL_SCHEME_NOT_SUPPORTED');
+    storage[Symbol.dispose]();
+  });
+});
+
+describe('TursoStorage on a runtime without node:module', () => {
+  it('builds the web client, which cannot open local files, instead of the Node driver', async () => {
+    const realGetBuiltinModule = process.getBuiltinModule.bind(process);
+    const builtinSpy = spyOn(process, 'getBuiltinModule').mockImplementation((id: string) =>
+      id === 'node:module' ? undefined : realGetBuiltinModule(id),
+    );
+    const storage = new TursoStorage({ url: 'file::memory:' });
+
+    try {
+      // The Node driver opens `file:` URLs; the web client supports only network schemes, and its
+      // refusal names itself, which shows which client the adapter built.
+      const refusal = await throwingRejectionOf(storage.get('a'));
+
+      expect(refusal).toThrow('The client that uses Web standard APIs supports only');
+    } finally {
+      builtinSpy.mockRestore();
+      storage[Symbol.dispose]();
+    }
+  });
+});
+
+describe('TursoStorage write contention', () => {
+  it('retries a locked write batch and then surfaces the contention error', async () => {
+    const fixture = createDiskBackedTestFixture({
+      prefix: 'turso-batch-busy',
+      suffix: '.db',
+      sidecarSuffixes: sqliteDatabaseSidecarSuffixes,
+    });
+    const url = `file:${fixture.path}`;
+    const storage = new TursoStorage({ url });
+    const locker = createClient({ url });
+
+    try {
+      await storage.put('seed', encode('seed'));
+      const transaction = await locker.transaction('write');
+      try {
+        await transaction.execute({
+          sql: SQLITE_UPSERT_VALUE_BY_KEY,
+          args: ['lock:holder', encode('held')],
+        });
+
+        expect(
+          await throwingRejectionOf(
+            storage.batch([{ type: 'put', key: 'busy:key', value: encode('never') }]),
+          ),
+        ).toThrow(/SQLITE_BUSY|busy|locked/i);
+      } finally {
+        await transaction.rollback().catch(() => {});
+      }
+      expect(await storage.get('busy:key')).toBeNull();
+    } finally {
+      locker.close();
+      storage[Symbol.dispose]();
+      fixture.cleanup();
+    }
+  });
+});
+
+describe('TursoStorage conditionalBatch non-contention failure', () => {
+  it('rethrows the original failure even when the best-effort rollback fails too', async () => {
+    const storage = new TursoStorage({ url: 'file::memory:' });
+    const probe = createClient({ url: 'file::memory:' });
+    const probeTransaction = await probe.transaction('write');
+    const transactionPrototype = Object.getPrototypeOf(probeTransaction) as {
+      executeMultiple: (sql: string) => Promise<void>;
+      rollback: () => Promise<void>;
+    };
+    await probeTransaction.rollback();
+    probe.close();
+
+    const failure = new Error('disk I/O error');
+    const executeSpy = spyOn(transactionPrototype, 'executeMultiple').mockRejectedValue(failure);
+    const rollbackSpy = spyOn(transactionPrototype, 'rollback').mockRejectedValue(
+      new Error('rollback failed'),
+    );
+
+    try {
+      expect(
+        await throwingRejectionOf(
+          storage.conditionalBatch(
+            [{ key: 'a', expectedValue: null }],
+            [{ type: 'put', key: 'a', value: encode('1') }],
+          ),
+        ),
+      ).toThrow('disk I/O error');
+      expect(executeSpy).toHaveBeenCalledTimes(1);
+      expect(rollbackSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      executeSpy.mockRestore();
+      rollbackSpy.mockRestore();
+      storage[Symbol.dispose]();
+    }
+  });
+});

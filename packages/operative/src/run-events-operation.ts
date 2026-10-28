@@ -12,7 +12,6 @@
 
 import {
   createReplayAwareClosableIterable,
-  decodeCursor,
   defineOperation,
   type OperationFault,
   type ReplayLiveSubscribeOptions,
@@ -50,14 +49,9 @@ const runEventKindSchema = z.enum(PUBLISHED_RUN_EVENT_KINDS);
 const runEventsSubscriptionInput = z.object({
   runId: z.string().min(1),
   kinds: z.union([runEventKindSchema, z.array(runEventKindSchema).min(1)]).optional(),
-  // Checked here, in the schema, so a malformed cursor is `InvalidParams` over
-  // every transport (a WebSocket subscribe, or `Last-Event-ID` on the HTTP
-  // route) instead of an error thrown later from inside the feed.
-  fromCursor: z
-    .string()
-    .min(1)
-    .refine((cursor) => decodeCursor(cursor) !== null, { message: 'Invalid cursor' })
-    .optional(),
+  // Bound the input here; invoke checks its structure against the resolved
+  // feed before opening a stream, so every transport returns `InvalidParams`.
+  fromCursor: z.string().min(1).max(512).optional(),
 });
 
 const runEventsSubscriptionEnvelope = z.object({
@@ -68,23 +62,39 @@ const runEventsSubscriptionEnvelope = z.object({
 /**
  * The event envelope as the wire carries it.
  *
- * `payload` is `z.record(z.string(), z.unknown())` rather than a discriminated
- * union over `kind`, and that is a deliberate first step rather than the end
- * state. The payloads are produced by named-field projections in
- * `run-event-feed.ts`, so what crosses is already bounded and redacted; what
- * this schema does not yet give a client is a static type per `kind`. Turning
- * it into a discriminated union is additive — every payload already validates
- * against this shape — and is worth doing once the projected set stops
- * growing.
+ * Ordinary event payloads remain records. Named-field projections in
+ * `run-event-feed.ts` already bound and redact them; a client does not yet get
+ * a static type for every ordinary kind. The gap variant names its required
+ * recovery fields in generated schemas, as Weft's fleet gap does.
  */
-export const runEventEnvelopeSchema = z.object({
+const publishedRunEventEnvelopeSchema = z.object({
   sequence: z.number(),
   cursor: z.string(),
   runId: z.string(),
-  kind: z.string(),
+  // Reserve the gap discriminator for the structured branch below, while
+  // retaining every ordinary event kind accepted by the previous schema.
+  kind: z.string().regex(/^(?!run\.gap$)/),
   emittedAtMs: z.number(),
   payload: z.record(z.string(), z.unknown()),
 });
+
+const runEventGapEnvelopeSchema = z.object({
+  sequence: z.number(),
+  cursor: z.string(),
+  runId: z.string(),
+  kind: z.literal('run.gap'),
+  emittedAtMs: z.number(),
+  payload: z.object({
+    requestedCursor: z.string(),
+    firstRetainedSequence: z.number(),
+  }),
+});
+
+/** Published run event or structured recovery gap, shared across transports. */
+export const runEventEnvelopeSchema: z.ZodType<AgentRunEventEnvelope> = z.union([
+  publishedRunEventEnvelopeSchema,
+  runEventGapEnvelopeSchema,
+]);
 
 export type RunEventsSubscriptionInput = z.infer<typeof runEventsSubscriptionInput>;
 
@@ -172,6 +182,17 @@ export const runEventsSubscriptionOperation = defineOperation<
       };
       throw notFound;
     }
+    if (
+      input.fromCursor !== undefined &&
+      runFeed.feed.decodeCursor(input.fromCursor) === 'invalid'
+    ) {
+      const invalid: OperationFault = {
+        code: 'InvalidParams',
+        message: 'Invalid cursor',
+        data: { issues: [{ path: ['fromCursor'], message: 'Invalid cursor', code: 'custom' }] },
+      };
+      throw invalid;
+    }
 
     // Only the session's own signal is needed: `createAgentRunEventFeed`
     // binds the feed's lifetime into every subscription it hands out, so
@@ -187,16 +208,15 @@ export const runEventsSubscriptionOperation = defineOperation<
         ? undefined
         : new Set<string>(Array.isArray(input.kinds) ? input.kinds : [input.kinds]);
     const matches = (envelope: AgentRunEventEnvelope): boolean =>
-      kinds === undefined || kinds.has(envelope.kind);
+      envelope.kind === 'run.gap' || kinds === undefined || kinds.has(envelope.kind);
     const subscribeOptions: ReplayLiveSubscribeOptions<AgentRunEventEnvelope> = {
       ...(input.fromCursor === undefined ? {} : { fromCursor: input.fromCursor }),
       signal: controller.signal,
       replayLimit: MAX_RUN_SUBSCRIPTION_REPLAY_EVENTS,
-      // `countReplayEnvelope` is deliberately NOT passed. The feed applies
-      // `filterEnvelope` first and only counts what survives it
-      // (`replay-live-feed-internals.ts`), so the replay cap already measures
-      // matching events — supplying a counter equal to the filter would just
-      // run the predicate twice per envelope.
+      // The feed applies `filterEnvelope` first and only counts what survives
+      // it, so the cap measures matching events; the `run.gap` marker is
+      // recovery metadata and is not counted.
+      countReplayEnvelope: (envelope) => envelope.kind !== 'run.gap',
       filterEnvelope: matches,
     };
     const iterable = createReplayAwareClosableIterable<AgentRunEventEnvelope>(

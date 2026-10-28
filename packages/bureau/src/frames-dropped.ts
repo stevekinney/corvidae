@@ -32,7 +32,7 @@
  * @module frames-dropped
  */
 
-import { decodeCursor, type ReplayLiveFeed, type SequencedEventEnvelope } from '@lostgradient/weft';
+import { type ReplayLiveFeed, type SequencedEventEnvelope } from '@lostgradient/weft';
 
 /** The `kind` of the marker that reports a live buffer overflow. */
 export const FRAMES_DROPPED_KIND = 'frames.dropped';
@@ -59,6 +59,7 @@ export function withFramesDroppedMarker<TEnvelope extends SequencedEventEnvelope
 ): ReplayLiveFeed<TEnvelope> {
   return {
     replay: (options) => feed.replay(options),
+    decodeCursor: (cursor) => feed.decodeCursor(cursor),
     subscribe: (options) => subscribeWithMarker(feed, lifetime, createMarker, options),
     dispose: () => {
       feed.dispose();
@@ -116,7 +117,9 @@ function subscribeWithMarker<TEnvelope extends SequencedEventEnvelope>(
     // Where the reader is: the cursor it asked to continue after until it has
     // been sent something, then the last event it received.
     let resumeAfter = options?.fromCursor;
-    let lastSequence = resumeAfter === undefined ? -1 : (decodeCursor(resumeAfter) ?? -1);
+    const decodedResume =
+      resumeAfter === undefined ? { sequence: -1 } : feed.decodeCursor(resumeAfter);
+    let lastSequence = typeof decodedResume === 'object' ? decodedResume.sequence : -1;
     let subscription = first;
     while (true) {
       for await (const envelope of subscription) {

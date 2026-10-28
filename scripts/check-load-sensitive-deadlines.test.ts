@@ -1,9 +1,12 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, relative } from 'node:path';
 import ts from 'typescript';
 import { HANG_GUARD_MILLISECONDS } from '../testing/testing/src/hang-guard.ts';
 import {
   allowlistRaises,
+  collectFiles,
   collectPositionalBudgets,
   findDeadlineViolations,
   findPackageScriptViolations,
@@ -998,5 +1001,33 @@ describe('an allowlist ratchet against origin/main', () => {
 
   test('refuses nothing without a baseline', () => {
     expect(allowlistRaises('x', { 'a.test.ts': 9 }, null)).toEqual([]);
+  });
+});
+
+describe('test file discovery', () => {
+  test('scans test files under scripts/benchmarks and skips bench files', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'load-sensitive-scan-'));
+    try {
+      for (const path of [
+        'packages/weft/scripts/benchmarks/memory-growth.test.ts',
+        'packages/weft/scripts/benchmarks/helper.test-support.ts',
+        'packages/weft/scripts/benchmarks/cold-start.bench.ts',
+        'packages/weft/src/worker/index.test.ts',
+      ]) {
+        mkdirSync(dirname(join(directory, path)), { recursive: true });
+        writeFileSync(join(directory, path), '');
+      }
+      const tests: string[] = [];
+      const runners: string[] = [];
+      collectFiles(directory, tests, runners);
+      expect(tests.map((path) => relative(directory, path)).toSorted()).toEqual([
+        'packages/weft/scripts/benchmarks/helper.test-support.ts',
+        'packages/weft/scripts/benchmarks/memory-growth.test.ts',
+        'packages/weft/src/worker/index.test.ts',
+      ]);
+      expect(runners).toEqual([]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
