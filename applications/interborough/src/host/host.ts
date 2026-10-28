@@ -71,6 +71,12 @@ import {
 import { routes as clientRoutes } from '../app/routes.ts';
 import { HOST_PATHS_ROUTE } from '../lib/host-paths.ts';
 import {
+  createDevReload,
+  DEV_RELOAD_ROUTE,
+  injectDevReloadClient,
+  type DevReload,
+} from './dev-reload.ts';
+import {
   createLocalAuthentication,
   isEngineRequestPath,
   relayRequest,
@@ -182,6 +188,13 @@ export type HostOptions = {
    * so the page's locked state is exercised against the real Bureau.
    */
   readonly settings?: SettingsOptions;
+  /**
+   * Whether this is the development host (`dev.ts`). It serves the reload stream at
+   * `/__dev/reload` and injects its client into `index.html`, and {@link Host.notifyRebuilt}
+   * sends the reload. A host without it has no such route and serves the page as built. Defaults
+   * to `false`.
+   */
+  readonly development?: boolean;
 };
 
 export type Host = {
@@ -203,6 +216,11 @@ export type Host = {
    * not hold.
    */
   generateFor(selection: ModelSelection): GenerateFunction;
+  /**
+   * Tell every open page of a development host that the build has been replaced, so each reloads.
+   * Call it after a successful rebuild. It does nothing on a host started without `development`.
+   */
+  notifyRebuilt(): void;
   /** Stop listening, shut the Bureau and the engine down, close the database, and release the lock. */
   close(): Promise<void>;
 };
@@ -250,12 +268,16 @@ async function assetResponse(buildDirectory: string, pathname: string): Promise<
   });
 }
 
-/** The application's one page, `index.html`, which the client router takes over. */
-function shellResponder(buildDirectory: string): () => Promise<Response> {
+/**
+ * The application's one page, `index.html`, which the client router takes over. A development host
+ * injects the reload client into it as it serves it (`dev-reload.ts`); the file in the build never
+ * holds it.
+ */
+function shellResponder(buildDirectory: string, development: boolean): () => Promise<Response> {
   return async () => {
     const page = Bun.file(join(buildDirectory, 'index.html'));
     if (!(await page.exists())) return missingBuild();
-    return new Response(page, {
+    return new Response(development ? injectDevReloadClient(await page.text()) : page, {
       headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
     });
   };
@@ -403,7 +425,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     let listening: Bun.Server<WebSocketRelayData> | undefined;
     const refuse = createRequestGuard(() => listening?.port ?? 0);
     const buildDirectory = options.buildDirectory ?? DEFAULT_BUILD_DIRECTORY;
-    const shell = shellResponder(buildDirectory);
+    const devReload = options.development === true ? createDevReload() : undefined;
+    if (devReload !== undefined) held.devReload = devReload;
+    const shell = shellResponder(buildDirectory, devReload !== undefined);
     const publicServer = Bun.serve<WebSocketRelayData>({
       hostname: LOOPBACK,
       port: options.port ?? resolvePort(environment),
@@ -416,6 +440,14 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       idleTimeout: 0,
       routes: {
         ...applicationRoutes(buildDirectory, refuse, shell),
+        // The development reload stream. A production host registers no route, so the path is a 404.
+        ...(devReload === undefined
+          ? {}
+          : {
+              [DEV_RELOAD_ROUTE]: {
+                GET: (request: Request) => refuse(request) ?? devReload.connect(),
+              },
+            }),
         [`${BUREAU_PATH_PREFIX}/*`]: (request: Request) =>
           refuse(request) ?? bureauHandler(withoutBureauPrefix(request)),
         // Where a person edits what the host keeps by hand. The pages show an agent's file path and
@@ -485,6 +517,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       deploymentId: bungalow.deploymentId,
       databasePath: bungalow.database,
       generateFor,
+      notifyRebuilt: () => devReload?.notify(),
       close: () => (held.closing ??= teardown(held)),
     };
   } catch (error) {
@@ -506,6 +539,7 @@ type Held = {
   replacementEngine?: RegistryAgnosticEngine;
   server?: WeftServer;
   publicServer?: Bun.Server<WebSocketRelayData>;
+  devReload?: DevReload;
   closing?: Promise<void>;
 };
 
@@ -519,6 +553,8 @@ async function teardown(held: Held): Promise<void> {
       failures.push(error);
     }
   };
+  // End the reload streams first, so no page is left reading a host that is going away.
+  await step(held.devReload && (() => held.devReload?.close()));
   await step(held.publicServer && (() => held.publicServer?.stop(true)));
   await step(held.server && (() => held.server?.stop()));
   await step(held.bureau && (() => held.bureau?.shutdown({ policy: 'detach' })));

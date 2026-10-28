@@ -1707,6 +1707,16 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
  */
 export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERAGE_ALLOWANCES', [
   [
+    'scripts/run-benchmarks.ts',
+    {
+      reason:
+        'The real process runner behind `test:benchmarks`: `spawnBunTest` starts a `bun test` child over every `scripts/benchmarks/*.bench.ts`, which are the load-sensitive measurement runs `bun run test` and the coverage shard deliberately leave out (COR-1739). Everything the script decides (the file glob, the empty-glob failure, the exit code it returns) is in `listBenchmarkFiles` and `runBenchmarks`, which scripts/run-benchmarks.test.ts runs in process with a stand-in spawner.',
+      functions: 1,
+      lines: new Set([32, 33, 34, 35, 36, 37, 38]),
+      requireUncoveredLines: true,
+    },
+  ],
+  [
     'examples/a2a-workflow-agent.ts',
     {
       reason:
@@ -1753,8 +1763,8 @@ export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERA
     'src/core/engine/operations-activity.ts',
     {
       reason:
-        "Two defensive guards inside invokeRemoteActivity()/requireWorkflowTypeForRemoteDispatch() (both module-private, not exported): (1) `if (!broker) throw` — invokeRemoteActivity's ONLY call site gates it behind `isRemoteMode = Boolean(internals.remoteActivityBroker) && allowRemoteDispatch`, so `broker` is always truthy by construction whenever this function runs; the module comment states remoteActivityBroker is non-null if and only if activityExecution.mode === 'remote'. Reaching the throw would require internals.remoteActivityBroker to flip to null (engine disposal does this) in the exact synchronous gap between that boolean check and the call, which is not achievable from a test without internals manipulation the check-engine-internals-field-access lint already forbids reaching for. (2) `if (identity === undefined) throw` in requireWorkflowTypeForRemoteDispatch — internals.workflowTypeByWorkflowId only loses an entry via bulk-operations-purge.ts, which purge requires a TERMINAL workflow; a live in-flight remote dispatch by definition has a non-terminal workflow, so the two conditions (an active remote-mode ctx.run() and a purged mapping for the same id) are mutually exclusive in normal operation. Realigned by +1 line (COR-281): the file gained one import for the timeline task identity, shifting these four guard lines down by one; the guards themselves are unchanged.",
-      lines: new Set([175, 176, 178, 210]),
+        "Two defensive guards inside invokeRemoteActivity()/requireWorkflowTypeForRemoteDispatch() (both module-private, not exported): (1) `if (!broker) throw` — invokeRemoteActivity's ONLY call site gates it behind `isRemoteMode = Boolean(internals.remoteActivityBroker) && allowRemoteDispatch`, so `broker` is always truthy by construction whenever this function runs; the module comment states remoteActivityBroker is non-null if and only if activityExecution.mode === 'remote'. Reaching the throw would require internals.remoteActivityBroker to flip to null (engine disposal does this) in the exact synchronous gap between that boolean check and the call, which is not achievable from a test without internals manipulation the check-engine-internals-field-access lint already forbids reaching for. (2) `if (identity === undefined) throw` in requireWorkflowTypeForRemoteDispatch — internals.workflowTypeByWorkflowId only loses an entry via bulk-operations-purge.ts, which purge requires a TERMINAL workflow; a live in-flight remote dispatch by definition has a non-terminal workflow, so the two conditions (an active remote-mode ctx.run() and a purged mapping for the same id) are mutually exclusive in normal operation. Realigned by +1 line (COR-281) and then by +6 lines (#622, lifecycle evidence events): the file gained one import for the timeline task identity, then #622 added code ahead of these guards, shifting the four guard lines (were 175, 176, 178, 210) down to 181, 182, 184, 216; the guards themselves are unchanged.",
+      lines: new Set([181, 182, 184, 216]),
       requireUncoveredLines: true,
     },
   ],
@@ -2166,14 +2176,12 @@ export function parseLcov(content: string): CoverageResult {
 /**
  * The paths the package's own `test` script excludes with `--path-ignore-patterns`.
  *
- * Those are the measurement benchmarks — throughput, latency and memory runs whose numbers
- * swing enough between runs on one machine that they cannot assert a target, which is why
- * `bun run test` leaves them to `test:benchmarks` on demand. The coverage shard runs the same
- * suite under instrumentation and contention, where they swing more, not less: a run of this
- * gate failed twice in ten on `load-growth-memory`'s RSS-slope bound with the tree at 100 %
- * coverage. So the shard applies exactly the exclusion `test` applies, read from the script
- * rather than copied, and the runner modules only those benchmarks exercise are ignored from
- * instrumentation in `bunfig.toml` with their reasons.
+ * That is the slow lane (`**\/*.slow.test.ts`, which `test:slow` runs alone). The measurement
+ * benchmarks need no entry: they are `*.bench.ts` files, which neither `bun test` nor the shard's
+ * test-file globs discover, and `test:benchmarks` runs them on demand (COR-1739). The shard
+ * applies exactly the exclusion `test` applies, read from the script rather than copied, and the
+ * runner modules only those benchmarks exercise are ignored from instrumentation in `bunfig.toml`
+ * with their reasons.
  */
 export function readTestScriptPathIgnorePatterns(): string[] {
   const script = packageJson.scripts?.test;
