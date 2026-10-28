@@ -410,7 +410,7 @@ export interface EngineOptions<TServices = unknown>
    * poller without waiting a full real poll cycle.
    */
   schedulerPollIntervalMs?: number;
-  /** Native storage-size report interval in ms; defaults to 60s, `0` disables. */
+  /** Storage-size report interval in ms, at most 2147483647; defaults to 60s, `0` disables. */
   storageSizeReportIntervalMs?: number;
   /** Enable BroadcastChannel for cross-worker event coordination. Default: false. */
   broadcastEvents?: boolean;

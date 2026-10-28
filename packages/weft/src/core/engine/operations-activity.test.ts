@@ -50,6 +50,11 @@ function createCallbacks(
   };
 }
 
+/** Records `activity-operation` as the workflow's top-level durable operation. */
+function topLevelActivityOperation(type = 'activity') {
+  return new Map([['workflow-id', { operationId: 'activity-operation', type }]]);
+}
+
 function createInternals(overrides: Record<string, unknown> = {}) {
   return {
     activityRegistriesByWorkflow: new Map(),
@@ -215,6 +220,7 @@ describe('activity operation helpers', () => {
     const dispatched: Event[] = [];
     const internals = createInternals({
       engine: { dispatchEvent: (event: Event) => dispatched.push(event) },
+      durableInlineOperations: topLevelActivityOperation(),
     });
     const operation = createActivityOperation({
       workflowExecutionToken: 'generation-a',
@@ -232,6 +238,7 @@ describe('activity operation helpers', () => {
     const dispatched: Event[] = [];
     const internals = createInternals({
       engine: { dispatchEvent: (event: Event) => dispatched.push(event) },
+      durableInlineOperations: topLevelActivityOperation(),
     });
     const execute = mock(async (_interception: unknown, next: (value: unknown) => unknown) =>
       next('payload'),
@@ -250,10 +257,30 @@ describe('activity operation helpers', () => {
     expect(dispatched).toHaveLength(1);
   });
 
+  it('reports no start for an activity running under an enclosing operation', async () => {
+    const dispatched: Event[] = [];
+    const internals = createInternals({
+      engine: { dispatchEvent: (event: Event) => dispatched.push(event) },
+      // A `ctx.all` branch: the durable operation is the enclosing `parallel`,
+      // whose commit carries no completion receipt for this activity.
+      durableInlineOperations: topLevelActivityOperation('parallel'),
+    });
+
+    await executeActivity(
+      internals as never,
+      'workflow-id',
+      createActivityOperation({ fn: () => 'branch-result' }),
+      createCallbacks(),
+    );
+
+    expect(dispatched).toHaveLength(0);
+  });
+
   it('does not report start when an interceptor short-circuits', async () => {
     const dispatched: Event[] = [];
     const internals = createInternals({
       engine: { dispatchEvent: (event: Event) => dispatched.push(event) },
+      durableInlineOperations: topLevelActivityOperation(),
     });
 
     await executeActivity(

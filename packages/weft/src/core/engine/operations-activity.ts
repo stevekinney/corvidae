@@ -37,7 +37,10 @@ import {
   workflowExecutionTokenForWorkflow,
   type CapturedRejectionReason,
 } from './strategy-helpers.ts';
-import { recordTimelineTaskIdentity } from './timeline-coordinator-detail.ts';
+import {
+  isTopLevelDurableActivity,
+  recordTimelineTaskIdentity,
+} from './timeline-coordinator-detail.ts';
 
 export type ActivityFunctionWithMetadata = ((...arguments_: unknown[]) => unknown) &
   ActivityReconciliationMetadata & {
@@ -365,7 +368,7 @@ export async function executeActivity(
     input: unknown,
     headers: Map<string, string>,
   ): unknown => {
-    if (!isRemoteMode) {
+    if (!isRemoteMode && isTopLevelDurableActivity(internals, workflowId, operation.operationId)) {
       internals.engine?.dispatchEvent(
         tagWorkflowEventGeneration(
           new ActivityStartedEvent(

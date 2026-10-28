@@ -15,10 +15,31 @@ export type ActivityCompletionReceipt = {
   duration: number;
 };
 
+/**
+ * Whether `operationId` is the workflow's top-level durable activity: the only
+ * activity whose committed result {@link captureActivityCompletionReceipt} can
+ * report. `ctx.all`/`ctx.race` branches and `durableActivity()` helpers run
+ * under an enclosing operation, so they report neither lifecycle event rather
+ * than a start that never completes.
+ */
+export function isTopLevelDurableActivity(
+  internals: EngineInternals,
+  workflowId: string,
+  operationId: string,
+): boolean {
+  const operation = internals.durableInlineOperations?.get(workflowId);
+  return operation?.type === 'activity' && operation.operationId === operationId;
+}
+
 export function captureActivityCompletionReceipt(
   internals: EngineInternals,
   workflowId: string,
 ): ActivityCompletionReceipt | undefined {
+  // A remote-mode engine dispatches every top-level activity to a worker, and
+  // `task-result-application.ts` reports its completion under the task
+  // ledger's operation id, the one its `activity:started` carried. Reporting
+  // the committed checkpoint here too would publish a second completion.
+  if (internals.remoteActivityBroker) return undefined;
   const pending = internals.pendingTimelineEntries.get(workflowId);
   const operation = internals.durableInlineOperations?.get(workflowId);
   if (
