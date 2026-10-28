@@ -23,6 +23,7 @@ import { join } from 'node:path';
 
 import { outcomeOf, rethrow } from '@lostgradient/testing';
 
+import { DEV_RELOAD_ROUTE } from '../src/host/dev-reload.ts';
 import {
   type ApplicationBuild,
   BUILD_ASSET_DIRECTORY,
@@ -105,6 +106,12 @@ describe('buildApplication', () => {
     expect(html).toMatch(/<script type="module" crossorigin src="\/assets\/[^"]+\.js">/);
     expect(html).toMatch(/<link rel="stylesheet" crossorigin href="\/assets\/[^"]+\.css">/);
     expect(html).not.toContain('main.ts');
+    // The development reload client is injected by the development host at request time, so a
+    // production build carries neither the script nor the route it opens (COR-1745).
+    for (const file of result.files) {
+      const content = await Bun.file(join(result.directory, file)).text();
+      expect(content, file).not.toContain(DEV_RELOAD_ROUTE);
+    }
     // The metafile is returned, never written into the directory the host serves.
     expect(result.files.some((file) => file.includes('metafile'))).toBe(false);
     // A successful build leaves no staging directory of its own behind.

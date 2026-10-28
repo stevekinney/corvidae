@@ -27,6 +27,11 @@ const BUILD_SCRIPT = join(PACKAGE_DIRECTORY, 'scripts', 'build.ts');
 export type BrowserBuildOptions = {
   readonly outdir?: string;
   readonly development?: boolean;
+  /**
+   * Where the build records the files it read (`--inputs-file`), so the host can watch exactly
+   * the directories a rebuild depends on.
+   */
+  readonly inputsFile?: string;
 };
 
 /** A browser build running in a child process. */
@@ -46,6 +51,7 @@ export function startBrowserBuild(options: BrowserBuildOptions = {}): BrowserBui
   const argv = [process.execPath, BUILD_SCRIPT, '--exit-with-parent'];
   if (options.development ?? true) argv.push('--development');
   if (options.outdir !== undefined) argv.push('--outdir', options.outdir);
+  if (options.inputsFile !== undefined) argv.push('--inputs-file', options.inputsFile);
   const child = Bun.spawn(argv, {
     cwd: PACKAGE_DIRECTORY,
     stdin: 'pipe',

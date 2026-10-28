@@ -21,7 +21,7 @@
  */
 
 import { existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
-import { cp, mkdir, readdir, rename, rm } from 'node:fs/promises';
+import { cp, mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -413,13 +413,51 @@ export type BuildCommandOptions = {
   readonly outdir?: string;
 };
 
-/** The command line: what to build, and whether to stop when standard input closes. */
-export type BuildArguments = BuildCommandOptions & { readonly exitWithParent: boolean };
+/**
+ * The command line: what to build, whether to stop when standard input closes, and where to
+ * record the build's inputs ({@link writeBuildInputs}).
+ */
+export type BuildArguments = BuildCommandOptions & {
+  readonly exitWithParent: boolean;
+  readonly inputsFile?: string;
+};
+
+/**
+ * The absolute path of every source file the bundler read, from the metafile's `inputs`. Bun
+ * reports them relative to the working directory, and a workspace the application imports is
+ * reported at its real path (`../../components/chat/src/...`). Inputs a plugin synthesized
+ * (`wasm-asset:...`) are not files and are left out.
+ */
+export function buildInputPaths(
+  metafile: Bun.BuildMetafile,
+  workingDirectory: string = process.cwd(),
+): string[] {
+  return Object.keys(metafile.inputs)
+    .filter((input) => !/^[a-z][a-z0-9+.-]*:/i.test(input))
+    .map((input) => resolve(workingDirectory, input))
+    .toSorted();
+}
+
+/**
+ * Record the files the build read as a JSON array of absolute paths, which the development host
+ * reads to decide which directories to watch (`source-watcher.ts`). The file is written beside
+ * its final name and renamed into place, so the host never reads a half-written list.
+ */
+export async function writeBuildInputs(
+  file: string,
+  metafile: Bun.BuildMetafile,
+  workingDirectory: string = process.cwd(),
+): Promise<void> {
+  const pending = `${file}.${process.pid}.tmp`;
+  await writeFile(pending, JSON.stringify(buildInputPaths(metafile, workingDirectory)));
+  await rename(pending, file);
+}
 
 /**
  * Read the command-line arguments: `--development` builds the unminified development bundle,
- * `--outdir <path>` builds somewhere other than `build/`, and `--exit-with-parent` stops the build
- * when standard input closes ({@link exitWhenStandardInputCloses}). The development host runs this
+ * `--outdir <path>` builds somewhere other than `build/`, `--inputs-file <path>` records the files
+ * the build read ({@link writeBuildInputs}), and `--exit-with-parent` stops the build when
+ * standard input closes ({@link exitWhenStandardInputCloses}). The development host runs this
  * command in a child process, so an unknown argument fails loudly instead of building the wrong
  * thing.
  */
@@ -427,6 +465,7 @@ export function parseBuildArguments(argv: readonly string[]): BuildArguments {
   let development = false;
   let exitWithParent = false;
   let outdir: string | undefined;
+  let inputsFile: string | undefined;
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--development') {
@@ -439,11 +478,22 @@ export function parseBuildArguments(argv: readonly string[]): BuildArguments {
         throw new Error('--outdir needs a directory');
       }
       index += 1;
+    } else if (argument === '--inputs-file') {
+      inputsFile = argv[index + 1];
+      if (inputsFile === undefined || inputsFile.trim() === '') {
+        throw new Error('--inputs-file needs a file');
+      }
+      index += 1;
     } else {
       throw new Error(`Unknown build argument: ${argument}`);
     }
   }
-  return { development, exitWithParent, ...(outdir === undefined ? {} : { outdir }) };
+  return {
+    development,
+    exitWithParent,
+    ...(outdir === undefined ? {} : { outdir }),
+    ...(inputsFile === undefined ? {} : { inputsFile }),
+  };
 }
 
 /** The command-line entry: build and report what was written. */
@@ -452,8 +502,9 @@ export async function runBuildCommand(
   runBuild: typeof buildApplication = buildApplication,
   argv: readonly string[] = [],
 ): Promise<ApplicationBuild> {
-  const { exitWithParent: _exitWithParent, ...options } = parseBuildArguments(argv);
+  const { exitWithParent: _exitWithParent, inputsFile, ...options } = parseBuildArguments(argv);
   const build = await runBuild(options);
+  if (inputsFile !== undefined) await writeBuildInputs(inputsFile, build.metafile);
   log(`Built Interborough into ${build.directory} (${build.files.length} files)`);
   return build;
 }

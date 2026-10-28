@@ -30,6 +30,7 @@ function createSignalInternals(storage = new MemoryStorage()): EngineInternals {
     conditionWaiters: new Map<string, () => void>(),
     deliveredPendingUpdateIds: new Map<string, Set<string>>(),
     pendingAtomicWorkflowCommitSideEffects: new Map(),
+    engine: { dispatchEvent: () => true },
     storage,
   } as unknown as EngineInternals;
 }
