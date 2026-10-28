@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
+import { CodegenEmitError, CodegenPackageNameError } from './codegen-emit-registry.ts';
 import { executeCodegen } from './codegen.ts';
 
 const FIXTURE_DIR = resolve(import.meta.dir, '__fixtures__/codegen');
@@ -122,6 +123,35 @@ describe('executeCodegen end-to-end', () => {
     });
     expect(result.exitCode).toBe(0);
     expect(await Bun.file(out).text()).toContain('type __WeftGeneratedWorkerWorkflows = {};');
+  });
+
+  it('reports an emitter refusal as a diagnostic, not as an unexpected failure', async () => {
+    const dir = makeTempDir();
+    const out = join(dir, 'weft.d.ts');
+    const refusing = (error: Error) => (): string => {
+      throw error;
+    };
+
+    const emitRefusal = await executeCodegen(
+      { from: REGISTRY_FIXTURE, out, timeoutMs: HANG_GUARD_MILLISECONDS },
+      {
+        registry: refusing(new CodegenEmitError('cannot emit this schema')),
+        worker: refusing(new Error('unused')),
+      },
+    );
+    expect(emitRefusal.exitCode).toBe(1);
+    expect(emitRefusal.stderr).toBe('codegen: cannot emit this schema');
+
+    const packageNameRefusal = await executeCodegen(
+      { from: REGISTRY_FIXTURE, out, target: 'worker', timeoutMs: HANG_GUARD_MILLISECONDS },
+      {
+        registry: refusing(new Error('unused')),
+        worker: refusing(new CodegenPackageNameError('bad package name')),
+      },
+    );
+    expect(packageNameRefusal.exitCode).toBe(1);
+    expect(packageNameRefusal.stderr).toBe('codegen: bad package name');
+    expect(existsSync(out)).toBe(false);
   });
 
   it('reports an unexpected emitter failure with its message instead of rejecting', async () => {

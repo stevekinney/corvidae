@@ -9,7 +9,7 @@
  * conditionalBatch is transactionally atomic — MemoryStorage's in-process Map
  * serializes operations and cannot model two engines racing for the same lease.
  */
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { BunSQLiteStorage } from '../../storage/bun-sql.ts';
@@ -1100,6 +1100,25 @@ describe("Engine.create({ ownership: 'lease' })", () => {
     expect(await engine.shutdown()).toBe(false);
     expect(releaseCalls).toBe(1);
     expect(await readHolder(storage)).not.toBeNull();
+    storage[Symbol.dispose]?.();
+  });
+
+  it('reports a release that throws during deposition teardown as not released', async () => {
+    const storage = new MemoryStorage();
+    const engine = await Engine.create({
+      storage,
+      workflows: { ping: pingWorkflow },
+      ownership: 'lease',
+    });
+    const leaseManager = getInternals(engine).leaseManager;
+    if (leaseManager === null) throw new Error('A lease-mode engine holds a lease manager.');
+    const release = spyOn(leaseManager, 'release').mockRejectedValue(new Error('release failed'));
+
+    getInternals(engine).tearDownAfterDeposition?.();
+
+    // The teardown swallows the rejection, and shutdown reports the release as not done.
+    expect(await engine.shutdown()).toBe(false);
+    expect(release).toHaveBeenCalledTimes(1);
     storage[Symbol.dispose]?.();
   });
 

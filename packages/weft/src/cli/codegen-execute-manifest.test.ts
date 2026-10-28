@@ -41,6 +41,20 @@ describe('executeCodegen end-to-end', () => {
     expect(existsSync(out)).toBe(false);
   });
 
+  it('fails when the parent path is a file rather than a directory', async () => {
+    const dir = makeTempDir();
+    const parent = join(dir, 'not-a-directory');
+    writeFileSync(parent, 'a file');
+    const out = join(parent, 'weft.d.ts');
+    const result = await executeCodegen({
+      from: REGISTRY_FIXTURE,
+      out,
+      timeoutMs: HANG_GUARD_MILLISECONDS,
+    });
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe(`codegen: parent path '${parent}' is not a directory`);
+  });
+
   it('fails when the output directory is not writable', async () => {
     const dir = makeTempDir();
     chmodSync(dir, 0o555);

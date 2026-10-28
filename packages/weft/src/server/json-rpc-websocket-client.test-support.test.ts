@@ -59,6 +59,40 @@ describe('collectWebSocketDeliveredEnvelopes', () => {
     expect(delivered).toEqual([envelope as never]);
   });
 
+  it('resolves with nothing once the subscription is confirmed when no envelope is expected', async () => {
+    const server = startFakeEndpoint((socket, text) => {
+      const request = JSON.parse(text) as { id: string };
+      socket.send(
+        JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { subscriptionId: 'sub-1' } }),
+      );
+    });
+
+    expect(await collectWebSocketDeliveredEnvelopes(server, 'wf-1', 0, 'unused-key')).toEqual([]);
+  });
+
+  it('ignores deliveries that are not for its subscription or are malformed', async () => {
+    const envelope = { kind: 'workflow:started', sequence: 0 };
+    const deliver = (params: unknown): string =>
+      JSON.stringify({ jsonrpc: '2.0', method: 'weft.events.deliver', params });
+    const server = startFakeEndpoint((socket, text) => {
+      const request = JSON.parse(text) as { id: string };
+      // Before the subscription is confirmed, a delivery has no subscription to belong to.
+      socket.send(deliver({ subscriptionId: 'sub-1', envelope: { early: true } }));
+      socket.send(
+        JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { subscriptionId: 'sub-1' } }),
+      );
+      socket.send(JSON.stringify({ jsonrpc: '2.0', method: 'weft.something.else', params: {} }));
+      socket.send(deliver('not an object'));
+      socket.send(deliver({ subscriptionId: 'sub-2', envelope: { other: true } }));
+      socket.send(deliver({ subscriptionId: 'sub-1', envelope: 'not an object' }));
+      socket.send(deliver({ subscriptionId: 'sub-1', envelope }));
+    });
+
+    const delivered = await collectWebSocketDeliveredEnvelopes(server, 'wf-1', 1, 'unused-key');
+
+    expect(delivered).toEqual([envelope as never]);
+  });
+
   it('rejects once the wait budget passes without enough envelopes', async () => {
     const server = startFakeEndpoint(() => {});
 
