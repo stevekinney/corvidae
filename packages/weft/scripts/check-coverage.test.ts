@@ -257,6 +257,7 @@ describe('parseLcov', () => {
       'weft-schedule-lmdb-workflows-example.ts',
       'weft-schedule-lmdb-input-example.ts',
       'weft-cli-edge-workflows-example.ts',
+      'weft-version-check-text-OPfjjj/module.ts',
       'weft-validate-TA9zHl/conflict.ts',
       'weft-schedule-workflows-2KvtDp/module.ts',
       'weft-schedule-input-onrb4t/module.ts',
