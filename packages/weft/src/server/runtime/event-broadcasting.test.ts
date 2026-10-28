@@ -239,7 +239,10 @@ describe('wireEventBroadcasting', () => {
     engine[Symbol.dispose]();
 
     expect(events.map((envelope) => [envelope.kind, envelope.payload])).toEqual([
-      ['realm:state-changed', { realmId: 'realm-1', revision: 'r1', state: 'crashed', restartCount: 2 }],
+      [
+        'realm:state-changed',
+        { realmId: 'realm-1', revision: 'r1', state: 'crashed', restartCount: 2 },
+      ],
       ['lease:health-changed', { status: 'contested' }],
       ['worker:registration-rejected', { workerId: 'worker-1', code: 'deployment_conflict' }],
       [

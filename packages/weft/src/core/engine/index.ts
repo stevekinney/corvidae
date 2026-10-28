@@ -18,7 +18,11 @@ import { deserializeCheckpoint } from '../checkpoint.ts';
 import type { StoredStreamChunk } from '../context.ts';
 import { createHandleCacheFinalizer } from '../engine-helpers.ts';
 import type { TypedEventTarget, WeftEventMap } from '../events.ts';
-import { RealmStateChangedEvent, RemoteActivityQueuedEvent, SignalDeliveredEvent } from '../events.ts';
+import {
+  RealmStateChangedEvent,
+  RemoteActivityQueuedEvent,
+  SignalDeliveredEvent,
+} from '../events.ts';
 import {
   WorkflowRevisionActivatedEvent,
   WorkflowRevisionDrainingEvent,
@@ -229,7 +233,7 @@ import {
   type EngineInternals,
 } from './internals.ts';
 import { ENGINE_LEASE_LOST_WARNING_NAME, handleDeposition } from './lease-deposition.ts';
-import { readEngineLeaseHealth, dispatchLeaseHealthIfChanged } from './lease-health-events.ts';
+import { dispatchLeaseHealthIfChanged, readEngineLeaseHealth } from './lease-health-events.ts';
 import type { EngineLeaseHealth, LeaseLostReason } from './lease-health.ts';
 import { createLeaseManager } from './lease-manager.ts';
 import {

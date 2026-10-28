@@ -4,9 +4,9 @@
 import { describe, expect, it } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import type { WorkerDeploymentChangedEvent } from '../../core/events/fleet-state-events.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { seedBoundRun } from '../../worker/deployment-build-references.test-support.ts';
-import type { WorkerDeploymentChangedEvent } from '../../core/events/fleet-state-events.ts';
 import { WorkerDeploymentCatalog } from '../../worker/deployment-routing.ts';
 import {
   TEST_ACCEPTED_MANIFEST_DIGEST,

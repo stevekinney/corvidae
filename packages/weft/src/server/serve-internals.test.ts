@@ -529,7 +529,11 @@ describe('buildServerContext engine events (COR-1724)', () => {
       seen.push([event.workerId, event.code]);
     });
 
-    context.registry.recordRejection({ code: 'registration_rejected', workerId: 'w-9', rejectedAt: 1 });
+    context.registry.recordRejection({
+      code: 'registration_rejected',
+      workerId: 'w-9',
+      rejectedAt: 1,
+    });
 
     expect(seen).toEqual([['w-9', 'registration_rejected']]);
   });

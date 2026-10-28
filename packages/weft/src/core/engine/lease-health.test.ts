@@ -1,8 +1,8 @@
 import { describe, expect, it, spyOn } from 'bun:test';
 
 import { MemoryStorage } from '../../storage/memory.ts';
-import { Engine } from './index.ts';
 import { LeaseHealthChangedEvent } from '../events/fleet-state-events.ts';
+import { Engine } from './index.ts';
 import { getInternals } from './internals.ts';
 import { handleDeposition } from './lease-deposition.ts';
 

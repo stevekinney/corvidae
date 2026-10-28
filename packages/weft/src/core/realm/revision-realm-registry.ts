@@ -26,8 +26,8 @@ import type { RevisionRealmPoolDiagnostics } from './revision-realm-diagnostics.
 import {
   RevisionRealmPool,
   type RevisionRealmAcquireOutcome,
-  type RevisionRealmStateChange,
   type RevisionRealmPoolOptions,
+  type RevisionRealmStateChange,
   type RevisionRealmTransport,
 } from './revision-realm-pool.ts';
 import type { RevisionRealm } from './revision-realm.ts';

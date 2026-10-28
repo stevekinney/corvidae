@@ -1,6 +1,5 @@
 import { KEYS } from '../../storage/interface.ts';
 import { encode } from '../codec.ts';
-import { StreamChunkEvent } from '../events/fleet-state-events.ts';
 import type {
   ContextOperationRequest,
   StoredStreamChunk,
@@ -8,6 +7,7 @@ import type {
   StreamSink,
 } from '../context.ts';
 import { cleanupPartialStreamChunks, createCleanupErrorReporter } from '../engine-helpers.ts';
+import { StreamChunkEvent } from '../events/fleet-state-events.ts';
 import type { EngineInternals } from './internals.ts';
 import { encodeStoredStreamTailSequence, loadStoredStreamChunks } from './stream-chunk-loading.ts';
 import { STREAM_CHUNK_KIND, TOKENS_STREAM_KEY, notifyWorkflowFeedCommit } from './workflow-feed.ts';
