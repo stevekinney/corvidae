@@ -1,9 +1,11 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createOperationHandler, principalFromApiKey } from '@lostgradient/weft';
+import Ajv2020 from 'ajv/dist/2020.js';
 import {
   createAgentRunEventFeed,
   createAgentRunEventRegistry,
   RunStartedEvent,
+  runEventEnvelopeSchema,
   runEventsSubscriptionOperation,
   StepStartedEvent,
 } from '@lostgradient/operative';
@@ -130,6 +132,30 @@ describe('the bureau.events subscription', () => {
 
     expect(bureauEventEnvelopeSchema.safeParse(envelope).success).toBe(true);
     bureauFeed.dispose();
+  });
+
+  it('rejects malformed gap envelopes without narrowing ordinary event kinds', () => {
+    for (const [schema, gapKind, resourceId] of [
+      [bureauEventEnvelopeSchema, 'feed.gap', 'bureauId'],
+      [runEventEnvelopeSchema, 'run.gap', 'runId'],
+    ] as const) {
+      const envelope = {
+        sequence: -1,
+        cursor: 'continuation:-1',
+        [resourceId]: 'resource-1',
+        kind: gapKind,
+        emittedAtMs: 0,
+        payload: {},
+      };
+      expect(schema.safeParse(envelope).success).toBe(false);
+      expect(
+        schema.safeParse({
+          ...envelope,
+          payload: { requestedCursor: 'previous:0', firstRetainedSequence: 0 },
+        }).success,
+      ).toBe(true);
+      expect(schema.safeParse({ ...envelope, kind: 'ordinary.kind' }).success).toBe(true);
+    }
   });
 
   it('mints the subscription id through the injected runtime', async () => {
@@ -443,6 +469,9 @@ describe('bureau.events through createOperationHandler with no Engine', () => {
           ((variant['properties'] as Record<string, { const?: string }> | undefined)?.['kind']
             ?.const ?? '') === gapKind,
       );
+      const validate = new Ajv2020({ strict: false, validateFormats: false }).compile(
+        messages[messageName]!.payload,
+      );
       expect(gap?.['required']).toEqual(expect.arrayContaining(['cursor', resourceId, 'payload']));
       expect((gap?.['properties'] as Record<string, unknown>)?.['payload']).toMatchObject({
         required: expect.arrayContaining(['requestedCursor', 'firstRetainedSequence']),
@@ -451,6 +480,22 @@ describe('bureau.events through createOperationHandler with no Engine', () => {
           firstRetainedSequence: { type: 'number' },
         },
       });
+      const envelope = {
+        sequence: -1,
+        cursor: 'continuation:-1',
+        [resourceId]: 'resource-1',
+        kind: gapKind,
+        emittedAtMs: 0,
+        payload: {},
+      };
+      expect(validate(envelope)).toBe(false);
+      expect(
+        validate({
+          ...envelope,
+          payload: { requestedCursor: 'previous:0', firstRetainedSequence: 0 },
+        }),
+      ).toBe(true);
+      expect(validate({ ...envelope, kind: 'ordinary.kind' })).toBe(true);
     }
     expect((openRpc['methods'] as { name: string }[]).map((method) => method.name)).toEqual([
       'bureau.events',

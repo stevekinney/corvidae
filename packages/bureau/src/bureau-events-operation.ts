@@ -53,7 +53,9 @@ const publishedBureauEventEnvelopeSchema = z.object({
   sequence: z.number(),
   cursor: z.string(),
   bureauId: z.string(),
-  kind: z.string(),
+  // Reserve the gap discriminator for the structured branch below, while
+  // retaining every ordinary event kind accepted by the previous schema.
+  kind: z.string().regex(/^(?!feed\.gap$)/),
   emittedAtMs: z.number(),
   payload: z.record(z.string(), z.unknown()),
 });

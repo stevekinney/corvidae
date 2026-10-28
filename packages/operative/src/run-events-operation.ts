@@ -72,7 +72,9 @@ const publishedRunEventEnvelopeSchema = z.object({
   sequence: z.number(),
   cursor: z.string(),
   runId: z.string(),
-  kind: z.string(),
+  // Reserve the gap discriminator for the structured branch below, while
+  // retaining every ordinary event kind accepted by the previous schema.
+  kind: z.string().regex(/^(?!run\.gap$)/),
   emittedAtMs: z.number(),
   payload: z.record(z.string(), z.unknown()),
 });
