@@ -151,6 +151,20 @@ describe('classifyFault — REST masked 500 vs JSON-RPC full fault object', () =
   });
 });
 
+describe('classifyFault — a fault code this build does not know', () => {
+  test('is not classified, so the caller falls back to the unknown treatment', () => {
+    // A newer engine can send a code the table has no kind for. The lookup finds nothing, and so
+    // does a name every object inherits.
+    for (const faultCode of ['SomeFutureFault', 'constructor']) {
+      const error = new HttpClientError(500, 'from a newer engine', {
+        faultCode: faultCode as FaultCode,
+      });
+      expect(classifyFault(error)).toBeNull();
+      expect(faultTreatment(error)).toBe(UNKNOWN_FAULT_TREATMENT);
+    }
+  });
+});
+
 describe('classifyFault — conflict: spent idempotency key (REST-only)', () => {
   test('Conflict carrying weftCode: IdempotencyKeyPurgedError (REST sibling field) is flagged', () => {
     const error = new HttpClientError(409, 'a workflow with this id was already started', {
