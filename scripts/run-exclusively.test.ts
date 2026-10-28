@@ -821,8 +821,31 @@ describe('withTurborepoDefaults', () => {
     expect(environment).toEqual({
       TURBO_CACHE_DIR: '/elsewhere',
       TURBO_CONCURRENCY: '1',
+      TURBO_SCM_BASE: 'origin/main',
       PATH: '/bin',
     });
+  });
+
+  test("pins Turborepo's --affected base to origin/main when the caller sets none", () => {
+    const host = { totalMemoryBytes: 64 * gibibyte, processors: 10 };
+    expect(withTurborepoDefaults({}, '/repository/.git', host)['TURBO_SCM_BASE']).toBe(
+      'origin/main',
+    );
+    expect(withTurborepoDefaults({}, '/repository/.git', host, true)['TURBO_SCM_BASE']).toBe(
+      'origin/main',
+    );
+    expect(
+      withTurborepoDefaults({ TURBO_SCM_BASE: '' }, '/repository/.git', host)['TURBO_SCM_BASE'],
+    ).toBe('origin/main');
+  });
+
+  test("keeps the caller's own --affected base", () => {
+    const environment = withTurborepoDefaults(
+      { TURBO_SCM_BASE: 'release/1.0' },
+      '/repository/.git',
+      { totalMemoryBytes: 64 * gibibyte, processors: 10 },
+    );
+    expect(environment['TURBO_SCM_BASE']).toBe('release/1.0');
   });
 });
 

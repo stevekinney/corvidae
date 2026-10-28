@@ -737,7 +737,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   /**
    * A listener on the Bureau's own event emitter that is registered before any
    * recovery pass can dispatch, so it hears every boot-time event (recovery
-   * decisions, `run.registered` and `action` events of recovered runs) that a
+   * decisions, committed `run.settled`, `run.registered`, and `action` events of recovered runs) that a
    * listener added through `addEventListener` after `createBureau()` returns
    * would miss. It receives every event the emitter dispatches for the life of
    * the Bureau, in dispatch order. A throwing listener, or an async one that rejects, is
