@@ -140,7 +140,7 @@ export function executeSleepSubOperation(
  * survives for a later `waitForSignal` or a replay.
  *
  * Reads are non-destructive {@link peekSignal}s until the coordinator finalizes;
- * the identity-guarded release (`expectedResolve === deliver`) ensures a loser
+ * the identity-guarded release (`expectedResolve === deliverAndReport`) ensures a loser
  * never clobbers another waiter (e.g. a later top-level `waitForSignal`) that
  * reused the shared `${workflowId}:${signalName}` key.
  */
