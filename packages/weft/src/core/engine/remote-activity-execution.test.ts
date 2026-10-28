@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it, mock } from 'bun:test';
 import { serve, type WeftServer } from '../../server/index.ts';
 import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
 import { RemoteWorker } from '../../worker/index.ts';
+import { ActivityCompletedEvent, ActivityStartedEvent } from '../events.ts';
 import type { WorkflowInterceptor } from '../interceptor.ts';
 import type { RemoteActivityBroker, RemoteActivityTaskRequest } from '../remote-activity-broker.ts';
 import type { RemoteTaskRecord } from '../task-ledger/task-ledger.ts';
@@ -107,6 +108,57 @@ describe('remote activity execution (COR-152)', () => {
     expect(await handle.result()).toBe('Hello, Ada!');
     expect(executedInputs).toEqual([{ name: 'Ada' }]);
     expect(localFormatGreeting).toHaveBeenCalledTimes(0);
+  });
+
+  it('reports one activity:started and one activity:completed under the ledger operation id (COR-1720)', async () => {
+    engine = new Engine({ activityExecution: { mode: 'remote' } });
+    server = serve({ engine, port: 0, unauthenticatedAccess: 'allow' });
+    remoteWorker = new RemoteWorker({
+      serverUrl: `${server.url.replace(/^http/, 'ws')}/v1/tasks/default/stream`,
+      workerId: 'lifecycle-worker',
+      deploymentName: 'test-deployment',
+      buildId: 'test-build',
+      workflows: {
+        'remote-lifecycle-workflow': {
+          name: 'remote-lifecycle-workflow',
+          activities: { echo: async (input: unknown) => input },
+        },
+      },
+      concurrency: 1,
+    });
+    await remoteWorker.connect();
+    await waitForCondition(() => server?.registry.getWorker('lifecycle-worker') !== undefined, {
+      intervalMs: 25,
+      label: 'remote worker to register',
+    });
+
+    const echo = activity({ name: 'echo', execute: async (input: string) => input });
+    engine.register(
+      workflow({ name: 'remote-lifecycle-workflow' })
+        .activities({ echo })
+        .execute(async function* (context: WorkflowContext, input: string) {
+          return yield* context.run(echo, input);
+        }),
+    );
+    const started: ActivityStartedEvent[] = [];
+    const completed: ActivityCompletedEvent[] = [];
+    engine.addEventListener(ActivityStartedEvent.type, (event) => {
+      started.push(event);
+    });
+    engine.addEventListener(ActivityCompletedEvent.type, (event) => {
+      completed.push(event);
+    });
+
+    const handle = await engine.start('remote-lifecycle-workflow', 'ping', {
+      id: 'remote-lifecycle-1',
+    });
+
+    expect(await handle.result()).toBe('ping');
+    // The task result reports the completion; the workflow's terminal commit
+    // must not report the same activity a second time.
+    expect(started).toHaveLength(1);
+    expect(completed).toHaveLength(1);
+    expect(completed[0]?.operationId).toBe(started[0]?.operationId);
   });
 
   it('never falls back to local execution when no remote worker is available (criterion 9)', async () => {

@@ -314,10 +314,9 @@ export function formatDate(value: unknown, pattern: string, locale?: string): st
         return pad(date.getSeconds());
       case 's':
         return String(date.getSeconds());
-      case 'a':
-        return hours < 12 ? 'AM' : 'PM';
       default:
-        return token;
+        // `DATE_TOKEN` matches no other token, so what remains here is `a`.
+        return hours < 12 ? 'AM' : 'PM';
     }
   });
 }

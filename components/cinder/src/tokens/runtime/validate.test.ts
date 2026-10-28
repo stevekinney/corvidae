@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { TokenValidationError } from './types.ts';
-import { validateResolverDocument } from './validate-resolver.ts';
+import { resolutionOrderTarget, validateResolverDocument } from './validate-resolver.ts';
 import { validateTokenDocumentSchema } from './validate-schema.ts';
 import { validateTokenDocument } from './validate-tokens.ts';
 import { assertValidResolverDocument } from './validate.ts';
@@ -66,6 +66,111 @@ describe('the semantic token validator, run without the schema gate', () => {
   });
 });
 
+describe('the semantic token validator, group and token metadata', () => {
+  const reasonsOf = (document: Record<string, unknown>) =>
+    issuesOf(() => validateTokenDocument(document)).map((issue) => issue.reason);
+
+  test('reports a $schema that is not a string, or that is not on the document root', () => {
+    expect(reasonsOf({ $schema: 7, a: { $type: 'number', $value: 1 } })).toContain(
+      '$schema must be a root-level string URI',
+    );
+    expect(
+      reasonsOf({
+        group: { $schema: 'https://example.com/schema.json', a: { $type: 'number', $value: 1 } },
+      }),
+    ).toContain('$schema must be a root-level string URI');
+  });
+
+  test('reports a $description that is not a string', () => {
+    expect(reasonsOf({ $description: 7, a: { $type: 'number', $value: 1 } })).toContain(
+      '$description must be a string',
+    );
+  });
+
+  test('reports a $deprecated that is neither a boolean nor a string', () => {
+    expect(reasonsOf({ a: { $type: 'number', $value: 1, $deprecated: 7 } })).toContain(
+      '$deprecated must be a boolean or string',
+    );
+  });
+
+  test('reports an $extensions key that is not a vendor name', () => {
+    expect(
+      reasonsOf({ a: { $type: 'number', $value: 1, $extensions: { 'not a vendor': true } } }),
+    ).toContain('$extensions key not a vendor is not a vendor name');
+  });
+});
+
+describe('the semantic token validator, composite values', () => {
+  const dimension = (value: number) => ({ value, unit: 'px' });
+  const reasonsOf = (token: Record<string, unknown>) =>
+    issuesOf(() => validateTokenDocument({ token })).map((issue) => issue.reason);
+
+  test('reports a negative stroke dash length', () => {
+    expect(
+      reasonsOf({
+        $type: 'strokeStyle',
+        $value: { dashArray: [dimension(-1)], lineCap: 'round' },
+      }),
+    ).toContain('stroke dash length must be non-negative');
+  });
+
+  test('reports a typography value with no line height', () => {
+    expect(
+      reasonsOf({
+        $type: 'typography',
+        $value: {
+          fontFamily: 'Inter',
+          fontSize: dimension(16),
+          fontWeight: 400,
+          letterSpacing: dimension(0),
+        },
+      }),
+    ).toContain('composite value must include lineHeight');
+  });
+
+  test('reports a negative typography font size', () => {
+    expect(
+      reasonsOf({
+        $type: 'typography',
+        $value: {
+          fontFamily: 'Inter',
+          fontSize: dimension(-16),
+          fontWeight: 400,
+          letterSpacing: dimension(0),
+          lineHeight: 1.5,
+        },
+      }),
+    ).toContain('typography fontSize must be non-negative');
+  });
+
+  test('reports a negative border width', () => {
+    expect(
+      reasonsOf({
+        $type: 'border',
+        $value: {
+          color: { colorSpace: 'srgb', components: [0, 0, 0] },
+          width: dimension(-1),
+          style: 'solid',
+        },
+      }),
+    ).toContain('border width must be non-negative');
+  });
+
+  test('reports a transition that is not an object', () => {
+    expect(reasonsOf({ $type: 'transition', $value: 5 })).toContain(
+      'transition must include duration, delay, and timingFunction',
+    );
+  });
+});
+
+describe('the resolver reference parser', () => {
+  test('refuses a name that carries an unknown ~ escape or ends in a bare ~', () => {
+    expect(resolutionOrderTarget('#/sets/bad~2name')).toBeUndefined();
+    expect(resolutionOrderTarget('#/sets/trailing~')).toBeUndefined();
+    expect(resolutionOrderTarget('#/sets/a~1b~0c')).toEqual({ kind: 'sets', name: 'a/b~c' });
+  });
+});
+
 describe('the schema gate over a document with arrays where groups belong', () => {
   test('rejects an array in place of a group, naming its path', () => {
     const issues = issuesOf(() =>
@@ -88,6 +193,21 @@ describe('the semantic resolver validator, run without the schema gate', () => {
     expect(issues).toContainEqual({
       path: '$.modifiers.theme',
       reason: 'modifier must have a contexts object',
+    });
+  });
+
+  test('reports a resolver whose version is not 2025.10', () => {
+    const issues = issuesOf(() =>
+      validateResolverDocument({
+        version: '2024.01',
+        sets,
+        modifiers: {},
+        resolutionOrder: order,
+      }),
+    );
+    expect(issues).toContainEqual({
+      path: '$.version',
+      reason: 'resolver version must be 2025.10',
     });
   });
 
@@ -114,5 +234,22 @@ describe('the semantic resolver validator, run without the schema gate', () => {
     ).toEqual([
       { path: '$', reason: 'resolver must contain version, sets, modifiers, and resolutionOrder' },
     ]);
+  });
+});
+
+describe('the schema gate over a failing lookup', () => {
+  test('lets a failure that is not a validation error through unchanged', () => {
+    const failure = new Error('source lookup failed');
+    const sources = new Map<object, string>();
+    sources.get = () => {
+      throw failure;
+    };
+    let thrown: unknown;
+    try {
+      validateTokenDocumentSchema({ a: { $type: 'number', $value: 1 } }, 'doc.json', [], sources);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBe(failure);
   });
 });

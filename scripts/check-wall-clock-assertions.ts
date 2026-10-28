@@ -7,10 +7,11 @@
  * agent sessions the host load swings by an order of magnitude, so whichever
  * such test happens to be on the clock fails, and it passes alone. AGENTS.md
  * rules that a wall-clock target belongs outside the gate: in a `*.bench.ts`
- * file (which Bun's default discovery skips) or a `.test.ts` under a
- * `scripts/benchmarks/` directory, run by the owning package's
+ * file, which Bun's default discovery skips, run by the owning package's
  * `test:benchmarks`. This guard enforces that rule for every default-suite
- * `*.test.ts` and `*.test-support.ts`.
+ * `*.test.ts` and `*.test-support.ts`, wherever it lives. A directory of benchmarks earns no
+ * exemption: what makes a file a benchmark is its name, so a `.test.ts` under
+ * `scripts/benchmarks/` is a default-suite test and is scanned like any other.
  *
  * Definitions, all syntactic and file-local:
  *
@@ -61,13 +62,7 @@
  *     files that cases are written in; the condition of a loop or an `if` is not, because a
  *     polling deadline is a hang guard;
  *   - a bound that lives outside the file, or a clock read inside a helper in
- *     another file;
- *   - env-gated timing assertions in files under a `scripts/benchmarks/`
- *     directory. The exemption is blanket by design, matching AGENTS.md, and
- *     the guard does not verify that the owning package's default `test` script
- *     keeps those files out of the gate. `packages/weft/scripts/benchmarks/
- *     event-dispatch.test.ts` and `search-attributes-scan.test.ts` are such
- *     files: they run in weft's default suite with the gate off.
+ *     another file.
  *
  * One property-held site known at the time of writing is such a blind spot:
  * `packages/operative/test/generate-events.test.ts` asserts
@@ -78,7 +73,7 @@
  */
 
 import { readdirSync } from 'node:fs';
-import { basename, join, relative } from 'node:path';
+import { join, relative } from 'node:path';
 import ts from 'typescript';
 import { workspaceParentDirectories } from './workspace-directories.ts';
 
@@ -406,8 +401,6 @@ export function collectTestFiles(directory: string, paths: string[]): void {
     const path = join(directory, entry.name);
     if (entry.isDirectory()) {
       if (entry.name.startsWith('.') || SKIPPED_DIRECTORIES.has(entry.name)) continue;
-      // Wall-clock targets belong under a package's `scripts/benchmarks/`.
-      if (entry.name === 'benchmarks' && basename(directory) === 'scripts') continue;
       collectTestFiles(path, paths);
     } else if (
       entry.isFile() &&

@@ -175,6 +175,44 @@ describe('shikiHighlighter — happy path', () => {
   });
 });
 
+describe('shikiHighlighter — embedded languages', () => {
+  test('a nested grammar that fails to load costs only its own region, not the block', async () => {
+    const guessed: string[] = [];
+    const highlight = shikiHighlighter(
+      {},
+      async () =>
+        ({
+          highlighter: {
+            loadLanguage: async (load: () => Promise<unknown>) => {
+              await load();
+            },
+            loadTheme: async () => {},
+            codeToHtml: () => '<pre class="shiki"><code>highlighted</code></pre>',
+          },
+          bundledLanguages: {
+            markdown: async () => ({}),
+            typescript: async () => {
+              throw new Error('grammar failed to load');
+            },
+          },
+          bundledThemes: {
+            'github-light': async () => ({}),
+            'github-dark': async () => ({}),
+          },
+          guessEmbeddedLanguages: (_code: string, lang: string) => {
+            guessed.push(lang);
+            return ['typescript'];
+          },
+        }) as unknown as Awaited<ReturnType<NonNullable<Parameters<typeof shikiHighlighter>[1]>>>,
+    );
+
+    const html = await highlight('```typescript\nconst x = 1;\n```\n', 'markdown');
+
+    expect(guessed).toEqual(['markdown']);
+    expect(html).toBe('<pre class="shiki"><code>highlighted</code></pre>');
+  });
+});
+
 describe('shikiHighlighter — fallback contract', () => {
   test('core loader shares curated modules and treats preload misses as non-fatal', async () => {
     const { warnings, restore } = captureWarnings();

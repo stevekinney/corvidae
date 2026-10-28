@@ -45,7 +45,7 @@ export type LoadGrowthMemoryMeasurement = {
    * validated as a positive integer) so a human can see how far the paced,
    * GC-sampled sustained rate sits below the machine's raw capacity. It is
    * deliberately NOT used as a pass/fail throughput floor — see the policy note
-   * on `TARGET_WORKFLOWS_PER_SECOND` in `load-growth-memory.test.ts`.
+   * on `TARGET_WORKFLOWS_PER_SECOND` in `load-growth-memory.bench.ts`.
    */
   calibratedWorkflowsPerSecond: number;
   sampleIntervalMilliseconds: number;

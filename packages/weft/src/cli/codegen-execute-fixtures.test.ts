@@ -7,10 +7,11 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 import ts from 'typescript';
 
@@ -29,25 +30,46 @@ const TYPECHECK_GENERATED_DTS = join(FIXTURE_DIR, 'typecheck', 'weft.generated.d
 const PACKED_FIXTURE_VERSION = '0.0.0-packed-fixture';
 
 /**
- * Arguments for the packed consumer's `bun install`.
+ * How the packed consumer gets its dependencies: from this workspace's own install, never from a
+ * registry.
  *
- * The consumer has no lockfile, so Bun resolves the packed tarball's dependency
- * ranges against registry manifests. Never pass `--prefer-offline` (or
- * `--offline`) here: either makes Bun trust whatever manifest sits in the
- * machine's global install cache without revalidating it, so a manifest cached
- * before a dependency published a newer version cannot satisfy a range that
- * needs it. That is how `ts-morph@28.0.0`'s `@ts-morph/common@~0.29.0` failed
- * with "No version matching" on hosts whose cached manifest predated 0.29.0,
- * even though the version existed on the registry. Tarballs still come from
- * the cache; only the manifests are revalidated.
+ * A lockfile-less `bun install` resolves the tarball's dependency ranges against the registry at
+ * test time, so the coverage lane depended on the network and on whatever the registry served
+ * that day (it once failed with a 404 for `@electric-sql/pglite`'s newest tarball, a version the
+ * workspace's lockfile never selected). The consumer instead gets the extracted tarball plus a
+ * symlink for each of the tarball's declared dependencies, pointing at the copy this workspace
+ * already installed. Each link resolves through the isolated linker's store, so a dependency's
+ * own dependencies resolve exactly as they do in the workspace.
  */
-const PACKED_CONSUMER_INSTALL_ARGUMENTS = [
-  'install',
-  '--production',
-  '--ignore-scripts',
-  '--no-progress',
-  '--no-summary',
-] as const;
+function installPackedConsumerOffline(
+  consumerDirectory: string,
+  packageDirectory: string,
+  dependencyNames: readonly string[],
+): void {
+  for (const name of dependencyNames) {
+    const installed = join(PACKAGE_ROOT, 'node_modules', name);
+    if (!existsSync(installed)) {
+      throw new Error(
+        `${name} is a dependency of @lostgradient/weft but is not installed in ${PACKAGE_ROOT}; run bun install --frozen-lockfile`,
+      );
+    }
+    const link = join(consumerDirectory, 'node_modules', name);
+    mkdirSync(dirname(link), { recursive: true });
+    symlinkSync(realpathSync(installed), link, 'dir');
+  }
+  const binDirectory = join(consumerDirectory, 'node_modules', '.bin');
+  mkdirSync(binDirectory, { recursive: true });
+  const binEntries = readJsonFile(join(packageDirectory, 'package.json'))['bin'];
+  if (binEntries === null || typeof binEntries !== 'object' || Array.isArray(binEntries)) {
+    throw new Error('expected the packed @lostgradient/weft package.json bin to be an object');
+  }
+  for (const [binName, binPath] of Object.entries(binEntries as Record<string, unknown>)) {
+    if (typeof binPath !== 'string') {
+      throw new Error(`expected the packed bin "${binName}" to name a file`);
+    }
+    symlinkSync(join(packageDirectory, binPath), join(binDirectory, binName));
+  }
+}
 
 /**
  * The one token in the golden that is not literal output.
@@ -218,22 +240,12 @@ async function packWeftTarball(root: string): Promise<string> {
   return tarballPath;
 }
 
-function writePackedConsumerFixture(
-  consumerDirectory: string,
-  tarballPath: string,
-): {
+function writePackedConsumerFixture(consumerDirectory: string): {
   readonly generatedWorkerPath: string;
   readonly registryPath: string;
 } {
   mkdirSync(consumerDirectory, { recursive: true });
-  const packageJson = {
-    private: true,
-    type: 'module',
-    dependencies: {
-      '@lostgradient/weft': `file:${tarballPath}`,
-    },
-  };
-  writeJsonFile(join(consumerDirectory, 'package.json'), packageJson);
+  writeJsonFile(join(consumerDirectory, 'package.json'), { private: true, type: 'module' });
   writeJsonFile(join(consumerDirectory, 'tsconfig.json'), {
     compilerOptions: {
       target: 'ES2022',
@@ -329,16 +341,28 @@ async function createPackedTarballFixture(): Promise<PackedTarballFixture> {
 async function createPackedConsumerFixture(): Promise<PackedConsumerFixture> {
   const { root, tarballPath } = await getPackedTarballFixture();
   const consumerDirectory = join(root, 'consumer');
-  const { generatedWorkerPath, registryPath } = writePackedConsumerFixture(
-    consumerDirectory,
-    tarballPath,
-  );
+  const { generatedWorkerPath, registryPath } = writePackedConsumerFixture(consumerDirectory);
 
-  const install = await runProcess(
-    [process.execPath, ...PACKED_CONSUMER_INSTALL_ARGUMENTS],
+  const packageDirectory = join(consumerDirectory, 'node_modules', '@lostgradient', 'weft');
+  mkdirSync(packageDirectory, { recursive: true });
+  const extract = await runProcess(
+    ['tar', '-xzf', tarballPath, '-C', packageDirectory, '--strip-components=1'],
     consumerDirectory,
   );
-  expect(install.exitCode, install.stderr).toBe(0);
+  expect(extract.exitCode, extract.stderr).toBe(0);
+  const packedDependencies = readJsonFile(join(packageDirectory, 'package.json'))['dependencies'];
+  if (
+    packedDependencies === null ||
+    typeof packedDependencies !== 'object' ||
+    Array.isArray(packedDependencies)
+  ) {
+    throw new Error('expected the packed @lostgradient/weft package.json dependencies');
+  }
+  installPackedConsumerOffline(
+    consumerDirectory,
+    packageDirectory,
+    Object.keys(packedDependencies),
+  );
 
   const codegen = await runProcess(
     [
@@ -441,6 +465,25 @@ const scenario4 = await outcomeOf(async () => {
     realpathSync(proof.resolved).startsWith(realpathSync(join(consumerDirectory, 'node_modules'))),
   ).toBe(true);
   expect(proof.resolved).not.toContain(PACKAGE_ROOT);
+});
+
+const scenario5 = await outcomeOf(async () => {
+  const { consumerDirectory } = await getPackedConsumerFixture();
+
+  // No install ran, so nothing could have asked a registry for a manifest or a tarball.
+  expect(existsSync(join(consumerDirectory, 'bun.lock'))).toBe(false);
+  expect(existsSync(join(consumerDirectory, 'bun.lockb'))).toBe(false);
+  const packedManifest = readJsonFile(
+    join(consumerDirectory, 'node_modules', '@lostgradient', 'weft', 'package.json'),
+  );
+  const dependencies = packedManifest['dependencies'] as Record<string, unknown>;
+  const workspaceNodeModules = realpathSync(join(REPOSITORY_ROOT, 'node_modules'));
+  expect(Object.keys(dependencies)).toContain('@electric-sql/pglite');
+  for (const name of Object.keys(dependencies)) {
+    const linked = realpathSync(join(consumerDirectory, 'node_modules', name));
+    expect(linked, name).toBe(realpathSync(join(PACKAGE_ROOT, 'node_modules', name)));
+    expect(linked.startsWith(workspaceNodeModules), name).toBe(true);
+  }
 });
 
 describe('executeCodegen end-to-end', () => {
@@ -571,10 +614,8 @@ describe('executeCodegen end-to-end', () => {
     expect(written).not.toContain("from './");
   });
 
-  it('revalidates registry manifests when installing the packed consumer', () => {
-    expect(PACKED_CONSUMER_INSTALL_ARGUMENTS).not.toContain('--prefer-offline');
-    expect(PACKED_CONSUMER_INSTALL_ARGUMENTS).not.toContain('--offline');
-  });
+  it('builds the packed consumer from the workspace install without a registry', () =>
+    rethrow(scenario5));
 
   it('packs a @lostgradient/weft tarball with the expected package identity', () =>
     rethrow(scenario1));

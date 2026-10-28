@@ -14,7 +14,7 @@ import { KEYS, type BatchOperation } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { restoreRealTimers, useFakeTimers } from '../../testing/fake-timers.test-support.ts';
 import { decode, encode } from '../codec.ts';
-import { SignalWaitingEvent } from '../events.ts';
+import { SignalDeliveredEvent, SignalWaitingEvent } from '../events.ts';
 import { workflow, type WorkflowContext, type WorkflowState } from '../types.ts';
 import { Engine } from './index.ts';
 import { getInternals } from './internals.ts';
@@ -194,6 +194,10 @@ describe('a signal buffered before the wait begins', () => {
 describe('a listed wait ends', () => {
   it('when its signal is delivered', async () => {
     await using engine = createEngine();
+    const delivered: SignalDeliveredEvent[] = [];
+    engine.addEventListener(SignalDeliveredEvent.type, (event) => {
+      if (event instanceof SignalDeliveredEvent) delivered.push(event);
+    });
     await engine.start('approval-then-after', null, { id: 'ends-delivery' });
     await nextSignalWaiting(engine, 'ends-delivery', 'approval');
 
@@ -202,6 +206,8 @@ describe('a listed wait ends', () => {
     await after;
 
     expect(await waitingForSignalsOf(engine, 'ends-delivery')).toEqual(['after']);
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0]).toMatchObject({ workflowId: 'ends-delivery', signalName: 'approval' });
   });
 
   it('when the workflow is cancelled', async () => {

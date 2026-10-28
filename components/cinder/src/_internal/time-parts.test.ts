@@ -72,6 +72,7 @@ describe('time parts helpers', () => {
   test('resolves locale hour cycles and falls back for invalid locales', () => {
     expect(resolveHourCycle(undefined, 'en-GB')).toBe('h23');
     expect(resolveHourCycle(undefined, 'not a locale')).toBe('h12');
+    expect(resolveHourCycle(undefined, 'en-US-u-hc-h24')).toBe('h24');
   });
 
   test('normalizes steps to values the picker columns can represent', () => {
