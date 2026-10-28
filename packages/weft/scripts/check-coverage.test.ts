@@ -1,6 +1,7 @@
 import { describe, expect, it, mock, spyOn } from 'bun:test';
 
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
+import packageJson from '../package.json' with { type: 'json' };
 import { outcomeOf, rethrow } from '../src/testing/module-scope-scenario.test-support.ts';
 import {
   assembleAllowanceLayers,
@@ -69,6 +70,23 @@ const benchmarkExclusions = await outcomeOf(async () => {
   expect(files).toContain('scripts/benchmarks/environment-configuration.test.ts');
 });
 
+// COR-1736: Bun's `--parallel` isolate lane crashes in checkpoint-prune.test.ts (oven-sh/bun#29519),
+// so `test` ignores the file in its `--parallel` phase and runs it in a second serial phase. The
+// coverage run has no `--parallel` and must keep counting it, so the mirrored exclusions drop it.
+const serialLaneFile = 'src/core/checkpoint-prune.test.ts';
+const serialLane = await outcomeOf(async () => {
+  const script = packageJson.scripts.test;
+  const [parallelPhase = '', ...serialPhases] = script.split(' && ');
+  expect(parallelPhase).toContain('--parallel=4');
+  expect(parallelPhase).toContain(`--path-ignore-patterns='${serialLaneFile}'`);
+  expect(serialPhases).toHaveLength(1);
+  expect(serialPhases[0]).not.toContain('--parallel');
+  expect(serialPhases[0]).toContain('--report-name=checkpoint-prune');
+  expect(serialPhases[0]?.split(/\s+/)).toContain(`./${serialLaneFile}`);
+  expect(readTestScriptPathIgnorePatterns()).not.toContain(serialLaneFile);
+  expect(await listCoverageTestFiles()).toContain(serialLaneFile);
+});
+
 describe('listCoverageTestFiles', () => {
   it('discovers only repository-owned test files without depending on ripgrep', () =>
     rethrow(listedTestFiles));
@@ -81,6 +99,9 @@ describe('listCoverageTestFiles', () => {
    */
   it('excludes exactly the measurement benchmarks the test script excludes', () =>
     rethrow(benchmarkExclusions));
+
+  it('keeps the file the test script runs in its serial phase in the coverage shard', () =>
+    rethrow(serialLane));
 });
 
 // The pipe scenario below runs the coverage CLI in a real child process, which takes seconds on a
