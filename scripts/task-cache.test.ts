@@ -400,6 +400,174 @@ const scenario7 = await outcomeOf(async () => {
 test('a change leaves the cache keys of packages it cannot affect untouched', () =>
   rethrow(scenario7));
 
+const scenario8 = await outcomeOf(async () => {
+  // The root browser-fixtures task once hashed every tracked file of the repository (about 14,700
+  // inputs), so an edit to AGENTS.md or to an application the fixtures never import re-ran it, and
+  // each distinct TMPDIR (declared in `env`) was a different key. Its key is now what it reads:
+  // the fixtures' own files, the root scripts it runs, and the providers `transit` folds in.
+  const directory = await mkdtemp(join(tmpdir(), 'corvidae-browser-fixtures-keys-'));
+  try {
+    await createWorkspace(directory);
+    await Bun.write(
+      join(directory, '.gitignore'),
+      'node_modules/\n.turbo/\n.playwright/\ntest-results/\n',
+    );
+    const manifestPath = join(directory, 'package.json');
+    const manifest = await Bun.file(manifestPath).json();
+    await Bun.write(
+      manifestPath,
+      JSON.stringify({
+        ...manifest,
+        workspaces: [...manifest.workspaces, 'scripts/browser-fixtures'],
+        scripts: { 'test:browser-fixtures': 'bun --eval "void 0"' },
+      }),
+    );
+    await Bun.write(
+      join(directory, 'scripts/browser-fixtures/package.json'),
+      JSON.stringify({
+        name: '@lostgradient/browser-fixtures',
+        private: true,
+        devDependencies: { '@fixture/cinder': 'workspace:*' },
+      }),
+    );
+    await Bun.write(
+      join(directory, 'components/cinder/package.json'),
+      JSON.stringify({ name: '@fixture/cinder', private: true }),
+    );
+    for (const [path, text] of [
+      ['components/cinder/src/index.ts', 'export const value = 1;\n'],
+      ['scripts/browser-fixtures/scripts/fixture.test.ts', 'export const fixture = 1;\n'],
+      ['scripts/bun-test-junit.ts', 'export const runner = 1;\n'],
+      ['scripts/tool.ts', 'export const tool = 1;\n'],
+      ['AGENTS.md', '# Agents\n'],
+    ] as const) {
+      await Bun.write(join(directory, path), text);
+    }
+    await run(directory, [process.execPath, 'install']);
+    const command = [
+      join(root, 'node_modules/.bin/turbo'),
+      'run',
+      'test:browser-fixtures',
+      '--dry=json',
+    ];
+    const key = async (environment: Record<string, string | undefined> = process.env) =>
+      taskHash(await run(directory, command, environment), '//#test:browser-fixtures');
+    const before = await key();
+
+    // Two TMPDIR values are one key: the task passes it through without hashing it.
+    expect(await key({ ...process.env, TMPDIR: join(directory, 'one') })).toBe(before);
+    expect(await key({ ...process.env, TMPDIR: join(directory, 'two') })).toBe(before);
+
+    // Files the task cannot read leave its key alone.
+    await Bun.write(join(directory, 'AGENTS.md'), '# Agents, edited\n');
+    expect(await key()).toBe(before);
+    await Bun.write(
+      join(directory, 'applications/application/source.ts'),
+      'export const value = 2;\n',
+    );
+    expect(await key()).toBe(before);
+    await Bun.write(join(directory, 'scripts/tool.ts'), 'export const tool = 2;\n');
+    expect(await key()).toBe(before);
+    await Bun.write(join(directory, 'scripts/browser-fixtures/test-results/report.txt'), 'x\n');
+    expect(await key()).toBe(before);
+
+    // Provider source, the fixtures' own files, and the root runner it executes each move it.
+    const changes: Array<[string, string]> = [
+      ['components/cinder/src/index.ts', 'export const value = 2;\n'],
+      ['scripts/browser-fixtures/scripts/fixture.test.ts', 'export const fixture = 2;\n'],
+      ['scripts/bun-test-junit.ts', 'export const runner = 2;\n'],
+    ];
+    let previous = before;
+    for (const [path, text] of changes) {
+      await Bun.write(join(directory, path), text);
+      const after = await key();
+      expect(after, path).not.toBe(previous);
+      previous = after;
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+test('the browser-fixtures key follows the files it reads, never the host or the rest of the repository', () =>
+  rethrow(scenario8));
+
+test('the browser-fixtures task declares every root file its commands read, and no host variable', async () => {
+  // Inputs that are not `$TURBO_DEFAULT$` must name each root script the lane runs or imports,
+  // or a change to one replays a cached pass. The lane is the root `test:browser-fixtures`
+  // script: it runs `scripts/bun-test-junit.ts` over `scripts/browser-fixtures/scripts`, so every
+  // code file the fixtures workspace holds is an entrypoint, and so is every script the command
+  // names. Data the runner and the tests read directly cannot be found by import, so they are
+  // listed here.
+  const { discoverWorkspaces, listTree } = await import('./affected-tests.ts');
+  const { analyzeSource, resolveSpecifier, isCodeFile } = await import('./affected-tests-graph.ts');
+  const configuration = await Bun.file(join(root, 'turbo.json')).json();
+  const task: { env?: string[]; passThroughEnv?: string[]; inputs?: string[] } =
+    configuration.tasks['//#test:browser-fixtures'];
+  const manifest = await Bun.file(join(root, 'package.json')).json();
+  const command: string = manifest.scripts['test:browser-fixtures'];
+  const workspaces = discoverWorkspaces(root);
+  const { paths } = listTree(root);
+  const fixturesDirectory = 'scripts/browser-fixtures/';
+  const isRootCode = (path: string) =>
+    path.startsWith('scripts/') && !path.startsWith(fixturesDirectory);
+
+  const seen = new Set<string>();
+  const pending = [
+    ...[...paths].filter(
+      (path) =>
+        path.startsWith(fixturesDirectory) && isCodeFile(path) && !path.endsWith('.playwright.ts'),
+    ),
+    ...command.split(/[\s&|;'"]+/).filter((token) => paths.has(token) && isCodeFile(token)),
+  ];
+  for (let current = pending.pop(); current !== undefined; current = pending.pop()) {
+    if (seen.has(current)) continue;
+    seen.add(current);
+    const source = readFileSync(join(root, current), 'utf8');
+    for (const specifier of analyzeSource(current, source).specifiers) {
+      const target = resolveSpecifier(current, specifier, paths, workspaces);
+      if (target !== null && (target.startsWith(fixturesDirectory) || isRootCode(target))) {
+        pending.push(target);
+      }
+    }
+  }
+  const reached = [...seen].filter(isRootCode);
+  expect(reached).toContain('scripts/bun-test-junit.ts');
+
+  const inputs = task.inputs ?? [];
+  expect(inputs, 'the key must not fall back to every file in the repository').not.toContain(
+    '$TURBO_DEFAULT$',
+  );
+  const covers = (path: string) =>
+    inputs.some((input) => input === `$TURBO_ROOT$/${path}` || input === path);
+  const required = [
+    ...reached,
+    // Read by `bun-test-junit.ts` through `check-test-durations.ts`.
+    'scripts/test-duration-allowlist.json',
+    // Read by the provenance test, which compares the lockfile's Playwright pin to the baselines.
+    'bun.lock',
+    // Bun's own configuration for a run from the repository root.
+    'bunfig.toml',
+    'tsconfig.json',
+  ];
+  expect(
+    required.filter((path) => !covers(path)).toSorted(),
+    'root files the lane reads that its inputs omit',
+  ).toEqual([]);
+  expect(inputs).toContain('scripts/browser-fixtures/**');
+
+  // Globs that include ignored directories hash generated output, so the key would drift.
+  const exclusion = inputs.find((input) => input.startsWith('!scripts/browser-fixtures/'));
+  expect(exclusion, 'generated and installed directories must be excluded').toBeDefined();
+  for (const generated of ['.playwright', 'node_modules', 'test-results', 'test-output']) {
+    expect(exclusion).toContain(generated);
+  }
+
+  // The host's temporary directory differs per machine and per session and does not change what
+  // the lane produces, so it must reach the process without keying the task.
+  expect(task.env ?? []).not.toContain('TMPDIR');
+  expect(task.passThroughEnv ?? []).toContain('TMPDIR');
+});
+
 test('the root package depends on no workspace but its compiler configuration', async () => {
   // Turbo hashes the files of every workspace the root package depends on, transitively, into
   // the global hash that every task key includes. A workspace the root depends on therefore
