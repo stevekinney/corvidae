@@ -146,6 +146,26 @@ describe('worker:deployment-changed from drain and resume (COR-1724)', () => {
     });
   });
 
+  it('keeps a committed drain, and raises no event, when the routing generation cannot be read', async () => {
+    const { registry, storage } = await fixture();
+    class UnreadableRoutingCatalog extends WorkerDeploymentCatalog {
+      override async getRouting(): Promise<never> {
+        throw new Error('routing unreadable');
+      }
+    }
+    const { events, dispatchEvent } = collectDeploymentEvents();
+    const drain = createDrainDeploymentOperation({
+      workerRegistry: registry,
+      catalog: new UnreadableRoutingCatalog(storage),
+      dispatchEvent,
+    });
+
+    expect(await invoke(drain, { deploymentName: 'payments' })).toMatchObject({
+      health: 'drained',
+    });
+    expect(events).toEqual([]);
+  });
+
   it('announces nothing for a refused drain or without a dispatch hook', async () => {
     const { registry, catalog } = await fixture();
     const { events, dispatchEvent } = collectDeploymentEvents();
