@@ -210,3 +210,31 @@ describe('aggregate scan caps', () => {
     expect(error).toBeInstanceOf(WorkflowListScanCapExceededError);
   });
 });
+
+describe('aggregate inherited attribute names', () => {
+  it.each(['constructor', 'toString'])(
+    'puts a record without the declared attribute "%s" in the null bucket',
+    async (attributeName) => {
+      const storage = new MemoryStorage();
+      await using engine = new Engine({ storage });
+      engine.register(
+        workflow({ name: `inherited-${attributeName}` })
+          .searchAttributes({ [attributeName]: { type: 'string' }, other: { type: 'string' } })
+          .execute(async function* () {
+            return 'ok';
+          }),
+      );
+      const workflowId = `agg-inherited-${attributeName}`;
+      await storage.put(KEYS.workflow(workflowId), encode(completedState(workflowId)));
+      await storage.put(KEYS.attribute(workflowId), encode({ other: 'present' }));
+
+      const result = await engine.aggregate(
+        { idPrefix: 'agg-inherited-' },
+        { groupBy: { attribute: attributeName } },
+      );
+
+      expect(result.total).toBe(1);
+      expect(result.groups).toEqual([{ key: null, count: 1 }]);
+    },
+  );
+});

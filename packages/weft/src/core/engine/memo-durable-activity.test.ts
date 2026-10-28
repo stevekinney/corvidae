@@ -593,6 +593,8 @@ describe('ctx.memo durableActivity helper', () => {
 
   it('defers closing the scope until an in-flight reconciliation commit finishes', async () => {
     const tool = activity({ name: 'gatedTool', execute: async () => 'gated-result' });
+    let completedCommitApplied = false;
+    let commitReleased = false;
     const commitStarted = createDeferred();
     const releaseCommit = createDeferred();
     class GatedReconciliationStorage extends MemoryStorage {
@@ -610,7 +612,9 @@ describe('ctx.memo durableActivity helper', () => {
           commitStarted.resolve();
           await releaseCommit.promise;
         }
-        return super.conditionalBatch(...args);
+        const applied = await super.conditionalBatch(...args);
+        if (isCompletedRecord) completedCommitApplied = applied;
+        return applied;
       }
     }
     const definition = workflow({ name: 'deferred-close' })
@@ -619,18 +623,28 @@ describe('ctx.memo durableActivity helper', () => {
         return yield* ctx.memo('step-0', async () => {
           void durableActivity('gatedTool', 'x', { idempotencyKey: 'deferred-close' });
           await commitStarted.promise;
-          setTimeout(() => releaseCommit.resolve(), 10);
+          setTimeout(() => {
+            commitReleased = true;
+            releaseCommit.resolve();
+          }, 10);
           return 'memo-returned';
         });
       });
 
-    await using engine = new Engine({ storage: new GatedReconciliationStorage() });
+    const storage = new GatedReconciliationStorage();
+    await using engine = new Engine({ storage });
     engine.register(definition);
     const handle = await engine.start('deferred-close', null, { id: 'deferred-close-1' });
 
     expect(await throwingRejectionOf(handle.result())).toThrow(
       'durableActivity() calls started inside ctx.memo() must be awaited',
     );
+    // The memo failed only after the held commit was released and applied: the scope waited for
+    // the write instead of closing at once (an immediate close settles the memo before the
+    // release timer fires). Terminal cleanup then removes the record, so the commit is observed
+    // as it lands.
+    expect(commitReleased).toBe(true);
+    expect(completedCommitApplied).toBe(true);
   });
 
   it('closes a pending helper activity with a generic reason when the memo throws a non-Error', async () => {

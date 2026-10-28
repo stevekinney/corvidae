@@ -209,7 +209,12 @@ async function resolveAttributeDimensionKeys(
         keys.push(null);
         continue;
       }
-      keys.push(ATTRIBUTE_VALUE_TO_KEY(attributes[groupBy.attribute]));
+      // Own properties only: a name such as `constructor` must not read through the prototype.
+      keys.push(
+        ATTRIBUTE_VALUE_TO_KEY(
+          Object.hasOwn(attributes, groupBy.attribute) ? attributes[groupBy.attribute] : undefined,
+        ),
+      );
     }
   }
   return keys;
