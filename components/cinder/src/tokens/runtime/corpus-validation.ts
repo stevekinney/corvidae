@@ -147,10 +147,12 @@ export function validateModifierSetExpansionOrder(
                 .slice(0, order.indexOf(candidate))
                 .flatMap((preceding) => {
                   if (preceding.kind === 'sets') return expandSetSources(resolver, preceding.name);
-                  const precedingContext = contextSelection.get(preceding.name);
-                  return precedingContext === undefined
-                    ? []
-                    : expandContextSources(resolver, preceding.name, precedingContext);
+                  // The selection names a context for every modifier ahead of the candidate.
+                  return expandContextSources(
+                    resolver,
+                    preceding.name,
+                    contextSelection.get(preceding.name)!,
+                  );
                 })
                 .map((source) => documentsByPath.get(normalizeSourcePath(source.$ref))!);
               const before = resolveDocuments(precedingDocuments);

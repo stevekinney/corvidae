@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   formatAcceptDescription,
   installFilePickerReturnFallback,
+  installFileUploadSurfaceActivation,
 } from './file-upload-utilities.ts';
 
 describe('formatAcceptDescription', () => {
@@ -24,5 +25,30 @@ describe('installFilePickerReturnFallback', () => {
     const cleanup = installFilePickerReturnFallback(input, () => {});
 
     expect(() => cleanup()).not.toThrow();
+  });
+});
+
+describe('installFileUploadSurfaceActivation', () => {
+  test('opens the picker for a click on a surface that belongs to a detached document', () => {
+    // A detached document has no window, so there is no `Element` constructor to recognize the
+    // target with, and the click cannot have come from an interactive descendant.
+    const detachedDocument = document.implementation.createHTMLDocument('detached');
+    const surface = detachedDocument.createElement('div');
+    expect(surface.ownerDocument.defaultView).toBeNull();
+    let opened = 0;
+    const { destroy } = installFileUploadSurfaceActivation(
+      surface,
+      () => false,
+      () => {
+        opened += 1;
+      },
+    );
+
+    surface.dispatchEvent(new Event('click'));
+    expect(opened).toBe(1);
+
+    destroy();
+    surface.dispatchEvent(new Event('click'));
+    expect(opened).toBe(1);
   });
 });

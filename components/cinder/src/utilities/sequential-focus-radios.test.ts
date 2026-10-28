@@ -44,6 +44,31 @@ describe('getSequentialFocusTargets', () => {
     region.remove();
   });
 
+  test('keeps a radio whose root is not a parent node as a group of its own', () => {
+    // The root of a real element always has children, so this stands in for a host that answers
+    // with a node that does not: each radio is then the only member of its group.
+    const region = document.createElement('div');
+    const radios = ['first', 'second'].map((id) => {
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = 'choice';
+      radio.id = id;
+      radio.setAttribute('tabindex', '0');
+      Object.defineProperty(radio, 'getRootNode', {
+        configurable: true,
+        value: () => document.createTextNode(''),
+      });
+      return radio;
+    });
+    region.append(...radios);
+    document.body.append(region);
+
+    const targets = getSequentialFocusTargets(region);
+    expect(targets).toContain(radios[0]!);
+    expect(targets).toContain(radios[1]!);
+    region.remove();
+  });
+
   test('uses the last DOM-order radio as the "before" group representative when none is checked', () => {
     // Native reverse Tab enters an unchecked same-name radio group at its
     // LAST member in DOM order — the mirror of forward Tab's first-member
