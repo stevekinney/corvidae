@@ -21,7 +21,7 @@
  */
 
 import { existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
-import { cp, mkdir, readdir, rename, rm } from 'node:fs/promises';
+import { cp, mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -148,6 +148,44 @@ export function assertCleanBuild(result: Bun.BuildOutput): Bun.BuildMetafile {
     throw new Error('Browser compilation did not emit module provenance');
   }
   return result.metafile;
+}
+
+/** The `href` of every `<link rel="stylesheet">` in `html`. */
+export function linkedStylesheets(html: string): string[] {
+  const hrefs: string[] = [];
+  for (const [tag] of html.matchAll(/<link\b[^>]*>/g)) {
+    if (!/\brel="stylesheet"/.test(tag)) continue;
+    const href = /\bhref="([^"]+)"/.exec(tag)?.[1];
+    if (href !== undefined) hrefs.push(href);
+  }
+  return hrefs;
+}
+
+/**
+ * Delete the stylesheets (and their source maps) that `index.html` does not link, and return the
+ * files that remain. Bun makes one CSS bundle per JavaScript entry or dynamically imported chunk,
+ * and each bundle is the whole CSS graph reachable from that chunk, so Cinder's token block and
+ * every shared layer are emitted once per lazy route. Nothing loads those bundles: no chunk
+ * imports them and the page links only the one the HTML entry produces, which already holds the
+ * CSS of every lazily imported module, because the entry's graph reaches through dynamic imports.
+ * Component `<style>` blocks are not in any of these files: the Svelte plugin injects them into
+ * the JavaScript of the component that owns them.
+ */
+export async function pruneUnlinkedStylesheets(
+  staging: string,
+  files: readonly string[],
+): Promise<string[]> {
+  if (!files.includes('index.html')) return [...files];
+  const html = await Bun.file(join(staging, 'index.html')).text();
+  const linked = new Set(
+    linkedStylesheets(html).map((href) => relative('/', href).split(sep).join('/')),
+  );
+  const unlinked = new Set(files.filter((file) => file.endsWith('.css') && !linked.has(file)));
+  for (const stylesheet of unlinked) {
+    await rm(join(staging, stylesheet), { force: true });
+    await rm(join(staging, `${stylesheet}.map`), { force: true });
+  }
+  return files.filter((file) => !unlinked.has(file) && !unlinked.has(file.replace(/\.map$/, '')));
 }
 
 /** The filesystem operations {@link replaceDirectory} uses, replaceable in tests. */
@@ -324,10 +362,23 @@ export async function buildApplication(
       }),
       minify: !development,
     });
-    const metafile = assertCleanBuild(result);
-    const files = result.outputs
-      .map((output) => relative(staging, output.path).split(sep).join('/'))
-      .toSorted();
+    const bundled = assertCleanBuild(result);
+    const files = await pruneUnlinkedStylesheets(
+      staging,
+      result.outputs
+        .map((output) => relative(staging, output.path).split(sep).join('/'))
+        .toSorted(),
+    );
+    const written = new Set(files);
+    // The metafile describes what is on disk: it keeps no entry for a stylesheet that was pruned.
+    const metafile: Bun.BuildMetafile = {
+      ...bundled,
+      outputs: Object.fromEntries(
+        Object.entries(bundled.outputs).filter(
+          ([name]) => !name.endsWith('.css') || written.has(name.replace(/^\.\//, '')),
+        ),
+      ),
+    };
     if (development) await retainPreviousAssets(staging, directory);
     await replaceDirectory(staging, directory);
     return { directory, files, metafile };
@@ -362,13 +413,51 @@ export type BuildCommandOptions = {
   readonly outdir?: string;
 };
 
-/** The command line: what to build, and whether to stop when standard input closes. */
-export type BuildArguments = BuildCommandOptions & { readonly exitWithParent: boolean };
+/**
+ * The command line: what to build, whether to stop when standard input closes, and where to
+ * record the build's inputs ({@link writeBuildInputs}).
+ */
+export type BuildArguments = BuildCommandOptions & {
+  readonly exitWithParent: boolean;
+  readonly inputsFile?: string;
+};
+
+/**
+ * The absolute path of every source file the bundler read, from the metafile's `inputs`. Bun
+ * reports them relative to the working directory, and a workspace the application imports is
+ * reported at its real path (`../../components/chat/src/...`). Inputs a plugin synthesized
+ * (`wasm-asset:...`) are not files and are left out.
+ */
+export function buildInputPaths(
+  metafile: Bun.BuildMetafile,
+  workingDirectory: string = process.cwd(),
+): string[] {
+  return Object.keys(metafile.inputs)
+    .filter((input) => !/^[a-z][a-z0-9+.-]*:/i.test(input))
+    .map((input) => resolve(workingDirectory, input))
+    .toSorted();
+}
+
+/**
+ * Record the files the build read as a JSON array of absolute paths, which the development host
+ * reads to decide which directories to watch (`source-watcher.ts`). The file is written beside
+ * its final name and renamed into place, so the host never reads a half-written list.
+ */
+export async function writeBuildInputs(
+  file: string,
+  metafile: Bun.BuildMetafile,
+  workingDirectory: string = process.cwd(),
+): Promise<void> {
+  const pending = `${file}.${process.pid}.tmp`;
+  await writeFile(pending, JSON.stringify(buildInputPaths(metafile, workingDirectory)));
+  await rename(pending, file);
+}
 
 /**
  * Read the command-line arguments: `--development` builds the unminified development bundle,
- * `--outdir <path>` builds somewhere other than `build/`, and `--exit-with-parent` stops the build
- * when standard input closes ({@link exitWhenStandardInputCloses}). The development host runs this
+ * `--outdir <path>` builds somewhere other than `build/`, `--inputs-file <path>` records the files
+ * the build read ({@link writeBuildInputs}), and `--exit-with-parent` stops the build when
+ * standard input closes ({@link exitWhenStandardInputCloses}). The development host runs this
  * command in a child process, so an unknown argument fails loudly instead of building the wrong
  * thing.
  */
@@ -376,6 +465,7 @@ export function parseBuildArguments(argv: readonly string[]): BuildArguments {
   let development = false;
   let exitWithParent = false;
   let outdir: string | undefined;
+  let inputsFile: string | undefined;
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--development') {
@@ -388,11 +478,22 @@ export function parseBuildArguments(argv: readonly string[]): BuildArguments {
         throw new Error('--outdir needs a directory');
       }
       index += 1;
+    } else if (argument === '--inputs-file') {
+      inputsFile = argv[index + 1];
+      if (inputsFile === undefined || inputsFile.trim() === '') {
+        throw new Error('--inputs-file needs a file');
+      }
+      index += 1;
     } else {
       throw new Error(`Unknown build argument: ${argument}`);
     }
   }
-  return { development, exitWithParent, ...(outdir === undefined ? {} : { outdir }) };
+  return {
+    development,
+    exitWithParent,
+    ...(outdir === undefined ? {} : { outdir }),
+    ...(inputsFile === undefined ? {} : { inputsFile }),
+  };
 }
 
 /** The command-line entry: build and report what was written. */
@@ -401,8 +502,9 @@ export async function runBuildCommand(
   runBuild: typeof buildApplication = buildApplication,
   argv: readonly string[] = [],
 ): Promise<ApplicationBuild> {
-  const { exitWithParent: _exitWithParent, ...options } = parseBuildArguments(argv);
+  const { exitWithParent: _exitWithParent, inputsFile, ...options } = parseBuildArguments(argv);
   const build = await runBuild(options);
+  if (inputsFile !== undefined) await writeBuildInputs(inputsFile, build.metafile);
   log(`Built Interborough into ${build.directory} (${build.files.length} files)`);
   return build;
 }

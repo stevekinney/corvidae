@@ -43,6 +43,7 @@ import {
   ReviewRevokedEvent,
   ReviewSupersededEvent,
   RunRegisteredEvent,
+  RunSettledEvent,
   RunRemovedEvent,
 } from './events.ts';
 import {
@@ -123,6 +124,7 @@ export type DeclaredKeys<T> = keyof {
 export const BUREAU_EVENT_CLASSIFICATION = {
   action: 'published',
   'run.registered': 'published',
+  'run.settled': 'published',
   'run.removed': 'published',
   'run.abort-settled': 'published',
   'bureau.disposed': 'published',
@@ -172,6 +174,9 @@ const PROJECTIONS: readonly BureauEventProjection[] = [
     timestamp: event.action.timestamp,
   })),
   projection(RunRegisteredEvent.type, isInstance(RunRegisteredEvent), (event) => ({
+    runId: event.runId,
+  })),
+  projection(RunSettledEvent.type, isInstance(RunSettledEvent), (event) => ({
     runId: event.runId,
   })),
   projection(RunRemovedEvent.type, isInstance(RunRemovedEvent), (event) => ({

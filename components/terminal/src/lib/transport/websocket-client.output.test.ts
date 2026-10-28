@@ -1,4 +1,6 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
+
+import { ClientEndpoint } from '@lostgradient/ventriloquist';
 
 import { PIPE, rig, type Rig } from './transport-test-support.ts';
 import type { TerminalTransportEvent } from './transport-types.ts';
@@ -256,5 +258,31 @@ describe('output', () => {
     subject.fromClient();
     subject.serve(subject.host.acknowledgeOperation(1));
     expect(subject.client.state).toBe('failed');
+  });
+
+  test('an acknowledgement the protocol will not send fails the connection closed with its code', async () => {
+    const subject = rig();
+    await subject.attach();
+    const events: TerminalTransportEvent[] = [];
+    subject.client.subscribe((event) => events.push(event));
+    subject.client.subscribeOutput((_chunk, parsed) => parsed());
+    const refusal = spyOn(ClientEndpoint.prototype, 'consumeOutput').mockReturnValue({
+      ok: false,
+      failure: { code: 'transport-failed', reason: 'sequence-overflow' },
+    });
+    try {
+      output(subject, 'abc');
+      expect(refusal).toHaveBeenCalledWith(3);
+    } finally {
+      refusal.mockRestore();
+    }
+    expect(subject.client.state).toBe('failed');
+    expect(consumed(subject)).toEqual([]);
+    expect(subject.socket().closes).toHaveLength(1);
+    expect(events).toContainEqual({
+      type: 'transport-error',
+      cause: 'protocol',
+      failure: 'transport-failed',
+    });
   });
 });

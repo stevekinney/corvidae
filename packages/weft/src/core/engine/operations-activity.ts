@@ -1,5 +1,7 @@
 import type { ContextOperationRequest } from '../context.ts';
 import { parsePerAttemptTimeoutMs } from '../context/activity-schedule-to-close.ts';
+import { ActivityStartedEvent } from '../events.ts';
+import { tagWorkflowEventGeneration } from '../events/workflow-event-generation.ts';
 import type { ComposedActivityInterceptor, ComposedWorkflowInterceptor } from '../interceptor.ts';
 import { assertPayloadWithinLimit } from '../payload-size.ts';
 import type { ActivityContext, ActivityVerificationResult, OperationOutcome } from '../types.ts';
@@ -35,7 +37,11 @@ import {
   workflowExecutionTokenForWorkflow,
   type CapturedRejectionReason,
 } from './strategy-helpers.ts';
-import { recordTimelineTaskIdentity } from './timeline-coordinator-detail.ts';
+import {
+  activityLifecycleScope,
+  recordBranchActivityReceipt,
+  recordTimelineTaskIdentity,
+} from './timeline-coordinator-detail.ts';
 
 export type ActivityFunctionWithMetadata = ((...arguments_: unknown[]) => unknown) &
   ActivityReconciliationMetadata & {
@@ -315,7 +321,7 @@ export async function executeActivity(
   // configured" check, so remote unavailability can never silently fall
   // through to a different mode (acceptance criterion 9).
   const isRemoteMode = Boolean(internals.remoteActivityBroker) && allowRemoteDispatch;
-  const invokeActivity: (
+  const invokeActivityImplementation: (
     activityName: string,
     input: unknown,
     headers: Map<string, string>,
@@ -357,6 +363,44 @@ export async function executeActivity(
             attempt,
             attemptAbortController,
           );
+
+  // Remote attempts report their lifecycle from the task ledger instead.
+  const lifecycleScope = isRemoteMode
+    ? undefined
+    : activityLifecycleScope(internals, workflowId, operation.operationId);
+  let startedAt: number | undefined;
+  const recordBranchCompletion = (): void => {
+    if (lifecycleScope !== 'branch' || startedAt === undefined) return;
+    recordBranchActivityReceipt(internals, workflowId, {
+      operationId: operation.operationId,
+      workflowExecutionToken: operation.workflowExecutionToken,
+      activityName: operation.activityName,
+      duration: Math.max(0, internals.options.getNow() - startedAt),
+    });
+  };
+
+  const invokeActivity = (
+    activityName: string,
+    input: unknown,
+    headers: Map<string, string>,
+  ): unknown => {
+    if (lifecycleScope !== undefined) {
+      // Only a branch needs its own start time; the timeline times a top-level one.
+      if (lifecycleScope === 'branch') startedAt = internals.options.getNow();
+      internals.engine?.dispatchEvent(
+        tagWorkflowEventGeneration(
+          new ActivityStartedEvent(
+            operation.operationId,
+            workflowId,
+            operation.activityName,
+            attempt,
+          ),
+          operation.workflowExecutionToken,
+        ),
+      );
+    }
+    return invokeActivityImplementation(activityName, input, headers);
+  };
 
   const composedActivity = callbacks.getComposedActivityInterceptor();
   const executeWithActivityInterceptors = async (
@@ -405,6 +449,7 @@ export async function executeActivity(
     const generator = composedWorkflow.activity(interception, execute);
     const value = await driveWorkflowInterceptorGenerator(generator);
     copyActivityHeadersToOperation(operation, interception.headers);
+    recordBranchCompletion();
     return value;
   }
 
@@ -415,6 +460,7 @@ export async function executeActivity(
     headers,
   );
   copyActivityHeadersToOperation(operation, headers);
+  recordBranchCompletion();
   return result;
 }
 
@@ -532,7 +578,6 @@ export async function executeActivityOperationResult(
     operationAttempt,
     speculativeState,
   );
-
   // Step succeeded durably: drop its tracked heartbeat. Guarded on the
   // non-speculative path only — a speculative step can still roll back and
   // re-run, so it relies on terminal cleanup to clear instead.

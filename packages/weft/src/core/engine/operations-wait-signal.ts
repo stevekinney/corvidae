@@ -1,4 +1,5 @@
 import type { ContextOperationRequest } from '../context.ts';
+import { SignalDeliveredEvent } from '../events.ts';
 import type { EngineInternals } from './internals.ts';
 import type { CoordinationOperationCallbacks } from './operations-coordination.ts';
 import {
@@ -96,11 +97,15 @@ export async function processWaitSignalOperation(
         return;
 
       const { promise, resolve } = Promise.withResolvers<void>();
-      registerSignalWaiter(internals, workflowId, waiterKey, resolve);
-      pendingWaiterResolve = resolve;
+      const resolveAndReport = () => {
+        internals.engine.dispatchEvent(new SignalDeliveredEvent(workflowId, operation.signalName));
+        resolve();
+      };
+      registerSignalWaiter(internals, workflowId, waiterKey, resolveAndReport);
+      pendingWaiterResolve = resolveAndReport;
 
       if (abortSignal.aborted) {
-        releaseSignalWaiter(internals, workflowId, waiterKey, resolve);
+        releaseSignalWaiter(internals, workflowId, waiterKey, resolveAndReport);
         return;
       }
 
@@ -109,7 +114,7 @@ export async function processWaitSignalOperation(
         workflowId,
         operation.signalName,
         () =>
-          internals.signalWaiters.get(waiterKey) === resolve &&
+          internals.signalWaiters.get(waiterKey) === resolveAndReport &&
           isTrackedCurrentOperation(
             internals,
             workflowId,
@@ -124,7 +129,7 @@ export async function processWaitSignalOperation(
           workflowId,
           run,
           waiterKey,
-          resolve,
+          resolveAndReport,
           operation,
           bufferedPayload.payload,
           callbacks,
@@ -150,7 +155,7 @@ export async function processWaitSignalOperation(
         workflowId,
         run,
         operation.signalName,
-        () => internals.signalWaiters.get(waiterKey) === resolve,
+        () => internals.signalWaiters.get(waiterKey) === resolveAndReport,
       );
 
       // Delivery removes the waiter before resolving its promise. A missing
