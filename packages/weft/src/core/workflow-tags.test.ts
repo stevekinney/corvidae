@@ -4,9 +4,9 @@ import {
   waitForRealTimersForTesting,
 } from '../testing/fake-timers.test-support.ts';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS, type BatchOperation, type ScanOptions, type Storage } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { Engine } from './engine.ts';
 import {
   coerceStartWorkflowTags,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { ContextOperationRequest } from '../context.ts';
 import type { EngineInternals } from './internals.ts';
 import { driveSpeculativeGenerator, executeSpeculativeBranch } from './operations-speculate.ts';

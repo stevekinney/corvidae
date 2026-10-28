@@ -31,6 +31,7 @@ import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   createAnthropicProvider,
   createAnthropicProviderStream,
@@ -42,7 +43,6 @@ import {
   createMockAnthropicClient,
   createMockAnthropicStreamingClient,
 } from '../src/providers/test/mock-clients.ts';
-import { rejectionOf, throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { GenerateContext } from '../src/types.ts';
 
 // Verbatim, request #1 (and #4, #5).

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { RunStartedEvent, StepStartedEvent } from './events.ts';
 import { createAgentRunEventFeed, type AgentRunEventEnvelope } from './run-event-feed.ts';
 import {
@@ -8,7 +9,6 @@ import {
   runEventsSubscriptionOperation,
   type RunEventsOperationHost,
 } from './run-events-operation.ts';
-import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 
 function conversation() {
   return {} as never;

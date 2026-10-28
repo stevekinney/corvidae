@@ -25,7 +25,7 @@ import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
 
 import { describe, expect, it } from 'bun:test';
 
-import { rejectionOf, throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createInMemoryEventBackend } from './in-memory-event-feed-backend.test-support.ts';
 import { ReplayWindowExceededError } from './replay-live-feed-internals.ts';
 import {

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { write } from 'bun';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { GUARDED_FIELDS, runCli, stripComments } from './check-revision-keyed-lookups.ts';
 
 type RunResult = { exitCode: number; stdout: string; stderr: string };

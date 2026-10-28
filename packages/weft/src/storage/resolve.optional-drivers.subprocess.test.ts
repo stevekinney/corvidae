@@ -3,8 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { spawnWithHangGuard } from '../../scripts/lib/hang-guard.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   OPTIONAL_STORAGE_DRIVER_ENTRIES,
   withOptionalStorageDriversAbsent,

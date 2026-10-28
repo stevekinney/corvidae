@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { HANG_GUARD_MILLISECONDS } from '../../scripts/lib/hang-guard.ts';
+import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import { createInMemoryEventBackend } from './in-memory-event-feed-backend.test-support.ts';
 import {
   createJsonRpcWebSocketSession,

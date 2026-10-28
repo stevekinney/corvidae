@@ -1,8 +1,8 @@
 import { describe, expect, it, mock, spyOn } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { encode } from '../codec.ts';
 import { ReviewTimeoutError, type HumanReviewResult, type ReviewRequest } from '../review/index.ts';
 import { handleReviewEscalationTimer, sendReviewWebhook, submitReview } from './reviews.ts';

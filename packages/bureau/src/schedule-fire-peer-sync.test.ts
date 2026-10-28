@@ -44,7 +44,7 @@ import {
 import { fireReviewFollowerOf } from './fire-review-follower';
 import { scheduledFireReviewStateOf } from './scheduled-fire-review-state';
 import type { DefaultAgentFields } from './testing/default-agent.test-support';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau, BureauOptions, PendingToolApprovalReview } from './types';
 import { expireReviews } from './testing/expired-reviews.test-support';
 import { awakeTurns, quietFor, waitUntil } from '@lostgradient/testing/wait-until';

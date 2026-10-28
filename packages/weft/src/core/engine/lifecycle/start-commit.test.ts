@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS, type ConditionalBatchCondition } from '../../../storage/interface.ts';
 import { MemoryStorage } from '../../../storage/memory.ts';
-import { rejectionOf, throwingRejectionOf } from '../../../testing/promise-outcome.test-support.ts';
 import { AtomicStateConflictError } from '../../atomic-state.ts';
 import type { Checkpoint, WorkflowState } from '../../types.ts';
 import { WorkflowAlreadyExistsError } from '../errors.ts';

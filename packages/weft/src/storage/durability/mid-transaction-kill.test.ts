@@ -32,11 +32,11 @@
 
 import { join } from 'node:path';
 
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { afterAll, describe, expect, it } from 'bun:test';
-import { spawnWithHangGuard } from '../../../scripts/lib/hang-guard.ts';
 import { outcomeOf, rethrow } from '../../testing/module-scope-scenario.test-support.ts';
 
-import { awakeTurns } from '../../../scripts/lib/wait-until.ts';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import {
   availableAdapterSpecs,
   availableBunNodeAdapterSpecs,

@@ -2,10 +2,10 @@ import { describe, expect, it } from 'bun:test';
 
 import { RequestMalformedError, toJsonRpcError } from '@a2a-js/sdk/errors';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { StorageCapabilities } from '../storage/capabilities.ts';
 import type { Storage } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   a2aStoreBackends,
   callContext,

@@ -19,7 +19,7 @@ import {
   createLmdbStorageFixture,
   createSqliteStorageFixture,
 } from './test/storage-fixtures';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 
 const ORIGIN = '2026-10-13T00:00:00.000Z';
 const ORIGIN_MS = Date.parse(ORIGIN);

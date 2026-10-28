@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test';
 
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { httpClientCatalogTransport, httpClientOperationTransport } from './http-operations.ts';
 import { HttpClientError } from './http-request.ts';
 import type { ClientRestOperationBinding } from './operation-client-runtime.ts';

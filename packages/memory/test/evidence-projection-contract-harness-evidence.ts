@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   EvidenceImmutableError,
   EvidenceProjectionCommitError,
@@ -7,7 +8,6 @@ import {
 } from '../src/evidence-projection-storage';
 import type { EvidenceRecord } from '../src/evidence-schema';
 import { MemoryEvidenceValidationError } from '../src/evidence-schema';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import { makeInlineEvidence, OWNER, TENANT } from './evidence-projection-fixtures';
 
 export function registerEvidenceContractTests(options: {

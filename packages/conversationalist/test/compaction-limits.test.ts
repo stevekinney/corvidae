@@ -14,6 +14,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { compactConversation } from '../src/compaction/compact';
 import { Conversation } from '../src/history';
 import {
@@ -24,7 +25,6 @@ import {
   type Message,
   type Summarizer,
 } from '../src/index';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 
 function conversationWithPairs(
   pairs: number,

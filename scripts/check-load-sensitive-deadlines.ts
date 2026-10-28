@@ -149,7 +149,7 @@
 import { readdirSync } from 'node:fs';
 import { basename, join, relative, sep } from 'node:path';
 import ts from 'typescript';
-import { HANG_GUARD_MILLISECONDS } from './hang-guard.ts';
+import { HANG_GUARD_MILLISECONDS } from '../testing/testing/src/hang-guard.ts';
 import { TEST_TIMEOUT_MILLISECONDS } from './test-deadlines.ts';
 import { workspaceParentDirectories } from './workspace-directories.ts';
 

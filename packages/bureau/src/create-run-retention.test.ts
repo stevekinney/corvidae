@@ -26,7 +26,7 @@ import {
   createLmdbStorageFixture,
   createSqliteStorageFixture,
 } from './test/storage-fixtures';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau, BureauOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 import { type TaskStartRequest, startTaskFrom } from './test/task-start-request.ts';

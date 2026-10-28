@@ -20,6 +20,7 @@ import { createToolbox } from 'armorer';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { ProviderError } from '../src/providers/errors.ts';
 import { createGeminiProvider, createGeminiProviderStream } from '../src/providers/gemini.ts';
 import { geminiStreamTextChunks, geminiTextResponse } from '../src/providers/test/fixtures.ts';
@@ -27,7 +28,6 @@ import {
   createMockGeminiModel,
   createMockGeminiStreamingModel,
 } from '../src/providers/test/mock-clients.ts';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 
 function makeContext() {
   return {

@@ -3,7 +3,7 @@ import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/oper
 import { describe, expect, it } from 'bun:test';
 
 import { listHeldTasks, waitForCondition } from '../test';
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   approvalToolbox,
   openBureau,

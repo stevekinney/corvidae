@@ -19,7 +19,7 @@ import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/
 import type { AgentDefinitions } from './agent-catalog';
 import * as auditTrailModule from './audit-trail';
 import { BureauError, createBureau } from './create-bureau';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { humanWaitDeliveryId } from './run-human-waits';
 import type { Bureau, BureauOptions, PendingReview } from './types';
 import { waitUntil } from '@lostgradient/testing/wait-until';

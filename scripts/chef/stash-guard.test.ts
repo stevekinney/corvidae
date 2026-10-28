@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
-import { runWithHangGuard } from '../hang-guard.ts';
+import { runWithHangGuard } from '../../testing/testing/src/hang-guard.ts';
 import { decide } from './stash-guard.ts';
 
 const bash = (command: string) => ({ tool_name: 'Bash', tool_input: { command } });

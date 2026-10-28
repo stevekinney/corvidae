@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createExecutionLifecycle } from '../src';
-import { waitUntil } from './fixtures/wait-until';
 
 /**
  * Split out of execution-lifecycle.test.ts (AB-292) so the

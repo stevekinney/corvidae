@@ -26,7 +26,7 @@ import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { BureauError, createBureau } from './create-bureau';
-import { rejectionOf } from './testing/promise-outcome.test-support';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { listHeldTasks, runTask } from './test';
 import type { StartTaskOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';

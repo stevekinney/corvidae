@@ -1,7 +1,7 @@
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   A2A_CONTEXT_INDEX_KEY_PREFIX,
   A2A_TASK_RECORD_KEY_PREFIX,

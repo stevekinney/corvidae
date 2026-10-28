@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, jest } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   advanceTimersByTime,
   createDeferred,
@@ -14,7 +15,6 @@ import {
   withTimeout,
   yieldToEventLoop,
 } from './fake-timers.test-support.ts';
-import { throwingRejectionOf } from './promise-outcome.test-support.ts';
 
 describe('fake timer testing helpers', () => {
   afterEach(() => {

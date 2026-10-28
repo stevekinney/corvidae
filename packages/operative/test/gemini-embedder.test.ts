@@ -13,10 +13,10 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { GeminiEmbeddingClient } from '../src/providers/embeddings/gemini.ts';
 import { createGeminiEmbedder } from '../src/providers/embeddings/gemini.ts';
 import { ProviderError } from '../src/providers/errors.ts';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 
 type EmbedRequest = { model: string; contents: Array<{ parts: Array<{ text: string }> }> };
 type EmbedResponse = { embeddings?: Array<{ values?: number[] }> };

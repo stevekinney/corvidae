@@ -5,6 +5,7 @@ import { describe, expect, it } from 'bun:test';
 import { Conversation, type MultiModalContent } from 'conversationalist';
 import { z } from 'zod';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { withCache } from '../src/cache/with-cache';
 import { noToolCalls } from '../src/conditions/predicates';
 import { createAgent } from '../src/create-agent';
@@ -41,7 +42,6 @@ import { withEnhancedStreaming } from '../src/streaming/enhanced-streaming';
 import type { LivePartEvent, StreamEvent, StreamEventMap } from '../src/streaming/types';
 import { createMockGenerate, createRunRecorder } from '../src/test/index';
 import { createScriptedMediaAdmitter } from '../src/testing/generated-media.test-support';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { GenerateContext, GenerateResponse, RunOptions, StreamingHandle } from '../src/types';
 import {
   anthropicStreamEventsFor,

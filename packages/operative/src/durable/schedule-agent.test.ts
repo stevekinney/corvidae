@@ -8,8 +8,8 @@ import type {
 import { encode, KEYS, ScheduleHandle } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { AgentScheduledEvent, SchedulePausedEvent } from '../events';
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import type { ScheduledAgentRunInput, SchedulingEngine } from './schedule-agent';
 import {
   createAgentSchedule,

@@ -7,7 +7,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { BureauError } from '../../create-bureau.ts';
 import { createMemoryStorageFixture } from '../../test/storage-fixtures';
-import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { listHeldTasks, waitForCondition, closedTask } from '../../test';
 import type { ContextDeletionReport } from '../../types.ts';
 import { type BureauHandlerSource, createBureauHandler } from '../create-bureau-handler.ts';

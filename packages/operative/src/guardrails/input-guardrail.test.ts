@@ -2,7 +2,7 @@ import { describe, expect, it, mock } from 'bun:test';
 import type { ContentSource, MultiModalContent } from 'conversationalist';
 import { Conversation } from 'conversationalist';
 
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createInputGuardrail } from './input-guardrail';
 import type {
   DetectionResult,

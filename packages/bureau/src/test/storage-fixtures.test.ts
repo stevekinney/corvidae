@@ -5,7 +5,7 @@ import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 import { describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   createLmdbStorageFixture,
   createMemoryStorageFixture,

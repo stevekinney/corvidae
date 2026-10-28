@@ -27,6 +27,7 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { decodeTaskAttemptRecord, taskAttemptKey } from '../core/task-ledger/task-attempt.ts';
 import {
   beginCompletion,
@@ -50,7 +51,6 @@ import {
   useFakeTimers,
   waitForCondition,
 } from '../testing/fake-timers.test-support.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { sha256HexSync } from '../worker/manifest/content-digest.ts';
 import { REMOTE_WORKER_PROTOCOL_VERSION } from '../worker/protocol.ts';
 import {

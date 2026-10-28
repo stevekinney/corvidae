@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { quietFor } from '../../../scripts/lib/wait-until.ts';
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { Engine } from '../engine.ts';
 import type { WorkflowContext } from '../types.ts';

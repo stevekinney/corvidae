@@ -10,7 +10,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnWithHangGuard } from '../hang-guard.ts';
+import { spawnWithHangGuard } from '../../testing/testing/src/hang-guard.ts';
 import { defaultRunner, type Runner } from './process-runner.ts';
 import { createScenarios } from './scenario.test-support.ts';
 import { createWorktree, Refusal, removeWorktree, run, UsageError } from './worktree.ts';

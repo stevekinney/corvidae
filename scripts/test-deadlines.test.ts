@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
+import { HANG_GUARD_MILLISECONDS } from '../testing/testing/src/hang-guard.ts';
 import { bunTestArguments } from './bun-test.ts';
-import { HANG_GUARD_MILLISECONDS } from './hang-guard.ts';
 import { TEST_TIMEOUT_ARGUMENT, TEST_TIMEOUT_MILLISECONDS } from './test-deadlines.ts';
 
 describe('the shared test deadline', () => {

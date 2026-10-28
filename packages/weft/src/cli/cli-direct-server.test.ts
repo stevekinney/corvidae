@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { runCliInProcess, startCliServerInProcess } from './cli-main.test-support.ts';
 
 describe('CLI direct execution', () => {

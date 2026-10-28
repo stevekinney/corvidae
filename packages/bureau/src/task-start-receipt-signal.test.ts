@@ -19,7 +19,7 @@ import type { AgentDefinitions } from './agent-catalog';
 import { RunCreationReceiptUnrecordedError } from './command-ledger';
 import { createBureau } from './create-bureau';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau, BureauDiagnostic } from './types';
 
 const ORIGIN = '2026-10-27T00:00:00.000Z';

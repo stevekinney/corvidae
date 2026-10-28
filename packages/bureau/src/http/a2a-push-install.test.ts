@@ -10,7 +10,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { A2APushConfigurationConflictError } from '@lostgradient/weft/a2a';
 
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createA2APushCheckpoints } from './a2a-push-checkpoint.ts';
 import { installPushConfiguration } from './a2a-push-install.ts';
 

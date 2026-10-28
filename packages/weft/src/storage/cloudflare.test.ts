@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Engine, workflow, type WorkflowContext } from '../index.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { flush } from '../testing/storage-backends.test-support.ts';
 import { assertDurableStorageForRecovery } from './capabilities.ts';
 import { createCloudflareSqlTestDouble } from './cloudflare-durable-object-sql-test-double.test-support.ts';

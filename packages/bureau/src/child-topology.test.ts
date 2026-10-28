@@ -31,7 +31,7 @@ import {
   type ChildTopologyStore,
   createChildTopologyStore,
 } from './child-topology-store';
-import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { BureauDiagnostic, CancelDurableRunOutcome } from './types';
 
 // ---------------------------------------------------------------------------

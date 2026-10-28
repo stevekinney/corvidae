@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { MemoryStorage } from '../storage/memory.ts';
 import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { Engine } from './engine.ts';
 import type { WorkflowContext } from './types/workflow-context.ts';
 import { workflow } from './types/workflow-function.ts';

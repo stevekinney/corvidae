@@ -1,12 +1,12 @@
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { awakeTurns, quietFor } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
-import { awakeTurns, quietFor } from '../../scripts/lib/wait-until.ts';
 import type { ActivityInterceptor } from '../core/interceptor.ts';
 import {
   restoreRealTimers,
   sleepForTesting,
   waitForCondition,
 } from '../testing/fake-timers.test-support.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { RemoteWorker } from './index.ts';
 
 // ---------------------------------------------------------------------------

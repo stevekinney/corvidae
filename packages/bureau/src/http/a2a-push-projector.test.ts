@@ -31,7 +31,7 @@ import {
   type A2APushProjectorOptions,
   createA2APushProjector,
 } from './a2a-push-projector.ts';
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { eventually, Receiver, SIGNING_SECRET } from './a2a-push.test-support.ts';
 import { quietFor } from '@lostgradient/testing/wait-until';
 

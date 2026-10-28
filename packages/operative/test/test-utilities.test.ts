@@ -1,6 +1,7 @@
 import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import { describe, expect, it, mock } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   createManualCheckpointStore,
   createManualDurableEngine,
@@ -11,7 +12,6 @@ import {
   waitForRunState,
 } from '../src/test/index';
 import { WAIT_HANG_GUARD_MILLISECONDS } from '../src/test/wait';
-import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 
 describe('createMockScratchpad', () => {
   it('creates a scratchpad with initial values', () => {

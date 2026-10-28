@@ -23,7 +23,7 @@ import {
   type DelegationLedgerEntry,
   UnsupportedChildRecordVersionError,
 } from './child-topology-store';
-import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 
 function createKv() {
   return textValueStore(new MemoryStorage());

@@ -34,12 +34,12 @@
 
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   outcomeOf,
   rethrow,
   ScenarioHangError,
 } from '../../testing/module-scope-scenario.test-support.ts';
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import type { RealmReadyOutcome } from '../worker-realm-readiness.ts';
 import type { RealmLifecycle, RealmRestartOutcome } from './realm-lifecycle.ts';
 import type { RealmTurnEnvelope } from './realm-protocol.ts';

@@ -9,7 +9,7 @@ import {
 
 import { JsonRpcTransportHandler } from '@a2a-js/sdk/server';
 
-import { rejectionOf, throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { payloadOf } from './workflow-agent-messages.ts';
 import {
   callContext,

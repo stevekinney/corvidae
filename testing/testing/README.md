@@ -42,7 +42,7 @@ try {
 }
 ```
 
-`scripts/check-process-identifier-test-paths.ts`, part of `bun run lint:root`, fails when a test file passes the process id to `join` or `resolve`. Bureau's public storage fixtures cannot import this package at runtime, so `packages/bureau/src/test/temporary-path.ts` is a byte-for-byte copy that `scripts/check-test-support-copies.ts` keeps in step.
+`scripts/check-process-identifier-test-paths.ts`, part of `bun run lint:root`, fails when a test file passes the process id to `join` or `resolve`. Bureau's public storage fixtures cannot import this package at runtime, so Bureau owns its own `packages/bureau/src/test/temporary-path.ts`.
 
 ## Accessibility and visual evidence
 
