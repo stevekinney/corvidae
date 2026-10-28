@@ -205,39 +205,45 @@ export async function runA2ATck(
   return failed ? 1 : 0;
 }
 
-// The real process runners below run only under `test:a2a-tck`, which needs `git`, `uv`,
-// Python, and the network; the tests run `runA2ATck` with stand-ins for each of them.
+// The real process runners below are what `test:a2a-tck` binds to `runA2ATck`. The tests run
+// `runA2ATck` with stand-ins for `uv` and the TCK, and run these against a local repository and a
+// stand-in example, so only the TCK's own clone and `uv run` need Python, `uv`, and the network.
 
-async function spawnAndWait(command: readonly string[], cwd: string): Promise<number> {
+/** Run `command` in `cwd` with the parent's output, and resolve with its exit code. */
+export async function spawnAndWait(command: readonly string[], cwd: string): Promise<number> {
   return Bun.spawn([...command], { cwd, stdout: 'inherit', stderr: 'inherit' }).exited;
 }
 
-async function runGit(args: readonly string[], cwd: string, failure: string): Promise<void> {
+/** Run `git` with `args` in `cwd`, and throw `failure` unless it exits 0. */
+export async function runGit(args: readonly string[], cwd: string, failure: string): Promise<void> {
   if ((await spawnAndWait(['git', ...args], cwd)) !== 0) throw new Error(failure);
 }
 
-async function ensureCheckout(checkout: string): Promise<void> {
+/** Where {@link ensureCheckout} gets the TCK from. */
+export type TckSource = { readonly repository: string; readonly commit: string };
+
+/** Clone or update `checkout` to `source`'s commit, which is the pinned TCK commit by default. */
+export async function ensureCheckout(
+  checkout: string,
+  source: TckSource = { repository: A2A_TCK_REPOSITORY, commit: A2A_TCK_COMMIT },
+): Promise<void> {
   const head = Bun.spawnSync(['git', '-C', checkout, 'rev-parse', 'HEAD'], { stderr: 'ignore' });
-  if (head.exitCode === 0 && head.stdout.toString().trim() === A2A_TCK_COMMIT) return;
+  if (head.exitCode === 0 && head.stdout.toString().trim() === source.commit) return;
   if (head.exitCode === 0) {
-    await runGit(
-      ['fetch', '--quiet', 'origin'],
-      checkout,
-      `Could not fetch ${A2A_TCK_REPOSITORY}.`,
-    );
+    await runGit(['fetch', '--quiet', 'origin'], checkout, `Could not fetch ${source.repository}.`);
   } else {
     await rm(checkout, { recursive: true, force: true });
     await mkdir(join(checkout, '..'), { recursive: true });
-    const clone = ['clone', '--quiet', A2A_TCK_REPOSITORY, checkout];
-    await runGit(clone, WEFT_ROOT, `Could not clone ${A2A_TCK_REPOSITORY}.`);
+    const clone = ['clone', '--quiet', source.repository, checkout];
+    await runGit(clone, WEFT_ROOT, `Could not clone ${source.repository}.`);
   }
-  const detach = ['checkout', '--quiet', '--detach', A2A_TCK_COMMIT];
-  await runGit(detach, checkout, `Could not check out A2A TCK commit ${A2A_TCK_COMMIT}.`);
+  const detach = ['checkout', '--quiet', '--detach', source.commit];
+  await runGit(detach, checkout, `Could not check out A2A TCK commit ${source.commit}.`);
 }
 
-/** Start the example on a free port and resolve once it prints the URL it listens at. */
-async function startExample(): Promise<SystemUnderTest> {
-  const child = Bun.spawn(['bun', EXAMPLE_ENTRY], {
+/** Start `entry`, the example agent by default, on a free port and resolve once it prints its URL. */
+export async function startExample(entry: string = EXAMPLE_ENTRY): Promise<SystemUnderTest> {
+  const child = Bun.spawn(['bun', entry], {
     cwd: WEFT_ROOT,
     env: { ...Bun.env, PORT: '0', A2A_EXAMPLE_TRUST_LOOPBACK_WEBHOOKS: '1' },
     stdout: 'pipe',
@@ -262,7 +268,8 @@ async function startExample(): Promise<SystemUnderTest> {
   throw new Error(`The example exited before listening:\n${output}`);
 }
 
-const processDependencies = (): RunA2ATckDependencies => ({
+/** The runners `test:a2a-tck` binds to {@link runA2ATck}. */
+export const processDependencies = (): RunA2ATckDependencies => ({
   runCommand: spawnAndWait,
   ensureCheckout,
   startExample,

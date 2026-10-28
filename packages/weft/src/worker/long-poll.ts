@@ -448,9 +448,12 @@ export class LongPollWorker implements Disposable {
     });
   }
 
+  /**
+   * The result delivery, which registration creates before the first task is polled and nothing
+   * clears afterwards. Built from the session's result URL when it is somehow missing, which
+   * throws the not-registered error when there is no session either.
+   */
   #requireDelivery(): LongPollResultDelivery {
-    if (this.#delivery === null)
-      throw new Error('LongPollWorker result delivery is not registered.');
-    return this.#delivery;
+    return this.#delivery ?? this.#configureDelivery(this.#buildResultUrl());
   }
 }

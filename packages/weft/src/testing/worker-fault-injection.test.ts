@@ -1,5 +1,5 @@
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import type { ServerToWorkerMessage } from '../worker/protocol.ts';
 import { computeHandshakeAccept } from './worker-fault-injection-frames.test-support.ts';
@@ -229,6 +229,57 @@ describe('nextServerMessage and expectNoServerMessage waits', () => {
   });
 });
 
+type ConnectOptions = Parameters<typeof Bun.connect>[0];
+
+/**
+ * Make `Bun.connect` hand the harness a socket of the test's choosing and keep the socket
+ * handlers the harness registered, so a test can drive an event Bun does not raise on demand: a
+ * socket whose `end()` throws, and a transport `error` after the handshake. Bun emitted no
+ * `error` event for a server reset or termination in repeated attempts, only `close`, and
+ * `end()` on a closed socket does not throw on Bun 1.4.4.
+ */
+function interceptSockets(options: { endThrows: boolean }): {
+  handlers: () => NonNullable<Extract<ConnectOptions, { socket: unknown }>['socket']>;
+} {
+  const realConnect = Bun.connect.bind(Bun) as (options: ConnectOptions) => Promise<unknown>;
+  let registered: ReturnType<typeof interceptSockets>['handlers'] extends () => infer Handlers
+    ? Handlers | undefined
+    : never;
+  const spy = spyOn(Bun, 'connect').mockImplementation(((connectOptions: ConnectOptions) => {
+    const original = (connectOptions as { socket: NonNullable<typeof registered> }).socket;
+    registered = original;
+    return realConnect({
+      ...connectOptions,
+      socket: {
+        ...original,
+        open(socket: Parameters<NonNullable<typeof original.open>>[0]) {
+          const given = options.endThrows
+            ? new Proxy(socket, {
+                get(target, property) {
+                  if (property === 'end') {
+                    return () => {
+                      throw new Error('The socket is already closed.');
+                    };
+                  }
+                  const member: unknown = Reflect.get(target, property);
+                  return typeof member === 'function' ? member.bind(target) : member;
+                },
+              })
+            : socket;
+          original.open?.(given);
+        },
+      },
+    } as ConnectOptions);
+  }) as unknown as typeof Bun.connect);
+  cleanups.push(() => spy.mockRestore());
+  return {
+    handlers: () => {
+      if (registered === undefined) throw new Error('Bun.connect was not called.');
+      return registered;
+    },
+  };
+}
+
 describe('connection failures', () => {
   it('rejects a handshake the server never answers', async () => {
     const silent = Bun.listen({
@@ -257,6 +308,29 @@ describe('connection failures', () => {
         connectFaultInjectingWorker({ url: `ws://127.0.0.1:${String(server.port)}/` }),
       ),
     ).toThrow('WebSocket handshake failed: HTTP/1.1 200');
+  });
+
+  it('still rejects a refused handshake when the socket cannot be ended', async () => {
+    interceptSockets({ endThrows: true });
+    const server = Bun.serve({ port: 0, fetch: () => new Response('no upgrade', { status: 200 }) });
+    cleanups.push(() => server.stop(true));
+
+    expect(
+      await throwingRejectionOf(
+        connectFaultInjectingWorker({ url: `ws://127.0.0.1:${String(server.port)}/` }),
+      ),
+    ).toThrow('WebSocket handshake failed: HTTP/1.1 200');
+  });
+
+  it('settles as closed with 1006 when the transport reports an error after the handshake', async () => {
+    const intercepted = interceptSockets({ endThrows: false });
+    const { worker } = await connectToScriptedServer();
+
+    const handlers = intercepted.handlers();
+    handlers.error?.(undefined as never, new Error('connection reset'));
+
+    expect(await worker.closed).toEqual({ code: 1006, reason: '' });
+    expect(worker.closedState).toBe('closed');
   });
 
   it('rejects when nothing is listening on the port', async () => {

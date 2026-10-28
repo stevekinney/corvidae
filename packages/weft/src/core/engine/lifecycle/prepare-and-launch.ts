@@ -207,9 +207,8 @@ export async function prepareWorkflow(
     inFlightRevision = reservedRevision;
     await validateInboundPayload(internals, 'start', registration.inputSchema, input);
     const workflowConcurrency = registration.concurrency;
-    const revision =
-      resolveCachedStartRevision(internals, type, resolvedRevision) ??
-      (await resolveStartRevisionUncached(internals, type));
+    const cachedRevision = resolveCachedStartRevision(internals, type, resolvedRevision);
+    const revision = cachedRevision ?? (await resolveStartRevisionUncached(internals, type));
 
     const {
       terminalRunToPurge,
