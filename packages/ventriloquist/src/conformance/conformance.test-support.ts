@@ -13,7 +13,10 @@ import { createFixtureTransport } from '../session/fixtures/fixture-transport.ts
 import { ManualClock } from '../session/fixtures/manual-clock.ts';
 import type { AttachmentGrant, OutputSource, SessionBudgets } from '../session/session-types.ts';
 import { Session } from '../session/session.ts';
+import type { Authentication } from '../websocket/websocket-types.ts';
 import {
+  DEFAULT_LIFETIME_MILLISECONDS,
+  SESSION_COOKIE,
   SESSION_IDENTIFIER,
   TestClient,
   connect,
@@ -399,17 +402,20 @@ function createDirectRig(options: RigOptions, observed: ObservedProcess): Rig {
   };
 }
 
+/** The cookie-checking host a WebSocket rig serves: its one client's cookie is valid, any other request is denied. */
+export function rigAuthentication(
+  lifetimeMilliseconds: number = DEFAULT_LIFETIME_MILLISECONDS,
+): (request: Request) => Authentication {
+  return (request) =>
+    request.headers.get('cookie') === SESSION_COOKIE
+      ? { ok: true, subject: 'user-1', expiresInMilliseconds: lifetimeMilliseconds }
+      : { ok: false, denial: 'unauthenticated' };
+}
+
 function createWebSocketRig(options: RigOptions, observed: ObservedProcess): Rig {
   const harness: Harness = startHarness({
     createProcess: () => observed.hosted,
-    authentication: (request) =>
-      request.headers.get('cookie') === 'sid=valid'
-        ? {
-            ok: true,
-            subject: 'user-1',
-            expiresInMilliseconds: options.lifetimeMilliseconds ?? 3_600_000,
-          }
-        : { ok: false, denial: 'unauthenticated' },
+    authentication: rigAuthentication(options.lifetimeMilliseconds),
     authorization: {
       allowed: true,
       grant: options.grant ?? 'interactive',

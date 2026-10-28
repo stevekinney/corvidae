@@ -350,6 +350,27 @@ describe('failures inside the connection', () => {
     expect(subject.socket.closes).toEqual([]);
   });
 
+  test('a client that leaves while the process is being made gets no session attached, and the session made for it is disposed', async () => {
+    const process = scriptedProcess();
+    // The factory is the only code that runs between the authorization and the attach, so it is
+    // where the client leaves: the transport reports the close from inside `createProcess`.
+    const subject: Rig = rig({
+      createProcess: () => {
+        void subject.connection.transportClosed();
+        return process.hosted;
+      },
+    });
+    await attach(subject);
+    const session = subject.slot.current;
+    expect(session).toBeDefined();
+    await session?.closed;
+    expect(session?.snapshot.closed).toBe(true);
+    expect(process.cleanups).toBe(1);
+    expect(subject.socket.sent).toEqual([]);
+    expect(subject.socket.closes).toEqual([]);
+    expect(subject.finished).toEqual([subject.connection]);
+  });
+
   test('a slot provider that throws closes with 1011 before a session exists', async () => {
     const subject = rig({
       slotFor: () => {
