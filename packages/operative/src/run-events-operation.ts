@@ -213,11 +213,10 @@ export const runEventsSubscriptionOperation = defineOperation<
       ...(input.fromCursor === undefined ? {} : { fromCursor: input.fromCursor }),
       signal: controller.signal,
       replayLimit: MAX_RUN_SUBSCRIPTION_REPLAY_EVENTS,
-      // `countReplayEnvelope` is deliberately NOT passed. The feed applies
-      // `filterEnvelope` first and only counts what survives it
-      // (`replay-live-feed-internals.ts`), so the replay cap already measures
-      // matching events — supplying a counter equal to the filter would just
-      // run the predicate twice per envelope.
+      // The feed applies `filterEnvelope` first and only counts what survives
+      // it, so the cap measures matching events; the `run.gap` marker is
+      // recovery metadata and is not counted.
+      countReplayEnvelope: (envelope) => envelope.kind !== 'run.gap',
       filterEnvelope: matches,
     };
     const iterable = createReplayAwareClosableIterable<AgentRunEventEnvelope>(

@@ -32,7 +32,7 @@ type ReplayLiveFeed<T extends SequencedEventEnvelope> = {
 };
 
 const decodeCursor = (cursor: string): number | null =>
-  /^(?:-1|\d+)$/.test(cursor) ? Number(cursor) : null;
+  /^(?:-1|\d+)$/.test(cursor) && Number.isSafeInteger(Number(cursor)) ? Number(cursor) : null;
 const encodeCursor = (sequence: number): Cursor => String(sequence);
 
 const DEFAULT_LIVE_BUFFER_SIZE = 1000;

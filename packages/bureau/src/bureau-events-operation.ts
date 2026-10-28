@@ -180,8 +180,9 @@ export function defineBureauEventsSubscriptionOperation(scope: BureauEventsAcces
           ...(input.fromCursor === undefined ? {} : { fromCursor: input.fromCursor }),
           signal: controller.signal,
           replayLimit: MAX_BUREAU_SUBSCRIPTION_REPLAY_EVENTS,
-          // No `countReplayEnvelope`: the feed filters before counting, so the
-          // cap already measures matching events.
+          // The feed filters before counting, so the cap measures matching
+          // events; the gap marker is recovery metadata and is not counted.
+          countReplayEnvelope: (envelope) => envelope.kind !== 'feed.gap',
           filterEnvelope: (envelope) =>
             envelope.kind === 'feed.gap' || kinds === undefined || kinds.has(envelope.kind),
         };

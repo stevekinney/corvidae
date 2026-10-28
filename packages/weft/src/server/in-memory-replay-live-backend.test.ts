@@ -255,6 +255,18 @@ describe('the in-memory replay-live backend', () => {
     feed.dispose();
   });
 
+  it('rejects a digit string beyond the safe integers from the default cursor decoder', () => {
+    const feed = createReplayLiveFeed<ProbeEnvelope>({
+      replay: async function* () {},
+      snapshotTailSequence: () => Promise.resolve(-1),
+      subscribeLive: () => () => {},
+    });
+
+    expect(feed.decodeCursor('9'.repeat(400))).toBe('invalid');
+    expect(feed.decodeCursor('12')).toEqual({ sequence: 12 });
+    feed.dispose();
+  });
+
   it('releases subscribers on dispose', () => {
     const backend = createInMemoryReplayLiveBackend<ProbeEnvelope>();
     const delivered: number[] = [];
