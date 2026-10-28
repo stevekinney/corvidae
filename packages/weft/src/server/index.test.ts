@@ -7859,7 +7859,9 @@ describe('worker shutdown and cancel propagation', () => {
 
   it('shutdownWorker sends shutdown message and waits for disconnect', async () => {
     engine = createEngine();
-    server = serveTestServer({ engine, port: 0 });
+    // No reconnect grace: the worker's registry entry is unregistered on disconnect, so the
+    // assertion below does not wait out the default grace period.
+    server = serveTestServer({ engine, port: 0, workerReconnectGracePeriodMs: 0 });
 
     const received: Array<{ type: string; [key: string]: unknown }> = [];
     const ws = await connectWorker(server);
@@ -7959,7 +7961,8 @@ describe('worker shutdown and cancel propagation', () => {
 
   it('shutdownAllWorkers shuts down all connected workers', async () => {
     engine = createEngine();
-    server = serveTestServer({ engine, port: 0 });
+    // No reconnect grace: see the shutdownWorker test above.
+    server = serveTestServer({ engine, port: 0, workerReconnectGracePeriodMs: 0 });
 
     const ws1 = await connectWorker(server);
     const ws2 = await connectWorker(server);

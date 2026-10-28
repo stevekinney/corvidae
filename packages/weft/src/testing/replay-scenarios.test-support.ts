@@ -153,10 +153,11 @@ function registerSagaWithCompensation(engine: Engine): void {
           { definition: stepOne, input: 'a' },
           { definition: stepTwo, input: 'b' },
         ]);
-        return 'no-error';
       } catch {
-        return `compensated:${compensated.join(',')}`;
+        // `step-two` always fails, so the saga always rejects once it has compensated `step-one`;
+        // the workflow's result names what was compensated.
       }
+      return `compensated:${compensated.join(',')}`;
     }),
   );
 }

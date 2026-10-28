@@ -11,6 +11,8 @@ import {
 import { MemoryStorage } from '../../storage/memory.ts';
 import { decode, encode } from '../codec.ts';
 import type { ContextOperationRequest } from '../context.ts';
+import { ActivityStartedEvent } from '../events.ts';
+import { getWorkflowEventGeneration } from '../events/workflow-event-generation.ts';
 import type { ActivityInterception } from '../interceptor.ts';
 import { getActivityFunctionWithMetadata, resolveActivityFunction } from './activity-resolution.ts';
 import {
@@ -46,6 +48,11 @@ function createCallbacks(
     },
     ...overrides,
   };
+}
+
+/** Records `activity-operation` as the workflow's top-level durable operation. */
+function topLevelActivityOperation(type = 'activity') {
+  return new Map([['workflow-id', { operationId: 'activity-operation', type }]]);
 }
 
 function createInternals(overrides: Record<string, unknown> = {}) {
@@ -209,6 +216,84 @@ async function createReconciliationRecordValue(
 }
 
 describe('activity operation helpers', () => {
+  it('reports inline invocation start without an interceptor and tags its generation', async () => {
+    const dispatched: Event[] = [];
+    const internals = createInternals({
+      engine: { dispatchEvent: (event: Event) => dispatched.push(event) },
+      durableInlineOperations: topLevelActivityOperation(),
+    });
+    const operation = createActivityOperation({
+      workflowExecutionToken: 'generation-a',
+      fn: () => 'inline-result',
+    });
+
+    await executeActivity(internals as never, 'workflow-id', operation, createCallbacks());
+
+    expect(dispatched).toHaveLength(1);
+    expect(dispatched[0]).toBeInstanceOf(ActivityStartedEvent);
+    expect(getWorkflowEventGeneration(dispatched[0]!)).toBe('generation-a');
+  });
+
+  it('reports start only when a forwarding interceptor invokes the implementation', async () => {
+    const dispatched: Event[] = [];
+    const internals = createInternals({
+      engine: { dispatchEvent: (event: Event) => dispatched.push(event) },
+      durableInlineOperations: topLevelActivityOperation(),
+    });
+    const execute = mock(async (_interception: unknown, next: (value: unknown) => unknown) =>
+      next('payload'),
+    );
+
+    await executeActivity(
+      internals as never,
+      'workflow-id',
+      createActivityOperation({ fn: () => 'inline-result' }),
+      createCallbacks({
+        getComposedActivityInterceptor: () => ({ execute }) as never,
+      }),
+    );
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(dispatched).toHaveLength(1);
+  });
+
+  it('reports no start for a durableActivity helper running under ctx.memo', async () => {
+    const dispatched: Event[] = [];
+    const internals = createInternals({
+      engine: { dispatchEvent: (event: Event) => dispatched.push(event) },
+      // No coordinator commit reports a helper's completion, so it reports
+      // neither event rather than an unmatched start.
+      durableInlineOperations: topLevelActivityOperation('memo'),
+    });
+
+    await executeActivity(
+      internals as never,
+      'workflow-id',
+      createActivityOperation({ fn: () => 'helper-result' }),
+      createCallbacks(),
+    );
+
+    expect(dispatched).toHaveLength(0);
+  });
+
+  it('does not report start when an interceptor short-circuits', async () => {
+    const dispatched: Event[] = [];
+    const internals = createInternals({
+      engine: { dispatchEvent: (event: Event) => dispatched.push(event) },
+      durableInlineOperations: topLevelActivityOperation(),
+    });
+
+    await executeActivity(
+      internals as never,
+      'workflow-id',
+      createActivityOperation(),
+      createCallbacks({
+        getComposedActivityInterceptor: () => ({ execute: async () => 'synthetic-result' }),
+      }),
+    );
+
+    expect(dispatched).toHaveLength(0);
+  });
   it('resolves global activities for unknown workflow ids', () => {
     const activityFunction = () => 'global-result';
     const operation = createActivityOperation();

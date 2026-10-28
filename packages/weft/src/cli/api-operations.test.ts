@@ -1,9 +1,35 @@
 import { describe, expect, it } from 'bun:test';
-import { createCatalogSnapshot } from '../index.ts';
+import { createCatalogSnapshot, createLiveOperationRegistry } from '../index.ts';
 
 import { executeApi } from './api.ts';
 
 describe('api command', () => {
+  it('resolves every catalog snapshot operation in the live registry that validates its input', () => {
+    // `weft api` finds an operation in the snapshot, then validates its input against the live
+    // registry's schema; the two lookups agree only while the registry holds every snapshot name.
+    const registry = createLiveOperationRegistry();
+    const missing = createCatalogSnapshot()
+      .operations.map((operation) => operation.name)
+      .filter((name) => registry.get(name) === undefined);
+    expect(missing).toEqual([]);
+  });
+
+  it.each(['constructor', '__proto__', 'toString', 'hasOwnProperty'])(
+    'reports the inherited object key %p as an unknown operation',
+    async (name) => {
+      const result = await executeApi({
+        command: 'api',
+        operationName: name,
+        list: false,
+        yes: false,
+        help: false,
+        json: true,
+      });
+      expect(result.exitCode).toBe(3);
+      expect(result.stderr).toStartWith(`api: unknown operation ${name}`);
+    },
+  );
+
   it('describes each operation using the current source contract', async () => {
     for (const operation of createCatalogSnapshot().operations) {
       const description = await executeApi({

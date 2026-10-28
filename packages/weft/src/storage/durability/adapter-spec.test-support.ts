@@ -31,19 +31,23 @@ type BetterSqliteDatabase = {
 
 type BetterSqliteConstructor = new (path: string) => BetterSqliteDatabase;
 
-let cachedBetterSqlite: BetterSqliteConstructor | undefined;
+/** The module `better-sqlite3` loads as, whichever way its CommonJS build exports the constructor. */
+type BetterSqliteModule = BetterSqliteConstructor & { default?: BetterSqliteConstructor };
 
-function loadBetterSqlite3Locally(): BetterSqliteConstructor {
-  if (cachedBetterSqlite !== undefined) return cachedBetterSqlite;
-  // `createRequire` because this project is ESM and better-sqlite3 is a CJS
-  // native binding. The intersection covers both ESM-default-export and
-  // direct-export wrapper shapes — same pattern as `node-sqlite.ts`.
-  const requireFromHere = createRequire(import.meta.url);
-  const mod = requireFromHere('better-sqlite3') as BetterSqliteConstructor & {
-    default?: BetterSqliteConstructor;
-  };
-  cachedBetterSqlite = typeof mod.default === 'function' ? mod.default : mod;
-  return cachedBetterSqlite;
+/**
+ * Load `better-sqlite3`, the Node-only native binding, through `requireModule`.
+ *
+ * `createRequire` because this project is ESM and `better-sqlite3` is a CJS native binding. The
+ * constructor is the module's `default` export or the module itself, the same pattern as
+ * `node-sqlite.ts`. Node caches the module, so loading it again costs nothing.
+ *
+ * @param requireModule - how the module is required, which a test replaces
+ */
+export function loadBetterSqlite3Locally(
+  requireModule: (id: string) => unknown = createRequire(import.meta.url),
+): BetterSqliteConstructor {
+  const mod = requireModule('better-sqlite3') as BetterSqliteModule;
+  return typeof mod.default === 'function' ? mod.default : mod;
 }
 
 /** Evidence returned by {@link OpenedAdapter.checkpoint}. */
@@ -177,33 +181,56 @@ const bunSqliteSpec: BunOrNodeAdapterSpec = {
   },
 };
 
-const nodeSqliteSpec: BunOrNodeAdapterSpec = {
-  name: 'NodeSQLiteStorage',
-  exposesStandardSidecars: true,
-  async open(databasePath: string) {
-    const storage = new NodeSQLiteStorage(databasePath);
-    return {
-      storage,
-      databasePath,
-      async checkpoint(): Promise<CheckpointResult> {
-        const BetterSqlite3Constructor = loadBetterSqlite3Locally();
-        const database = new BetterSqlite3Constructor(databasePath);
-        try {
-          const raw = database.pragma('wal_checkpoint(TRUNCATE)') as
-            readonly BetterSqliteRow[] | BetterSqliteRow;
-          const row = Array.isArray(raw) ? raw[0] : raw;
-          return { truncated: isFullyCheckpointed(row, databasePath), raw };
-        } finally {
-          database.close();
-        }
-      },
-      async close(): Promise<void> {
-        storage[Symbol.dispose]();
-      },
-      makeFailingBatch: makeNullValueFailingBatch,
-    };
-  },
+/** What {@link createNodeSqliteSpec} needs from the Node SQLite adapter and its raw driver. */
+type NodeSqliteSpecDependencies = {
+  /** The adapter under test, opened on a database path. */
+  readonly storageConstructor: new (databasePath: string) => Storage;
+  /** The raw `better-sqlite3` constructor, for the checkpoint passthrough. */
+  readonly loadDriver: () => BetterSqliteConstructor;
 };
+
+/**
+ * The spec for `NodeSQLiteStorage`, built over its adapter and `better-sqlite3` driver so a test can
+ * stand in for both: they load only under Node, which `bun test` is not.
+ *
+ * @param dependencies - the adapter constructor and driver loader the spec uses
+ */
+export function createNodeSqliteSpec(
+  dependencies: NodeSqliteSpecDependencies,
+): BunOrNodeAdapterSpec {
+  return {
+    name: 'NodeSQLiteStorage',
+    exposesStandardSidecars: true,
+    async open(databasePath: string) {
+      const storage = new dependencies.storageConstructor(databasePath);
+      return {
+        storage,
+        databasePath,
+        async checkpoint(): Promise<CheckpointResult> {
+          const BetterSqlite3Constructor = dependencies.loadDriver();
+          const database = new BetterSqlite3Constructor(databasePath);
+          try {
+            const raw = database.pragma('wal_checkpoint(TRUNCATE)') as
+              readonly BetterSqliteRow[] | BetterSqliteRow;
+            const row = Array.isArray(raw) ? raw[0] : raw;
+            return { truncated: isFullyCheckpointed(row, databasePath), raw };
+          } finally {
+            database.close();
+          }
+        },
+        async close(): Promise<void> {
+          storage[Symbol.dispose]();
+        },
+        makeFailingBatch: makeNullValueFailingBatch,
+      };
+    },
+  };
+}
+
+const nodeSqliteSpec = createNodeSqliteSpec({
+  storageConstructor: NodeSQLiteStorage,
+  loadDriver: loadBetterSqlite3Locally,
+});
 
 const tursoSpec: AdapterSpec = {
   name: 'TursoStorage',
@@ -238,19 +265,30 @@ const tursoSpec: AdapterSpec = {
  * the gating pattern in `src/storage/node-sqlite.test.ts`.
  */
 const IS_BUN = typeof globalThis.Bun !== 'undefined';
-let nodeSqliteAvailable: boolean | undefined;
-function canLoadNodeSqlite(): boolean {
-  if (nodeSqliteAvailable !== undefined) return nodeSqliteAvailable;
-  if (IS_BUN) {
-    nodeSqliteAvailable = false;
+
+/**
+ * Whether the Node SQLite adapter opens in this runtime: never under Bun, which skips the attempt,
+ * and under Node when the native binding loads and an in-memory database opens and closes.
+ *
+ * @param runningUnderBun - whether the suite runs under Bun
+ * @param storageConstructor - the adapter to open an in-memory database with
+ */
+export function canLoadNodeSqliteWith(
+  runningUnderBun: boolean,
+  storageConstructor: new (databasePath: string) => Storage,
+): boolean {
+  if (runningUnderBun) return false;
+  try {
+    new storageConstructor(':memory:')[Symbol.dispose]();
+  } catch {
     return false;
   }
-  try {
-    new NodeSQLiteStorage(':memory:')[Symbol.dispose]();
-    nodeSqliteAvailable = true;
-  } catch {
-    nodeSqliteAvailable = false;
-  }
+  return true;
+}
+
+let nodeSqliteAvailable: boolean | undefined;
+function canLoadNodeSqlite(): boolean {
+  nodeSqliteAvailable ??= canLoadNodeSqliteWith(IS_BUN, NodeSQLiteStorage);
   return nodeSqliteAvailable;
 }
 

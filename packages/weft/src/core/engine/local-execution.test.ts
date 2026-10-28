@@ -13,6 +13,7 @@ import {
   handOverPendingLaunch,
   hasQueuedInlineWorkflowStart,
   hasQueuedOrLaunchingInlineWorkflowStart,
+  holdsWorkflowExecution,
   letGoOfPendingLaunch,
   recordInlineWorkflowStartLaunching,
   recordInlineWorkflowStartQueued,
@@ -110,5 +111,47 @@ describe('a launch letting go', () => {
     const launch = recordLaunchPending(internals, WORKFLOW_ID);
     await letGoOfPendingLaunch(internals, launch);
     expect(launching(internals)).toBe(false);
+  });
+});
+
+describe('a launch letting go of the claim it recorded', () => {
+  function createInternalsHoldingClaim(release: () => Promise<unknown>): EngineInternals {
+    return {
+      inlineStrategy: {},
+      workflowClaimRegistry: { currentEpoch: () => 4, release },
+    } as never;
+  }
+
+  it('releases the claim at the epoch the launch recorded, then settles its record', async () => {
+    const releases: Array<[string, number]> = [];
+    const internals = createInternalsHoldingClaim(async (...args) => {
+      releases.push(args as unknown as [string, number]);
+    });
+    const launch = recordLaunchPending(internals, WORKFLOW_ID);
+
+    await letGoOfPendingLaunch(internals, launch);
+
+    expect(releases).toEqual([[WORKFLOW_ID, 4]]);
+    expect(launching(internals)).toBe(false);
+  });
+
+  it('settles its record even when the release throws, leaving the claim to expire', async () => {
+    const internals = createInternalsHoldingClaim(async () => {
+      throw new Error('release failed');
+    });
+    const launch = recordLaunchPending(internals, WORKFLOW_ID);
+
+    await letGoOfPendingLaunch(internals, launch);
+
+    expect(launching(internals)).toBe(false);
+  });
+});
+
+describe('holdsWorkflowExecution', () => {
+  it('asks a worker engine whether it holds the run in-memory checkpoint', () => {
+    const internals = { inlineStrategy: null, checkpoints: new Map([['held-run', {}]]) } as never;
+
+    expect(holdsWorkflowExecution(internals, 'held-run')).toBe(true);
+    expect(holdsWorkflowExecution(internals, 'other-run')).toBe(false);
   });
 });

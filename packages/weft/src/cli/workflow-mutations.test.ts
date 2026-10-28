@@ -171,6 +171,22 @@ describe('weft workflow cancel (destructive gate)', () => {
   });
 });
 
+describe('weft workflow cancel --dry-run --json', () => {
+  it('prints the affected count as JSON without contacting the server', async () => {
+    const result = await executeWorkflow({
+      ...base,
+      json: true,
+      action: 'cancel',
+      server: 'http://127.0.0.1:1',
+      workflowId: 'wf-dry-json',
+      yes: false,
+      dryRun: true,
+    } satisfies WorkflowCommand);
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({ affected: 1, workflowId: 'wf-dry-json' });
+  });
+});
+
 describe('weft workflow signal', () => {
   it('signals a running workflow', async () => {
     const served = createServedEngine();

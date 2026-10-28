@@ -192,3 +192,71 @@ test('the actual Chat guard accepts text followed by an authoritative snapshot a
   if (terminal?.type !== 'run.completed') throw new Error('Missing completion');
   expect(terminal.conversation.ids).toEqual(['message', 'input']);
 });
+
+test('an attachment that carries no events fails as an incomplete stream, not as a hang', async () => {
+  const mapper = new ResumableMapper(() => undefined);
+
+  const rejection = await rejectionOf(Array.fromAsync(mapper.map(source([]), empty())));
+
+  expect(rejection).toMatchObject({ kind: 'incomplete-stream' });
+});
+
+test('a stream that opens with an event Chat ignores goes to Chat whole, rest of the stream included', async () => {
+  const mapper = new ResumableMapper(() => undefined);
+  const events = [
+    { type: 'CUSTOM', name: 'warm-up', value: 1 },
+    started,
+    { type: 'TEXT_MESSAGE_START', role: 'assistant', messageId: 'message' },
+    { type: 'TEXT_MESSAGE_CONTENT', messageId: 'message', delta: 'Hi' },
+    { type: 'TEXT_MESSAGE_END', messageId: 'message' },
+    finished,
+  ];
+  const pulled: unknown[] = [];
+  async function* watched() {
+    for (const event of events) {
+      pulled.push(event);
+      yield event;
+    }
+  }
+
+  const frames = await Array.fromAsync(mapper.map(watched(), empty()));
+
+  expect(pulled).toEqual(events);
+  expect(frames.at(-1)).toMatchObject({ type: 'run.completed', content: 'Hi' });
+});
+
+test('the argument chunks of one tool call are kept as one, and a resumed attachment is primed with them', async () => {
+  const mapper = new ResumableMapper(() => undefined);
+  const call = { type: 'TOOL_CALL_START', toolCallId: 'call', toolCallName: 'lookup-order' };
+  const before: ChatStreamEvent[] = [];
+  try {
+    for await (const frame of mapper.map(
+      source(
+        [
+          started,
+          call,
+          { type: 'TOOL_CALL_ARGS', toolCallId: 'call', delta: '{"order' },
+          { type: 'TOOL_CALL_ARGS', toolCallId: 'call', delta: 'Id":"o1"}' },
+        ],
+        true,
+      ),
+      empty(),
+    ))
+      before.push(frame);
+  } catch (error) {
+    expect(error).toBeInstanceOf(TypeError);
+  }
+
+  const after = await Array.fromAsync(
+    mapper.map(
+      source([
+        started,
+        { type: 'TOOL_CALL_END', toolCallId: 'call' },
+        { type: 'RUN_FINISHED', threadId: 'thread', runId: 'run' },
+      ]),
+      empty(),
+    ),
+  );
+
+  expect(after.at(-1)).toMatchObject({ type: 'run.completed' });
+});

@@ -7952,6 +7952,12 @@ function createParkedActiveRun(): {
 }
 
 /** A `beforeExecute` policy that always requires approval. */
+/** The ids in a session's approval-resolution-started marker (COR-1717: a list of records). */
+function startedApprovalIds(metadata: Record<string, unknown> | undefined): unknown[] {
+  const started = metadata?.['approvalResolutionStartedIds'];
+  return Array.isArray(started) ? started.map((record) => (record as { id?: unknown }).id) : [];
+}
+
 function createNeedsApprovalToolbox(approvalSecret: string, charges: number[]) {
   return createToolbox(
     [
@@ -9744,7 +9750,9 @@ describe('createBureau review queue (AB-20)', () => {
     expect(bureau.reviews.list()).toHaveLength(0);
 
     const persistedSession = await bureau.contexts.get(run.contextId);
-    expect(persistedSession?.metadata['approvalResolutionStartedIds']).toContain(review!.id);
+    expect(persistedSession?.metadata['approvalResolutionStartedIds']).toEqual([
+      expect.objectContaining({ id: review!.id }),
+    ]);
     expect(persistedSession?.metadata['pendingApprovalOverrides']).toHaveProperty(review!.id);
     expect(diagnostics).toEqual([]);
     await bureau.dispose();
@@ -10062,9 +10070,7 @@ describe('createBureau review queue (AB-20)', () => {
     const persistedSession = await bureau.contexts.get(run.contextId);
     expect(persistedSession?.metadata['resolvedReviewIds'] ?? []).not.toContain(review!.id);
     expect(persistedSession?.metadata['pendingApprovalOverrides']).toHaveProperty(review!.id);
-    expect(persistedSession?.metadata['approvalResolutionStartedIds'] ?? []).not.toContain(
-      review!.id,
-    );
+    expect(startedApprovalIds(persistedSession?.metadata)).not.toContain(review!.id);
     const approvedRecords = await bureau.internals.auditTrail!.query({
       runId: run.id,
       type: 'review.tool-approval.approved',
@@ -13626,7 +13632,7 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
 
       const outcome = await bureau.tasks.events(run.id);
       if ('outcome' in outcome) throw new Error(`expected a page, got ${outcome.outcome}`);
-      expect(outcome.events.map((event) => event.kind)).toEqual(['run.completed']);
+      expect(outcome.events.map((event) => event.kind)).toEqual(['run.completed', 'run.settled']);
       expect(outcome.events[0]?.owner).toEqual({ kind: 'run', id: run.id });
 
       // Same run, same terminal transition, through the audit trail's own
@@ -13841,7 +13847,7 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
         () => received.length > 0,
         'subscribeEventHistory never replayed the recorded run.completed event',
       );
-      expect(received.map((event) => event.kind)).toEqual(['run.completed']);
+      expect(received.map((event) => event.kind)).toEqual(['run.completed', 'run.settled']);
       expect(received[0]?.owner).toEqual({ kind: 'run', id: run.id });
 
       subscription.unsubscribe();
@@ -13886,7 +13892,7 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
       await new Promise<void>((resolve) =>
         createDefaultRuntimeServices().timers.setTimeout(resolve, 50),
       );
-      expect(owned).toEqual(['run.completed']);
+      expect(owned).toEqual(['run.completed', 'run.settled']);
       expect(stolen).toEqual([]);
 
       allowed.unsubscribe();
@@ -14006,7 +14012,10 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
 
       const allowedOutcome = await bureau.tasks.events(run.id, { principal: 'alice' });
       if ('outcome' in allowedOutcome) throw new Error('expected a page');
-      expect(allowedOutcome.events.map((event) => event.kind)).toEqual(['run.completed']);
+      expect(allowedOutcome.events.map((event) => event.kind)).toEqual([
+        'run.completed',
+        'run.settled',
+      ]);
 
       await bureau.shutdown();
     } finally {
@@ -14049,7 +14058,10 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
 
       const withoutPrincipal = await bureau.tasks.events(run.id);
       if ('outcome' in withoutPrincipal) throw new Error('expected a page');
-      expect(withoutPrincipal.events.map((event) => event.kind)).toEqual(['run.completed']);
+      expect(withoutPrincipal.events.map((event) => event.kind)).toEqual([
+        'run.completed',
+        'run.settled',
+      ]);
 
       await bureau.shutdown();
     } finally {
@@ -14278,7 +14290,11 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
         throw new Error(`expected deleted-aggregate, got ${JSON.stringify(outcome)}`);
       }
       expect(outcome.owner).toEqual({ kind: 'run', id: run.id });
-      expect(outcome.events.map((event) => event.kind)).toEqual(['run.completed', 'run.removed']);
+      expect(outcome.events.map((event) => event.kind)).toEqual([
+        'run.completed',
+        'run.settled',
+        'run.removed',
+      ]);
 
       await bureau.shutdown();
     } finally {
@@ -14397,6 +14413,7 @@ describe('bureau.eventHistory deleted-aggregate detection is independent of the 
       }
       expect(fullOutcome.events.map((event) => event.kind)).toEqual([
         'run.completed',
+        'run.settled',
         'run.completed',
         'run.completed',
         'run.removed',
@@ -14414,7 +14431,7 @@ describe('bureau.eventHistory deleted-aggregate detection is independent of the 
       expect(outOfWindowOutcome.owner).toEqual({ kind: 'run', id: run.id });
       expect(outOfWindowOutcome.events.map((event) => event.kind)).toEqual([
         'run.completed',
-        'run.completed',
+        'run.settled',
       ]);
       expect(outOfWindowOutcome.events.map((event) => event.kind)).not.toContain('run.removed');
       expect(outOfWindowOutcome.hasMore).toBe(true);
@@ -21163,9 +21180,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
       // re-gated would have persisted a REPLACEMENT override with a
       // different token instead.
       const persistedSession = await bureau.contexts.get(review.sessionId!);
-      expect(persistedSession?.metadata['approvalResolutionStartedIds'] ?? []).not.toContain(
-        review.id,
-      );
+      expect(startedApprovalIds(persistedSession?.metadata)).not.toContain(review.id);
       if (review.kind !== 'tool-approval') throw new Error('expected a tool-approval review');
       const originalApprovalToken = review.approval.approvalToken;
       if (originalApprovalToken === undefined) {

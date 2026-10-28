@@ -737,7 +737,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   /**
    * A listener on the Bureau's own event emitter that is registered before any
    * recovery pass can dispatch, so it hears every boot-time event (recovery
-   * decisions, `run.registered` and `action` events of recovered runs) that a
+   * decisions, committed `run.settled`, `run.registered`, and `action` events of recovered runs) that a
    * listener added through `addEventListener` after `createBureau()` returns
    * would miss. It receives every event the emitter dispatches for the life of
    * the Bureau, in dispatch order. A throwing listener, or an async one that rejects, is
@@ -882,6 +882,18 @@ export interface PendingToolApprovalReview {
    * separates one supersession's resolution from the next.
    */
   round: number;
+  /**
+   * COR-1717 — `true` when the approval was approved and its resolution started, but the process
+   * ended before the decision committed, so the tool may or may not have run. Absent otherwise.
+   * The tool is never re-run automatically: resolving the review runs the normal approval path
+   * once, and an approval whose signed binding has expired follows the normal expiry path.
+   */
+  interrupted?: true | undefined;
+  /**
+   * COR-1717 — epoch-ms timestamp the interrupted resolution started. Undefined when the review
+   * is not interrupted, or when the session holds the legacy marker that recorded no time.
+   */
+  resolutionStartedAt?: number | undefined;
 }
 
 /**

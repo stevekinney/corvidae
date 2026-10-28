@@ -221,4 +221,22 @@ describe('resolveTextDirection', () => {
       globalThis.getComputedStyle = originalGlobalGetComputedStyle;
     }
   });
+
+  test('scopes a prelude-less @scope to the whole document when its stylesheet has no scope root', () => {
+    const target = document.createElement('div');
+    target.className = 'document-scoped-shell';
+    document.body.append(target);
+    const scope = createCssRule({
+      type: 0,
+      cssText: '@scope {}',
+      cssRules: [createStyleRule({ selectorText: '.document-scoped-shell', direction: 'ltr' })],
+    });
+    // A `<style>` element with no parent and no shadow root gives its sheet no implicit scope root.
+    const detachedOwner = document.createElement('style');
+    expect(
+      withDocumentStyleSheets([{ ownerNode: detachedOwner, cssRules: [scope] }], () =>
+        resolveTextDirection(target, 'rtl'),
+      ),
+    ).toBe('ltr');
+  });
 });

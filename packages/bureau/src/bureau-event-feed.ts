@@ -20,7 +20,6 @@ import {
   bindFeedLifetime,
   createInMemoryReplayLiveBackend,
   createReplayLiveFeed,
-  encodeCursor,
   type InMemoryReplayLiveBackend,
   type ReplayLiveFeed,
   type SequencedEventEnvelope,
@@ -43,6 +42,7 @@ import {
   ReviewRevokedEvent,
   ReviewSupersededEvent,
   RunRegisteredEvent,
+  RunSettledEvent,
   RunRemovedEvent,
 } from './events.ts';
 import {
@@ -123,6 +123,7 @@ export type DeclaredKeys<T> = keyof {
 export const BUREAU_EVENT_CLASSIFICATION = {
   action: 'published',
   'run.registered': 'published',
+  'run.settled': 'published',
   'run.removed': 'published',
   'run.abort-settled': 'published',
   'bureau.disposed': 'published',
@@ -172,6 +173,9 @@ const PROJECTIONS: readonly BureauEventProjection[] = [
     timestamp: event.action.timestamp,
   })),
   projection(RunRegisteredEvent.type, isInstance(RunRegisteredEvent), (event) => ({
+    runId: event.runId,
+  })),
+  projection(RunSettledEvent.type, isInstance(RunSettledEvent), (event) => ({
     runId: event.runId,
   })),
   projection(RunRemovedEvent.type, isInstance(RunRemovedEvent), (event) => ({
@@ -384,9 +388,17 @@ export function createBureauEventFeed(options: BureauEventFeedOptions): BureauEv
   }
   const now = options.now ?? createDefaultRuntimeServices().clock.now;
   const backend: InMemoryReplayLiveBackend<BureauEventEnvelope> =
-    createInMemoryReplayLiveBackend<BureauEventEnvelope>(
-      options.maxEvents === undefined ? {} : { maxEvents: options.maxEvents },
-    );
+    createInMemoryReplayLiveBackend<BureauEventEnvelope>({
+      ...(options.maxEvents === undefined ? {} : { maxEvents: options.maxEvents }),
+      createGapEnvelope: ({ requestedCursor, firstRetainedSequence, continuationCursor }) => ({
+        sequence: firstRetainedSequence - 1,
+        cursor: continuationCursor,
+        bureauId: options.bureauId,
+        kind: 'feed.gap',
+        emittedAtMs: now(),
+        payload: { requestedCursor, firstRetainedSequence },
+      }),
+    });
   const lifetime = new AbortController();
   const feed = withFramesDroppedMarker(
     bindFeedLifetime(
@@ -419,7 +431,7 @@ export function createBureauEventFeed(options: BureauEventFeedOptions): BureauEv
       if (projected === undefined) return undefined;
       const envelope: BureauEventEnvelope = {
         sequence,
-        cursor: encodeCursor(sequence),
+        cursor: backend.encodeCursor?.(sequence) ?? String(sequence),
         bureauId: options.bureauId,
         kind: projected.kind,
         emittedAtMs: now(),

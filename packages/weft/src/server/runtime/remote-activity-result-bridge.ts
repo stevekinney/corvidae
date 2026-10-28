@@ -33,7 +33,7 @@
 
 import type { RegistryAgnosticEngine } from '../../core/engine.ts';
 import { buildAsyncActivityResolutionWrite } from '../../core/engine/async-activity-records.ts';
-import { isPendingAsyncActivityToken } from '../../core/engine/pending-async-activity-token.ts';
+import { isPendingAsyncActivityTokenForWorkflowExecution } from '../../core/engine/pending-async-activity-token.ts';
 import type { OperationOutcome } from '../../core/types.ts';
 import type { BatchOperation } from '../../storage/interface.ts';
 
@@ -88,8 +88,10 @@ export async function bridgeRemoteActivityResult(
   engine: RegistryAgnosticEngine,
   operationId: string,
   outcome: RemoteActivityResultOutcome,
+  workflowExecutionToken: string | undefined,
 ): Promise<void> {
-  if (!isPendingAsyncActivityToken(engine, operationId)) return;
+  if (!isPendingAsyncActivityTokenForWorkflowExecution(engine, operationId, workflowExecutionToken))
+    return;
 
   try {
     if (outcome.status === 'completed') {

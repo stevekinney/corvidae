@@ -93,3 +93,11 @@ describe('NoConditionalBatchStorage — documented stub behavior', () => {
     expect(scanned).toEqual([]);
   });
 });
+
+describe('NoConditionalBatchStorage disposal', () => {
+  it('disposes without effect', () => {
+    const storage = new NoConditionalBatchStorage();
+
+    expect(storage[Symbol.dispose]()).toBeUndefined();
+  });
+});

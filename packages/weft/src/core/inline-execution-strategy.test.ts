@@ -867,6 +867,26 @@ describe('InlineExecutionStrategy', () => {
       }
     });
 
+    it('emits failed when no generator is active for the workflow', async () => {
+      setup();
+
+      strategy.resumeWorkflow({
+        workflowId: 'wf-never-started',
+        checkpoint: new ArrayBuffer(0),
+        operationResult: { status: 'completed', value: 'ignored' },
+      });
+
+      await settleStrategy();
+
+      expect(messages).toEqual([
+        {
+          type: 'failed',
+          workflowId: 'wf-never-started',
+          error: 'No active generator for workflow: wf-never-started',
+        },
+      ]);
+    });
+
     it('throws a failed result into the generator', async () => {
       setup();
 

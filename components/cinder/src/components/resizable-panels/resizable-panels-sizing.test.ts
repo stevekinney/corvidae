@@ -157,6 +157,13 @@ describe('resizable-panels sizing', () => {
     expect(restored.state.panels[0]!.sizePixels).toBeGreaterThan(0);
   });
 
+  test('leaves the layout alone when neither pane beside the handle can collapse', () => {
+    const state = createInitialLayoutState(panes, 1000, 'horizontal');
+    const unchanged = toggleCollapseForHandle(state, panes, 1, 'nearest-collapsible');
+    expect(unchanged.changed).toBe(false);
+    expect(unchanged.state).toBe(state);
+  });
+
   test('produces layout snapshots with structured sizes', () => {
     const state = createInitialLayoutState(panes, 1000, 'horizontal');
     const snapshot = getLayoutSnapshot(state, panes);

@@ -236,6 +236,7 @@ import {
   ReviewSupersededEvent,
   RunAbortSettledEvent,
   RunRegisteredEvent,
+  RunSettledEvent,
   RunRemovedEvent,
 } from './events';
 import { createGoalAttemptFenceHost } from './goal-attempt-fence';
@@ -655,20 +656,57 @@ function stringValues(values: readonly JSONValue[]): string[] {
   return strings;
 }
 
-function omitStringValue(values: readonly JSONValue[], omittedValue: string): JSONValue[] {
-  const remaining: JSONValue[] = [];
-  for (const value of values) {
-    if (value !== omittedValue) remaining.push(value);
-  }
-  return remaining;
+/**
+ * COR-1717 — one approval whose resolution started (the marker is written before the approved tool
+ * runs). `startedAt` is epoch milliseconds; a session written before the marker carried it holds a
+ * bare id, which reads as a record with `startedAt` undefined.
+ */
+interface ApprovalResolutionStartedRecord {
+  id: string;
+  startedAt: number | undefined;
 }
 
-function omitStringsWithPrefix(values: readonly JSONValue[], prefix: string): JSONValue[] {
-  const remaining: JSONValue[] = [];
-  for (const value of values) {
-    if (typeof value !== 'string' || !value.startsWith(prefix)) remaining.push(value);
+/** Reads the started marker in either form, dropping entries that are neither. */
+function readApprovalResolutionStarted(
+  value: JSONValue | undefined,
+): ApprovalResolutionStartedRecord[] {
+  if (!Array.isArray(value)) return [];
+  const records: ApprovalResolutionStartedRecord[] = [];
+  for (const entry of value) {
+    if (typeof entry === 'string') {
+      records.push({ id: entry, startedAt: undefined });
+    } else if (isJsonObject(entry) && typeof entry['id'] === 'string') {
+      const startedAt = entry['startedAt'];
+      records.push({
+        id: entry['id'],
+        startedAt: typeof startedAt === 'number' ? startedAt : undefined,
+      });
+    }
   }
-  return remaining;
+  return records;
+}
+
+/** Serializes started records; a record without `startedAt` omits the key (JSON has no undefined). */
+function writeApprovalResolutionStarted(
+  records: readonly ApprovalResolutionStartedRecord[],
+): JSONValue[] {
+  return records.map((record) =>
+    record.startedAt === undefined
+      ? { id: record.id }
+      : { id: record.id, startedAt: record.startedAt },
+  );
+}
+
+function omitStartedRecord(value: JSONValue | undefined, omittedId: string): JSONValue[] {
+  return writeApprovalResolutionStarted(
+    readApprovalResolutionStarted(value).filter((record) => record.id !== omittedId),
+  );
+}
+
+function omitStartedRecordsWithPrefix(value: JSONValue | undefined, prefix: string): JSONValue[] {
+  return writeApprovalResolutionStarted(
+    readApprovalResolutionStarted(value).filter((record) => !record.id.startsWith(prefix)),
+  );
 }
 
 /**
@@ -2786,11 +2824,22 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   // policy gated the resumed call again), by review id. Absent means round 0.
   // Persisted beside the override so it survives a restart.
   const pendingApprovalRounds = new Map<string, number>();
+  // COR-1717: approvals restored at boot whose resolution had started but never committed, by
+  // review id, with the epoch-ms the resolution started (undefined for a legacy marker).
+  const interruptedApprovals = new Map<string, number | undefined>();
   // COR-1596: when each fire approval was requested; see `ScheduledFireReviewState`.
   const approvalRequestedAt = new Map<string, number>();
+  function interruptedFields(
+    reviewId: string,
+  ): { interrupted: true; resolutionStartedAt: number | undefined } | Record<never, never> {
+    return interruptedApprovals.has(reviewId)
+      ? { interrupted: true, resolutionStartedAt: interruptedApprovals.get(reviewId) }
+      : {};
+  }
   function dropPendingApprovalOverride(reviewId: string): void {
     pendingApprovalOverrides.delete(reviewId);
     pendingApprovalRounds.delete(reviewId);
+    interruptedApprovals.delete(reviewId);
     approvalRequestedAt.delete(reviewId);
     stopLazyExpirySweepWhenNoneHeld();
   }
@@ -4390,6 +4439,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     // COR-1594: the end of a fire reaches a stream another process serves through the fire's
     // durable history. A Bureau with no persistent storage has none, and no second process.
     onFireSettled: appendFireSettledEvent,
+    onSettled: async (record) => {
+      emitter.dispatch(new RunSettledEvent(record.taskId));
+    },
     diagnose: (message, cause) =>
       diagnose({ level: 'error', scope: 'task-registry', message: `[bureau] ${message}`, cause }),
     host: {
@@ -5284,11 +5336,10 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       ...session!,
       metadata: {
         ...session!.metadata,
-        approvalResolutionStartedIds: Array.isArray(
+        approvalResolutionStartedIds: omitStartedRecord(
           session!.metadata['approvalResolutionStartedIds'],
-        )
-          ? omitStringValue(session!.metadata['approvalResolutionStartedIds'], reviewId)
-          : [],
+          reviewId,
+        ),
         pendingApprovalOverrides: {
           ...(isJsonObject(session!.metadata['pendingApprovalOverrides'])
             ? session!.metadata['pendingApprovalOverrides']
@@ -5314,15 +5365,18 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     if (!runtime.sessionStore) return;
     await runtime.sessionStore.update(sessionId, (session) => {
       if (!session) return session;
-      const current = session.metadata['approvalResolutionStartedIds'];
-      const startedIds = Array.isArray(current) ? stringValues(current) : [];
+      const started = readApprovalResolutionStarted(
+        session.metadata['approvalResolutionStartedIds'],
+      );
       return {
         ...session,
         metadata: {
           ...session.metadata,
-          approvalResolutionStartedIds: startedIds.includes(reviewId)
-            ? startedIds
-            : [...startedIds, reviewId],
+          approvalResolutionStartedIds: writeApprovalResolutionStarted(
+            started.some((record) => record.id === reviewId)
+              ? started
+              : [...started, { id: reviewId, startedAt: runtimeServices.clock.now() }],
+          ),
         },
       };
     });
@@ -5341,9 +5395,10 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
           ? omitKeysWithPrefix(current as Record<string, JSONValue>, reviewIdPrefix)
           : current;
       const currentStarted = session.metadata['approvalResolutionStartedIds'];
-      const remainingStarted = Array.isArray(currentStarted)
-        ? omitStringsWithPrefix(currentStarted, reviewIdPrefix)
-        : currentStarted;
+      const remainingStarted =
+        currentStarted === undefined
+          ? undefined
+          : omitStartedRecordsWithPrefix(currentStarted, reviewIdPrefix);
       const currentRounds = session.metadata['pendingApprovalRounds'];
       const remainingRounds = isJsonObject(currentRounds)
         ? omitKeysWithPrefix(currentRounds, reviewIdPrefix)
@@ -5666,11 +5721,10 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
           ...session,
           metadata: {
             ...session.metadata,
-            approvalResolutionStartedIds: Array.isArray(
+            approvalResolutionStartedIds: omitStartedRecord(
               session.metadata['approvalResolutionStartedIds'],
-            )
-              ? omitStringValue(session.metadata['approvalResolutionStartedIds'], reviewId)
-              : [],
+              reviewId,
+            ),
             // `resolvedReviewIds` is guaranteed to NOT already include
             // `reviewId` here — the `alreadyLanded`/`conflictingDecision`
             // early returns above handle that case before this object is
@@ -6599,10 +6653,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         ? (metadata as Record<string, unknown>)
         : undefined;
     const overrides = metadataRecord?.['pendingApprovalOverrides'];
-    const resolutionStartedIds = new Set(
-      Array.isArray(metadataRecord?.['approvalResolutionStartedIds'])
-        ? stringValues(metadataRecord['approvalResolutionStartedIds'])
-        : [],
+    const resolutionStarted = readApprovalResolutionStarted(
+      metadataRecord?.['approvalResolutionStartedIds'] as JSONValue | undefined,
     );
     if (typeof overrides !== 'object' || overrides === null || Array.isArray(overrides)) return;
     // A review the session records as decided is not pending, whatever override it still holds.
@@ -6614,11 +6666,14 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     const rounds = metadataRecord?.['pendingApprovalRounds'];
     for (const [reviewId, approval] of Object.entries(overrides as Record<string, unknown>)) {
       if (!reviewId.startsWith(`approval:${runId}:`)) continue;
-      if (resolutionStartedIds.has(reviewId)) continue;
       if (invalidApprovalReviewIds.has(reviewId)) continue;
       if (decidedReviewIds.has(reviewId)) continue;
       if (committed !== undefined && !committed.has(reviewId)) continue;
       if (approval && typeof approval === 'object' && !Array.isArray(approval)) {
+        // COR-1717: a started-but-uncommitted approval is listed again, marked interrupted. The
+        // tool is never re-run here; resolving it runs the normal approval path once.
+        const started = resolutionStarted.find((record) => record.id === reviewId);
+        if (started !== undefined) interruptedApprovals.set(reviewId, started.startedAt);
         pendingApprovalOverrides.set(
           reviewId,
           approval as Extract<PendingReview, { kind: 'tool-approval' }>['approval'],
@@ -6685,11 +6740,6 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         ? (metadata as Record<string, unknown>)
         : undefined;
     const overrides = metadataRecord?.['pendingApprovalOverrides'];
-    const resolutionStartedIds = new Set(
-      Array.isArray(metadataRecord?.['approvalResolutionStartedIds'])
-        ? stringValues(metadataRecord['approvalResolutionStartedIds'])
-        : [],
-    );
     if (typeof overrides !== 'object' || overrides === null || Array.isArray(overrides)) return;
     const decidedReviewIds = new Set(
       Array.isArray(metadataRecord?.['resolvedReviewIds'])
@@ -6698,7 +6748,6 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     );
     for (const [reviewId, approval] of Object.entries(overrides as Record<string, unknown>)) {
       if (!reviewId.startsWith(`approval:${runId}:`)) continue;
-      if (resolutionStartedIds.has(reviewId)) continue;
       if (decidedReviewIds.has(reviewId)) continue;
       if (committed !== undefined && !committed.has(reviewId)) continue;
       if (approval && typeof approval === 'object' && !Array.isArray(approval)) {
@@ -15183,6 +15232,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
             ageMilliseconds: now - requestedAt,
             status: 'pending',
             round: pendingApprovalRounds.get(id) ?? 0,
+            ...interruptedFields(id),
           });
         }
       }
@@ -15271,6 +15321,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
           ageMilliseconds: now - requestedAt,
           status: 'pending',
           round: pendingApprovalRounds.get(reviewId) ?? 0,
+          ...interruptedFields(reviewId),
         });
       }
     }

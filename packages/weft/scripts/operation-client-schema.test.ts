@@ -245,3 +245,15 @@ describe('schemaToNode — package authorization scopes', () => {
     expect(renderInline({ type: 'string', pattern: '^[a-z]+$' })).toBe('string');
   });
 });
+
+describe('schemaToNode with a property schema that is not an object', () => {
+  it.each([
+    ['a boolean schema', true],
+    ['null', null],
+    ['a string', 'string'],
+  ])('renders a property declared as %s as unknown', (_label, propertySchema) => {
+    expect(
+      renderInline({ type: 'object', properties: { loose: propertySchema }, required: ['loose'] }),
+    ).toBe('{ readonly "loose": unknown; }');
+  });
+});

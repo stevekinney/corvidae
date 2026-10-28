@@ -15,17 +15,16 @@ import { assertReadOnlyQuery } from './read-only-query.ts';
 import { scopedStorage } from './scoped-storage.ts';
 import {
   SQLITE_BUSY_TIMEOUT_MS,
-  SQLITE_COUNT_KEYS_BY_PREFIX,
   SQLITE_CREATE_KEY_VALUE_TABLE,
-  SQLITE_DELETE_KEYS_BY_PREFIX,
   SQLITE_DELETE_VALUE_BY_KEY,
   SQLITE_SELECT_KEY_PRESENCE,
   SQLITE_SELECT_VALUE_BY_KEY,
   SQLITE_UPSERT_VALUE_BY_KEY,
+  buildSqliteCountKeysByPrefix,
+  buildSqliteDeleteKeysByPrefix,
   buildSqliteKeyRangeDelete,
   buildSqliteKeyRangeSelect,
   buildSqliteKeyValueRangeSelect,
-  buildSqlitePrefixRangeParameters,
 } from './sqlite-key-value-queries.ts';
 
 type BunSQLiteStoragePersistence = NonNullable<StorageCapabilities['persistence']>;
@@ -85,8 +84,6 @@ export class BunSQLiteStorage implements Storage {
   #putStatement: Statement<unknown, [string, Uint8Array]>;
   #deleteStatement: Statement<unknown, [string]>;
   #hasStatement: Statement<{ present: number }, [string]>;
-  #countStatement: Statement<{ count: number }, [string, string]>;
-  #deletePrefixStatement: Statement<unknown, [string, string]>;
   #batchTransaction: { immediate: (entries: BatchOperation[]) => void };
   // Cache prepared statements for scan() keyed by the fully-built SQL string.
   // The set of SQL variants is bounded by the structural shape of the scan
@@ -103,6 +100,10 @@ export class BunSQLiteStorage implements Storage {
   // deleteRange SQL varies only by bound shape and limit-presence (LIMIT is a
   // bound parameter), so the cache is bounded the same way as #scanStatements.
   #deleteRangeStatements: Map<string, Statement<unknown, SQLQueryBindings[]>> = new Map();
+  // count() and deletePrefix() each have two SQL shapes: a bounded prefix range, and the
+  // unbounded one an empty prefix needs. Keyed by SQL, so at most two entries apiece.
+  #countStatements: Map<string, Statement<{ count: number }, string[]>> = new Map();
+  #deletePrefixStatements: Map<string, Statement<unknown, string[]>> = new Map();
 
   /**
    * Number of distinct prepared-statement cache entries for scan().
@@ -140,12 +141,6 @@ export class BunSQLiteStorage implements Storage {
     this.#deleteStatement = this.#database.prepare<unknown, [string]>(SQLITE_DELETE_VALUE_BY_KEY);
     this.#hasStatement = this.#database.prepare<{ present: number }, [string]>(
       SQLITE_SELECT_KEY_PRESENCE,
-    );
-    this.#countStatement = this.#database.prepare<{ count: number }, [string, string]>(
-      SQLITE_COUNT_KEYS_BY_PREFIX,
-    );
-    this.#deletePrefixStatement = this.#database.prepare<unknown, [string, string]>(
-      SQLITE_DELETE_KEYS_BY_PREFIX,
     );
     // Build the transaction wrapper once; bun:sqlite memoizes the compiled
     // transaction so subsequent calls just run the prepared statements.
@@ -194,8 +189,13 @@ export class BunSQLiteStorage implements Storage {
   }
 
   async deletePrefix(prefix: string): Promise<number> {
-    const [rangeStart, rangeEnd] = buildSqlitePrefixRangeParameters(prefix);
-    return this.#deletePrefixStatement.run(rangeStart, rangeEnd).changes;
+    const { parameters, sql } = buildSqliteDeleteKeysByPrefix(prefix);
+    let statement = this.#deletePrefixStatements.get(sql);
+    if (!statement) {
+      statement = this.#database.prepare<unknown, string[]>(sql);
+      this.#deletePrefixStatements.set(sql, statement);
+    }
+    return statement.run(...parameters).changes;
   }
 
   async deleteRange(prefix: string, options: DeleteRangeOptions): Promise<number> {
@@ -244,8 +244,13 @@ export class BunSQLiteStorage implements Storage {
   }
 
   async count(prefix: string): Promise<number> {
-    const [rangeStart, rangeEnd] = buildSqlitePrefixRangeParameters(prefix);
-    return this.#countStatement.get(rangeStart, rangeEnd)?.count ?? 0;
+    const { parameters, sql } = buildSqliteCountKeysByPrefix(prefix);
+    let statement = this.#countStatements.get(sql);
+    if (!statement) {
+      statement = this.#database.prepare<{ count: number }, string[]>(sql);
+      this.#countStatements.set(sql, statement);
+    }
+    return statement.get(...parameters)?.count ?? 0;
   }
 
   scoped(prefix: string): Storage {
@@ -304,6 +309,14 @@ export class BunSQLiteStorage implements Storage {
     }
   }
 
+  async sizeBytes(): Promise<number> {
+    const [pageCount, pageSize] = await Promise.all([
+      this.query<{ page_count: number }>('PRAGMA page_count'),
+      this.query<{ page_size: number }>('PRAGMA page_size'),
+    ]);
+    return (pageCount[0]?.page_count ?? 0) * (pageSize[0]?.page_size ?? 0);
+  }
+
   [Symbol.dispose](): void {
     // Finalize cached statements before closing — bun:sqlite tracks live
     // statements on the database and refuses to close while any are
@@ -313,8 +326,14 @@ export class BunSQLiteStorage implements Storage {
     this.#putStatement.finalize();
     this.#deleteStatement.finalize();
     this.#hasStatement.finalize();
-    this.#countStatement.finalize();
-    this.#deletePrefixStatement.finalize();
+    for (const statement of this.#countStatements.values()) {
+      statement.finalize();
+    }
+    this.#countStatements.clear();
+    for (const statement of this.#deletePrefixStatements.values()) {
+      statement.finalize();
+    }
+    this.#deletePrefixStatements.clear();
     for (const statement of this.#scanStatements.values()) {
       statement.finalize();
     }

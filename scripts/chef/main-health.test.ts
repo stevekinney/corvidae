@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { finishedGate } from './gate-child.test-support.ts';
 import { runGate } from './gate-run.ts';
 import {
@@ -11,7 +11,6 @@ import {
   readHealth,
   recordBatchRun,
   recordFix,
-  recordWaiver,
   renderMainHealth,
   resolveHealthFile,
 } from './main-health.ts';
@@ -69,7 +68,7 @@ describe('the health file', () => {
     expect(existsSync(`${healthFile}.${process.pid}.tmp`)).toBe(false);
   });
 
-  test('keeps waivers apart from fixes, and drops a waiver without its reason', () => {
+  test('reads older waivers apart from fixes, and drops a waiver without its reason', () => {
     const waiver = {
       pr: 10,
       time: 't',
@@ -77,14 +76,18 @@ describe('the health file', () => {
       reason: 'a load flake that passes alone',
       controlHead: sha('c'),
     };
-    recordFix(healthFile, { pr: 9, time: 't', blockedHead: sha('b') });
-    recordWaiver(healthFile, waiver);
+    // Nothing writes a waiver any more; an older health file may still hold them.
+    mkdirSync(dirname(healthFile), { recursive: true });
+    writeFileSync(
+      healthFile,
+      JSON.stringify({ fixes: [{ pr: 9, time: 't', blockedHead: sha('b') }], waivers: [waiver] }),
+    );
     expect(readHealth(healthFile)).toEqual({
       runs: [],
       fixes: [{ pr: 9, time: 't', blockedHead: sha('b') }],
       waivers: [waiver],
     });
-    // A waiver from `--waive-main-health` names no control head; a record with no reason is dropped.
+    // An owner-level waiver names no control head; a record with no reason is dropped.
     const unconditional = { pr: 11, time: 't', blockedHead: sha('b'), reason: 'main was red' };
     writeFileSync(
       healthFile,
@@ -135,13 +138,22 @@ describe('mainHealth', () => {
     const history = [sha('3'), sha('2'), sha('1')];
     recordBatchRun(healthFile, entry(sha('2'), 1));
     recordFix(healthFile, { pr: 21, time: 't', blockedHead: sha('2') });
-    recordWaiver(healthFile, {
-      pr: 22,
-      time: 't',
-      blockedHead: sha('2'),
-      reason: 'a fixture this change does not touch',
-    });
-    recordWaiver(healthFile, { pr: 23, time: 't', blockedHead: sha('1'), reason: 'older head' });
+    const recorded = readHealth(healthFile);
+    writeFileSync(
+      healthFile,
+      JSON.stringify({
+        ...recorded,
+        waivers: [
+          {
+            pr: 22,
+            time: 't',
+            blockedHead: sha('2'),
+            reason: 'a fixture this change does not touch',
+          },
+          { pr: 23, time: 't', blockedHead: sha('1'), reason: 'older head' },
+        ],
+      }),
+    );
     const health = mainHealth(historyRunner(history), sandbox, 'main', healthFile);
     expect(health.fixes.map((fix) => fix.pr)).toEqual([21]);
     expect(health.waivers.map((waiver) => waiver.pr)).toEqual([22]);

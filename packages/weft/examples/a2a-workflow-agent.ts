@@ -142,7 +142,7 @@ export function exampleReply(message: Message): readonly Part[] | undefined {
 }
 
 /** Lets every loopback URL through over plain HTTP, and defers anything else to `policy`. */
-function trustingLoopback(policy: EgressPolicy): EgressPolicy {
+export function trustingLoopback(policy: EgressPolicy): EgressPolicy {
   return {
     async check(url) {
       const parsed = new URL(url);

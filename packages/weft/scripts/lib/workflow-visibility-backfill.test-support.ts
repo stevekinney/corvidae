@@ -110,9 +110,6 @@ export class RacingStorage implements Storage {
           );
         }
       }
-      if (this.#inner.conditionalBatch === undefined) {
-        throw new Error('inner MemoryStorage should expose conditionalBatch');
-      }
       if (publishesWatermark(operations)) {
         await this.beforeWatermark?.();
       }

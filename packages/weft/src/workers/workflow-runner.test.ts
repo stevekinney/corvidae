@@ -333,6 +333,33 @@ describe('handleRunMessage', () => {
     });
   });
 
+  it('pins a workflow version through the run message replay state', async () => {
+    const context = createWorkflowRunnerContext();
+
+    async function* versionedWorkflow(
+      ctx: { getVersion(changeId: string, min: number, max: number): Generator<unknown, number> },
+      _input: unknown,
+    ) {
+      return yield* ctx.getVersion('shipping-v2', 1, 3);
+    }
+
+    const result = await handleRunMessage(
+      context,
+      { workflowId: 'wf-get-version', workflowType: 'version-test', input: null },
+      () => versionedWorkflow,
+    );
+
+    expect(result.type).toBe('checkpoint');
+    if (result.type !== 'checkpoint') return;
+    expect(result.operationRequest).toMatchObject({
+      type: 'get-version',
+      changeId: 'shipping-v2',
+      minSupported: 1,
+      maxSupported: 3,
+      version: 3,
+    });
+  });
+
   it('routes worker-side workflow state through operation requests', async () => {
     const context = createWorkflowRunnerContext();
 

@@ -1,6 +1,7 @@
 import { describe, expect, it, mock, spyOn } from 'bun:test';
 
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
+import packageJson from '../package.json' with { type: 'json' };
 import { outcomeOf, rethrow } from '../src/testing/module-scope-scenario.test-support.ts';
 import {
   assembleAllowanceLayers,
@@ -46,27 +47,36 @@ const listedTestFiles = await outcomeOf(async () => {
 
 const benchmarkExclusions = await outcomeOf(async () => {
   const excluded = readTestScriptPathIgnorePatterns();
+  // Measurement benchmarks are `*.bench.ts` files, which `bun test` and the coverage globs never
+  // discover (COR-1739), so the script excludes only the slow lane by pattern.
   expect(excluded).toEqual([
     // The slow lane (`test:slow`) runs these alone, serially; coverage leaves them out with the test.
     '**/*.slow.test.ts',
-    'scripts/benchmarks/activity-completions.test.ts',
-    'scripts/benchmarks/bun-sql.test.ts',
-    'scripts/benchmarks/cold-start.test.ts',
-    'scripts/benchmarks/load-growth-memory.test.ts',
-    'scripts/benchmarks/memory-footprint-growth.test.ts',
-    'scripts/benchmarks/memory-per-workflow.test.ts',
-    'scripts/benchmarks/recovery.test.ts',
-    'scripts/benchmarks/token-stream-latency.test.ts',
-    'scripts/benchmarks/worker-spawn.test.ts',
-    'scripts/benchmarks/workflow-starts.test.ts',
   ]);
   const files = await listCoverageTestFiles();
-  for (const path of excluded) expect(files).not.toContain(path);
   expect(files).not.toContain('src/cli/codegen-typecheck.slow.test.ts');
   expect(files).not.toContain('src/client/empty-registry-overloads-typecheck.slow.test.ts');
+  expect(files.some((file) => file.endsWith('.bench.ts'))).toBe(false);
   // The benchmark directory's unit tests are not measurement runs and stay in the shard.
   expect(files).toContain('scripts/benchmarks/coverage-mode.test.ts');
   expect(files).toContain('scripts/benchmarks/environment-configuration.test.ts');
+});
+
+// COR-1736: Bun's `--parallel` isolate lane crashes in checkpoint-prune.test.ts (oven-sh/bun#29519),
+// so `test` ignores the file in its `--parallel` phase and runs it in a second serial phase. The
+// coverage run has no `--parallel` and must keep counting it, so the mirrored exclusions drop it.
+const serialLaneFile = 'src/core/checkpoint-prune.test.ts';
+const serialLane = await outcomeOf(async () => {
+  const script = packageJson.scripts.test;
+  const [parallelPhase = '', ...serialPhases] = script.split(' && ');
+  expect(parallelPhase).toContain('--parallel=4');
+  expect(parallelPhase).toContain(`--path-ignore-patterns='${serialLaneFile}'`);
+  expect(serialPhases).toHaveLength(1);
+  expect(serialPhases[0]).not.toContain('--parallel');
+  expect(serialPhases[0]).toContain('--report-name=checkpoint-prune');
+  expect(serialPhases[0]?.split(/\s+/)).toContain(`./${serialLaneFile}`);
+  expect(readTestScriptPathIgnorePatterns()).not.toContain(serialLaneFile);
+  expect(await listCoverageTestFiles()).toContain(serialLaneFile);
 });
 
 describe('listCoverageTestFiles', () => {
@@ -74,13 +84,16 @@ describe('listCoverageTestFiles', () => {
     rethrow(listedTestFiles));
 
   /**
-   * The measurement benchmarks that `bun run test` excludes are excluded from the coverage shard
-   * too, and from the same list: the shard reads the script rather than keeping its own copy, so
-   * the two cannot drift. Pinned against the concrete list so a script edit that drops one is a
-   * visible change here rather than a silently widened shard.
+   * The coverage shard excludes what `bun run test` excludes, read from the same script rather
+   * than a copy, and no measurement benchmark: those are `*.bench.ts` files that neither lane
+   * discovers. Pinned against the concrete list so a script edit that adds a path ignore is a
+   * visible change here rather than a silently narrowed shard.
    */
-  it('excludes exactly the measurement benchmarks the test script excludes', () =>
+  it('excludes exactly what the test script excludes, and no benchmark is a coverage test file', () =>
     rethrow(benchmarkExclusions));
+
+  it('keeps the file the test script runs in its serial phase in the coverage shard', () =>
+    rethrow(serialLane));
 });
 
 // The pipe scenario below runs the coverage CLI in a real child process, which takes seconds on a
@@ -244,6 +257,7 @@ describe('parseLcov', () => {
       'weft-schedule-lmdb-workflows-example.ts',
       'weft-schedule-lmdb-input-example.ts',
       'weft-cli-edge-workflows-example.ts',
+      'weft-version-check-text-OPfjjj/module.ts',
       'weft-validate-TA9zHl/conflict.ts',
       'weft-schedule-workflows-2KvtDp/module.ts',
       'weft-schedule-input-onrb4t/module.ts',
@@ -326,13 +340,12 @@ describe('parseLcov', () => {
     }
   });
 
-  it('applies the audited workflow-runner allowance from the top-off layer', () => {
+  it('applies the audited lease-deposition allowance from the top-off layer', () => {
     const coverage = parseLcov(
       [
-        'SF:src/workers/workflow-runner.ts',
+        'SF:src/core/engine/lease-deposition.ts',
         'FNF:1',
         'FNH:0',
-        'DA:523,0',
         'DA:999,1',
         'end_of_record',
       ].join('\n'),
@@ -1144,24 +1157,18 @@ describe('requireUncoveredLines on corvidae-authored allowances', () => {
   const realignedPaths = [
     'scripts/benchmarks/benchmark-subprocess.ts',
     'scripts/benchmarks/workflow-starts-runner.ts',
-    'scripts/check-implementation-file-sizes.ts',
     'scripts/generate-operation-client.ts',
     'src/cli/api-arguments.ts',
     'src/cli/codegen.ts',
-    'src/cli/noun-verb-arguments.ts',
     'src/cli/server-client.ts',
     'src/cli/server-commands.ts',
     'src/conformance/run-conformance.ts',
-    'src/connection.ts',
     'src/server/json-rpc-websocket.ts',
     'src/server/operation-catalog/workflow-adapter.ts',
-    'src/server/operations/bulk-retry-failed-workflows.ts',
     'src/server/runtime/websocket-worker.ts',
     'src/storage/auto.ts',
-    'src/storage/durability/adapter-spec.test-support.ts',
     'src/storage/resolve.ts',
     'src/storage/turso.ts',
-    'src/testing/subprocess-engine.ts',
     'src/testing/worker-fault-injection.test-support.ts',
     // `src/server/operations/get-task-detail.ts` and
     // `src/server/runtime/task-ledger-recovery.ts` were also realigned (new line coordinates

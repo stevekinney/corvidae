@@ -31,6 +31,8 @@
  * it's exposed as an MCP tool.
  */
 
+import { compareCodepoint } from '../../lib/compare-codepoint.ts';
+
 const DIRECT_ROUTE_OPERATION_IDS: ReadonlySet<string> = new Set([
   'healthCheck',
   'getMetrics',
@@ -107,12 +109,6 @@ function indexRestBindings(document: OpenApiDocumentLike): Map<string, RestBindi
   }
 
   return index;
-}
-
-function compareCodepoint(a: string, b: string): number {
-  if (a < b) return -1;
-  if (a > b) return 1;
-  return 0;
 }
 
 function catalogRowTags(

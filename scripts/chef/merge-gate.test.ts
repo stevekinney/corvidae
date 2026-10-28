@@ -1,13 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnWithHangGuard } from '../../testing/testing/src/hang-guard.ts';
@@ -25,25 +17,12 @@ const HEAD = 'a'.repeat(40);
 const OTHER = 'b'.repeat(40);
 const BASE = 'c'.repeat(40);
 const MERGE = 'd'.repeat(40);
-
-/** A log as `gate-run.ts run` writes it; each part can be overridden to build a bad one. */
-function gateLog(
-  parts: { head?: string; start?: string; end?: string; exit?: string } = {},
-): string {
-  return [
-    `HEAD ${parts.head ?? HEAD} LOAD 1.00`,
-    parts.start ?? `TREE_START clean=true head=${HEAD}`,
-    'gate output',
-    parts.end ?? `TREE_END clean=true head=${HEAD}`,
-    parts.exit ?? 'GATE_RC=0',
-    '',
-  ].join('\n');
-}
+const EXPECTED_TREE = '9'.repeat(40);
 
 let sandbox: string;
 let options: MergeGateOptions;
 
-/** A fresh worktree directory holding the configuration, gate log and comment the gate reads. */
+/** A fresh worktree directory holding the configuration and comment the gate reads. */
 function prepare(): { directory: string; prepared: MergeGateOptions } {
   const directory = mkdtempSync(join(tmpdir(), 'merge-gate-'));
   const configPath = join(directory, 'config.json');
@@ -60,15 +39,13 @@ function prepare(): { directory: string; prepared: MergeGateOptions } {
       mergeMethod: 'squash',
     }),
   );
-  writeFileSync(join(directory, 'gate.log'), gateLog());
-  writeFileSync(join(directory, 'comment.md'), 'Gate passed at the head.\n');
+  writeFileSync(join(directory, 'comment.md'), 'Accepted at the head.\n');
   return {
     directory,
     prepared: {
       configPath,
       pr: 12,
       worktree: directory,
-      gateLog: join(directory, 'gate.log'),
       commentFile: join(directory, 'comment.md'),
       dryRun: false,
     },
@@ -89,42 +66,31 @@ interface World {
   head?: string;
   pullRequestHead?: string;
   state?: string;
-  /** One entry per `merge-base --is-ancestor` call; the last repeats. */
-  ancestors?: boolean[];
+  /** `mergeable` per `gh pr view` read; the last repeats. `MERGEABLE` unless a test says otherwise. */
+  mergeable?: string[];
+  mergeStateStatus?: string;
   threadTotal?: number;
   threadNodes?: { id: string; isResolved: boolean }[];
   commentCode?: number;
   mergeCode?: number;
   mergedState?: string;
   mergeCommit?: string | null;
-  diffCode?: number;
   fetchCodes?: number[];
   /** The stderr of a failed fetch; a generic network error unless a test says otherwise. */
   fetchStderr?: string;
-  /** `git merge-tree --write-tree` exit code; 1 (a conflict) unless a test says otherwise. */
+  /** `git merge-tree --write-tree <merge commit>^1 <head>` exit code. */
   mergeTreeCode?: number;
-  /** Files changed from the merge base to HEAD, and from the merge base to origin/main. */
-  pullRequestFiles?: string[];
-  baseFiles?: string[];
-  /** The tree of the squash commit; the clean-merge tree unless a test overrides it. */
+  /** The tree that command computes. */
+  expectedTree?: string;
+  /** The tree of the squash commit; the expected tree unless a test overrides it. */
   mergedTree?: string;
-  /** Files at origin/main by path, as `git show` and `git ls-tree` read them. */
-  baseTree?: Record<string, string>;
-  /** Files at the gated commit; when unset the sandbox files stand for them. */
-  headTree?: Record<string, string>;
-  /** `ancestors` is per call; this one makes the refetch's base differ from the first. */
-  baseShas?: string[];
 }
-
-const MERGE_TREE = '9'.repeat(40);
-const MERGE_BASE = '8'.repeat(40);
 
 function fake(world: World = {}) {
   const calls: string[][] = [];
   const comments: string[] = [];
-  let ancestorCall = 0;
   let fetchCall = 0;
-  let baseCall = 0;
+  let viewCall = 0;
   const nodes = world.threadNodes ?? [{ id: 'T1', isResolved: true }];
   const runner: Runner = (command) => {
     calls.push(command);
@@ -139,86 +105,48 @@ function fake(world: World = {}) {
           stderr: code === 0 ? '' : (world.fetchStderr ?? 'fatal: unable to access'),
         };
       }
-      if (rest[0] === 'rev-parse' && rest[1]?.endsWith('^{tree}'))
-        return { code: 0, stdout: `${world.mergedTree ?? MERGE_TREE}\n`, stderr: '' };
-      if (rest[0] === 'show') {
-        const [ref = '', path = ''] = (rest[1] ?? '').split(':');
-        const content =
-          ref === 'HEAD'
-            ? world.headTree === undefined
-              ? existsSync(join(sandbox, path))
-                ? readFileSync(join(sandbox, path), 'utf8')
-                : undefined
-              : world.headTree[path]
-            : world.baseTree?.[path];
-        return content === undefined
-          ? { code: 128, stdout: '', stderr: 'fatal: path does not exist' }
-          : { code: 0, stdout: content, stderr: '' };
-      }
-      if (rest[0] === 'ls-tree') {
-        const prefix = rest[3] ?? '';
-        const onDisk =
-          rest[2] === 'HEAD' && world.headTree === undefined
-            ? existsSync(join(sandbox, prefix))
-              ? readdirSync(join(sandbox, prefix)).map((name) => `${prefix}${name}/x`)
-              : []
-            : [];
-        const names = [
-          ...Object.keys((rest[2] === 'HEAD' ? world.headTree : world.baseTree) ?? {}),
-          ...onDisk,
-        ]
-          .filter((path) => path.startsWith(prefix))
-          .map((path) => path.slice(0, path.indexOf('/', prefix.length)))
-          .filter((path, index, all) => path !== '' && all.indexOf(path) === index);
-        return { code: 0, stdout: `${names.join('\n')}\n`, stderr: '' };
-      }
       if (rest[0] === 'merge-tree')
         return {
-          code: world.mergeTreeCode ?? 1,
-          stdout: `${MERGE_TREE}\n`,
+          code: world.mergeTreeCode ?? 0,
+          stdout: `${world.expectedTree ?? EXPECTED_TREE}\n`,
+          stderr: world.mergeTreeCode === undefined ? '' : 'CONFLICT',
+        };
+      if (rest[0] === 'rev-parse' && rest[1]?.endsWith('^{tree}'))
+        return {
+          code: 0,
+          stdout: `${world.mergedTree ?? world.expectedTree ?? EXPECTED_TREE}\n`,
           stderr: '',
         };
       if (rest[0] === 'rev-parse')
-        return rest[1] === 'HEAD'
-          ? { code: 0, stdout: `${world.head ?? HEAD}\n`, stderr: '' }
-          : {
-              code: 0,
-              stdout: `${world.baseShas?.[Math.min(baseCall++, world.baseShas.length - 1)] ?? BASE}\n`,
-              stderr: '',
-            };
-      if (rest[0] === 'merge-base' && rest[1] !== '--is-ancestor')
-        return { code: 0, stdout: `${MERGE_BASE}\n`, stderr: '' };
-      if (rest[0] === 'diff' && rest[1] === '--name-only') {
-        const files = rest[4] === 'HEAD' ? world.pullRequestFiles : world.baseFiles;
-        return { code: 0, stdout: `${(files ?? []).join('\n')}\n`, stderr: '' };
-      }
-      if (rest[0] === 'merge-base') {
-        const sequence = world.ancestors ?? [true];
-        const answer = sequence[Math.min(ancestorCall, sequence.length - 1)];
-        ancestorCall += 1;
-        return { code: answer ? 0 : 1, stdout: '', stderr: '' };
-      }
-      if (rest[0] === 'diff') return { code: world.diffCode ?? 0, stdout: '', stderr: '' };
+        return {
+          code: 0,
+          stdout: `${rest[1] === 'HEAD' ? (world.head ?? HEAD) : BASE}\n`,
+          stderr: '',
+        };
     }
     if (program === 'gh' && rest[0] === 'pr' && rest[1] === 'view') {
-      return rest.includes('headRefOid,mergeStateStatus,state')
-        ? {
-            code: 0,
-            stdout: JSON.stringify({
-              headRefOid: world.pullRequestHead ?? HEAD,
-              mergeStateStatus: 'CLEAN',
-              state: world.state ?? 'OPEN',
-            }),
-            stderr: '',
-          }
-        : {
-            code: 0,
-            stdout: JSON.stringify({
-              state: world.mergedState ?? 'MERGED',
-              mergeCommit: world.mergeCommit === null ? null : { oid: world.mergeCommit ?? MERGE },
-            }),
-            stderr: '',
-          };
+      if (!rest.includes('headRefOid,mergeable,mergeStateStatus,state'))
+        return {
+          code: 0,
+          stdout: JSON.stringify({
+            state: world.mergedState ?? 'MERGED',
+            mergeCommit: world.mergeCommit === null ? null : { oid: world.mergeCommit ?? MERGE },
+          }),
+          stderr: '',
+        };
+      const sequence = world.mergeable ?? ['MERGEABLE'];
+      const mergeable = sequence[Math.min(viewCall, sequence.length - 1)];
+      viewCall += 1;
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          headRefOid: world.pullRequestHead ?? HEAD,
+          mergeable,
+          mergeStateStatus: world.mergeStateStatus ?? 'CLEAN',
+          state: world.state ?? 'OPEN',
+        }),
+        stderr: '',
+      };
     }
     if (program === 'gh' && rest[0] === 'api') {
       return {
@@ -246,16 +174,17 @@ function fake(world: World = {}) {
     }
     if (program === 'gh' && rest[0] === 'pr' && rest[1] === 'comment') {
       comments.push(readFileSync(rest[rest.indexOf('--body-file') + 1] as string, 'utf8'));
-    }
-    if (program === 'gh' && rest[0] === 'pr' && rest[1] === 'comment')
       return { code: world.commentCode ?? 0, stdout: '', stderr: 'comment failed' };
+    }
     if (program === 'gh' && rest[0] === 'pr' && rest[1] === 'merge')
       return { code: world.mergeCode ?? 0, stdout: '', stderr: 'not mergeable' };
     throw new Error(`unexpected command ${command.join(' ')}`);
   };
   const posted = () => calls.some((call) => call[0] === 'gh' && call[2] === 'comment');
   const merged = () => calls.some((call) => call[0] === 'gh' && call[2] === 'merge');
-  return { runner, calls, comments, posted, merged };
+  /** Anything that is not git or gh would be a test gate, an install or a build. */
+  const ranGate = () => calls.some((call) => call[0] !== 'git' && call[0] !== 'gh');
+  return { runner, calls, comments, posted, merged, ranGate };
 }
 
 describe('mergeGate', () => {
@@ -283,16 +212,19 @@ describe('mergeGate', () => {
       return { ...world, runner };
     }
 
-    test('refuses to merge while the last batch validate on main failed', () => {
+    test('a red main is a warning in the report, never a refusal', () => {
       writeHealth(1);
       const { runner, merged, posted } = withHistory();
       const report = mergeGate(options, { runner });
-      expect(report.failedStep).toBe('main-health');
-      expect(report.detail).toContain('--fixes-main');
-      expect(merged() || posted()).toBe(false);
+      expect(report.failedStep).toBeNull();
+      expect(report.merged).toBe(true);
+      expect(report.mainHealthWarning).toContain('RED');
+      expect(report.fixesMain).toBeUndefined();
+      expect(merged() && posted()).toBe(true);
+      expect(renderMergeGate(report, false)).toContain('WARNING main health:');
     });
 
-    test('lets the declared fix through, and records that it did', () => {
+    test('records the pull request as a repair when it is declared the fix', () => {
       writeHealth(1);
       options.fixesMain = true;
       const { runner } = withHistory();
@@ -304,150 +236,47 @@ describe('mergeGate', () => {
       ]);
     });
 
-    test('does not mark a pull request as the fix when main is green', () => {
+    test('a dry run warns without recording the fix', () => {
+      writeHealth(1);
+      options.fixesMain = true;
+      const report = mergeGate({ ...options, dryRun: true }, { runner: withHistory().runner });
+      expect(report.mainHealthWarning).toContain('RED');
+      expect(JSON.parse(readFileSync(options.healthFile as string, 'utf8')).fixes).toEqual([]);
+    });
+
+    test('a green main carries no warning and marks no fix', () => {
       writeHealth(0);
       options.fixesMain = true;
       const report = mergeGate(options, { runner: withHistory().runner });
       expect(report.failedStep).toBeNull();
+      expect(report.mainHealthWarning).toBeUndefined();
       expect(report.fixesMain).toBeUndefined();
     });
 
-    const waiver = {
-      reason: 'a test that passes alone on main, failed under load',
-      controlHead: BASE,
-    };
-
-    test('waives a load flake whose control is on main, and records it apart from the fixes', () => {
-      writeHealth(1);
-      options.loadFlakeWaiver = waiver;
-      const { runner } = withHistory();
-      const report = mergeGate(options, { runner, now: () => new Date('2026-10-23T00:00:00Z') });
-      expect(report.failedStep).toBeNull();
-      expect(report.fixesMain).toBeUndefined();
-      expect(report.waiver).toEqual({ ...waiver, blockedHead: redHead });
-      expect(renderMergeGate(report, false)).toContain(
-        `main health: red at ${redHead.slice(0, 12)}; waived as a load flake (control ${BASE.slice(0, 12)}): ${waiver.reason}`,
-      );
-      const health = JSON.parse(readFileSync(options.healthFile as string, 'utf8'));
-      expect(health.fixes).toEqual([]);
-      expect(health.waivers).toEqual([
-        { pr: 12, time: '2026-10-23T00:00:00.000Z', blockedHead: redHead, ...waiver },
-      ]);
-    });
-
-    test('refuses a waiver whose control head is not on main', () => {
-      writeHealth(1);
-      options.loadFlakeWaiver = { ...waiver, controlHead: OTHER };
-      const { runner, merged } = withHistory();
-      const report = mergeGate(options, { runner });
-      expect(report.failedStep).toBe('main-health');
-      expect(report.detail).toContain(`control head ${OTHER.slice(0, 12)} is not on origin/main`);
-      expect(merged()).toBe(false);
-      expect(
-        JSON.parse(readFileSync(options.healthFile as string, 'utf8')).waivers,
-      ).toBeUndefined();
-    });
-
-    test('names the waiver in the refusal, and records nothing for a waiver on a green main', () => {
-      writeHealth(1);
-      expect(mergeGate(options, { runner: withHistory().runner }).detail).toContain(
-        '--waive-load-flake <reason> --control-head <sha>',
-      );
-      writeHealth(0);
-      options.loadFlakeWaiver = waiver;
-      const report = mergeGate(options, { runner: withHistory().runner });
-      expect(report.failedStep).toBeNull();
-      expect(report.waiver).toBeUndefined();
-      expect(
-        JSON.parse(readFileSync(options.healthFile as string, 'utf8')).waivers,
-      ).toBeUndefined();
-    });
-
-    test('a dry run reports the waiver without recording it', () => {
-      writeHealth(1);
-      options.loadFlakeWaiver = waiver;
-      options.dryRun = true;
-      const report = mergeGate(options, { runner: withHistory().runner });
-      expect(report.failedStep).toBeNull();
-      expect(report.waiver?.controlHead).toBe(BASE);
-      expect(
-        JSON.parse(readFileSync(options.healthFile as string, 'utf8')).waivers,
-      ).toBeUndefined();
-    });
-
-    describe('--waive-main-health', () => {
-      const waiveReason = 'main is red from a fixture this change does not touch';
-
-      test('merges past a red main and records the waiver apart from the fixes', () => {
-        writeHealth(1);
-        options.mainHealthWaiver = { reason: waiveReason };
-        const { runner } = withHistory();
-        const report = mergeGate(options, { runner, now: () => new Date('2026-10-23T00:00:00Z') });
-        expect(report.failedStep).toBeNull();
-        expect(report.fixesMain).toBeUndefined();
-        expect(report.waiver).toBeUndefined();
-        expect(report.mainHealthWaiver).toEqual({ reason: waiveReason, blockedHead: redHead });
-        expect(renderMergeGate(report, false)).toContain(
-          `main health: red at ${redHead.slice(0, 12)}; merged under --waive-main-health: ${waiveReason}`,
-        );
-        const health = JSON.parse(readFileSync(options.healthFile as string, 'utf8'));
-        expect(health.fixes).toEqual([]);
-        expect(health.waivers).toEqual([
-          { pr: 12, time: '2026-10-23T00:00:00.000Z', blockedHead: redHead, reason: waiveReason },
-        ]);
-      });
-
-      test('the refusal names the flag, and a green main records nothing', () => {
-        writeHealth(1);
-        expect(mergeGate(options, { runner: withHistory().runner }).detail).toContain(
-          '--waive-main-health --reason <text>',
-        );
-        writeHealth(0);
-        options.mainHealthWaiver = { reason: waiveReason };
-        const report = mergeGate(options, { runner: withHistory().runner });
-        expect(report.failedStep).toBeNull();
-        expect(report.mainHealthWaiver).toBeUndefined();
-        expect(
-          JSON.parse(readFileSync(options.healthFile as string, 'utf8')).waivers,
-        ).toBeUndefined();
-      });
-
-      test('a dry run reports the waiver without recording it', () => {
-        writeHealth(1);
-        options.mainHealthWaiver = { reason: waiveReason };
-        options.dryRun = true;
-        const report = mergeGate(options, { runner: withHistory().runner });
-        expect(report.failedStep).toBeNull();
-        expect(report.mainHealthWaiver?.blockedHead).toBe(redHead);
-        expect(
-          JSON.parse(readFileSync(options.healthFile as string, 'utf8')).waivers,
-        ).toBeUndefined();
-      });
-    });
-
-    test('a failure at a head that is not on main does not block', () => {
+    test('a failure at a head that is not on main is not a warning either', () => {
       writeHealth(1);
       const report = mergeGate(options, { runner: withHistory([BASE]).runner });
       expect(report.failedStep).toBeNull();
+      expect(report.mainHealthWarning).toBeUndefined();
     });
   });
 
-  test('runs the nine steps in order and reports the merged, tree-equal result', () => {
-    const { runner, calls } = fake();
+  test('runs the steps in order and reports the merged, tree-equal result', () => {
+    const { runner, calls, ranGate } = fake();
     const report = mergeGate(options, { runner });
     expect(report).toEqual({
       pr: 12,
       head: HEAD,
       base: BASE,
-      gateRc: 0,
+      mergeable: 'MERGEABLE',
       threads: { seen: 1, total: 1, unresolved: 0 },
       merged: true,
       mergeCommit: MERGE,
       treesMatch: true,
-      basePath: 'contains',
       failedStep: null,
       detail: null,
     });
+    expect(ranGate()).toBe(false);
     const names = calls.map((call) =>
       call[0] === 'gh' ? `gh ${call[1]} ${call[2] ?? ''}`.trim() : `git ${call[1]}`,
     );
@@ -456,19 +285,15 @@ describe('mergeGate', () => {
       'git rev-parse',
       'git rev-parse',
       'gh pr view',
-      'git merge-base',
       'gh api graphql',
-      'git fetch',
-      'git merge-base',
-      'git rev-parse',
       'gh pr comment',
       'gh pr merge',
       'gh pr view',
       'git fetch',
-      'git diff',
+      'git merge-tree',
+      'git rev-parse',
     ]);
-    const merge = calls.find((call) => call[2] === 'merge') ?? [];
-    expect(merge).toEqual([
+    expect(calls.find((call) => call[2] === 'merge')).toEqual([
       'gh',
       'pr',
       'merge',
@@ -479,22 +304,12 @@ describe('mergeGate', () => {
       '--match-head-commit',
       HEAD,
     ]);
-    expect(calls.find((call) => call[1] === 'diff')).toEqual([
+    expect(calls.find((call) => call[1] === 'merge-tree')).toEqual([
       'git',
-      'diff',
-      '--quiet',
-      MERGE,
+      'merge-tree',
+      '--write-tree',
+      `${MERGE}^1`,
       HEAD,
-    ]);
-    expect(calls.find((call) => call[2] === 'comment')).toEqual([
-      'gh',
-      'pr',
-      'comment',
-      '12',
-      '--repo',
-      'acme/widgets',
-      '--body-file',
-      expect.stringContaining('comment.md'),
     ]);
   });
 
@@ -509,73 +324,118 @@ describe('mergeGate', () => {
     expect(renderMergeGate(report, true)).toContain('Dry run: every check passed');
   });
 
-  test('stops when the worktree head is not the pull request head, before any write', () => {
-    const world = fake({ pullRequestHead: OTHER });
-    const report = mergeGate(options, { runner: world.runner });
-    expect(report.failedStep).toBe('head');
-    expect(report.detail).toContain('pull request head');
-    expect(world.posted()).toBe(false);
-    expect(world.merged()).toBe(false);
-  });
-
-  test('stops when the pull request is not open', () => {
-    const report = mergeGate(options, { runner: fake({ state: 'MERGED' }).runner });
-    expect(report).toMatchObject({ failedStep: 'head' });
-    expect(report.detail).toContain('MERGED');
-  });
-
-  test('stops when HEAD does not contain the default branch', () => {
-    const world = fake({ ancestors: [false] });
-    const report = mergeGate(options, { runner: world.runner });
-    expect(report.failedStep).toBe('contains-base');
-    expect(world.posted()).toBe(false);
-  });
-
-  test('the gate log must hold exit code 0 at the pull request head', () => {
-    const cases: [string, string][] = [
-      [`HEAD ${HEAD} LOAD 1\nstill running\n`, 'no exit code'],
-      [gateLog({ exit: 'GATE_RC=1' }), 'exited 1'],
-      [gateLog({ head: OTHER }), 'not at'],
-      ['GATE_RC=0\n', 'unknown commit'],
-    ];
-    for (const [log, message] of cases) {
-      writeFileSync(options.gateLog, log);
-      const world = fake();
+  describe('a head mismatch refuses', () => {
+    test('when the worktree head is not the pull request head, before any write', () => {
+      const world = fake({ pullRequestHead: OTHER });
       const report = mergeGate(options, { runner: world.runner });
-      expect(report.failedStep, log).toBe('gate');
-      expect(report.detail, log).toContain(message);
+      expect(report.failedStep).toBe('head');
+      expect(report.detail).toContain('pull request head');
+      expect(world.posted()).toBe(false);
       expect(world.merged()).toBe(false);
-    }
-  });
+    });
 
-  test('the worktree must be clean at the start and end of the gate run, with HEAD unmoved', () => {
-    const cases: [string, string][] = [
-      [gateLog({ start: `TREE_START clean=false head=${HEAD}` }), 'dirty at the start'],
-      [gateLog({ end: `TREE_END clean=false head=${HEAD}` }), 'dirty at the end'],
-      [gateLog({ start: `TREE_START clean=unknown head=${HEAD}` }), 'unknown state at the start'],
-      [gateLog({ end: `TREE_END clean=true head=${OTHER}` }), 'at the end of the gate run, not'],
-      [gateLog({ start: `TREE_START clean=true head=${OTHER}` }), 'at the start of the gate run'],
-      // A log from before the tree lines were written has no basis to call the tree clean.
-      [`HEAD ${HEAD} LOAD 1.00\nGATE_RC=0\n`, 'no single TREE_START line'],
-      [gateLog({ end: '' }).replace('\n\n', '\n'), 'no single TREE_END line'],
-    ];
-    for (const [log, message] of cases) {
-      writeFileSync(options.gateLog, log);
+    test('when the pull request head is not the head pinned at acceptance', () => {
       const world = fake();
-      const report = mergeGate(options, { runner: world.runner });
-      expect(report.failedStep, log).toBe('gate');
-      expect(report.detail, log).toContain(message);
-      expect(world.posted(), log).toBe(false);
-      expect(world.merged(), log).toBe(false);
-    }
+      const report = mergeGate({ ...options, expectedHead: OTHER }, { runner: world.runner });
+      expect(report.failedStep).toBe('head');
+      expect(report.detail).toContain('pinned at acceptance');
+      expect(world.posted()).toBe(false);
+      expect(world.merged()).toBe(false);
+    });
+
+    test('and a pinned head that matches merges', () => {
+      const report = mergeGate({ ...options, expectedHead: HEAD }, { runner: fake().runner });
+      expect(report.failedStep).toBeNull();
+    });
+
+    test('when the pull request is not open', () => {
+      const report = mergeGate(options, { runner: fake({ state: 'MERGED' }).runner });
+      expect(report).toMatchObject({ failedStep: 'head' });
+      expect(report.detail).toContain('MERGED');
+    });
   });
 
-  test('a log of two runs is refused even when the last run passed at the right head', () => {
-    // The first run failed at another head; pairing its head with the second run's pass is the bug.
-    writeFileSync(options.gateLog, `HEAD ${OTHER} LOAD 1\nGATE_RC=1\n${gateLog()}`);
-    const report = mergeGate(options, { runner: fake().runner });
-    expect(report.failedStep).toBe('gate');
-    expect(report.detail).toContain('2 HEAD lines');
+  describe('a conflict with the base refuses', () => {
+    test('when GitHub reports the pull request CONFLICTING', () => {
+      const world = fake({ mergeable: ['CONFLICTING'] });
+      const report = mergeGate(options, { runner: world.runner });
+      expect(report.failedStep).toBe('conflict');
+      expect(report.detail).toContain('conflicts with origin/main');
+      expect(world.posted()).toBe(false);
+      expect(world.merged()).toBe(false);
+      expect(world.ranGate()).toBe(false);
+    });
+
+    test('when the merge state is DIRTY', () => {
+      const world = fake({ mergeStateStatus: 'DIRTY' });
+      expect(mergeGate(options, { runner: world.runner }).failedStep).toBe('conflict');
+      expect(world.merged()).toBe(false);
+    });
+
+    test('after waiting while GitHub still computes the answer', () => {
+      const world = fake({ mergeable: ['UNKNOWN', 'UNKNOWN', 'CONFLICTING'] });
+      const sleeps: number[] = [];
+      const report = mergeGate(options, {
+        runner: world.runner,
+        sleep: (milliseconds) => sleeps.push(milliseconds),
+      });
+      expect(report.failedStep).toBe('conflict');
+      expect(sleeps).toHaveLength(2);
+    });
+  });
+
+  describe('a base that moved without a conflict', () => {
+    test('merges with no gate, install or build run, and no main merged in', () => {
+      const world = fake({ mergeStateStatus: 'BEHIND' });
+      const report = mergeGate(options, { runner: world.runner });
+      expect(report).toMatchObject({ failedStep: null, merged: true, treesMatch: true });
+      expect(world.ranGate()).toBe(false);
+      expect(
+        world.calls.some(
+          (call) => call[0] === 'git' && ['merge', 'push', 'reset'].includes(call[1] ?? ''),
+        ),
+      ).toBe(false);
+    });
+
+    test('waits out an UNKNOWN mergeability and then merges', () => {
+      const world = fake({ mergeable: ['UNKNOWN', 'MERGEABLE'] });
+      const sleeps: number[] = [];
+      const report = mergeGate(options, {
+        runner: world.runner,
+        sleep: (milliseconds) => sleeps.push(milliseconds),
+      });
+      expect(report).toMatchObject({ failedStep: null, merged: true, mergeable: 'MERGEABLE' });
+      expect(sleeps).toEqual([2000]);
+    });
+
+    test('a mergeability that stays UNKNOWN stops after five reads, before any write', () => {
+      const world = fake({ mergeable: ['UNKNOWN'] });
+      const sleeps: number[] = [];
+      const report = mergeGate(options, {
+        runner: world.runner,
+        sleep: (milliseconds) => sleeps.push(milliseconds),
+      });
+      expect(report.failedStep).toBe('mergeable');
+      expect(sleeps).toHaveLength(4);
+      expect(world.calls.filter((call) => call[2] === 'view')).toHaveLength(5);
+      expect(world.posted() || world.merged()).toBe(false);
+    });
+
+    test('confirms the squash commit against the head merged into the commit it landed on', () => {
+      const wrong = fake({ expectedTree: EXPECTED_TREE, mergedTree: OTHER });
+      const report = mergeGate(options, { runner: wrong.runner });
+      expect(report).toMatchObject({
+        failedStep: 'confirm',
+        merged: true,
+        mergeCommit: MERGE,
+        treesMatch: false,
+      });
+      const failed = fake({ mergeTreeCode: 1 });
+      expect(mergeGate(options, { runner: failed.runner })).toMatchObject({
+        failedStep: 'confirm',
+        merged: true,
+      });
+    });
   });
 
   test('an unresolved thread, and a listing short of the total, both stop the merge', () => {
@@ -588,6 +448,7 @@ describe('mergeGate', () => {
     const first = mergeGate(options, { runner: unresolved.runner });
     expect(first.failedStep).toBe('threads');
     expect(first.detail).toContain('1 review thread(s) are unresolved');
+    expect(unresolved.posted() || unresolved.merged()).toBe(false);
 
     // Every visible thread is resolved, but GitHub reports more than were read.
     const short = fake({ threadTotal: 3 });
@@ -598,20 +459,9 @@ describe('mergeGate', () => {
     expect(short.merged()).toBe(false);
   });
 
-  test('the base moving after the first check stops before the comment and the merge', () => {
-    const world = fake({ ancestors: [true, false] });
-    const report = mergeGate(options, { runner: world.runner });
-    expect(report.failedStep).toBe('refetch');
-    expect(world.posted()).toBe(false);
-    expect(world.merged()).toBe(false);
-  });
-
-  test('a failed fetch is named, at either fetch', () => {
+  test('a failed fetch is named', () => {
     expect(mergeGate(options, { runner: fake({ fetchCodes: [128] }).runner }).failedStep).toBe(
       'fetch',
-    );
-    expect(mergeGate(options, { runner: fake({ fetchCodes: [0, 128] }).runner }).failedStep).toBe(
-      'refetch',
     );
   });
 
@@ -654,14 +504,10 @@ describe('mergeGate', () => {
     expect(report.merged).toBe(false);
   });
 
-  test('a merge whose tree differs from the gated head is exit 1 with merged true', () => {
-    const report = mergeGate(options, { runner: fake({ diffCode: 1 }).runner });
-    expect(report).toMatchObject({
-      failedStep: 'confirm',
-      merged: true,
-      mergeCommit: MERGE,
-      treesMatch: false,
-    });
+  test('the posted comment is the comment file, with no base line', () => {
+    const world = fake();
+    mergeGate(options, { runner: world.runner });
+    expect(world.comments).toEqual(['Accepted at the head.\n']);
   });
 
   test('confirms the merged state and the merge commit', () => {
@@ -786,8 +632,6 @@ describe('spend record', () => {
         '12',
         '--worktree',
         options.worktree,
-        '--gate-log',
-        options.gateLog,
         '--comment-file',
         options.commentFile,
         '--usage-log',
@@ -828,8 +672,6 @@ describe('run', () => {
     '12',
     '--worktree',
     options.worktree,
-    '--gate-log',
-    options.gateLog,
     '--comment-file',
     options.commentFile,
   ];
@@ -841,6 +683,16 @@ describe('run', () => {
     const failing = run(argv(), { runner: fake({ pullRequestHead: OTHER }).runner });
     expect(failing.code).toBe(1);
     expect(failing.output).toContain('FAILED at head');
+    const conflicting = run(argv(), { runner: fake({ mergeable: ['CONFLICTING'] }).runner });
+    expect(conflicting.code).toBe(1);
+    expect(conflicting.output).toContain('FAILED at conflict');
+  });
+
+  test('--head pins the head the pull request must have', () => {
+    expect(run([...argv(), '--head', HEAD], { runner: fake().runner }).code).toBe(0);
+    const pinned = run([...argv(), '--head', OTHER], { runner: fake().runner });
+    expect(pinned.code).toBe(1);
+    expect(pinned.output).toContain('FAILED at head');
   });
 
   test('rejects bad usage before touching anything', () => {
@@ -849,288 +701,17 @@ describe('run', () => {
     expect(() => run([...argv(), 'extra'], { runner })).toThrow(UsageError);
     expect(() => run([...argv(), '--pr', 'x'], { runner })).toThrow(UsageError);
     expect(() => run([...argv(), '--bogus'], { runner })).toThrow(UsageError);
-    expect(() => run([...argv(), '--waive-load-flake', 'a load flake'], { runner })).toThrow(
-      'go together',
+    expect(() => run([...argv(), '--head', 'abc123'], { runner })).toThrow(
+      'is not a full commit SHA',
     );
-    expect(() => run([...argv(), '--control-head', BASE], { runner })).toThrow('go together');
-    expect(() =>
-      run([...argv(), '--waive-load-flake', ' ', '--control-head', BASE], { runner }),
-    ).toThrow('needs a reason');
-    expect(() =>
-      run([...argv(), '--waive-load-flake', 'a load flake', '--control-head', 'c'.repeat(12)], {
-        runner,
-      }),
-    ).toThrow('is not a full commit SHA');
-    expect(() =>
-      run(
-        [...argv(), '--fixes-main', '--waive-load-flake', 'a load flake', '--control-head', BASE],
-        { runner },
-      ),
-    ).toThrow('are exclusive');
-    expect(() => run([...argv(), '--waive-main-health'], { runner })).toThrow('needs a --reason');
-    expect(() => run([...argv(), '--waive-main-health', '--reason', '  '], { runner })).toThrow(
-      'needs a --reason',
-    );
-    expect(() => run([...argv(), '--reason', 'main is red'], { runner })).toThrow(
-      'applies only with --waive-main-health',
-    );
-    expect(() =>
-      run([...argv(), '--fixes-main', '--waive-main-health', '--reason', 'main is red'], {
-        runner,
-      }),
-    ).toThrow('are exclusive');
-    expect(() =>
-      run(
-        [
-          ...argv(),
-          '--waive-main-health',
-          '--reason',
-          'main is red',
-          '--waive-load-flake',
-          'a load flake',
-          '--control-head',
-          BASE,
-        ],
-        { runner },
-      ),
-    ).toThrow('are exclusive');
+    // The gate and the waivers are gone: their flags are unknown options now.
+    for (const removed of ['--gate-log', '--waive-load-flake', '--control-head', '--reason'])
+      expect(() => run([...argv(), removed, 'x'], { runner })).toThrow(UsageError);
+    for (const removed of ['--waive-main-health'])
+      expect(() => run([...argv(), removed], { runner })).toThrow(UsageError);
     writeFileSync(options.commentFile, '  \n');
     expect(() => run(argv(), { runner })).toThrow('is empty');
-    expect(() =>
-      run(
-        argv().map((part) => (part === options.gateLog ? '/missing.log' : part)),
-        { runner },
-      ),
-    ).toThrow('No such gate log');
     expect(calls).toEqual([]);
-  });
-});
-
-describe('a head that does not contain the base', () => {
-  /** Two packages where `b` depends on `a`, an unrelated `c`, and a lockfile, in the worktree. */
-  function writeWorkspaces() {
-    const manifests: [string, Record<string, unknown>][] = [
-      ['packages/a', { name: '@x/a' }],
-      ['packages/b', { name: '@x/b', dependencies: { '@x/a': 'workspace:*' } }],
-      ['packages/c', { name: '@x/c' }],
-    ];
-    for (const [directory, manifest] of manifests) {
-      mkdirSync(join(sandbox, directory), { recursive: true });
-      writeFileSync(join(sandbox, directory, 'package.json'), JSON.stringify(manifest));
-    }
-    writeFileSync(
-      join(sandbox, 'turbo.json'),
-      JSON.stringify({
-        globalDependencies: ['tsconfig.json'],
-        tasks: {
-          lint: {
-            inputs: ['$TURBO_DEFAULT$', '$TURBO_ROOT$/scripts/check-documentation-coverage.ts'],
-          },
-          test: { inputs: ['$TURBO_ROOT$/scripts/test-duration-allowlist.json'] },
-        },
-      }),
-    );
-  }
-  beforeEach(writeWorkspaces);
-
-  const cleanWorld = (world: World = {}): World => ({
-    ancestors: [false],
-    mergeTreeCode: 0,
-    pullRequestFiles: ['packages/a/source.ts'],
-    baseFiles: ['packages/c/other.ts'],
-    ...world,
-  });
-
-  test('accepts a clean merge whose intervening commits touch no affected workspace', () => {
-    const world = fake(cleanWorld());
-    const report = mergeGate(options, { runner: world.runner });
-    expect(report).toMatchObject({
-      failedStep: null,
-      merged: true,
-      basePath: 'merge-tree',
-      mergeTree: MERGE_TREE,
-      treesMatch: true,
-    });
-    const merge = world.calls.find((call) => call[2] === 'merge') ?? [];
-    expect(merge.slice(-2)).toEqual(['--match-head-commit', HEAD]);
-    expect(world.comments[0]).toContain('Base: merges cleanly with origin/main');
-    expect(world.comments[0]).toContain('intervening commits touch no affected workspace');
-    expect(renderMergeGate(report, false)).toContain('base path: merge-tree');
-  });
-
-  test('compares the squash commit with the merge-tree result, not with the head', () => {
-    const world = fake(cleanWorld({ mergedTree: 'f'.repeat(40) }));
-    const report = mergeGate(options, { runner: world.runner });
-    expect(report).toMatchObject({ failedStep: 'confirm', merged: true, treesMatch: false });
-    expect(world.calls.some((call) => call[1] === 'diff' && call[2] === '--quiet')).toBe(false);
-  });
-
-  test('refuses a clean merge whose base commits touch a workspace the pull request changes', () => {
-    const world = fake(cleanWorld({ baseFiles: ['packages/a/other.ts'] }));
-    const report = mergeGate(options, { runner: world.runner });
-    expect(report.failedStep).toBe('contains-base');
-    expect(report.detail).toContain('packages/a/other.ts');
-    expect(world.posted() || world.merged()).toBe(false);
-  });
-
-  test('refuses when base commits touch a dependent or a dependency of a changed workspace', () => {
-    const dependent = fake(cleanWorld({ baseFiles: ['packages/b/index.ts'] }));
-    expect(mergeGate(options, { runner: dependent.runner }).detail).toContain(
-      'packages/b/index.ts',
-    );
-    const dependency = fake(
-      cleanWorld({ pullRequestFiles: ['packages/b/index.ts'], baseFiles: ['packages/a/x.ts'] }),
-    );
-    expect(mergeGate(options, { runner: dependency.runner }).failedStep).toBe('contains-base');
-  });
-
-  test('refuses a clean merge whose base commits touch bun.lock or another global file', () => {
-    for (const path of [
-      'bun.lock',
-      'package.json',
-      'turbo.json',
-      'tsconfig.base.json',
-      'tsconfig.json',
-    ]) {
-      const world = fake(cleanWorld({ baseFiles: ['packages/c/other.ts', path] }));
-      const report = mergeGate(options, { runner: world.runner });
-      expect(report.failedStep, path).toBe('contains-base');
-      expect(report.detail, path).toContain(path);
-      expect(world.merged(), path).toBe(false);
-    }
-  });
-
-  test('a pull request that changes bun.lock is affected by every intervening change', () => {
-    const world = fake(cleanWorld({ pullRequestFiles: ['bun.lock'] }));
-    expect(mergeGate(options, { runner: world.runner }).failedStep).toBe('contains-base');
-  });
-
-  test('root files affect a pull request only when it changes root files too', () => {
-    const accepted = fake(cleanWorld({ baseFiles: ['scripts/chef/note.ts'] }));
-    expect(mergeGate(options, { runner: accepted.runner }).failedStep).toBeNull();
-    const refused = fake(
-      cleanWorld({
-        pullRequestFiles: ['scripts/chef/gate-run.ts'],
-        baseFiles: ['scripts/chef/note.ts'],
-      }),
-    );
-    expect(mergeGate(options, { runner: refused.runner }).failedStep).toBe('contains-base');
-  });
-
-  test('root files that turbo.json names as task inputs, and bunfig.toml, touch everything', () => {
-    for (const path of [
-      'scripts/check-documentation-coverage.ts',
-      'scripts/test-duration-allowlist.json',
-      'bunfig.toml',
-    ]) {
-      const onMain = fake(cleanWorld({ baseFiles: ['packages/c/other.ts', path] }));
-      const forward = mergeGate(options, { runner: onMain.runner });
-      expect(forward.failedStep, path).toBe('contains-base');
-      expect(forward.detail, path).toContain(path);
-      const onPullRequest = fake(
-        cleanWorld({ pullRequestFiles: [path], baseFiles: ['packages/c/other.ts'] }),
-      );
-      expect(mergeGate(options, { runner: onPullRequest.runner }).failedStep, path).toBe(
-        'contains-base',
-      );
-    }
-  });
-
-  test('a dependency edge added on the default branch counts', () => {
-    const baseTree = {
-      'packages/a/package.json': JSON.stringify({ name: '@x/a' }),
-      'packages/c/package.json': JSON.stringify({
-        name: '@x/c',
-        dependencies: { '@x/a': 'workspace:*' },
-      }),
-    };
-    const world = fake(cleanWorld({ baseTree, baseFiles: ['packages/c/other.ts'] }));
-    const report = mergeGate(options, { runner: world.runner });
-    expect(report.failedStep).toBe('contains-base');
-    expect(report.detail).toContain('packages/c/other.ts');
-    expect(world.merged()).toBe(false);
-  });
-
-  test('the dependencies of a dependent workspace count as affected', () => {
-    mkdirSync(join(sandbox, 'packages/d'), { recursive: true });
-    writeFileSync(
-      join(sandbox, 'packages/b/package.json'),
-      JSON.stringify({
-        name: '@x/b',
-        dependencies: { '@x/a': 'workspace:*', '@x/c': 'workspace:*' },
-      }),
-    );
-    const world = fake(cleanWorld({ baseFiles: ['packages/c/other.ts'] }));
-    const report = mergeGate(options, { runner: world.runner });
-    expect(report.failedStep).toBe('contains-base');
-    expect(report.detail).toContain('packages/c/other.ts');
-  });
-
-  test('the head side of the graph comes from the gated commit, not a dirty worktree', () => {
-    const committed = {
-      'packages/a/package.json': JSON.stringify({ name: '@x/a' }),
-      'packages/b/package.json': JSON.stringify({
-        name: '@x/b',
-        dependencies: { '@x/a': 'workspace:*' },
-      }),
-      'packages/c/package.json': JSON.stringify({ name: '@x/c' }),
-    };
-    // The worktree drops b's dependency on a; the commit still has it, so a change to b refuses.
-    writeFileSync(join(sandbox, 'packages/b/package.json'), JSON.stringify({ name: '@x/b' }));
-    const world = fake(
-      cleanWorld({
-        headTree: committed,
-        pullRequestFiles: ['packages/a/source.ts'],
-        baseFiles: ['packages/b/other.ts'],
-      }),
-    );
-    expect(mergeGate(options, { runner: world.runner }).failedStep).toBe('contains-base');
-    // And a dependency the worktree invents does not make an unrelated change refuse.
-    writeFileSync(
-      join(sandbox, 'packages/c/package.json'),
-      JSON.stringify({ name: '@x/c', dependencies: { '@x/a': 'workspace:*' } }),
-    );
-    const unrelated = fake(cleanWorld({ headTree: committed, baseFiles: ['packages/c/other.ts'] }));
-    expect(mergeGate(options, { runner: unrelated.runner }).failedStep).toBeNull();
-  });
-
-  test('the posted Base line names the final base check after the refetch', () => {
-    const FINAL = 'e'.repeat(40);
-    const world = fake(cleanWorld({ ancestors: [true, false], baseShas: [BASE, FINAL] }));
-    const report = mergeGate(options, { runner: world.runner });
-    expect(report).toMatchObject({ failedStep: null, basePath: 'merge-tree' });
-    expect(world.comments[0]).toContain('Base: merges cleanly with origin/main eeeeeeeeeeee');
-    expect(world.comments[0]).not.toContain('contains origin/main');
-  });
-
-  test('refuses a conflicting merge, naming the failed condition', () => {
-    const world = fake(cleanWorld({ mergeTreeCode: 1 }));
-    const report = mergeGate(options, { runner: world.runner });
-    expect(report.failedStep).toBe('contains-base');
-    expect(report.detail).toContain('does not merge cleanly');
-    expect(world.posted() || world.merged()).toBe(false);
-  });
-
-  test('rechecks the fallback after the comment, so a base that moved onto the pull request stops it', () => {
-    const world = cleanWorld();
-    const inner = fake(world);
-    let diffCalls = 0;
-    const runner: Runner = (command, runnerOptions) => {
-      if (command[1] === 'diff' && command[2] === '--name-only' && command[5] !== 'HEAD') {
-        diffCalls += 1;
-        if (diffCalls > 1) return { code: 0, stdout: 'packages/a/new.ts\n', stderr: '' };
-      }
-      return inner.runner(command, runnerOptions);
-    };
-    const report = mergeGate(options, { runner });
-    expect(report.failedStep).toBe('refetch');
-    expect(inner.merged()).toBe(false);
-  });
-
-  test('a head that contains the base still passes with the contains path', () => {
-    const report = mergeGate(options, { runner: fake({ ancestors: [true] }).runner });
-    expect(report).toMatchObject({ failedStep: null, basePath: 'contains' });
-    expect(report.mergeTree).toBeUndefined();
   });
 });
 

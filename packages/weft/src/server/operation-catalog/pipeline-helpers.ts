@@ -131,21 +131,17 @@ export function classifyEngineError(
   operation?: { name: string; producibleFaults?: ReadonlyArray<string> },
 ): OperationFault {
   if (isOperationFault(error)) {
-    try {
-      enforceProducibleFaults(operation, error.code);
-    } catch (enforcementError) {
-      if (isUndeclaredFaultError(enforcementError)) {
-        // Strict mode caught an undeclared fault. Surface as
-        // EngineFailure with the diagnostic message so the test runner
-        // can assert against `result.fault.message` and the test fails
-        // loudly instead of silently passing through the original code.
-        return {
-          code: 'EngineFailure',
-          message: enforcementError.message,
-          data: {},
-        };
-      }
-      throw enforcementError;
+    const violation = findUndeclaredFault(operation, error.code);
+    if (violation !== null) {
+      // Strict mode caught an undeclared fault. Surface as
+      // EngineFailure with the diagnostic message so the test runner
+      // can assert against `result.fault.message` and the test fails
+      // loudly instead of silently passing through the original code.
+      return {
+        code: 'EngineFailure',
+        message: violation.message,
+        data: {},
+      };
     }
     return error;
   }
@@ -177,11 +173,11 @@ export function classifyEngineError(
 }
 
 /**
- * Sentinel thrown by `enforceProducibleFaults` in strict mode when an
+ * Diagnostic returned by `findUndeclaredFault` in strict mode when an
  * operation raises a fault code that isn't in its `producibleFaults`
- * declaration. The dispatcher catches this in `executeOperation` and
- * surfaces it as a generic `EngineFailure` so test failures point at the
- * declaration mismatch rather than silently passing through.
+ * declaration. `classifyEngineError` surfaces its message as an
+ * `EngineFailure` so test failures point at the declaration mismatch
+ * rather than silently passing through.
  */
 class UndeclaredFaultError extends WeftError<'UndeclaredFaultError'> {
   readonly operationName: string;
@@ -199,27 +195,22 @@ class UndeclaredFaultError extends WeftError<'UndeclaredFaultError'> {
   }
 }
 
-export function isUndeclaredFaultError(value: unknown): value is UndeclaredFaultError {
-  return value instanceof UndeclaredFaultError;
-}
-
-function enforceProducibleFaults(
+function findUndeclaredFault(
   operation: { name: string; producibleFaults?: ReadonlyArray<string> } | undefined,
   code: string,
-): void {
-  if (operation === undefined) return;
-  if (UNIVERSAL_PRODUCIBLE_FAULTS.has(code)) return;
+): UndeclaredFaultError | null {
+  if (operation === undefined) return null;
+  if (UNIVERSAL_PRODUCIBLE_FAULTS.has(code)) return null;
   const declared = operation.producibleFaults;
-  if (declared !== undefined && declared.includes(code)) return;
+  if (declared !== undefined && declared.includes(code)) return null;
 
   const environment = resolveServerEnvironment();
   const isStrict = environment.weftStrictFaults || environment.nodeEnv !== 'production';
   if (isStrict) {
-    // Strict mode: throw a hard error so the regression is observable
-    // through the test framework's normal failure path. The dispatcher
-    // catches `UndeclaredFaultError` separately so the message reaches
-    // test output instead of being swallowed as a bare `EngineFailure`.
-    throw new UndeclaredFaultError(operation.name, code);
+    // Strict mode: hand the diagnostic back so the regression is observable
+    // through the test framework's normal failure path, with its message
+    // intact instead of swallowed as a bare `EngineFailure`.
+    return new UndeclaredFaultError(operation.name, code);
   }
   // Production: log only. Original fault is preserved on the wire so
   // clients keep their actionable Conflict semantics.
@@ -228,6 +219,7 @@ function enforceProducibleFaults(
       "Add it to the operation's `producibleFaults` array or migrate the throw to " +
       '`raiseFault(operation, fault)`.',
   );
+  return null;
 }
 
 function classifyErrorMessage(error: Error): OperationFault {

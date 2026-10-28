@@ -11,8 +11,8 @@ import { getCommittedCheckpointBytes } from '../checkpoint-commit-snapshots.ts';
 import { WorkflowAlreadyExistsError } from '../errors.ts';
 import { recordExecutionAttemptIdentity } from '../execution-attempts.ts';
 import {
-  commitFencedEngineWrite,
   commitFencedEngineWriteAllowingPreconditionFailure,
+  commitFencedEngineWriteWithoutPreconditions,
 } from '../fenced-write.ts';
 import type { EngineInternals } from '../internals.ts';
 import { WorkflowRevisionUnavailableError } from '../revision-errors.ts';
@@ -215,12 +215,11 @@ async function persistStartBatch(
   // not a regression.
   const fenceWorkflowId = isDelayedStart ? null : workflowId;
   if (conditions.length === 0) {
-    await commitFencedEngineWrite(
+    await commitFencedEngineWriteWithoutPreconditions(
       internals,
       fenceWorkflowId,
       startOperations,
-      [],
-      () => new Error('Workflow start lost its CAS race.'),
+      'Workflow start',
     );
     return 'committed';
   }

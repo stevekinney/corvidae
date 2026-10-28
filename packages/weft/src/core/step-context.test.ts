@@ -110,6 +110,38 @@ describe('step-context', () => {
     expect(await throwingRejectionOf(handle.result())).toThrow('Step failed intentionally');
   });
 
+  it('fails the workflow with a string rejection as its message', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+
+    engine.register(
+      workflow({ name: 'string-rejection' }).execute(
+        compileStepWorkflow(async (_ctx: StepWorkflowContext, _input: unknown) => {
+          return Promise.reject('plain string failure');
+        }),
+      ),
+    );
+
+    const handle = await engine.start('string-rejection', {});
+    expect(await throwingRejectionOf(handle.result())).toThrow('plain string failure');
+  });
+
+  it('fails the workflow with the JSON form of a non-Error object rejection', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+
+    engine.register(
+      workflow({ name: 'object-rejection' }).execute(
+        compileStepWorkflow(async (_ctx: StepWorkflowContext, _input: unknown) => {
+          return Promise.reject({ code: 'E_BAD', retryable: false });
+        }),
+      ),
+    );
+
+    const handle = await engine.start('object-rejection', {});
+    expect(await throwingRejectionOf(handle.result())).toThrow(
+      '{"code":"E_BAD","retryable":false}',
+    );
+  });
+
   it('auto-detects step functions in register()', async () => {
     await using engine = new Engine({ storage: new MemoryStorage() });
 

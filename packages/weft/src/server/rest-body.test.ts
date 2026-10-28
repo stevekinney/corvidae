@@ -32,6 +32,35 @@ describe('readRestBodyBounded', () => {
   });
 });
 
+describe('readRestBodyBounded content-length validation', () => {
+  it('rejects a non-numeric content-length header as invalid params', async () => {
+    const request = new Request('http://localhost/body', {
+      method: 'POST',
+      headers: { 'content-length': '12abc' },
+      body: 'x',
+    });
+
+    expect(await rejectionOf(readRestBodyBounded(request))).toMatchObject({
+      code: 'InvalidParams',
+      message: 'Invalid Content-Length header',
+      data: { issues: [] },
+    });
+  });
+
+  it('rejects a content-length too large to be a safe integer as invalid params', async () => {
+    const request = new Request('http://localhost/body', {
+      method: 'POST',
+      headers: { 'content-length': '9'.repeat(30) },
+      body: 'x',
+    });
+
+    expect(await rejectionOf(readRestBodyBounded(request))).toMatchObject({
+      code: 'InvalidParams',
+      message: 'Invalid Content-Length header',
+    });
+  });
+});
+
 describe('readOptionalRestJsonBody', () => {
   it('returns undefined for an empty JSON body', async () => {
     expect(

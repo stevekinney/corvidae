@@ -28,6 +28,7 @@ import {
   WEFT_RESERVED_KEY_PREFIXES,
 } from './interface.ts';
 import { MemoryStorage } from './memory.ts';
+import { resolveNonEmptyPrefixRangeEnd } from './non-empty-prefix-range-end.ts';
 import { TursoStorage } from './turso.ts';
 
 function createCoreStorageAdapter(): Storage {
@@ -285,7 +286,10 @@ describe('encodeStorageKeyComponent prefix preservation', () => {
 describe('scan utilities', () => {
   it('computes lexicographic prefix bounds and applies scan filters', () => {
     expect(resolvePrefixRangeEnd('job:')).toBe('job;');
-    expect(resolvePrefixRangeEnd('')).toBe('\xff');
+    // An empty prefix matches every key, so it has no upper bound: no sentinel can sit above every key.
+    expect(resolvePrefixRangeEnd('')).toBeUndefined();
+    expect(resolveNonEmptyPrefixRangeEnd('job:')).toBe('job;');
+    expect(() => resolveNonEmptyPrefixRangeEnd('')).toThrow('has no upper bound');
 
     expect(matchesScanOptions('b', { gt: 'a', lt: 'c' })).toBe(true);
     expect(matchesScanOptions('a', { gt: 'a' })).toBe(false);

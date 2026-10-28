@@ -205,6 +205,38 @@ describe('CSS color evaluation edge cases', () => {
     expect(code('color-mix(in oklch, red 10% blue, blue)')).toBe('unsupported-syntax');
   });
 
+  it('gives the second color the share the first leaves when only the first names a percentage', () => {
+    const result = evaluateCssColor(
+      'color-mix(in oklch, oklch(20% 0 0) 25%, oklch(60% 0 0))',
+      properties,
+      light,
+    );
+    expect(result.ok && result.color.l).toBeCloseTo(0.5, 6);
+  });
+
+  it('reads a mix of two fully transparent colors as transparent', () => {
+    const result = evaluateCssColor(
+      'color-mix(in oklch, rgb(0 0 0 / 0), rgb(255 255 255 / 0))',
+      properties,
+      light,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.color.alpha).toBe(0);
+      expect(result.color.l).toBe(0);
+    }
+  });
+
+  it('gives up on a chain of references longer than it will follow', () => {
+    const chain: Record<string, string> = {};
+    for (let link = 0; link < 40; link += 1) chain[`--link-${link}`] = `var(--link-${link + 1})`;
+    chain['--link-40'] = 'red';
+    expect(evaluateCssColor('var(--link-0)', chain, light)).toMatchObject({
+      ok: false,
+      code: 'reference-cycle',
+    });
+  });
+
   it('mixes two colors evenly when neither names a percentage', () => {
     const result = evaluateCssColor(
       'color-mix(in oklch, oklch(20% 0 0), oklch(60% 0 0))',

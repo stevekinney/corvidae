@@ -85,7 +85,7 @@
     "js-yaml": "^4.1.0",
     "json-schema-library": "11.6.2",
     "libphonenumber-js": "^1.13.3",
-    "lmdb": "^3.5.2",
+    "lmdb": "^3.5.9",
     "micromark-util-decode-numeric-character-reference": "^2.0.0",
     "openai": "^7.8.0",
     "oxlint": "^1.83.0",

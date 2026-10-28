@@ -254,6 +254,28 @@ describe('formatValidationReport', () => {
     expect(output).toContain('unbounded-retry');
     expect(output).toContain('pay');
   });
+
+  it('locates an issue by workflow type alone when it names no activity', () => {
+    const output = formatValidationReport(
+      {
+        workflowCount: 1,
+        valid: false,
+        issues: [
+          {
+            severity: 'warning',
+            code: 'non-serializable-input',
+            workflowType: 'checkout',
+            message: 'the input cannot be serialized',
+          },
+        ],
+      },
+      'entry.ts',
+    );
+
+    expect(output).toContain('  [warning] checkout\n');
+    expect(output).not.toContain('checkout /');
+    expect(output).toContain('non-serializable-input: the input cannot be serialized');
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,8 @@
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { Engine } from '../core/engine.ts';
+import { MemoryStorage } from '../storage/memory.ts';
+
 import { SERVER_IDLE_TIMEOUT_MARGIN_SECONDS, SERVER_IDLE_TIMEOUT_SECONDS } from './idle-timeout.ts';
 import { DEFAULT_SSE_HEARTBEAT_INTERVAL_MS } from './operations/sse-stream.ts';
 import {
@@ -11,6 +14,7 @@ import {
   assertAuthenticationPosture,
   buildBunServeConfig,
   buildFetchHandler,
+  buildServerContext,
   clampCancellationGracePeriod,
   clampWorkerReconnectGracePeriod,
   registerStackDisposers,
@@ -249,7 +253,11 @@ describe('registerStackDisposers', () => {
     const fetchHandler = buildFetchHandler(
       { current: null },
       minimalServerContext(),
-      resolveNetworkConfig(minimalServeOptions()).serverOptions,
+      resolveNetworkConfig({
+        ...minimalServeOptions(),
+        unauthenticatedAccess: 'allow',
+        trustedHosts: ['localhost'],
+      }).serverOptions,
     );
 
     const response = await fetchHandler(new Request('http://localhost/health'));
@@ -472,3 +480,32 @@ describe('registerStackDisposers', () => {
 // Startup task-ledger recovery (formerly `restoreInflightTasks`, scanning
 // the retired `op:inflight:` keyspace) is now `runTaskLedgerRecovery` in
 // `runtime/task-ledger-recovery.ts` — see that module's own test file.
+
+describe('buildServerContext task queue policy', () => {
+  async function schedulingPolicyFor(
+    schedulingPolicy: 'fifo' | 'lifo' | undefined,
+  ): Promise<string> {
+    using engine = new Engine({ storage: new MemoryStorage() });
+    const configuration = resolveNetworkConfig({
+      engine,
+      port: 0,
+      unauthenticatedAccess: 'allow',
+      trustedHosts: ['localhost'],
+      ...(schedulingPolicy === undefined ? {} : { schedulingPolicy }),
+    });
+    const context = buildServerContext(
+      configuration.serverOptions,
+      configuration.serverMetricsCollector,
+    );
+    await context.taskLedgerRecovery.ready;
+    return context.taskQueue.schedulingPolicy;
+  }
+
+  it('builds the task queue with the configured scheduling policy', async () => {
+    expect(await schedulingPolicyFor('fifo')).toBe('fifo');
+  });
+
+  it('defaults the task queue to priority scheduling', async () => {
+    expect(await schedulingPolicyFor(undefined)).toBe('priority');
+  });
+});

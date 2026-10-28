@@ -356,4 +356,23 @@ describe('messageWithAttachments', () => {
 
     expect(message.content).toHaveLength(1);
   });
+
+  test('appends to a message whose content is already parts, without changing the original', () => {
+    const original = {
+      role: 'user' as const,
+      content: [{ type: 'text' as const, text: 'Look' }],
+    };
+
+    const message = messageWithAttachments(original, [uploaded('asset-1', 'image/png')]);
+
+    expect(message.content).toEqual([
+      { type: 'text', text: 'Look' },
+      {
+        type: 'image',
+        mimeType: 'image/png',
+        source: { kind: 'provider-file', provider: 'bureau', providerFileId: 'asset-1' },
+      },
+    ]);
+    expect(original.content).toHaveLength(1);
+  });
 });

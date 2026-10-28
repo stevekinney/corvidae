@@ -60,16 +60,21 @@ function createFakeDatabaseConstructor() {
           run: () => undefined,
           get: () => undefined,
           all: (...parameters: unknown[]): FakeRow[] => {
-            const [prefix, prefixEnd] = parameters as [string, string, ...unknown[]];
+            // An empty prefix has no upper bound, so its statement carries no prefix `key < ?`.
+            const prefixBounded = source.includes('WHERE key >= ? AND key < ?');
+            const prefix = parameters[0] as string;
+            const prefixEnd = prefixBounded ? (parameters[1] as string) : undefined;
+            const optionalParameterStart = prefixBounded ? 2 : 1;
             const hasOptionalGt = source.includes(' AND key > ?');
             const hasOptionalGte = (source.match(/key >= \?/g) ?? []).length > 1;
-            const hasOptionalLt = (source.match(/key < \?/g) ?? []).length > 1;
+            const hasOptionalLt =
+              (source.match(/key < \?/g) ?? []).length > (prefixBounded ? 1 : 0);
             const hasOptionalLte = source.includes(' AND key <= ?');
 
             const rows = [...this.data.entries()]
-              .filter(([key]) => key >= prefix && key < prefixEnd)
+              .filter(([key]) => key >= prefix && (prefixEnd === undefined || key < prefixEnd))
               .filter(([key]) => {
-                let parameterIndex = 2;
+                let parameterIndex = optionalParameterStart;
 
                 if (hasOptionalGt) {
                   const gt = parameters[parameterIndex++] as string;

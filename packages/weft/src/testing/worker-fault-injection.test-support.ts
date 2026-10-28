@@ -466,11 +466,13 @@ function onTextFrame(state: ClientState, payload: Uint8Array): void {
 
 function onCloseFrame(state: ClientState, payload: Uint8Array): void {
   const closeInfo = parseCloseFrame(payload);
-  if (state.socket !== null && state.closedState === 'open') {
-    writeCloseFrame(state.socket, closeInfo.code, closeInfo.reason);
-    endSocketSafely(state.socket);
-  }
+  const socket = state.closedState === 'open' ? state.socket : null;
+  // Settle with the frame's code first: ending the socket runs its close handler (1006) at once.
   finalizeClose(state, closeInfo);
+  if (socket !== null) {
+    writeCloseFrame(socket, closeInfo.code, closeInfo.reason);
+    endSocketSafely(socket);
+  }
 }
 
 function parseCloseFrame(payload: Uint8Array): CloseInfo {
@@ -483,10 +485,10 @@ function parseCloseFrame(payload: Uint8Array): CloseInfo {
 
 function fail(state: ClientState, error: Error): void {
   state.pendingError = error;
-  if (state.socket !== null && state.closedState === 'open') {
-    endSocketSafely(state.socket);
-  }
+  const socket = state.closedState === 'open' ? state.socket : null;
+  // As in `onCloseFrame`, settle with 1002 before ending the socket settles it as 1006.
   finalizeClose(state, { code: 1002, reason: error.message });
+  if (socket !== null) endSocketSafely(socket);
 }
 
 function finalizeClose(state: ClientState, info: CloseInfo): void {

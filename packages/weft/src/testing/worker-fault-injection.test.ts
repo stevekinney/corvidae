@@ -1,12 +1,14 @@
-import { afterEach, describe, expect, it } from 'bun:test';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import type { ServerToWorkerMessage } from '../worker/protocol.ts';
+import { computeHandshakeAccept } from './worker-fault-injection-frames.test-support.ts';
 import {
   connectFaultInjectingWorker,
   type FaultInjectingWorker,
 } from './worker-fault-injection.test-support.ts';
 
-type ServerSocket = { send(data: string): void };
+type ServerSocket = { send(data: string): void; close(code?: number, reason?: string): void };
 
 const cleanups: Array<() => Promise<void> | void> = [];
 
@@ -126,5 +128,268 @@ describe('nextServerMessage buffer scan', () => {
     expect(await worker.nextServerMessage((message) => message.type === 'shutdown')).toEqual(
       SHUTDOWN,
     );
+  });
+});
+
+describe('server-driven frames', () => {
+  it('reports a server close frame with its code and reason, and exposes the worker id', async () => {
+    const { worker, serverSocket } = await connectToScriptedServer();
+    expect(worker.workerId).toBe('scripted');
+    expect(worker.closedState).toBe('open');
+
+    serverSocket.close(4001, 'going away');
+
+    expect(await worker.closed).toEqual({ code: 4001, reason: 'going away' });
+    expect(worker.closedState).toBe('closed');
+  });
+
+  it('completes a clean close the worker starts', async () => {
+    const { worker } = await connectToScriptedServer();
+
+    await worker.cleanClose();
+
+    expect(await worker.closed).toEqual({ code: 1000, reason: '' });
+    // A second close on an already-closed stream is a no-op.
+    await worker.cleanClose();
+    await worker.hardClose();
+  });
+
+  it('fails the stream with 1002 when the server sends text that is not JSON', async () => {
+    const { worker, serverSocket } = await connectToScriptedServer();
+
+    serverSocket.send('this is not json');
+
+    const info = await worker.closed;
+    expect(info.code).toBe(1002);
+    expect(info.reason).toBe('Server sent invalid JSON: this is not json');
+  });
+
+  it('drops frames while partitioned and delivers them again after healing', async () => {
+    const { worker, serverSocket, nextArrival } = await connectToScriptedServer();
+    const isProtocolError = (message: ServerToWorkerMessage): boolean =>
+      message.type === 'protocolError';
+
+    worker.partition();
+    serverSocket.send(JSON.stringify(protocolError('dropped')));
+    await worker.expectNoServerMessage(isProtocolError, { timeoutMs: 50 });
+
+    worker.heal();
+    const arrived = nextArrival();
+    serverSocket.send(JSON.stringify(protocolError('delivered')));
+    await arrived;
+    expect(await worker.nextServerMessage(isProtocolError)).toEqual(protocolError('delivered'));
+  });
+});
+
+describe('nextServerMessage and expectNoServerMessage waits', () => {
+  it('rejects a wait whose budget elapses with no matching frame', async () => {
+    const { worker } = await connectToScriptedServer();
+
+    // load-proof: the predicate never matches and the server sends nothing, so a slower host only lengthens the wait before the budget elapses
+    expect(
+      await throwingRejectionOf(worker.nextServerMessage(() => false, { timeoutMs: 30 })),
+    ).toThrow('nextServerMessage timed out after 30ms');
+  });
+
+  it('rejects an absence check when a matching frame arrives during the wait', async () => {
+    const { worker, serverSocket } = await connectToScriptedServer();
+
+    const absence = worker.expectNoServerMessage((message) => message.type === 'shutdown', {
+      timeoutMs: 5_000,
+    });
+    serverSocket.send(JSON.stringify(SHUTDOWN));
+
+    expect(await throwingRejectionOf(absence)).toThrow(
+      'expectNoServerMessage received a matching message',
+    );
+  });
+
+  it('rejects an absence check when a matching frame was already buffered', async () => {
+    const { worker, serverSocket, nextArrival } = await connectToScriptedServer();
+    const arrived = nextArrival();
+    serverSocket.send(JSON.stringify(SHUTDOWN));
+    await arrived;
+
+    expect(
+      await throwingRejectionOf(
+        worker.expectNoServerMessage((message) => message.type === 'shutdown', { timeoutMs: 30 }),
+      ),
+    ).toThrow('buffered before wait');
+  });
+
+  it('rejects an absence check when the socket closes during the wait', async () => {
+    const { worker, serverSocket } = await connectToScriptedServer();
+
+    const absence = worker.expectNoServerMessage(() => false, { timeoutMs: 5_000 });
+    serverSocket.close(4002, 'bye');
+
+    expect(await throwingRejectionOf(absence)).toThrow(
+      'expectNoServerMessage saw socket close (4002)',
+    );
+  });
+});
+
+type ConnectOptions = Parameters<typeof Bun.connect>[0];
+type SocketHandlers = ConnectOptions['socket'];
+
+/**
+ * Make `Bun.connect` hand the harness a socket of the test's choosing and keep the socket
+ * handlers the harness registered, so a test can drive an event Bun does not raise on demand: a
+ * socket whose `end()` throws, and a transport `error` after the handshake. Bun emitted no
+ * `error` event for a server reset or termination in repeated attempts, only `close`, and
+ * `end()` on a closed socket does not throw on Bun 1.4.4.
+ */
+function interceptSockets(options: { endThrows: boolean }): { handlers: () => SocketHandlers } {
+  const realConnect = Bun.connect.bind(Bun) as (options: ConnectOptions) => Promise<unknown>;
+  let registered: SocketHandlers | undefined;
+  const spy = spyOn(Bun, 'connect').mockImplementation(((connectOptions: ConnectOptions) => {
+    const original = connectOptions.socket;
+    registered = original;
+    return realConnect({
+      ...connectOptions,
+      socket: {
+        ...original,
+        open(socket: Parameters<NonNullable<typeof original.open>>[0]) {
+          const given = options.endThrows
+            ? new Proxy(socket, {
+                get(target, property) {
+                  if (property === 'end') {
+                    return () => {
+                      throw new Error('The socket is already closed.');
+                    };
+                  }
+                  const member: unknown = Reflect.get(target, property);
+                  return typeof member === 'function' ? member.bind(target) : member;
+                },
+              })
+            : socket;
+          original.open?.(given);
+        },
+      },
+    });
+  }) as unknown as typeof Bun.connect);
+  cleanups.push(() => spy.mockRestore());
+  return {
+    handlers: () => {
+      if (registered === undefined) throw new Error('Bun.connect was not called.');
+      return registered;
+    },
+  };
+}
+
+describe('connection failures', () => {
+  it('rejects a handshake the server never answers', async () => {
+    const silent = Bun.listen({
+      hostname: '127.0.0.1',
+      port: 0,
+      socket: { data() {}, open() {} },
+    });
+    cleanups.push(() => silent.stop(true));
+
+    expect(
+      await throwingRejectionOf(
+        connectFaultInjectingWorker({
+          url: `ws://127.0.0.1:${String(silent.port)}/`,
+          handshakeTimeoutMs: 30,
+        }),
+      ),
+    ).toThrow('WebSocket handshake timeout');
+  });
+
+  it('rejects when the server answers the upgrade with a plain HTTP response', async () => {
+    const server = Bun.serve({ port: 0, fetch: () => new Response('no upgrade', { status: 200 }) });
+    cleanups.push(() => server.stop(true));
+
+    expect(
+      await throwingRejectionOf(
+        connectFaultInjectingWorker({ url: `ws://127.0.0.1:${String(server.port)}/` }),
+      ),
+    ).toThrow('WebSocket handshake failed: HTTP/1.1 200');
+  });
+
+  it('still rejects a refused handshake when the socket cannot be ended', async () => {
+    interceptSockets({ endThrows: true });
+    const server = Bun.serve({ port: 0, fetch: () => new Response('no upgrade', { status: 200 }) });
+    cleanups.push(() => server.stop(true));
+
+    expect(
+      await throwingRejectionOf(
+        connectFaultInjectingWorker({ url: `ws://127.0.0.1:${String(server.port)}/` }),
+      ),
+    ).toThrow('WebSocket handshake failed: HTTP/1.1 200');
+  });
+
+  it('settles as closed with 1006 when the transport reports an error after the handshake', async () => {
+    const intercepted = interceptSockets({ endThrows: false });
+    const { worker } = await connectToScriptedServer();
+
+    const handlers = intercepted.handlers();
+    handlers.error?.(undefined as never, new Error('connection reset'));
+
+    expect(await worker.closed).toEqual({ code: 1006, reason: '' });
+    expect(worker.closedState).toBe('closed');
+  });
+
+  it('rejects when nothing is listening on the port', async () => {
+    const server = Bun.serve({ port: 0, fetch: () => new Response('gone') });
+    const port = server.port;
+    await server.stop(true);
+
+    expect(
+      await rejectionOf(connectFaultInjectingWorker({ url: `ws://127.0.0.1:${String(port)}/` })),
+    ).toBeDefined();
+  });
+});
+
+/**
+ * Serve one raw TCP connection that completes the WebSocket handshake and then writes the given
+ * bytes unchanged, so a test can send frames a real WebSocket server never would.
+ */
+function serveRawFrames(frames: Uint8Array): number {
+  const server = Bun.listen({
+    hostname: '127.0.0.1',
+    port: 0,
+    socket: {
+      async data(socket, chunk) {
+        const key = /Sec-WebSocket-Key: (\S+)/i.exec(new TextDecoder().decode(chunk))?.[1];
+        if (key === undefined) return;
+        const accept = await computeHandshakeAccept(key);
+        socket.write(
+          [
+            'HTTP/1.1 101 Switching Protocols',
+            'Upgrade: websocket',
+            'Connection: Upgrade',
+            `Sec-WebSocket-Accept: ${accept}`,
+            '',
+            '',
+          ].join('\r\n'),
+        );
+        socket.write(frames);
+      },
+    },
+  });
+  cleanups.push(() => server.stop(true));
+  return server.port;
+}
+
+describe('malformed server frames', () => {
+  it.each([
+    ['a text frame that is not valid UTF-8', new Uint8Array([0x81, 0x02, 0xff, 0xfe]), 'non-UTF-8'],
+    [
+      'a frame with an unsupported opcode',
+      new Uint8Array([0x83, 0x00]),
+      'Unsupported WebSocket opcode 0x3',
+    ],
+    ['a masked frame', new Uint8Array([0x81, 0x80, 0, 0, 0, 0]), 'masked frame'],
+    ['a binary frame', new Uint8Array([0x82, 0x00]), 'Binary WebSocket frames'],
+    ['a fragmented frame', new Uint8Array([0x01, 0x00]), 'Fragmented WebSocket frames'],
+  ])('fails the stream with 1002 for %s', async (_label, frame, reason) => {
+    const port = serveRawFrames(frame);
+    const worker = await connectFaultInjectingWorker({ url: `ws://127.0.0.1:${String(port)}/` });
+
+    const info = await worker.closed;
+
+    expect(info.code).toBe(1002);
+    expect(info.reason).toContain(reason);
   });
 });

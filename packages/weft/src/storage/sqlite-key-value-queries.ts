@@ -29,11 +29,6 @@ export const SQLITE_DELETE_VALUE_BY_KEY = 'DELETE FROM kv WHERE key = ?';
 
 export const SQLITE_SELECT_KEY_PRESENCE = 'SELECT 1 AS present FROM kv WHERE key = ? LIMIT 1';
 
-export const SQLITE_COUNT_KEYS_BY_PREFIX =
-  'SELECT COUNT(*) AS count FROM kv WHERE key >= ? AND key < ?';
-
-export const SQLITE_DELETE_KEYS_BY_PREFIX = 'DELETE FROM kv WHERE key >= ? AND key < ?';
-
 export type SqliteKeyRangeQueryParameter = string | number;
 
 export type SqliteKeyRangeQuery = {
@@ -47,8 +42,41 @@ export type SqliteBuiltQuery = {
   sql: string;
 };
 
-export function buildSqlitePrefixRangeParameters(prefix: string): [string, string] {
-  return [prefix, resolvePrefixRangeEnd(prefix)];
+/** A whole-prefix statement: only the prefix bounds are bound, and they are always strings. */
+export type SqlitePrefixQuery = { parameters: string[]; sql: string };
+
+/**
+ * The `WHERE` condition and bound parameters selecting every key under `prefix`.
+ * An empty prefix matches every key and has no upper bound, so its condition has
+ * no `key < ?` clause: a sentinel end would drop keys that sort past it, such as
+ * those starting with a CJK character or an emoji.
+ */
+export function buildSqlitePrefixRange(prefix: string): {
+  condition: string;
+  parameters: string[];
+} {
+  const prefixEnd = resolvePrefixRangeEnd(prefix);
+  return prefixEnd === undefined
+    ? { condition: 'key >= ?', parameters: [prefix] }
+    : { condition: 'key >= ? AND key < ?', parameters: [prefix, prefixEnd] };
+}
+
+/** A `COUNT(*)` of every key under `prefix`, over the `kv`-shaped `table`. */
+export function buildSqliteCountKeysByPrefix(
+  prefix: string,
+  table: string = 'kv',
+): SqlitePrefixQuery {
+  const { condition, parameters } = buildSqlitePrefixRange(prefix);
+  return { parameters, sql: `SELECT COUNT(*) AS count FROM ${table} WHERE ${condition}` };
+}
+
+/** A `DELETE` of every key under `prefix`, over the `kv`-shaped `table`. */
+export function buildSqliteDeleteKeysByPrefix(
+  prefix: string,
+  table: string = 'kv',
+): SqlitePrefixQuery {
+  const { condition, parameters } = buildSqlitePrefixRange(prefix);
+  return { parameters, sql: `DELETE FROM ${table} WHERE ${condition}` };
 }
 
 /** The bound (gt/gte/lt/lte) fields shared by scan and delete range queries. */
@@ -68,8 +96,9 @@ function buildSqliteKeyRangeConditions(
 } {
   const { gt, gte, lt, lte } = bounds;
 
-  const conditions: string[] = ['key >= ? AND key < ?'];
-  const parameters: SqliteKeyRangeQueryParameter[] = buildSqlitePrefixRangeParameters(prefix);
+  const prefixRange = buildSqlitePrefixRange(prefix);
+  const conditions: string[] = [prefixRange.condition];
+  const parameters: SqliteKeyRangeQueryParameter[] = prefixRange.parameters;
 
   if (gt !== undefined) {
     conditions.push('key > ?');

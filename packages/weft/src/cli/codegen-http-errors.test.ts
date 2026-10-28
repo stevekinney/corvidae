@@ -28,6 +28,29 @@ function serveOnce(handler: FetchHandler) {
 }
 
 describe('executeCodegen HTTP fetch path', () => {
+  it('reports a fetch that was aborted, naming the budget and the URL', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      throw new DOMException('The operation was aborted.', 'AbortError');
+    }) as unknown as typeof fetch;
+    try {
+      const dir = makeTempDir();
+      const out = join(dir, 'weft.d.ts');
+      const result = await executeCodegen({
+        server: 'http://localhost:1',
+        out,
+        timeoutMs: HANG_GUARD_MILLISECONDS,
+      });
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toBe(
+        `codegen: request aborted after ${HANG_GUARD_MILLISECONDS}ms fetching http://localhost:1/api/v1/registry`,
+      );
+      expect(existsSync(out)).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('reports 401 responses with status and URL', async () => {
     const server = serveOnce(
       () => new Response('nope', { status: 401, statusText: 'Unauthorized' }),

@@ -128,6 +128,24 @@ describe('engine.prepare() / handle.launch() / handle.abandon() (COR-75)', () =>
     expect(recordAfterCompletion?.status).toBe('completed');
   });
 
+  it('prepares and launches a workflow under a generated id when none is given', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    engine.register(
+      workflow({ name: 'cor-75-generated-id' }).execute(async function* () {
+        return 'ok';
+      }),
+    );
+
+    const prepared = await engine.prepare('cor-75-generated-id', null);
+    expect(prepared.id).toMatch(/\S/);
+    const record = await engine.get(prepared.id);
+    expect(record?.status).toBe('pending');
+
+    const handle = await prepared.launch();
+    expect(handle.id).toBe(prepared.id);
+    expect(await handle.result()).toBe('ok');
+  });
+
   it('primes the checkpoint compare-and-swap baseline from the checkpoint launch() loaded', async () => {
     const storage = new MemoryStorage();
     await using engine = new Engine({ storage });

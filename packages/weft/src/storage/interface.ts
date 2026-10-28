@@ -21,12 +21,10 @@ import {
   WORKFLOW_RECORD_KEYS_CORE,
   WORKFLOW_RECORD_KEYS_EXTENDED,
 } from './workflow-record-keys.ts';
-
 export { assertDurableStorageForRecovery, requireStorageCapability } from './capabilities.ts';
 export type { GatedStorageCapabilityKey, StorageCapabilities } from './capabilities.ts';
 export { DEFAULT_SCOPE } from './default-scope.ts';
 export { WEFT_RESERVED_KEY_PREFIXES } from './key-prefixes.ts';
-
 /**
  * A single KV operation in a batch.
  *
@@ -177,6 +175,8 @@ export interface ScanOptions {
  * ```
  */
 export interface Storage extends Disposable {
+  /** Native physical size in bytes, when supported. */
+  sizeBytes?(): Promise<number>;
   /**
    * Self-report the backend's consistency and feature guarantees. Required on
    * every adapter so the engine and feature gates can act on an honest,
@@ -206,21 +206,21 @@ export interface Storage extends Disposable {
 }
 
 /**
- * Resolve the exclusive upper bound for a lexicographic prefix scan.
+ * Resolve the exclusive upper bound for a lexicographic prefix scan, or
+ * `undefined` for the empty prefix, which matches every key and so has no
+ * finite end (a sentinel like `'\xff'` would drop keys that sort past it).
  *
  * @example
  * ```ts
  * import { resolvePrefixRangeEnd } from '@lostgradient/weft';
  *
- * const end = resolvePrefixRangeEnd('wf:');
- * console.log(end); // 'wf;'
- * // Use as an exclusive upper bound in range queries
+ * console.log(resolvePrefixRangeEnd('wf:')); // 'wf;'
+ * console.log(resolvePrefixRangeEnd('')); // undefined
  * ```
  */
-export function resolvePrefixRangeEnd(prefix: string): string {
-  return prefix.length > 0
-    ? prefix.slice(0, -1) + String.fromCharCode(prefix.charCodeAt(prefix.length - 1) + 1)
-    : '\xff';
+export function resolvePrefixRangeEnd(prefix: string): string | undefined {
+  if (prefix.length === 0) return undefined;
+  return prefix.slice(0, -1) + String.fromCharCode(prefix.charCodeAt(prefix.length - 1) + 1);
 }
 
 /**

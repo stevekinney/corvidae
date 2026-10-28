@@ -251,3 +251,16 @@ describe('validateRegistrySnapshot', () => {
     );
   });
 });
+
+describe('validateRegistrySnapshot with a non-object snapshot', () => {
+  it.each([null, 42, 'a string', undefined])(
+    'rejects %p without reading a workflows count',
+    async (value) => {
+      const result = await validateRegistrySnapshot(value);
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error('expected rejection');
+      expect(result.error).toStartWith('codegen: invalid registry snapshot');
+      expect(result.error).not.toContain('exceeding the maximum');
+    },
+  );
+});

@@ -1,3 +1,4 @@
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 import type { Engine } from '../core/engine.ts';
 import { createWorkflowHandleEventIterator } from '../core/engine/handle-iteration.ts';
@@ -348,5 +349,20 @@ describe('createLocalWorkflowEventTail', () => {
 
     const seen = await drain(tail);
     expect(seen).toEqual(['workflow:started', 'workflow:completed']);
+  });
+
+  it('rethrows a failure of the engine event iterator to the consumer', async () => {
+    class FailingWorkflowHandle extends FakeWorkflowHandle {
+      override async *[Symbol.asyncIterator](): AsyncIterableIterator<Event> {
+        yield* [];
+        throw new Error('engine iterator failed');
+      }
+    }
+    const tail = createLocalWorkflowEventTail(
+      fakeEngine(new FailingWorkflowHandle()),
+      'wf-iterator-failure',
+    );
+
+    expect(await throwingRejectionOf(drain(tail))).toThrow('engine iterator failed');
   });
 });

@@ -134,6 +134,25 @@ describe('createRovingToolbar', () => {
     expect(document.activeElement === input).toBe(true);
   });
 
+  test('a vertical toolbar roves past a plain input but keeps the arrows of one inside a number input', () => {
+    const vertical = document.createElement('div');
+    vertical.innerHTML =
+      '<input id="plain" type="checkbox" /><span class="cinder-number-input"><input id="spin" type="checkbox" /></span><button id="after">After</button>';
+    document.body.append(vertical);
+    const controller = createRovingToolbar({ root: vertical, orientation: () => 'vertical' });
+    controller.sync();
+    controller.attach();
+    const plain = vertical.querySelector<HTMLElement>('#plain')!;
+    const spin = vertical.querySelector<HTMLElement>('#spin')!;
+
+    plain.focus();
+    keydown(plain, 'ArrowDown');
+    expect(document.activeElement === spin).toBe(true);
+
+    keydown(spin, 'ArrowDown');
+    expect(document.activeElement === spin).toBe(true);
+  });
+
   test('an item in the first legend of a disabled fieldset stays enabled', () => {
     const { root } = mountToolbar(
       '<fieldset disabled><legend><button id="l">L</button></legend><button id="f">F</button></fieldset>',
