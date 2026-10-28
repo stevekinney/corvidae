@@ -41,6 +41,7 @@
  */
 import { activityContractHash, HttpClientError } from '@lostgradient/weft';
 
+import { compareCodepoint } from '../../lib/compare-codepoint.ts';
 import { FAULT_TREATMENT_TITLE, faultTreatment } from '../../lib/faults.ts';
 import {
   type KNOWN_COMPATIBILITY_REASONS,
@@ -128,12 +129,6 @@ export type WorkerContractVerification = Readonly<{
   /** `true` when any advertised workflow is `drift` or `extra`. */
   hasDrift: boolean;
 }>;
-
-function compareCodepoint(left: string, right: string): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
-}
 
 /**
  * Reads `record[key]` only when `key` is an own property. Workflow and

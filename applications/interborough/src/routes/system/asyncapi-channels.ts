@@ -5,6 +5,8 @@
  * the document says" level of detail as the OpenAPI/OpenRPC viewers.
  */
 
+import { compareCodepoint } from '../../lib/compare-codepoint.ts';
+
 export interface AsyncApiChannelRow {
   readonly channel: string;
   readonly address: string | undefined;
@@ -22,12 +24,6 @@ interface AsyncApiChannelObject {
 
 export interface AsyncApiDocumentLike {
   readonly channels?: Readonly<Record<string, AsyncApiChannelObject>>;
-}
-
-function compareCodepoint(a: string, b: string): number {
-  if (a < b) return -1;
-  if (a > b) return 1;
-  return 0;
 }
 
 export function extractAsyncApiChannels(

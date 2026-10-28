@@ -91,6 +91,31 @@ describe('weft.system.lease', () => {
     for (const lease of coherent) expect(parseSystemLease(lease) as unknown).toEqual(lease);
   });
 
+  test('rejects a status that is not one of the four, however the rest of the payload reads', () => {
+    // The status is checked once, by the coherence rule for each status: a name no rule matches is
+    // refused, including a name every object inherits and a value that is not a string at all.
+    const unknownStatuses: unknown[] = [
+      'unknown',
+      'constructor',
+      'toString',
+      '__proto__',
+      '',
+      7,
+      null,
+      undefined,
+    ];
+    for (const status of unknownStatuses) {
+      for (const lease of [
+        { mode: 'lease', status, holdsLease: false },
+        { mode: 'none', status, holdsLease: false },
+      ]) {
+        expect(() => parseSystemLease(lease), JSON.stringify(lease)).toThrow(
+          MalformedSystemLeaseError,
+        );
+      }
+    }
+  });
+
   test('rejects incoherent status, mode, holder, and loss-reason combinations', () => {
     const { lossReason: _lossReason, ...holder } = CONTESTED;
     const incoherent: unknown[] = [

@@ -5,16 +5,11 @@
  * preview always shows something concrete rather than an arbitrary/empty
  * one when the registry has a mix of typed and untyped definitions.
  */
+import { compareCodepoint } from '../../lib/compare-codepoint.ts';
 import { inputInterfaceName, previewInterface } from './codegen-preview.ts';
 import type { RegistrySnapshotSource } from './registry-view.ts';
 
 export type RegistryLike = RegistrySnapshotSource;
-
-function compareCodepoint(a: string, b: string): number {
-  if (a < b) return -1;
-  if (a > b) return 1;
-  return 0;
-}
 
 /** Renders a codegen preview for the first (codepoint-sorted) active workflow with an input schema, or `undefined` if none has one. */
 export function codegenPreviewSource(registry: RegistryLike): string | undefined {

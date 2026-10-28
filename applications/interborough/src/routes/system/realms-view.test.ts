@@ -109,4 +109,10 @@ describe('realmStateBadgeVariant', () => {
     expect(realmStateBadgeVariant('crashed')).toBe('danger');
     expect(realmStateBadgeVariant('terminated')).toBe('neutral');
   });
+
+  test('treats a state this build does not know as neutral', () => {
+    expect(
+      realmStateBadgeVariant('hibernating' as Parameters<typeof realmStateBadgeVariant>[0]),
+    ).toBe('neutral');
+  });
 });
