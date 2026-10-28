@@ -1254,6 +1254,18 @@ describe('createFleetEventFeed', () => {
     feed.dispose();
   });
 
+  it('rejects a malformed tail record when snapshotting the tail sequence', async () => {
+    const storage = new MemoryStorage();
+    await storage.put(KEYS.fleetEventTail(), encode({ sequence: 'not-a-number' }));
+
+    const feed = createFleetEventFeed(storage);
+    expect(await throwingRejectionOf(feed.snapshotTailSequence())).toThrow('fleet-event-tail');
+    expect(await throwingRejectionOf(feed.retain({ beforeSequence: 1 }))).toThrow(
+      'fleet-event-tail',
+    );
+    feed.dispose();
+  });
+
   it('rejects an undecodable tail instead of overwriting retained history', async () => {
     const storage = new MemoryStorage();
     await storage.put(

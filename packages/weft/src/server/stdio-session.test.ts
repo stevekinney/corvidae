@@ -19,6 +19,7 @@ import { z } from 'zod';
 import { createInMemoryEventBackend } from './in-memory-event-feed-backend.test-support.ts';
 import { makeOperation as makeOp } from './json-rpc-operation.test-support.ts';
 import { createOperationRegistry, type OperationRegistry } from './operation-catalog.ts';
+import { defineOperation } from './operation-registry.ts';
 import { runStdioSession, type StdioAdmission, type StdioSessionResult } from './stdio-session.ts';
 import { collectingWritable, readableFromLines } from './stdio-stream.test-support.ts';
 import { createWorkflowEventFeed } from './workflow-event-feed.ts';
@@ -718,5 +719,54 @@ describe('runStdioSession — dispatch', () => {
 
     expect(result.exitCode).toBe(0);
     expect(closeCalls).toBe(1);
+  });
+});
+
+/** A subscription operation that is available over stdio and never emits. */
+function stdioSubscriptionOperation() {
+  return defineOperation({
+    name: 'weft.test.stdiosubscribe',
+    mcpExposable: false,
+    destructive: false,
+    summary: 'Subscription available over stdio',
+    kind: 'subscription',
+    inputSchema: z.object({}),
+    outputSchema: z.object({ subscriptionId: z.string() }),
+    eventSchema: z.unknown(),
+    access: { kind: 'public' },
+    transports: { http: false, jsonRpcHttp: false, jsonRpcWebSocket: false, jsonRpcStdio: true },
+    unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
+    invoke: async () => ({
+      subscriptionId: crypto.randomUUID(),
+      envelope: { subscriptionId: 'sub' },
+      iterable: (async function* () {})(),
+      close: async () => {},
+    }),
+  });
+}
+
+describe('runStdioSession — subscription limit', () => {
+  it('forwards maxSubscriptions to the session so a second subscription is refused', async () => {
+    const subscribe = (id: string) =>
+      JSON.stringify({ jsonrpc: '2.0', method: 'weft.test.stdiosubscribe', params: {}, id }) + '\n';
+    const output = collectingWritable();
+
+    const result = await runStdioSession({
+      input: readableFromLines([subscribe('first'), subscribe('second')]),
+      output: output.stream,
+      admission: { kind: 'allow-unauthenticated-local-admin' },
+      registry: createOperationRegistry([stdioSubscriptionOperation()]),
+      engine: fakeEngine,
+      feed: createWorkflowEventFeed(createInMemoryEventBackend()),
+      maxSubscriptions: 1,
+    });
+
+    expect(result.exitCode).toBe(0);
+    const frames = output.lines().map((line) => JSON.parse(line));
+    const first = frames.find((frame) => frame.id === 'first');
+    const second = frames.find((frame) => frame.id === 'second');
+    expect(first?.result).toBeDefined();
+    expect(second?.error?.code).toBe(-32600);
+    expect(second?.error?.message).toMatch(/maximum concurrent subscriptions per session \(1\)/);
   });
 });

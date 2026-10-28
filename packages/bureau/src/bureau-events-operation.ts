@@ -12,7 +12,6 @@
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 import {
   createReplayAwareClosableIterable,
-  decodeCursor,
   defineOperation,
   type OperationFault,
   type ReplayLiveSubscribeOptions,
@@ -34,14 +33,9 @@ const bureauEventsSubscriptionInput = z.object({
   bureauId: z.string().min(1),
   /** One kind, or several. Omitting it delivers every published kind. */
   kinds: z.union([bureauEventKindSchema, z.array(bureauEventKindSchema).min(1)]).optional(),
-  // Checked here, in the schema, so a malformed cursor is `InvalidParams` over
-  // every transport (a WebSocket subscribe, or `Last-Event-ID` on the HTTP
-  // route) instead of an error thrown later from inside the feed.
-  fromCursor: z
-    .string()
-    .min(1)
-    .refine((cursor) => decodeCursor(cursor) !== null, { message: 'Invalid cursor' })
-    .optional(),
+  // Bound the input here; invoke checks its structure against the resolved
+  // feed before opening a stream, so every transport returns `InvalidParams`.
+  fromCursor: z.string().min(1).max(512).optional(),
 });
 
 const bureauEventsSubscriptionEnvelope = z.object({
@@ -50,20 +44,38 @@ const bureauEventsSubscriptionEnvelope = z.object({
 });
 
 /**
- * `payload` is a record rather than a union discriminated on `kind`, matching
- * `operative.runs.events` and Weft's own envelopes. The payloads are already
- * bounded by named-field projections; what a client does not yet get is a
- * static type per kind. Closing that is additive and worth doing once across
- * all three packages rather than differently in each.
+ * Ordinary event payloads remain records because their named-field projections
+ * already bound what crosses the wire. The gap variant names its required
+ * recovery fields in generated schemas, as Weft's fleet gap does.
  */
-export const bureauEventEnvelopeSchema = z.object({
+const publishedBureauEventEnvelopeSchema = z.object({
   sequence: z.number(),
   cursor: z.string(),
   bureauId: z.string(),
-  kind: z.string(),
+  // Reserve the gap discriminator for the structured branch below, while
+  // retaining every ordinary event kind accepted by the previous schema.
+  kind: z.string().regex(/^(?!feed\.gap$)/),
   emittedAtMs: z.number(),
   payload: z.record(z.string(), z.unknown()),
 });
+
+const bureauEventGapEnvelopeSchema = z.object({
+  sequence: z.number(),
+  cursor: z.string(),
+  bureauId: z.string(),
+  kind: z.literal('feed.gap'),
+  emittedAtMs: z.number(),
+  payload: z.object({
+    requestedCursor: z.string(),
+    firstRetainedSequence: z.number(),
+  }),
+});
+
+/** Published bureau event or structured recovery gap, shared across transports. */
+export const bureauEventEnvelopeSchema: z.ZodType<BureauEventEnvelope> = z.union([
+  publishedBureauEventEnvelopeSchema,
+  bureauEventGapEnvelopeSchema,
+]);
 
 export type BureauEventsSubscriptionInput = z.infer<typeof bureauEventsSubscriptionInput>;
 
@@ -142,6 +154,17 @@ export function defineBureauEventsSubscriptionOperation(scope: BureauEventsAcces
           };
           throw notFound;
         }
+        if (
+          input.fromCursor !== undefined &&
+          bureauFeed.feed.decodeCursor(input.fromCursor) === 'invalid'
+        ) {
+          const invalid: OperationFault = {
+            code: 'InvalidParams',
+            message: 'Invalid cursor',
+            data: { issues: [{ path: ['fromCursor'], message: 'Invalid cursor', code: 'custom' }] },
+          };
+          throw invalid;
+        }
 
         // Only the session's own signal: the feed binds its own lifetime into
         // every subscription, so disposing the bureau ends this one too.
@@ -157,9 +180,11 @@ export function defineBureauEventsSubscriptionOperation(scope: BureauEventsAcces
           ...(input.fromCursor === undefined ? {} : { fromCursor: input.fromCursor }),
           signal: controller.signal,
           replayLimit: MAX_BUREAU_SUBSCRIPTION_REPLAY_EVENTS,
-          // No `countReplayEnvelope`: the feed filters before counting, so the
-          // cap already measures matching events.
-          filterEnvelope: (envelope) => kinds === undefined || kinds.has(envelope.kind),
+          // The feed filters before counting, so the cap measures matching
+          // events; the gap marker is recovery metadata and is not counted.
+          countReplayEnvelope: (envelope) => envelope.kind !== 'feed.gap',
+          filterEnvelope: (envelope) =>
+            envelope.kind === 'feed.gap' || kinds === undefined || kinds.has(envelope.kind),
         };
         const iterable = createReplayAwareClosableIterable<BureauEventEnvelope>(
           (onReplayComplete) =>

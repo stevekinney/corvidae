@@ -53,6 +53,29 @@ describe('weft.workflows.aggregate', () => {
     engine[Symbol.dispose]();
   });
 
+  it('forwards a valid REST limit to engine.aggregate and drops one that is not a positive number', async () => {
+    const engine = new Engine({ storage: new MemoryStorage() });
+    const seenLimits: Array<number | undefined> = [];
+    engine.aggregate = async (_filter, options) => {
+      seenLimits.push(options.limit);
+      return { total: 0, groups: [], truncated: false };
+    };
+
+    for (const limit of ['7', '7.9', '0', '-3', 'abc']) {
+      const response = await handleRequest(
+        new Request(`http://localhost/v1/workflows/aggregate?group_by=status&limit=${limit}`, {
+          method: 'GET',
+        }),
+        engine,
+        { operationRegistry: registry, restBindings: bindings },
+      );
+      expect(response.status).toBe(200);
+    }
+
+    expect(seenLimits).toEqual([7, 7, undefined, undefined, undefined]);
+    engine[Symbol.dispose]();
+  });
+
   it('maps unknown aggregate attributes to Unprocessable instead of EngineFailure', async () => {
     const engine = new Engine({ storage: new MemoryStorage() });
     engine.register(

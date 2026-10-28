@@ -236,6 +236,31 @@ describe('handleJsonRpcHttpRequest — body-size limit', () => {
   });
 });
 
+describe('handleJsonRpcHttpRequest — body stream failure', () => {
+  it('returns 400 Bad Request when the request body stream errors mid-read', async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"jsonrpc":"2.0",'));
+      },
+      pull(controller) {
+        controller.error(new Error('connection reset'));
+      },
+    });
+
+    const response = await handleJsonRpcHttpRequest(
+      new Request('http://localhost/jsonrpc', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: stream,
+      }),
+      baseContext(),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.text()).toBe('Bad Request');
+  });
+});
+
 describe('handleJsonRpcHttpRequest — single request dispatch', () => {
   it('returns 200 with a JSON-RPC success response', async () => {
     const body = JSON.stringify({

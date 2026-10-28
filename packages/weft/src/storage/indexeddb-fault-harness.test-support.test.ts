@@ -63,4 +63,19 @@ describe('IndexedDB fault harness support', () => {
       },
     );
   });
+
+  it('hands out a database stub that reports the store as present and tolerates close and createObjectStore', async () => {
+    await withFakeIndexedDb(
+      { transaction: createFakeTransaction({ store: () => ({}) }) },
+      async () => {
+        const request = indexedDB.open(`test-${crypto.randomUUID()}`, 1);
+        await Promise.resolve();
+        const database = request.result;
+
+        expect(database.objectStoreNames.contains('kv')).toBe(true);
+        expect(() => database.createObjectStore('kv')).not.toThrow();
+        expect(() => database.close()).not.toThrow();
+      },
+    );
+  });
 });

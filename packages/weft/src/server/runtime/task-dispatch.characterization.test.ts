@@ -9,6 +9,7 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test';
 
 import { encode } from '../../core/codec.ts';
+import { decodeTaskAttemptRecord, taskAttemptPrefix } from '../../core/task-ledger/task-attempt.ts';
 import {
   decodeRemoteTaskRecord,
   encodeRemoteTaskRecord,
@@ -863,5 +864,66 @@ describe('dispatchTaskImpl revision staleness (WFT-20)', () => {
     expect(sentMessages).toHaveLength(1);
     const msg = JSON.parse(sentMessages[0]!);
     expect(msg.workflowRevision).toBe('revision-echoed');
+  });
+
+  it('echoes prior heartbeat details to the worker and records the execution requirement on the claim', async () => {
+    const operationId = 'op-redispatch-details';
+    const storage = new MemoryStorage();
+    const executionRequirement = { deploymentName: 'test-deployment', buildId: 'b1' };
+    const existing: RemoteTaskQueued = {
+      recordVersion: 1,
+      operationId,
+      workflowType: 'testWorkflow',
+      activityName: 'doWork',
+      queue: 'default',
+      input: null,
+      headers: {},
+      visibilityTimeoutMilliseconds: 30_000,
+      createdAt: Date.now(),
+      generation: 0,
+      state: 'queued',
+      attempt: 2,
+      availableAt: Date.now(),
+      firstQueuedAt: Date.now(),
+      lastQueuedAt: Date.now(),
+      retryCount: 1,
+      requeueCount: 0,
+      lastHeartbeatDetails: { processed: 41 },
+      executionRequirement,
+    };
+    await storage.put(taskLedgerKey(operationId), encodeRemoteTaskRecord(existing));
+
+    context = createMinimalContext();
+    const options = createMinimalOptions(storage);
+    const sentMessages: string[] = [];
+    context.registry.register({
+      manifest: testWorkerManifest(),
+      acceptedManifestDigest: TEST_ACCEPTED_MANIFEST_DIGEST,
+      id: 'worker-redispatch',
+      queue: 'default',
+      activities: ['doWork'],
+      concurrency: 5,
+    });
+    context.workerSockets.set('worker-redispatch', {
+      send: (msg: string) => sentMessages.push(msg),
+    } as never);
+
+    const dispatched = await dispatchTaskImpl(context, options, {
+      operationId,
+      activityName: 'doWork',
+      workflowType: 'testWorkflow',
+      queue: 'default',
+      input: null,
+    });
+
+    expect(dispatched).toBe(true);
+    expect(sentMessages).toHaveLength(1);
+    expect(JSON.parse(sentMessages[0]!).lastHeartbeatDetails).toEqual({ processed: 41 });
+    const attempts: unknown[] = [];
+    for await (const [, value] of options.engine.storage.scan(taskAttemptPrefix(operationId))) {
+      attempts.push(decodeTaskAttemptRecord(value));
+    }
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]).toMatchObject({ attempt: 2, executionRequirement });
   });
 });

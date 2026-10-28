@@ -15,6 +15,7 @@ import {
   getHighestStoredWatchSequence,
   publishWatchMessage,
   removeWatchSocket,
+  replayTokenStream,
   replayWatchEvents,
 } from './websocket-stream.ts';
 
@@ -303,5 +304,42 @@ describe('watch WebSocket delivery', () => {
     ]);
     expect(socket.data.pendingWatchMessages).toEqual([]);
     expect(socket.data.watchReplayInProgress).toBe(false);
+  });
+});
+
+describe('token stream replay', () => {
+  it('replays object chunks in order and skips chunks whose value is not an object', async () => {
+    const context = minimalServerContext();
+    const sentMessages: string[] = [];
+    const socket = {
+      data: {
+        pathname: '/v1/workflows/wf-tokens/stream',
+        connectionType: 'stream',
+        workflowId: 'wf-tokens',
+        streamReplayInProgress: true,
+        pendingStreamMessages: [],
+      },
+      send(message: string) {
+        sentMessages.push(message);
+      },
+      close() {},
+    } as unknown as ServerWebSocket<WebSocketData>;
+    const engine = {
+      getStreamChunks: async () => [
+        { sequence: 0, value: 'a bare string' },
+        { sequence: 1, value: { token: 'one' } },
+        { sequence: 2, value: null },
+        { sequence: 3, value: 42 },
+        { sequence: 4, value: { token: 'two' } },
+      ],
+    } as unknown as Engine;
+
+    await replayTokenStream(context, engine, socket, 'wf-tokens');
+
+    const delivered = sentMessages.map((message) => JSON.parse(message));
+    expect(delivered.map((message) => message.sequence)).toEqual([1, 4]);
+    expect(delivered.map((message) => message.data)).toEqual([{ token: 'one' }, { token: 'two' }]);
+    expect(socket.data.streamLastDeliveredSequence).toBe(4);
+    expect(socket.data.streamReplayInProgress).toBe(false);
   });
 });

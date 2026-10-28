@@ -145,6 +145,26 @@ describe('weft.workflows.bulk.retryfailed', () => {
     await waitForStatus(engine, 'rest-retry-selected', 'completed');
   });
 
+  it('rejects a malformed REST control field as invalid params without retrying anything', async () => {
+    const control = { shouldFail: true };
+    using engine = createEngine(control);
+    await startFailedWorkflow(engine, 'rest-retry-malformed', ['rest-malformed']);
+
+    const response = await handleRequest(
+      request('/v1/workflows/bulk/retry-failed', {
+        filter: { tags: ['rest-malformed'] },
+        dryRun: 'yes',
+      }),
+      engine,
+      bulkAdminHandlerOptions(),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'Field "dryRun" must be a boolean' });
+    const untouched = await engine.get('rest-retry-malformed');
+    expect(untouched?.status).toBe('failed');
+  });
+
   it('previews and confirms failed-workflow retry over JSON-RPC HTTP', async () => {
     const control = { shouldFail: true };
     using engine = createEngine(control);

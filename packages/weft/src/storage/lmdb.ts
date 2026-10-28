@@ -43,6 +43,8 @@ type LMDBRangeOptions = {
   start: string;
   end: string;
   reverse?: boolean;
+  /** Whether `end`, the lower bound of a reverse range, is itself part of the range. */
+  inclusiveEnd?: boolean;
 };
 
 type LMDBDatabase = {
@@ -243,6 +245,9 @@ export class LMDBStorage implements Storage {
           start: prefixEnd,
           end: prefix,
           reverse: true,
+          // A reverse range's lower bound is exclusive by default, which would drop a key equal
+          // to the prefix itself even though the forward range returns it.
+          inclusiveEnd: true,
         })
       : this.#database.getRange({ start: prefix, end: prefixEnd });
 
@@ -277,6 +282,9 @@ export class LMDBStorage implements Storage {
           start: prefixEnd,
           end: prefix,
           reverse: true,
+          // A reverse range's lower bound is exclusive by default, which would drop a key equal
+          // to the prefix itself even though the forward range returns it.
+          inclusiveEnd: true,
         })
       : this.#database.getKeys({ start: prefix, end: prefixEnd });
 

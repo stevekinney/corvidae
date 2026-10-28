@@ -63,12 +63,9 @@ export function createFleetEventFeedOperations(
     event: FleetEventInput,
     options?: FleetEventAppendOptions,
   ): Promise<FleetEventEnvelope> {
-    const appended = await enqueueAppend(() =>
+    return enqueueAppend(() =>
       appendInternal(event, async () => options?.conditions ?? [], options?.operations ?? []),
     );
-    if (appended === null)
-      throw new Error('Fleet event append conditions unexpectedly disappeared.');
-    return appended;
   }
 
   async function appendWorkflowEventIfPresent(
@@ -83,6 +80,15 @@ export function createFleetEventFeedOperations(
     );
   }
 
+  // A condition loader that always yields conditions never abandons the append, so its overload
+  // promises an envelope; only a loader that can answer `null` (the workflow vanished) may
+  // resolve to `null`.
+  function appendInternal(
+    event: FleetEventInput,
+    loadConditions: () => Promise<readonly ConditionalBatchCondition[]>,
+    callerOperations?: readonly BatchOperation[],
+    maxAttempts?: number,
+  ): Promise<FleetEventEnvelope>;
   function appendInternal(
     event: FleetEventInput,
     loadConditions: () => Promise<readonly ConditionalBatchCondition[] | null>,
@@ -293,14 +299,9 @@ export function createFleetEventFeedOperations(
   }
 
   function fireLive(envelope: FleetEventEnvelope): void {
-    const listenerSnapshot = Array.from(listeners);
-    for (const listener of listenerSnapshot) {
-      try {
-        listener(envelope);
-      } catch {
-        // Listener failures must not corrupt append or other subscribers.
-      }
-    }
+    // Every listener is the non-throwing wake-up that `createDurableSubscription` registers, so
+    // no listener error has to be fenced off from the append that already committed.
+    for (const listener of Array.from(listeners)) listener(envelope);
   }
 
   return {
