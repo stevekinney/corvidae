@@ -170,13 +170,10 @@ function createSessionIO(output: WritableStream<Uint8Array>): SessionIO {
         void enqueueWrite(message + '\n');
       },
     },
+    // `writeChain` only ever holds `Promise.resolve()` or a `.catch()`-handled promise, so it
+    // cannot reject; a write failure surfaces to the caller through `enqueueWrite`'s own promise.
     drainWrites: async () => {
-      try {
-        await writeChain;
-      } catch {
-        // Already surfaced to the originating caller via the returned
-        // promise from `enqueueWrite`.
-      }
+      await writeChain;
     },
   };
 }

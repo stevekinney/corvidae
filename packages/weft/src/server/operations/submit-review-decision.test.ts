@@ -186,6 +186,24 @@ describe('weft.reviews.decision.submit', () => {
     });
   });
 
+  it.each([[[{ decision: 'approved' }]], [null], ['approved'], [7]])(
+    'treats a non-object JSON body (%j) as an empty decision and returns 400',
+    async (body) => {
+      await using engine = createEngine();
+      engine.submitReview = async () => {
+        throw new Error('must not submit a review for a non-object body');
+      };
+
+      const response = await handleRequest(
+        request('POST', '/v1/reviews/rev-1/decision', body),
+        engine,
+        { operationRegistry: registry, restBindings: bindings },
+      );
+
+      expect(response.status).toBe(400);
+    },
+  );
+
   it('returns 404 when the engine reports that the review was not found', async () => {
     await using engine = createEngine();
     const originalSubmitReview = engine.submitReview.bind(engine);

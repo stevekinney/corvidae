@@ -456,6 +456,20 @@ describe('createOperationHandler', () => {
     ).toThrow(/maxRequestBodyBytes/);
   });
 
+  it('applies maxRequestBodyBytes to JSON-RPC request bodies', async () => {
+    const handler = createOperationHandler({
+      operations: [echoOperation],
+      host: {},
+      maxRequestBodyBytes: 128,
+    });
+
+    const within = await handler(jsonRpcRequest('probe.echo', { message: 'hi' }));
+    const over = await handler(jsonRpcRequest('probe.echo', { message: 'x'.repeat(512) }));
+
+    expect(within.status).toBe(200);
+    expect(over.status).toBe(413);
+  });
+
   it('answers rpc.discover with the document it serves at /openrpc.json', async () => {
     const handler = createOperationHandler({ operations: [echoOperation], host: {} });
 

@@ -212,6 +212,49 @@ describe('weft.workflows.result.get', () => {
     }
   });
 
+  it('returns 504 when the 30 second wait budget elapses before the result settles', async () => {
+    const { engine } = createEngineWithStorage();
+    const handle = await engine.start('hold', null, { id: 'workflow-result-budget' });
+    await waitForWorkflowStatus(engine, handle.id, 'running');
+
+    const originalGetHandle = engine.getHandle.bind(engine);
+    engine.getHandle = (workflowId: string) => {
+      const workflowHandle = originalGetHandle(workflowId);
+      workflowHandle.result = () => new Promise<never>(() => undefined);
+      return workflowHandle;
+    };
+
+    // Run the 30 second race timer on the next tick instead of waiting it out.
+    const realSetTimeout = globalThis.setTimeout;
+    const setTimeoutSpy = spyOn(globalThis, 'setTimeout').mockImplementation(((
+      callback: () => void,
+      milliseconds?: number,
+      ...rest: unknown[]
+    ) =>
+      realSetTimeout(
+        callback,
+        milliseconds === 30_000 ? 0 : milliseconds,
+        ...rest,
+      )) as unknown as typeof setTimeout);
+
+    try {
+      const response = await handleRequest(
+        new Request(`http://localhost/v1/workflows/${handle.id}/result`, { method: 'GET' }),
+        engine,
+        { operationRegistry: registry, restBindings: bindings },
+      );
+
+      expect(response.status).toBe(504);
+      expect(await response.json()).toEqual({ error: 'Timeout waiting for workflow result' });
+      expect(setTimeoutSpy.mock.calls.some(([, milliseconds]) => milliseconds === 30_000)).toBe(
+        true,
+      );
+    } finally {
+      setTimeoutSpy.mockRestore();
+      engine.getHandle = originalGetHandle;
+    }
+  });
+
   it('masks EngineFailure faults to a 500 with a generic error body', async () => {
     // `EngineFailure` falls through `shapeFault` to the canonical
     // `shapeRestFault`, which masks the raw engine message to a generic
