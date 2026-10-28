@@ -116,6 +116,43 @@ describe('createChartGeometry', () => {
   });
 });
 
+describe('text measurement without a layout engine', () => {
+  test('keeps the deterministic estimate for text the browser cannot measure', () => {
+    const measurementElement = document.createElement('figure');
+    document.body.append(measurementElement);
+    const svgTextElementPrototype = globalThis.SVGTextElement.prototype;
+    const originalGetBoundingBox = Object.getOwnPropertyDescriptor(
+      svgTextElementPrototype,
+      'getBBox',
+    );
+    Object.defineProperty(svgTextElementPrototype, 'getBBox', {
+      configurable: true,
+      value: () => {
+        throw new Error('layout is unavailable');
+      },
+    });
+
+    try {
+      const measured = createChartGeometry(640, 280, {
+        xTickLabels: ['unmeasurable-tick-label'],
+        measureText: true,
+        measurementElement,
+      });
+      const estimated = createChartGeometry(640, 280, {
+        xTickLabels: ['unmeasurable-tick-label'],
+      });
+      expect(measured).toEqual(estimated);
+    } finally {
+      if (originalGetBoundingBox) {
+        Object.defineProperty(svgTextElementPrototype, 'getBBox', originalGetBoundingBox);
+      } else {
+        Reflect.deleteProperty(svgTextElementPrototype, 'getBBox');
+      }
+      measurementElement.remove();
+    }
+  });
+});
+
 describe('observeChartFontLoading', () => {
   test('invokes the callback when the fonts finish loading and cleans up on teardown', async () => {
     const { promise: ready, resolve: resolveReady } = Promise.withResolvers<void>();

@@ -45,10 +45,8 @@ export function iconNavigationSnippet(clicks: Record<string, number>) {
       </button>
     `,
     setup(element: Element) {
-      const button = element.matches('.cinder-navigation-item')
-        ? requiredInstance(element, HTMLButtonElement)
-        : element.querySelector<HTMLButtonElement>('.cinder-navigation-item');
-      button?.addEventListener('click', () => {
+      const button = requiredInstance(element, HTMLButtonElement);
+      button.addEventListener('click', () => {
         const key = button.dataset['key'];
         if (key) clicks[key] = (clicks[key] ?? 0) + 1;
       });
@@ -62,10 +60,8 @@ export function cancelingNavigationSnippet(clicks: Record<string, number>) {
       <button type="button" class="cinder-navigation-item" data-cinder-navigation-item data-key="docs">Docs</button>
     `,
     setup(element: Element) {
-      const button = element.matches('.cinder-navigation-item')
-        ? requiredInstance(element, HTMLButtonElement)
-        : element.querySelector<HTMLButtonElement>('.cinder-navigation-item');
-      button?.addEventListener('click', (event) => {
+      const button = requiredInstance(element, HTMLButtonElement);
+      button.addEventListener('click', (event) => {
         event.preventDefault();
         const key = button.dataset['key'];
         if (key) clicks[key] = (clicks[key] ?? 0) + 1;
