@@ -22,6 +22,7 @@ import type {
   SkillLoadedEvent,
   SkillRejectedEvent,
 } from './skills';
+import type { TaskCleanupState } from './task-registry';
 
 /**
  * Fired when the store records an action from a run.
@@ -391,6 +392,229 @@ export class ReviewSupersededEvent extends ReviewLifecycleEvent {
   }
 }
 
+/** The goal transitions the goal event projection records, each dispatched live as a {@link GoalLifecycleEvent}. */
+export type GoalEventKind =
+  | 'goal.started'
+  | 'goal.attempt.started'
+  | 'goal.attempt.validated'
+  | 'goal.succeeded'
+  | 'goal.exhausted'
+  | 'goal.canceled'
+  | 'goal.failed'
+  | 'goal.recovered';
+
+/**
+ * The fields each goal event carries: the identifiers, versions, statuses, counts, and digest
+ * `goal-event-projection.ts` records for it. A field the recorded payload lacks is omitted.
+ */
+const GOAL_EVENT_FIELDS: Readonly<Record<GoalEventKind, readonly string[]>> = {
+  'goal.started': ['goalRunId', 'goalIdentity'],
+  'goal.attempt.started': ['goalRunId', 'attemptId', 'attemptIndex', 'runId'],
+  'goal.attempt.validated': [
+    'goalRunId',
+    'attemptId',
+    'validatorIdentity',
+    'outcomeKind',
+    'feedbackDigest',
+  ],
+  'goal.succeeded': ['goalRunId', 'terminalReason'],
+  'goal.exhausted': ['goalRunId', 'terminalReason'],
+  'goal.canceled': ['goalRunId', 'terminalReason'],
+  'goal.failed': ['goalRunId', 'terminalReason', 'validatorError'],
+  'goal.recovered': ['goalRunId', 'controllerRestarts', 'status', 'transitionSeq'],
+};
+
+/** Every goal event kind, in the order a goal's history can hold them. */
+export const GOAL_EVENT_KINDS = Object.keys(GOAL_EVENT_FIELDS) as readonly GoalEventKind[];
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** A failed goal's validator error, reduced to its `kind` and `code`: its message never travels. */
+function validatorErrorFields(value: unknown): Readonly<Record<string, unknown>> | undefined {
+  if (!isRecord(value)) return undefined;
+  return { kind: value['kind'], code: value['code'] };
+}
+
+/**
+ * Fired on the bureau emitter when a goal write commits a transition the goal event projection
+ * records (COR-1721): its creation, an attempt starting or being validated, a terminal decision, or
+ * a counted controller restart. Live observations only: the boot pass that re-projects every goal
+ * into the durable history dispatches nothing, and a duplicate delivery of a transition the store
+ * already holds is observed and dispatched again, so a listener treats these as at-least-once.
+ *
+ * `payload` holds the recorded fields for `type` and nothing else; `goal.failed` keeps its
+ * validator error's `kind` and `code` and drops the message, which stays behind `bureau.goals.get`.
+ */
+export class GoalLifecycleEvent extends Event {
+  declare readonly type: GoalEventKind;
+  readonly goalRunId: string;
+  readonly payload: Readonly<Record<string, unknown>>;
+
+  constructor(kind: GoalEventKind, recorded: Readonly<Record<string, unknown>>) {
+    super(kind);
+    const payload: Record<string, unknown> = {};
+    for (const field of GOAL_EVENT_FIELDS[kind]) {
+      const value =
+        field === 'validatorError' ? validatorErrorFields(recorded[field]) : recorded[field];
+      if (value !== undefined) payload[field] = value;
+    }
+    this.goalRunId = String(recorded['goalRunId']);
+    this.payload = Object.freeze(payload);
+  }
+}
+
+/** The asset events Bureau also dispatches on its own emitter, beside `bureau.assets.subscribe`. */
+export type BureauAssetEventKind =
+  'asset.upload.started' | 'asset.upload.purged' | 'asset.blob.purged' | 'asset.expired';
+
+/** The asset event kinds forwarded onto the bureau emitter. */
+export const BUREAU_ASSET_EVENT_KINDS: readonly BureauAssetEventKind[] = [
+  'asset.upload.started',
+  'asset.upload.purged',
+  'asset.blob.purged',
+  'asset.expired',
+];
+
+/**
+ * Fired on the bureau emitter for each {@link BureauAssetEventKind} the asset service delivers to
+ * `bureau.assets.subscribe` (COR-1721), carrying that event's own fields: its `sequence` and `at`,
+ * and whichever of `assetId`, `revision`, `state`, `principal`, `uploadId`, and `digest` it set.
+ */
+export class AssetLifecycleEvent extends Event {
+  declare readonly type: BureauAssetEventKind;
+  /** The asset event's own sequence number, from `bureau.assets.subscribe`; not the feed's. */
+  readonly sequence: number;
+  readonly at: string;
+  readonly assetId: string | undefined;
+  readonly revision: number | undefined;
+  readonly state: string | undefined;
+  readonly principal: string | undefined;
+  readonly uploadId: string | undefined;
+  readonly digest: string | undefined;
+
+  constructor(
+    kind: BureauAssetEventKind,
+    event: {
+      readonly sequence: number;
+      readonly at: string;
+      readonly assetId?: string | undefined;
+      readonly revision?: number | undefined;
+      readonly state?: string | undefined;
+      readonly principal?: string | undefined;
+      readonly uploadId?: string | undefined;
+      readonly digest?: string | undefined;
+    },
+  ) {
+    super(kind);
+    this.sequence = event.sequence;
+    this.at = event.at;
+    this.assetId = event.assetId;
+    this.revision = event.revision;
+    this.state = event.state;
+    this.principal = event.principal;
+    this.uploadId = event.uploadId;
+    this.digest = event.digest;
+  }
+}
+
+/** Which file catalog a {@link DefinitionsChangedEvent} reports on. */
+export type DefinitionSourceKind = 'agents' | 'workflows';
+
+/**
+ * Fired on the bureau emitter after a rescan of the agent or workflow files changed what the
+ * catalog holds (COR-1721), with the same identifiers its `onChange` listeners receive. `rejected`
+ * names those of `added` and `changed` whose definition is invalid now and cannot run.
+ */
+export class DefinitionsChangedEvent extends Event {
+  static readonly type = 'definitions.changed' as const;
+
+  readonly source: DefinitionSourceKind;
+  readonly added: readonly string[];
+  readonly changed: readonly string[];
+  readonly removed: readonly string[];
+  readonly rejected: readonly string[];
+
+  constructor(
+    source: DefinitionSourceKind,
+    change: {
+      readonly added: readonly string[];
+      readonly changed: readonly string[];
+      readonly removed: readonly string[];
+      readonly rejected: readonly string[];
+    },
+  ) {
+    super(DefinitionsChangedEvent.type);
+    this.source = source;
+    this.added = [...change.added];
+    this.changed = [...change.changed];
+    this.removed = [...change.removed];
+    this.rejected = [...change.rejected];
+  }
+}
+
+/**
+ * Fired on the bureau emitter when the durable engine reports that one of this Bureau's schedules
+ * skipped occurrences it was too late for (COR-1721), copied from Weft's `ScheduleMissedFireEvent`.
+ * Dispatched only when `bureau.schedules.get(scheduleId)` still returns the schedule, so it arrives
+ * a turn after the engine's own event.
+ */
+export class ScheduleMissedEvent extends Event {
+  static readonly type = 'schedule.missed' as const;
+
+  readonly scheduleId: string;
+  readonly missedCount: number;
+  readonly windowStart: number;
+  readonly windowEnd: number;
+
+  constructor(scheduleId: string, missedCount: number, windowStart: number, windowEnd: number) {
+    super(ScheduleMissedEvent.type);
+    this.scheduleId = scheduleId;
+    this.missedCount = missedCount;
+    this.windowStart = windowStart;
+    this.windowEnd = windowEnd;
+  }
+}
+
+/**
+ * Fired on the bureau emitter once a task's cleanup acknowledgement has been written to its record
+ * (COR-1721). `cleanup` is the state `bureau.tasks.get(taskId).cleanup` now reads: `cleaned-up`,
+ * `cleanup-failed`, `cleanup-unresolved`, or `unknown-outcome`. Not dispatched when the write fails
+ * or the task record is gone.
+ */
+export class TaskCleanupAcknowledgedEvent extends Event {
+  static readonly type = 'task.cleanup-acknowledged' as const;
+
+  readonly taskId: string;
+  readonly cleanup: TaskCleanupState;
+
+  constructor(taskId: string, cleanup: TaskCleanupState) {
+    super(TaskCleanupAcknowledgedEvent.type);
+    this.taskId = taskId;
+    this.cleanup = cleanup;
+  }
+}
+
+/**
+ * Fired on the bureau emitter for each diagnostic the Bureau reports through `onDiagnostic` (or the
+ * console, when that is unset), carrying its `level` and `scope` and never its message or cause
+ * (COR-1721). A diagnostic raised before the emitter exists, by the event feed's own recorder, or
+ * while a `diagnostic` event is being dispatched reaches the sink only.
+ */
+export class DiagnosticEvent extends Event {
+  static readonly type = 'diagnostic' as const;
+
+  readonly level: 'warn' | 'error';
+  readonly scope: string;
+
+  constructor(level: 'warn' | 'error', scope: string) {
+    super(DiagnosticEvent.type);
+    this.level = level;
+    this.scope = scope;
+  }
+}
+
 /**
  * Maps event type strings to their corresponding Event subclasses.
  *
@@ -467,4 +691,20 @@ export interface BureauEventMap extends EventMap {
    * dispatched by `runStep` onto the run emitter, not this one.
    */
   'steering.accepted': SteeringAcceptedEvent;
+  'goal.started': GoalLifecycleEvent;
+  'goal.attempt.started': GoalLifecycleEvent;
+  'goal.attempt.validated': GoalLifecycleEvent;
+  'goal.succeeded': GoalLifecycleEvent;
+  'goal.exhausted': GoalLifecycleEvent;
+  'goal.canceled': GoalLifecycleEvent;
+  'goal.failed': GoalLifecycleEvent;
+  'goal.recovered': GoalLifecycleEvent;
+  'asset.upload.started': AssetLifecycleEvent;
+  'asset.upload.purged': AssetLifecycleEvent;
+  'asset.blob.purged': AssetLifecycleEvent;
+  'asset.expired': AssetLifecycleEvent;
+  [DefinitionsChangedEvent.type]: DefinitionsChangedEvent;
+  [ScheduleMissedEvent.type]: ScheduleMissedEvent;
+  [TaskCleanupAcknowledgedEvent.type]: TaskCleanupAcknowledgedEvent;
+  [DiagnosticEvent.type]: DiagnosticEvent;
 }

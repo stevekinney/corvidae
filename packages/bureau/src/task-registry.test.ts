@@ -56,6 +56,7 @@ function build(
   options: {
     kv?: ConditionalTextValueStore;
     onSettled?: Parameters<typeof createTaskRegistry>[0]['onSettled'];
+    onCleanupAcknowledged?: Parameters<typeof createTaskRegistry>[0]['onCleanupAcknowledged'];
   } = {},
 ) {
   const runtime = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
@@ -104,6 +105,7 @@ function build(
     host,
     diagnose: (message) => diagnostics.push(message),
     onSettled: options.onSettled,
+    onCleanupAcknowledged: options.onCleanupAcknowledged,
   });
   return { registry, kv, host, held, runtime, diagnostics };
 }
@@ -625,6 +627,49 @@ describe('cancel', () => {
 
       expect(outcome).toEqual({ receipt });
     }
+  });
+
+  it('announces each acknowledgement once, after its write, and not for a task with no record (COR-1721)', async () => {
+    const announced: Array<{ taskId: string; cleanup: TaskCleanupState }> = [];
+    // What the record held when each announcement was made: the write has already landed.
+    const storedAtAnnouncement: Array<Promise<TaskCleanupState | undefined>> = [];
+    const { registry } = build(undefined, {
+      onCleanupAcknowledged: (taskId, cleanup) => {
+        announced.push({ taskId, cleanup });
+        storedAtAnnouncement.push(registry.record(taskId).then((record) => record?.cleanup));
+      },
+    });
+    await admit(registry, 'run-1');
+    await admit(registry, 'run-2');
+
+    await registry.watchCleanup('run-1', Promise.resolve({ status: 'completed' }));
+    await registry.watchCleanup('run-1', Promise.resolve({ status: 'failed' }));
+    await registry.watchCleanup(
+      'run-2',
+      Promise.resolve({ status: 'unresolved', reason: 'unknown-effect' }),
+    );
+    await registry.watchCleanup('run-missing', Promise.resolve({ status: 'completed' }));
+    await registry.flush();
+
+    expect(announced).toEqual([
+      { taskId: 'run-1', cleanup: 'cleaned-up' },
+      { taskId: 'run-2', cleanup: 'unknown-outcome' },
+    ]);
+    expect(await Promise.all(storedAtAnnouncement)).toEqual(['cleaned-up', 'unknown-outcome']);
+  });
+
+  it('diagnoses a throwing cleanup listener and still resolves the cleanup state (COR-1721)', async () => {
+    const { registry, diagnostics } = build(undefined, {
+      onCleanupAcknowledged: () => {
+        throw new Error('listener failed');
+      },
+    });
+    await admit(registry, 'run-1');
+
+    const state = await registry.watchCleanup('run-1', Promise.resolve({ status: 'completed' }));
+
+    expect(state).toBe('cleaned-up');
+    expect(diagnostics).toContain('Could not announce the cleanup of task "run-1"');
   });
 
   it('keeps the acknowledgement’s status and reason on the record, and never its error', async () => {

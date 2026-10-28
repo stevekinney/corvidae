@@ -184,6 +184,13 @@ import {
 import { agentSkillsRun } from './agent-skills';
 import { catalogRunGuardrailsContext, createCatalogDispatcher } from './bureau-catalog-dispatch';
 import { createBureauEventFeed } from './bureau-event-feed.ts';
+import {
+  createDiagnosticDispatcher,
+  forwardAssetEvents,
+  forwardDefinitionChanges,
+  forwardMissedFires,
+  subscribeEventFeed,
+} from './bureau-event-forwarders.ts';
 import { unopenableNewSessionIdentifierReason } from './reserved-identifiers';
 import { createSessionPersistence } from './bureau-session-persistence';
 import {
@@ -238,6 +245,7 @@ import {
   RunRegisteredEvent,
   RunSettledEvent,
   RunRemovedEvent,
+  TaskCleanupAcknowledgedEvent,
 } from './events';
 import { createGoalAttemptFenceHost } from './goal-attempt-fence';
 import { createGoalWorkflowHost } from './goal-ports';
@@ -2041,7 +2049,10 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       );
     }
   }
-  const diagnose = resolveDiagnosticSink(options.onDiagnostic);
+  // COR-1721 — the one choke point every Bureau diagnostic passes through: it reaches the sink, and,
+  // once the emitter below is bound, is dispatched as a `diagnostic` event (level and scope only).
+  const diagnostics = createDiagnosticDispatcher(resolveDiagnosticSink(options.onDiagnostic));
+  const { diagnose } = diagnostics;
   // COR-1710 — the settings: validated here, read in `bootSettings` below, before the engine.
   const settingsLocked = validateSettingsOptions(options, toBadRequest);
   const settingsDefaults = settingsDefaultsOf(options);
@@ -2109,24 +2120,16 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   // projection for are dropped by `publish`, which is what keeps the
   // supervisor's task and synthesis events off it.
   const eventFeed = createBureauEventFeed({ bureauId, now: runtimeServices.clock.now });
-  const eventFeedSubscription = emitter.toObservable().subscribe((event: Event) => {
-    // Guarded for the reason `emitLiveFrame` is (AB-96): `dispatchEvent`
-    // walks its all-events listeners unguarded, so a throw here would
-    // propagate out of whichever `emitter.dispatch` call was in flight —
-    // several of which run synchronously inside run setup, where an
-    // exception leaves a run launched but untracked. Recording an event must
-    // never be able to break the thing it is recording.
-    try {
-      eventFeed.publish(event);
-    } catch (error) {
-      diagnose({
-        level: 'error',
-        scope: 'event-feed',
-        message: `[bureau] event feed threw recording a "${event.type}" event:`,
-        cause: error,
-      });
-    }
-  });
+  // Guarded for the reason `emitLiveFrame` is (AB-96): `dispatchEvent` walks its all-events
+  // listeners unguarded, so a throw here would propagate out of whichever `emitter.dispatch` call
+  // was in flight — several of which run synchronously inside run setup, where an exception leaves a
+  // run launched but untracked. Its failures go to the sink only: a `diagnostic` event would be
+  // recorded by the same failing feed (COR-1721).
+  const eventFeedSubscription = subscribeEventFeed(emitter, eventFeed, diagnostics.report);
+  diagnostics.bind((event) => emitter.dispatch(event));
+  // COR-1721 — the forwarders onto the emitter from sources it does not own (assets, file catalogs,
+  // the engine's missed fires), stopped at shutdown just before `bureau.disposed`.
+  const stopForwarding: Array<() => void> = [];
   // COR-1421 — `onEvent` listens from here, before any recovery pass can
   // dispatch, so it hears the boot-time events a listener added after
   // `createBureau()` returns would miss. It is registered AFTER the event
@@ -2225,6 +2228,11 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   const assetServiceInstance: AssetService | undefined = options.assets
     ? await createAssetService({ ...options.assets, runtime: runtimeServices })
     : undefined;
+  if (assetServiceInstance !== undefined) {
+    stopForwarding.push(
+      forwardAssetEvents(assetServiceInstance, (event) => emitter.dispatch(event)),
+    );
+  }
   // COR-1527: the services resolver asks whether a workflow type came from a workflow file, and
   // can be reached before the workflow runtime exists, so it reads this holder.
   const workflowFileTypes: { current: ((type: string) => boolean) | undefined } = {
@@ -2441,6 +2449,16 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         ),
       );
     });
+    if (runtime.durable !== undefined) {
+      stopForwarding.push(
+        forwardMissedFires(
+          runtime.durable.engine,
+          (scheduleId) => getSchedule(scheduleId),
+          (event) => emitter.dispatch(event),
+          diagnose,
+        ),
+      );
+    }
     // The model namespace. Independent of `runtime`. Constructed BEFORE `agentCatalog` below so
     // the file catalog validates against it; `onReplace` reaches the file agents, which are built
     // after it, so it reads `fileAgents` when it is called.
@@ -2588,6 +2606,10 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       snapshots: fileAgents?.snapshots,
       descriptors: () => models.catalog().descriptors,
     });
+    // COR-1721 — after the first scan, so the files present at boot are not reported as added.
+    stopForwarding.push(
+      forwardDefinitionChanges('agents', agentCatalog, (event) => emitter.dispatch(event)),
+    );
     // COR-1527: the workflow files. The directory is scanned and the engine told about the documents
     // in `start()`, at the end of construction and before the engine recovers; the `agent` step runs
     // through `runWorkflowAgentStep`, defined below with the rest of the run machinery.
@@ -4441,6 +4463,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     onFireSettled: appendFireSettledEvent,
     onSettled: async (record) => {
       emitter.dispatch(new RunSettledEvent(record.taskId));
+    },
+    onCleanupAcknowledged: (taskId, cleanup) => {
+      emitter.dispatch(new TaskCleanupAcknowledgedEvent(taskId, cleanup));
     },
     diagnose: (message, cause) =>
       diagnose({ level: 'error', scope: 'task-registry', message: `[bureau] ${message}`, cause }),
@@ -17531,6 +17556,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
           // COR-1631 — so do the freezes of the surfaces those settlements started.
           await surfaces?.flush();
 
+          for (const stop of stopForwarding) stop();
           emitter.dispatch(new BureauDisposedEvent());
           storeSubscription.unsubscribe();
           // After `BureauDisposedEvent` is dispatched, so the feed records
@@ -18723,6 +18749,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     isClosing: () => shutdownPromise !== undefined,
     diagnose,
     eventHistory: eventHistoryInstance,
+    dispatchGoalEvent: (event) => emitter.dispatch(event),
   });
 
   // COR-1577: a `bureau.run()` run's park joins the session reviews in the public list, and
@@ -19440,6 +19467,10 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         await bureau.shutdown();
       });
     }
+    // COR-1721 — after the first scan `start()` made, as for the agent files.
+    stopForwarding.push(
+      forwardDefinitionChanges('workflows', workflowRuntime.workflows, (event) => emitter.dispatch(event)),
+    );
     if (options.maintenance !== 'manual') runtime.durable?.engine.scheduler.start();
   }
   if (hasDeferredGatewayAuthority) {

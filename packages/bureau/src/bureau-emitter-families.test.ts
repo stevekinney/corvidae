@@ -1,0 +1,235 @@
+/**
+ * COR-1721 — each new event family reaches a real Bureau's emitter, and its event feed, from the
+ * point its projection, callback, or write runs.
+ */
+import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { waitUntil } from '@lostgradient/testing/wait-until';
+import { createToolbox } from 'armorer';
+import { afterEach, describe, expect, it, setSystemTime } from 'bun:test';
+
+import type { AgentDefinitions } from './agent-catalog';
+import { createBureau } from './create-bureau';
+import {
+  AssetLifecycleEvent,
+  DefinitionsChangedEvent,
+  DiagnosticEvent,
+  GoalLifecycleEvent,
+  ScheduleMissedEvent,
+  TaskCleanupAcknowledgedEvent,
+} from './events';
+import { validAgentFile } from './testing/agent-file-fixtures.test-support';
+import { startFileBureau } from './testing/agent-file-bureau.test-support';
+import {
+  answering,
+  createCheckValidator,
+  createTestDatabase,
+  createUnsetTestDatabase,
+  goalRequest,
+  pollUntil,
+  TERMINAL_STATUSES,
+  type TestDatabase,
+  workerAgent,
+} from './testing/goal-fixtures.test-support';
+import type { BureauDiagnostic } from './types';
+
+const cleanups: Array<() => Promise<void> | void> = [];
+let database: TestDatabase = createUnsetTestDatabase();
+
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0).toReversed()) await cleanup();
+  await database.remove();
+});
+
+const parkUntilAborted: GenerateFunction = ({ signal }) => {
+  const parked = Promise.withResolvers<never>();
+  signal?.addEventListener('abort', () => parked.reject(signal.reason), { once: true });
+  return parked.promise;
+};
+
+describe('goal events on the bureau emitter', () => {
+  it('dispatches each live transition, and nothing for the boot pass that re-projects history', async () => {
+    database = createTestDatabase('cor-1721-goals');
+    const boot = async (seen: Event[]) =>
+      createBureau({
+        agents: { worker: workerAgent(answering('done')) },
+        validators: [createCheckValidator()],
+        storage: { type: 'sqlite', path: database.path },
+        durable: true,
+        durableOwnership: { ownership: 'none' },
+        onEvent: (event) => {
+          if (event.type.startsWith('goal.')) seen.push(event);
+        },
+      });
+
+    const live: Event[] = [];
+    const first = await boot(live);
+    try {
+      await first.goals.create(goalRequest());
+      await pollUntil(async () => {
+        const goal = await first.goals.get('g1');
+        const status = goal?.status;
+        return status !== undefined && (TERMINAL_STATUSES as readonly string[]).includes(status);
+      });
+    } finally {
+      await first.dispose();
+    }
+
+    expect(live.every((event) => event instanceof GoalLifecycleEvent)).toBe(true);
+    expect(live.map((event) => event.type)).toEqual([
+      'goal.started',
+      'goal.attempt.started',
+      'goal.attempt.validated',
+      'goal.succeeded',
+    ]);
+    expect((live[0] as GoalLifecycleEvent).payload).toEqual({
+      goalRunId: 'g1',
+      goalIdentity: { name: 'goal', version: '1' },
+    });
+
+    const replayed: Event[] = [];
+    const second = await boot(replayed);
+    try {
+      await second.recovery();
+      expect(replayed).toEqual([]);
+    } finally {
+      await second.dispose();
+    }
+  });
+});
+
+describe('diagnostic events on the bureau emitter', () => {
+  it('dispatches a diagnostic with its level and scope, and a diagnostic raised by its own dispatch reaches the sink only', async () => {
+    const sunk: BureauDiagnostic[] = [];
+    const seen: Event[] = [];
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {},
+      onDiagnostic: (diagnostic) => sunk.push(diagnostic),
+      // Throws on every event, so the diagnostic its first failure raises fails it again.
+      onEvent: (event) => {
+        seen.push(event);
+        throw new Error(`MESSAGE-listener-failed-on-${event.type}`);
+      },
+    });
+    await bureau.dispose();
+
+    const diagnostics = seen.filter((event) => event instanceof DiagnosticEvent);
+    const failures = sunk.filter((diagnostic) => diagnostic.scope === 'events');
+    // One failure on `bureau.disposed`, one on the `diagnostic` that failure dispatched.
+    expect(failures).toHaveLength(2);
+    expect(diagnostics).toHaveLength(1);
+    expect({ level: diagnostics[0]?.level, scope: diagnostics[0]?.scope }).toEqual({
+      level: 'error',
+      scope: 'events',
+    });
+    expect(JSON.stringify(diagnostics[0])).not.toContain('MESSAGE-');
+  });
+});
+
+describe('task cleanup acknowledgements on the bureau emitter', () => {
+  it('dispatches the cleanup state a canceled task’s record now holds', async () => {
+    const generating = Promise.withResolvers<void>();
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: (input) => {
+            generating.resolve();
+            return parkUntilAborted(input);
+          },
+          toolbox: createToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
+    });
+    cleanups.push(() => bureau.dispose());
+    const acknowledged: TaskCleanupAcknowledgedEvent[] = [];
+    bureau.addEventListener(TaskCleanupAcknowledgedEvent.type, (event) => acknowledged.push(event));
+    const run = await bureau.tasks.start('default', 'go');
+    await generating.promise;
+
+    await bureau.tasks.cancel(run.id);
+    await waitUntil(() => acknowledged.length > 0);
+
+    expect(acknowledged.map(({ taskId, cleanup }) => ({ taskId, cleanup }))).toEqual([
+      { taskId: run.id, cleanup: 'cleaned-up' },
+    ]);
+    const task = await bureau.tasks.get(run.id);
+    expect(task?.cleanup).toBe('cleaned-up');
+  });
+});
+
+describe('agent definition and asset events on the bureau emitter', () => {
+  it('reports agent file changes, with invalid files rejected, and forwards upload events', async () => {
+    const harness = await startFileBureau();
+    cleanups.push(() => harness.dispose());
+    const changes: DefinitionsChangedEvent[] = [];
+    const assets: AssetLifecycleEvent[] = [];
+    harness.bureau.addEventListener(DefinitionsChangedEvent.type, (event) => changes.push(event));
+    harness.bureau.addEventListener('asset.upload.started', (event) => assets.push(event));
+
+    await harness.put('helper.md', validAgentFile());
+    await harness.put('broken.md', 'not an agent file');
+    await harness.bureau.agents.refresh();
+    await waitUntil(() =>
+      changes.some((change) => change.added.includes('helper') && change.added.includes('broken')),
+    );
+
+    const change = changes.find((candidate) => candidate.added.includes('broken'));
+    expect(change?.source).toBe('agents');
+    expect(change?.rejected).toEqual(['broken']);
+
+    const assetService = harness.bureau.assets;
+    if (assetService === undefined) throw new Error('the harness has an asset service');
+    const session = await assetService.beginUpload({ id: 'alice' }, { declaredByteLength: 4 });
+    expect(assets).toHaveLength(1);
+    expect(assets[0]).toMatchObject({
+      type: 'asset.upload.started',
+      uploadId: session.uploadId,
+      principal: 'alice',
+    });
+  });
+});
+
+describe('missed schedule fires on the bureau emitter', () => {
+  it('reports occurrences a schedule was too late for', async () => {
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => ({ content: 'ok', toolCalls: [] }),
+          toolbox: createToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
+      storage: { type: 'memory' },
+      durable: true,
+      maintenance: 'manual',
+    });
+    cleanups.push(() => bureau.dispose());
+    const missed: ScheduleMissedEvent[] = [];
+    bureau.addEventListener(ScheduleMissedEvent.type, (event) => missed.push(event));
+    const summary = await bureau.schedules.create({
+      agentName: 'default',
+      input: 'tick',
+      spec: '1m',
+    });
+    const scheduleId = summary?.id;
+
+    // Ten minutes late for its first occurrence: the engine reads the system clock, and skips the
+    // ten occurrences it missed instead of backfilling them.
+    const createdAt = Date.now();
+    setSystemTime(new Date(createdAt + 10 * 60_000));
+    try {
+      await bureau.maintain(Date.now());
+    } finally {
+      setSystemTime();
+    }
+    await waitUntil(() => missed.length > 0);
+
+    expect(missed).toHaveLength(1);
+    expect(missed[0]?.scheduleId).toBe(scheduleId);
+    expect(missed[0]?.missedCount).toBe(10);
+    expect(summary?.nextFireAt).toBe(missed[0]?.windowStart);
+    expect(missed[0]?.windowEnd).toBeGreaterThanOrEqual(missed[0]?.windowStart ?? Infinity);
+    const stored = await bureau.schedules.get(scheduleId ?? '');
+    expect(stored?.missedFireCount).toBe(10);
+  });
+});
