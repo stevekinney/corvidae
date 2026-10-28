@@ -142,8 +142,9 @@
  *   - the number of microtask turns a promise chain needs, which is deterministic by construction;
  *   - Playwright's own timeouts, which the browser lanes configure in their configuration files.
  *
- * `*.bench.ts` files and `.test.ts` files under a `scripts/benchmarks/` directory are outside the
- * default gate and outside the scan, as they are for `check-wall-clock-assertions.ts`.
+ * `*.bench.ts` files are outside the default gate and outside the scan, as they are for
+ * `check-wall-clock-assertions.ts`. A directory of benchmarks earns no exemption: a `.test.ts`
+ * under `scripts/benchmarks/` is a default-suite test and is scanned like any other.
  */
 
 import { readdirSync } from 'node:fs';
@@ -1875,12 +1876,15 @@ export function collectFiles(directory: string, tests: string[], runners: string
     if (entry.isDirectory()) {
       if (entry.name.startsWith('.') || SKIPPED_DIRECTORIES.has(entry.name)) continue;
       if (relative(root, path) === PLAYWRIGHT_LANE_DIRECTORY) continue;
-      // Wall-clock targets belong under a package's `scripts/benchmarks/`.
-      if (entry.name === 'benchmarks' && basename(directory) === 'scripts') continue;
       collectFiles(path, tests, runners);
     } else if (entry.isFile() && isTestFile(entry.name, relative(root, directory))) {
       tests.push(path);
-    } else if (entry.isFile() && entry.name.endsWith('.ts') && !entry.name.endsWith('.d.ts')) {
+    } else if (
+      entry.isFile() &&
+      entry.name.endsWith('.ts') &&
+      !entry.name.endsWith('.d.ts') &&
+      !entry.name.endsWith('.bench.ts')
+    ) {
       runners.push(path);
     }
   }

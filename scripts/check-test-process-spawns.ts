@@ -55,12 +55,13 @@
  *     path the resolver below does not try (`tsconfig` path aliases);
  *   - a process started by a dependency, such as Playwright's `chromium.launch()`.
  *
- * `*.bench.ts` files and `.test.ts` files under a package's `scripts/benchmarks/` are outside
- * the default gate and outside the scan, as they are for `check-wall-clock-assertions.ts`.
+ * `*.bench.ts` files are outside the default gate and outside the scan, as they are for
+ * `check-wall-clock-assertions.ts`. A directory of benchmarks earns no exemption: a `.test.ts`
+ * under `scripts/benchmarks/` is a default-suite test and is scanned like any other.
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { basename, dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import ts from 'typescript';
 import { workspaceParentDirectories } from './workspace-directories.ts';
 
@@ -622,7 +623,6 @@ export function collectTestFiles(directory: string, paths: string[]): void {
     const path = join(directory, entry.name);
     if (entry.isDirectory()) {
       if (entry.name.startsWith('.') || SKIPPED_DIRECTORIES.has(entry.name)) continue;
-      if (entry.name === 'benchmarks' && basename(directory) === 'scripts') continue;
       collectTestFiles(path, paths);
     } else if (entry.isFile() && /\.test(?:-support)?\.tsx?$/.test(entry.name)) {
       paths.push(path);
