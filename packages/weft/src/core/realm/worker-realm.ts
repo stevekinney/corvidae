@@ -336,8 +336,6 @@ export class WorkerRealm {
       case 'draining':
         this.lifecycle.terminate();
         break;
-      default:
-        break;
     }
     this.#settlePendingTurns();
   }
