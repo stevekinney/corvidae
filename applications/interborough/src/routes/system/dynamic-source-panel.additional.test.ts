@@ -7,11 +7,13 @@ import { requireElement } from '../../../tests/dom.test-support.ts';
  * produces, and the query invalidation each outcome performs.
  */
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
 
+import { until } from '../../lib/fake-timers.test-support.ts';
 import { createQueryClient } from '../../lib/query.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import DynamicSourcePanel from './dynamic-source-panel.svelte';
+import { ACTIVE_SOURCE_POLL_MS } from './source-load-diagnostics-view.ts';
 import SystemRouteTestHarness from './system-route-test-harness.test-harness.svelte';
 import { realClient, ScriptedFetch } from './system-test-support.test-support.ts';
 
@@ -121,73 +123,87 @@ describe('additional coverage', () => {
     expect(await findByText(/could not preload/)).not.toBeNull();
   });
 
-  test('never renders a preload outcome under a different key’s identity badges', async () => {
-    // Regression guard: `onSuccess` used to write the outcome unconditionally.
-    // An operator can inspect a different key while a preload is still in
-    // flight, and the earlier key's outcome would then land under the new
-    // key's badges, reading as a result for a revision never preloaded.
-    scripted = new ScriptedFetch();
-    scripted.routeJsonRpcMethod(DIAGNOSTICS, idleDiagnostics());
-
-    // Hold the preload open until the test releases it, so the key can be
-    // switched while it is genuinely in flight.
-    let releasePreload!: () => void;
-    const preloadHeld = new Promise<void>((resolve) => {
-      releasePreload = resolve;
+  // The preload's fast diagnostics cadence is two seconds of the page's own clock, so this test
+  // moves a fake clock across it instead of waiting it out (COR-1737). Testing Library's
+  // `waitFor` and `findBy*` cannot run under Bun's fake timers, so it waits with `until`.
+  describe('with the clock faked', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
     });
-    scripted.routeJsonRpcDeferred(
-      PRELOAD,
-      preloadHeld.then(() => ({
-        manifest: { revision: REVISION, name: NAME },
-        installedAt: 1,
-      })),
-    );
 
-    const { container, getByRole, findByText, queryByText } = await renderPanel();
+    afterEach(() => {
+      jest.useRealTimers();
+    });
 
-    await inspect(container, getByRole);
-    await findByText('Load state: Idle');
-    await fireEvent.click(getByRole('button', { name: 'Preload' }));
+    test('never renders a preload outcome under a different key’s identity badges', async () => {
+      // Regression guard: `onSuccess` used to write the outcome unconditionally.
+      // An operator can inspect a different key while a preload is still in
+      // flight, and the earlier key's outcome would then land under the new
+      // key's badges, reading as a result for a revision never preloaded.
+      scripted = new ScriptedFetch();
+      scripted.routeJsonRpcMethod(DIAGNOSTICS, idleDiagnostics());
 
-    // The initial diagnostics response is idle. Starting this slow preload
-    // must still switch the mounted query to the fast cadence immediately,
-    // otherwise it would wait the settled 30-second interval before seeing
-    // the server's loading state. The third call proves the 2-second cadence,
-    // rather than only the immediate refresh.
-    await waitFor(() => {
-      const diagnosticsCalls = scripted!.calls.filter(
-        (call) => typeof call.init?.body === 'string' && call.init.body.includes(DIAGNOSTICS),
+      // Hold the preload open until the test releases it, so the key can be
+      // switched while it is genuinely in flight.
+      let releasePreload!: () => void;
+      const preloadHeld = new Promise<void>((resolve) => {
+        releasePreload = resolve;
+      });
+      scripted.routeJsonRpcDeferred(
+        PRELOAD,
+        preloadHeld.then(() => ({
+          manifest: { revision: REVISION, name: NAME },
+          installedAt: 1,
+        })),
       );
-      expect(diagnosticsCalls.length).toBeGreaterThan(2);
+
+      const { container, getByRole, getByText, queryByText } = await renderPanel();
+      const diagnosticsCalls = () =>
+        scripted!.calls.filter(
+          (call) => typeof call.init?.body === 'string' && call.init.body.includes(DIAGNOSTICS),
+        ).length;
+
+      await inspect(container, getByRole);
+      await until(() => expect(getByText('Load state: Idle')).not.toBeNull());
+      await fireEvent.click(getByRole('button', { name: 'Preload' }));
+
+      // The initial diagnostics response is idle. Starting this slow preload
+      // must still switch the mounted query to the fast cadence immediately,
+      // otherwise it would wait the settled 30-second interval before seeing
+      // the server's loading state. The second call is that immediate refresh;
+      // a third, one fast interval later, proves the 2-second cadence rather
+      // than only the immediate refresh.
+      await until(() => expect(diagnosticsCalls()).toBeGreaterThan(1));
+      const afterImmediateRefresh = diagnosticsCalls();
+      jest.advanceTimersByTime(ACTIVE_SOURCE_POLL_MS);
+      await until(() => expect(diagnosticsCalls()).toBeGreaterThan(afterImmediateRefresh));
+
+      // Switch to a different revision while the first preload is unresolved.
+      await inspect(container, getByRole, NAME, 'a-different-revision');
+      await until(() => expect(getByText('Load state: Idle')).not.toBeNull());
+
+      const preloadButton = () =>
+        requireElement(getByRole('button', { name: /Preload/ }), HTMLButtonElement);
+      expect(preloadButton().disabled).toBe(true);
+
+      releasePreload();
+
+      // Wait for PROOF the mutation settled, not merely for a quiet moment: an
+      // `expect(...).toBeNull()` inside `until` passes on its very first
+      // check, before a late write could possibly have landed, which would make
+      // this test vacuous (it did, in an earlier revision of it). `onSettled`
+      // clears the in-flight key, re-enabling the button — an observable edge
+      // that fires on both the fixed and the broken code, so the outcome
+      // assertion below is what actually distinguishes them.
+      //
+      // The settled key's diagnostics invalidation is NOT a usable signal here:
+      // that query is no longer mounted, and TanStack Query does not refetch an
+      // inactive key on invalidation.
+      await until(() => expect(preloadButton().disabled).toBe(false));
+
+      // The settled outcome belongs to the FIRST key, which is no longer shown.
+      expect(queryByText(/is installed in the workflow catalog/)).toBeNull();
     });
-
-    // Switch to a different revision while the first preload is unresolved.
-    await inspect(container, getByRole, NAME, 'a-different-revision');
-    await findByText('Load state: Idle');
-
-    const preloadButton = () =>
-      requireElement(getByRole('button', { name: /Preload/ }), HTMLButtonElement);
-    expect(preloadButton().disabled).toBe(true);
-
-    releasePreload();
-
-    // Wait for PROOF the mutation settled, not merely for a quiet moment: an
-    // `expect(...).toBeNull()` inside `waitFor` passes on its very first
-    // check, before a late write could possibly have landed, which would make
-    // this test vacuous (it did, in an earlier revision of it). `onSettled`
-    // clears the in-flight key, re-enabling the button — an observable edge
-    // that fires on both the fixed and the broken code, so the outcome
-    // assertion below is what actually distinguishes them.
-    //
-    // The settled key's diagnostics invalidation is NOT a usable signal here:
-    // that query is no longer mounted, and TanStack Query does not refetch an
-    // inactive key on invalidation.
-    await waitFor(() => {
-      expect(preloadButton().disabled).toBe(false);
-    });
-
-    // The settled outcome belongs to the FIRST key, which is no longer shown.
-    expect(queryByText(/is installed in the workflow catalog/)).toBeNull();
   });
 
   test('round-trips an opaque CR/LF revision through the escaped JSON-string mode', async () => {
