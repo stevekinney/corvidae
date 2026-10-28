@@ -339,13 +339,12 @@ describe('parseLcov', () => {
     }
   });
 
-  it('applies the audited workflow-runner allowance from the top-off layer', () => {
+  it('applies the audited lease-deposition allowance from the top-off layer', () => {
     const coverage = parseLcov(
       [
-        'SF:src/workers/workflow-runner.ts',
+        'SF:src/core/engine/lease-deposition.ts',
         'FNF:1',
         'FNH:0',
-        'DA:523,0',
         'DA:999,1',
         'end_of_record',
       ].join('\n'),
@@ -1157,24 +1156,19 @@ describe('requireUncoveredLines on corvidae-authored allowances', () => {
   const realignedPaths = [
     'scripts/benchmarks/benchmark-subprocess.ts',
     'scripts/benchmarks/workflow-starts-runner.ts',
-    'scripts/check-implementation-file-sizes.ts',
     'scripts/generate-operation-client.ts',
     'src/cli/api-arguments.ts',
     'src/cli/codegen.ts',
-    'src/cli/noun-verb-arguments.ts',
     'src/cli/server-client.ts',
     'src/cli/server-commands.ts',
     'src/conformance/run-conformance.ts',
-    'src/connection.ts',
     'src/server/json-rpc-websocket.ts',
     'src/server/operation-catalog/workflow-adapter.ts',
-    'src/server/operations/bulk-retry-failed-workflows.ts',
     'src/server/runtime/websocket-worker.ts',
     'src/storage/auto.ts',
     'src/storage/durability/adapter-spec.test-support.ts',
     'src/storage/resolve.ts',
     'src/storage/turso.ts',
-    'src/testing/subprocess-engine.ts',
     'src/testing/worker-fault-injection.test-support.ts',
     // `src/server/operations/get-task-detail.ts` and
     // `src/server/runtime/task-ledger-recovery.ts` were also realigned (new line coordinates

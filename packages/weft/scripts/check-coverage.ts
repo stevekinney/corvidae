@@ -293,14 +293,6 @@ const BASE_COVERAGE_ALLOWANCES = buildAllowanceLayer('BASE_COVERAGE_ALLOWANCES',
 
 const COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer('COVERAGE_ALLOWANCE_OVERRIDES', [
   [
-    'src/core/engine/callback-creators.ts',
-    {
-      reason:
-        'Bun reports an unnamed callback-closure miss after the callback factory paths are exercised through engine integration tests.',
-      functions: 1,
-    },
-  ],
-  [
     'src/server/authorization.ts',
     {
       reason:
@@ -506,28 +498,12 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       },
     ],
     [
-      'src/core/engine/callback-creators-core.ts',
-      {
-        reason:
-          'Bun reports callback-wrapper function misses although the core callback bundles are exercised through engine lifecycle tests.',
-        functions: 2,
-      },
-    ],
-    [
       'src/core/engine/callback-creators-router-registry.ts',
       {
         reason:
           'The remaining router-registry lines reject a callback route omitted from the complete internal route table.',
         lines: new Set([26, 27, 29]),
         requireUncoveredLines: true,
-      },
-    ],
-    [
-      'src/core/engine/termination/finalizer-claim.ts',
-      {
-        reason:
-          'Bun reports the lease-loss closure as missed although finalizer claim success, contention, and deposition are behaviorally tested.',
-        functions: 1,
       },
     ],
     [
@@ -621,10 +597,8 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       {
         reason:
           'Transport disconnect and concurrency exits are behaviorally tested, but Bun does not deterministically attribute these residual paths.',
-        functions: 3,
-        lines: new Set([
-          100, 159, 160, 161, 162, 163, 164, 166, 351, 420, 421, 422, 424, 425, 426, 453, 454,
-        ]),
+        functions: 2,
+        lines: new Set([100, 161, 162, 163, 164, 351, 420, 421, 422, 424, 425, 426, 453, 454]),
         requireUncoveredLines: true,
       },
     ],
@@ -763,14 +737,6 @@ const CURRENT_BRANCH_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
           'Exhaustive default for an unknown CompressionAlgorithm is unreachable through the validated engine/CLI surface, which only ever selects one of the declared algorithms.',
         lines: new Set([197, 198, 199]),
         requireUncoveredLines: true,
-      },
-    ],
-    [
-      'src/core/engine/anonymous-signal-sequence.ts',
-      {
-        reason:
-          'Bun reports sequence-update closures as missed although initialization, increment, overflow, and persistence behavior is covered.',
-        functions: 2,
       },
     ],
     [
@@ -996,7 +962,7 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       {
         reason:
           'Bun reports aggregate re-export and factory closures as missed although the engine entrypoint has complete line coverage. Raised from 4 to 5 when the ownership bootstrap was extended to the global lease mode: that edit adds no new function and makes strictly more code run on the lease path, and line coverage stayed at 100 percent, so the extra miss is the same attribution artifact rather than new dead code. Raised from 5 to 6 by the WFT-15/16 `getRegistration` strategy-bundle closure (dynamic-source fallback lookup) — same attribution artifact, line coverage still 100 percent.',
-        functions: 5,
+        functions: 3,
       },
     ],
     [
@@ -1035,39 +1001,6 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
           'Defensive fail-loud guard for an invariant every call site of resolveStartRevisionUncached() already guarantees; has no reachable runtime path to test without corrupting registeredCatalogRevisions via an unsafe cast.',
         lines: new Set([61, 62, 65]),
         requireUncoveredLines: true,
-      },
-    ],
-    [
-      'src/core/engine/lifecycle/resume-body.ts',
-      {
-        // The double-failure cleanup path IS exercised (`callbacks.failWorkflowForRecoveryHook`
-        // at the preceding line, and `callbacks.handleCleanupError` at the
-        // following line inside this catch's own body, both show real hit
-        // counts) — only the `catch (commitError) {` line's OWN counter
-        // reports zero, the identical brace/case-label attribution artifact
-        // already documented for `catalog-removal.ts`'s exhaustiveness
-        // guard above: a coverage-instrumentation quirk, not a real gap.
-        reason:
-          "Bun reports the catch clause's own line as missed although the surrounding failWorkflowForRecoveryHook call and this catch's own handleCleanupError body both show real hit counts — the same brace-line attribution artifact documented for catalog-removal.ts's exhaustiveness guard. Also reports one enclosing closure as missed for the same reason. (WFT-134 split this file's contents out of `resume.ts`, where this allowance's key/line previously lived at line 102, into this new file at line 112, to keep `resume.ts` under the implementation-file-size ceiling once the WFT-134 claim-release wrapping was added there.)",
-        functions: 1,
-        lines: new Set([115]),
-        requireUncoveredLines: true,
-      },
-    ],
-    [
-      'src/core/engine/lifecycle/start-commit.ts',
-      {
-        reason:
-          'Bun reports one start-commit closure as missed although idempotent, conflicting, and successful commits are covered.',
-        functions: 1,
-      },
-    ],
-    [
-      'src/core/engine/pending-updates.ts',
-      {
-        reason:
-          'Bun reports pending-update callbacks as missed although enqueue, replace, apply, and teardown behavior is covered.',
-        functions: 2,
       },
     ],
     [
@@ -1350,20 +1283,6 @@ export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERA
     },
   ],
   [
-    'scripts/run-a2a-tck.ts',
-    {
-      reason:
-        'The real process runners behind `test:a2a-tck`: `spawnAndWait`, `runGit`, and `ensureCheckout` run `git` and `uv` against a network clone of the TCK, `startExample` spawns the example agent, and `processDependencies` binds them for the one-line `import.meta.main` entry. They need Python, `uv`, and the network, so only the opt-in `test:a2a-tck` runs them, outside the default gate. Every decision the runner makes (argument parsing, the per-level TCK command, report collection, the pass rule, and stopping the example) is in `runA2ATck`, which scripts/run-a2a-tck.test.ts runs in process with stand-ins for each runner and a stub system under test.',
-      functions: 5,
-      lines: new Set([
-        211, 215, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 234, 239,
-        240, 241, 242, 243, 244, 245, 246, 247, 248, 250, 251, 252, 253, 254, 255, 257, 258, 259,
-        260, 266, 267, 268, 269,
-      ]),
-      requireUncoveredLines: true,
-    },
-  ],
-  [
     'src/cli-main.ts',
     {
       reason:
@@ -1413,17 +1332,9 @@ export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERA
     'src/runtime/environment-configuration.ts',
     {
       reason:
-        "Two structurally environment-locked branches, plus a function-count consequence of the second one the original entry's lines-only allowance didn't cover. (1) rawRuntimeEnvironment()'s `typeof process !== 'undefined'` fallback and empty-object fallback: this workspace runs exclusively under Bun (AGENTS.md: \"Bun is the default runtime... Use Bun commands only\"), so `typeof Bun !== 'undefined'` is always true in every test process — reaching the fallback would require deleting globalThis.Bun for the duration of a test, corrupting every other test sharing the same Bun process (this repo's coverage shards run many files per process). rawRuntimeEnvironment itself is still called (and function-covered) via its happy path; only these two unreachable branch lines are allowed. (2) Every `load` closure on a `Source` object in this file (createEnvironmentSource's, at the object-literal line every one of its three call sites already marks line-covered by constructing the object, and readEnvironmentVariable()'s exactSource.load, lines 139-142): every call site in this file uses environmentalist.sync(...), never .async(...), and neither Source value is exported or returned, so nothing in this codebase ever invokes `load` on either one — only `loadSync`, which environmentalist.sync() calls exclusively. `load` exists solely to satisfy the Source interface's required shape. Because createEnvironmentSource's `load` is a single-expression arrow on the same source line as its own registration, the interior body has no separate DA line to report 0 on — line coverage alone hides it entirely, and only the function tally (FNF/FNH) reveals it, which is why `functions: 1,` (this arrow plus readEnvironmentVariable's) is needed alongside the line allowance below.",
+        "Two structurally environment-locked branches, plus a function-count consequence of the second one the original entry's lines-only allowance didn't cover. (1) rawRuntimeEnvironment()'s `typeof process !== 'undefined'` fallback and empty-object fallback: this workspace runs exclusively under Bun (AGENTS.md: \"Bun is the default runtime... Use Bun commands only\"), so `typeof Bun !== 'undefined'` is always true in every test process — reaching the fallback would require deleting globalThis.Bun for the duration of a test, corrupting every other test sharing the same Bun process (this repo's coverage shards run many files per process). rawRuntimeEnvironment itself is still called (and function-covered) via its happy path; only these two unreachable branch lines are allowed. (2) Every `load` closure on a `Source` object in this file (createEnvironmentSource's, at the object-literal line every one of its three call sites already marks line-covered by constructing the object, and readEnvironmentVariable()'s exactSource.load, lines 139-142): every call site in this file uses environmentalist.sync(...), never .async(...), and neither Source value is exported or returned, so nothing in this codebase ever invokes `load` on either one — only `loadSync`, which environmentalist.sync() calls exclusively. `load` exists solely to satisfy the Source interface's required shape. Because createEnvironmentSource's `load` is a single-expression arrow on the same source line as its own registration, the interior body has no separate DA line to report 0 on — line coverage alone hides it entirely, and only the function tally (FNF/FNH) reveals it, which is why `` (this arrow plus readEnvironmentVariable's) is needed alongside the line allowance below.",
       lines: new Set([8, 9]),
       requireUncoveredLines: true,
-      functions: 2,
-    },
-  ],
-  [
-    'scripts/lib/workflow-visibility-backfill.test-support.ts',
-    {
-      reason:
-        "NoConditionalBatchStorage.get()/put()/delete()/batch() are four one-statement async methods (`return null;`/`return undefined;` ×3) on consecutive lines — batch()'s in particular is byte-identical to put()'s and delete()'s. Directly verified with standalone tests (each calling exactly one of these methods alone, logging the result via console.log immediately before asserting it) that every one of them demonstrably executes and resolves correctly when called. Despite that, this file's function-level tally (FNH/FNF) is short by 2 in the authoritative full-suite run — batch()'s own two interior lines (175-176) are the only LINES ever reported at zero (allowed below), but re-running the same isolated single-method verification in different file combinations shows the SPECIFIC additional line/function that reads as zero shifts (in one combination delete()'s own `return undefined;` line reads zero despite a console.log proving that exact call executed; in the authoritative full-suite run it does not, and some other still-unidentified construct accounts for the second gap instead). That instability — the same underlying LINES and FUNCTIONS read as covered or not depending on what else shares the Bun test process — means the specific second function cannot be pinned down the way batch() was; only that workflow-visibility-backfill.test-support.test.ts (COR-1283) calls get/put/delete/batch/scan/capabilities directly, every one of them is proven by direct console.log verification to execute and return correctly, and the file's LINES are 100% covered once 175-176 are allowed (107 total, 105 otherwise-hit) with no line left unaccounted for. covers both the confirmed batch() gap and this second, situationally-shifting one from the same class of trivial near-identical single-statement methods.",
       functions: 2,
     },
   ],
