@@ -1,4 +1,5 @@
 import { createExpiredResponseCleanupTick } from '../engine-helpers.ts';
+import { StorageSizeReportedEvent } from '../events.ts';
 import type { AnyActivityDefinition } from '../types.ts';
 import { createLifecycleCallbacks, createTerminationCallbacks } from './callback-creators-core.ts';
 import {
@@ -156,6 +157,32 @@ export function createCleanupIntervalTick<TWorkflows extends object, TActivities
     createExpiredResponseCleanupTick(internals.updateCoordinator, (source, error) =>
       createTerminationCallbacks(engine).handleCleanupError(source, error),
     )();
+  };
+}
+
+export function createStorageSizeReportTick<TWorkflows extends object, TActivities extends object>(
+  weakEngine: WeakRef<Engine<TWorkflows, TActivities>>,
+  tracker: EngineCleanupIntervalDisposalTracker,
+): () => void {
+  return () => {
+    const engine = weakEngine.deref();
+    if (engine === undefined) {
+      if (tracker.storageSizeReportInterval !== null) {
+        clearInterval(tracker.storageSizeReportInterval);
+        tracker.storageSizeReportInterval = null;
+      }
+      return;
+    }
+    const internals = getInternals(engine);
+    if (internals.disposed) return;
+    void internals.options.storage
+      .sizeBytes?.()
+      .then((sizeBytes) => {
+        if (!getInternals(engine).disposed)
+          engine.dispatchEvent(new StorageSizeReportedEvent(sizeBytes));
+        return sizeBytes;
+      })
+      .catch(() => {});
   };
 }
 

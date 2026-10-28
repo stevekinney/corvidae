@@ -285,11 +285,14 @@ export async function scoreTrials(options: ScoreTrialsOptions): Promise<TrialAgg
   const errors = trials.flatMap((trial) => (trial.error === undefined ? [] : [trial.error]));
   if (errors.length > 0) return { ...base, outcome: 'indeterminate', errors, ...evidence };
 
-  const verdicts = trials.flatMap((trial): TrialVerdict[] =>
-    trial.verdict === 'infrastructure-failure'
-      ? []
-      : [{ trial: trial.trial, verdict: trial.verdict }],
-  );
+  // Every infrastructure failure carries its error, so none is left once `errors` is empty. The
+  // filter is what tells the type that.
+  const verdicts = trials
+    .filter(
+      (trial): trial is TrialRecord & { readonly verdict: TrialVerdict['verdict'] } =>
+        trial.verdict !== 'infrastructure-failure',
+    )
+    .map((trial): TrialVerdict => ({ trial: trial.trial, verdict: trial.verdict }));
   const decision = decideTrials(verdicts, configuration.variancePolicy);
   if (decision.outcome === 'disagreement') {
     return { ...base, outcome: 'disagreement', disagreement: decision.disagreement, ...evidence };

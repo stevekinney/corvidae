@@ -7,7 +7,7 @@
 import { isEngineRequestPath } from './engine-proxy.ts';
 
 /** The prefixes whose paths belong to something other than the router: a miss there is a 404. */
-const NON_SHELL_PREFIXES = ['/assets', '/bureau', '/host'] as const;
+const NON_SHELL_PREFIXES = ['/__dev', '/assets', '/bureau', '/host'] as const;
 
 function hasPrefix(pathname: string, prefix: string): boolean {
   return pathname === prefix || pathname.startsWith(`${prefix}/`);

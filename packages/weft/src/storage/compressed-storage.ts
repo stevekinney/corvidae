@@ -70,6 +70,13 @@ export class CompressedStorage implements Storage {
         configurable: true,
       });
     }
+    if (inner.sizeBytes) {
+      Object.defineProperty(this, 'sizeBytes', {
+        value: inner.sizeBytes.bind(inner),
+        enumerable: true,
+        configurable: true,
+      });
+    }
   }
 
   capabilities(): StorageCapabilities {

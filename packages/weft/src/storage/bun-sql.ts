@@ -304,6 +304,14 @@ export class BunSQLiteStorage implements Storage {
     }
   }
 
+  async sizeBytes(): Promise<number> {
+    const [pageCount, pageSize] = await Promise.all([
+      this.query<{ page_count: number }>('PRAGMA page_count'),
+      this.query<{ page_size: number }>('PRAGMA page_size'),
+    ]);
+    return (pageCount[0]?.page_count ?? 0) * (pageSize[0]?.page_size ?? 0);
+  }
+
   [Symbol.dispose](): void {
     // Finalize cached statements before closing — bun:sqlite tracks live
     // statements on the database and refuses to close while any are
