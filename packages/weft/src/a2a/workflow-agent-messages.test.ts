@@ -380,6 +380,32 @@ describe('continuing a task with SendMessage', () => {
     ]);
   });
 
+  test('completes a workflow that waits for two answers once both have arrived', async () => {
+    const { agent, engine } = await createWorkflowAgentFixture({
+      workflowType: followUpWorkflow.name,
+    });
+    const task = await startTask(agent, alice());
+
+    const afterFirst = await startTask(
+      agent,
+      alice(),
+      userMessage({ messageId: 'first-answer', taskId: task.id, text: 'answer' }),
+    );
+    expect(afterFirst.status?.state).toBe(TaskState.TASK_STATE_INPUT_REQUIRED);
+
+    const afterSecond = await startTask(
+      agent,
+      alice(),
+      userMessage({ messageId: 'second-answer', taskId: task.id, text: 'confirmed' }),
+    );
+    await agent.idle();
+
+    expect(afterSecond.status?.state).toBe(TaskState.TASK_STATE_COMPLETED);
+    const state = await engine.get(task.id);
+    expect(state?.status).toBe('completed');
+    expect(state?.result).toEqual({ input: 'answer', confirmed: 'confirmed' });
+  });
+
   test('rejects a continuation to a task the caller does not own as not found', async () => {
     const { agent } = await createWorkflowAgentFixture();
     const task = await startTask(agent, alice());

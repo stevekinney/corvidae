@@ -322,6 +322,25 @@ describe('createLifecycleHandlers', () => {
     expect(event.waitUntil).toHaveBeenCalledTimes(1);
   });
 
+  it('activate claims the open clients when the scope has them', async () => {
+    const claim = mock(async () => {});
+    const scope = globalThis as { clients?: unknown };
+    const previous = Object.getOwnPropertyDescriptor(globalThis, 'clients');
+    Object.defineProperty(globalThis, 'clients', { configurable: true, value: { claim } });
+    try {
+      const handlers = createLifecycleHandlers();
+      const event = createMockExtendableEvent();
+
+      handlers.activate(event);
+      await event.waitUntil.mock.calls[0]![0];
+
+      expect(claim).toHaveBeenCalledTimes(1);
+    } finally {
+      if (previous === undefined) delete scope.clients;
+      else Object.defineProperty(globalThis, 'clients', previous);
+    }
+  });
+
   it('install passes a promise to waitUntil', () => {
     const handlers = createLifecycleHandlers();
     const event = createMockExtendableEvent();

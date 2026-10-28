@@ -8,8 +8,15 @@ import {
 } from '../../src/core/engine/workflow-indexes.ts';
 import { KEYS, type ScanOptions } from '../../src/storage/interface.ts';
 import { MemoryStorage } from '../../src/storage/memory.ts';
+import {
+  advanceTimersByTime,
+  flushMicrotasks,
+  restoreRealTimers,
+  useFakeTimers,
+} from '../../src/testing/fake-timers.test-support.ts';
 
 import {
+  WORKFLOW_VISIBILITY_BACKFILL_SETTLE_MILLISECONDS,
   WorkflowVisibilityBackfillInProgressError,
   runWorkflowVisibilityBackfill,
   runWorkflowVisibilityDrop,
@@ -643,5 +650,28 @@ describe('runWorkflowVisibilityDrop', () => {
     expect(performance.now() - startedAt).toBeGreaterThanOrEqual(55);
     expect(messages[0]).toContain('Waiting 60ms');
     expect(await collectKeys(storage, 'wf-idx-status:')).toEqual([]);
+  });
+});
+
+describe('runWorkflowVisibilityDrop with no options', () => {
+  it('waits out the default settle window, then sweeps with the default batch size', async () => {
+    using storage = new MemoryStorage();
+    await seedWorkflow(storage, makeWorkflowState({ id: 'wf-default-options' }));
+    await runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 0 });
+    const keysBefore = await collectKeys(storage, 'wf-idx-');
+    const rowsBefore = keysBefore.filter(isIndexRow);
+    useFakeTimers();
+    try {
+      const dropping = runWorkflowVisibilityDrop(storage);
+      // The settle timer is armed after the lock write and the watermark commit settle.
+      await flushMicrotasks(50);
+      await advanceTimersByTime(WORKFLOW_VISIBILITY_BACKFILL_SETTLE_MILLISECONDS);
+      const report = await dropping;
+
+      expect(rowsBefore.length).toBeGreaterThan(0);
+      expect(report.rowsDeleted).toBe(rowsBefore.length);
+    } finally {
+      restoreRealTimers();
+    }
   });
 });

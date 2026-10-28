@@ -379,6 +379,67 @@ describe('createHttpDeliveryAdapter classification', () => {
     }
   });
 
+  test.each([
+    ['a code on the error itself', Object.assign(new Error('refused'), { code: 'ECONNREFUSED' })],
+    [
+      'a code on its cause',
+      new TypeError('fetch failed', {
+        cause: Object.assign(new Error('x'), { code: 'ENOTFOUND' }),
+      }),
+    ],
+    [
+      'a code two causes down',
+      new TypeError('fetch failed', {
+        cause: new Error('wrapped', { cause: { code: 'ConnectionRefused' } }),
+      }),
+    ],
+  ])('a connection that never opened (%s) is retryable', async (_label, error) => {
+    const fetchSpy = spyOn(globalThis, 'fetch').mockRejectedValueOnce(error);
+    try {
+      const adapter = createHttpDeliveryAdapter({
+        resolveDestination: () => 'https://hooks.example.com/hook',
+        resolveCredential: () => ({}),
+        egressPolicy: createEgressPolicy({ resolveHost: async () => ['93.184.216.34'] }),
+      });
+      expect(await adapter.send(sendRequest())).toMatchObject({
+        status: 'retryable',
+        message: expect.stringMatching(/^The connection was not opened/),
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  test.each([
+    [
+      'no code anywhere in the cause chain',
+      new TypeError('fetch failed', { cause: new Error('x') }),
+    ],
+    ['a cause that is not an object', new TypeError('fetch failed', { cause: 'ECONNREFUSED' })],
+    [
+      'a code that does not mean the connection never opened',
+      Object.assign(new Error('reset'), { code: 'ECONNRESET' }),
+    ],
+  ])(
+    'a request that failed with %s is unknown, because it may have been sent',
+    async (_label, error) => {
+      const fetchSpy = spyOn(globalThis, 'fetch').mockRejectedValueOnce(error);
+      try {
+        const adapter = createHttpDeliveryAdapter({
+          resolveDestination: () => 'https://hooks.example.com/hook',
+          resolveCredential: () => ({}),
+          egressPolicy: createEgressPolicy({ resolveHost: async () => ['93.184.216.34'] }),
+        });
+        expect(await adapter.send(sendRequest())).toMatchObject({
+          status: 'unknown',
+          message: expect.stringMatching(/^The request failed after it began/),
+        });
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    },
+  );
+
   test('a 3xx is rejected and the redirect is not followed', async () => {
     const receiver = await startReceiver();
     const target = await startReceiver();
