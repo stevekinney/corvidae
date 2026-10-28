@@ -172,10 +172,24 @@ function advanceToNextSecond(
   return nextMinuteBoundary ?? candidate + 60_000;
 }
 
-export function getNextCronOccurrence(
+/**
+ * How many candidate steps the search takes before it gives up on an expression that parses but
+ * can never match, such as the 31st of April. Each step resolves a zoned calendar date, so the
+ * exhaustive search is seconds of real work; only the slow lane runs it at this bound.
+ */
+const MAXIMUM_CRON_SEARCH_STEPS = 100_000;
+
+/**
+ * Find the next occurrence of a cron expression after a timestamp, giving up after
+ * `maximumSearchSteps` candidate steps. This is the search behind {@link getNextCronOccurrence},
+ * which fixes the bound at {@link MAXIMUM_CRON_SEARCH_STEPS}; it is exported so a fast test can
+ * exhaust the search with a small bound instead of the production one.
+ */
+export function searchNextCronOccurrence(
   expression: string | ParsedCronExpression,
   afterTimestamp: number,
-  options?: CronOccurrenceOptions,
+  options: CronOccurrenceOptions | undefined,
+  maximumSearchSteps: number,
 ): number {
   const parsedExpression =
     typeof expression === 'string' ? parseCronExpression(expression) : expression;
@@ -185,7 +199,7 @@ export function getNextCronOccurrence(
     'Cron occurrence candidate',
   );
 
-  for (let iteration = 0; iteration < 100_000; iteration += 1) {
+  for (let iteration = 0; iteration < maximumSearchSteps; iteration += 1) {
     const parts = getZonedParts(candidate, timeZone);
 
     if (!parsedExpression.months.values.includes(parts.month)) {
@@ -217,6 +231,14 @@ export function getNextCronOccurrence(
   }
 
   throw new Error(`Could not find the next cron occurrence for "${parsedExpression.expression}"`);
+}
+
+export function getNextCronOccurrence(
+  expression: string | ParsedCronExpression,
+  afterTimestamp: number,
+  options?: CronOccurrenceOptions,
+): number {
+  return searchNextCronOccurrence(expression, afterTimestamp, options, MAXIMUM_CRON_SEARCH_STEPS);
 }
 
 export function collectDueCronOccurrences(

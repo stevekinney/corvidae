@@ -50,6 +50,30 @@ describe('portable runtime helpers', () => {
       );
     });
 
+    it('returns browser when only a document is present', async () => {
+      await withRuntimeOverrides(
+        {
+          bun: undefined,
+          process: undefined,
+          window: undefined,
+          document: {} as typeof globalThis.document,
+        },
+        async () => {
+          expect(detectRuntime()).toBe('browser');
+        },
+      );
+    });
+
+    it('reads the real global window and document when the overrides leave them unset', async () => {
+      await withRuntimeOverrides({ bun: undefined, process: undefined }, async () => {
+        expect(detectRuntime()).toBe(
+          typeof globalThis.window === 'undefined' && typeof globalThis.document === 'undefined'
+            ? 'edge'
+            : 'browser',
+        );
+      });
+    });
+
     it('returns edge when Bun, Node, and browser globals are unavailable', async () => {
       await withRuntimeOverrides(
         {

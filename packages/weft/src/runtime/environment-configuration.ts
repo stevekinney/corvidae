@@ -133,21 +133,19 @@ export function resolveServerEnvironment(): ServerEnvironment {
 
 /** Read one exact environment variable name for dynamic credential lookup. */
 export function readEnvironmentVariable(name: string): string | undefined {
+  // One reader serves both entry points, so the asynchronous `load` cannot drift from the
+  // synchronous `loadSync` that `environmentalist.sync` actually calls.
+  const readExactVariable = () => {
+    const value = rawRuntimeEnvironment()[name];
+    return value === undefined
+      ? undefined
+      : { values: { value }, location: `runtime environment:${name}` };
+  };
   const exactSource: Source = {
     id: 'weft-runtime-environment',
     kind: 'string',
-    load: () => {
-      const value = rawRuntimeEnvironment()[name];
-      return value === undefined
-        ? undefined
-        : { values: { value }, location: `runtime environment:${name}` };
-    },
-    loadSync: () => {
-      const value = rawRuntimeEnvironment()[name];
-      return value === undefined
-        ? undefined
-        : { values: { value }, location: `runtime environment:${name}` };
-    },
+    load: readExactVariable,
+    loadSync: readExactVariable,
   };
   return environmentalist.sync({
     name: 'weft-dynamic-secret',

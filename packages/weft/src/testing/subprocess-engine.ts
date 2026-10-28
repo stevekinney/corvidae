@@ -230,7 +230,13 @@ function findReadyUrl(output: string, pattern: RegExp): string | undefined {
   return match?.[1];
 }
 
-function createReadyWatcher(
+/**
+ * Resolves with the URL the subprocess prints once it is ready, capturing its output as it
+ * arrives. Rejects when the process exits first, when a pipe fails, or when `timeoutMs` passes.
+ * Exported so a test can drive it with a stand-in process whose pipes fail.
+ * @internal
+ */
+export function createReadyWatcher(
   process: RunningSubprocess,
   output: CapturedOutput,
   readyPattern: RegExp,

@@ -177,12 +177,10 @@ export const storageBackends: StorageBackendDescriptor[] = [
         storage,
         cleanup: () => {
           storage[Symbol.dispose]();
-          // Delete the database to keep fake-indexeddb state isolated across tests.
-          try {
-            indexedDB.deleteDatabase(databaseName);
-          } catch {
-            // Best-effort cleanup; ignore errors.
-          }
+          // Delete the database to keep fake-indexeddb state isolated across tests. The name is
+          // always a string, and fake-indexeddb reports a failed deletion on the returned request
+          // rather than by throwing, so there is no synchronous error to swallow here.
+          indexedDB.deleteDatabase(databaseName);
         },
       };
     },

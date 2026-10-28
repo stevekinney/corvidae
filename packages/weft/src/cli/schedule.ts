@@ -115,10 +115,7 @@ async function executeScheduleCreate(
   if (!parsedInput.ok) {
     return {
       stdout: '',
-      stderr:
-        parsedInput.error.kind === 'invalid-json'
-          ? `Error: could not parse --input JSON: ${parsedInput.error.detail}`
-          : `Error: ${parsedInput.error.message}`,
+      stderr: `Error: could not parse --input JSON: ${parsedInput.error.detail}`,
       exitCode: 1,
     };
   }

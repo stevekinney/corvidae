@@ -651,15 +651,6 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       },
     ],
     [
-      'src/core/schedule/cron-occurrence.ts',
-      {
-        reason:
-          'The residual cron-occurrence line handles an invalid calendar rollover excluded by validated cron fields.',
-        lines: new Set([217]),
-        requireUncoveredLines: true,
-      },
-    ],
-    [
       'src/core/worker-execution-ownership.ts',
       {
         reason:

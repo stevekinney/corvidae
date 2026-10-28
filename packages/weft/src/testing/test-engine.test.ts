@@ -191,6 +191,30 @@ describe('TestEngine', () => {
     engine[Symbol.dispose]();
   });
 
+  it('runs the real activity when a surrogate that outlived its mock is called', async () => {
+    class SurrogateInspectingEngine extends TestEngine {
+      surrogateFor(name: string): ((input?: unknown) => unknown) | undefined {
+        return this.resolveRegisteredActivity(name);
+      }
+    }
+    const engine = new SurrogateInspectingEngine();
+    const fetchAccount = activity({
+      name: 'fetchAccount',
+      execute: async (input: unknown) => `real:${String(input)}`,
+    });
+    engine.register(fetchAccount);
+    engine.mock(fetchAccount, async (input: unknown) => `mock:${String(input)}`);
+    const surrogate = engine.surrogateFor('fetchAccount');
+    if (surrogate === undefined) throw new Error('expected the mock surrogate to be registered');
+    expect(await surrogate('a')).toBe('mock:a');
+
+    // A caller that resolved the surrogate before the mock was restored still holds it.
+    engine.mocks.restoreAll();
+
+    expect(await surrogate('a')).toBe('real:a');
+    engine[Symbol.dispose]();
+  });
+
   it('mocks.restoreAll unregisters temporary mock activities', () => {
     const engine = new TestEngine();
 
