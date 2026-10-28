@@ -235,6 +235,16 @@ describe('createEvaluationHistory', () => {
     expect(await rejectionOf(rejection)).toMatchObject({ id: BASELINE_RUN_ID });
   });
 
+  test('rejects a stored record that is not valid JSON', async () => {
+    const { store, history } = memoryHistory();
+    await history.append(baselineRecord());
+    await store.set(await onlyKey(store), '{"digest": ');
+
+    const rejection = history.read(BASELINE_RUN_ID);
+    expect(await rejectionOf(rejection)).toBeInstanceOf(CorruptHistoricalRecordError);
+    expect(await throwingRejectionOf(rejection)).toThrow(/is not valid JSON/);
+  });
+
   test('propagates a storage failure that is not corruption', async () => {
     const { store } = memoryHistory();
     const failure = new Error('disk unavailable');

@@ -104,6 +104,13 @@ describe('readWorkflowWorkerState', () => {
     expect(readWorkflowWorkerState(state).kind).toBe('malformed');
   });
 
+  test('a policy whose binding history limit is not a number is malformed, and says so', () => {
+    expect(readWorkflowWorkerState(bound({ mode: 'pinned', maxBindingHistory: '4' }))).toEqual({
+      kind: 'malformed',
+      reason: 'workerVersioningPolicy.maxBindingHistory is not a number',
+    });
+  });
+
   test('an unknown policy mode is malformed', () => {
     expect(readWorkflowWorkerState(bound({ mode: 'eager' })).kind).toBe('malformed');
   });

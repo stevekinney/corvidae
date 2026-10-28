@@ -51,8 +51,12 @@ import { Engine, serve } from '@lostgradient/weft';
 import { workflows } from '../../../fixtures/workflows.ts';
 import { AUTHORIZATION_SCOPES } from '../scopes.svelte.ts';
 
-async function createTestEngine(getNow?: () => number) {
-  return Engine.create({ workflows, ...(getNow && { getNow }) });
+async function createTestEngine(getNow?: () => number, schedulerPollIntervalMs?: number) {
+  return Engine.create({
+    workflows,
+    ...(getNow && { getNow }),
+    ...(schedulerPollIntervalMs !== undefined && { schedulerPollIntervalMs }),
+  });
 }
 
 /** Not a secret — a fixed, well-known key for an ephemeral, localhost-only, per-test `MemoryStorage` server. */
@@ -70,11 +74,15 @@ export interface LiveSourceTestServer {
 /**
  * `getNow` replaces the engine's clock, for a test that has to move time itself, such as one that
  * needs a schedule to miss fires the way it does after the engine was down.
+ *
+ * `schedulerPollIntervalMs` is how often the engine's scheduler looks for a due fire (its default
+ * is one second). A test that waits for a real scheduled fire passes a small one, so the wait is
+ * the fire itself and not the poll between ticks.
  */
 export async function startLiveSourceTestServer(
-  options: { getNow?: () => number } = {},
+  options: { getNow?: () => number; schedulerPollIntervalMs?: number } = {},
 ): Promise<LiveSourceTestServer> {
-  const engine = await createTestEngine(options.getNow);
+  const engine = await createTestEngine(options.getNow, options.schedulerPollIntervalMs);
   const server = serve({
     engine,
     port: 0,

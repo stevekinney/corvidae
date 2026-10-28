@@ -1,4 +1,5 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
+import { parsePhoneNumberFromString } from 'libphonenumber-js/min';
 
 import {
   computeNationalResult,
@@ -181,6 +182,26 @@ describe('displayNameForCountry', () => {
       if (originalDisplayNamesDescriptor) {
         Object.defineProperty(Intl, 'DisplayNames', originalDisplayNamesDescriptor);
       }
+    }
+  });
+});
+
+describe('parseE164Value', () => {
+  test('falls back to as-you-type formatting when libphonenumber has no national format', () => {
+    const parsed = parsePhoneNumberFromString('+14155550132');
+    expect(parsed).toBeDefined();
+    const formatNational = spyOn(Object.getPrototypeOf(parsed!), 'formatNational').mockReturnValue(
+      '',
+    );
+    try {
+      expect(parseE164Value('+14155550132')).toMatchObject({
+        country: 'US',
+        nationalNumber: '4155550132',
+        formatted: '(415) 555-0132',
+      });
+      expect(formatNational).toHaveBeenCalled();
+    } finally {
+      formatNational.mockRestore();
     }
   });
 });

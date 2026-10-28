@@ -459,7 +459,10 @@ describe('a media task nobody read before a restart', () => {
 
 describe('the text bound on a reply', () => {
   const limit = 64 * 1024;
-  const longText = 'x'.repeat(limit + 5000);
+  // Words, not one repeated character: the reply's redaction patterns backtrack across an
+  // unbroken run of letters, which cost eight seconds per pass here (COR-1737). The text is still
+  // past the bound, so the slice these tests assert is the same.
+  const longText = 'lorem '.repeat(Math.ceil((limit + 5000) / 6));
   const image = {
     type: 'image' as const,
     mimeType: 'image/png',

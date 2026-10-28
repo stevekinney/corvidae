@@ -137,9 +137,5 @@ export function parseGitFileSidePath(
   if (currentPath && hasKnownDiffPrefix && parsedPath.endsWith(`/${currentPath}`)) {
     return currentPath;
   }
-
-  const pathWithoutPrefix = stripLeadingPathSegmentPrefix(parsedPath);
-  return currentPath && hasKnownDiffPrefix && pathWithoutPrefix === currentPath
-    ? currentPath
-    : parsedPath;
+  return parsedPath;
 }

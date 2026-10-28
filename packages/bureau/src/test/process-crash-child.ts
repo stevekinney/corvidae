@@ -33,6 +33,7 @@ import {
   createChargeToolbox,
   createHarnessBureau,
   firstUserMessage,
+  createInterruptedApprovalToolbox,
   HUMAN_WAIT_PROMPT,
   HUMAN_WAIT_SIGNAL,
   openGovernedMemory,
@@ -421,6 +422,46 @@ async function verify(): Promise<void> {
   process.exit(0);
 }
 
+/**
+ * COR-1717: approves a gated tool call and dies inside the approved tool's body, after the
+ * resolution-started marker is durable and before the decision commits. The tool has appended its
+ * one line by then.
+ */
+async function approveThenCrash(): Promise<void> {
+  const directory = dirname(markerPath as string);
+  let calls = 0;
+  const bureau = await createHarnessBureau({
+    backend: backend as 'sqlite' | 'lmdb',
+    storagePath: storagePath as string,
+    generate: async () => {
+      calls += 1;
+      return {
+        content: '',
+        toolCalls: calls === 1 ? [{ id: 'append-call', name: 'append-line', arguments: {} }] : [],
+      };
+    },
+    toolbox: createInterruptedApprovalToolbox(directory, () => {
+      writeMarker({ reviewId });
+      killSelf();
+    }),
+  });
+  const run = await bureau.tasks.start('default', 'crash harness approval', { principal: 'alice' });
+  await pollUntil('the run to surface its tool-approval review', () =>
+    bureau.reviews.list().some((review) => review.runId === run.id),
+  );
+  const review = bureau.reviews.list().find((candidate) => candidate.runId === run.id);
+  reviewId = review?.id;
+  await bureau.reviews.resolve({
+    id: reviewId as string,
+    decision: 'approve',
+    principal: 'operator',
+  });
+  // The tool body kills the process, so a resolution that returns is a failure of the scenario.
+  process.stderr.write('child: the approved tool did not end the process\n');
+  process.exit(6);
+}
+let reviewId: string | undefined;
+
 const scenarios: Record<string, () => Promise<void>> = {
   'park-after-step-0': parkAfterStepZero,
   'charge-then-crash': chargeThenCrash,
@@ -428,6 +469,7 @@ const scenarios: Record<string, () => Promise<void>> = {
   'two-parked-runs': twoParkedRuns,
   'human-wait-parked': () => humanWaitParked(),
   'human-wait-two-calls-parked': () => humanWaitParked(true),
+  'approve-then-crash': approveThenCrash,
   'relaunch-recover': relaunchRecover,
   verify,
 };
