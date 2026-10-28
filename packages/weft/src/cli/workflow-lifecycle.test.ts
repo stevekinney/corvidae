@@ -105,6 +105,59 @@ describe('weft workflow start/get/events', () => {
     }
   });
 
+  it('reads events from an items collection and reports none for any other shape', async () => {
+    let shape: unknown = { items: [{ type: 'started', timestamp: 0 }] };
+    const server = createJsonRpcFixtureServer((method) =>
+      method === 'weft.workflows.events.list' ? shape : {},
+    );
+    const command = {
+      ...base,
+      action: 'events',
+      server: server.url,
+      workflowId: 'wf-events-items',
+    } satisfies WorkflowCommand;
+    try {
+      const fromItems = await executeWorkflow(command);
+      expect(fromItems.exitCode).toBe(0);
+      expect(fromItems.stdout).toContain('started');
+
+      shape = 'not a collection';
+      expect(await executeWorkflow(command)).toEqual({
+        stdout: 'No events found.',
+        exitCode: 0,
+      });
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('names the started workflow from the requested id or from nothing when the server omits it', async () => {
+    const server = createJsonRpcFixtureServer(() => ({}));
+    try {
+      const withRequestedId = await executeWorkflow({
+        ...base,
+        action: 'start',
+        server: server.url,
+        workflowType: 'echo',
+        input: 'null',
+        id: 'requested-id',
+      } satisfies WorkflowCommand);
+      expect(withRequestedId).toEqual({ stdout: 'Started workflow requested-id', exitCode: 0 });
+
+      const quietWithoutId = await executeWorkflow({
+        ...base,
+        action: 'start',
+        server: server.url,
+        workflowType: 'echo',
+        input: 'null',
+        quiet: true,
+      } satisfies WorkflowCommand);
+      expect(quietWithoutId).toEqual({ stdout: '', exitCode: 0 });
+    } finally {
+      await server.stop();
+    }
+  });
+
   it('starts a workflow, then get and events surface it', async () => {
     const served = createServedEngine();
     try {

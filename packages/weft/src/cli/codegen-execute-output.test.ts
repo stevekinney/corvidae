@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, expect, it } from 'bun:test';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -83,6 +83,71 @@ describe('executeCodegen end-to-end', () => {
     const parsed: Record<string, unknown> = JSON.parse(result.stderr ?? '');
     expect(parsed['ok']).toBe(false);
     expect(parsed['error']).toContain('--from file not found');
+  });
+
+  it('reports a rename failure and removes the temporary file when the output path is a directory', async () => {
+    const dir = makeTempDir();
+    const out = join(dir, 'weft.d.ts');
+    mkdirSync(out);
+    const result = await executeCodegen({
+      from: REGISTRY_FIXTURE,
+      out,
+      timeoutMs: HANG_GUARD_MILLISECONDS,
+    });
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(`to '${out}': `);
+    expect(result.stderr).toContain('codegen: failed to rename');
+    expect(readdirSync(dir)).toEqual(['weft.d.ts']);
+  });
+
+  it('emits an empty worker workflow map for a registry with no workflows', async () => {
+    const dir = makeTempDir();
+    const from = join(dir, 'registry.json');
+    const out = join(dir, 'worker.ts');
+    writeFileSync(
+      from,
+      JSON.stringify({
+        registryVersion: 2,
+        generatedAt: new Date(0).toISOString(),
+        workflows: [],
+        activeRevisions: {},
+        activities: {},
+      }),
+    );
+    const result = await executeCodegen({
+      from,
+      out,
+      target: 'worker',
+      timeoutMs: HANG_GUARD_MILLISECONDS,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(await Bun.file(out).text()).toContain('type __WeftGeneratedWorkerWorkflows = {};');
+  });
+
+  it('reports an unexpected emitter failure with its message instead of rejecting', async () => {
+    const dir = makeTempDir();
+    const out = join(dir, 'weft.d.ts');
+    const failing = (): string => {
+      throw new TypeError('emitter exploded');
+    };
+    const registryFailure = await executeCodegen(
+      { from: REGISTRY_FIXTURE, out, timeoutMs: HANG_GUARD_MILLISECONDS },
+      { registry: failing, worker: failing },
+    );
+    expect(registryFailure.exitCode).toBe(1);
+    expect(registryFailure.stderr).toBe('codegen: unexpected emitter failure: emitter exploded');
+
+    const nonErrorFailure = await executeCodegen(
+      { from: REGISTRY_FIXTURE, out, target: 'worker', timeoutMs: HANG_GUARD_MILLISECONDS },
+      {
+        registry: failing,
+        worker: () => {
+          throw 'a thrown string';
+        },
+      },
+    );
+    expect(nonErrorFailure.stderr).toBe('codegen: unexpected emitter failure: a thrown string');
+    expect(existsSync(out)).toBe(false);
   });
 });
 

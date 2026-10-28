@@ -150,6 +150,33 @@ describe('resolveConnection', () => {
     }
   });
 
+  it('drops the profile token when the profile names a server that is not a valid URL', () => {
+    const snapshot = snapshotEnv('WEFT_ADDR', 'WEFT_TOKEN', 'WEFT_HOME');
+    const home = makeHome();
+    Bun.env['WEFT_HOME'] = home;
+    delete Bun.env['WEFT_ADDR'];
+    delete Bun.env['WEFT_TOKEN'];
+    writeConfig(
+      home,
+      [
+        'default_profile = "main"',
+        '',
+        '[profiles.main]',
+        'server = "not a url"',
+        'token = "profile-token"',
+      ].join('\n'),
+    );
+    try {
+      // A destination that cannot be parsed is never treated as the override's destination, so
+      // the profile's credential does not travel to a server the profile did not name.
+      const connection = resolveConnection({ server: 'http://explicit.test' });
+      expect(connection.server.toString()).toBe('http://explicit.test/');
+      expect(connection.token).toBeUndefined();
+    } finally {
+      restoreEnv(snapshot);
+    }
+  });
+
   it('keeps the profile token when an explicit server names the same destination', () => {
     const snapshot = snapshotEnv('WEFT_ADDR', 'WEFT_TOKEN', 'WEFT_HOME');
     const home = makeHome();

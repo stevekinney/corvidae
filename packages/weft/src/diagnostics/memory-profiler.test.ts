@@ -55,6 +55,15 @@ describe('linearRegression', () => {
     expect(intercept).toBe(42);
   });
 
+  it('returns the mean as the intercept when every point shares one x', () => {
+    const points: [number, number][] = [
+      [7, 10],
+      [7, 20],
+      [7, 60],
+    ];
+    expect(linearRegression(points)).toEqual({ slope: 0, intercept: 30 });
+  });
+
   it('handles noisy data with upward trend', () => {
     const points: [number, number][] = [
       [0, 10],
