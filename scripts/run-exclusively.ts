@@ -74,8 +74,16 @@ const memoryPerTurborepoTask = 8 * 1024 ** 3;
 const processorsPerTurborepoTask = 3;
 
 /**
- * `environment` with the shared Turborepo cache and a memory-scaled task concurrency filled in
- * where the caller has not chosen its own. A `shared` run takes no lock, so several can run at
+ * The ref Turborepo's `--affected` compares against. Left unset, Turborepo picks the base itself
+ * (its default branch, which can differ from the `origin/main` that `scripts/affected-tests.ts`
+ * selects test files against), so the two selections could disagree. Nothing fetches it: a stale
+ * local `origin/main` gives a wider or narrower base, and a missing one fails the `--affected` run.
+ */
+export const turborepoAffectedBase = 'origin/main';
+
+/**
+ * `environment` with the shared Turborepo cache, a memory-scaled task concurrency, and the
+ * `--affected` base filled in where the caller has not chosen its own. A `shared` run takes no lock, so several can run at
  * once; each gets half the concurrency, since processors are what a full host runs out of.
  */
 export function withTurborepoDefaults(
@@ -96,6 +104,7 @@ export function withTurborepoDefaults(
     ...environment,
     TURBO_CACHE_DIR: environment['TURBO_CACHE_DIR'] || join(commonDirectory, 'turbo-cache'),
     TURBO_CONCURRENCY: environment['TURBO_CONCURRENCY'] || String(concurrency),
+    TURBO_SCM_BASE: environment['TURBO_SCM_BASE'] || turborepoAffectedBase,
   };
 }
 
