@@ -348,6 +348,24 @@ function createCommitInternals(
 const rotationTestWorkflowState = createWorkflowState({ id: 'wf-rotation' });
 
 describe('ADR 0002 self vs. external-terminal workflow-state commits', () => {
+  it('commitSelfWorkflowStateOperations drops the atomic side-effect conditions on a storage that cannot condition a write', async () => {
+    const storage = new MemoryStorage();
+    storage.capabilities = () => ({
+      ...MemoryStorage.prototype.capabilities.call(storage),
+      conditionalBatch: false,
+    });
+    const key = KEYS.workflow(rotationTestWorkflowState.id);
+
+    await commitSelfWorkflowStateOperations(
+      createCommitInternals(storage, 'none'),
+      rotationTestWorkflowState,
+      [{ type: 'put', key, value: new Uint8Array([2]) }],
+      { extraConditions: [{ key, expectedValue: new Uint8Array([9]) }] },
+    );
+
+    expect(await storage.get(key)).toEqual(new Uint8Array([2]));
+  });
+
   it('commitSelfWorkflowStateOperations under "none"/"lease" leaves wf-owner-epoch untouched (byte-for-byte unchanged)', async () => {
     const storage = new MemoryStorage();
     await commitSelfWorkflowStateOperations(
