@@ -110,10 +110,9 @@
       "passThroughEnv": ["TMPDIR"],
       "inputs": [
         "scripts/browser-fixtures/**",
-        "!scripts/browser-fixtures/{node_modules,.playwright,.turbo,.svelte-kit,coverage,playwright-report,test-output,test-results}/**",
+        "!scripts/browser-fixtures/**/{node_modules,.playwright,.turbo,.svelte-kit,coverage,playwright-report,test-output,test-results,tmp}/**",
+        "!scripts/browser-fixtures/**/{.DS_Store,*.log,*.lcov,*.pem,.env,.env.*,local.env}",
         "$TURBO_ROOT$/bunfig.toml",
-        "$TURBO_ROOT$/tsconfig.json",
-        "$TURBO_ROOT$/bun.lock",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
         "$TURBO_ROOT$/scripts/check-test-durations.ts",

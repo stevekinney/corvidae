@@ -410,7 +410,7 @@ const scenario8 = await outcomeOf(async () => {
     await createWorkspace(directory);
     await Bun.write(
       join(directory, '.gitignore'),
-      'node_modules/\n.turbo/\n.playwright/\ntest-results/\n',
+      'node_modules/\n.turbo/\n.playwright/\ntest-results/\n.DS_Store\n*.log\n',
     );
     const manifestPath = join(directory, 'package.json');
     const manifest = await Bun.file(manifestPath).json();
@@ -450,26 +450,35 @@ const scenario8 = await outcomeOf(async () => {
       'test:browser-fixtures',
       '--dry=json',
     ];
-    const key = async (environment: Record<string, string | undefined> = process.env) =>
+    const fixturesKey = async (environment: Record<string, string | undefined> = process.env) =>
       taskHash(await run(directory, command, environment), '//#test:browser-fixtures');
-    const before = await key();
+    const before = await fixturesKey();
 
     // Two TMPDIR values are one key: the task passes it through without hashing it.
-    expect(await key({ ...process.env, TMPDIR: join(directory, 'one') })).toBe(before);
-    expect(await key({ ...process.env, TMPDIR: join(directory, 'two') })).toBe(before);
+    expect(await fixturesKey({ ...process.env, TMPDIR: join(directory, 'one') })).toBe(before);
+    expect(await fixturesKey({ ...process.env, TMPDIR: join(directory, 'two') })).toBe(before);
 
     // Files the task cannot read leave its key alone.
     await Bun.write(join(directory, 'AGENTS.md'), '# Agents, edited\n');
-    expect(await key()).toBe(before);
+    expect(await fixturesKey()).toBe(before);
     await Bun.write(
       join(directory, 'applications/application/source.ts'),
       'export const value = 2;\n',
     );
-    expect(await key()).toBe(before);
+    expect(await fixturesKey()).toBe(before);
     await Bun.write(join(directory, 'scripts/tool.ts'), 'export const tool = 2;\n');
-    expect(await key()).toBe(before);
-    await Bun.write(join(directory, 'scripts/browser-fixtures/test-results/report.txt'), 'x\n');
-    expect(await key()).toBe(before);
+    expect(await fixturesKey()).toBe(before);
+    // Generated output and machine-local files under the fixtures' own directory are ignored by
+    // Git but not by an explicit glob, so each would key the task per machine and per run.
+    for (const ignoredFile of [
+      'scripts/browser-fixtures/test-results/report.txt',
+      'scripts/browser-fixtures/.playwright/manifest.json',
+      'scripts/browser-fixtures/snapshots/.DS_Store',
+      'scripts/browser-fixtures/scripts/debug.log',
+    ]) {
+      await Bun.write(join(directory, ignoredFile), 'x\n');
+      expect(await fixturesKey(), ignoredFile).toBe(before);
+    }
 
     // Provider source, the fixtures' own files, and the root runner it executes each move it.
     const changes: Array<[string, string]> = [
@@ -480,7 +489,7 @@ const scenario8 = await outcomeOf(async () => {
     let previous = before;
     for (const [path, text] of changes) {
       await Bun.write(join(directory, path), text);
-      const after = await key();
+      const after = await fixturesKey();
       expect(after, path).not.toBe(previous);
       previous = after;
     }
@@ -543,11 +552,10 @@ test('the browser-fixtures task declares every root file its commands read, and 
     ...reached,
     // Read by `bun-test-junit.ts` through `check-test-durations.ts`.
     'scripts/test-duration-allowlist.json',
-    // Read by the provenance test, which compares the lockfile's Playwright pin to the baselines.
-    'bun.lock',
-    // Bun's own configuration for a run from the repository root.
+    // Bun's own configuration for a run from the repository root. `tsconfig.json` is a global
+    // dependency, and the lockfile's Playwright pin that the provenance test reads moves the
+    // root's resolved-dependency hash, so neither belongs here: either would only widen the key.
     'bunfig.toml',
-    'tsconfig.json',
   ];
   expect(
     required.filter((path) => !covers(path)).toSorted(),
@@ -558,8 +566,13 @@ test('the browser-fixtures task declares every root file its commands read, and 
   // Globs that include ignored directories hash generated output, so the key would drift.
   const exclusion = inputs.find((input) => input.startsWith('!scripts/browser-fixtures/'));
   expect(exclusion, 'generated and installed directories must be excluded').toBeDefined();
+  const ignored = inputs.filter((input) => input.startsWith('!scripts/browser-fixtures/'));
   for (const generated of ['.playwright', 'node_modules', 'test-results', 'test-output']) {
-    expect(exclusion).toContain(generated);
+    expect(ignored.join(' '), generated).toContain(generated);
+  }
+  // Editor, log and secret files a developer's machine adds under the glob.
+  for (const local of ['.DS_Store', '*.log', '.env']) {
+    expect(ignored.join(' '), local).toContain(local);
   }
 
   // The host's temporary directory differs per machine and per session and does not change what
