@@ -12,36 +12,50 @@
  * rebuild (`dev-reload.ts`).
  */
 
-import { unwatchFile, watch, watchFile, type Stats } from 'node:fs';
+import { unwatchFile, watchFile, type Stats } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { buildBrowserApplication, stopBrowserBuilds } from './browser-build.ts';
 import { startHost } from './host.ts';
 import { createRebuildScheduler } from './rebuild-scheduler.ts';
 import { installShutdownSignals } from './shutdown-signals.ts';
+import { createSourceWatcher } from './source-watcher.ts';
 
 const packageRoot = join(import.meta.dir, '..', '..');
-const repositoryRoot = join(packageRoot, '..', '..');
 
 const ENTRY_PAGE = join(packageRoot, 'index.html');
 
-/** The sources a browser rebuild depends on: this application's, Cinder's, and Markdown's. */
-const WATCHED_DIRECTORIES = [
-  join(packageRoot, 'src'),
-  join(repositoryRoot, 'components', 'cinder', 'src'),
-  join(repositoryRoot, 'packages', 'markdown', 'src'),
-];
+/**
+ * Where each build records the files it read. The directories a rebuild depends on come from it
+ * (`source-watcher.ts`), so a workspace the bundle starts importing is watched after the build
+ * that imports it. The file is ignored by Git.
+ */
+const BUILD_INPUTS_FILE = join(packageRoot, '.dev-build-inputs.json');
 
 /** Wait this long after the last change before rebuilding, so one save is one build. */
 const REBUILD_DELAY_MILLISECONDS = 100;
 
-await buildBrowserApplication();
+const buildOptions = { inputsFile: BUILD_INPUTS_FILE };
+
+await buildBrowserApplication(buildOptions);
 const host = await startHost({ development: true });
 console.info(`Interborough is listening on ${host.url}`);
 console.info(`Its state lives in ${dirname(host.databasePath)}`);
 
+// The entry page is watched by its own poll below, so its input is not watched as a directory.
+const sources = createSourceWatcher({
+  inputsFile: BUILD_INPUTS_FILE,
+  fallbackDirectory: join(packageRoot, 'src'),
+  ignore: [ENTRY_PAGE],
+  onChange: () => rebuilds.schedule(),
+});
+
 const rebuilds = createRebuildScheduler({
-  build: () => buildBrowserApplication(),
+  // The next build may import a workspace this one did not, so the watch follows each build.
+  build: async () => {
+    await buildBrowserApplication(buildOptions);
+    await sources.refresh();
+  },
   delayMilliseconds: REBUILD_DELAY_MILLISECONDS,
   onRebuilt: () => {
     console.info('Rebuilt the browser application.');
@@ -50,9 +64,7 @@ const rebuilds = createRebuildScheduler({
   onFailure: (error) => console.error('The browser rebuild failed.', error),
 });
 
-const watchers = WATCHED_DIRECTORIES.map((path) =>
-  watch(path, { recursive: true }, () => rebuilds.schedule()),
-);
+await sources.refresh();
 
 // An editor's atomic save replaces `index.html`, which a directory-less file watch can miss on
 // macOS, so the entry page is polled by its modification time and inode instead.
@@ -66,7 +78,7 @@ async function shutDown(): Promise<void> {
   // A build still running would write `build/` after this process has gone.
   await stopBrowserBuilds();
   unwatchFile(ENTRY_PAGE, entryChanged);
-  for (const watcher of watchers) watcher.close();
+  sources.close();
   await host.close();
   process.exit(0);
 }
