@@ -75,7 +75,9 @@ class MemoDurableActivityScope implements DurableActivityScope {
   #activePromise: Promise<unknown> | undefined;
   #activeNonCancellableWriteCount = 0;
   #closed = false;
-  #closeReason: Error | undefined;
+  #closeReason: Error = new DurableActivityScopeError(
+    'durableActivity() scope closed before completion.',
+  );
   #nextOrdinal = 0;
 
   constructor(
@@ -319,11 +321,6 @@ class MemoDurableActivityScope implements DurableActivityScope {
   }
 
   #activityStateKey(ordinal: number): string {
-    if (!Number.isSafeInteger(ordinal) || ordinal < 0) {
-      throw new DurableActivityScopeError(
-        `Invalid durableActivity() call ordinal ${String(ordinal)} for ctx.memo() step ${String(this.#operation.step)}.`,
-      );
-    }
     return `${this.#identityPrefix}:call:${String(ordinal)}`;
   }
 
@@ -345,18 +342,15 @@ class MemoDurableActivityScope implements DurableActivityScope {
         callback();
       };
 
+      // The scope signal only ever aborts once no non-cancellable write is active, so an abort
+      // always settles the race.
       const onAbort = () => {
-        if (this.#activeNonCancellableWriteCount > 0) {
-          return;
-        }
         settle(() => reject(this.#abortError()));
       };
 
+      // `#throwIfClosed()` above already rejected an aborted scope, and nothing awaits between it
+      // and this registration, so the signal cannot have aborted yet.
       signal.addEventListener('abort', onAbort, { once: true });
-      if (signal.aborted) {
-        onAbort();
-        return;
-      }
 
       void operation
         .then((value) =>
@@ -438,13 +432,7 @@ class MemoDurableActivityScope implements DurableActivityScope {
   }
 
   #abortError(): Error {
-    if (this.#closeReason !== undefined) {
-      return this.#closeReason;
-    }
-    const reason = this.#scopeAbortController.signal.reason;
-    return reason instanceof Error
-      ? reason
-      : new DurableActivityScopeError('durableActivity() scope closed before completion.');
+    return this.#closeReason;
   }
 }
 
