@@ -78,6 +78,13 @@ describe('buildApplication', () => {
     }
     expect(assets.some((file) => file.endsWith('.js'))).toBe(true);
     expect(assets.some((file) => file.endsWith('.css'))).toBe(true);
+    // Production ships no source maps and links none.
+    expect(result.files.some((file) => file.endsWith('.map'))).toBe(false);
+    for (const file of assets.filter((name) => name.endsWith('.js'))) {
+      expect(await Bun.file(join(result.directory, file)).text(), file).not.toContain(
+        'sourceMappingURL',
+      );
+    }
 
     const html = await Bun.file(join(result.directory, 'index.html')).text();
     expect(html).toMatch(/<script type="module" crossorigin src="\/assets\/[^"]+\.js">/);
@@ -127,6 +134,51 @@ describe('buildApplication Chat highlighting', () => {
       true,
     );
     expect(inputs.some((input) => /shiki\/dist\/(?:langs|themes)/.test(input))).toBe(false);
+  });
+});
+
+describe('buildApplication source maps', () => {
+  /**
+   * A build through the real `Bun.build` and the application's real build options over a two-file
+   * entry whose dynamic import makes a chunk, because the map must land beside the chunk under
+   * `assets/`. The entry is small on purpose: the shared production build is the only full bundle
+   * this file makes.
+   */
+  async function builtFiles(development: boolean): Promise<ApplicationBuild> {
+    const source = mkdtempSync(join(scratch, 'sourcemap-entry-'));
+    const entry = join(source, 'entry.ts');
+    writeFileSync(entry, "export const load = () => import('./lazy.ts');\n");
+    writeFileSync(join(source, 'lazy.ts'), 'export const answer: number = 42;\n');
+    return buildApplication({
+      outdir: join(mkdtempSync(join(scratch, 'sourcemap-')), 'build'),
+      development,
+      bundle: (configuration) => Bun.build({ ...configuration, entrypoints: [entry] }),
+    });
+  }
+
+  it('writes a linked map beside each chunk in development', async () => {
+    const result = await builtFiles(true);
+
+    const chunks = result.files.filter((file) => file.endsWith('.js'));
+    expect(chunks.some((file) => file.startsWith(`${BUILD_ASSET_DIRECTORY}/`))).toBe(true);
+    for (const chunk of chunks) {
+      const map = `${chunk}.map`;
+      expect(result.files, chunk).toContain(map);
+      expect(existsSync(join(result.directory, map)), map).toBe(true);
+      const code = await Bun.file(join(result.directory, chunk)).text();
+      expect(code, chunk).toContain(`//# sourceMappingURL=/${map}`);
+    }
+  });
+
+  it('writes no map and no link in production', async () => {
+    const result = await builtFiles(false);
+
+    expect(result.files.some((file) => file.endsWith('.map'))).toBe(false);
+    for (const chunk of result.files.filter((file) => file.endsWith('.js'))) {
+      expect(await Bun.file(join(result.directory, chunk)).text(), chunk).not.toContain(
+        'sourceMappingURL',
+      );
+    }
   });
 });
 

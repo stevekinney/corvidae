@@ -121,7 +121,9 @@ export function browserBuildOptions(options: {
       sveltePlugin({ generate: 'client', injectCss: true, development: options.development }),
     ],
     optimizeImports: ['@lostgradient/cinder'],
-    sourcemap: 'none',
+    // Development links a map beside each chunk so the browser shows the original source;
+    // production ships none.
+    sourcemap: options.development ? 'linked' : 'none',
     splitting: true,
     metafile: true,
     naming: {
