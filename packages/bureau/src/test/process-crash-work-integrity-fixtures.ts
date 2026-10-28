@@ -232,3 +232,46 @@ export function createHarnessBureau(options: HarnessBureauOptions): Promise<Bure
     },
   });
 }
+
+/** COR-1717: the secret every process of the interrupted-approval scenario signs approvals under. */
+export const INTERRUPTED_APPROVAL_SECRET = 'interrupted-approval-secret';
+/** The file the interrupted-approval tool appends one line to each time its body runs. */
+export const INTERRUPTED_APPROVAL_FILE = 'approved-tool-runs.txt';
+
+/**
+ * COR-1717: a toolbox whose one tool needs approval and, when it runs, appends a line to a file
+ * under `directory` (then calls `afterAppend`, which the crashing child uses to die mid-tool).
+ */
+export function createInterruptedApprovalToolbox(
+  directory: string,
+  afterAppend: () => void = () => {},
+): AnyToolbox {
+  return createToolbox(
+    [
+      createTool({
+        name: 'append-line',
+        version: '1.0.0',
+        description: 'Append one line to the scenario file',
+        input: z.object({}),
+        async execute() {
+          appendFileSync(join(directory, INTERRUPTED_APPROVAL_FILE), 'ran\n', 'utf8');
+          afterAppend();
+          return 'appended';
+        },
+      }),
+    ],
+    {
+      approvalSecret: INTERRUPTED_APPROVAL_SECRET,
+      policy: {
+        beforeExecute() {
+          return {
+            allow: false,
+            status: 'needs_approval',
+            reason: 'Operator approval required',
+            action: { message: 'Approve append' },
+          };
+        },
+      },
+    },
+  );
+}
