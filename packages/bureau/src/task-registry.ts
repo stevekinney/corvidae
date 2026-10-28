@@ -1198,6 +1198,16 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     }
   }
 
+  async function announceRecordedSettlement(
+    taskId: string,
+    record: TaskRecord,
+    newlySettled: boolean,
+  ): Promise<void> {
+    await announceSettled(taskId);
+    await recordFireSettled(record);
+    if (newlySettled) await options.onSettled?.(record);
+  }
+
   /**
    * Tells whoever waits that the task has settled. A listener is told once, however many
    * settlements are written back to back, and a task not yet settled (a write that changed
@@ -1229,10 +1239,8 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         return next;
       }),
     );
-    if (recorded) await announceSettled(taskId);
-    if (recorded && captured.settled !== undefined) await recordFireSettled(captured.settled);
-    if (recorded && captured.newlySettled && captured.settled !== undefined) {
-      await options.onSettled?.(captured.settled);
+    if (recorded && captured.settled !== undefined) {
+      await announceRecordedSettlement(taskId, captured.settled, captured.newlySettled);
     }
     return recorded;
   }
@@ -1657,7 +1665,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
           const outcome = await host.cancelDurable(taskId);
           if (outcome.status === 'requested') {
             const canceled: { record?: TaskRecord } = {};
-            await update(taskId, (current) => {
+            const recorded = await update(taskId, (current) => {
               const next: TaskRecord = {
                 ...current,
                 settled: {
@@ -1672,9 +1680,9 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
               canceled.record = next;
               return next;
             });
-            await announceSettled(taskId);
-            // COR-1594: written here and not through `recordSettled`, so announced as it is.
-            if (canceled.record !== undefined) await recordFireSettled(canceled.record);
+            if (recorded && canceled.record !== undefined) {
+              await announceRecordedSettlement(taskId, canceled.record, true);
+            }
             return { receipt: 'canceled' };
           }
           if (outcome.status === 'failed') throw outcome.error;

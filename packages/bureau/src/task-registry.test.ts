@@ -824,12 +824,45 @@ describe('cancel', () => {
   });
 
   it('cancels a durable run this process holds no live run for', async () => {
-    const requested = build();
+    const settled: string[] = [];
+    const requested = build(undefined, {
+      onSettled: async (record) => {
+        settled.push(record.taskId);
+      },
+    });
     await admit(requested.registry, 'run-1');
+    expect(settled).toEqual([]);
 
     expect(await requested.registry.cancel('run-1', 0)).toEqual({ receipt: 'canceled' });
     const afterwards = await requested.registry.get('run-1');
     expect(afterwards?.status).toBe('canceled');
+    expect(settled).toEqual(['run-1']);
+    expect(await requested.registry.cancel('run-1', 0)).toEqual({ receipt: 'canceled' });
+    expect(settled).toEqual(['run-1']);
+
+    const base = textValueStore(new MemoryStorage());
+    let failWrites = false;
+    const failingKv = new Proxy(base, {
+      get(target, property, receiver) {
+        if (property !== 'conditionalBatch') return Reflect.get(target, property, receiver);
+        return async (...args: Parameters<typeof base.conditionalBatch>) => {
+          if (failWrites) return false;
+          return base.conditionalBatch(...args);
+        };
+      },
+    });
+    const failedSettled: string[] = [];
+    const failed = build(undefined, {
+      kv: failingKv,
+      onSettled: async (record) => {
+        failedSettled.push(record.taskId);
+      },
+    });
+    await admit(failed.registry, 'run-2');
+    failWrites = true;
+    await rejectionOf(failed.registry.cancel('run-2', 0));
+    expect(failedSettled).toEqual([]);
+    expect((await failed.registry.get('run-2'))?.status).toBe('working');
 
     const terminal = build({ durable: { status: 'already-terminal' } });
     await admit(terminal.registry, 'run-1');
