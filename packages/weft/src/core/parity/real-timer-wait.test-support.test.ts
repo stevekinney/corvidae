@@ -4,6 +4,13 @@ import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitForParityCondition } from './real-timer-wait.test-support.ts';
 
 describe('waitForParityCondition', () => {
+  it('uses its default budget, interval and label when given no options', async () => {
+    let attempt = 0;
+
+    expect(await waitForParityCondition(() => (attempt += 1) > 2)).toBeUndefined();
+    expect(attempt).toBe(3);
+  });
+
   it('keeps polling after predicate errors until the condition becomes true', async () => {
     let attempt = 0;
 

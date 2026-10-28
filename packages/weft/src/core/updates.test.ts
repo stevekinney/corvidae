@@ -149,6 +149,28 @@ describe('UpdateCoordinator', () => {
     });
   });
 
+  describe('deleteRequestIfUnconsumed', () => {
+    it('keeps the request and returns the response when the workflow already consumed it', async () => {
+      const updateId = await coordinator.createRequest('wf-1', 'myUpdate', { value: 1 });
+      const response = { updateId, result: 'done', createdAt: Date.now() };
+      await storage.put(`upr:${updateId}`, encode(response));
+
+      const returned = await coordinator.deleteRequestIfUnconsumed('wf-1', updateId);
+
+      expect(returned).toEqual(response);
+      expect(await storage.get(`upd:wf-1:${updateId}`)).not.toBeNull();
+    });
+
+    it('deletes the request and returns null when no response exists', async () => {
+      const updateId = await coordinator.createRequest('wf-1', 'myUpdate', { value: 1 });
+
+      const returned = await coordinator.deleteRequestIfUnconsumed('wf-1', updateId);
+
+      expect(returned).toBeNull();
+      expect(await storage.get(`upd:wf-1:${updateId}`)).toBeNull();
+    });
+  });
+
   describe('checkIdempotency', () => {
     it('returns null for new key', async () => {
       const result = await coordinator.checkIdempotency('wf-1', 'new-key');

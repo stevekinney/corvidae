@@ -157,23 +157,25 @@ export function inferShape(value: unknown): ShapeDescriptor {
   return shape;
 }
 
+function describeTypeChange(diff: Extract<FieldDiff, { change: 'type-changed' }>): string {
+  return `  - field \`${diff.field}\` changed type: ${diff.oldType} → ${diff.newType}`;
+}
+
 /** Format field diffs into a human-readable summary. */
 function formatFieldDiffs(diffs: FieldDiff[]): string {
   if (diffs.length === 0) return '';
 
   const lines = diffs.map((diff) => {
-    switch (diff.change) {
-      case 'added':
-        return `  - field \`${diff.field}\` was added (type: ${diff.newType})`;
-      case 'removed':
-        return `  - field \`${diff.field}\` was removed (was: ${diff.oldType})`;
-      case 'type-changed':
-        return `  - field \`${diff.field}\` changed type: ${diff.oldType} → ${diff.newType}`;
-      default: {
-        const exhaustiveCheck: never = diff;
-        throw new Error(`Unknown field diff change: ${JSON.stringify(exhaustiveCheck)}`);
-      }
+    if (diff.change === 'added') {
+      return `  - field \`${diff.field}\` was added (type: ${diff.newType})`;
     }
+    if (diff.change === 'removed') {
+      return `  - field \`${diff.field}\` was removed (was: ${diff.oldType})`;
+    }
+    // Only a `type-changed` diff reaches here, and the parameter type makes the compiler reject
+    // this call the moment a `FieldDiff` change kind is added without a branch above. At runtime
+    // every diff comes from `diffCheckpointShapes`, which only produces the three kinds.
+    return describeTypeChange(diff);
   });
 
   return `\nCheckpoint shape changes:\n${lines.join('\n')}`;
