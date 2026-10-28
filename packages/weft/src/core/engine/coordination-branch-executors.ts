@@ -1,4 +1,5 @@
 import type { ContextOperationRequest } from '../context.ts';
+import { SignalDeliveredEvent } from '../events.ts';
 import { createDeferredConsumeEnvelope } from './deferred-consume-envelope.ts';
 import type { EngineInternals } from './internals.ts';
 import {
@@ -139,7 +140,7 @@ export function executeSleepSubOperation(
  * survives for a later `waitForSignal` or a replay.
  *
  * Reads are non-destructive {@link peekSignal}s until the coordinator finalizes;
- * the identity-guarded release (`expectedResolve === deliver`) ensures a loser
+ * the identity-guarded release (`expectedResolve === deliverAndReport`) ensures a loser
  * never clobbers another waiter (e.g. a later top-level `waitForSignal`) that
  * reused the shared `${workflowId}:${signalName}` key.
  */
@@ -161,6 +162,10 @@ export function executeWaitSignalSubOperation(
     let settled = false;
     let registered = false;
     const { promise: delivered, resolve: deliver } = Promise.withResolvers<void>();
+    const deliverAndReport = () => {
+      internals.engine.dispatchEvent(new SignalDeliveredEvent(workflowId, signalName));
+      deliver();
+    };
 
     // Remove BOTH abort listeners on every exit so a race-loser abort from
     // `signal` does not leave the `engineAbort` listener (and its closure)
@@ -192,7 +197,7 @@ export function executeWaitSignalSubOperation(
       // Only release if we registered it, and only our own waiter (identity
       // guard), so we never clobber a waiter that reused this key.
       if (registered) {
-        releaseSignalWaiter(internals, workflowId, waiterKey, deliver);
+        releaseSignalWaiter(internals, workflowId, waiterKey, deliverAndReport);
       }
       // The race settled without this signal, so the wait is over: drop it from
       // the durable `waitingForSignals` list. Nothing awaits this branch any
@@ -227,7 +232,7 @@ export function executeWaitSignalSubOperation(
       settled = true;
       cleanup();
       if (registered) {
-        releaseSignalWaiter(internals, workflowId, waiterKey, deliver);
+        releaseSignalWaiter(internals, workflowId, waiterKey, deliverAndReport);
       }
       reject(error);
     };
@@ -258,13 +263,13 @@ export function executeWaitSignalSubOperation(
         return;
       }
 
-      registerSignalWaiter(internals, workflowId, waiterKey, deliver);
+      registerSignalWaiter(internals, workflowId, waiterKey, deliverAndReport);
       registered = true;
 
       const buffered = await peekSignal(internals, workflowId, signalName);
       if (settled) return;
       if (buffered.found) {
-        releaseSignalWaiter(internals, workflowId, waiterKey, deliver);
+        releaseSignalWaiter(internals, workflowId, waiterKey, deliverAndReport);
         await winAfterClearingWait();
         return;
       }
@@ -277,7 +282,7 @@ export function executeWaitSignalSubOperation(
         workflowId,
         run,
         signalName,
-        () => !settled && internals.signalWaiters.get(waiterKey) === deliver,
+        () => !settled && internals.signalWaiters.get(waiterKey) === deliverAndReport,
       );
       if (settled) return;
 

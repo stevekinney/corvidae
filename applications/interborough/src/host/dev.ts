@@ -7,6 +7,9 @@
  * when the host's own modules change, so the browser build runs in a child process
  * ({@link buildBrowserApplication}): inside the watched process the bundler cannot resolve
  * `@msgpack/msgpack`.
+ *
+ * The host runs with `development: true`, so every open page reloads itself after a successful
+ * rebuild (`dev-reload.ts`).
  */
 
 import { unwatchFile, watch, watchFile, type Stats } from 'node:fs';
@@ -33,14 +36,17 @@ const WATCHED_DIRECTORIES = [
 const REBUILD_DELAY_MILLISECONDS = 100;
 
 await buildBrowserApplication();
-const host = await startHost();
+const host = await startHost({ development: true });
 console.info(`Interborough is listening on ${host.url}`);
 console.info(`Its state lives in ${dirname(host.databasePath)}`);
 
 const rebuilds = createRebuildScheduler({
   build: () => buildBrowserApplication(),
   delayMilliseconds: REBUILD_DELAY_MILLISECONDS,
-  onRebuilt: () => console.info('Rebuilt the browser application.'),
+  onRebuilt: () => {
+    console.info('Rebuilt the browser application.');
+    host.notifyRebuilt();
+  },
   onFailure: (error) => console.error('The browser rebuild failed.', error),
 });
 

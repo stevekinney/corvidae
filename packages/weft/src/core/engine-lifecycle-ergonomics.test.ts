@@ -90,6 +90,7 @@ describe('Engine lifecycle ergonomics', () => {
       disposed: false,
       cleanupInterval: null,
       secondInstanceDetectionInterval: null,
+      storageSizeReportInterval: null,
       testToken: token,
     });
 

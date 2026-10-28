@@ -292,6 +292,7 @@ export interface EngineInternals {
   workflowsNeedingTerminalCleanup: Set<string>;
   cleanupInterval: ReturnType<typeof setInterval> | null;
   cleanupIntervalDisposalTracker: EngineCleanupIntervalDisposalTracker | null;
+  storageSizeReportInterval: ReturnType<typeof setInterval> | null;
   retentionSweepInterval: ReturnType<typeof setInterval> | null;
   retentionSweepInFlight: Promise<void> | null;
   /**

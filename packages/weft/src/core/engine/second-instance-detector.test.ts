@@ -402,6 +402,7 @@ describe('createSecondInstanceDetector', () => {
       disposed: false,
       cleanupInterval: null,
       secondInstanceDetectionInterval: interval,
+      storageSizeReportInterval: null,
       testToken: undefined,
     };
     const tick = createSecondInstanceDetectionTick(() => null, tracker);
@@ -428,6 +429,7 @@ describe('createSecondInstanceDetector', () => {
       disposed: false,
       cleanupInterval: null,
       secondInstanceDetectionInterval: interval,
+      storageSizeReportInterval: null,
       testToken: undefined,
     };
     const tick = createSecondInstanceDetectionTick(() => failingDetector, tracker);
