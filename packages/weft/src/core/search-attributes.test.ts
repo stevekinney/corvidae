@@ -102,6 +102,13 @@ describe('search-attributes', () => {
       expect((decoded as Date).toISOString()).toBe(original.toISOString());
     });
 
+    it('decodes the date-time spelling of the date type the same as datetime', () => {
+      const original = new Date('2024-03-15T10:30:00.000Z');
+      const decoded = decodeAttributeValue(encodeAttributeValue(original), 'date-time');
+      expect(decoded).toBeInstanceOf(Date);
+      expect((decoded as Date).toISOString()).toBe(original.toISOString());
+    });
+
     it('round-trips a negative number value', () => {
       const original = -7.5;
       const encoded = encodeAttributeValue(original);

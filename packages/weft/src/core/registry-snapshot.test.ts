@@ -11,7 +11,9 @@ import { ActivityRegistry } from './activity-registry.ts';
 import { buildWorkflowContract } from './contract/build.ts';
 import { buildWorkflowRevisionManifest } from './contract/manifest.ts';
 import { Engine } from './engine.ts';
+import { copyWorkflowDefinition } from './engine/construction.ts';
 import { getWorkflowCatalog } from './engine/index.ts';
+import { buildRegistrationEntry } from './engine/registration.ts';
 import { MAX_REGISTRY_WORKFLOW_COUNT, RegistryWorkflowCountLimitError } from './registry-limits.ts';
 import {
   buildRegistrySnapshot,
@@ -21,6 +23,7 @@ import {
   RegistryManifestLimitError,
   RegistrySchemaConversionError,
 } from './registry-snapshot.ts';
+import { buildWorkflowManifestFromDefinition } from './registry-workflow-manifest.ts';
 import type { WorkflowDefinition } from './types.ts';
 import { activity, query, signal, update, workflow } from './types.ts';
 
@@ -540,6 +543,25 @@ describe('buildRegistrySnapshot', () => {
 
     const manifest = await buildWorkflowManifestForType(engine, 'checkout');
     expect(manifest?.name).toBe('checkout');
+  });
+
+  it('buildWorkflowManifestFromDefinition rejects a used activity that is also registered as a scoped activity', async () => {
+    const greet = activity({ name: 'greet', execute: async () => 'hello' });
+    const definition = workflow({ name: 'welcome' })
+      .uses({ greet })
+      .execute(async function* () {});
+    const registered = copyWorkflowDefinition(
+      'welcome',
+      buildRegistrationEntry('welcome', definition),
+    );
+    const activities = new ActivityRegistry();
+    activities.register('greet', greet.execute);
+
+    expect(
+      await throwingRejectionOf(
+        buildWorkflowManifestFromDefinition(registered, activities.listDefinitions()),
+      ),
+    ).toThrow('Workflow "welcome" declares activity "greet" in both activities and uses');
   });
 
   it('buildWorkflowManifestForType returns undefined for an unregistered workflow type (WFT-6)', async () => {
