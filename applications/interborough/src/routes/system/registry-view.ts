@@ -35,6 +35,7 @@
  * fragments themselves.
  */
 import type { Duration, RetryPolicy } from '@lostgradient/weft';
+import { compareCodepoint } from '../../lib/compare-codepoint.ts';
 
 /** One signal, update, or query contract's schema pair. Mirrors `WorkflowMessageContract` (`@lostgradient/weft`) structurally. */
 export interface WorkflowMessageContractSource {
@@ -166,12 +167,6 @@ export interface RegistryActivityRow {
   readonly retry: RetryPolicy | undefined;
   /** `undefined` when the activity was registered with no timeout — never fabricated. */
   readonly timeout: Duration | undefined;
-}
-
-function compareCodepoint(a: string, b: string): number {
-  if (a < b) return -1;
-  if (a > b) return 1;
-  return 0;
 }
 
 function isJsonSchemaTypeString(value: unknown): value is string {

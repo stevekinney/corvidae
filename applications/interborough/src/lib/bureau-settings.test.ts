@@ -2,6 +2,7 @@ import { HttpClientError } from '@lostgradient/weft';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import {
+  followSettingsEvents,
   getSettings,
   getSettingsSchema,
   settingsFaultOf,
@@ -147,5 +148,64 @@ describe('a refused update', () => {
       kind: 'other',
       message: 'x',
     });
+  });
+});
+
+describe('the settings stream', () => {
+  function change(revision: number, keys: string[]): string {
+    const data = {
+      kind: 'settings.changed',
+      cursor: String(revision),
+      emittedAtMs: 0,
+      revision,
+      keys,
+    };
+    return `id: ${revision}\nevent: settings.changed\ndata: ${JSON.stringify(data)}\n\n`;
+  }
+
+  test('yields the changes it can read and skips frames that are not changes', async () => {
+    const body = [
+      // A frame of another kind, a change whose data is not JSON, and one that is JSON but not a change.
+      'event: heartbeat\ndata: {}\n\n',
+      'event: settings.changed\ndata: this is not json\n\n',
+      'event: settings.changed\ndata: {"kind":"settings.changed"}\n\n',
+      change(4, ['tools.wakeup']),
+    ].join('');
+    let opened = 0;
+    const seen = [];
+    for await (const event of followSettingsEvents({
+      fetch: () => Promise.resolve(new Response(body)),
+      onOpen: () => {
+        opened += 1;
+      },
+    })) {
+      seen.push(event);
+    }
+    expect(opened).toBe(1);
+    expect(seen).toEqual([
+      {
+        kind: 'settings.changed',
+        cursor: '4',
+        emittedAtMs: 0,
+        revision: 4,
+        keys: ['tools.wakeup'],
+      },
+    ]);
+  });
+
+  test('throws the refusal the answer makes, with the message it carries or one of its own', async () => {
+    const refusal = async (response: Response): Promise<unknown> => {
+      try {
+        await followSettingsEvents({ fetch: () => Promise.resolve(response) }).next();
+      } catch (error) {
+        return error;
+      }
+      return undefined;
+    };
+    const named = await refusal(Response.json({ error: 'Forbidden' }, { status: 403 }));
+    expect(named).toBeInstanceOf(HttpClientError);
+    expect(named).toMatchObject({ status: 403, message: 'Forbidden' });
+    const unnamed = await refusal(new Response('not json', { status: 502 }));
+    expect(unnamed).toMatchObject({ status: 502, message: 'The settings stream answered 502.' });
   });
 });
