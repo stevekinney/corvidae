@@ -36,6 +36,7 @@ describe('engine runtime helpers', () => {
       disposed: false,
       cleanupInterval,
       secondInstanceDetectionInterval: null,
+      storageSizeReportInterval: null,
       testToken: undefined,
     };
 
@@ -54,6 +55,7 @@ describe('engine runtime helpers', () => {
       disposed: false,
       cleanupInterval: null,
       secondInstanceDetectionInterval: null,
+      storageSizeReportInterval: null,
       testToken: undefined,
     };
     const cleanupExpiredResponses = mock(async () => {

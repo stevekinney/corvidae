@@ -45,6 +45,12 @@ runBinaryAndLargeScanStorageConformance('BunSQLiteStorage', {
 });
 
 describe('BunSQLiteStorage', () => {
+  it('reports the native SQLite page footprint', async () => {
+    const storage = new BunSQLiteStorage(':memory:');
+    expect(await storage.sizeBytes()).toBe(8_192);
+    storage[Symbol.dispose]();
+  });
+
   it('[Symbol.dispose] closes database', () => {
     const storage = new BunSQLiteStorage(':memory:');
     storage[Symbol.dispose]();

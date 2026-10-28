@@ -6,10 +6,9 @@
  * server emits for a duplicate or rejected delivery, changes the delivery
  * history and, when the server dead-lettered the result, the ledger record.
  *
- * It does not cover a first-time `applied` result: the server suppresses
- * `task:result-delivery` for that disposition and relies on the activity
- * completion event instead, so an open task view picks that result up on its
- * next poll, not live. Only the dead-letter refresh is live by contract.
+ * A first-time `applied` result is represented by the live
+ * `activity:completed` event; duplicate and rejected deliveries remain covered
+ * by `task:result-delivery`.
  * Nothing here opens a connection: the shell's one shared fleet subscription
  * calls it.
  *
@@ -30,6 +29,7 @@ function operationIdOf(payload: unknown): string | undefined {
 export const TASK_EVIDENCE_EVENT_KINDS: ReadonlySet<string> = new Set([
   'task:dead-lettered',
   'task:result-delivery',
+  'activity:completed',
 ]);
 
 /**
