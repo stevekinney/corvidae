@@ -157,6 +157,24 @@ describe('FakeRealm', () => {
       expect(realm.pendingTurnCount).toBe(0);
     });
 
+    it('refuses a result for a turn that was never dispatched, or already settled', async () => {
+      const realm = fakeRealm();
+      await readyAndActive(realm);
+
+      expect(realm.acceptResult(turn({ turnId: 7 }), 'stray')).toEqual({
+        accepted: false,
+        reason: 'unknown-turn',
+      });
+
+      const pending = realm.dispatchTurn(turn({ turnId: 1 }));
+      realm.acceptResult(turn({ turnId: 1 }), 'first');
+      expect(await pending).toBe('first');
+      expect(realm.acceptResult(turn({ turnId: 1 }), 'duplicate')).toEqual({
+        accepted: false,
+        reason: 'unknown-turn',
+      });
+    });
+
     it('advances the expected turnId only after a turn is accepted for dispatch', async () => {
       const realm = fakeRealm();
       await readyAndActive(realm);

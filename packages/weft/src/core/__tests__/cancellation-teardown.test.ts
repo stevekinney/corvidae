@@ -445,6 +445,60 @@ describe('ctx.saga() — cancellation compensation', () => {
     engine[Symbol.dispose]();
   });
 
+  it('keeps compensating earlier steps and still cancels when a compensator throws on cancel', async () => {
+    const engine = new Engine();
+    const compensationOrder: string[] = [];
+    const gate = deferred();
+
+    const step1 = makeActivity({
+      name: 'step-one',
+      execute: (_input: string) => 'out-one',
+      compensate: (_input, _output) => {
+        compensationOrder.push('step-one');
+      },
+    });
+
+    const step2 = makeActivity({
+      name: 'step-two',
+      execute: (_input: string) => 'out-two',
+      compensate: (_input, _output) => {
+        compensationOrder.push('step-two');
+        throw new Error('compensation for step two failed');
+      },
+    });
+
+    const step3 = makeActivity({
+      name: 'step-three',
+      execute: async (_input: string) => {
+        await gate.promise;
+        return 'out-three';
+      },
+    });
+
+    engine.register(
+      workflow({ name: 'saga-cancel-failing-compensator' }).execute(async function* (
+        ctx: WorkflowContext,
+      ) {
+        yield* ctx.saga([
+          { definition: step1, input: 'a' },
+          { definition: step2, input: 'b' },
+          { definition: step3, input: 'c' },
+        ]);
+      }),
+    );
+
+    const handle = await engine.start('saga-cancel-failing-compensator', null);
+    await flush();
+
+    await engine.cancel(handle.id);
+    gate.resolve();
+
+    expect(await throwingRejectionOf(handle.result())).toThrow('Workflow cancelled');
+    expect(compensationOrder).toEqual(['step-two', 'step-one']);
+
+    engine[Symbol.dispose]();
+  });
+
   // -------------------------------------------------------------------------
   // 7. Compensate receives correct input and output
   // -------------------------------------------------------------------------

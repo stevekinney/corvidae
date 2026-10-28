@@ -1,8 +1,10 @@
 /**
  * Scheduled fires that wait on Weft's scheduler poller for more than the fast lane's budget:
- * a fire that is in flight when its Bureau stops is recovered by the next Bureau over the same
- * storage, not cancelled with its schedule; a fire that ends on maximum-steps is still persisted;
- * and a fire's terminal lifecycle event is dispatched as completed or failed.
+ * a stateless interval fire runs with a fresh session per fire, and a recurring fire accumulates
+ * one fixed session across fires (both moved here from the fast lane by COR-1737); a fire that is
+ * in flight when its Bureau stops is recovered by the next Bureau over the same storage, not
+ * cancelled with its schedule; a fire that ends on maximum-steps is still persisted; and a fire's
+ * terminal lifecycle event is dispatched as completed or failed.
  *
  * Each fire is started by the poller on real elapsed time (a `1s` schedule on a one-second poll),
  * so these are slow by nature and live in the `test:slow` lane (COR-1576). The first occurrence is
@@ -76,6 +78,103 @@ function createEmptyToolbox(): Toolbox {
 }
 
 describe('D6 scheduled-fire path (#109)', () => {
+  it('fires a stateless interval schedule and runs the agent with a fresh session per fire', async () => {
+    const calls: RecordedCall[] = [];
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createRecordingGenerate(calls),
+          toolbox: createEmptyToolbox(),
+          instructions: 'You are a scheduled agent.',
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
+      storage: { type: 'memory' },
+      durable: true,
+    });
+
+    try {
+      // A bare duration shorthand ('1s') is registered as an interval
+      // ({ every: '1s' }), not cron — see toScheduleSpec.
+      const summary = await bureau.schedules.create({
+        agentName: 'default',
+        input: 'stateless tick prompt',
+        spec: '1s',
+      });
+      expect(summary).toBeDefined();
+
+      const fired = await waitForReal(() => calls.length >= 1);
+      // Stop further fires before asserting so the count is stable.
+      await bureau.schedules.cancel(summary!.id);
+
+      expect(fired).toBe(true);
+      // The agent body actually ran with the scheduled prompt.
+      expect(calls[0]!.userPrompts).toContain('stateless tick prompt');
+      // A fresh per-fire session still seeds the bureau systemPrompt, exactly as
+      // a normal run into a new session does: [system, user].
+      expect(calls[0]!.systemPrompts).toContain('You are a scheduled agent.');
+      expect(calls[0]!.roles).toEqual(['system', 'user']);
+      // Each stateless fire mints its own session id, so no two fires collide.
+      const ids = calls.map((call) => call.conversationId);
+      expect(new Set(ids).size).toBe(ids.length);
+      expect(ids[0]!.startsWith('sched-')).toBe(true);
+    } finally {
+      bureau.dispose();
+    }
+  });
+
+  it('fires a recurring schedule into a fixed session and accumulates conversation across fires', async () => {
+    const sessionId = 'daily-digest';
+    const calls: RecordedCall[] = [];
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: createRecordingGenerate(calls),
+          toolbox: createEmptyToolbox(),
+          instructions: 'You are a scheduled agent.',
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
+      storage: { type: 'memory' },
+      durable: true,
+    });
+
+    try {
+      const summary = await bureau.schedules.create({
+        agentName: 'default',
+        input: 'digest prompt',
+        spec: '1s',
+        sessionId,
+      });
+      expect(summary).toBeDefined();
+
+      const recurringCalls = () => calls.filter((call) => call.conversationId === sessionId);
+      const firedTwice = await waitForReal(() => recurringCalls().length >= 2);
+      await bureau.schedules.cancel(summary!.id);
+
+      expect(firedTwice).toBe(true);
+
+      // The FIRST fire into a not-yet-existing recurring session seeds the bureau
+      // systemPrompt, exactly as a normal run into a new session does.
+      const fires = recurringCalls();
+      expect(fires[0]!.systemPrompts).toContain('You are a scheduled agent.');
+      // Fire 2's agent body saw fire 1's turn — context accumulated, proving the
+      // recurring (session-given) semantics, not a fresh session per fire.
+      expect(fires[1]!.messageCount).toBeGreaterThan(fires[0]!.messageCount);
+
+      // The durable proof: the session itself accumulated both fires' user turns,
+      // and the systemPrompt was seeded ONCE (not re-appended on the second fire).
+      const session = await bureau.contexts.get(sessionId);
+      expect(session).not.toBeNull();
+      const messages = getMessages(session!.conversationHistory);
+      const userTurns = messages.filter((message) => message.role === 'user');
+      expect(userTurns.length).toBeGreaterThanOrEqual(2);
+      expect(messages.filter((message) => message.role === 'system')).toHaveLength(1);
+    } finally {
+      bureau.dispose();
+    }
+  });
+
   it('recovers an in-flight scheduled fire across a bureau restart without cancelling it', async () => {
     const databasePath = createTemporaryPath('bureau-scheduled-fire-recovery', '.sqlite');
 
