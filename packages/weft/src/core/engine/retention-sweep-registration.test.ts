@@ -61,7 +61,8 @@ describe('retention sweep armed by registering a workflow with retention', () =>
         },
       ),
     );
-    await (await engine.start('registered-retention', null, { id: workflowId })).result();
+    const handle = await engine.start('registered-retention', null, { id: workflowId });
+    await handle.result();
 
     storage.armed = true;
     clock.now += 1_500; // past the 1s retention window: the next sweep purges the run

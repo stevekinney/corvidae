@@ -109,21 +109,21 @@ function stubDriver(pragmaRow: { busy: number; log: number; checkpointed: number
 }
 
 describe('loadBetterSqlite3Locally', () => {
-  class Constructor {}
+  const Constructor = (() => 'driver') as unknown as new (path: string) => never;
 
   it('takes the default export of a module that has one', () => {
     const requested: string[] = [];
     const driver = loadBetterSqlite3Locally((id) => {
       requested.push(id);
-      return Object.assign(class Wrapper {}, { default: Constructor });
+      return Object.assign(() => 'wrapper', { default: Constructor });
     });
 
-    expect(driver).toBe(Constructor as never);
+    expect(driver).toBe(Constructor);
     expect(requested).toEqual(['better-sqlite3']);
   });
 
   it('takes the module itself when it is the constructor', () => {
-    expect(loadBetterSqlite3Locally(() => Constructor)).toBe(Constructor as never);
+    expect(loadBetterSqlite3Locally(() => Constructor)).toBe(Constructor);
   });
 });
 
@@ -131,8 +131,8 @@ describe('Node SQLite adapter spec', () => {
   it('opens the adapter, checkpoints through the raw driver, and closes the adapter', async () => {
     const { Driver, calls } = stubDriver({ busy: 0, log: 3, checkpointed: 3 });
     const spec = createNodeSqliteSpec({
-      storageConstructor: MemoryStorage as never,
-      loadDriver: () => Driver as never,
+      storageConstructor: MemoryStorage,
+      loadDriver: () => Driver,
     });
     expect(spec.name).toBe('NodeSQLiteStorage');
     expect(spec.exposesStandardSidecars).toBe(true);
@@ -160,14 +160,15 @@ describe('Node SQLite adapter spec', () => {
   it('reports a checkpoint the driver could not finish as not truncated, and still closes it', async () => {
     const { Driver, calls } = stubDriver({ busy: 1, log: 3, checkpointed: 1 });
     const spec = createNodeSqliteSpec({
-      storageConstructor: MemoryStorage as never,
-      loadDriver: () => Driver as never,
+      storageConstructor: MemoryStorage,
+      loadDriver: () => Driver,
     });
     const scope = new FixtureScope();
     const adapter = await spec.open(`${scope.makeTempDirectory('node-sqlite-busy')}/busy.db`);
 
     try {
-      expect((await adapter.checkpoint()).truncated).toBe(false);
+      const checkpoint = await adapter.checkpoint();
+      expect(checkpoint.truncated).toBe(false);
       expect(calls.at(-1)).toBe('close');
     } finally {
       await closeIfOpen(adapter);
@@ -195,12 +196,10 @@ describe('canLoadNodeSqliteWith', () => {
   });
 
   it('is unavailable when the adapter cannot open', () => {
-    class Refusing {
-      constructor() {
-        throw new Error('the native binding is refused');
-      }
-    }
+    const refusing = function (): never {
+      throw new Error('the native binding is refused');
+    };
 
-    expect(canLoadNodeSqliteWith(false, Refusing as never)).toBe(false);
+    expect(canLoadNodeSqliteWith(false, refusing as never)).toBe(false);
   });
 });

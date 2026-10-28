@@ -230,6 +230,7 @@ describe('nextServerMessage and expectNoServerMessage waits', () => {
 });
 
 type ConnectOptions = Parameters<typeof Bun.connect>[0];
+type SocketHandlers = ConnectOptions['socket'];
 
 /**
  * Make `Bun.connect` hand the harness a socket of the test's choosing and keep the socket
@@ -238,15 +239,11 @@ type ConnectOptions = Parameters<typeof Bun.connect>[0];
  * `error` event for a server reset or termination in repeated attempts, only `close`, and
  * `end()` on a closed socket does not throw on Bun 1.4.4.
  */
-function interceptSockets(options: { endThrows: boolean }): {
-  handlers: () => NonNullable<Extract<ConnectOptions, { socket: unknown }>['socket']>;
-} {
+function interceptSockets(options: { endThrows: boolean }): { handlers: () => SocketHandlers } {
   const realConnect = Bun.connect.bind(Bun) as (options: ConnectOptions) => Promise<unknown>;
-  let registered: ReturnType<typeof interceptSockets>['handlers'] extends () => infer Handlers
-    ? Handlers | undefined
-    : never;
+  let registered: SocketHandlers | undefined;
   const spy = spyOn(Bun, 'connect').mockImplementation(((connectOptions: ConnectOptions) => {
-    const original = (connectOptions as { socket: NonNullable<typeof registered> }).socket;
+    const original = connectOptions.socket;
     registered = original;
     return realConnect({
       ...connectOptions,
@@ -269,7 +266,7 @@ function interceptSockets(options: { endThrows: boolean }): {
           original.open?.(given);
         },
       },
-    } as ConnectOptions);
+    });
   }) as unknown as typeof Bun.connect);
   cleanups.push(() => spy.mockRestore());
   return {

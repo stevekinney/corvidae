@@ -1007,10 +1007,15 @@ describe('fired-timer cleanup under ownership: lease', () => {
         for await (const [key] of storage.scan('wf-deadline:')) keys.push(key);
         return keys;
       };
-      await waitForCondition(async () => (await deadlineKeys()).length === 1, {
-        label: 'sleep timer armed',
-      });
-      const armedKey = (await deadlineKeys())[0]!;
+      await waitForCondition(
+        async () => {
+          const keys = await deadlineKeys();
+          return keys.length === 1;
+        },
+        { label: 'sleep timer armed' },
+      );
+      const armedKeys = await deadlineKeys();
+      const armedKey = armedKeys[0]!;
 
       // The cleanup commit reports a lost compare-and-swap although the lease epoch it is
       // conditioned on is unchanged, as a write that lost a race to something other than a

@@ -138,7 +138,8 @@ describe('engine.prepare() / handle.launch() / handle.abandon() (COR-75)', () =>
 
     const prepared = await engine.prepare('cor-75-generated-id', null);
     expect(prepared.id).toMatch(/\S/);
-    expect((await engine.get(prepared.id))?.status).toBe('pending');
+    const record = await engine.get(prepared.id);
+    expect(record?.status).toBe('pending');
 
     const handle = await prepared.launch();
     expect(handle.id).toBe(prepared.id);
