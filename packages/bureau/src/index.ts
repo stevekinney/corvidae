@@ -272,6 +272,7 @@ export {
   RecoveryRejectedEvent,
   RunAbortSettledEvent,
   RunRegisteredEvent,
+  RunSettledEvent,
   RunRemovedEvent,
 } from './events';
 export { MAXIMUM_CONTROLLER_RESTARTS } from './goal-recovery';
