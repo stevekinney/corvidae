@@ -58,11 +58,11 @@ export class MemoryStorage implements Storage {
     };
   }
 
-  #matchesPrefix(key: string, prefix: string, prefixEnd: string): boolean {
-    return key >= prefix && key < prefixEnd;
+  #matchesPrefix(key: string, prefix: string, prefixEnd: string | undefined): boolean {
+    return key >= prefix && (prefixEnd === undefined || key < prefixEnd);
   }
 
-  #collectSortedKeys(prefix: string, prefixEnd: string): string[] {
+  #collectSortedKeys(prefix: string, prefixEnd: string | undefined): string[] {
     const keys: string[] = [];
     for (const key of this.#data.keys()) {
       if (this.#matchesPrefix(key, prefix, prefixEnd)) {

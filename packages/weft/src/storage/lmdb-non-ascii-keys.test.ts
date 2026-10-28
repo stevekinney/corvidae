@@ -155,4 +155,30 @@ describe('LMDBStorage with non-ASCII keys', () => {
     expect(await storageDeletePrefix(scoped, '')).toBe(prefixedKeysInOrder.length);
     expect(await collect(storage.keys(''))).toEqual([otherPrefixKey]);
   });
+
+  it('an empty prefix has no upper bound, so keys past U+00FF are not cut off', async () => {
+    const fixture = createDiskBackedTestFixture({
+      prefix: 'lmdb-empty-prefix-test',
+      recursive: true,
+    });
+    fixtureCleanups.push(fixture.cleanup);
+    const storage = new LMDBStorage(fixture.path);
+    openStorages.push(storage);
+    const keys = ['a', 'é', '日', '😀'];
+    for (const key of keys) await storage.put(key, encode(`value:${key}`));
+
+    expect(await collect(storage.keys(''))).toEqual(keys);
+    expect(await collect(storage.keys('', { reverse: true }))).toEqual(keys.toReversed());
+    expect(await collect(storage.keys('', { reverse: true, limit: 2 }))).toEqual(['😀', '日']);
+    expect(await storage.count('')).toBe(keys.length);
+    const forwardEntries = await collect(storage.scan(''));
+    expect(forwardEntries.map(([key]) => key)).toEqual(keys);
+    const reverseEntries = await collect(storage.scan('', { reverse: true }));
+    expect(reverseEntries.map(([key]) => key)).toEqual(keys.toReversed());
+
+    expect(await storage.deleteRange('', { gte: 'é', lte: '日' })).toBe(2);
+    expect(await collect(storage.keys(''))).toEqual(['a', '😀']);
+    expect(await storage.deletePrefix('')).toBe(2);
+    expect(await storage.count('')).toBe(0);
+  });
 });

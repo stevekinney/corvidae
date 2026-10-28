@@ -8,7 +8,8 @@
  */
 
 import type { BatchOperation, Storage } from '../storage/interface.ts';
-import { KEYS, resolvePrefixRangeEnd } from '../storage/interface.ts';
+import { KEYS } from '../storage/interface.ts';
+import { resolveNonEmptyPrefixRangeEnd } from '../storage/non-empty-prefix-range-end.ts';
 import { decode, encode } from './codec.ts';
 import { normalizeStorageTimestamp, parseDuration } from './scheduler.ts';
 import type { Duration, WorkflowId } from './types.ts';
@@ -92,7 +93,7 @@ export async function checkExpiredDeadlines(
   const expired: ExpiredDeadline[] = [];
 
   for await (const [, value] of storage.scan('wf-deadline:', {
-    lt: resolvePrefixRangeEnd(KEYS.deadline(now, '')),
+    lt: resolveNonEmptyPrefixRangeEnd(KEYS.deadline(now, '')),
   })) {
     const entry = decode(value) as { workflowId: string; deadline: number };
     expired.push({ workflowId: entry.workflowId, deadline: entry.deadline });

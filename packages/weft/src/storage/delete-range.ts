@@ -164,6 +164,9 @@ export async function storageDeleteRange(
 /** One side of a resolved lexicographic delete range. `open` means exclusive. */
 export type DeleteRangeBound = { key: string; open: boolean };
 
+/** A resolved upper bound, or `undefined` when nothing caps the range from above. */
+export type DeleteRangeUpperBound = DeleteRangeBound | undefined;
+
 /**
  * Intersect the prefix range `[prefix, prefixEnd)` with the normalized
  * `gt`/`gte`/`lt`/`lte` bounds into effective lower/upper bounds, or `null` when
@@ -192,19 +195,22 @@ function resolveLowerBound(
   return bound;
 }
 
-/** Upper bound: prefix exclusive end, tightened by lt (exclusive) / lte (inclusive). */
+/**
+ * Upper bound: prefix exclusive end, tightened by lt (exclusive) / lte (inclusive).
+ * `undefined` when the prefix is empty and neither `lt` nor `lte` caps the range.
+ */
 function resolveUpperBound(
   prefix: string,
   options: NormalizedDeleteRangeOptions,
-): DeleteRangeBound {
-  const bound: DeleteRangeBound = { key: resolvePrefixRangeEnd(prefix), open: true };
-  if (options.lt !== undefined && options.lt <= bound.key) {
-    bound.key = options.lt;
-    bound.open = true;
+): DeleteRangeUpperBound {
+  const prefixEnd = resolvePrefixRangeEnd(prefix);
+  let bound: DeleteRangeUpperBound =
+    prefixEnd === undefined ? undefined : { key: prefixEnd, open: true };
+  if (options.lt !== undefined && (bound === undefined || options.lt <= bound.key)) {
+    bound = { key: options.lt, open: true };
   }
-  if (options.lte !== undefined && options.lte < bound.key) {
-    bound.key = options.lte;
-    bound.open = false;
+  if (options.lte !== undefined && (bound === undefined || options.lte < bound.key)) {
+    bound = { key: options.lte, open: false };
   }
   return bound;
 }
@@ -212,11 +218,14 @@ function resolveUpperBound(
 export function resolveDeleteRangeBounds(
   prefix: string,
   options: NormalizedDeleteRangeOptions,
-): { lower: DeleteRangeBound; upper: DeleteRangeBound } | null {
+): { lower: DeleteRangeBound; upper: DeleteRangeUpperBound } | null {
   const lower = resolveLowerBound(prefix, options);
   const upper = resolveUpperBound(prefix, options);
 
-  if (lower.key > upper.key || (lower.key === upper.key && (lower.open || upper.open))) {
+  if (
+    upper !== undefined &&
+    (lower.key > upper.key || (lower.key === upper.key && (lower.open || upper.open)))
+  ) {
     return null;
   }
 

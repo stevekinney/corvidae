@@ -21,7 +21,7 @@ const STORE_NAME = 'kv';
 
 type IndexedDbRuntime = {
   indexedDB: Pick<typeof indexedDB, 'open'>;
-  IDBKeyRange: Pick<typeof IDBKeyRange, 'bound'>;
+  IDBKeyRange: Pick<typeof IDBKeyRange, 'bound' | 'lowerBound'>;
 };
 
 function resolveIndexedDbRuntime(
@@ -202,7 +202,7 @@ async function* iterateCursor<TCursor extends IDBCursor | IDBCursorWithValue, TV
   const { limit, reverse } = options;
   const prefixEnd = resolvePrefixRangeEnd(prefix);
   const direction: IDBCursorDirection = reverse ? 'prev' : 'next';
-  let range = keyRangeFactory.bound(prefix, prefixEnd, false, true);
+  let range = prefixKeyRange(keyRangeFactory, prefix);
 
   let yielded = 0;
   for (;;) {
@@ -231,16 +231,32 @@ async function* iterateCursor<TCursor extends IDBCursor | IDBCursorWithValue, TV
   }
 }
 
+/**
+ * The key range of every key under `prefix`. An empty prefix matches every key,
+ * so it has no upper bound: a sentinel end would drop keys sorting past it.
+ */
+function prefixKeyRange(
+  keyRangeFactory: IndexedDbRuntime['IDBKeyRange'],
+  prefix: string,
+): IDBKeyRange {
+  const prefixEnd = resolvePrefixRangeEnd(prefix);
+  return prefixEnd === undefined
+    ? keyRangeFactory.lowerBound(prefix, false)
+    : keyRangeFactory.bound(prefix, prefixEnd, false, true);
+}
+
 /** Range resuming after `lastKey`, or null when nothing can remain. */
 function continuationRange(
   keyRangeFactory: IndexedDbRuntime['IDBKeyRange'],
   prefix: string,
-  prefixEnd: string,
+  prefixEnd: string | undefined,
   reverse: boolean | undefined,
   lastKey: string,
 ): IDBKeyRange | null {
   if (!reverse) {
-    return keyRangeFactory.bound(lastKey, prefixEnd, true, true);
+    return prefixEnd === undefined
+      ? keyRangeFactory.lowerBound(lastKey, true)
+      : keyRangeFactory.bound(lastKey, prefixEnd, true, true);
   }
   // A lower bound equal to the upper bound would throw DataError; nothing
   // sorts below the prefix itself, so the scan is over.
@@ -357,8 +373,7 @@ export class IndexedDBStorage implements Storage {
 
   async deletePrefix(prefix: string): Promise<number> {
     const database = await this.#databasePromise;
-    const prefixEnd = resolvePrefixRangeEnd(prefix);
-    const range = this.#runtime.IDBKeyRange.bound(prefix, prefixEnd, false, true);
+    const range = prefixKeyRange(this.#runtime.IDBKeyRange, prefix);
 
     return new Promise<number>((resolve, reject) => {
       const transaction = database.transaction(STORE_NAME, 'readwrite');
@@ -384,12 +399,15 @@ export class IndexedDBStorage implements Storage {
     if (bounds === null) {
       return 0;
     }
-    const range = this.#runtime.IDBKeyRange.bound(
-      bounds.lower.key,
-      bounds.upper.key,
-      bounds.lower.open,
-      bounds.upper.open,
-    );
+    const range =
+      bounds.upper === undefined
+        ? this.#runtime.IDBKeyRange.lowerBound(bounds.lower.key, bounds.lower.open)
+        : this.#runtime.IDBKeyRange.bound(
+            bounds.lower.key,
+            bounds.upper.key,
+            bounds.lower.open,
+            bounds.upper.open,
+          );
 
     const database = await this.#databasePromise;
     const { limit } = normalized;
@@ -567,10 +585,9 @@ export class IndexedDBStorage implements Storage {
 
   async count(prefix: string): Promise<number> {
     const database = await this.#databasePromise;
-    const prefixEnd = resolvePrefixRangeEnd(prefix);
     const transaction = database.transaction(STORE_NAME, 'readonly');
     const store = transaction.objectStore(STORE_NAME);
-    return promisify(store.count(this.#runtime.IDBKeyRange.bound(prefix, prefixEnd, false, true)));
+    return promisify(store.count(prefixKeyRange(this.#runtime.IDBKeyRange, prefix)));
   }
 
   scoped(prefix: string): Storage {

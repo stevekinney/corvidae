@@ -39,9 +39,14 @@ export type LMDBStorageOptions = {
   durability?: 'full' | 'relaxed';
 };
 
+/**
+ * An omitted bound is open on that side. lmdb-js reads `start` as the first key
+ * visited and `end` as the exclusive stop, so a reverse range puts the upper
+ * bound in `start` and the lower bound in `end`.
+ */
 type LMDBRangeOptions = {
-  start: string;
-  end: string;
+  start?: string;
+  end?: string;
   reverse?: boolean;
 };
 
@@ -66,6 +71,23 @@ type OpenLMDBEnvironment = (options: {
   noSync?: boolean;
   noMetaSync?: boolean;
 }) => LMDBDatabase;
+
+/**
+ * The lmdb-js range for every key under `prefix`. An empty prefix matches every
+ * key, so it has no upper bound and the range leaves that side off instead of
+ * stopping at a sentinel that keys starting above it would sort past.
+ */
+function buildPrefixRange(prefix: string, reverse: boolean | undefined): LMDBRangeOptions {
+  const prefixEnd = resolvePrefixRangeEnd(prefix);
+  if (reverse) {
+    return {
+      ...(prefixEnd === undefined ? {} : { start: prefixEnd }),
+      end: prefix,
+      reverse: true,
+    };
+  }
+  return { start: prefix, ...(prefixEnd === undefined ? {} : { end: prefixEnd }) };
+}
 
 function isLmdbModule(value: unknown): value is typeof import('lmdb') {
   return (
@@ -234,17 +256,9 @@ export class LMDBStorage implements Storage {
     this.#assertOpen();
     const { limit, reverse } = options;
 
-    const prefixEnd = resolvePrefixRangeEnd(prefix);
-
     // In lmdb-js, reverse iteration requires start > end: start is the
     // upper bound to iterate backwards from, end is the lower bound to stop at.
-    const range = reverse
-      ? this.#database.getRange({
-          start: prefixEnd,
-          end: prefix,
-          reverse: true,
-        })
-      : this.#database.getRange({ start: prefix, end: prefixEnd });
+    const range = this.#database.getRange(buildPrefixRange(prefix, reverse));
 
     let count = 0;
     let enteredPrefix = false;
@@ -270,15 +284,8 @@ export class LMDBStorage implements Storage {
   async *keys(prefix: string, options: ScanOptions = {}): AsyncIterable<string> {
     this.#assertOpen();
     const { limit, reverse } = options;
-    const prefixEnd = resolvePrefixRangeEnd(prefix);
 
-    const range = reverse
-      ? this.#database.getKeys({
-          start: prefixEnd,
-          end: prefix,
-          reverse: true,
-        })
-      : this.#database.getKeys({ start: prefix, end: prefixEnd });
+    const range = this.#database.getKeys(buildPrefixRange(prefix, reverse));
 
     let count = 0;
     let enteredPrefix = false;
@@ -307,8 +314,7 @@ export class LMDBStorage implements Storage {
 
   async count(prefix: string): Promise<number> {
     this.#assertOpen();
-    const prefixEnd = resolvePrefixRangeEnd(prefix);
-    return this.#database.getKeysCount({ start: prefix, end: prefixEnd });
+    return this.#database.getKeysCount(buildPrefixRange(prefix, false));
   }
 
   scoped(prefix: string): Storage {

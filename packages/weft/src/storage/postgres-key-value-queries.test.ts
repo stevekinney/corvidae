@@ -5,7 +5,7 @@ import {
   assertPostgresIdentifier,
   buildPostgresCreateSchema,
   buildPostgresKeyValueQueries,
-  buildPostgresPrefixRangeParameters,
+  buildPostgresPrefixRange,
   DEFAULT_POSTGRES_TABLE_REFERENCE,
   resolvePostgresTableReference,
 } from './postgres-key-value-queries.ts';
@@ -34,18 +34,22 @@ describe('postgres key-value query constants (default unqualified table)', () =>
     expect(defaultQueries.selectKeyPresence).toBe(
       'SELECT 1 AS present FROM kv WHERE key = $1 LIMIT 1',
     );
-    expect(defaultQueries.countKeysByPrefix).toBe(
-      'SELECT COUNT(*) AS count FROM kv WHERE key >= $1 AND key < $2',
-    );
-    expect(defaultQueries.deleteKeysByPrefix).toBe('DELETE FROM kv WHERE key >= $1 AND key < $2');
+    expect(defaultQueries.countKeysByPrefix('wf:')).toEqual({
+      parameters: ['wf:', 'wf;'],
+      sql: 'SELECT COUNT(*) AS count FROM kv WHERE key >= $1 AND key < $2',
+    });
+    expect(defaultQueries.deleteKeysByPrefix('wf:')).toEqual({
+      parameters: ['wf:', 'wf;'],
+      sql: 'DELETE FROM kv WHERE key >= $1 AND key < $2',
+    });
     // No `?` placeholders anywhere — those are SQLite-only.
     for (const sql of [
       defaultQueries.selectValueByKey,
       defaultQueries.upsertValueByKey,
       defaultQueries.deleteValueByKey,
       defaultQueries.selectKeyPresence,
-      defaultQueries.countKeysByPrefix,
-      defaultQueries.deleteKeysByPrefix,
+      defaultQueries.countKeysByPrefix('wf:').sql,
+      defaultQueries.deleteKeysByPrefix('wf:').sql,
     ]) {
       expect(sql).not.toContain('?');
     }
@@ -149,9 +153,28 @@ describe('buildPostgresCreateSchema', () => {
   });
 });
 
-describe('buildPostgresPrefixRangeParameters', () => {
+describe('buildPostgresPrefixRange', () => {
   it('returns the prefix and its exclusive range end', () => {
-    expect(buildPostgresPrefixRangeParameters('wf:')).toEqual(['wf:', 'wf;']);
+    expect(buildPostgresPrefixRange('wf:')).toEqual({
+      condition: 'key >= $1 AND key < $2',
+      parameters: ['wf:', 'wf;'],
+    });
+  });
+
+  it('leaves the upper bound off for an empty prefix, so no key is excluded by a sentinel', () => {
+    expect(buildPostgresPrefixRange('')).toEqual({ condition: 'key >= $1', parameters: [''] });
+    expect(defaultQueries.countKeysByPrefix('')).toEqual({
+      parameters: [''],
+      sql: 'SELECT COUNT(*) AS count FROM kv WHERE key >= $1',
+    });
+    expect(defaultQueries.deleteKeysByPrefix('')).toEqual({
+      parameters: [''],
+      sql: 'DELETE FROM kv WHERE key >= $1',
+    });
+    expect(defaultQueries.keyRangeSelect('', { gt: 'a' })).toEqual({
+      parameters: ['', 'a'],
+      sql: 'SELECT key FROM kv WHERE key >= $1 AND key > $2 ORDER BY key ASC',
+    });
   });
 });
 
