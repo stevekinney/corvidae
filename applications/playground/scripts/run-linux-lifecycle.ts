@@ -6,7 +6,7 @@
  *   bun applications/playground/scripts/run-linux-lifecycle.ts
  *
  * Each container starts from `mcr.microsoft.com/playwright:v1.63.0-noble` (matching the
- * installed `@playwright/test`), installs Bun 1.4.2 with its official installer, receives
+ * installed `@playwright/test`), installs Bun 1.4.4 with its official installer, receives
  * `git archive HEAD` on stdin, runs `bun install --frozen-lockfile`, and runs the lifecycle
  * script. Only committed source reaches the container; the host's `node_modules` is never
  * mounted. The image digest, Bun version, and source SHA are printed for the evidence record.
@@ -17,7 +17,7 @@ import { join } from 'node:path';
 import { exitedWithin } from './static-playground-processes.ts';
 
 export const IMAGE = 'mcr.microsoft.com/playwright:v1.63.0-noble';
-export const BUN_VERSION = '1.4.2';
+export const BUN_VERSION = '1.4.4';
 
 const PLAYGROUND_ROOT = join(import.meta.dirname, '..');
 

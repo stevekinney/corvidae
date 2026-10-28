@@ -6,7 +6,9 @@
  * That is a dead process, not a failed assertion: on 2026-10-27 a Bureau fast lane
  * failed on `src/session-input-crash-recovery.test.ts` while the file passes alone, and macOS
  * recorded a Bun trap ("Do not call JSObject::realm() on objects with realmless structures") in
- * `~/Library/Logs/DiagnosticReports`. The wrapper prints the file and where that crash report is,
+ * `~/Library/Logs/DiagnosticReports`. Root cause: a `FinalizationRegistry` cleanup job outliving its dead realm
+ * (Bun 1.4.2; fixed upstream in oven-sh/bun#44279, in 1.4.4; guarded by
+ * `dead-realm-finalization-registry.test.ts`). The wrapper prints the file and where that crash report is,
  * so the failure is not mistaken for a flaky test. It never retries and never changes the exit
  * code.
  */

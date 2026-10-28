@@ -4,7 +4,7 @@ import { assertEvidence, type EvidenceCell, type EvidenceReport } from './eviden
 
 const root = join(import.meta.dir, '../..');
 const reportPath = join(root, 'tmp/terminal-probes/runtime.json');
-const pinnedBunVersion = '1.4.2';
+const pinnedBunVersion = '1.4.4';
 const expectedCellIds = [
   'pipe-launch-input-output-exit',
   'pipe-capabilities-and-pause',
