@@ -271,15 +271,6 @@ const BASE_COVERAGE_ALLOWANCES = buildAllowanceLayer('BASE_COVERAGE_ALLOWANCES',
     },
   ],
   [
-    'src/core/engine/broadcast.ts',
-    {
-      reason:
-        'The remaining listener-disposal branch is timing-dependent cleanup after a broadcast subscriber has already detached.',
-      lines: new Set([46]),
-      requireUncoveredLines: true,
-    },
-  ],
-  [
     'src/core/schedule/cron-formatter.ts',
     {
       reason:
@@ -446,15 +437,6 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer(
         reason:
           'Bun leaves the generator loop closing line cold after the final retry and catch paths settle, despite direct retry-state coverage.',
         lines: new Set([459]),
-        requireUncoveredLines: true,
-      },
-    ],
-    [
-      'src/core/engine/review-list-entries.ts',
-      {
-        reason:
-          'The remaining review-list branch protects against a persisted review status excluded by the decoded state schema.',
-        lines: new Set([120]),
         requireUncoveredLines: true,
       },
     ],
