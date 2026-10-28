@@ -47,24 +47,16 @@ const listedTestFiles = await outcomeOf(async () => {
 
 const benchmarkExclusions = await outcomeOf(async () => {
   const excluded = readTestScriptPathIgnorePatterns();
+  // Measurement benchmarks are `*.bench.ts` files, which `bun test` and the coverage globs never
+  // discover (COR-1739), so the script excludes only the slow lane by pattern.
   expect(excluded).toEqual([
     // The slow lane (`test:slow`) runs these alone, serially; coverage leaves them out with the test.
     '**/*.slow.test.ts',
-    'scripts/benchmarks/activity-completions.test.ts',
-    'scripts/benchmarks/bun-sql.test.ts',
-    'scripts/benchmarks/cold-start.test.ts',
-    'scripts/benchmarks/load-growth-memory.test.ts',
-    'scripts/benchmarks/memory-footprint-growth.test.ts',
-    'scripts/benchmarks/memory-per-workflow.test.ts',
-    'scripts/benchmarks/recovery.test.ts',
-    'scripts/benchmarks/token-stream-latency.test.ts',
-    'scripts/benchmarks/worker-spawn.test.ts',
-    'scripts/benchmarks/workflow-starts.test.ts',
   ]);
   const files = await listCoverageTestFiles();
-  for (const path of excluded) expect(files).not.toContain(path);
   expect(files).not.toContain('src/cli/codegen-typecheck.slow.test.ts');
   expect(files).not.toContain('src/client/empty-registry-overloads-typecheck.slow.test.ts');
+  expect(files.some((file) => file.endsWith('.bench.ts'))).toBe(false);
   // The benchmark directory's unit tests are not measurement runs and stay in the shard.
   expect(files).toContain('scripts/benchmarks/coverage-mode.test.ts');
   expect(files).toContain('scripts/benchmarks/environment-configuration.test.ts');
@@ -92,12 +84,12 @@ describe('listCoverageTestFiles', () => {
     rethrow(listedTestFiles));
 
   /**
-   * The measurement benchmarks that `bun run test` excludes are excluded from the coverage shard
-   * too, and from the same list: the shard reads the script rather than keeping its own copy, so
-   * the two cannot drift. Pinned against the concrete list so a script edit that drops one is a
-   * visible change here rather than a silently widened shard.
+   * The coverage shard excludes what `bun run test` excludes, read from the same script rather
+   * than a copy, and no measurement benchmark: those are `*.bench.ts` files that neither lane
+   * discovers. Pinned against the concrete list so a script edit that adds a path ignore is a
+   * visible change here rather than a silently narrowed shard.
    */
-  it('excludes exactly the measurement benchmarks the test script excludes', () =>
+  it('excludes exactly what the test script excludes, and no benchmark is a coverage test file', () =>
     rethrow(benchmarkExclusions));
 
   it('keeps the file the test script runs in its serial phase in the coverage shard', () =>
