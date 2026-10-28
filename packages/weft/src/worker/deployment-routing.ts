@@ -116,7 +116,7 @@ function hasWorkflow(
     (entry) => workflowRevision === undefined || entry.workflowRevision === workflowRevision,
   );
   if (workflow === undefined) return false;
-  return activityName === undefined || workflow.activities[activityName] !== undefined;
+  return activityName === undefined || Object.hasOwn(workflow.activities, activityName);
 }
 
 function matchesRequirement(
