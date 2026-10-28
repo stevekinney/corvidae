@@ -2182,7 +2182,21 @@ export function readTestScriptPathIgnorePatterns(): string[] {
       'package.json scripts.test must be a string for the coverage shard to mirror its exclusions.',
     );
   }
-  return [...script.matchAll(/--path-ignore-patterns='([^']+)'/g)].map((match) => match[1] ?? '');
+  const [parallelPhase = '', ...serialPhases] = script.split(' && ');
+  // A file the `--parallel` phase ignores only to run it in a later serial `bun test` phase (the
+  // checkpoint-prune suite, COR-1736) is still a test the coverage run must count. The coverage
+  // shard passes no `--parallel`, so it already runs that file serially in its one process.
+  const runSeriallyInstead = new Set(
+    serialPhases.flatMap((phase) =>
+      phase
+        .split(/\s+/)
+        .filter((token) => !token.startsWith('-') && /\.(?:test|spec)\.ts$/.test(token))
+        .map((token) => token.replace(/^\.\//, '')),
+    ),
+  );
+  return [...parallelPhase.matchAll(/--path-ignore-patterns='([^']+)'/g)]
+    .map((match) => match[1] ?? '')
+    .filter((pattern) => !runSeriallyInstead.has(pattern));
 }
 
 export async function listCoverageTestFiles(): Promise<string[]> {
