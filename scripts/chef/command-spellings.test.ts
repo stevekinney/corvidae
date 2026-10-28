@@ -149,7 +149,7 @@ describe('chef command spellings', () => {
     const named = new Set(
       charterRules.flatMap((rule) => invocationsIn(rule).map((invocation) => invocation.script)),
     );
-    for (const script of ['gate-run', 'merge-gate', 'review-threads', 'leftovers'])
+    for (const script of ['merge-gate', 'review-threads', 'leftovers'])
       expect(named.has(script), script).toBe(true);
   });
 

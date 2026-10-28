@@ -1,63 +1,43 @@
 #!/usr/bin/env bun
 // Chef merge gate: the whole verify, comment, merge and confirm sequence for one pull request, so
-// a coordinator merges with one call instead of nine, and the merge cannot skip a check the
+// a coordinator merges with one call instead of several, and the merge cannot skip a check the
 // hand-run sequence used to forget.
 //
+// It runs no test gate. A worker runs its focused checks before opening the pull request, and the
+// per-batch `validate` on `main` is the backstop (AGENTS.md "Gate on local checks"); `main` moving
+// is not a reason to repeat either. It refuses only for the reasons below, each a fast check.
+//
 // Usage:
-//   bun scripts/chef/merge-gate.ts [--config <json>] --pr <n> --worktree <dir> --gate-log <file>
-//                                  --comment-file <md> [--dry-run] [--json]
-//                                  [--fixes-main | --waive-load-flake <reason> --control-head <sha>
-//                                   | --waive-main-health --reason <text>]
+//   bun scripts/chef/merge-gate.ts [--config <json>] --pr <n> --worktree <dir> --comment-file <md>
+//                                  [--head <sha>] [--dry-run] [--json] [--fixes-main]
 //                                  [--usage-log <file> --transcript <path>...]
 //
 // The steps run in order and stop at the first failure, which is named:
 //   1. fetch          `git fetch origin <default>`, retried up to three times when Git cannot lock the ref;
-//   2. head           the worktree's HEAD equals the pull request's `headRefOid`, and it is open;
-//   3. contains-base  HEAD contains `origin/<default>`, or else it merges cleanly with it
-//                     (`git merge-tree --write-tree` exits 0) and no commit that landed on
-//                     `origin/<default>` since the merge base lies in a workspace the pull request
-//                     affects (`merge-overlap.ts`: its changed workspaces, their dependents and
-//                     dependencies; `bun.lock`, the root manifest, `turbo.json` and the root
-//                     `tsconfig*.json` touch everything). The refusal names which condition failed
-//                     and the overlapping paths;
+//   2. head           the pull request is open, and its `headRefOid` equals the worktree's HEAD and,
+//                     with `--head`, the head the coordinator pinned at acceptance;
+//   3. conflict       GitHub reports the pull request mergeable. `mergeable` `CONFLICTING` or
+//                     `mergeStateStatus` `DIRTY` refuses at `conflict`; `UNKNOWN` is read again, up to
+//                     five times two seconds apart, and still `UNKNOWN` refuses at `mergeable`. A base
+//                     that merely moved (`BEHIND`) is not a refusal;
 //   3b. main-health   `main`'s last batch validate (`main-health.ts`) at a head on `origin/<default>`'s
-//                     first-parent history did not fail, unless the pull request is declared the fix
-//                     with `--fixes-main`, or the failure is waived as a load flake with
-//                     `--waive-load-flake <reason> --control-head <sha>`: the reason names the test
-//                     and why it is load, and the control head is the full SHA of the commit on
-//                     `origin/<default>`'s first-parent history where the failing test passed alone,
-//                     or the pull request is merged past the red `main` regardless with
-//                     `--waive-main-health --reason <text>` (a non-empty reason is required; use it
-//                     when `main`'s failure is neither this pull request's nor a load flake, for
-//                     example a defect another pull request is already fixing). Each is recorded in
-//                     the report and the health file, a waiver apart from the fixes, so `fixes`
-//                     lists only pull requests that repaired `main`; `--waive-main-health` records
-//                     `{ pr, time, blockedHead, reason }` in `waivers`, with no `controlHead`. The
-//                     three flags are exclusive;
-//   4. gate           the gate log's exit code is 0, its HEAD equals the pull request's head, and the
-//                     worktree was clean (`git status --porcelain` empty) at the start and at the end
-//                     of the run with HEAD unmoved (start head = end head = the pull request's head);
-//   5. threads        every review thread is resolved, and SEEN equals TOTAL;
-//   6. refetch        fetch again; the step 3 base check still holds (the dependency graph is read
-//                     from the gated commit and from `origin/<default>`, never from the worktree);
-//   7. comment        post the comment file plus a `Base:` line from this final check (skipped with
-//                     --dry-run);
-//   8. merge          `gh pr merge --<method> --match-head-commit <head>` (skipped with --dry-run);
-//   9. confirm        the pull request is MERGED, and `git diff --quiet <mergeCommit> <head>` holds,
-//                     which is `treesMatch`. For a head that did not contain the base, the merge
-//                     commit's tree must instead equal the `merge-tree` result tree (skipped with
-//                     --dry-run).
-//
-// The report and the posted comment say which base path was used: "contains origin/<default>" or
-// "merges cleanly with origin/<default> <sha>; intervening commits touch no affected workspace".
+//                     first-parent history failed: the report carries a `mainHealthWarning` and the
+//                     merge goes ahead. `--fixes-main` also records the pull request as a repair;
+//   4. threads        every review thread is resolved, and SEEN equals TOTAL;
+//   5. comment        post the comment file (skipped with --dry-run);
+//   6. merge          `gh pr merge --<method> --match-head-commit <head>` (skipped with --dry-run);
+//   7. confirm        the pull request is MERGED, and the merge commit's tree equals the tree
+//                     `git merge-tree --write-tree <mergeCommit>^1 <head>` computes: the head itself
+//                     when the merge commit's parent is contained in it, else the clean merge of the
+//                     two, which is `treesMatch` (skipped with --dry-run).
 //
 // Cross-session merge lock: unless --dry-run, the command line holds one exclusive lock in the Git
 // common directory (`corvidae-merge-lock`, the lock of `scripts/run-exclusively.ts`) from before
-// step 1 to after step 9, so two sessions never gate and merge at once. A waiting merge prints
-// who holds it; a lock whose holder died is reclaimed.
+// step 1 to after step 7, so two sessions never merge at once. A waiting merge prints who holds it;
+// a lock whose holder died is reclaimed.
 //
-// It prints { pr, head, base, gateRc, threads, merged, mergeCommit, treesMatch, failedStep }, plus
-// basePath ("contains" or "merge-tree") and, for the latter, mergeTree.
+// It prints { pr, head, base, mergeable, threads, merged, mergeCommit, treesMatch, failedStep },
+// plus `mainHealthWarning` when `main` is red.
 //
 // Spend record (optional): `--usage-log <file>` with one or more `--transcript <path>` (a
 // transcript file, or a directory searched recursively) totals those transcripts' tokens with
@@ -68,7 +48,7 @@
 // names a `usage` step as failed, with the pull request already merged.
 //
 // Exit codes: 0 every step passed (under --dry-run: every check passed), 1 a step failed or the
-// merged tree differs from the gated tree, 2 invalid CLI usage.
+// merged tree differs from the expected tree, 2 invalid CLI usage.
 
 import {
   appendFileSync,
@@ -88,21 +68,7 @@ import {
   type HostLockHolder,
 } from '../run-exclusively.ts';
 import { fetchWithRetry } from './fetch-retry.ts';
-import { readGateLog } from './gate-run.ts';
-import {
-  firstParentHistory,
-  mainHealth,
-  recordFix,
-  recordWaiver,
-  renderMainHealth,
-  resolveHealthFile,
-} from './main-health.ts';
-import {
-  overlappingFiles,
-  readWorkspaceGraph,
-  unionGraphs,
-  type GraphSource,
-} from './merge-overlap.ts';
+import { mainHealth, recordFix, renderMainHealth, resolveHealthFile } from './main-health.ts';
 import {
   defaultRunner,
   emitResult,
@@ -117,23 +83,25 @@ import { totalUsage, type UsageTotals } from './transcript-usage.ts';
 
 export { UsageError };
 
+/** How many times GitHub's `UNKNOWN` mergeability is read before delivery gives up. */
+const MERGEABLE_READS = 5;
+/** How long to wait between those reads. */
+const MERGEABLE_INTERVAL_MS = 2000;
+
 export interface MergeGateOptions {
   configPath: string;
   pr: number;
   worktree: string;
-  gateLog: string;
   commentFile: string;
   dryRun: boolean;
+  /** The head pinned at acceptance; when given, the pull request's head must equal it. */
+  expectedHead?: string | undefined;
   /** The batch-validate record to check; defaults to the main checkout's when `checkMainHealth`. */
   healthFile?: string | undefined;
   /** Check main's health at the default location. Library callers opt in; the command line does. */
   checkMainHealth?: boolean | undefined;
-  /** Declares this pull request the fix for a red `main`, so the main-health step lets it through. */
+  /** Declares this pull request a repair of a red `main`; recorded in the health file. */
   fixesMain?: boolean | undefined;
-  /** Waives a red `main` whose failure is a load flake, with the reason and the control's head. */
-  loadFlakeWaiver?: LoadFlakeWaiver | undefined;
-  /** Merges past a red `main` for a stated reason (`--waive-main-health --reason`). */
-  mainHealthWaiver?: MainHealthWaiver | undefined;
   /** Where the cross-session merge lock lives; defaults to the Git common directory. */
   lockDirectory?: string | undefined;
   /** How often a waiter rechecks the merge lock, in milliseconds. */
@@ -144,40 +112,23 @@ export interface MergeGateOptions {
   transcripts?: string[] | undefined;
 }
 
-export interface LoadFlakeWaiver {
-  /** Which test failed and why the failure is load, not this change or `main`. */
-  reason: string;
-  /** The full SHA of the commit on `main` where the failing test passed alone. */
-  controlHead: string;
-}
-
-export interface MainHealthWaiver {
-  /** Why this pull request merges past a red `main`. Never blank. */
-  reason: string;
-}
-
 export interface MergeGateReport {
   pr: number;
-  /** The worktree's HEAD, which is the commit that was gated and merged. */
+  /** The worktree's HEAD, which is the commit that was merged. */
   head: string | null;
   /** `origin/<default>` as fetched before the merge. */
   base: string | null;
-  gateRc: number | null;
+  /** GitHub's `mergeable` value at the last read, or `null` when it was not read. */
+  mergeable: string | null;
   threads: { seen: number; total: number; unresolved: number } | null;
   merged: boolean;
   mergeCommit: string | null;
-  /** Whether the merge commit's tree equals the gated head's; `null` when it was not checked. */
+  /** Whether the merge commit's tree equals the expected tree; `null` when it was not checked. */
   treesMatch: boolean | null;
-  /** How the head relates to the base: it contains it, or it merges cleanly with it. */
-  basePath?: 'contains' | 'merge-tree';
-  /** The tree `git merge-tree` computed for a head that does not contain the base. */
-  mergeTree?: string;
-  /** Whether the pull request was declared the fix for a red `main` (`--fixes-main`). */
+  /** Set when `main`'s last batch validate failed; a warning, never a refusal. */
+  mainHealthWarning?: string;
+  /** Whether the pull request was declared a repair of a red `main` (`--fixes-main`). */
   fixesMain?: boolean;
-  /** The load-flake waiver the main-health step applied to a red `main`. */
-  waiver?: LoadFlakeWaiver & { blockedHead: string };
-  /** The `--waive-main-health` waiver the main-health step applied to a red `main`. */
-  mainHealthWaiver?: MainHealthWaiver & { blockedHead: string };
   /** The step that failed, or `null` when every step passed. */
   failedStep: string | null;
   /** Why it failed, in one line. */
@@ -191,22 +142,16 @@ export interface MergeGateDependencies {
   /** Totals the tokens of the transcripts at these paths; defaults to `transcript-usage.ts`. */
   usage: (paths: string[]) => UsageTotals;
   now: () => Date;
-  /** Blocks between fetch retries; defaults to `Bun.sleepSync`. */
+  /** Blocks between fetch retries and mergeability reads; defaults to `Bun.sleepSync`. */
   sleep: (milliseconds: number) => void;
 }
 
 interface PullRequestView {
   headRefOid?: unknown;
+  mergeable?: unknown;
   mergeStateStatus?: unknown;
   state?: unknown;
   mergeCommit?: { oid?: unknown } | null;
-}
-
-/** One line saying which base path a report relied on. */
-function describeBasePath(report: MergeGateReport, defaultBranch: string): string {
-  return report.basePath === 'merge-tree'
-    ? `merges cleanly with origin/${defaultBranch} ${report.base?.slice(0, 12) ?? 'unknown'}; intervening commits touch no affected workspace`
-    : `contains origin/${defaultBranch}`;
 }
 
 function firstLine(text: string): string {
@@ -229,78 +174,15 @@ function viewPullRequest(
   }
 }
 
-/**
- * Whether `worktree`'s HEAD may be merged against the current `origin/<defaultBranch>`: it contains
- * it, or it merges cleanly and nothing that landed since touches a workspace the pull request
- * affects. A string is the reason it may not. The caller fetches first.
- */
-export function checkMergeBase(
-  runner: Runner,
-  worktree: string,
-  defaultBranch: string,
-): { path: 'contains' | 'merge-tree'; tree?: string } | string {
-  const git = (...args: string[]) => runner(['git', ...args], { cwd: worktree });
-  const containsBase = (): boolean =>
-    git('merge-base', '--is-ancestor', `origin/${defaultBranch}`, 'HEAD').code === 0;
-  const changedFiles = (from: string, to: string): string[] | string => {
-    const diff = git('diff', '--name-only', '--no-renames', from, to);
-    return diff.code === 0
-      ? diff.stdout.split('\n').filter((line) => line !== '')
-      : `git diff ${from.slice(0, 12)}..${to.slice(0, 12)} failed (exit ${diff.code}): ${firstLine(diff.stderr)}`;
-  };
-  if (containsBase()) return { path: 'contains' };
-  const remote = `origin/${defaultBranch}`;
-  const refusal = `HEAD does not contain ${remote}`;
-  const mergeTree = git('merge-tree', '--write-tree', remote, 'HEAD');
-  if (mergeTree.code !== 0)
-    return `${refusal} and does not merge cleanly with it (git merge-tree exit ${mergeTree.code}); merge it in and re-gate.`;
-  const tree = mergeTree.stdout.split('\n')[0]?.trim() ?? '';
-  if (!/^[0-9a-f]{40,64}$/.test(tree))
-    return `${refusal}, and git merge-tree printed no tree to confirm the merge against.`;
-  const mergeBase = git('merge-base', remote, 'HEAD');
-  const baseSha = mergeBase.stdout.trim();
-  if (mergeBase.code !== 0 || baseSha === '')
-    return `${refusal}, and it has no merge base with it: ${firstLine(mergeBase.stderr)}`;
-  const pullRequestFiles = changedFiles(baseSha, 'HEAD');
-  if (typeof pullRequestFiles === 'string') return pullRequestFiles;
-  const baseFiles = changedFiles(baseSha, remote);
-  if (typeof baseFiles === 'string') return baseFiles;
-  // Both sides come from commits, not from the worktree: the gated head, which a dirty worktree
-  // may disagree with, and the default branch, where a dependency edge may have been added.
-  const gitSource = (ref: string): GraphSource => ({
-    read: (path) => {
-      const shown = git('show', `${ref}:${path}`);
-      return shown.code === 0 ? shown.stdout : undefined;
-    },
-    list: (directory) => {
-      const listed = git('ls-tree', '--name-only', ref, `${directory}/`);
-      return listed.code === 0
-        ? listed.stdout
-            .split('\n')
-            .filter((line) => line !== '')
-            .map((line) => line.slice(directory.length + 1))
-        : [];
-    },
-  });
-  const graph = unionGraphs(
-    readWorkspaceGraph(gitSource('HEAD')),
-    readWorkspaceGraph(gitSource(remote)),
-  );
-  const overlap = overlappingFiles(pullRequestFiles, baseFiles, graph);
-  if (overlap.length > 0)
-    return `${refusal}, and ${overlap.length} file(s) that landed on it since the merge base lie in workspaces this pull request affects, so the gate may not describe the merge: ${overlap.slice(0, 5).join(', ')}${overlap.length > 5 ? ', ...' : ''}. Merge it in and re-gate.`;
-  return { path: 'merge-tree', tree };
-}
-
-/** Run the nine steps. Never throws for a failed step; the report names it. */
+/** Run the steps. Never throws for a failed step; the report names it. */
 export function mergeGate(
   options: MergeGateOptions,
   partial: Partial<MergeGateDependencies> = {},
 ): MergeGateReport {
   const runner = partial.runner ?? defaultRunner;
+  const sleep = partial.sleep ?? ((milliseconds: number) => Bun.sleepSync(milliseconds));
   const config = loadRepositoryConfig(options.configPath);
   if (!existsSync(options.worktree)) throw new UsageError(`No such worktree: ${options.worktree}`);
-  if (!existsSync(options.gateLog)) throw new UsageError(`No such gate log: ${options.gateLog}`);
   if (!existsSync(options.commentFile))
     throw new UsageError(`No such comment file: ${options.commentFile}`);
   if (readFileSync(options.commentFile, 'utf8').trim() === '')
@@ -317,7 +199,7 @@ export function mergeGate(
     pr: options.pr,
     head: null,
     base: null,
-    gateRc: null,
+    mergeable: null,
     threads: null,
     merged: false,
     mergeCommit: null,
@@ -331,19 +213,16 @@ export function mergeGate(
     report.detail = detail;
     return report;
   };
-  const fetchBase = (step: string): string | undefined => {
-    const fetched = fetchWithRetry(() => git('fetch', 'origin', defaultBranch), {
-      sleep: partial.sleep,
-    });
-    return fetched.code === 0
-      ? undefined
-      : `${step}: git fetch origin ${defaultBranch} failed (exit ${fetched.code}): ${firstLine(fetched.stderr)}`;
-  };
-  const checkBase = () => checkMergeBase(runner, options.worktree, defaultBranch);
 
   // 1. fetch
-  const fetchProblem = fetchBase('fetch');
-  if (fetchProblem !== undefined) return fail('fetch', fetchProblem);
+  const fetched = fetchWithRetry(() => git('fetch', 'origin', defaultBranch), {
+    sleep: partial.sleep,
+  });
+  if (fetched.code !== 0)
+    return fail(
+      'fetch',
+      `git fetch origin ${defaultBranch} failed (exit ${fetched.code}): ${firstLine(fetched.stderr)}`,
+    );
   report.base = git('rev-parse', `origin/${defaultBranch}`).stdout.trim() || null;
 
   // 2. head
@@ -355,106 +234,61 @@ export function mergeGate(
     );
   const head = headResult.stdout.trim();
   report.head = head;
-  const view = viewPullRequest(runner, repository, options.pr, 'headRefOid,mergeStateStatus,state');
-  if (typeof view === 'string') return fail('head', view);
-  if (view.state !== 'OPEN')
-    return fail('head', `the pull request is ${String(view.state)}, not OPEN.`);
-  const pullRequestHead = typeof view.headRefOid === 'string' ? view.headRefOid : '';
-  if (pullRequestHead !== head)
-    return fail(
-      'head',
-      `the worktree is at ${head.slice(0, 12)} but the pull request head is ${pullRequestHead.slice(0, 12) || 'unknown'}.`,
-    );
 
-  // 3. contains-base
-  const baseCheck = checkBase();
-  if (typeof baseCheck === 'string') return fail('contains-base', baseCheck);
-  report.basePath = baseCheck.path;
-  if (baseCheck.tree !== undefined) report.mergeTree = baseCheck.tree;
-  else delete report.mergeTree;
+  // 2 and 3. head and conflict: one view per read, so a push during the wait is seen
+  const fields = 'headRefOid,mergeable,mergeStateStatus,state';
+  for (let read = 1; ; read++) {
+    const view = viewPullRequest(runner, repository, options.pr, fields);
+    if (typeof view === 'string') return fail('head', view);
+    if (view.state !== 'OPEN')
+      return fail('head', `the pull request is ${String(view.state)}, not OPEN.`);
+    const pullRequestHead = typeof view.headRefOid === 'string' ? view.headRefOid : '';
+    if (pullRequestHead !== head)
+      return fail(
+        'head',
+        `the worktree is at ${head.slice(0, 12)} but the pull request head is ${pullRequestHead.slice(0, 12) || 'unknown'}.`,
+      );
+    if (options.expectedHead !== undefined && pullRequestHead !== options.expectedHead)
+      return fail(
+        'head',
+        `the pull request head ${pullRequestHead.slice(0, 12)} is not the head pinned at acceptance, ${options.expectedHead.slice(0, 12)}.`,
+      );
+    report.mergeable = typeof view.mergeable === 'string' ? view.mergeable : null;
+    if (view.mergeable === 'CONFLICTING' || view.mergeStateStatus === 'DIRTY')
+      return fail(
+        'conflict',
+        `GitHub reports the pull request conflicts with origin/${defaultBranch} (mergeable ${String(view.mergeable)}, merge state ${String(view.mergeStateStatus)}); merge it in, resolve the conflict, and return the new head for acceptance.`,
+      );
+    if (view.mergeable !== 'UNKNOWN') break;
+    if (read >= MERGEABLE_READS)
+      return fail(
+        'mergeable',
+        `GitHub still reports the mergeability as UNKNOWN after ${MERGEABLE_READS} reads; run delivery again shortly.`,
+      );
+    sleep(MERGEABLE_INTERVAL_MS);
+  }
 
-  // 3b. main-health
+  // 3b. main-health: a warning in the report, never a refusal
   const healthFile =
     options.healthFile ??
     (options.checkMainHealth === true ? resolveHealthFile(runner, options.worktree) : undefined);
   if (healthFile !== undefined) {
     const health = mainHealth(runner, options.worktree, defaultBranch, healthFile);
     if (health.red && health.run !== undefined) {
-      const time = () => (partial.now ?? (() => new Date()))().toISOString();
-      const waiver = options.loadFlakeWaiver;
-      if (waiver !== undefined) {
-        const history = firstParentHistory(runner, options.worktree, defaultBranch);
-        if (history?.includes(waiver.controlHead) !== true)
-          return fail(
-            'main-health',
-            `The control head ${waiver.controlHead.slice(0, 12)} is not on origin/${defaultBranch}'s first-parent history.`,
-          );
-        report.waiver = { ...waiver, blockedHead: health.run.head };
-        if (!options.dryRun)
-          recordWaiver(healthFile, {
-            pr: options.pr,
-            time: time(),
-            blockedHead: health.run.head,
-            ...waiver,
-          });
-      } else if (options.mainHealthWaiver !== undefined) {
-        report.mainHealthWaiver = { ...options.mainHealthWaiver, blockedHead: health.run.head };
-        if (!options.dryRun)
-          recordWaiver(healthFile, {
-            pr: options.pr,
-            time: time(),
-            blockedHead: health.run.head,
-            reason: options.mainHealthWaiver.reason,
-          });
-      } else if (options.fixesMain === true) {
+      report.mainHealthWarning = renderMainHealth(health, defaultBranch).split('\n')[0] ?? '';
+      if (options.fixesMain === true) {
         report.fixesMain = true;
         if (!options.dryRun)
-          recordFix(healthFile, { pr: options.pr, time: time(), blockedHead: health.run.head });
-      } else {
-        return fail(
-          'main-health',
-          `${renderMainHealth(health, defaultBranch).split('\n')[0]} Merge only the fix, declared with --fixes-main, waive a load flake with --waive-load-flake <reason> --control-head <sha>, or merge past it deliberately with --waive-main-health --reason <text>.`,
-        );
+          recordFix(healthFile, {
+            pr: options.pr,
+            time: (partial.now ?? (() => new Date()))().toISOString(),
+            blockedHead: health.run.head,
+          });
       }
     }
   }
 
-  // 4. gate
-  const summary = readGateLog(readFileSync(options.gateLog, 'utf8'));
-  report.gateRc = summary.exitCode ?? null;
-  if (summary.exitCode === undefined)
-    return fail(
-      'gate',
-      `${options.gateLog} holds no exit code (${summary.problem ?? 'still running or cut off'}).`,
-    );
-  if (summary.exitCode !== 0) return fail('gate', `the gate exited ${summary.exitCode}.`);
-  if (summary.head !== head)
-    return fail(
-      'gate',
-      `the gate ran at ${summary.head?.slice(0, 12) ?? 'an unknown commit'}, not at ${head.slice(0, 12)}.`,
-    );
-  for (const [label, tree] of [
-    ['start', summary.treeStart],
-    ['end', summary.treeEnd],
-  ] as const) {
-    if (tree === undefined)
-      return fail(
-        'gate',
-        `the gate log records no single TREE_${label.toUpperCase()} line, so the tree at the ${label} is unknown.`,
-      );
-    if (tree.clean !== true)
-      return fail(
-        'gate',
-        `the worktree was ${tree.clean === false ? 'dirty' : 'in an unknown state'} at the ${label} of the gate run, so the result may not describe the commit.`,
-      );
-    if (tree.head !== head)
-      return fail(
-        'gate',
-        `HEAD was ${tree.head.slice(0, 12)} at the ${label} of the gate run, not ${head.slice(0, 12)}.`,
-      );
-  }
-
-  // 5. threads
+  // 4. threads
   let listing;
   try {
     listing = listThreads(repository, options.pr, runner);
@@ -467,28 +301,13 @@ export function mergeGate(
     return fail('threads', `read ${listing.seen} of ${listing.total} review threads.`);
   if (listing.unresolved > 0)
     return fail('threads', `${listing.unresolved} review thread(s) are unresolved.`);
-
-  // 6. refetch
-  const refetchProblem = fetchBase('refetch');
-  if (refetchProblem !== undefined) return fail('refetch', refetchProblem);
-  const refetchCheck = checkBase();
-  if (typeof refetchCheck === 'string')
-    return fail('refetch', `${defaultBranch} moved: ${refetchCheck}`);
-  report.basePath = refetchCheck.path;
-  if (refetchCheck.tree !== undefined) report.mergeTree = refetchCheck.tree;
-  else delete report.mergeTree;
-  report.base = git('rev-parse', `origin/${defaultBranch}`).stdout.trim() || report.base;
   if (options.dryRun) return report;
 
-  // 7. comment (after the refetch, so the note names the base that will actually be merged against)
+  // 5. comment
   {
-    // The comment says which base path the gate relied on, so a reader sees it was not a clean fast-forward.
     const commentDirectory = mkdtempSync(join(tmpdir(), 'merge-gate-comment-'));
     const commentBody = join(commentDirectory, 'comment.md');
-    writeFileSync(
-      commentBody,
-      `${readFileSync(options.commentFile, 'utf8').trimEnd()}\n\nBase: ${describeBasePath(report, defaultBranch)}\n`,
-    );
+    writeFileSync(commentBody, `${readFileSync(options.commentFile, 'utf8').trimEnd()}\n`);
     const commented = runner([
       'gh',
       'pr',
@@ -507,7 +326,7 @@ export function mergeGate(
       );
   }
 
-  // 8. merge
+  // 6. merge, pinned to the head
   const merge = runner([
     'gh',
     'pr',
@@ -525,7 +344,7 @@ export function mergeGate(
       `gh pr merge failed (exit ${merge.code}): ${firstLine(merge.stderr || merge.stdout)}`,
     );
 
-  // 9. confirm
+  // 7. confirm
   const merged = viewPullRequest(runner, repository, options.pr, 'state,mergeCommit');
   if (typeof merged === 'string') return fail('confirm', merged);
   if (merged.state !== 'MERGED')
@@ -541,31 +360,26 @@ export function mergeGate(
       'confirm',
       `could not fetch merge commit ${mergeCommit.slice(0, 12)}: ${firstLine(fetchedCommit.stderr)}`,
     );
-  if (report.basePath === 'merge-tree') {
-    // The head never contained the base, so the squash commit's tree is compared with the clean
-    // merge `git merge-tree` computed instead of with the head.
-    const tree = git('rev-parse', `${mergeCommit}^{tree}`);
-    if (tree.code !== 0)
-      return fail('confirm', `could not read the merge commit's tree: ${firstLine(tree.stderr)}`);
-    report.treesMatch = tree.stdout.trim() === report.mergeTree;
-    if (!report.treesMatch)
-      return fail(
-        'confirm',
-        `merged but the merge commit's tree differs from the clean merge of ${head.slice(0, 12)} with origin/${defaultBranch} that git merge-tree computed.`,
-      );
-  } else {
-    const diff = git('diff', '--quiet', mergeCommit, head);
-    if (diff.code > 1)
-      return fail('confirm', `git diff failed (exit ${diff.code}): ${firstLine(diff.stderr)}`);
-    report.treesMatch = diff.code === 0;
-    if (!report.treesMatch)
-      return fail(
-        'confirm',
-        `merged but the merge commit's tree differs from the gated head ${head.slice(0, 12)}.`,
-      );
-  }
+  // The squash commit's tree is the head merged into the parent it landed on: the head's own tree
+  // when that parent is contained in the head, the clean merge of the two when the base had moved.
+  const expected = git('merge-tree', '--write-tree', `${mergeCommit}^1`, head);
+  const expectedTree = expected.stdout.split('\n')[0]?.trim() ?? '';
+  if (expected.code !== 0 || !/^[0-9a-f]{40,64}$/.test(expectedTree))
+    return fail(
+      'confirm',
+      `could not compute the tree of ${head.slice(0, 12)} merged into ${mergeCommit.slice(0, 12)}^1 (git merge-tree exit ${expected.code}): ${firstLine(expected.stderr)}`,
+    );
+  const tree = git('rev-parse', `${mergeCommit}^{tree}`);
+  if (tree.code !== 0)
+    return fail('confirm', `could not read the merge commit's tree: ${firstLine(tree.stderr)}`);
+  report.treesMatch = tree.stdout.trim() === expectedTree;
+  if (!report.treesMatch)
+    return fail(
+      'confirm',
+      `merged but the merge commit's tree differs from ${head.slice(0, 12)} merged into the commit it landed on.`,
+    );
 
-  // 10. usage (optional): the spend record for this merge
+  // 8. usage (optional): the spend record for this merge
   if (options.usageLog !== undefined) {
     try {
       const totals = (partial.usage ?? totalUsage)(transcripts);
@@ -593,7 +407,7 @@ export function mergeGate(
 }
 
 /**
- * `mergeGate` under the cross-session merge lock, so two sessions never gate and merge at once.
+ * `mergeGate` under the cross-session merge lock, so two sessions never merge at once.
  * A dry run takes no lock. The lock is released whatever the outcome, and a dead holder's lock is
  * reclaimed by `run-exclusively.ts`'s helpers.
  */
@@ -641,18 +455,12 @@ export async function mergeGateExclusively(
 
 export function renderMergeGate(report: MergeGateReport, dryRun: boolean): string {
   const lines = [
-    `pr #${report.pr} head=${report.head?.slice(0, 12) ?? 'unknown'} base=${report.base?.slice(0, 12) ?? 'unknown'} gate rc=${report.gateRc ?? 'none'}`,
-    `base path: ${report.basePath ?? 'not checked'}`,
+    `pr #${report.pr} head=${report.head?.slice(0, 12) ?? 'unknown'} base=${report.base?.slice(0, 12) ?? 'unknown'} mergeable=${report.mergeable ?? 'not checked'}`,
     `threads: ${report.threads === null ? 'not checked' : `seen ${report.threads.seen} of ${report.threads.total}, ${report.threads.unresolved} unresolved`}`,
   ];
-  if (report.fixesMain === true) lines.push('main health: red; merged as the declared fix');
-  if (report.waiver !== undefined)
+  if (report.mainHealthWarning !== undefined)
     lines.push(
-      `main health: red at ${report.waiver.blockedHead.slice(0, 12)}; waived as a load flake (control ${report.waiver.controlHead.slice(0, 12)}): ${report.waiver.reason}`,
-    );
-  if (report.mainHealthWaiver !== undefined)
-    lines.push(
-      `main health: red at ${report.mainHealthWaiver.blockedHead.slice(0, 12)}; merged under --waive-main-health: ${report.mainHealthWaiver.reason}`,
+      `WARNING main health: ${report.mainHealthWarning}${report.fixesMain === true ? ' Merged as the declared fix.' : ''}`,
     );
   if (report.failedStep !== null) {
     lines.push(`FAILED at ${report.failedStep}: ${report.detail ?? ''}`);
@@ -674,100 +482,31 @@ export function renderMergeGate(report: MergeGateReport, dryRun: boolean): strin
   return lines.join('\n');
 }
 
-/**
- * The waiver `--waive-load-flake` and `--control-head` describe: both or neither, a reason that is
- * not blank, a full SHA, and never beside `--fixes-main`. `deliver.ts` parses its flags with it.
- */
-export function parseLoadFlakeWaiver(
-  reason: string | undefined,
-  controlHead: string | undefined,
-  fixesMain: boolean,
-): LoadFlakeWaiver | undefined {
-  if (reason === undefined && controlHead === undefined) return undefined;
-  if (fixesMain)
-    throw new UsageError(
-      '--fixes-main and --waive-load-flake are exclusive: a pull request either fixes main or merges past a load flake.',
-    );
-  if (reason === undefined || controlHead === undefined)
-    throw new UsageError('--waive-load-flake and --control-head go together.');
-  if (reason.trim() === '')
-    throw new UsageError('--waive-load-flake needs a reason naming the test and why it is load.');
-  if (!/^[0-9a-f]{40}$/.test(controlHead))
-    throw new UsageError(`--control-head "${controlHead}" is not a full commit SHA.`);
-  return { reason: reason.trim(), controlHead };
-}
-
-/**
- * The waiver `--waive-main-health` and `--reason` describe: the flag with a reason that is not
- * blank, never `--reason` alone, and never beside `--fixes-main` or `--waive-load-flake`.
- * `deliver.ts` parses its flags with it.
- */
-export function parseMainHealthWaiver(
-  flag: boolean,
-  reason: string | undefined,
-  fixesMain: boolean,
-  loadFlakeWaiver: LoadFlakeWaiver | undefined,
-): MainHealthWaiver | undefined {
-  if (!flag) {
-    if (reason !== undefined)
-      throw new UsageError('--reason applies only with --waive-main-health.');
-    return undefined;
-  }
-  if (fixesMain || loadFlakeWaiver !== undefined)
-    throw new UsageError(
-      '--fixes-main, --waive-load-flake and --waive-main-health are exclusive: a pull request fixes main, merges past a load flake, or merges past a red main for a stated reason.',
-    );
-  if (reason === undefined || reason.trim() === '')
-    throw new UsageError('--waive-main-health needs a --reason saying why main may stay red.');
-  return { reason: reason.trim() };
-}
-
 function parseArguments(argv: string[]): { options: MergeGateOptions; json: boolean } {
   const parsed = parseOptions(argv, {
-    values: [
-      'config',
-      'pr',
-      'worktree',
-      'gate-log',
-      'comment-file',
-      'usage-log',
-      'health-file',
-      'waive-load-flake',
-      'control-head',
-      'reason',
-    ],
+    values: ['config', 'pr', 'worktree', 'comment-file', 'usage-log', 'health-file', 'head'],
     repeated: ['transcript'],
-    flags: ['dry-run', 'json', 'fixes-main', 'waive-main-health'],
+    flags: ['dry-run', 'json', 'fixes-main'],
   });
   if (parsed.positionals.length > 0)
     throw new UsageError(`Unexpected argument ${parsed.positionals[0]}.`);
   const pr = requireOption(parsed, 'pr');
   if (!/^[1-9]\d*$/.test(pr)) throw new UsageError(`"${pr}" is not a pull request number.`);
-  const loadFlakeWaiver = parseLoadFlakeWaiver(
-    parsed.values['waive-load-flake'],
-    parsed.values['control-head'],
-    parsed.flags.has('fixes-main'),
-  );
-  const mainHealthWaiver = parseMainHealthWaiver(
-    parsed.flags.has('waive-main-health'),
-    parsed.values['reason'],
-    parsed.flags.has('fixes-main'),
-    loadFlakeWaiver,
-  );
+  const expectedHead = parsed.values['head'];
+  if (expectedHead !== undefined && !/^[0-9a-f]{40}$/.test(expectedHead))
+    throw new UsageError(`--head "${expectedHead}" is not a full commit SHA.`);
   return {
     json: parsed.flags.has('json'),
     options: {
       configPath: parsed.values['config'] ?? DEFAULT_CONFIGURATION_PATH,
       pr: Number(pr),
       worktree: requireOption(parsed, 'worktree'),
-      gateLog: requireOption(parsed, 'gate-log'),
       commentFile: requireOption(parsed, 'comment-file'),
       dryRun: parsed.flags.has('dry-run'),
       healthFile: parsed.values['health-file'],
       checkMainHealth: true,
       fixesMain: parsed.flags.has('fixes-main'),
-      loadFlakeWaiver,
-      mainHealthWaiver,
+      expectedHead,
       usageLog: parsed.values['usage-log'],
       transcripts: parsed.repeated['transcript'] ?? [],
     },

@@ -70,7 +70,7 @@ describe('renderBrief', () => {
     expect(text).toContain('## Acceptance criteria\n\n- It works.');
     expect(text).not.toContain('Ignore me');
     expect(text).toContain('- `scripts/chef/thing.ts`');
-    expect(text).toContain('- `bun run check`');
+    expect(text).toContain('- `bun run lint:root`');
     expect(text).toContain('Model: Sonnet');
     for (const rule of charterRules) expect(text).toContain(rule);
   });
@@ -84,7 +84,7 @@ describe('renderBrief', () => {
     expect(text).toContain('- `a/b.ts`');
     expect(text).not.toContain('thing.test.ts');
     expect(text).toContain('- `bun test a`');
-    expect(text).not.toContain('- `bun run check`');
+    expect(text).not.toContain('- `bun run lint:root`');
   });
 
   test('a description with neither heading is included whole, and an empty one says so', () => {
@@ -119,7 +119,7 @@ describe('charter rules', () => {
       'utf8',
     );
     for (const phrase of [
-      'bun run check',
+      'focused checks',
       'answer every thread before merge',
       'at most three rounds',
       'End a turn only on a state change',

@@ -1,21 +1,18 @@
 #!/usr/bin/env bun
-// Chef main health: the record of each batch validate's result, so a coordinator cannot merge into
-// a red `main` by forgetting that the last batch failed. `gate-run.ts run` writes an entry when its
-// command is the configured batch command; `merge-gate.ts` reads it and refuses to merge while
-// `main`'s last batch validate failed, unless the pull request is declared the fix or the failure
-// is waived as a load flake.
+// Chef main health: the record of each batch validate's result, so a coordinator sees a red `main`
+// instead of forgetting that the last batch failed. `gate-run.ts run` writes an entry when its
+// command is the configured batch command; `merge-gate.ts` reads it and warns in its report while
+// `main`'s last batch validate failed. It never refuses a merge on it.
 //
 // The record is `<main checkout>/tmp/chef/main-health.json` (gitignored; the main checkout's `tmp/`
 // outlives any worktree):
 //   { "runs": [{ "head", "exitCode", "time", "command" }],
 //     "fixes": [{ "pr", "time", "blockedHead" }],
 //     "waivers": [{ "pr", "time", "blockedHead", "reason", "controlHead"? }] }
-// A fix is a pull request that repairs `main` (`--fixes-main`). A waiver is a pull request merged
-// past a red `main` that it does not repair. There are two kinds, told apart by `controlHead`:
-// a load-flake waiver (`--waive-load-flake`) names the test that failed and why it is load in
-// `reason`, and its `controlHead` is the commit on `main` where the control passed; an owner-level
-// waiver (`--waive-main-health --reason <text>`) carries only the `reason` and no `controlHead`.
-// Waivers never appear in `fixes`, so `fixes` lists only pull requests that repaired `main`.
+// A fix is a pull request that repairs `main` (`--fixes-main`). A waiver was a pull request merged
+// past a red `main` under the refusal that `merge-gate.ts` no longer makes; nothing writes one now,
+// but an older file may hold some, and they are still read and shown. Waivers never appear in
+// `fixes`, so `fixes` lists only pull requests that repaired `main`.
 // `runs` keeps the newest 50 entries. "Last" means the entry whose head is nearest the tip of
 // `origin/<default>`'s first-parent history: a validate at a head that never reached `main` (a
 // branch gate, a rewritten history) is ignored, and a green validate at a later head clears a red
@@ -60,7 +57,7 @@ export interface HealthWaiver {
   time: string;
   blockedHead: string;
   reason: string;
-  /** Present for a load-flake waiver; absent for `--waive-main-health`. */
+  /** Present for a load-flake waiver; absent for an owner-level one. */
   controlHead?: string;
 }
 
@@ -72,7 +69,6 @@ export interface HealthFile {
 
 const keptRuns = 50;
 const keptFixes = 50;
-const keptWaivers = 50;
 const historyLimit = 5000;
 
 /** `<main checkout>/tmp/chef/main-health.json`. */
@@ -159,13 +155,6 @@ export function recordFix(path: string, fix: HealthFix): void {
   writeHealth(path, health);
 }
 
-/** Append the use of `--waive-load-flake` or `--waive-main-health` by a pull request. */
-export function recordWaiver(path: string, waiver: HealthWaiver): void {
-  const health = readHealth(path);
-  health.waivers = [...health.waivers, waiver].slice(-keptWaivers);
-  writeHealth(path, health);
-}
-
 /** `origin/<branch>`'s first-parent commits, newest first; `undefined` when Git cannot list them. */
 export function firstParentHistory(
   runner: Runner,
@@ -201,7 +190,7 @@ export interface MainHealth {
   run: HealthRun | undefined;
   /** Pull requests merged as the declared fix for `run`'s head. */
   fixes: HealthFix[];
-  /** Pull requests merged past `run`'s head under a waiver, of either kind. */
+  /** Pull requests merged past `run`'s head under an older waiver, of either kind. */
   waivers: HealthWaiver[];
   /** Why the state is unknown, when Git could not list `main`'s history. */
   problem?: string;
