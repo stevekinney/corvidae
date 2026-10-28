@@ -1,4 +1,5 @@
 import { afterAll, afterEach, describe, expect, it } from 'bun:test';
+import { fileURLToPath } from 'node:url';
 
 import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
@@ -416,6 +417,76 @@ const scenario18 = await realmScenario(async () => {
   }
 });
 
+const scenario19 = await realmScenario(async () => {
+  try {
+    const realm = makeRealm({ workerName: 'digest-a' });
+    const envelope = {
+      workflowRevision: 'revision-a',
+      realmGeneration: 'generation',
+      executionToken: 'token-1',
+      turnId: 1,
+    };
+
+    expect(realm.lifecycle.state).toBe('warming');
+    expect(await throwingRejectionOf(realm.dispatchTurn(envelope, {}))).toThrow(
+      'Child-process realm cannot accept a turn while warming',
+    );
+    await realm.waitUntilReady();
+    expect(await throwingRejectionOf(realm.dispatchTurn(envelope, {}))).toThrow(
+      'Child-process realm cannot accept a turn while ready',
+    );
+    expect(realm.pendingTurnCount).toBe(0);
+    realm.discard();
+    await realm.whenReclaimed();
+  } finally {
+    restoreRealTimers();
+  }
+});
+
+const scenario20 = await realmScenario(async () => {
+  try {
+    const realm = makeRealm({ workerName: 'digest-a' });
+    const activation = await readyAndActive(realm);
+
+    const pending = realm.dispatchTurn({ ...activation, turnId: 1 }, {});
+    const rejection = throwingRejectionOf(pending);
+    realm.beginDrain();
+    expect(realm.lifecycle.state).toBe('draining');
+    realm.discard();
+
+    expect(realm.lifecycle.state).toBe('terminated');
+    expect(realm.pendingTurnCount).toBe(0);
+    expect(await rejection).toThrow('realm-not-active');
+    await realm.whenReclaimed();
+  } finally {
+    restoreRealTimers();
+  }
+});
+
+const scenario21 = await realmScenario(async () => {
+  try {
+    const realm = tracked(
+      new ChildProcessRealm({
+        scriptPath: fileURLToPath(scriptPath),
+        expectedWorkflowTypes: ['order-workflow'],
+        isReferenced: () => true,
+        maxRestarts: 3,
+        workerName: 'digest-a',
+      }),
+    );
+    const activation = await readyAndActive(realm);
+
+    const pending = realm.dispatchTurn({ ...activation, turnId: 1 }, { hello: 'path' });
+    realm.postRawMessageForTesting({ type: 'test-release', turnId: 1 });
+
+    expect(((await pending) as { echoed: unknown }).echoed).toEqual({ hello: 'path' });
+    realm.discard();
+    await realm.whenReclaimed();
+  } finally {
+    restoreRealTimers();
+  }
+});
+
 describe('ChildProcessRealm', () => {
   it('spawns a real child process, completes the ready handshake, and reaches Active on activate()', () =>
     rethrow(scenario1));
@@ -469,6 +540,15 @@ describe('ChildProcessRealm', () => {
     it('a close signal (discard) arriving after crash() already settled the realm is a no-op, not a thrown re-crash', () =>
       rethrow(scenario15));
   });
+
+  it('refuses a turn while the realm is not Active, naming the state it is in', () =>
+    rethrow(scenario19));
+
+  it('discard() on a Draining realm finishes the drain: Terminated, with its pending turn rejected', () =>
+    rethrow(scenario20));
+
+  it('spawns its child process from a script given as a file path, not only as a URL', () =>
+    rethrow(scenario21));
 
   // COR-246's own coordinator decision: prove reclamation via observed
   // events -- an actually-dead OS process and an actually-closed IPC
