@@ -34,7 +34,7 @@ export const RESULT_SCHEMA = 'cin-585-playground-measurements/2';
 export type ChildMeasurement = {
   command: string[];
   exitCode: number | null;
-  signalCode: string | null;
+  signalCode: string | number | null;
   /** Spawn to exit, from the measuring process's monotonic clock. */
   wallMilliseconds: number;
   /** `Bun.Subprocess.resourceUsage().maxRSS`: this child's own high-water mark, in bytes. */

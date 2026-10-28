@@ -31,7 +31,7 @@ export type HostEvent = Readonly<Record<string, unknown>> & { readonly event: st
 
 export interface HostExit {
   readonly exitCode: number | null;
-  readonly signalCode: string | null;
+  readonly signalCode: string | number | null;
   readonly stderr: string;
   readonly events: readonly HostEvent[];
   readonly killedAtDeadline: boolean;

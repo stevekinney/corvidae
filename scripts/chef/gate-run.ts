@@ -334,7 +334,8 @@ export function isProcessLive(
 /** Whether `pid` is a live, non-zombie process. */
 export const processExists: GateDependencies['isAlive'] = (pid) => isProcessLive(pid);
 
-function signalExitCode(signal: string | null | undefined): number {
+function signalExitCode(signal: string | number | null | undefined): number {
+  if (typeof signal === 'number') return 128 + signal;
   const number = (signalConstants.signals as Record<string, number | undefined>)[signal ?? ''];
   return 128 + (number ?? 0);
 }

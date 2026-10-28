@@ -2221,7 +2221,7 @@ type CoverageProcess = {
   // Present on a real `Bun.spawn` subprocess; optional so a minimal stubbed child
   // (one that never needs to be killed or identified by pid) stays valid in tests.
   pid?: number;
-  signalCode?: NodeJS.Signals | null;
+  signalCode?: NodeJS.Signals | number | null;
   kill?: (signal?: number | NodeJS.Signals) => void;
 };
 
@@ -2277,7 +2277,7 @@ export type CoverageFailureStage =
 export function formatCoverageFailureReason(
   stage: CoverageFailureStage,
   detail: string,
-  child?: { exitCode: number | null; signal: string | null },
+  child?: { exitCode: number | null; signal: string | number | null },
 ): string {
   const childSuffix =
     child === undefined

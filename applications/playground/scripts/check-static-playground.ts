@@ -140,6 +140,7 @@ class GateInterrupted extends Error {
 class GateFailure extends Error {}
 
 function exitStatusOf(subprocess: OwnedChild['subprocess']): number {
+  if (typeof subprocess.signalCode === 'number') return 128 + subprocess.signalCode;
   if (subprocess.signalCode !== null) return 128 + signalNumber(subprocess.signalCode);
   return subprocess.exitCode ?? 1;
 }
