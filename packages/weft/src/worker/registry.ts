@@ -1,5 +1,6 @@
 /* oxlint-disable max-lines -- Worker lifecycle, leases, and routing share one cohesive registry state machine. */
 // Server-side worker tracking and pluggable routing policies.
+import { WorkerRegistrationRejectedEvent } from '../core/events/fleet-state-events.ts';
 import { workerDeploymentRolloutBucket } from './deployment-routing.ts';
 import {
   DeploymentConsistencyGuard,
@@ -42,6 +43,7 @@ import type {
   RoutingPolicy,
   WorkerDrainMutationResult,
   WorkerDrainOptions,
+  WorkerHealth,
   WorkerInfo,
   WorkerRegistrationInfo,
   WorkerRegistryOptions,
@@ -114,6 +116,7 @@ export class WorkerRegistry {
   #deploymentConsistency: DeploymentConsistencyGuard;
   /** Bounded, in-memory log of declined `register` attempts (WFT-29). */
   #rejections: RegistrationRejectionEntry[];
+  #dispatchEvent: ((event: Event) => void) | undefined;
 
   constructor(options?: WorkerRegistryOptions) {
     this.#workers = new Map();
@@ -125,6 +128,7 @@ export class WorkerRegistry {
     this.#fairShareCounts = new FairShareCounters();
     this.#deploymentConsistency = new DeploymentConsistencyGuard();
     this.#rejections = [];
+    this.#dispatchEvent = options?.dispatchEvent;
   }
 
   /** The routing policy this registry was configured with. */
@@ -506,6 +510,7 @@ export class WorkerRegistry {
   /** Record one declined `register` attempt, evicting the oldest once the bounded log is full. */
   recordRejection(entry: RegistrationRejectionEntry): void {
     appendRegistrationRejection(this.#rejections, entry);
+    this.#dispatchEvent?.(new WorkerRegistrationRejectedEvent(entry.workerId, entry.code));
   }
 
   /** Return the `limit` most recently recorded rejections, newest first. */
@@ -603,6 +608,19 @@ export class WorkerRegistry {
   clearBuildDrain(deploymentName: string, buildId: string): WorkerDrainMutationResult {
     deleteBuildDrain(this.#buildDrainStates, deploymentName, buildId);
     return this.#buildDrainResult(deploymentName, buildId);
+  }
+
+  /**
+   * Drain state of one deployment, or of one of its builds when `buildId` is given, as the
+   * deployment drain operations report it. `'active'` when no marker applies, including when no
+   * worker of the deployment is connected.
+   */
+  deploymentDrainState(deploymentName: string, buildId?: string): WorkerHealth {
+    return (
+      buildId === undefined
+        ? this.#deploymentDrainResult(deploymentName)
+        : this.#buildDrainResult(deploymentName, buildId)
+    ).health;
   }
 
   get #drainStates(): DrainStates {

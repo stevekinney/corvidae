@@ -168,6 +168,8 @@ export type LiveOperationRegistryOptions = {
   metricsCollector?: MetricsCollector;
   workerRegistry?: WorkerRegistry;
   workerDeploymentCatalog?: WorkerDeploymentCatalog;
+  /** Receives the events operations raise after a mutation commits; `serve()` passes the engine's `dispatchEvent`. */
+  dispatchEvent?: (event: Event) => void;
   storage?: Storage;
   taskQueue?: TaskQueue;
   clock?: () => number;
@@ -225,6 +227,7 @@ function buildDrainDeploymentOperationForRegistry(options: LiveOperationRegistry
   if (options.workerRegistry === undefined) return drainDeploymentOperation;
   return createDrainDeploymentOperation({
     workerRegistry: options.workerRegistry,
+    ...(options.dispatchEvent === undefined ? {} : { dispatchEvent: options.dispatchEvent }),
     ...(options.workerDeploymentCatalog === undefined
       ? {}
       : { catalog: options.workerDeploymentCatalog }),
@@ -236,6 +239,7 @@ function buildClearDeploymentDrainOperationForRegistry(options: LiveOperationReg
   if (options.workerRegistry === undefined) return clearDeploymentDrainOperation;
   return createClearDeploymentDrainOperation({
     workerRegistry: options.workerRegistry,
+    ...(options.dispatchEvent === undefined ? {} : { dispatchEvent: options.dispatchEvent }),
     ...(options.workerDeploymentCatalog === undefined
       ? {}
       : { catalog: options.workerDeploymentCatalog }),
@@ -297,16 +301,15 @@ function buildConformanceOperations(options: LiveOperationRegistryOptions) {
 
 function buildWorkerDeploymentRoutingOperations(options: LiveOperationRegistryOptions) {
   const catalog = options.workerDeploymentCatalog;
+  const mutationOptions = {
+    ...(catalog === undefined ? {} : { catalog }),
+    ...(options.workerRegistry === undefined ? {} : { workerRegistry: options.workerRegistry }),
+    ...(options.dispatchEvent === undefined ? {} : { dispatchEvent: options.dispatchEvent }),
+  };
   return [
-    catalog === undefined
-      ? createSetWorkerDeploymentRoutingOperation()
-      : createSetWorkerDeploymentRoutingOperation({ catalog }),
-    catalog === undefined
-      ? createPromoteWorkerDeploymentOperation()
-      : createPromoteWorkerDeploymentOperation({ catalog }),
-    catalog === undefined
-      ? createRollbackWorkerDeploymentOperation()
-      : createRollbackWorkerDeploymentOperation({ catalog }),
+    createSetWorkerDeploymentRoutingOperation(mutationOptions),
+    createPromoteWorkerDeploymentOperation(mutationOptions),
+    createRollbackWorkerDeploymentOperation(mutationOptions),
     catalog === undefined
       ? createWorkerDeploymentDiagnosticsOperation()
       : createWorkerDeploymentDiagnosticsOperation({ catalog }),

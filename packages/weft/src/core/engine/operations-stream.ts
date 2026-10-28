@@ -1,5 +1,6 @@
 import { KEYS } from '../../storage/interface.ts';
 import { encode } from '../codec.ts';
+import { StreamChunkEvent } from '../events/fleet-state-events.ts';
 import type {
   ContextOperationRequest,
   StoredStreamChunk,
@@ -133,6 +134,10 @@ export async function writeStreamChunksFromInternals(
         timestamp: Date.now(),
         payload: chunk,
       });
+    } else {
+      // Announce the stored chunk by key and sequence only, never its body. The `tokens` key is
+      // skipped: it already reaches subscribers through the workflow feed and `stream:token`.
+      internals.engine.dispatchEvent(new StreamChunkEvent(workflowId, operation.key, sequence));
     }
   }
 

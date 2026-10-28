@@ -18,7 +18,7 @@ import { deserializeCheckpoint } from '../checkpoint.ts';
 import type { StoredStreamChunk } from '../context.ts';
 import { createHandleCacheFinalizer } from '../engine-helpers.ts';
 import type { TypedEventTarget, WeftEventMap } from '../events.ts';
-import { RemoteActivityQueuedEvent, SignalDeliveredEvent } from '../events.ts';
+import { RealmStateChangedEvent, RemoteActivityQueuedEvent, SignalDeliveredEvent } from '../events.ts';
 import {
   WorkflowRevisionActivatedEvent,
   WorkflowRevisionDrainingEvent,
@@ -229,6 +229,7 @@ import {
   type EngineInternals,
 } from './internals.ts';
 import { ENGINE_LEASE_LOST_WARNING_NAME, handleDeposition } from './lease-deposition.ts';
+import { readEngineLeaseHealth, dispatchLeaseHealthIfChanged } from './lease-health-events.ts';
 import type { EngineLeaseHealth, LeaseLostReason } from './lease-health.ts';
 import { createLeaseManager } from './lease-manager.ts';
 import {
@@ -884,6 +885,16 @@ export class Engine<
       this.addEventListener(WorkflowRevisionActivatedEvent.type, (event) => {
         revisionRealmRegistry.markActive(event.workflowType, event.revision);
       });
+      revisionRealmRegistry.onRealmStateChanged((change) => {
+        this.dispatchEvent(
+          new RealmStateChangedEvent(
+            change.realmId,
+            change.revision,
+            change.state,
+            change.restartCount,
+          ),
+        );
+      });
     }
     getInternals(this).queuedInlineWorkflowStarts = [];
     getInternals(this).queuedInlineWorkflowStartFlushScheduled = false;
@@ -1130,6 +1141,7 @@ export class Engine<
           // A successor stole the lease out from under an otherwise-idle engine.
           // Step 2 halts: set the deposed flag, warn, and tear down so the engine
           // stops promptly instead of lingering until its next fenced write fails.
+          // `handleDeposition` also announces the status change.
           handleDeposition(internals);
           return;
         }
@@ -1144,6 +1156,12 @@ export class Engine<
             'per store — keep infrastructure-level single-instance enforcement in place.',
           ENGINE_LEASE_LOST_WARNING_NAME,
         );
+        dispatchLeaseHealthIfChanged(internals);
+      },
+      // A renewal that settles can move the status without a loss callback: a lease that
+      // expired between ticks reads `contested` until the next renewal succeeds.
+      onRenewalSettled: () => {
+        dispatchLeaseHealthIfChanged(internals);
       },
     });
     // Assign the manager BEFORE awaiting acquire(), so a concurrent disposal that
@@ -1183,6 +1201,7 @@ export class Engine<
         if (internals.leaseManager === manager) internals.leaseManager = null;
         throw new EngineDisposedError();
       }
+      dispatchLeaseHealthIfChanged(internals);
       manager.startRenewal();
     })();
     internals.inFlightLeaseAcquire = acquisition;
@@ -2957,32 +2976,7 @@ export class Engine<
    * inventing successor details.
    */
   getLeaseHealth(): EngineLeaseHealth {
-    const internals = getInternals(this);
-    if (internals.options.ownershipMode === 'none') {
-      return { mode: 'none', status: 'disabled', holdsLease: false };
-    }
-    if (internals.deposed) {
-      const lastKnownLease = internals.leaseManager?.health();
-      if (lastKnownLease !== undefined && lastKnownLease.status !== 'no-lease') {
-        return {
-          mode: 'lease',
-          ...lastKnownLease,
-          status: 'contested',
-          holdsLease: false,
-          lossReason: 'deposed',
-        };
-      }
-      return {
-        mode: 'lease',
-        status: 'contested',
-        holdsLease: false,
-        lossReason: 'deposed',
-      };
-    }
-    return {
-      mode: 'lease',
-      ...(internals.leaseManager?.health() ?? { status: 'no-lease', holdsLease: false }),
-    };
+    return readEngineLeaseHealth(getInternals(this));
   }
   /**
    * Cross-process read of whether `workflowId`'s `ownership: 'workflow-lease'`

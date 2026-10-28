@@ -53,6 +53,25 @@ async function flushMicrotasks(): Promise<void> {
 }
 
 describe('RevisionRealmRegistry', () => {
+  it('forwards realm transitions of every pool to onRealmStateChanged until unsubscribed (COR-1724)', async () => {
+    const registry = new RevisionRealmRegistry();
+    const seen: Array<[string, string]> = [];
+    const unsubscribe = registry.onRealmStateChanged((change) => {
+      seen.push([change.revision, change.state]);
+    });
+    registry.ensurePool('order-workflow', 'revision-a', configFor('revision-a'));
+    const first = await registry.acquireForExecution('order-workflow', 'revision-a', 'execution-1');
+    if (!first.ok) throw new Error('unreachable');
+    expect(seen).toEqual([
+      ['revision-a', 'ready'],
+      ['revision-a', 'active'],
+    ]);
+
+    unsubscribe();
+    registry.releaseAfterExecution('order-workflow', 'revision-a', first.realm);
+    expect(seen).toHaveLength(2);
+  });
+
   describe('two revisions of one workflow execute concurrently in distinct realms', () => {
     it('acquires a distinct realm per revision, each honoring only its own artifact digest', async () => {
       const registry = new RevisionRealmRegistry();

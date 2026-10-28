@@ -106,6 +106,11 @@ const WEFT_EVENT_KINDS = {
   'workflow-source:load-ready': true,
   'workflow-source:load-failed': true,
   'workflow-source:load-cancelled': true,
+  'realm:state-changed': true,
+  'lease:health-changed': true,
+  'worker:registration-rejected': true,
+  'worker:deployment-changed': true,
+  'stream:chunk': true,
 } as const satisfies Record<keyof WeftEventMap, true>;
 
 // The terminal lifecycle types come from the shared source of truth so the

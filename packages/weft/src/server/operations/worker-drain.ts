@@ -21,6 +21,7 @@ import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { readRestTextBody } from '../rest-body.ts';
 import { invalidParamsFault, isOperationFault } from './operation-helpers.ts';
+import { announceWorkerDeploymentChanged } from './worker-deployment-events.ts';
 
 const drainReasonSchema = z.string().min(1).max(256).optional();
 
@@ -80,6 +81,8 @@ type WorkerDrainOperationOptions = {
   clock?: () => number;
   /** Lets a build-scoped drain refuse a build the server has never accepted. */
   catalog?: WorkerDeploymentCatalog;
+  /** Receives `worker:deployment-changed` after each deployment or build drain and resume. */
+  dispatchEvent?: (event: Event) => void;
 };
 
 const adminAccess: AccessPolicy = {
@@ -175,8 +178,13 @@ export function createDrainDeploymentOperation(options?: WorkerDrainOperationOpt
         updatedAt: clock(),
         ...(input.reason !== undefined ? { reason: input.reason } : {}),
       };
+      const source = { dispatchEvent: options?.dispatchEvent, workerRegistry: registry, catalog };
       if (input.buildId === undefined) {
-        return registry.markDeploymentDraining(input.deploymentName, updated);
+        const result = registry.markDeploymentDraining(input.deploymentName, updated);
+        await announceWorkerDeploymentChanged(source, input.deploymentName, undefined, {
+          drainState: result.health,
+        });
+        return result;
       }
       if (catalog === undefined) throw discoveryOnlyError('weft.worker.deployments.drain');
       const version = await catalog.getVersion(input.deploymentName, input.buildId);
@@ -186,7 +194,11 @@ export function createDrainDeploymentOperation(options?: WorkerDrainOperationOpt
       // The catalog is the durable record of the drain; the registry marker is what routing reads
       // in this process. Writing the catalog first means a failed write drains nothing.
       await catalog.setVersionState(input.deploymentName, input.buildId, 'draining');
-      return registry.markBuildDraining(input.deploymentName, input.buildId, updated);
+      const result = registry.markBuildDraining(input.deploymentName, input.buildId, updated);
+      await announceWorkerDeploymentChanged(source, input.deploymentName, input.buildId, {
+        drainState: result.health,
+      });
+      return result;
     },
   });
 }
@@ -215,7 +227,14 @@ export function createClearDeploymentDrainOperation(options?: WorkerDrainOperati
     unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
     invoke: async ({ input }): Promise<WorkerDrainOutput> => {
       if (registry === undefined) throw discoveryOnlyError('weft.worker.deployments.resume');
-      if (input.buildId === undefined) return registry.clearDeploymentDrain(input.deploymentName);
+      const source = { dispatchEvent: options?.dispatchEvent, workerRegistry: registry, catalog };
+      if (input.buildId === undefined) {
+        const result = registry.clearDeploymentDrain(input.deploymentName);
+        await announceWorkerDeploymentChanged(source, input.deploymentName, undefined, {
+          drainState: result.health,
+        });
+        return result;
+      }
       // A removed build stays out of service: lifting its marker would route to workers an
       // operator took out. An unknown build has no catalog record, so there is nothing to refuse.
       if (catalog !== undefined) {
@@ -225,7 +244,11 @@ export function createClearDeploymentDrainOperation(options?: WorkerDrainOperati
         }
         await catalog.setVersionState(input.deploymentName, input.buildId, 'ready');
       }
-      return registry.clearBuildDrain(input.deploymentName, input.buildId);
+      const result = registry.clearBuildDrain(input.deploymentName, input.buildId);
+      await announceWorkerDeploymentChanged(source, input.deploymentName, input.buildId, {
+        drainState: result.health,
+      });
+      return result;
     },
   });
 }

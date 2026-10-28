@@ -9,14 +9,19 @@ import {
   CleanupWarningEvent,
   ConstraintViolatedEvent,
   DevelopmentWarningEvent,
+  LeaseHealthChangedEvent,
+  RealmStateChangedEvent,
   RemoteActivityCancellationRequestedEvent,
   RemoteActivityQueuedEvent,
   ScheduleFiredEvent,
   ScheduleMissedFireEvent,
   StorageSizeReportedEvent,
+  StreamChunkEvent,
   TaskResultDeadLetteredEvent,
   WorkerConnectedEvent,
+  WorkerDeploymentChangedEvent,
   WorkerDisconnectedEvent,
+  WorkerRegistrationRejectedEvent,
   WorkflowCancelledEvent,
   WorkflowDefinitionRegisteredEvent,
   WorkflowRecoverySkippedEvent,
@@ -98,6 +103,17 @@ describe('wireEventBroadcasting', () => {
         'workflow-source:load-cancelled',
         new WorkflowSourceLoadCancelledEvent('checkout', 'r1', 'module'),
       ],
+      ['realm:state-changed', new RealmStateChangedEvent('realm-1', 'r1', 'crashed', 2)],
+      ['lease:health-changed', new LeaseHealthChangedEvent('contested')],
+      [
+        'worker:registration-rejected',
+        new WorkerRegistrationRejectedEvent('worker-1', 'deployment_conflict'),
+      ],
+      [
+        'worker:deployment-changed',
+        new WorkerDeploymentChangedEvent('billing', 'b1', 'draining', 4),
+      ],
+      ['stream:chunk', new StreamChunkEvent('wf-1', 'progress', 7)],
     ];
     const allowed = new Set([
       'isTrusted',
@@ -114,6 +130,18 @@ describe('wireEventBroadcasting', () => {
       'kind',
       'loadDurationMs',
       'failureCategory',
+      'realmId',
+      'state',
+      'restartCount',
+      'status',
+      'workerId',
+      'code',
+      'deploymentName',
+      'buildId',
+      'drainState',
+      'routingGeneration',
+      'key',
+      'sequence',
     ]);
 
     for (const [kind, event] of safeEvents) {
@@ -186,6 +214,39 @@ describe('wireEventBroadcasting', () => {
       kind: AlertFiredEvent.type,
       payload: { metric: 'queue-depth', threshold: 10, currentValue: 11 },
     });
+  });
+
+  it('publishes the realm, lease, rejection and deployment events through the fleet feed with identifier-only payloads (COR-1724)', async () => {
+    const engine = new Engine({ storage: new MemoryStorage() });
+    const fleetEventFeed = createFleetEventFeed(engine.storage);
+    const handle = wireEventBroadcasting(engine, { publish() {} } as never, { fleetEventFeed });
+
+    engine.dispatchEvent(new RealmStateChangedEvent('realm-1', 'r1', 'crashed', 2));
+    engine.dispatchEvent(new LeaseHealthChangedEvent('contested'));
+    engine.dispatchEvent(new WorkerRegistrationRejectedEvent('worker-1', 'deployment_conflict'));
+    engine.dispatchEvent(new WorkerDeploymentChangedEvent('billing', undefined, 'draining', 4));
+
+    const events: FleetEventEnvelope[] = [];
+    await waitFor(
+      async () => {
+        events.length = 0;
+        for await (const envelope of fleetEventFeed.replay()) events.push(envelope);
+        return events.length === 4;
+      },
+      { label: 'four fleet events persisted' },
+    );
+    handle.dispose();
+    engine[Symbol.dispose]();
+
+    expect(events.map((envelope) => [envelope.kind, envelope.payload])).toEqual([
+      ['realm:state-changed', { realmId: 'realm-1', revision: 'r1', state: 'crashed', restartCount: 2 }],
+      ['lease:health-changed', { status: 'contested' }],
+      ['worker:registration-rejected', { workerId: 'worker-1', code: 'deployment_conflict' }],
+      [
+        'worker:deployment-changed',
+        { deploymentName: 'billing', drainState: 'draining', routingGeneration: 4 },
+      ],
+    ]);
   });
 
   it('keeps workflowless catalog events out of workflow watch storage and publication', async () => {

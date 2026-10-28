@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 import {
+  MAX_REJECTED_WORKER_ID_LENGTH,
+  WorkerRegistrationRejectedEvent,
+} from '../core/events/fleet-state-events.ts';
+import {
   TEST_ACCEPTED_MANIFEST_DIGEST,
   testWorkerManifest,
 } from './registry-fixtures.test-support.ts';
@@ -1640,6 +1644,50 @@ describe('WorkerRegistry', () => {
       expect(registry.getRecentRejections(10)).toEqual([
         { code: 'invalid_registration', workerId: 'w-1', rejectedAt: 100, queue: 'default' },
       ]);
+    });
+
+    it('dispatches worker:registration-rejected for each recorded rejection (COR-1724)', () => {
+      const events: Event[] = [];
+      const registry = new WorkerRegistry({ dispatchEvent: (event) => events.push(event) });
+
+      registry.recordRejection({
+        code: 'deployment_conflict',
+        workerId: 'w-1',
+        rejectedAt: 5,
+        queue: 'default',
+        deploymentName: 'billing',
+        buildId: 'b1',
+      });
+      registry.recordRejection({ code: 'invalid_registration', rejectedAt: 6 });
+
+      expect(events).toHaveLength(2);
+      expect(events[0]).toBeInstanceOf(WorkerRegistrationRejectedEvent);
+      expect(
+        events.map((event) => {
+          const { workerId, code } = event as WorkerRegistrationRejectedEvent;
+          return [workerId, code];
+        }),
+      ).toEqual([
+        ['w-1', 'deployment_conflict'],
+        [undefined, 'invalid_registration'],
+      ]);
+      expect(Object.keys(events[0]!).toSorted()).toEqual(['code', 'isTrusted', 'workerId']);
+      expect(registry.getRecentRejections(10)).toHaveLength(2);
+    });
+
+    it('bounds the untrusted worker id carried on the event', () => {
+      const events: Event[] = [];
+      const registry = new WorkerRegistry({ dispatchEvent: (event) => events.push(event) });
+
+      registry.recordRejection({
+        code: 'invalid_registration',
+        workerId: 'x'.repeat(10_000),
+        rejectedAt: 1,
+      });
+
+      expect((events[0] as WorkerRegistrationRejectedEvent).workerId).toHaveLength(
+        MAX_REJECTED_WORKER_ID_LENGTH,
+      );
     });
 
     it('returns entries newest first', () => {

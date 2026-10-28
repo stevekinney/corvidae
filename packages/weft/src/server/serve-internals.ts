@@ -315,9 +315,10 @@ export function buildServerContext(
   options: ResolvedServeOptions,
   serverMetricsCollector: MetricsCollector,
 ): ServerContext {
-  const workerRegistry = new WorkerRegistry(
-    options.routingPolicy !== undefined ? { policy: options.routingPolicy } : undefined,
-  );
+  const workerRegistry = new WorkerRegistry({
+    ...(options.routingPolicy !== undefined ? { policy: options.routingPolicy } : {}),
+    dispatchEvent: (event) => options.engine.dispatchEvent(event),
+  });
   const taskQueue = new TaskQueue(
     options.schedulingPolicy !== undefined
       ? { schedulingPolicy: options.schedulingPolicy }
@@ -380,6 +381,7 @@ export function buildServerContext(
       taskQueue,
       metricsCollector: serverMetricsCollector,
       workerDeploymentCatalog,
+      dispatchEvent: (event) => options.engine.dispatchEvent(event),
       workerSessionTiming,
       storage: options.engine.storage,
       ...(options.workerStartOverrideSigningSecret === undefined
