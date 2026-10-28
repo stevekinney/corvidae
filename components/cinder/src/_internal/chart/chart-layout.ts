@@ -53,9 +53,9 @@ export function createChartGeometry(
     ],
     measurementContext,
   );
+  // `measureChartTexts` answers for every entry it was given, so each lookup finds its key.
   const measurementFor = (label: string, rotation: number): ChartTextMeasurement =>
-    textMeasurements.get(chartTextMeasurementKey(label, rotation, measurementContext.cacheKey)) ??
-    fallbackChartTextMeasurement(label, rotation);
+    textMeasurements.get(chartTextMeasurementKey(label, rotation, measurementContext.cacheKey))!;
   const xTickHeight = maximumMeasurement(
     xTickLabels,
     (label) => measurementFor(label, xTickRotation).height,
@@ -126,9 +126,9 @@ export function createHorizontalCategoryLabelLayout(
     [...labels.map((label) => ({ label, rotation: 0 })), { label: '…', rotation: 0 }],
     measurementContext,
   );
+  // `measureChartTexts` answers for every entry it was given, so each lookup finds its key.
   const measurementFor = (label: string): ChartTextMeasurement =>
-    textMeasurements.get(chartTextMeasurementKey(label, 0, measurementContext.cacheKey)) ??
-    fallbackChartTextMeasurement(label, 0);
+    textMeasurements.get(chartTextMeasurementKey(label, 0, measurementContext.cacheKey))!;
   const maximumMarginLeft = Math.max(
     CHART_OUTER_PADDING,
     Math.floor(chartWidth * MAXIMUM_HORIZONTAL_CATEGORY_LABEL_FRACTION),

@@ -194,10 +194,6 @@ export class TerminalOutputParser {
           continue;
         }
       }
-      if (character === '\u001b' && index === input.length - 1) {
-        this.#pending = character;
-        break;
-      }
       if (character === '\r') {
         this.#column = 0;
         continue;

@@ -202,6 +202,24 @@ describe('drainUpdateHistory over a store whose scans lag its deletes', () => {
     expect(remaining).toEqual([]);
   });
 
+  it('drains without a record fence on a storage that cannot condition a write', async () => {
+    const storage = new MemoryStorage();
+    const run = await completedRunWithHistory(storage, 3);
+    engine = run.engine;
+    const state = await engine.get(run.workflowId);
+    storage.capabilities = () => ({
+      ...MemoryStorage.prototype.capabilities.call(storage),
+      conditionalBatch: false,
+    });
+    storage.conditionalBatch = async () => {
+      throw new Error('a drain without conditional batches must not condition its writes');
+    };
+
+    await drainUpdateHistory(getInternals(engine), state!);
+
+    expect(await collectKeys(storage, 'uph:')).toEqual([]);
+  });
+
   it('stops at once when the engine is disposed between chunks', async () => {
     const storage = new StaleHistoryScans();
     const run = await completedRunWithHistory(storage, UPDATE_HISTORY_PURGE_CHUNK + 5);

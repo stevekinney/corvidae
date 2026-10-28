@@ -63,6 +63,19 @@ describe('basic catalog functions', () => {
     ).toBe('yes n f true true');
   });
 
+  it('formatString writes an object or an array as JSON', () => {
+    const scope = context({ object: { a: 1 }, list: [1, 'b'] });
+    expect(callFunction('formatString', { value: '${/object} ${/list}' }, scope)).toBe(
+      '{"a":1} [1,"b"]',
+    );
+  });
+
+  it('formatString reports an expression it cannot read and keeps the rest of the template as written', () => {
+    const scope = context();
+    expect(callFunction('formatString', { value: 'a ${1 b} c' }, scope)).toBe('a ${1 b} c');
+    expect(scope.reports).toEqual(['formatString: expected "}" at 6']);
+  });
+
   it('required rejects null, undefined, the empty string, and the empty array', () => {
     const scope = context();
     for (const value of [null, undefined, '', []]) {
@@ -113,6 +126,13 @@ describe('basic catalog functions', () => {
     expect(callFunction('numeric', { value: 'five', min: 1 }, scope)).toBe(false);
   });
 
+  it('numeric rejects a value that is neither a number nor numeric text', () => {
+    const scope = context();
+    expect(callFunction('numeric', { value: true }, scope)).toBe(false);
+    expect(callFunction('numeric', { value: ['5'] }, scope)).toBe(false);
+    expect(callFunction('numeric', { value: '  ' }, scope)).toBe(false);
+  });
+
   it('email accepts an address and rejects anything else', () => {
     const scope = context();
     expect(callFunction('email', { value: 'jane@example.com' }, scope)).toBe(true);
@@ -131,6 +151,47 @@ describe('basic catalog functions', () => {
     expect(
       callFunction('formatCurrency', { value: 1234, currency: 'EUR', decimals: 0 }, scope),
     ).toBe('€1,234');
+  });
+
+  it('formatCurrency shows the plain number for a currency code the runtime refuses', () => {
+    const scope = context();
+    expect(callFunction('formatCurrency', { value: 1234, currency: 'EURO' }, scope)).toBe('1234');
+  });
+
+  it('formatDate writes the short and padded forms of every field', () => {
+    const scope = context();
+    const value = '2026-03-04T05:07:09';
+    expect(callFunction('formatDate', { value, format: 'yy M H hh m s' }, scope)).toBe(
+      '26 3 5 05 7 9',
+    );
+    expect(
+      callFunction('formatDate', { value: '2026-03-04T00:07:09', format: 'hh h a' }, scope),
+    ).toBe('12 12 AM');
+  });
+
+  it('formatDate converts every token of the pattern alphabet and leaves none behind', () => {
+    // The `a` case is the `default` of the token switch, so it relies on the token pattern
+    // matching nothing that the switch does not handle.
+    const scope = context();
+    expect(
+      callFunction(
+        'formatDate',
+        {
+          value: '2026-03-04T05:07:09',
+          format: 'yyyy yy MMMM MMM MM M dd d EEEE EEE EE E HH H hh h mm m ss s a',
+        },
+        scope,
+      ),
+    ).toBe('2026 26 March Mar 03 3 04 4 Wednesday Wed Wed Wed 05 5 05 5 07 7 09 9 AM');
+  });
+
+  it('formatDate reads a number as milliseconds since the epoch and nothing else as a date', () => {
+    const scope = context();
+    const milliseconds = new Date(2026, 2, 4, 15, 7, 9).getTime();
+    expect(
+      callFunction('formatDate', { value: milliseconds, format: 'yyyy-MM-dd HH:mm:ss' }, scope),
+    ).toBe('2026-03-04 15:07:09');
+    expect(callFunction('formatDate', { value: true, format: 'yyyy' }, scope)).toBe('');
   });
 
   it('formatDate interprets a TR35 pattern', () => {
@@ -192,6 +253,14 @@ describe('basic catalog functions', () => {
     expect(scope.reports).toHaveLength(2);
   });
 
+  it('openUrl reports an address that is not a URL and opens nothing', () => {
+    const scope = context({}, { activated: true });
+    callFunction('openUrl', { url: 'https://' }, scope);
+
+    expect(scope.opened).toEqual([]);
+    expect(scope.reports).toEqual(['openUrl: "https://" is not a URL']);
+  });
+
   it('openUrl opens a new context with noopener and noreferrer when the host supplies none', () => {
     const calls: unknown[][] = [];
     const original = globalThis.open;
@@ -237,6 +306,8 @@ describe('resolving dynamic values', () => {
     expect(resolveDynamic({ path: 'name' }, { ...scope, scope: '/rows/0' })).toBe('first');
     expect(resolveDynamic({ call: 'not', args: { value: false } }, scope)).toBe(true);
     expect(resolveDynamic('literal', scope)).toBe('literal');
+    const plain = { title: 'not a binding', extra: 1 };
+    expect(resolveDynamic(plain, scope)).toBe(plain);
   });
 
   it('reads a model change on the next resolution', () => {

@@ -243,6 +243,25 @@ describe('a connection that does not complete', () => {
     expect(subject.client.state).toBe('failed');
   });
 
+  test('a ticket the protocol cannot encode fails the connection before anything is sent', async () => {
+    const subject = rig({ ticket: '' });
+    const events: TerminalTransportEvent[] = [];
+    subject.client.subscribe((event) => events.push(event));
+    const connected = subject.client.connect();
+    subject.socket().open();
+    const failure = await rejection(connected);
+    expect(failure.reason).toBe('protocol');
+    expect(failure.code).toBe('malformed-frame');
+    expect(subject.client.state).toBe('failed');
+    expect(subject.socket().sent).toEqual([]);
+    expect(subject.socket().closes).toEqual([1002]);
+    expect(events).toContainEqual({
+      type: 'transport-error',
+      cause: 'protocol',
+      failure: 'malformed-frame',
+    });
+  });
+
   test('a startup failure before any capabilities is reported with its code and is never an exit', async () => {
     const subject = rig();
     const events: TerminalTransportEvent[] = [];

@@ -63,6 +63,38 @@ describe('chat session controller', () => {
     expect(calls).toBe(2);
   });
 
+  test('stop settles when the run it was waiting on fails, and the failure stays with the send', async () => {
+    let conversation = createConversationHistory({ id: 'stop-failed-run' });
+    let stopped: Promise<void> | undefined;
+    const controller = createChatSessionController({
+      getConversation: () => conversation,
+      setConversation: (next) => {
+        conversation = next;
+      },
+      transport: async () => {
+        throw new Error('transport failed');
+      },
+      // The error is reported while the run is still the active one and about to reject.
+      hooks: {
+        onError: () => {
+          stopped = controller.stop();
+        },
+      },
+    });
+
+    let failure: unknown;
+    try {
+      await controller.adapter.sendMessage({ role: 'user', content: 'hi' }, []);
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toBe('transport failed');
+    expect(stopped).toBeDefined();
+    await stopped;
+  });
+
   test('streaming observers cannot interrupt the session lifecycle', async () => {
     let conversation = createConversationHistory({ id: 'observer-errors' });
     const observedErrors: unknown[] = [];

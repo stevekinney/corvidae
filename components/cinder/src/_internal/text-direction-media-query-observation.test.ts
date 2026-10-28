@@ -6,6 +6,7 @@ import {
   createMediaQueryList,
   createStyleSheetWithRuleCollection,
   createStyleSheetWithRules,
+  createStyleSheetWithThrowingRules,
   withDocumentAdoptedStyleSheets,
   withDocumentStyleSheets,
 } from './text-direction-test-helpers.ts';
@@ -174,6 +175,77 @@ describe('resolveTextDirection', () => {
       expect(activeListenerCount).toBe(2);
       disconnect?.();
       expect(activeListenerCount).toBe(0);
+    } finally {
+      globalThis.matchMedia = originalMatchMedia;
+    }
+  });
+
+  test('skips a stylesheet whose rules cannot be read and still observes the others', () => {
+    const originalMatchMedia = globalThis.matchMedia;
+    const queries: string[] = [];
+    const readable = createStyleSheetWithRules([
+      createCssRule({
+        cssText: '@media (prefers-contrast: more) {}',
+        type: 4,
+        conditionText: '(prefers-contrast: more)',
+        cssRules: [],
+      }),
+    ]);
+    globalThis.matchMedia = (query: string) => {
+      queries.push(query);
+      return createMediaQueryList(query, false);
+    };
+    const element = document.createElement('div');
+    document.body.append(element);
+
+    try {
+      const disconnect = withDocumentStyleSheets(
+        [createStyleSheetWithThrowingRules(), readable],
+        () => observeTextDirectionMediaQueries(element, () => {}),
+      );
+      expect(queries).toEqual(['(prefers-contrast: more)']);
+      disconnect?.();
+    } finally {
+      globalThis.matchMedia = originalMatchMedia;
+    }
+  });
+
+  test('observes the imported stylesheet of an import whose media cannot be read', () => {
+    const originalMatchMedia = globalThis.matchMedia;
+    const queries: string[] = [];
+    const importedSheet = createStyleSheetWithRules([
+      createCssRule({
+        cssText: '@media (prefers-reduced-motion: reduce) {}',
+        type: 4,
+        conditionText: '(prefers-reduced-motion: reduce)',
+        cssRules: [],
+      }),
+    ]);
+    const importRule = createCssRule({
+      type: 3,
+      cssText: '@import url("theme.css");',
+      styleSheet: importedSheet,
+    });
+    Object.defineProperty(importRule, 'media', {
+      configurable: true,
+      get: () => {
+        throw new Error('import media unavailable');
+      },
+    });
+    globalThis.matchMedia = (query: string) => {
+      queries.push(query);
+      return createMediaQueryList(query, false);
+    };
+    const element = document.createElement('div');
+    document.body.append(element);
+
+    try {
+      const disconnect = withDocumentStyleSheets(
+        [{ cssRules: createStyleSheetWithRules([importRule]).cssRules }],
+        () => observeTextDirectionMediaQueries(element, () => {}),
+      );
+      expect(queries).toEqual(['(prefers-reduced-motion: reduce)']);
+      disconnect?.();
     } finally {
       globalThis.matchMedia = originalMatchMedia;
     }

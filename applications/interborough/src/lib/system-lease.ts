@@ -18,13 +18,6 @@ import type { HttpClient } from '@lostgradient/weft';
 export type SystemLease = Awaited<ReturnType<HttpClient['operations']['weft.system.lease']>>;
 export type SystemLeaseStatus = SystemLease['status'];
 
-const LEASE_STATUSES: ReadonlySet<string> = new Set<SystemLeaseStatus>([
-  'disabled',
-  'healthy',
-  'no-lease',
-  'contested',
-]);
-
 /** A `weft.system.lease` response the dashboard refuses to render. */
 export class MalformedSystemLeaseError extends Error {
   constructor() {
@@ -103,8 +96,6 @@ function isSystemLease(value: unknown): value is SystemLease {
   return (
     isRecord(value) &&
     (value['mode'] === 'none' || value['mode'] === 'lease') &&
-    typeof value['status'] === 'string' &&
-    LEASE_STATUSES.has(value['status']) &&
     typeof value['holdsLease'] === 'boolean' &&
     (value['holderId'] === undefined || typeof value['holderId'] === 'string') &&
     (value['lossReason'] === undefined ||

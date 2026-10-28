@@ -160,7 +160,7 @@
   );
 </script>
 
-{#if outcome !== undefined && outcomeWords !== undefined}
+{#if outcomeWords !== undefined && outcome !== undefined}
   <Alert
     variant={outcome.result.deletion === 'completed' ? 'success' : 'warning'}
     dismissible

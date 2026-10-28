@@ -94,6 +94,37 @@ describe('parseTerminalOutput', () => {
       ],
     ]);
   });
+  test('holds an unterminated DCS string until a later chunk closes it', () => {
+    const parser = new TerminalOutputParser();
+    parser.append('before\u001bP1;2|hid');
+    expect(parser.lines()).toEqual([[{ text: 'before', bold: false }]]);
+    parser.append('den\u001b\\after');
+    expect(parser.lines()).toEqual([[{ text: 'beforeafter', bold: false }]]);
+
+    const c1Parser = new TerminalOutputParser();
+    c1Parser.append('before\u00901;2|hid');
+    c1Parser.append('den\u009cafter');
+    expect(c1Parser.lines()).toEqual([[{ text: 'beforeafter', bold: false }]]);
+  });
+  test('holds an escape sequence that ends a chunk until its final byte arrives', () => {
+    const parser = new TerminalOutputParser();
+    parser.append('before\u001b(');
+    expect(parser.lines()).toEqual([[{ text: 'before', bold: false }]]);
+    parser.append('0after');
+    expect(parser.lines()).toEqual([[{ text: 'beforeafter', bold: false }]]);
+
+    const loneEscape = new TerminalOutputParser();
+    loneEscape.append('before\u001b');
+    loneEscape.append('7after');
+    expect(loneEscape.lines()).toEqual([[{ text: 'beforeafter', bold: false }]]);
+  });
+  test('shows a wide glyph at the end of a chunk with its continuation cell', () => {
+    const parser = new TerminalOutputParser();
+    parser.append('a界');
+    expect(parser.lines()).toEqual([[{ text: 'a界', bold: false }]]);
+    parser.append('b');
+    expect(parser.lines()).toEqual([[{ text: 'a界b', bold: false }]]);
+  });
   test('consumes unsupported non-CSI escape sequences', () => {
     expect(parseTerminalOutput('before\u001b7middle\u001b(0after')).toEqual([
       [{ text: 'beforemiddleafter', bold: false }],

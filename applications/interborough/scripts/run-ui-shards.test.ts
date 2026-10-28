@@ -111,6 +111,18 @@ describe('discoverTestFiles', () => {
     ).toEqual(['src/a.test.ts', 'src/b.spec.tsx', 'tests/t.test.ts']);
   });
 
+  it('takes a root that names a file as that one file, and skips a missing root', () => {
+    const directory = join(scratch, 'discover-file-root');
+    for (const path of ['src/a.test.ts', 'src/b.test.ts', 'src/not-a-test.ts']) {
+      touch(directory, path);
+    }
+    expect(discoverTestFiles(directory, ['src/b.test.ts', 'src/missing.test.ts'], [])).toEqual([
+      'src/b.test.ts',
+    ]);
+    // A file that is not a test file is not run just because it was named.
+    expect(discoverTestFiles(directory, ['src/not-a-test.ts'], [])).toEqual([]);
+  });
+
   it('finds the real UI suite without the host, slow, end-to-end or MCP app files', async () => {
     const { roots, ignorePatterns } = splitBunTestArguments(await packageUiArguments());
     const files = discoverTestFiles(packageRoot, roots, ignorePatterns);
