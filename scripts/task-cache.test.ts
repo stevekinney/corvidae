@@ -329,7 +329,7 @@ const scenario6 = await outcomeOf(async () => {
         devDependencies: { '@fixture/library': 'workspace:*' },
       }),
     );
-    const outputs = ['manifest.json', 'fixture-modules.ts'].map((file) =>
+    const outputs = ['manifest.json', 'fixture-modules.ts', 'manifest-inputs.sha256'].map((file) =>
       join('scripts/browser-fixtures/.playwright', file),
     );
     await Bun.write(
@@ -510,8 +510,12 @@ test('the browser-fixtures task declares every root file its commands read, and 
   const { discoverWorkspaces, listTree } = await import('./affected-tests.ts');
   const { analyzeSource, resolveSpecifier, isCodeFile } = await import('./affected-tests-graph.ts');
   const configuration = await Bun.file(join(root, 'turbo.json')).json();
-  const task: { env?: string[]; passThroughEnv?: string[]; inputs?: string[] } =
-    configuration.tasks['//#test:browser-fixtures'];
+  const task: {
+    env?: string[];
+    passThroughEnv?: string[];
+    inputs?: string[];
+    outputs?: string[];
+  } = configuration.tasks['//#test:browser-fixtures'];
   const manifest = await Bun.file(join(root, 'package.json')).json();
   const command: string = manifest.scripts['test:browser-fixtures'];
   const workspaces = discoverWorkspaces(root);
@@ -579,6 +583,13 @@ test('the browser-fixtures task declares every root file its commands read, and 
   // the lane produces, so it must reach the process without keying the task.
   expect(task.env ?? []).not.toContain('TMPDIR');
   expect(task.passThroughEnv ?? []).toContain('TMPDIR');
+
+  // `prepare-manifest.ts` skips regeneration when the hash it recorded still matches its inputs,
+  // so a cache restore must bring the record back together with the files it vouches for.
+  const generated = ['manifest.json', 'fixture-modules.ts', 'manifest-inputs.sha256'].map(
+    (file) => `scripts/browser-fixtures/.playwright/${file}`,
+  );
+  expect(task.outputs ?? []).toEqual(expect.arrayContaining(generated));
 });
 
 test('the root package depends on no workspace but its compiler configuration', async () => {

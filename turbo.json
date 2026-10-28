@@ -126,6 +126,7 @@
       "outputs": [
         "scripts/browser-fixtures/.playwright/manifest.json",
         "scripts/browser-fixtures/.playwright/fixture-modules.ts",
+        "scripts/browser-fixtures/.playwright/manifest-inputs.sha256",
         "test-output/junit/browser-fixtures.xml"
       ]
     },
