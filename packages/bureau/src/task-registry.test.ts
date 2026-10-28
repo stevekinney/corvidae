@@ -862,7 +862,49 @@ describe('cancel', () => {
     failWrites = true;
     await rejectionOf(failed.registry.cancel('run-2', 0));
     expect(failedSettled).toEqual([]);
-    expect((await failed.registry.get('run-2'))?.status).toBe('working');
+    const failedView = await failed.registry.get('run-2');
+    expect(failedView?.status).toBe('working');
+
+    const racedBase = textValueStore(new MemoryStorage());
+    const firstSettled: string[] = [];
+    const first = build(undefined, {
+      kv: racedBase,
+      onSettled: async (record) => {
+        firstSettled.push(record.taskId);
+      },
+    });
+    await admit(first.registry, 'run-3');
+    let interleave = false;
+    let interleaved = false;
+    const racedKv = new Proxy(racedBase, {
+      get(target, property, receiver) {
+        if (property !== 'conditionalBatch') return Reflect.get(target, property, receiver);
+        return async (...args: Parameters<typeof racedBase.conditionalBatch>) => {
+          if (interleave && !interleaved) {
+            interleaved = true;
+            await first.registry.recordSettled('run-3', {
+              at: '2026-10-18T00:00:10.000Z',
+              status: 'completed',
+              finishReason: 'stop-condition',
+              message: null,
+            });
+            return false;
+          }
+          return target.conditionalBatch(...args);
+        };
+      },
+    });
+    const secondSettled: string[] = [];
+    const second = build(undefined, {
+      kv: racedKv,
+      onSettled: async (record) => {
+        secondSettled.push(record.taskId);
+      },
+    });
+    interleave = true;
+    expect(await second.registry.cancel('run-3', 0)).toEqual({ receipt: 'canceled' });
+    expect(firstSettled).toEqual(['run-3']);
+    expect(secondSettled).toEqual([]);
 
     const terminal = build({ durable: { status: 'already-terminal' } });
     await admit(terminal.registry, 'run-1');

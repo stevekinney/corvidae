@@ -1664,8 +1664,11 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
           // A durable run this process holds no live run for.
           const outcome = await host.cancelDurable(taskId);
           if (outcome.status === 'requested') {
-            const canceled: { record?: TaskRecord } = {};
+            const canceled: { record?: TaskRecord; newlySettled: boolean } = {
+              newlySettled: false,
+            };
             const recorded = await update(taskId, (current) => {
+              canceled.newlySettled = current.settled === undefined;
               const next: TaskRecord = {
                 ...current,
                 settled: {
@@ -1681,7 +1684,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
               return next;
             });
             if (recorded && canceled.record !== undefined) {
-              await announceRecordedSettlement(taskId, canceled.record, true);
+              await announceRecordedSettlement(taskId, canceled.record, canceled.newlySettled);
             }
             return { receipt: 'canceled' };
           }
