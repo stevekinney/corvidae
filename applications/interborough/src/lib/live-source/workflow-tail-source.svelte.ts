@@ -199,6 +199,10 @@ export class WorkflowTailSource implements LiveSource<WorkflowEvent> {
     const controller = new AbortController();
     this.#abortController = controller;
     const sawTerminalEvent = await this.#fetchAndDrain(controller);
+    // Draining can end with the response still open (a terminal event, or a close() mid-frame),
+    // and releasing the reader does not cancel the request: abort it so the connection and the
+    // server's subscription end with this attempt.
+    controller.abort();
     if (this.#abortController === controller) this.#abortController = null;
     if (this.#closed) return;
 

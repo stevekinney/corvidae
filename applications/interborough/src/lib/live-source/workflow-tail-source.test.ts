@@ -51,12 +51,14 @@ class ScriptedConnection {
 class ScriptedFetch {
   readonly calls: FetchCall[] = [];
   readonly connections: ScriptedConnection[] = [];
+  readonly signals: (AbortSignal | undefined)[] = [];
   readonly #restore: () => void;
   #respond: ((signal: AbortSignal | undefined) => Response) | null = null;
 
   constructor() {
     this.#restore = installFetchImplementation(async (input, init) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      this.signals.push(init?.signal ?? undefined);
       this.calls.push({ url, headers: Object.fromEntries(new Headers(init?.headers).entries()) });
       if (this.#respond !== null) return this.#respond(init?.signal ?? undefined);
       const connection = new ScriptedConnection(init?.signal ?? undefined);
@@ -282,6 +284,18 @@ describe('WorkflowTailSource', () => {
       WorkflowCompletedEvent.type,
     ]);
     expect(scripted.calls).toHaveLength(1);
+  });
+
+  test('aborts the request once a terminal workflow event ends the tail', async () => {
+    setup();
+    const source = open();
+    source.subscribe(() => {});
+    await waitFor(() => expect(scripted.connections).toHaveLength(1));
+    expect(scripted.signals[0]?.aborted).toBe(false);
+    scripted.connections[0]?.push(envelope('c1', WorkflowCompletedEvent.type));
+
+    await waitFor(() => expect(source.status).toBe('closed'));
+    expect(scripted.signals[0]?.aborted).toBe(true);
   });
 
   test('status is "reconnecting" during the backoff window after a drop', async () => {
