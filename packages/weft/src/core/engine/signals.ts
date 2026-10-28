@@ -397,8 +397,9 @@ async function deliverBufferedSignals(
   }
 
   if (parkedSignalName !== undefined) {
-    await callbacks.resumeParkedInlineWorkflow(workflowId);
-    callbacks.dispatchEvent(new SignalDeliveredEvent(workflowId, parkedSignalName));
+    void callbacks
+      .resumeParkedInlineWorkflow(workflowId)
+      .then(() => callbacks.dispatchEvent(new SignalDeliveredEvent(workflowId, parkedSignalName)));
   }
 }
 
