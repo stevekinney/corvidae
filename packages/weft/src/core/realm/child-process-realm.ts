@@ -342,8 +342,6 @@ export class ChildProcessRealm {
       case 'draining':
         this.lifecycle.terminate();
         break;
-      default:
-        break;
     }
     this.#settlePendingTurns();
   }

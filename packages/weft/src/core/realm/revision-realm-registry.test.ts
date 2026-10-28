@@ -17,6 +17,10 @@ function asWorkerRealm(realm: RevisionRealm): WorkerRealm {
 }
 
 const workerUrl = new URL('./__fixtures__/revision-realm-worker-entry.ts', import.meta.url);
+const unresponsiveWorkerUrl = new URL(
+  './__fixtures__/revision-realm-unresponsive-worker.ts',
+  import.meta.url,
+);
 
 function configFor(revision: 'revision-a' | 'revision-b') {
   return {
@@ -173,6 +177,51 @@ describe('RevisionRealmRegistry', () => {
       expect(b.realm.lifecycle.state).toBe('active');
 
       registry.releaseAfterExecution('order-workflow', 'revision-b', b.realm);
+    });
+  });
+
+  describe('realm options in a revision config', () => {
+    it('hands the ready-handshake timeout to the realms of that revision', async () => {
+      const registry = new RevisionRealmRegistry();
+      registry.ensurePool('order-workflow', 'revision-a', {
+        workerUrl: unresponsiveWorkerUrl,
+        expectedWorkflowTypes: ['order-workflow'],
+        realmReadyTimeoutMs: 5,
+      });
+
+      const outcome = await registry.acquireForExecution(
+        'order-workflow',
+        'revision-a',
+        'execution-timeout',
+      );
+
+      expect(outcome).toEqual({
+        ok: false,
+        reason: 'realm-ready-handshake-failed',
+        error: 'Worker realm did not send a ready message within 5ms',
+      });
+      registry.dispose();
+    });
+
+    it('hands the protocol message size limit to the realms of that revision', async () => {
+      const registry = new RevisionRealmRegistry();
+      registry.ensurePool('order-workflow', 'revision-a', {
+        ...configFor('revision-a'),
+        maxProtocolMessageBytes: 1,
+      });
+
+      const outcome = await registry.acquireForExecution(
+        'order-workflow',
+        'revision-a',
+        'execution-limit',
+      );
+
+      expect(outcome).toMatchObject({
+        ok: false,
+        reason: 'realm-ready-handshake-failed',
+        error: expect.stringContaining('exceeding limit 1'),
+      });
+      registry.dispose();
     });
   });
 
