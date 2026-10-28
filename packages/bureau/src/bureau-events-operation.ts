@@ -45,13 +45,11 @@ const bureauEventsSubscriptionEnvelope = z.object({
 });
 
 /**
- * `payload` is a record rather than a union discriminated on `kind`, matching
- * `operative.runs.events` and Weft's own envelopes. The payloads are already
- * bounded by named-field projections; what a client does not yet get is a
- * static type per kind. Closing that is additive and worth doing once across
- * all three packages rather than differently in each.
+ * Ordinary event payloads remain records because their named-field projections
+ * already bound what crosses the wire. The gap variant names its required
+ * recovery fields in generated schemas, as Weft's fleet gap does.
  */
-export const bureauEventEnvelopeSchema = z.object({
+const publishedBureauEventEnvelopeSchema = z.object({
   sequence: z.number(),
   cursor: z.string(),
   bureauId: z.string(),
@@ -59,6 +57,24 @@ export const bureauEventEnvelopeSchema = z.object({
   emittedAtMs: z.number(),
   payload: z.record(z.string(), z.unknown()),
 });
+
+const bureauEventGapEnvelopeSchema = z.object({
+  sequence: z.number(),
+  cursor: z.string(),
+  bureauId: z.string(),
+  kind: z.literal('feed.gap'),
+  emittedAtMs: z.number(),
+  payload: z.object({
+    requestedCursor: z.string(),
+    firstRetainedSequence: z.number(),
+  }),
+});
+
+/** Published bureau event or structured recovery gap, shared across transports. */
+export const bureauEventEnvelopeSchema: z.ZodType<BureauEventEnvelope> = z.union([
+  publishedBureauEventEnvelopeSchema,
+  bureauEventGapEnvelopeSchema,
+]);
 
 export type BureauEventsSubscriptionInput = z.infer<typeof bureauEventsSubscriptionInput>;
 

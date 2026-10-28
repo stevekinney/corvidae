@@ -63,16 +63,12 @@ const runEventsSubscriptionEnvelope = z.object({
 /**
  * The event envelope as the wire carries it.
  *
- * `payload` is `z.record(z.string(), z.unknown())` rather than a discriminated
- * union over `kind`, and that is a deliberate first step rather than the end
- * state. The payloads are produced by named-field projections in
- * `run-event-feed.ts`, so what crosses is already bounded and redacted; what
- * this schema does not yet give a client is a static type per `kind`. Turning
- * it into a discriminated union is additive — every payload already validates
- * against this shape — and is worth doing once the projected set stops
- * growing.
+ * Ordinary event payloads remain records. Named-field projections in
+ * `run-event-feed.ts` already bound and redact them; a client does not yet get
+ * a static type for every ordinary kind. The gap variant names its required
+ * recovery fields in generated schemas, as Weft's fleet gap does.
  */
-export const runEventEnvelopeSchema = z.object({
+const publishedRunEventEnvelopeSchema = z.object({
   sequence: z.number(),
   cursor: z.string(),
   runId: z.string(),
@@ -80,6 +76,24 @@ export const runEventEnvelopeSchema = z.object({
   emittedAtMs: z.number(),
   payload: z.record(z.string(), z.unknown()),
 });
+
+const runEventGapEnvelopeSchema = z.object({
+  sequence: z.number(),
+  cursor: z.string(),
+  runId: z.string(),
+  kind: z.literal('run.gap'),
+  emittedAtMs: z.number(),
+  payload: z.object({
+    requestedCursor: z.string(),
+    firstRetainedSequence: z.number(),
+  }),
+});
+
+/** Published run event or structured recovery gap, shared across transports. */
+export const runEventEnvelopeSchema: z.ZodType<AgentRunEventEnvelope> = z.union([
+  publishedRunEventEnvelopeSchema,
+  runEventGapEnvelopeSchema,
+]);
 
 export type RunEventsSubscriptionInput = z.infer<typeof runEventsSubscriptionInput>;
 

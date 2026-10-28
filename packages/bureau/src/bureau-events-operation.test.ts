@@ -389,8 +389,8 @@ describe('bureau.events through createOperationHandler with no Engine', () => {
         'run.gap',
         'run.started',
       ],
-    ]) {
-      const response = await handler(request(path!, { 'Last-Event-ID': cursor! }));
+    ] as const) {
+      const response = await handler(request(path, { 'Last-Event-ID': cursor }));
       expect(response.status).toBe(200);
       const reader = response.body!.getReader();
       const [gap, event] = await readEventFrames(reader, 2);
@@ -428,6 +428,30 @@ describe('bureau.events through createOperationHandler with no Engine', () => {
       '/v1/subscriptions/bureau.events',
       '/v1/subscriptions/operative.runs.events',
     ]);
+    const messages = (
+      asyncApi['components'] as {
+        messages: Record<string, { payload: { anyOf?: Array<Record<string, unknown>> } }>;
+      }
+    ).messages;
+    for (const [messageName, gapKind, resourceId] of [
+      ['bureau_events_eventEnvelopeEvent', 'feed.gap', 'bureauId'],
+      ['operative_runs_events_eventEnvelopeEvent', 'run.gap', 'runId'],
+    ] as const) {
+      const variants = messages[messageName]?.payload.anyOf;
+      const gap = variants?.find(
+        (variant) =>
+          ((variant['properties'] as Record<string, { const?: string }> | undefined)?.['kind']
+            ?.const ?? '') === gapKind,
+      );
+      expect(gap?.['required']).toEqual(expect.arrayContaining(['cursor', resourceId, 'payload']));
+      expect((gap?.['properties'] as Record<string, unknown>)?.['payload']).toMatchObject({
+        required: expect.arrayContaining(['requestedCursor', 'firstRetainedSequence']),
+        properties: {
+          requestedCursor: { type: 'string' },
+          firstRetainedSequence: { type: 'number' },
+        },
+      });
+    }
     expect((openRpc['methods'] as { name: string }[]).map((method) => method.name)).toEqual([
       'bureau.events',
       'operative.runs.events',
