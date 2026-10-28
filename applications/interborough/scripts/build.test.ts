@@ -218,6 +218,14 @@ describe('retainPreviousAssets', () => {
 describe('browserBuildOptions', () => {
   const entrypoints = ['index.html'];
 
+  it('links source maps in development and ships none in production', () => {
+    const development = browserBuildOptions({ entrypoints, outdir: 'out', development: true });
+    const production = browserBuildOptions({ entrypoints, outdir: 'out', development: false });
+
+    expect(development.sourcemap).toBe('linked');
+    expect(production.sourcemap).toBe('none');
+  });
+
   it('compiles NODE_ENV in and the Svelte plugin for the mode asked for', () => {
     const production = browserBuildOptions({ entrypoints, outdir: 'out', development: false });
     const development = browserBuildOptions({ entrypoints, outdir: 'out', development: true });
