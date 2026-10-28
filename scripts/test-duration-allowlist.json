@@ -7,15 +7,6 @@
     "applications/playground :: scripts/static-export.test.ts :: static export :: writes the root landing shell instead of a redirect",
     "applications/playground :: src/analyze.test.ts :: analyzeAll :: returns at least 21 entries",
     "applications/playground :: src/discover.test.ts :: discoverComponentFilePaths :: matches the component set the analyzer resolves across packages",
-    "applications/playground :: src/manifest-reference.test.ts :: isComponentManifest \u2014 every real manifest survives the round trip :: accepts every analyzed component after JSON serialization",
-    "components/cinder :: scripts/check-platform-features.test.ts :: scan \u2014 live inventory against the real source tree :: reports usage for every classified probe and only real viewport flags",
-    "packages/bureau :: src/schedule-fire.test.ts :: D6 scheduled-fire path (#109) :: fires a recurring schedule into a fixed session and accumulates conversation across fires",
-    "packages/bureau :: src/schedule-fire.test.ts :: D6 scheduled-fire path (#109) :: fires a stateless interval schedule and runs the agent with a fresh session per fire",
-    "packages/weft :: src/server/index.test.ts :: concurrent scanner deduplication :: does not double-process an orphaned operationId visible only to reconcileOrphanedRecords",
-    "packages/weft :: src/server/index.test.ts :: worker shutdown and cancel propagation :: shutdownAllWorkers shuts down all connected workers",
-    "packages/weft :: src/server/index.test.ts :: worker shutdown and cancel propagation :: shutdownWorker sends shutdown message and waits for disconnect",
-    "packages/weft :: src/server/remote-activity-integration.test.ts :: remote activity end-to-end integration (COR-152) :: preserves and completes a remote task across a server restart and engine recovery",
-    "applications/interborough :: src/routes/schedules/schedule-detail.test.ts :: ScheduleDetail :: queued runs (weft 0.13+ ScheduleQueuedRun[]) render as links with a queued-at timestamp",
-    "applications/interborough :: src/routes/system/dynamic-source-panel.additional.test.ts :: additional coverage :: never renders a preload outcome under a different key\u2019s identity badges"
+    "applications/playground :: src/manifest-reference.test.ts :: isComponentManifest \u2014 every real manifest survives the round trip :: accepts every analyzed component after JSON serialization"
   ]
 }

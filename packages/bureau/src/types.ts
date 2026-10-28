@@ -882,6 +882,18 @@ export interface PendingToolApprovalReview {
    * separates one supersession's resolution from the next.
    */
   round: number;
+  /**
+   * COR-1717 — `true` when the approval was approved and its resolution started, but the process
+   * ended before the decision committed, so the tool may or may not have run. Absent otherwise.
+   * The tool is never re-run automatically: resolving the review runs the normal approval path
+   * once, and an approval whose signed binding has expired follows the normal expiry path.
+   */
+  interrupted?: true | undefined;
+  /**
+   * COR-1717 — epoch-ms timestamp the interrupted resolution started. Undefined when the review
+   * is not interrupted, or when the session holds the legacy marker that recorded no time.
+   */
+  resolutionStartedAt?: number | undefined;
 }
 
 /**

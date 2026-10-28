@@ -28,6 +28,13 @@ async function waitForServerState(check: () => Promise<boolean>, label: string):
   await waitUntil(check, { message: label });
 }
 
+/**
+ * How often the engine's scheduler looks for a due fire in the tests that wait on a real scheduled
+ * run. The engine's default is one second, which made each of those tests wait out a whole poll;
+ * a fire is still the engine's own, started by its real scheduler (COR-1737).
+ */
+const FAST_SCHEDULER_POLL_MS = 20;
+
 describe('ScheduleDetail', () => {
   test('locks the detail with a reason, and never fetches, when schedules:read is missing', async () => {
     const server = await startLiveSourceTestServer();
@@ -239,7 +246,9 @@ describe('ScheduleDetail', () => {
   });
 
   test('queued runs (weft 0.13+ ScheduleQueuedRun[]) render as links with a queued-at timestamp', async () => {
-    const server = await startLiveSourceTestServer();
+    const server = await startLiveSourceTestServer({
+      schedulerPollIntervalMs: FAST_SCHEDULER_POLL_MS,
+    });
     // `long-sleeper` parks on a 24h `ctx.sleep()`, so its run stays "running"
     // for the lifetime of this test — the first occurrence occupies
     // `currentWorkflowId` and every occurrence after it queues behind it
@@ -283,7 +292,9 @@ describe('ScheduleDetail', () => {
   });
 
   test('a current run is a link to its run under “Running now” in the Engine disclosure', async () => {
-    const server = await startLiveSourceTestServer();
+    const server = await startLiveSourceTestServer({
+      schedulerPollIntervalMs: FAST_SCHEDULER_POLL_MS,
+    });
     // `long-sleeper` parks on a 24h `ctx.sleep()`, so the first occurrence
     // stays "running" indefinitely and durably occupies
     // `schedule.currentWorkflowId` — no `overlapPolicy: 'queue'` needed here
@@ -326,7 +337,9 @@ describe('ScheduleDetail', () => {
   });
 
   test('recent runs (weft.workflows.list scheduleId filter, weft 0.13+) shows persisted history, not just live fires', async () => {
-    const server = await startLiveSourceTestServer();
+    const server = await startLiveSourceTestServer({
+      schedulerPollIntervalMs: FAST_SCHEDULER_POLL_MS,
+    });
     // `inventory-sync-sweep` completes near-instantly (one activity call),
     // so within a couple of the engine's 1s scheduler polls it has both
     // fired and completed — real, persisted history reachable via
@@ -395,7 +408,9 @@ describe('ScheduleDetail', () => {
   });
 
   test('a cancelled run shows the failure glyph, as the list does', async () => {
-    const server = await startLiveSourceTestServer();
+    const server = await startLiveSourceTestServer({
+      schedulerPollIntervalMs: FAST_SCHEDULER_POLL_MS,
+    });
     const handle = await server.engine.schedule({
       workflow: 'long-sleeper',
       id: 'cancelled-probe',
@@ -433,7 +448,9 @@ describe('ScheduleDetail', () => {
   });
 
   test('a failed run is marked as failed with how long it took, opens its run when clicked, and the back link returns to the list', async () => {
-    const server = await startLiveSourceTestServer();
+    const server = await startLiveSourceTestServer({
+      schedulerPollIntervalMs: FAST_SCHEDULER_POLL_MS,
+    });
     await server.engine.schedule({
       workflow: 'system-failure-demo',
       id: 'failing-probe',

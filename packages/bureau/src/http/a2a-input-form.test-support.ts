@@ -3,7 +3,7 @@
  */
 import { Message, type Task, TaskState } from '@a2a-js/sdk';
 import { ServerCallContext } from '@a2a-js/sdk/server';
-import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import { createDefaultRuntimeServices, type RuntimeTimers } from '@lostgradient/lifecycle';
 import {
   createAgent,
   type GenerateContext,
@@ -28,6 +28,22 @@ import { createA2ATaskRecords } from './a2a-task-record.ts';
 import { buildBureauHandlerHost } from './create-bureau-handler.ts';
 import { openBureau } from './management/management-fixtures.test-support.ts';
 import { respondToTask } from './management/tasks-respond-operation.ts';
+
+/** The blocking send's safety-net poll (`SETTLE_POLL_MS` in `a2a-request-handler.ts`). */
+const SETTLE_POLL_MILLISECONDS = 1_000;
+
+/**
+ * The runtime timers with that safety-net poll shortened. A park announces nothing the send waits
+ * on, so each blocking send in these tests sat out one whole poll (COR-1737); a faster poll only
+ * reads the task sooner, and every other timer keeps its real delay.
+ */
+function withFastSettlePoll(timers: RuntimeTimers): RuntimeTimers {
+  return {
+    ...timers,
+    setTimeout: (callback, milliseconds) =>
+      timers.setTimeout(callback, milliseconds === SETTLE_POLL_MILLISECONDS ? 10 : milliseconds),
+  };
+}
 
 export const deploySchema: HumanInputSchema = {
   type: 'object',
@@ -121,6 +137,7 @@ export async function open(
   });
   const handler = createBureauA2ARequestHandler({
     publicUrl: 'http://localhost',
+    timers: withFastSettlePoll(runtime.timers),
     agentName: 'asker',
     card: () => ({ ...card, supportedInterfaces: [], signatures: [] }),
     bureau,
