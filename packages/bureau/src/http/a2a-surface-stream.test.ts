@@ -480,7 +480,7 @@ describe('SubscribeToTask with a surface', () => {
         // surface when the registry's terminal update is ready.
         const list = kit.surfaces.list.bind(kit.surfaces);
         kit.surfaces.list = async (...args) => {
-          await new Promise((resolve) => setTimeout(resolve, 1500));
+          await new Promise((resolve) => setTimeout(resolve, 500));
           return list(...args);
         };
         await kit.answer(taskId);
