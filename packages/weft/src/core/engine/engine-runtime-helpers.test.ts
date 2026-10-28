@@ -94,7 +94,7 @@ describe('engine runtime helpers', () => {
     await using engine = new Engine({ storage });
     const reported: number[] = [];
     engine.addEventListener(StorageSizeReportedEvent.type, (event) => {
-      reported.push((event as StorageSizeReportedEvent).sizeBytes);
+      reported.push(event.sizeBytes);
     });
     const tracker = {
       disposed: false,
