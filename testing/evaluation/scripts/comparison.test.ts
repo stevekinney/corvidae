@@ -304,6 +304,22 @@ describe('runComparisonCommand', () => {
     ]);
   });
 
+  test('exits 2 when the report cannot be written', async () => {
+    const blocker = join(directory, 'not-a-directory');
+    await writeFile(blocker, 'a file where the report directory has to be');
+    const result = await run([
+      '--suite',
+      'fixture-vault-code',
+      '--report',
+      join(blocker, 'report.md'),
+    ]);
+    expect(result.exitCode).toBe(2);
+    // The evidence was already printed when the report failed, so the failure follows it.
+    expect(result.stdout).toContain('"kind": "collaboration-comparison-failure"');
+    expect(result.stdout).toContain('"decision": "infrastructure-failure"');
+    expect(result.stderr).toContain('The comparison itself failed:');
+  });
+
   test('exits 2 when the comparison machinery itself fails', async () => {
     const crashing = async () => {
       const scenario = await vaultCodeScenario();

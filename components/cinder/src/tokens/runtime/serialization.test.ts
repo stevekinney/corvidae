@@ -1,7 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { CorpusEntry } from './corpus.ts';
-import { renderBaseDeclarations, renderOverrideDeclarations } from './css-support.ts';
+import { DEFERRED_COMPONENT_ALIAS_FAMILIES } from './css-configuration.ts';
+import {
+  assertUniqueOverrideCssProperties,
+  isRootDeclaredEntry,
+  renderBaseDeclarations,
+  renderOverrideDeclarations,
+} from './css-support.ts';
 import { buildTokenRegistryFromIndexes, serializeTokenRegistry } from './registry.ts';
 import { serializeEntryValue } from './value-entry.ts';
 import { serializeTypedValue } from './value-formatters.ts';
@@ -38,6 +44,60 @@ describe('color serialization', () => {
     expect(() =>
       serializeTypedValue('color', { colorSpace: 'cmyk', components: [0, 0, 0] }, 'c'),
     ).toThrow('No direct CSS serialization implemented for color colorSpace "cmyk"');
+  });
+});
+
+describe('typed value serialization', () => {
+  test('refuses a value that is not the shape its type declares, naming the token', () => {
+    expect(() => serializeTypedValue('dimension', 'wide', 'size.wide')).toThrow(
+      'Token at "size.wide" has $type "dimension" but its $value is not a valid {value, unit} dimension.',
+    );
+    expect(() => serializeTypedValue('duration', 'slow', 'motion.slow')).toThrow(
+      'Token at "motion.slow" has $type "duration" but its $value is not a valid {value, unit} duration.',
+    );
+    expect(() => serializeTypedValue('fontFamily', 7, 'font.body')).toThrow(
+      'Token at "font.body" has $type "fontFamily" but its $value is not a valid string | string[] font family.',
+    );
+  });
+});
+
+describe('component alias declarations', () => {
+  const alias = (overrides: Partial<CorpusEntry> = {}) =>
+    entry('button.fill', { component: 'button', value: '{color.fill}', ...overrides });
+
+  test('declares every entry at the root while no component family defers its aliases', () => {
+    expect(isRootDeclaredEntry(alias())).toBe(true);
+  });
+
+  test('defers a bare alias of a deferred family and nothing else', () => {
+    DEFERRED_COMPONENT_ALIAS_FAMILIES.add('button');
+    try {
+      expect(isRootDeclaredEntry(alias())).toBe(false);
+      expect(isRootDeclaredEntry(alias({ cssRecipe: 'literal' }))).toBe(true);
+      expect(isRootDeclaredEntry(alias({ value: '1px' }))).toBe(true);
+      expect(isRootDeclaredEntry(alias({ component: 'card' }))).toBe(true);
+    } finally {
+      DEFERRED_COMPONENT_ALIAS_FAMILIES.delete('button');
+    }
+  });
+});
+
+describe('override property uniqueness', () => {
+  test('lets a failure that is not an Error through unchanged', () => {
+    const overrides = new Map([
+      ['a', entry('a', { cssProperty: '--shared' })],
+      ['b', entry('b', { cssProperty: '--shared' })],
+    ]);
+    const failure = 'resolver gave up';
+    let thrown: unknown;
+    try {
+      assertUniqueOverrideCssProperties(overrides, new Map(), new Map(), 'dark', () => {
+        throw failure;
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBe(failure);
   });
 });
 

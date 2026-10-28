@@ -127,6 +127,28 @@ describe('resolveTextDirection', () => {
     ).toBe('ltr');
   });
 
+  test('negates a style query with not', () => {
+    const resolveWithTheme = (theme: string, className: string) => {
+      const container = document.createElement('section');
+      container.style.setProperty('--theme', theme);
+      const element = document.createElement('div');
+      element.className = className;
+      container.append(element);
+      document.body.append(container);
+      const outerRule = createCssRule({
+        cssText: '@container not style(--theme: dark) {}',
+        type: 0,
+        conditionText: 'not style(--theme: dark)',
+        cssRules: [createStyleRule({ selectorText: `.${className}`, direction: 'ltr' })],
+      });
+      return withDocumentStyleSheets([{ cssRules: [outerRule] }], () =>
+        resolveTextDirection(element, 'rtl'),
+      );
+    };
+    expect(resolveWithTheme('light', 'negated-style-light-ltr')).toBe('ltr');
+    expect(resolveWithTheme('dark', 'negated-style-dark-ltr')).toBe('rtl');
+  });
+
   test('scans same-origin linked stylesheets inside a shadow root', () => {
     const host = document.createElement('div');
     const shadow = host.attachShadow({ mode: 'open' });
