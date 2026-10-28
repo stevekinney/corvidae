@@ -26,7 +26,6 @@ import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 import {
-  currentWorkspaceDirectory,
   rootAdmits,
   selectedFilesFor,
   SELECTION_VARIABLE,
@@ -108,28 +107,90 @@ export function partitionIntoShards(
   return shards;
 }
 
-function removeStaleReports(): void {
-  if (!existsSync(JUNIT_DIRECTORY)) return;
-  for (const name of readdirSync(JUNIT_DIRECTORY)) {
+function removeStaleReports(reportDirectory: string): void {
+  if (!existsSync(reportDirectory)) return;
+  for (const name of readdirSync(reportDirectory)) {
     // `ui.xml` is the single-process report this script replaced.
     if (name === 'ui.xml' || /^ui-\d+\.xml$/.test(name)) {
-      rmSync(join(JUNIT_DIRECTORY, name), { force: true });
+      rmSync(join(reportDirectory, name), { force: true });
     }
   }
 }
 
-async function main(argumentsList: readonly string[]): Promise<number> {
+/** The part of a `Bun.spawn` child this script reads, so a test can stand in for the process. */
+export interface ShardProcess {
+  stdout: ReadableStream<Uint8Array>;
+  stderr: ReadableStream<Uint8Array>;
+  exited: Promise<number>;
+  kill(signal?: NodeJS.Signals): void;
+}
+
+/** `Bun.spawn`, as far as this script uses it. */
+export type SpawnShard = (
+  command: string[],
+  options: {
+    cwd: string;
+    env: Record<string, string | undefined>;
+    stdout: 'pipe';
+    stderr: 'pipe';
+    stdin: 'ignore';
+  },
+) => ShardProcess;
+
+/**
+ * What {@link runUiShards} touches outside its arguments: the package, the environment, the
+ * process table, and output. Each defaults to the real thing; a test supplies its own.
+ */
+export interface ShardRunDependencies {
+  packageRoot?: string;
+  repositoryRoot?: string;
+  environment?: Record<string, string | undefined>;
+  spawn?: SpawnShard;
+  /** `process.on`: how the run learns that it is being stopped. */
+  subscribe?: (signal: NodeJS.Signals, handler: () => void) => unknown;
+  writeStandardOutput?: (text: string) => unknown;
+  writeStandardError?: (text: string) => unknown;
+}
+
+/** Stop every running shard when the run is interrupted or terminated, so none is orphaned. */
+export function forwardStopSignals(
+  children: ReadonlySet<ShardProcess>,
+  subscribe: NonNullable<ShardRunDependencies['subscribe']>,
+): void {
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+    subscribe(signal, () => {
+      for (const child of children) child.kill(signal);
+    });
+  }
+}
+
+/**
+ * Discover, narrow, partition, and run the UI test files, and return the exit code: the first
+ * nonzero code a shard returned, or zero.
+ */
+export async function runUiShards(
+  argumentsList: readonly string[],
+  dependencies: ShardRunDependencies = {},
+): Promise<number> {
+  const {
+    packageRoot = PACKAGE_ROOT,
+    repositoryRoot = REPOSITORY_ROOT,
+    environment = rootScriptEnvironment(),
+    spawn = Bun.spawn as unknown as SpawnShard,
+    subscribe = process.on.bind(process),
+    writeStandardOutput = process.stdout.write.bind(process.stdout),
+    writeStandardError = process.stderr.write.bind(process.stderr),
+  } = dependencies;
   const { flags, roots, ignorePatterns } = splitBunTestArguments(argumentsList);
-  const environment = rootScriptEnvironment();
-  const discovered = discoverTestFiles(PACKAGE_ROOT, roots, ignorePatterns);
   const files = narrowToSelection(
-    discovered,
-    selectedFilesFor(environment, currentWorkspaceDirectory(), REPOSITORY_ROOT),
+    discoverTestFiles(packageRoot, roots, ignorePatterns),
+    selectedFilesFor(environment, relative(repositoryRoot, packageRoot), repositoryRoot),
   );
-  mkdirSync(JUNIT_DIRECTORY, { recursive: true });
-  removeStaleReports();
+  const reportDirectory = join(packageRoot, JUNIT_DIRECTORY);
+  mkdirSync(reportDirectory, { recursive: true });
+  removeStaleReports(reportDirectory);
   if (files.length === 0) {
-    process.stdout.write(
+    writeStandardOutput(
       'run-ui-shards: no UI test file is reachable from the change; nothing to run.\n',
     );
     return 0;
@@ -139,19 +200,14 @@ async function main(argumentsList: readonly string[]): Promise<number> {
   const shardEnvironment: Record<string, string | undefined> = { ...environment };
   delete shardEnvironment[SELECTION_VARIABLE];
 
-  const wrapper = join(REPOSITORY_ROOT, 'scripts', 'bun-test-junit.ts');
+  const wrapper = join(repositoryRoot, 'scripts', 'bun-test-junit.ts');
   const shards = partitionIntoShards(files);
-  const children = new Set<ReturnType<typeof Bun.spawn>>();
-  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-    process.on(signal, () => {
-      for (const child of children) child.kill(signal);
-    });
-  }
+  const children = new Set<ShardProcess>();
+  forwardStopSignals(children, subscribe);
 
   const runs = shards.flatMap((shardFiles, index) => {
     if (shardFiles.length === 0) return [];
-    const label = `ui shard ${index + 1}/${shards.length}`;
-    const child = Bun.spawn(
+    const child = spawn(
       [
         'bun',
         wrapper,
@@ -159,10 +215,10 @@ async function main(argumentsList: readonly string[]): Promise<number> {
         ...flags,
         ...shardFiles.map((file) => `./${file}`),
       ],
-      { cwd: PACKAGE_ROOT, env: shardEnvironment, stdout: 'pipe', stderr: 'pipe', stdin: 'ignore' },
+      { cwd: packageRoot, env: shardEnvironment, stdout: 'pipe', stderr: 'pipe', stdin: 'ignore' },
     );
     children.add(child);
-    // A shard's output is held until it finishes, so four concurrent runs never interleave lines.
+    // A shard's output is held until it finishes, so concurrent runs never interleave lines.
     return [
       (async () => {
         const [standardOutput, standardError, exitCode] = await Promise.all([
@@ -171,9 +227,10 @@ async function main(argumentsList: readonly string[]): Promise<number> {
           child.exited,
         ]);
         children.delete(child);
-        process.stdout.write(`\n--- ${label}: ${shardFiles.length} files, exit ${exitCode} ---\n`);
-        process.stdout.write(standardOutput);
-        process.stderr.write(standardError);
+        writeStandardOutput(
+          `\n--- ui shard ${index + 1}/${shards.length}: ${shardFiles.length} files, exit ${exitCode} ---\n${standardOutput}`,
+        );
+        writeStandardError(standardError);
         return exitCode;
       })(),
     ];
@@ -182,4 +239,5 @@ async function main(argumentsList: readonly string[]): Promise<number> {
   return exitCodes.find((code) => code !== 0) ?? 0;
 }
 
-if (import.meta.main) process.exitCode = await main(Bun.argv.slice(2));
+// `exitCode` rather than `process.exit()`, so a failing run's output reaches a pipe in full.
+if (import.meta.main) process.exitCode = await runUiShards(Bun.argv.slice(2));
