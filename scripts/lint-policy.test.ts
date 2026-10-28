@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import { spawnWithHangGuard } from './hang-guard.ts';
+import { spawnWithHangGuard } from '../testing/testing/src/hang-guard.ts';
 import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
 import { directoryGlob, workspaceParentDirectories } from './workspace-directories.ts';
 

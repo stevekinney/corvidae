@@ -5,7 +5,7 @@ import {
   waitForRealTimersForTesting,
 } from '../../testing/fake-timers.test-support.ts';
 
-import { quietFor } from '../../../scripts/lib/wait-until.ts';
+import { quietFor } from '@lostgradient/testing/wait-until';
 import type {
   BatchOperation,
   ConditionalBatchCondition,

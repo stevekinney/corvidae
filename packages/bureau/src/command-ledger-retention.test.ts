@@ -25,7 +25,7 @@ import {
   type RunCreationReceiptLocation,
 } from './command-ledger';
 import { createMemoryStorageFixture } from './test/storage-fixtures';
-import { rejectionOf, throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { RunSummary } from './types';
 
 const ORIGIN = '2026-10-13T00:00:00.000Z';

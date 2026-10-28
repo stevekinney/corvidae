@@ -31,10 +31,10 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { awakeTurns } from '../../../scripts/lib/wait-until.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { deserializeCheckpoint, serializeCheckpoint } from '../checkpoint.ts';
 import type { ContextOperationRequest } from '../context.ts';
 import { Engine } from '../engine.ts';

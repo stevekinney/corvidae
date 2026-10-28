@@ -2,8 +2,8 @@ import { createTestToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation, type ConversationEvent, type Message } from 'conversationalist';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createOverflowMutator } from '../../src/retry/overflow-mutator';
-import { rejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 import type { GenerateContext } from '../../src/types';
 
 const overflow = new Error('context_length_exceeded');

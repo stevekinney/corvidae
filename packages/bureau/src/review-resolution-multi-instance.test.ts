@@ -35,7 +35,7 @@ import {
   textOf,
   writesDecisionRecord,
 } from './test/session-input-fixtures';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type {
   Bureau,
   BureauOptions,

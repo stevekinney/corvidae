@@ -14,7 +14,7 @@ import {
 } from '../index';
 import { alice, createAssetHarness, pngBytes } from '../testing/asset-fixtures.test-support';
 import { createMemoryAssetStorageFixture } from '../test/asset-storage-fixtures';
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS } from './records';
 
 const cleanups: Array<() => Promise<void>> = [];

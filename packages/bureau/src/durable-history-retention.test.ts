@@ -20,7 +20,7 @@ import { describe, expect, it } from 'bun:test';
 import { BureauError, createBureau } from './create-bureau';
 import { DURABLE_HISTORY_GAP_KIND } from './durable-event-history';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau, BureauOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 import { startTaskFrom } from './test/task-start-request.ts';

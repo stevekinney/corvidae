@@ -19,7 +19,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { AgentDefinitions } from './agent-catalog';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });

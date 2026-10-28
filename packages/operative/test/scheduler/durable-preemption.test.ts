@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { createCheckpointStore } from '../../src/durable/checkpoint-store';
 import { createRunEngine } from '../../src/durable/index';
@@ -20,7 +21,6 @@ import {
   spyEngine,
 } from '../../src/test/index';
 import { drainMicrotasks } from '../../src/testing/drain-microtasks.test-support.ts';
-import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 import type { GenerateFunction } from '../../src/types';
 
 function createNextToolbox() {

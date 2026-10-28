@@ -1,6 +1,7 @@
 import { MemoryStorage } from '@lostgradient/weft';
 import { beforeEach, describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createWeftEvidenceProjectionStorage } from '../src/create-weft-evidence-projection-storage';
 import type {
   EvidenceProjectionRecord,
@@ -25,7 +26,6 @@ import {
   promoteProcedure,
 } from '../src/procedure-promotion';
 import { retrieveProcedures } from '../src/procedure-retrieval';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import {
   createTransitionEngine,
   type TransitionEngine,

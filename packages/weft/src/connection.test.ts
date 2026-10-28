@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   ConnectionConfigurationError,
   DEFAULT_WEFT_ADDRESS,
@@ -11,7 +12,6 @@ import {
   writeRunLockfile,
 } from './connection.ts';
 import { setPortableRuntimeTestOverridesForTesting } from './runtime/portable.ts';
-import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 
 const created: string[] = [];
 

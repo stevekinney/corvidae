@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createEvidenceProjectionKeys } from '../src/evidence-projection-keys';
 import {
   EvidenceProjectionBatchLimitError,
@@ -8,7 +9,6 @@ import {
 } from '../src/evidence-projection-storage';
 import { MAX_COMMIT_BATCH_OPERATIONS } from '../src/evidence-projection-store-core';
 import { encodeEvidenceRecord } from '../src/evidence-schema';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import { makeInlineEvidence, TENANT } from './evidence-projection-fixtures';
 import { recordBatches, TRANSITION_BACKENDS } from './transition-backends';
 

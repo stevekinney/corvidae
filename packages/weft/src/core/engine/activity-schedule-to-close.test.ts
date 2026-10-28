@@ -10,7 +10,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { ActivityScheduleToCloseTimeoutError } from '../context/activity-schedule-to-close.ts';
 import { isActivityCallOptions } from '../context/session-state.ts';
 import { classifyErrorAsFailureCategory } from '../failure-categories.ts';

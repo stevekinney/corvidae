@@ -27,7 +27,7 @@ import { removeSkillRoots, skillCatalogOnDisk } from './skill-policy-fixtures.te
 import { runTask, waitForTaskState } from './test';
 import { AGENT_STEP, workflowFileText } from './testing/workflow-file-fixtures.test-support';
 import { startWorkflowBureau } from './testing/workflow-bureau.test-support';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau, BureauOptions } from './types';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 

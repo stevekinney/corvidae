@@ -26,6 +26,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createAnthropicBatchClient } from '../src/providers/batches/anthropic.ts';
 import { createGeminiBatchClient } from '../src/providers/batches/gemini.ts';
 import { createOpenAIBatchClient } from '../src/providers/batches/openai.ts';
@@ -41,7 +42,6 @@ import type {
   OpenAIBatch,
   OpenAIBatchClient,
 } from '../src/providers/types.ts';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 
 const PLACEHOLDER_TOKEN = 'placeholder-not-a-real-key-0000';
 

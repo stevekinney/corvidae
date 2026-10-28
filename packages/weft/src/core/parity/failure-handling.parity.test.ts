@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { TestEngine } from '../../testing/test-engine.ts';
 import { activity, workflow, type WorkflowContext } from '../types.ts';
 import { waitForParityCondition } from './real-timer-wait.test-support.ts';

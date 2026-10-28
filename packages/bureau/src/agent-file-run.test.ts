@@ -21,7 +21,7 @@ import {
   startFileBureau,
 } from './testing/agent-file-bureau.test-support';
 import { pollUntil } from './schedule-fire-fixtures.test-support';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { agentFileDirectory } from './sources/agent-file-directory';
 
 const harnesses: FileBureauHarness[] = [];

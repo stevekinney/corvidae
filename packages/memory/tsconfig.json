@@ -17,6 +17,9 @@
     },
     {
       "path": "../operative/tsconfig.source.json"
+    },
+    {
+      "path": "../../testing/testing/tsconfig.source.json"
     }
   ]
 }

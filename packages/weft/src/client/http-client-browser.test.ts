@@ -59,7 +59,7 @@ import { afterAll, describe, expect, it } from 'bun:test';
 import type { Browser, BrowserContext } from 'playwright';
 import { chromium } from 'playwright';
 
-import { spawnWithHangGuard } from '../../scripts/lib/hang-guard.ts';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { browserSmokeEnabled } from '../testing/browser-smoke-gate.test-support.ts';
 import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
 

@@ -1,5 +1,6 @@
 import { describe, expect, it, mock } from 'bun:test';
 
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   KEYS,
   storageValuesEqual,
@@ -8,7 +9,6 @@ import {
   type StorageCapabilities,
 } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { rejectionOf, throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { decode, encode } from '../codec.ts';
 import type { ContextOperationRequest } from '../context.ts';
 import { ActivityStartedEvent } from '../events.ts';

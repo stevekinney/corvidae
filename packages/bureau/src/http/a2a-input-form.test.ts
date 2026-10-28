@@ -11,7 +11,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { A2UI_EXTENSION_URI } from '../a2ui/catalogs.ts';
 import { waitForCondition } from '../test';
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { deploySchema, open, statusOf, userMessage } from './a2a-input-form.test-support.ts';
 import { respondToTask } from './management/tasks-respond-operation.ts';
 

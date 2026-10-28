@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { setPortableRuntimeTestOverridesForTesting } from '../runtime/portable.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   compressPayload,
   createBunCompressor,

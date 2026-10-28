@@ -52,7 +52,7 @@ import {
 } from './test/hoisted-scenario';
 import type { Bureau } from './types';
 import { unexpectedChildStderr } from './test/child-stderr';
-import { rejectionOf } from './testing/promise-outcome.test-support';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 
 const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
 const runtime = createDefaultRuntimeServices();

@@ -25,7 +25,7 @@ import { encodeStorageKeyComponent } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it, spyOn } from 'bun:test';
 
-import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { z } from 'zod';
 
 import { STEERABLE_MODELS } from './testing/default-agent.test-support';

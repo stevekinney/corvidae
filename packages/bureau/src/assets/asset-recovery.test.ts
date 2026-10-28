@@ -33,7 +33,7 @@ import {
   pngBytes,
   textBytes,
 } from '../testing/asset-fixtures.test-support';
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   AssetAdmissionError,
   AssetHeldError,

@@ -21,7 +21,7 @@ import type { AgentDefinitions } from './agent-catalog';
 import { BureauLedgerConflictError } from './command-ledger';
 import { BureauError, createBureau } from './create-bureau';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau, BureauOptions } from './types';
 import { startTaskFrom } from './test/task-start-request.ts';
 import { listHeldTasks } from './test';

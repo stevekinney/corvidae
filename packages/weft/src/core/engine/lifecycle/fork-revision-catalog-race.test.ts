@@ -36,9 +36,9 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS } from '../../../storage/interface.ts';
 import { MemoryStorage } from '../../../storage/memory.ts';
-import { throwingRejectionOf } from '../../../testing/promise-outcome.test-support.ts';
 import { ActivityRegistry } from '../../activity-registry.ts';
 import { decode, encode } from '../../codec.ts';
 import { Engine } from '../../engine.ts';

@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { Role, StreamResponse, type TaskPushNotificationConfig, TaskState } from '@a2a-js/sdk';
 import { ContentTypeNotSupportedError, RequestMalformedError } from '@a2a-js/sdk/errors';
 
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { A2APushConfigurationConflictError } from './store-errors.ts';
 import {
   callContext,

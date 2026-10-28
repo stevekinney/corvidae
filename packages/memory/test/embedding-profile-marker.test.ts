@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { consolidateProjections } from '../src/consolidate-projections';
 import { rebuildDerivedIndexes } from '../src/derived-indexes';
 import { createEvidenceProjectionKeys } from '../src/evidence-projection-keys';
@@ -12,7 +13,6 @@ import {
 import { EvidenceProjectionCommitError } from '../src/evidence-projection-storage';
 import { createEvidenceProjectionStoreCore } from '../src/evidence-projection-store-core';
 import { MemoryEvidenceValidationError } from '../src/evidence-schema';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import { createTransitionEngine } from '../src/transition-engine';
 import { makeAuthority, makeFact, makeInlineEvidence } from './evidence-projection-fixtures';
 import { recordBatches, TRANSITION_BACKENDS } from './transition-backends';

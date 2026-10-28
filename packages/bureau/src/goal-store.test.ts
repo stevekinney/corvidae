@@ -44,7 +44,7 @@ import {
   type GoalTransitionRequest,
   type GoalTransitionResult,
 } from './goal-store';
-import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 
 const GOAL = 'goal-1';
 

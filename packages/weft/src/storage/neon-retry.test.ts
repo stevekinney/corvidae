@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { NeonStorage } from './neon.ts';
 import type { PostgresPool, PostgresPoolClient } from './postgres.ts';
 import { bytes as encode } from './storage-adapter.test-support.ts';

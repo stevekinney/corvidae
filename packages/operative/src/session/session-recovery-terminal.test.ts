@@ -3,11 +3,11 @@ import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory } from 'conversationalist';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { AgentSession } from '../agent-session';
 import { AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION } from '../durable/run-workflow-result';
 import { SessionRecoverEvent, type OperativeEventMap } from '../events';
 import { UnsupportedRunResultVersionError } from '../run-envelope';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { createSessionEngine, type SessionEngineBehavior } from './session-engine-test-fixture';
 import { createSessionHandle } from './session-handle';
 import { reconcileTerminalRunRef } from './session-handle-support';

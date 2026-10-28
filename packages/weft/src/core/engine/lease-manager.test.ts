@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 
-import { quietFor, waitUntil } from '../../../scripts/lib/wait-until.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { KEYS, type Storage } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { yieldToPortableEventLoop } from '../../testing/event-loop.ts';
-import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { EngineLeaseAcquisitionTimeoutError, EngineLeaseCorruptedError } from './lease-errors.ts';
 import {
   createLeaseManager,

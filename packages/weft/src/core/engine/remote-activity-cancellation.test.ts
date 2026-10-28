@@ -17,9 +17,9 @@
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { serve, type WeftServer } from '../../server/index.ts';
 import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { RemoteWorker } from '../../worker/index.ts';
 import type { RemoteTaskRecord } from '../task-ledger/task-ledger.ts';
 import { decodeRemoteTaskRecord } from '../task-ledger/task-ledger.ts';

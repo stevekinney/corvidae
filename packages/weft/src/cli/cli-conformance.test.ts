@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { HANG_GUARD_MILLISECONDS } from '../../scripts/lib/hang-guard.ts';
+import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import { createRegisterCheck } from '../conformance/run-conformance.ts';
 import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
 import { executeConformance } from './index.ts';

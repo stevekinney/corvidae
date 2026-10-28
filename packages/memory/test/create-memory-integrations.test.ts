@@ -1,7 +1,7 @@
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { createMemory } from '../src/create-memory';
 import { createInMemoryMemoryRecordStorage, createMockEmbedder } from '../src/test/index';
-import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { TextSearchProvider } from '../src/text-search-provider';
 import type { Memory } from '../src/types';
 

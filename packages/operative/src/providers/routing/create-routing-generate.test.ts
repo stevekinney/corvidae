@@ -2,8 +2,8 @@ import { describe, expect, it } from 'bun:test';
 import type { MultiModalContent } from 'conversationalist';
 import { Conversation } from 'conversationalist';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { MediaAdmissionError } from '../../errors.ts';
-import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import {
   readBackendDescriptors,
   withBackendDescriptors,

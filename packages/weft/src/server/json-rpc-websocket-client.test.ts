@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitForMessage } from './json-rpc-websocket-client.test-support.ts';
 
 /**

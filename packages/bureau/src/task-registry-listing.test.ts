@@ -19,7 +19,7 @@ import {
   type TaskRegistry,
   type TaskView,
 } from './task-registry';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 
 const ALICE = 'api-key:alice';
 const BOB = 'api-key:bob';

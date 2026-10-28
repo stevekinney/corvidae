@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Engine } from '../core/engine.ts';
 import { handleRequest } from '../server/handler.ts';
 import { principalFromApiKey } from '../server/principal.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { HTTPStorage } from './http.ts';
 import { MemoryStorage } from './memory.ts';
 import { assertCapabilitiesShape } from './storage-adapter.test-support.ts';

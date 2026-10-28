@@ -13,6 +13,7 @@ import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { MemoryStorage } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   attenuateMemoryAuthority,
   createGovernedMemory,
@@ -28,7 +29,6 @@ import {
   MemoryRecordVersionConflictError,
   withEmbeddingCache,
 } from '../../src/index';
-import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 import {
   authority,
   createGovernedFixture,

@@ -26,8 +26,8 @@ import { minimalServeOptions, minimalServerContext } from './server-context.test
 import { dispatchTaskImpl, scheduleDelayedDispatch } from './task-dispatch.ts';
 import { commitTaskLedgerCompletion } from './task-ledger-completion.ts';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import type { ServerContext } from './context.ts';
 
 const createMinimalContext = minimalServerContext;

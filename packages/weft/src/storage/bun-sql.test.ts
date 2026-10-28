@@ -3,9 +3,9 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { spawnWithHangGuard } from '../../scripts/lib/hang-guard.ts';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { BunSQLiteStorage } from './bun-sql.ts';
 import {
   describeSqliteContentionViolations,

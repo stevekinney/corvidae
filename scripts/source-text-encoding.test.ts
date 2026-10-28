@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { runWithHangGuard } from './hang-guard.ts';
+import { runWithHangGuard } from '../testing/testing/src/hang-guard.ts';
 import { nulByteOffenders, nulOffsets } from './source-text-encoding';
 
 const root = join(import.meta.dir, '..');

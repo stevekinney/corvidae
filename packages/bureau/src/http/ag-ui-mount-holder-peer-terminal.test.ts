@@ -9,7 +9,7 @@ import { EventType } from '@ag-ui/core';
 import { describe, expect, it, spyOn } from 'bun:test';
 
 import { savesSessionAs, textOf } from '../test/session-input-fixtures.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   cancelRequest,
   type Harness,

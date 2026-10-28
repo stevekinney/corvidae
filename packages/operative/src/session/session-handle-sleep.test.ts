@@ -4,8 +4,8 @@ import type { Toolbox } from 'armorer';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { noToolCalls } from '../conditions';
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import type { GenerateFunction } from '../types';
 import { createSessionStore } from './create-session-store';
 import { createSessionHandle } from './session-handle';

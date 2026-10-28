@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { rebuildDerivedIndexes } from '../src/derived-indexes';
 import {
   EvidenceProjectionCommitError,
   type EvidenceProjectionStorage,
 } from '../src/evidence-projection-storage';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import {
   FIXED_AT,
   makeAuthority,

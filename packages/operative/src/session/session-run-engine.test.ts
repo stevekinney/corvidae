@@ -2,9 +2,9 @@ import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgr
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { noToolCalls } from '../conditions';
 import { drainMicrotasks } from '../testing/drain-microtasks.test-support.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import type { GenerateFunction } from '../types';
 import { createSessionStore } from './create-session-store';
 import { createSessionEngine } from './session-engine-test-fixture';

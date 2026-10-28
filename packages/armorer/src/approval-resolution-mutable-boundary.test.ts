@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   approvalResolutionSecret as approvalSecret,
   createCountingApprovalStateStore,
@@ -12,7 +13,6 @@ import {
 } from './approval-resolution-test-helpers';
 import { createTool, createToolCall } from './create-tool';
 import { createToolbox } from './create-toolbox';
-import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { SignedPendingToolApproval, ToolApprovalResolution } from './types';
 
 describe('approval resolution mutable caller boundaries', () => {

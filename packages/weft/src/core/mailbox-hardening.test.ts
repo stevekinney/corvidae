@@ -13,6 +13,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { collectKeys } from '../testing/storage-backends.test-support.ts';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Storage } from '../storage/interface.ts';
 import { KEYS } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
@@ -22,7 +23,6 @@ import {
   restoreRealTimers,
   useFakeTimers,
 } from '../testing/fake-timers.test-support.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { computePayloadDigest } from './application-payload-digest.ts';
 import { WaitBudgetElapsedError } from './application-primitive-abort.ts';
 import {

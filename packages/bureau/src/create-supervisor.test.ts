@@ -3,7 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { createAgentCatalog } from './agent-catalog';
 import { createSupervisor } from './create-supervisor';
 import { makeAgent, makeRunResult } from './supervisor-test-helpers';
-import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 describe('createSupervisor', () => {
   describe('delegate', () => {
     it('routes the task to the chosen agent and returns its result', async () => {
