@@ -1,31 +1,15 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
-import { describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { flushSync } from 'svelte';
 
-import type {
-  WorkflowEvent,
-  WorkflowEventTail,
-  WorkflowState,
-  WorkflowTimelineEntry,
-} from '@lostgradient/weft';
+import type { WorkflowEvent, WorkflowState, WorkflowTimelineEntry } from '@lostgradient/weft';
 
+import { installFetchImplementation } from '../../../lib/live-source/fetch.test-support.ts';
 import EventsTabHarness from './events-tab.test-harness.svelte';
 import {
   selectTimelineStep,
   timelineSelectionFor,
 } from './timeline/timeline-selection-store.svelte.ts';
-
-/** A fake tail that connects immediately and yields nothing — enough to exercise the wiring without needing the full reconnect-timing surface (already covered by `src/lib/live-source/workflow-tail-source.test.ts`). */
-class EmptyTail implements WorkflowEventTail {
-  whenConnected(): Promise<void> {
-    return Promise.resolve();
-  }
-  close(): void {}
-  async *#iterate(): AsyncGenerator<WorkflowEvent, void, void> {}
-  [Symbol.asyncIterator](): AsyncIterator<WorkflowEvent> {
-    return this.#iterate();
-  }
-}
 
 function workflow(overrides: Partial<WorkflowState> = {}): WorkflowState {
   return {
@@ -40,11 +24,39 @@ function workflow(overrides: Partial<WorkflowState> = {}): WorkflowState {
   };
 }
 
+/** Answers the live tail's SSE request with a quiet stream that completes its replay and then stays open, closing when the tail aborts — enough to exercise the wiring without needing the reconnect surface (covered by `src/lib/live-source/workflow-tail-source.test.ts`). */
+function quietTailResponse(signal: AbortSignal | undefined): Response {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(
+        new TextEncoder().encode(
+          `event: ping\ndata: ${JSON.stringify({ emittedAtMs: 0, replayComplete: true })}\n\n`,
+        ),
+      );
+      signal?.addEventListener('abort', () => controller.close(), { once: true });
+    },
+  });
+  return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } });
+}
+
+let restoreFetch: () => void;
+
+beforeEach(() => {
+  restoreFetch = installFetchImplementation(async (_input, init) =>
+    quietTailResponse(init?.signal ?? undefined),
+  );
+});
+
+afterEach(() => {
+  restoreFetch();
+});
+
 function client(events: WorkflowEvent[] = []) {
   return {
     getEvents: async (): Promise<WorkflowEvent[]> => events,
     getTimeline: async (): Promise<WorkflowTimelineEntry[]> => [],
-    tail: () => new EmptyTail(),
+    baseUrl: 'http://weft.test',
+    headers: {},
   };
 }
 

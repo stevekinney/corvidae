@@ -1,162 +1,180 @@
+import { quietFor } from '@lostgradient/testing/wait-until';
 import {
   WorkflowCompletedEvent,
   WorkflowStartedEvent,
   type WorkflowEvent,
-  type WorkflowEventTail,
 } from '@lostgradient/weft';
 import { waitFor } from '@testing-library/svelte';
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
 
-import { isTerminalWorkflowEventType } from './workflow-lifecycle-events.ts';
-import { WorkflowTailSource, type WorkflowEventTailOpener } from './workflow-tail-source.svelte.ts';
+import { installFetchImplementation } from './fetch.test-support.ts';
+import { WorkflowTailSource } from './workflow-tail-source.svelte.ts';
 
-/**
- * A fake `WorkflowEventTail`. Mirrors the real thing's key behavior for
- * testing purposes: pushing a terminal-typed event auto-ends the iteration
- * (matching `WorkflowEventTailLifecycle`'s real auto-close on
- * `WORKFLOW_TERMINAL_EVENT_TYPES`), and `end()` simulates a drop (iteration
- * ends without an explicit `close()` call) versus `close()` (consumer-
- * initiated, tracked via `closeCalls`).
- */
-class FakeWorkflowEventTail implements WorkflowEventTail {
-  closeCalls = 0;
+interface FetchCall {
+  readonly url: string;
+  readonly headers: Record<string, string>;
+}
 
-  readonly #queue: WorkflowEvent[] = [];
-  #waker: (() => void) | null = null;
-  #done = false;
-  readonly #connected = Promise.withResolvers<void>();
+/** One scripted SSE connection the test drives by hand: `push` writes raw SSE text, `drop` ends the stream the way a severed connection does. */
+class ScriptedConnection {
+  readonly response: Response;
+  #controller: ReadableStreamDefaultController<Uint8Array> | null = null;
+  readonly #encoder = new TextEncoder();
+  #ended = false;
 
-  markConnected(): void {
-    this.#connected.resolve();
+  constructor(signal: AbortSignal | undefined) {
+    const body = new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        this.#controller = controller;
+        signal?.addEventListener('abort', () => this.drop(), { once: true });
+      },
+    });
+    this.response = new Response(body, { headers: { 'Content-Type': 'text/event-stream' } });
   }
 
-  whenConnected(): Promise<void> {
-    return this.#connected.promise;
+  push(chunk: string): void {
+    if (!this.#ended) this.#controller?.enqueue(this.#encoder.encode(chunk));
   }
 
-  push(frame: WorkflowEvent): void {
-    this.#queue.push(frame);
-    this.#wake();
-    if (isTerminalWorkflowEventType(frame.type)) this.end();
-  }
-
-  /** Simulates a drop: iteration ends, but not via consumer `close()`. */
-  end(): void {
-    this.#done = true;
-    this.#wake();
-  }
-
-  close(): void {
-    this.closeCalls += 1;
-    this.end();
-  }
-
-  #wake(): void {
-    const waker = this.#waker;
-    this.#waker = null;
-    waker?.();
-  }
-
-  [Symbol.asyncIterator](): AsyncIterator<WorkflowEvent> {
-    return this.#iterate();
-  }
-
-  async *#iterate(): AsyncGenerator<WorkflowEvent, void, void> {
-    while (true) {
-      while (this.#queue.length > 0) yield this.#queue.shift()!;
-      if (this.#done) return;
-      await new Promise<void>((resolve) => {
-        this.#waker = resolve;
-      });
+  drop(): void {
+    if (this.#ended) return;
+    this.#ended = true;
+    try {
+      this.#controller?.close();
+    } catch {
+      // Already closed or errored.
     }
   }
 }
 
-class ScriptedTailOpener implements WorkflowEventTailOpener {
-  readonly calls: string[] = [];
-  readonly #tails: (() => WorkflowEventTail)[] = [];
+/** Scripts `globalThis.fetch`, recording every request so tests can assert the URL and the `Last-Event-ID` each (re)connect sent. */
+class ScriptedFetch {
+  readonly calls: FetchCall[] = [];
+  readonly connections: ScriptedConnection[] = [];
+  readonly signals: (AbortSignal | undefined)[] = [];
+  readonly #restore: () => void;
+  #respond: ((signal: AbortSignal | undefined) => Response) | null = null;
 
-  enqueue(factory: () => WorkflowEventTail): void {
-    this.#tails.push(factory);
+  constructor() {
+    this.#restore = installFetchImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      this.signals.push(init?.signal ?? undefined);
+      this.calls.push({ url, headers: Object.fromEntries(new Headers(init?.headers).entries()) });
+      if (this.#respond !== null) return this.#respond(init?.signal ?? undefined);
+      const connection = new ScriptedConnection(init?.signal ?? undefined);
+      this.connections.push(connection);
+      return connection.response;
+    });
   }
 
-  tail(id: string): WorkflowEventTail {
-    this.calls.push(id);
-    const factory = this.#tails.shift();
-    if (factory === undefined) throw new Error('ScriptedTailOpener: no more tails queued');
-    return factory();
+  /** Answers every request with `respond` instead of a scripted connection. */
+  respondWith(respond: (signal: AbortSignal | undefined) => Response): void {
+    this.#respond = respond;
+  }
+
+  restore(): void {
+    this.#restore();
   }
 }
 
-function event(type: string, data: Record<string, unknown> = {}): WorkflowEvent {
-  return { type, timestamp: Date.now(), data };
+function envelope(cursor: string, kind: string, payload: Record<string, unknown> = {}): string {
+  const body = {
+    kind,
+    workflowId: 'wf_1',
+    selector: 'events',
+    sequence: Number(cursor.replace(/\D/g, '')),
+    cursor,
+    emittedAtMs: 1_000,
+    payload,
+  };
+  return `id: ${cursor}\nevent: ${kind}\ndata: ${JSON.stringify(body)}\n\n`;
 }
 
-/** Yields past pending microtasks/promise resolutions — for asserting a fake tail's internal `for await` had a chance to resume after `push()`, when there's no other observable condition to poll. */
-// load-proof: the scripted tail is an in-memory async iterator, so its for-await resumes through promise reactions alone
-function settle(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
+const REPLAY_COMPLETE = `event: ping\ndata: ${JSON.stringify({ emittedAtMs: 0, replayComplete: true })}\n\n`;
+
+let scripted: ScriptedFetch;
+
+function open(options: ConstructorParameters<typeof WorkflowTailSource>[2] = {}) {
+  return new WorkflowTailSource(
+    { baseUrl: 'http://weft.test/', headers: { Authorization: 'Bearer test' } },
+    'wf_1',
+    { computeReconnectDelayMs: () => 1, ...options },
+  );
 }
+
+afterEach(() => {
+  scripted.restore();
+});
 
 describe('WorkflowTailSource', () => {
-  test('opens client.tail(id) once, immediately, at construction', () => {
-    const opener = new ScriptedTailOpener();
-    const tail = new FakeWorkflowEventTail();
-    opener.enqueue(() => tail);
+  const setup = () => {
+    scripted = new ScriptedFetch();
+  };
 
-    const source = new WorkflowTailSource(opener, 'wf_1');
-    expect(opener.calls).toEqual(['wf_1']);
+  test('requests the per-workflow SSE URL with the caller headers and no cursor on first connect', async () => {
+    setup();
+    const source = open();
+    await waitFor(() => expect(scripted.calls).toHaveLength(1));
+    expect(scripted.calls[0]?.url).toBe('http://weft.test/v1/workflows/wf_1/events/sse');
+    expect(scripted.calls[0]?.headers['authorization']).toBe('Bearer test');
+    expect(scripted.calls[0]?.headers['accept']).toBe('text/event-stream');
+    expect(scripted.calls[0]?.headers['last-event-id']).toBeUndefined();
     expect(source.status).toBe('connecting');
     source.close();
   });
 
-  test('whenConnected resolves and status becomes live once the tail connects', async () => {
-    const opener = new ScriptedTailOpener();
-    const tail = new FakeWorkflowEventTail();
-    opener.enqueue(() => tail);
-
-    const source = new WorkflowTailSource(opener, 'wf_1');
-    tail.markConnected();
+  test('whenConnected resolves and status becomes live once the replay completes', async () => {
+    setup();
+    const source = open();
+    await waitFor(() => expect(scripted.connections).toHaveLength(1));
+    scripted.connections[0]?.push(REPLAY_COMPLETE);
     await source.whenConnected();
     expect(source.status).toBe('live');
     source.close();
   });
 
-  test('delivers frames pushed after subscribe, in order', async () => {
-    const opener = new ScriptedTailOpener();
-    const tail = new FakeWorkflowEventTail();
-    opener.enqueue(() => tail);
-
-    const source = new WorkflowTailSource(opener, 'wf_1');
+  test('delivers frames pushed after subscribe, in order, as WorkflowEvents', async () => {
+    setup();
+    const source = open();
     const received: WorkflowEvent[] = [];
     source.subscribe((frame) => received.push(frame));
-    tail.markConnected();
-    await source.whenConnected();
+    await waitFor(() => expect(scripted.connections).toHaveLength(1));
+    scripted.connections[0]?.push(envelope('c1', 'activity:started', { name: 'a' }));
+    scripted.connections[0]?.push(envelope('c2', 'activity:completed', { name: 'a' }));
 
-    tail.push(event('activity:started', { name: 'a' }));
-    tail.push(event('activity:completed', { name: 'a' }));
+    await waitFor(() => expect(received).toHaveLength(2));
+    expect(received).toEqual([
+      { type: 'activity:started', timestamp: 1_000, data: { name: 'a' } },
+      { type: 'activity:completed', timestamp: 1_000, data: { name: 'a' } },
+    ]);
+    source.close();
+  });
 
-    await waitFor(() => {
-      expect(received).toHaveLength(2);
-    });
-    expect(received.map((e) => e.type)).toEqual(['activity:started', 'activity:completed']);
+  test('ignores frames for another workflow and malformed frames', async () => {
+    setup();
+    const source = open();
+    const received: WorkflowEvent[] = [];
+    source.subscribe((frame) => received.push(frame));
+    await waitFor(() => expect(scripted.connections).toHaveLength(1));
+    const other = envelope('c1', 'activity:started').replace('"wf_1"', '"wf_other"');
+    scripted.connections[0]?.push(other);
+    scripted.connections[0]?.push('id: c2\nevent: activity:started\ndata: not json\n\n');
+    scripted.connections[0]?.push(envelope('c3', 'activity:completed'));
+
+    await waitFor(() => expect(received).toHaveLength(1));
+    expect(received[0]?.type).toBe('activity:completed');
     source.close();
   });
 
   test('buffers frames that arrive before subscribe(), then flushes them in order on subscribe', async () => {
-    const opener = new ScriptedTailOpener();
-    const tail = new FakeWorkflowEventTail();
-    opener.enqueue(() => tail);
-
-    const source = new WorkflowTailSource(opener, 'wf_1');
-    tail.markConnected();
+    setup();
+    const source = open();
+    await waitFor(() => expect(scripted.connections).toHaveLength(1));
+    scripted.connections[0]?.push(envelope('c1', 'activity:started'));
+    scripted.connections[0]?.push(envelope('c2', 'activity:completed'));
+    scripted.connections[0]?.push(REPLAY_COMPLETE);
     await source.whenConnected();
-    tail.push(event('activity:started'));
-    tail.push(event('activity:completed'));
-    // Pushing wakes the internal `for await` synchronously, but it needs a
-    // real tick to actually resume and pull the queued events into the
-    // pre-attach buffer before anyone has subscribed.
-    await settle();
+    await waitFor(() => expect(source.status).toBe('live'));
 
     const received: WorkflowEvent[] = [];
     source.subscribe((frame) => received.push(frame));
@@ -165,18 +183,13 @@ describe('WorkflowTailSource', () => {
   });
 
   test('drops the oldest buffered frame and reports "stale" once the pre-attach buffer overflows', async () => {
-    const opener = new ScriptedTailOpener();
-    const tail = new FakeWorkflowEventTail();
-    opener.enqueue(() => tail);
-
-    const source = new WorkflowTailSource(opener, 'wf_1', { bufferLimit: 3 });
-    tail.markConnected();
-    await source.whenConnected();
-
-    for (let index = 0; index < 5; index += 1) tail.push(event('activity:started', { index }));
-    await waitFor(() => {
-      expect(source.status).toBe('stale');
-    });
+    setup();
+    const source = open({ bufferLimit: 3 });
+    await waitFor(() => expect(scripted.connections).toHaveLength(1));
+    for (let index = 0; index < 5; index += 1) {
+      scripted.connections[0]?.push(envelope(`c${index}`, 'activity:started', { index }));
+    }
+    await waitFor(() => expect(source.status).toBe('stale'));
 
     const received: WorkflowEvent[] = [];
     source.subscribe((frame) => received.push(frame));
@@ -186,12 +199,9 @@ describe('WorkflowTailSource', () => {
     source.close();
   });
 
-  test('subscribe throws when a subscriber is already attached; unsubscribing frees the slot', async () => {
-    const opener = new ScriptedTailOpener();
-    const tail = new FakeWorkflowEventTail();
-    opener.enqueue(() => tail);
-
-    const source = new WorkflowTailSource(opener, 'wf_1');
+  test('subscribe throws when a subscriber is already attached; unsubscribing frees the slot', () => {
+    setup();
+    const source = open();
     const unsubscribe = source.subscribe(() => {});
     expect(() => source.subscribe(() => {})).toThrow(/only one subscriber/);
 
@@ -200,110 +210,135 @@ describe('WorkflowTailSource', () => {
     source.close();
   });
 
-  test('reconnects after a drop with positional dedup — the subscriber sees each frame exactly once', async () => {
-    const opener = new ScriptedTailOpener();
-    const firstTail = new FakeWorkflowEventTail();
-    opener.enqueue(() => firstTail);
-
-    const source = new WorkflowTailSource(opener, 'wf_1', { computeReconnectDelayMs: () => 1 });
+  test('reconnects mid-stream from the last cursor: no event is delivered twice and none is skipped', async () => {
+    setup();
+    const source = open();
     const received: WorkflowEvent[] = [];
     source.subscribe((frame) => received.push(frame));
-    firstTail.markConnected();
-    await source.whenConnected();
-    firstTail.push(event('activity:started', { name: 'a' }));
-    await waitFor(() => {
-      expect(received).toHaveLength(1);
-    });
+    await waitFor(() => expect(scripted.connections).toHaveLength(1));
+    scripted.connections[0]?.push(envelope('c1', 'step:one'));
+    scripted.connections[0]?.push(envelope('c2', 'step:two'));
+    scripted.connections[0]?.push(REPLAY_COMPLETE);
+    await waitFor(() => expect(received).toHaveLength(2));
 
-    // Simulate a drop, then a reconnect whose `client.tail()` call replays
-    // the FULL history from the start (real weft `client.tail()` behavior)
-    // plus one genuinely new event.
-    const secondTail = new FakeWorkflowEventTail();
-    opener.enqueue(() => secondTail);
-    firstTail.end();
+    // The connection is severed mid-stream. The server replays strictly after
+    // the `Last-Event-ID` it is given, so the second connection carries only
+    // what the first never delivered.
+    scripted.connections[0]?.drop();
+    await waitFor(() => expect(scripted.connections).toHaveLength(2));
+    expect(scripted.calls[1]?.headers['last-event-id']).toBe('c2');
+    scripted.connections[1]?.push(envelope('c3', 'step:three'));
+    scripted.connections[1]?.push(envelope('c4', 'step:four'));
+    await waitFor(() => expect(received).toHaveLength(4));
 
-    await waitFor(() => {
-      expect(opener.calls).toEqual(['wf_1', 'wf_1']);
-    });
-    secondTail.markConnected();
-    secondTail.push(event('activity:started', { name: 'a' })); // replayed — already delivered
-    secondTail.push(event('activity:completed', { name: 'a' })); // genuinely new
+    // A second drop resumes from the newest cursor, not the first reconnect's.
+    scripted.connections[1]?.drop();
+    await waitFor(() => expect(scripted.connections).toHaveLength(3));
+    expect(scripted.calls[2]?.headers['last-event-id']).toBe('c4');
+    scripted.connections[2]?.push(envelope('c5', 'step:five'));
+    await waitFor(() => expect(received).toHaveLength(5));
 
-    await waitFor(() => {
-      expect(received).toHaveLength(2);
-    });
-    expect(received.map((e) => e.type)).toEqual(['activity:started', 'activity:completed']);
+    expect(received.map((e) => e.type)).toEqual([
+      'step:one',
+      'step:two',
+      'step:three',
+      'step:four',
+      'step:five',
+    ]);
+    source.close();
+  });
+
+  test('keeps the cursor of the last delivered event across a reconnect that delivers nothing', async () => {
+    setup();
+    const source = open();
+    source.subscribe(() => {});
+    await waitFor(() => expect(scripted.connections).toHaveLength(1));
+    scripted.connections[0]?.push(envelope('c7', 'step:one'));
+    await waitFor(() => expect(source.status).toBe('live'));
+    scripted.connections[0]?.drop();
+    await waitFor(() => expect(scripted.connections).toHaveLength(2));
+    scripted.connections[1]?.push(REPLAY_COMPLETE);
+    scripted.connections[1]?.drop();
+    await waitFor(() => expect(scripted.connections).toHaveLength(3));
+    expect(scripted.calls.map((call) => call.headers['last-event-id'])).toEqual([
+      undefined,
+      'c7',
+      'c7',
+    ]);
     source.close();
   });
 
   test('settles to closed (does not reconnect) once a terminal workflow event is observed', async () => {
-    const opener = new ScriptedTailOpener();
-    const tail = new FakeWorkflowEventTail();
-    opener.enqueue(() => tail);
-
-    const source = new WorkflowTailSource(opener, 'wf_1', { computeReconnectDelayMs: () => 1 });
+    setup();
+    const source = open();
     const received: WorkflowEvent[] = [];
     source.subscribe((frame) => received.push(frame));
-    tail.markConnected();
+    await waitFor(() => expect(scripted.connections).toHaveLength(1));
+    scripted.connections[0]?.push(envelope('c1', WorkflowStartedEvent.type));
+    scripted.connections[0]?.push(envelope('c2', WorkflowCompletedEvent.type, { result: 'ok' }));
+
+    await waitFor(() => expect(source.status).toBe('closed'));
     await source.whenConnected();
-
-    tail.push(event(WorkflowStartedEvent.type));
-    tail.push(event(WorkflowCompletedEvent.type, { result: 'ok' }));
-
-    await waitFor(() => {
-      expect(source.status).toBe('closed');
-    });
     expect(received.map((e) => e.type)).toEqual([
       WorkflowStartedEvent.type,
       WorkflowCompletedEvent.type,
     ]);
-    // No reconnect attempt — the opener was called exactly once.
-    expect(opener.calls).toEqual(['wf_1']);
+    expect(scripted.calls).toHaveLength(1);
+  });
+
+  test('aborts the request once a terminal workflow event ends the tail', async () => {
+    setup();
+    const source = open();
+    source.subscribe(() => {});
+    await waitFor(() => expect(scripted.connections).toHaveLength(1));
+    expect(scripted.signals[0]?.aborted).toBe(false);
+    scripted.connections[0]?.push(envelope('c1', WorkflowCompletedEvent.type));
+
+    await waitFor(() => expect(source.status).toBe('closed'));
+    expect(scripted.signals[0]?.aborted).toBe(true);
   });
 
   test('status is "reconnecting" during the backoff window after a drop', async () => {
-    const opener = new ScriptedTailOpener();
-    const firstTail = new FakeWorkflowEventTail();
-    opener.enqueue(() => firstTail);
-    const secondTail = new FakeWorkflowEventTail();
-    opener.enqueue(() => secondTail);
-
-    const source = new WorkflowTailSource(opener, 'wf_1', { computeReconnectDelayMs: () => 20 });
+    setup();
+    const source = open({ computeReconnectDelayMs: () => 60_000 });
     source.subscribe(() => {});
-    firstTail.markConnected();
+    await waitFor(() => expect(scripted.connections).toHaveLength(1));
+    scripted.connections[0]?.push(REPLAY_COMPLETE);
     await source.whenConnected();
-    firstTail.end();
+    scripted.connections[0]?.drop();
 
-    await waitFor(() => {
-      expect(source.status).toBe('reconnecting');
-    });
+    await waitFor(() => expect(source.status).toBe('reconnecting'));
     source.close();
   });
 
-  test('close() closes the underlying tail, stops reconnecting, and settles whenConnected', () => {
-    const opener = new ScriptedTailOpener();
-    const tail = new FakeWorkflowEventTail();
-    opener.enqueue(() => tail);
-
-    const source = new WorkflowTailSource(opener, 'wf_1');
+  test('a non-event-stream or failed response schedules a reconnect instead of crashing', async () => {
+    setup();
+    scripted.respondWith(() => new Response('nope', { status: 503 }));
+    const source = open();
+    await waitFor(() => expect(scripted.calls.length).toBeGreaterThanOrEqual(2));
+    expect(source.status).toBe('reconnecting');
     source.close();
-    expect(tail.closeCalls).toBe(1);
+  });
+
+  test('a fetch that rejects schedules a reconnect instead of crashing', async () => {
+    setup();
+    scripted.respondWith(() => {
+      throw new Error('transient failure opening the stream');
+    });
+    const source = open();
+    await waitFor(() => expect(scripted.calls.length).toBeGreaterThanOrEqual(2));
+    source.close();
+  });
+
+  test('close() aborts the request, stops reconnecting, and settles whenConnected', async () => {
+    setup();
+    const source = open();
+    await waitFor(() => expect(scripted.connections).toHaveLength(1));
+    source.close();
     expect(source.status).toBe('closed');
+    await source.whenConnected();
     expect(() => source.close()).not.toThrow();
-  });
-
-  test('opener throwing synchronously schedules a reconnect instead of crashing', async () => {
-    const opener: WorkflowEventTailOpener = {
-      tail(id: string): WorkflowEventTail {
-        void id;
-        throw new Error('transient failure opening tail');
-      },
-    };
-
-    const source = new WorkflowTailSource(opener, 'wf_1', { computeReconnectDelayMs: () => 1 });
-    await waitFor(() => {
-      expect(source.status).toBe('reconnecting');
-    });
-    source.close();
+    await quietFor(50);
+    expect(scripted.calls).toHaveLength(1);
   });
 });
