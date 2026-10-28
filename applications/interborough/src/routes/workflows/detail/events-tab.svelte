@@ -1,8 +1,8 @@
 <script lang="ts">
   /**
    * Events tab (plan T2.5, §9.2): `Feed` (`kind="log"`) + live tail via
-   * `WorkflowTailSource`, cursor resume (owned by `WorkflowTailSource`
-   * itself), and the Download menu (§G: "Event history · JSON" / "Events +
+   * `WorkflowTailSource`, cursor resume (`Last-Event-ID`, owned by
+   * `WorkflowTailSource` itself), and the Download menu (§G: "Event history · JSON" / "Events +
    * timeline · JSON", pure client-side over `GET …/events`).
    *
    * ## Checkpoint markers, not a rich event stream
@@ -68,7 +68,6 @@
     applyWorkflowTailFrame,
     workflowEventsKey,
   } from '../../../lib/live-source/cache-integration.ts';
-  import type { WorkflowEventTailOpener } from '../../../lib/live-source/workflow-tail-source.svelte.ts';
   import { WorkflowTailSource } from '../../../lib/live-source/workflow-tail-source.svelte.ts';
   import { stepNumberFromRunStepId } from './timeline/timeline-mapping.ts';
   import {
@@ -84,7 +83,7 @@
   import { isTerminalStatus } from './workflow-status.ts';
 
   interface EventsTabProps {
-    readonly client: Pick<HttpClient, 'getEvents' | 'getTimeline'> & WorkflowEventTailOpener;
+    readonly client: Pick<HttpClient, 'getEvents' | 'getTimeline' | 'baseUrl' | 'headers'>;
     readonly workflow: WorkflowState;
   }
 

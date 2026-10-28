@@ -119,7 +119,7 @@ Two dashboard issues own work that no `tracked` row can carry today. COR-162 (co
 | `weft.workflows.update` | exposed | `src/routes/workflows/detail/updates/updates-data.ts` |  | `src/routes/workflows/detail/updates-tab.test.ts` | COR-1463 |  |
 | `weft.workflows.updates.list` | exposed | `src/routes/workflows/detail/updates/updates-data.ts` |  | `src/routes/workflows/detail/updates-tab.test.ts` | COR-1463 |  |
 | `feed:workflow-events:sse` | exposed | `src/lib/live-source/workflow-tail-source.svelte.ts` |  | `src/lib/live-source/workflow-tail-source.test.ts` |  |  |
-| `feed:workflow-events:websocket` | exposed | `src/lib/live-source/workflow-tail-source.svelte.ts` |  | `src/lib/live-source/workflow-tail-source.test.ts` |  |  |
+| `feed:workflow-events:websocket` | not-in-dashboard |  |  |  |  | The workflow tail reads the per-workflow feed over SSE so it can resume from its last cursor with `Last-Event-ID`, and the `/watch` WebSocket channel is live-only and carries no cursor. |
 | `feed:fleet-events:sse` | exposed | `src/lib/live-source/fleet-event-source.svelte.ts` |  | `src/lib/live-source/fleet-event-source.test.ts` |  |  |
 | `feed:fleet-events:websocket` | not-in-dashboard |  |  |  |  | The dashboard reads the fleet feed over SSE, which carries the same fleet events as the `weft.events.subscribe` WebSocket subscription. |
 | `metrics:prometheus` | not-in-dashboard |  |  |  |  | `GET /v1/metrics` serves Prometheus text for a scraper, and the Metrics tab reads the same collector as JSON through `weft.system.metrics`. |
