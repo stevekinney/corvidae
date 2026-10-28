@@ -7,7 +7,8 @@
  * because running the suite under coverage inside the suite would measure nothing but itself.
  */
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -22,6 +23,7 @@ import {
   uiCoverageExitCode,
   type StartUiCoverageRun,
 } from './check-coverage-cli.ts';
+import { UI_COVERAGE_DIRECTORY } from './check-coverage.ts';
 import type { CoverageBaseline } from './coverage-baseline.ts';
 
 /** One LCOV record for `file` with the given line and function counts. */
@@ -197,6 +199,28 @@ describe('the coverage gate', () => {
       expect(await readUiCoverageReport(report)).toBeUndefined();
     } finally {
       await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  test('measures from the default report directory and the default spawner when given no options', async () => {
+    // `measureUiCoverage()` with nothing is how the command line runs it: it deletes the real
+    // `coverage/ui` and spawns the whole suite. The spawner is replaced, so nothing runs, and a
+    // report already there is moved aside for the call and put back after it.
+    const reportDirectory = join(import.meta.dir, '..', UI_COVERAGE_DIRECTORY);
+    const aside = `${reportDirectory}.aside-${process.pid}`;
+    const hadReport = existsSync(reportDirectory);
+    if (hadReport) await rename(reportDirectory, aside);
+    const spawner = spyOn(Bun, 'spawn').mockImplementation((() => ({
+      exited: Promise.resolve(5),
+    })) as unknown as typeof Bun.spawn);
+    try {
+      expect(await measureUiCoverage()).toBe(5);
+      expect(spawner).toHaveBeenCalledTimes(1);
+      expect(spawner.mock.calls[0]?.[0]).toEqual(['bun', 'scripts/run-coverage.ts']);
+      expect(existsSync(reportDirectory)).toBe(false);
+    } finally {
+      spawner.mockRestore();
+      if (hadReport) await rename(aside, reportDirectory);
     }
   });
 });
