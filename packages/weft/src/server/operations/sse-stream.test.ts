@@ -283,7 +283,7 @@ describe('Server-Sent Event stream teardown', () => {
     });
     const reader = stream.getReader();
 
-    await expect(reader.cancel()).resolves.toBeUndefined();
+    expect(await reader.cancel()).toBeUndefined();
   });
 
   it('ends the response at the maximum duration and tolerates a second deadline tick', async () => {

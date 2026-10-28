@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+
 import type { WeftServer } from './index.ts';
 import { collectWebSocketDeliveredEnvelopes } from './json-rpc-websocket-client.test-support.ts';
 
@@ -60,8 +62,10 @@ describe('collectWebSocketDeliveredEnvelopes', () => {
   it('rejects once the wait budget passes without enough envelopes', async () => {
     const server = startFakeEndpoint(() => {});
 
-    await expect(
-      collectWebSocketDeliveredEnvelopes(server, 'wf-1', 1, 'unused-key', 'timeout', 50),
-    ).rejects.toThrow('collectWebSocketDeliveredEnvelopes timed out');
+    expect(
+      await throwingRejectionOf(
+        collectWebSocketDeliveredEnvelopes(server, 'wf-1', 1, 'unused-key', 'timeout', 50),
+      ),
+    ).toThrow('collectWebSocketDeliveredEnvelopes timed out');
   });
 });
