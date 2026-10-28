@@ -92,11 +92,8 @@ export function createChatSessionController(
       try {
         callback(handlers);
       } catch (error) {
-        try {
-          reportError(error);
-        } catch {
-          /* observers are isolated */
-        }
+        // `reportError` isolates the error observer itself, so nothing here can throw.
+        reportError(error);
       }
     }
   };

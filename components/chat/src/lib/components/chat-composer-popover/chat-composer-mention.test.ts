@@ -1276,4 +1276,29 @@ describe('chat composer mentions', () => {
       ],
     });
   });
+
+  test('keeps a mention literal inside an HTML block that opens in a deeper quote or list than the line before it', () => {
+    for (const opener of ['> <custom>\n> [Ada](person:ada)', '- <custom>\n  [Ada](person:ada)']) {
+      const text = `intro\n${opener}\n\nafter Ada`;
+      const start = text.lastIndexOf('Ada');
+      expect(parseChatComposerMentions(`intro\n${opener}\n\nafter [Ada](person:ada)`)).toEqual({
+        text,
+        mentions: [{ label: 'Ada', uri: 'person:ada', start, end: start + 3 }],
+      });
+    }
+    // Outside any container the paragraph above keeps the same tag from opening an HTML block.
+    expect(parseChatComposerMentions('intro\n<custom>\n[Ada](person:ada)')).toEqual({
+      text: 'intro\n<custom>\nAda',
+      mentions: [{ label: 'Ada', uri: 'person:ada', start: 15, end: 18 }],
+    });
+  });
+
+  test('leaves a label alone whose emphasis the rule of three refuses to pair', () => {
+    // The `*` and the `**` are each able to open and to close, and 1 + 2 is a multiple of 3 with
+    // neither run a multiple of 3, so they do not pair: the `**` is left without a partner.
+    expect(parseChatComposerMentions('[a*b**c](person:a)')).toEqual({
+      text: '[a*b**c](person:a)',
+      mentions: [],
+    });
+  });
 });
