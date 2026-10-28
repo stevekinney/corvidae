@@ -48,8 +48,9 @@ const fixture = /* js */ `
   console.log(JSON.stringify({ deadContextCleanups }));
 `;
 
-test('a FinalizationRegistry cleanup job is dropped when its realm dies before the job runs', async () => {
-  const completed = await runWithHangGuard([process.execPath, '-e', fixture]);
+const completed = await runWithHangGuard([process.execPath, '-e', fixture]);
+
+test('a FinalizationRegistry cleanup job is dropped when its realm dies before the job runs', () => {
   expect({
     standardOutput: completed.stdout.toString().trim(),
     standardError: completed.stderr.toString(),
