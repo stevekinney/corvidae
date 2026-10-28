@@ -4,7 +4,7 @@
  * bundler (driven through a fake bundler). The real build, which bundles for seconds, is in
  * `build.slow.test.ts`.
  */
-import { afterAll, describe, expect, it } from 'bun:test';
+import { afterAll, describe, expect, it, spyOn } from 'bun:test';
 import {
   existsSync,
   mkdirSync,
@@ -21,6 +21,7 @@ import { dirname, join, resolve } from 'node:path';
 import { rejectionOf } from '@lostgradient/testing';
 
 import { waitUntil } from '@lostgradient/testing/wait-until';
+import { compareCodepoint } from '../src/lib/compare-codepoint.ts';
 import {
   assertCleanBuild,
   assertSafeOutputDirectory,
@@ -215,6 +216,22 @@ describe('retainPreviousAssets', () => {
     mkdirSync(staging);
     expect(await retainPreviousAssets(staging, join(parent, 'build'))).toEqual([]);
   });
+
+  it('rethrows a failure to read the previous assets that is not a missing directory', async () => {
+    const parent = mkdtempSync(join(scratch, 'retain-unreadable-'));
+    const directory = join(parent, 'build');
+    const staging = join(parent, 'staging');
+    mkdirSync(directory);
+    mkdirSync(staging);
+    // `assets` is a file, so listing it fails with ENOTDIR rather than ENOENT.
+    writeFileSync(join(directory, BUILD_ASSET_DIRECTORY), 'not a directory');
+
+    const rejection = await rejectionOf(retainPreviousAssets(staging, directory));
+
+    expect(rejection).toBeInstanceOf(Error);
+    expect(rejection).toHaveProperty('code', 'ENOTDIR');
+    expect(readdirSync(staging)).toEqual([]);
+  });
 });
 
 describe('browserBuildOptions', () => {
@@ -393,6 +410,45 @@ describe('buildApplication', () => {
     expect(await Bun.file(join(outdir, 'index.html')).text()).toBe('page');
     // The staging directory is gone: only the build remains beside it.
     expect(readdirSync(join(outdir, '..'))).toEqual(['build']);
+  });
+
+  it('builds into the default directory when called with no options, without writing it here', async () => {
+    // The only way to reach the default directory is to call `buildApplication()` with nothing, and
+    // the real one is `build/` in this checkout, which the development host serves. The bundler
+    // is replaced by one that fails, so the call stops before `replaceDirectory`: the default
+    // directory is read, never written. Only the staging directory is created beside it, and
+    // the `finally` block removes it.
+    const before = readdirSync(PACKAGE_DIRECTORY).toSorted();
+    const buildExisted = existsSync(DEFAULT_BUILD_DIRECTORY);
+    const buildFilesBefore = buildExisted
+      ? readdirSync(DEFAULT_BUILD_DIRECTORY, { recursive: true, encoding: 'utf8' }).toSorted(
+          compareCodepoint,
+        )
+      : [];
+    const stagingParents: string[] = [];
+    const bundler = spyOn(Bun, 'build').mockImplementation(async (configuration) => {
+      stagingParents.push(dirname(String(configuration.outdir)));
+      throw new Error('stopped before the directory swap');
+    });
+    try {
+      const rejection = await rejectionOf(buildApplication());
+      expect(rejection).toBeInstanceOf(Error);
+      expect(rejection).toHaveProperty('message', 'stopped before the directory swap');
+    } finally {
+      bundler.mockRestore();
+    }
+
+    // One build ran, and its staging directory was created beside `build/`, where the build would land.
+    expect(stagingParents).toEqual([dirname(DEFAULT_BUILD_DIRECTORY)]);
+    expect(readdirSync(PACKAGE_DIRECTORY).toSorted()).toEqual(before);
+    expect(existsSync(DEFAULT_BUILD_DIRECTORY)).toBe(buildExisted);
+    if (buildExisted) {
+      expect(
+        readdirSync(DEFAULT_BUILD_DIRECTORY, { recursive: true, encoding: 'utf8' }).toSorted(
+          compareCodepoint,
+        ),
+      ).toEqual(buildFilesBefore);
+    }
   });
 
   it('keeps the previous build’s assets in development and drops them in production', async () => {

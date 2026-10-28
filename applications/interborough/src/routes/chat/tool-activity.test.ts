@@ -52,6 +52,34 @@ describe('toolGroups', () => {
     expect(entries[0]?.summary).toBe('status delivered');
   });
 
+  test('a failed call says what failed: the error it carries, or else what its result holds', () => {
+    const failedWith = row({
+      id: 's1:r',
+      role: 'tool-result',
+      toolResult: {
+        callId: 'c2',
+        outcome: 'error',
+        content: { status: 'ignored' },
+        error: { message: 'The card was declined.' },
+      },
+    });
+    const { groups } = toolGroups(
+      conversation(
+        call('s0', 'c1', 'lookup-order'),
+        result('s0:r', 'c1', 'error', { status: 'unreachable' }),
+        call('s1', 'c2', 'issue-refund'),
+        failedWith,
+        call('s2', 'c3', 'close-ticket'),
+      ),
+    );
+    const entries = groups.get('s0')?.entries ?? [];
+    expect(entries.map((entry) => [entry.name, entry.state, entry.summary])).toEqual([
+      ['lookup-order', 'failed', 'status unreachable'],
+      ['issue-refund', 'failed', 'The card was declined.'],
+      ['close-ticket', 'running', ''],
+    ]);
+  });
+
   test('a message between two tool rows ends the group', () => {
     const { groups } = toolGroups(
       conversation(call('s0', 'c1', 'a'), row({ id: 'a1', content: 'Hm.' }), call('s1', 'c2', 'b')),

@@ -22,10 +22,7 @@ import { normalizeWorkflowTags } from '../workflow-tags.ts';
 import { CONSTRAINED_ID_CHUNK_SIZE } from './candidate-read-batching.ts';
 import type { EngineInternals } from './internals.ts';
 import { resolveListCandidateIds } from './list-candidate-resolution.ts';
-import {
-  readSearchAttributesForFilter,
-  readSearchAttributesForStates,
-} from './search-attribute-records.ts';
+import { readSearchAttributesForStates } from './search-attribute-records.ts';
 import { decodeSearchAttributeRecord, matchesListFilter } from './state-utilities.ts';
 import { decodeWorkflowState } from './validation.ts';
 import { MAX_LIST_SCAN_ROWS, WorkflowListScanCapExceededError } from './workflow-indexes.ts';
@@ -58,8 +55,7 @@ const ATTRIBUTE_VALUE_TO_KEY = (value: SearchAttributeValue | undefined): string
   if (typeof value === 'string') return value;
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   if (value instanceof Date) return value.toISOString();
-  if (Array.isArray(value)) return value.join(',');
-  return String(value);
+  return value.join(',');
 };
 
 /**
@@ -171,10 +167,7 @@ async function resolveDimensionKeys(
   internals: EngineInternals,
   states: readonly WorkflowState[],
   groupBy: AggregateGroupBy,
-  searchAttributesByWorkflowId: ReadonlyMap<
-    string,
-    Record<string, SearchAttributeValue> | null
-  > = new Map(),
+  searchAttributesByWorkflowId: ReadonlyMap<string, Record<string, SearchAttributeValue> | null>,
 ): Promise<Array<string | null>> {
   if (groupBy === 'status') return states.map((state) => state.status);
   if (groupBy === 'type') return states.map((state) => state.type);
@@ -216,7 +209,12 @@ async function resolveAttributeDimensionKeys(
         keys.push(null);
         continue;
       }
-      keys.push(ATTRIBUTE_VALUE_TO_KEY(attributes[groupBy.attribute]));
+      // Own properties only: a name such as `constructor` must not read through the prototype.
+      keys.push(
+        ATTRIBUTE_VALUE_TO_KEY(
+          Object.hasOwn(attributes, groupBy.attribute) ? attributes[groupBy.attribute] : undefined,
+        ),
+      );
     }
   }
   return keys;
@@ -229,7 +227,7 @@ async function accumulateAggregateStates(
   groupBy: AggregateGroupBy,
   distinctKeyCap: number,
   accumulator: AggregateAccumulator,
-  searchAttributesByWorkflowId?: ReadonlyMap<string, Record<string, SearchAttributeValue> | null>,
+  searchAttributesByWorkflowId: ReadonlyMap<string, Record<string, SearchAttributeValue> | null>,
 ): Promise<void> {
   const dimensionKeys = await resolveDimensionKeys(
     internals,
@@ -295,6 +293,11 @@ async function accumulateFromConstrainedIds(
   }
 }
 
+const NO_PREREAD_SEARCH_ATTRIBUTES: ReadonlyMap<
+  string,
+  Record<string, SearchAttributeValue> | null
+> = new Map();
+
 /** Phase — full `wf:` prefix scan with scan-cap enforcement. */
 async function accumulateFromFullScan(
   internals: EngineInternals,
@@ -306,10 +309,6 @@ async function accumulateFromFullScan(
 ): Promise<void> {
   let scanned = 0;
   let matchingStates: WorkflowState[] = [];
-  let matchingSearchAttributesByWorkflowId = new Map<
-    string,
-    Record<string, SearchAttributeValue> | null
-  >();
   for await (const [storageKey, value] of internals.storage.scan('wf:')) {
     if (!isTopLevelWorkflowStateKey(storageKey)) continue;
     scanned += 1;
@@ -317,18 +316,12 @@ async function accumulateFromFullScan(
       throw new WorkflowListScanCapExceededError(MAX_LIST_SCAN_ROWS);
     }
     const state = decodeWorkflowState(value);
-    const searchAttributes = await readSearchAttributesForFilter(
-      internals,
-      state.id,
-      normalizedFilter,
-    );
-    if (!matchesListFilter(state, normalizedFilter, null, normalizedTagFilters, searchAttributes)) {
+    // A filter with attribute clauses always resolves to a constrained id set, so the full scan
+    // only ever runs without one and has no pre-read attribute record to hand to the matcher.
+    if (!matchesListFilter(state, normalizedFilter, null, normalizedTagFilters, null)) {
       continue;
     }
     matchingStates.push(state);
-    if (searchAttributes !== null) {
-      matchingSearchAttributesByWorkflowId.set(state.id, searchAttributes);
-    }
     if (matchingStates.length === CONSTRAINED_ID_CHUNK_SIZE) {
       await accumulateAggregateStates(
         internals,
@@ -336,10 +329,9 @@ async function accumulateFromFullScan(
         groupBy,
         distinctKeyCap,
         accumulator,
-        matchingSearchAttributesByWorkflowId,
+        NO_PREREAD_SEARCH_ATTRIBUTES,
       );
       matchingStates = [];
-      matchingSearchAttributesByWorkflowId = new Map();
     }
   }
   if (matchingStates.length > 0) {
@@ -349,7 +341,7 @@ async function accumulateFromFullScan(
       groupBy,
       distinctKeyCap,
       accumulator,
-      matchingSearchAttributesByWorkflowId,
+      NO_PREREAD_SEARCH_ATTRIBUTES,
     );
   }
 }

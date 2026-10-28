@@ -4,8 +4,9 @@
  * Prometheus text view including its fault path.
  */
 import { fireEvent, render } from '@testing-library/svelte';
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, describe, expect, jest, mock, test } from 'bun:test';
 
+import { settle, until } from '../../lib/fake-timers.test-support.ts';
 import { createQueryClient } from '../../lib/query.ts';
 import MetricsTab from './metrics-tab.svelte';
 import SystemRouteTestHarness from './system-route-test-harness.test-harness.svelte';
@@ -102,13 +103,29 @@ describe('MetricsTab', () => {
     }
   });
 
-  // The `pollStatus !== 'polling'` branch (bare `ConnectionIndicator` with no
-  // `label`) is NOT covered here: `PollingSource.status` (`polling-source.
-  // svelte.ts`) starts at `'polling'` and only leaves it after
-  // `MAX_CONSECUTIVE_FAILURES` (5) real consecutive failed polls spaced by
-  // `METRICS_POLL_INTERVAL_MS` (15s, hardcoded in this component) apart —
-  // `polling-source.test.ts` itself only exercises that path with a
-  // deliberately short custom interval. Reaching it here would mean either
-  // ~60+ real seconds of waiting or fake-timer infrastructure this repo
-  // doesn't have; not a meaningful unit test trade either way.
+  test('stops claiming it is updated every 15s once the polls have failed five times in a row', async () => {
+    // `PollingSource` closes after `MAX_CONSECUTIVE_FAILURES` (5) failed polls, 15s apart, and then
+    // its status is no longer `polling`: the indicator loses its "Updated every 15s" label. The
+    // clock is faked, so the five polls take no real time.
+    jest.useFakeTimers();
+    try {
+      scripted = new ScriptedFetch();
+      scripted.routeJsonRpcError('weft.system.metrics', { code: -32000, message: 'Unavailable' });
+
+      const { queryByText } = await renderMetricsTab();
+      await until(() => expect(scripted?.calls.length).toBe(1));
+      // The failure is handled, and the next poll scheduled, a few turns after the request is made.
+      await settle();
+      expect(queryByText('Updated every 15s')).not.toBeNull();
+
+      for (let poll = 2; poll <= 5; poll += 1) {
+        jest.advanceTimersByTime(15_000);
+        await until(() => expect(scripted?.calls.length).toBe(poll));
+        await settle();
+      }
+      await until(() => expect(queryByText('Updated every 15s')).toBeNull());
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });

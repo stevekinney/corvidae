@@ -22,6 +22,7 @@
  * this module's own consumers (`workflow-revisions-panel.svelte`) don't need
  * to touch their import path.
  */
+import { compareCodepoint } from '../../lib/compare-codepoint.ts';
 import { formatRelativeTime, truncateId } from '../../lib/format/index.ts';
 import {
   isWorkflowCatalogActivePointerLike,
@@ -81,12 +82,6 @@ export interface WorkflowRevisionRow {
   readonly manifestVersion: number;
   readonly installedAt: number;
   readonly isActive: boolean;
-}
-
-function compareCodepoint(a: string, b: string): number {
-  if (a < b) return -1;
-  if (a > b) return 1;
-  return 0;
 }
 
 /**
