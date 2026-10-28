@@ -922,7 +922,7 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       {
         reason:
           'Compile-time exhaustiveness guard for a closed discriminated union has no reachable runtime path to test without an unsafe cast.',
-        lines: new Set([302, 303, 304, 305]),
+        lines: new Set([302, 303, 304]),
       },
     ],
     [
@@ -1066,24 +1066,6 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
         reason:
           'Compile-time exhaustiveness guard for a closed discriminated union has no reachable runtime path to test without an unsafe cast.',
         lines: new Set([407, 410, 411]),
-      },
-    ],
-    [
-      'src/server/operations/get-task-diagnostics.ts',
-      // The closed RemoteTaskRecord state union makes this default branch
-      // unreachable at runtime; it exists solely as a compile-time
-      // exhaustiveness guard (`addRecordDiagnostics`'s switch), matching the
-      // identical pattern already allowed for `task-ledger-recovery.ts`.
-      // `requireUncoveredLines` is intentionally omitted for the same reason
-      // it is omitted there: `default: {` (306) and its closing `}` (311)
-      // are case-label/brace lines that flip between hit and unhit run to
-      // run with byte-identical source — a coverage-attribution artifact,
-      // not a real reachability signal — so only the two dead statements
-      // inside it (309, 310) are guaranteed to read 0 every run.
-      {
-        reason:
-          'Compile-time exhaustiveness guard for a closed discriminated union has no reachable runtime path to test without an unsafe cast.',
-        lines: new Set([355, 358, 359, 360]),
       },
     ],
     [
@@ -1319,7 +1301,7 @@ export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERA
     'src/runtime/environment-configuration.ts',
     {
       reason:
-        "Two structurally environment-locked branches, plus a function-count consequence of the second one the original entry's lines-only allowance didn't cover. (1) rawRuntimeEnvironment()'s `typeof process !== 'undefined'` fallback and empty-object fallback: this workspace runs exclusively under Bun (AGENTS.md: \"Bun is the default runtime... Use Bun commands only\"), so `typeof Bun !== 'undefined'` is always true in every test process — reaching the fallback would require deleting globalThis.Bun for the duration of a test, corrupting every other test sharing the same Bun process (this repo's coverage shards run many files per process). rawRuntimeEnvironment itself is still called (and function-covered) via its happy path; only these two unreachable branch lines are allowed. (2) Every `load` closure on a `Source` object in this file (createEnvironmentSource's, at the object-literal line every one of its three call sites already marks line-covered by constructing the object, and readEnvironmentVariable()'s exactSource.load, lines 139-142): every call site in this file uses environmentalist.sync(...), never .async(...), and neither Source value is exported or returned, so nothing in this codebase ever invokes `load` on either one — only `loadSync`, which environmentalist.sync() calls exclusively. `load` exists solely to satisfy the Source interface's required shape. Because createEnvironmentSource's `load` is a single-expression arrow on the same source line as its own registration, the interior body has no separate DA line to report 0 on — line coverage alone hides it entirely, and only the function tally (FNF/FNH) reveals it, which is why `` (this arrow plus readEnvironmentVariable's) is needed alongside the line allowance below.",
+        "Two structurally environment-locked branches, plus a function-count consequence of the second one the original entry's lines-only allowance didn't cover. (1) rawRuntimeEnvironment()'s `typeof process !== 'undefined'` fallback and empty-object fallback: this workspace runs exclusively under Bun (AGENTS.md: \"Bun is the default runtime... Use Bun commands only\"), so `typeof Bun !== 'undefined'` is always true in every test process — reaching the fallback would require deleting globalThis.Bun for the duration of a test, corrupting every other test sharing the same Bun process (this repo's coverage shards run many files per process). rawRuntimeEnvironment itself is still called (and function-covered) via its happy path; only these two unreachable branch lines are allowed. (2) The `load` closure on the `Source` object createEnvironmentSource builds (at the object-literal line every one of its three call sites already marks line-covered by constructing the object; readEnvironmentVariable()'s exactSource uses one reader for `load` and `loadSync`): every call site in this file uses environmentalist.sync(...), never .async(...), and neither Source value is exported or returned, so nothing in this codebase ever invokes `load` on it — only `loadSync`, which environmentalist.sync() calls exclusively. `load` exists solely to satisfy the Source interface's required shape. Because createEnvironmentSource's `load` is a single-expression arrow on the same source line as its own registration, the interior body has no separate DA line to report 0 on — line coverage alone hides it entirely, and only the function tally (FNF/FNH) reveals it, which is why `functions: 1` (this arrow) is needed alongside the line allowance below.",
       lines: new Set([8, 9]),
       requireUncoveredLines: true,
       functions: 1,
