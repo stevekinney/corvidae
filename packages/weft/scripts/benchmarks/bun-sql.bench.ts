@@ -15,8 +15,8 @@ import {
 
 /**
  * The throughput gate, declared through `skipIf` so `WEFT_SQLITE_ARCHITECTURE_BENCHMARK=1`
- * actually governs it. It lives here, outside weft's default `test` run (see the path-ignore in
- * `package.json`), because a median-throughput assertion measures the host as much as the code;
+ * actually governs it. It lives here, outside weft's default `test` run (a `*.bench.ts` file is
+ * never discovered by it), because a median-throughput assertion measures the host as much as the code;
  * the integrity tests in `src/storage/bun-sql-integrity.test.ts` stay in the default suite.
  */
 const runSQLiteArchitectureBenchmark = it.skipIf(!runArchitectureBenchmark);

@@ -1707,6 +1707,16 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
  */
 export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERAGE_ALLOWANCES', [
   [
+    'scripts/run-benchmarks.ts',
+    {
+      reason:
+        'The real process runner behind `test:benchmarks`: `spawnBunTest` starts a `bun test` child over every `scripts/benchmarks/*.bench.ts`, which are the load-sensitive measurement runs `bun run test` and the coverage shard deliberately leave out (COR-1739). Everything the script decides (the file glob, the empty-glob failure, the exit code it returns) is in `listBenchmarkFiles` and `runBenchmarks`, which scripts/run-benchmarks.test.ts runs in process with a stand-in spawner.',
+      functions: 1,
+      lines: new Set([32, 33, 34, 35, 36, 37, 38]),
+      requireUncoveredLines: true,
+    },
+  ],
+  [
     'examples/a2a-workflow-agent.ts',
     {
       reason:
@@ -2166,14 +2176,12 @@ export function parseLcov(content: string): CoverageResult {
 /**
  * The paths the package's own `test` script excludes with `--path-ignore-patterns`.
  *
- * Those are the measurement benchmarks — throughput, latency and memory runs whose numbers
- * swing enough between runs on one machine that they cannot assert a target, which is why
- * `bun run test` leaves them to `test:benchmarks` on demand. The coverage shard runs the same
- * suite under instrumentation and contention, where they swing more, not less: a run of this
- * gate failed twice in ten on `load-growth-memory`'s RSS-slope bound with the tree at 100 %
- * coverage. So the shard applies exactly the exclusion `test` applies, read from the script
- * rather than copied, and the runner modules only those benchmarks exercise are ignored from
- * instrumentation in `bunfig.toml` with their reasons.
+ * That is the slow lane (`**\/*.slow.test.ts`, which `test:slow` runs alone). The measurement
+ * benchmarks need no entry: they are `*.bench.ts` files, which neither `bun test` nor the shard's
+ * test-file globs discover, and `test:benchmarks` runs them on demand (COR-1739). The shard
+ * applies exactly the exclusion `test` applies, read from the script rather than copied, and the
+ * runner modules only those benchmarks exercise are ignored from instrumentation in `bunfig.toml`
+ * with their reasons.
  */
 export function readTestScriptPathIgnorePatterns(): string[] {
   const script = packageJson.scripts?.test;
