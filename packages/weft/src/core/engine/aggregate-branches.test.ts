@@ -54,14 +54,17 @@ describe('aggregate attribute dimension keys', () => {
 
     const options = (attribute: string) => ({ groupBy: { attribute } });
     const filter = { idPrefix: 'agg-branch-' };
-    const keysFor = async (attribute: string) =>
-      (await engine.aggregate(filter, options(attribute))).groups.map((group) => group.key);
+    const keysFor = async (attribute: string) => {
+      const result = await engine.aggregate(filter, options(attribute));
+      return result.groups.map((group) => group.key);
+    };
 
+    // Groups come back ordered by count, then by key.
     expect(await keysFor('count')).toEqual(['7', '8']);
-    expect((await keysFor('flag')).toSorted()).toEqual(['false', 'true']);
-    expect((await keysFor('tags')).toSorted()).toEqual(['', 'a,b']);
+    expect(await keysFor('flag')).toEqual(['false', 'true']);
+    expect(await keysFor('tags')).toEqual(['a,b', '']);
     // A value that is not a search attribute value is dropped when the record is decoded.
-    expect((await keysFor('odd')).toSorted()).toEqual(['2026-01-02T03:04:05.000Z', null, 'plain']);
+    expect(await keysFor('odd')).toEqual([null, '2026-01-02T03:04:05.000Z', 'plain']);
   });
 });
 
@@ -132,7 +135,7 @@ describe('aggregate candidate handling', () => {
     );
 
     expect(result.total).toBe(2);
-    expect(result.groups.map((group) => group.key).toSorted()).toEqual(['', null]);
+    expect(result.groups.map((group) => group.key)).toEqual([null, '']);
   });
 
   it('orders equally sized groups by key', async () => {

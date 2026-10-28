@@ -28,7 +28,8 @@ describe('resolveRetentionForStatus', () => {
 
 describe('decodeWorkflowState', () => {
   it('returns a decoded value that is not a record without stripping fields', () => {
-    expect(decodeWorkflowState(encode(['not', 'a', 'record']))).toEqual(['not', 'a', 'record']);
+    const decoded: unknown = decodeWorkflowState(encode(['not', 'a', 'record']));
+    expect(decoded).toEqual(['not', 'a', 'record']);
   });
 });
 
@@ -51,6 +52,7 @@ describe('updateSchedule on a cancelled schedule', () => {
 
     await handle.update('*/5 * * * *');
 
-    expect((await handle.describe()).nextFireAt).toBeNull();
+    const described = await handle.describe();
+    expect(described.nextFireAt).toBeNull();
   });
 });

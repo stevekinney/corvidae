@@ -168,7 +168,7 @@ describe('EngineOwnedRemoteActivityBroker enqueue edge cases', () => {
     const broker = new EngineOwnedRemoteActivityBroker(new MemoryStorage(), {}, () => {});
 
     const error = await rejectionOf(
-      broker.enqueue(fixtureRequest({ operationId: 'op-bigint', input: 10n as never })),
+      broker.enqueue(fixtureRequest({ operationId: 'op-bigint', input: 10n })),
     );
 
     expect(String(error)).toContain('non-JSON-serializable input');
@@ -187,7 +187,7 @@ describe('EngineOwnedRemoteActivityBroker enqueue edge cases', () => {
     );
 
     const record = decodeRemoteTaskRecord(
-      (await storage.get(taskLedgerKey('op-optional-fields')))!,
+      (await storage.get(taskLedgerKey('op-optional-fields'))) ?? new Uint8Array(),
     );
     expect(record).toMatchObject({
       workflowRevision: 'revision-1',

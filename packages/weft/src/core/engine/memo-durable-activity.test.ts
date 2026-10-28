@@ -553,7 +553,7 @@ describe('ctx.memo durableActivity helper', () => {
           const second = await durableActivity('sequentialTool', 'two', {
             idempotencyKey: 'second',
           }).catch((error: unknown) => error as Error);
-          secondMessage = second.message;
+          secondMessage = (second as Error).message;
           return await first;
         });
       });
@@ -574,10 +574,9 @@ describe('ctx.memo durableActivity helper', () => {
       .execute(async function* (ctx: WorkflowContext) {
         return yield* ctx.memo('step-0', async () => {
           setTimeout(() => {
-            durableActivity('lateTool', 'x', { idempotencyKey: 'late' }).then(
-              () => late.resolve(new Error('the late helper unexpectedly ran')),
-              (error: unknown) => late.resolve(error as Error),
-            );
+            durableActivity('lateTool', 'x', { idempotencyKey: 'late' })
+              .then(() => late.resolve(new Error('the late helper unexpectedly ran')))
+              .catch((error: unknown) => late.resolve(error as Error));
           }, 0);
           return 'memo-done';
         });
@@ -588,7 +587,8 @@ describe('ctx.memo durableActivity helper', () => {
     const handle = await engine.start('late-helper', null, { id: 'late-helper-1' });
 
     expect(await handle.result()).toBe('memo-done');
-    expect((await late.promise).message).toBe('durableActivity() scope closed before completion.');
+    const lateError = await late.promise;
+    expect(lateError.message).toBe('durableActivity() scope closed before completion.');
   });
 
   it('defers closing the scope until an in-flight reconciliation commit finishes', async () => {
@@ -648,10 +648,9 @@ describe('ctx.memo durableActivity helper', () => {
       .activities({ waitingTool: waiting })
       .execute(async function* (ctx: WorkflowContext) {
         return yield* ctx.memo('step-0', async () => {
-          durableActivity('waitingTool', 'x', { idempotencyKey: 'non-error-throw' }).then(
-            () => pendingFailure.resolve(new Error('the helper unexpectedly completed')),
-            (error: unknown) => pendingFailure.resolve(error as Error),
-          );
+          durableActivity('waitingTool', 'x', { idempotencyKey: 'non-error-throw' })
+            .then(() => pendingFailure.resolve(new Error('the helper unexpectedly completed')))
+            .catch((error: unknown) => pendingFailure.resolve(error as Error));
           await Promise.resolve();
           throw { code: 'E_OBJECT' };
         });
@@ -664,9 +663,8 @@ describe('ctx.memo durableActivity helper', () => {
     });
     handle.result().catch(() => {});
 
-    expect((await pendingFailure.promise).message).toBe(
-      'durableActivity() scope closed before completion.',
-    );
+    const pendingError = await pendingFailure.promise;
+    expect(pendingError.message).toBe('durableActivity() scope closed before completion.');
   });
 
   it('removes memo-scope abort listeners when a later forwarded signal is already aborted', async () => {

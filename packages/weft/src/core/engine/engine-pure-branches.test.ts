@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { workflow } from '../types.ts';
 import { warnIfRetryMissingHeartbeat } from './activity-heartbeat-tracking.ts';
 import { driveWorkflowInterceptorGenerator } from './async-activity-completion.ts';
 import { broadcast } from './broadcast.ts';
@@ -33,10 +32,8 @@ describe('broadcast', () => {
   });
 
   it('gives up quietly when the runtime cannot open a broadcast channel', () => {
-    globalThis.BroadcastChannel = class {
-      constructor() {
-        throw new Error('BroadcastChannel is unavailable');
-      }
+    globalThis.BroadcastChannel = function unavailableBroadcastChannel() {
+      throw new Error('BroadcastChannel is unavailable');
     } as unknown as typeof BroadcastChannel;
     const internals = {
       options: { broadcastEvents: true },
@@ -51,12 +48,14 @@ describe('broadcast', () => {
 
 describe('deriveWorkflowDefinitionRevision', () => {
   it('derives a revision for a definition that is not a builder definition', async () => {
-    const plain = workflow({ name: 'plain-definition' }).execute(async function* () {
-      return 'ok';
-    });
-    const { name, execute } = plain;
+    const plain = {
+      name: 'plain-definition',
+      execute: async function* () {
+        return 'ok';
+      },
+    };
 
-    const revision = await deriveWorkflowDefinitionRevision({ name, execute } as never);
+    const revision = await deriveWorkflowDefinitionRevision(plain as never);
 
     expect(revision).toMatch(/\S/);
   });
@@ -111,7 +110,7 @@ describe('bulk operation filters', () => {
 
   it('summarizes range-only attribute filters without a value', () => {
     const preparation = buildBulkOperationPreparation(
-      'retry',
+      'retry-failed',
       { attributes: [{ key: 'amount', gt: 1 }] },
       {},
       [],
