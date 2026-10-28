@@ -454,4 +454,100 @@ describe('revision-aware worker deployment routing', () => {
     const drainedVersion = await catalog.getVersion('billing', 'build-b');
     expect(drainedVersion?.state).toBe('draining');
   });
+
+  it('names the deployment a requirement targets when it differs from the one being routed', () => {
+    const result = selectWorkerDeployment({
+      deploymentName: 'billing',
+      workflowId: 'run-1',
+      requirement: { deploymentName: 'shipping' },
+      routing: routing(),
+      candidates: [candidate('a', 'build-a')],
+    });
+
+    expect(result).toEqual({
+      candidate: undefined,
+      reason: 'deployment-required',
+      message: 'Requirement targets deployment "shipping", not "billing".',
+    });
+  });
+
+  it('reports no capacity, not incompatibility, when the build provides the work but has no free worker', () => {
+    const result = selectWorkerDeployment({
+      deploymentName: 'billing',
+      workflowId: 'run-1',
+      activityName: 'charge',
+      requirement: { workflowRevision: 'revision-a' },
+      routing: routing(),
+      candidates: [candidate('a', 'build-a', 0)],
+    });
+
+    expect(result).toMatchObject({
+      candidate: undefined,
+      reason: 'no-capacity',
+      buildId: 'build-a',
+      workflowRevision: 'revision-a',
+      message: 'Deployment "billing" build "build-a" has no available capacity.',
+    });
+  });
+
+  it('tells a build that lacks the requested activity apart from one that is merely full', () => {
+    const base = {
+      deploymentName: 'billing',
+      workflowId: 'run-1',
+      requirement: { workflowRevision: 'revision-a' },
+      routing: routing(),
+      candidates: [candidate('a', 'build-a', 0)],
+    };
+
+    expect(selectWorkerDeployment({ ...base, activityName: 'charge' })).toMatchObject({
+      reason: 'no-capacity',
+    });
+    expect(selectWorkerDeployment({ ...base, activityName: 'refund' })).toMatchObject({
+      reason: 'revision-incompatible',
+    });
+  });
+
+  it.each(['constructor', 'toString', '__proto__', 'hasOwnProperty'])(
+    'does not treat the inherited name %s as an activity the build provides',
+    (activityName) => {
+      // A manifest read back from storage is a plain object, so its activities inherit these names.
+      const stored = decode(encode(manifest('build-a'))) as WorkerManifest;
+      const result = selectWorkerDeployment({
+        deploymentName: 'billing',
+        workflowId: 'run-1',
+        activityName,
+        requirement: { workflowRevision: 'revision-a' },
+        routing: routing(),
+        candidates: [{ workerId: 'a', buildId: 'build-a', manifest: stored, availableCapacity: 0 }],
+      });
+
+      expect(result).toMatchObject({ candidate: undefined, reason: 'revision-incompatible' });
+    },
+  );
+
+  it('refuses to ramp toward a build the catalog does not hold as ready', async () => {
+    const catalog = new WorkerDeploymentCatalog(new MemoryStorage());
+    await catalog.registerVersion({
+      deploymentName: 'billing',
+      buildId: 'build-a',
+      artifactDigest: 'sha256:build-a',
+      manifestDigest: 'sha256:m-a',
+      manifest: manifest('build-a'),
+      state: 'ready',
+      firstSeenAt: 1,
+    });
+
+    expect(
+      await throwingRejectionOf(
+        catalog.setRouting({
+          deploymentName: 'billing',
+          currentBuildId: 'build-a',
+          rampingBuildId: 'build-missing',
+          rampBasisPoints: 100,
+          updatedAt: 2,
+        }),
+      ),
+    ).toThrow('Ramping deployment build billing/build-missing is not eligible for routing.');
+    expect(await catalog.getRouting('billing')).toBeNull();
+  });
 });
