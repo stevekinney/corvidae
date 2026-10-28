@@ -48,7 +48,7 @@ const fixture = /* js */ `
 
 test('a FinalizationRegistry cleanup job is dropped when its realm dies before the job runs', async () => {
   await using process_ = Bun.spawn({
-    cmd: [process.execPath, '-e', fixture],
+    cmd: [process.execPath, '--no-install', '-e', fixture],
     stdout: 'pipe',
     stderr: 'pipe',
   });
