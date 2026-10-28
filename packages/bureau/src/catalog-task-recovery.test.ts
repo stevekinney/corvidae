@@ -85,6 +85,8 @@ describe('a task across a boot', () => {
       'the run never parked',
     );
     const restarted = await open(fixture);
+    const settledEvents: string[] = [];
+    restarted.addEventListener('run.settled', (event) => settledEvents.push(event.runId));
     await restarted.recovery();
     await waitForCondition(
       () => restarted.reviews.list().some((review) => review.runId === run.id),
@@ -106,6 +108,7 @@ describe('a task across a boot', () => {
     }, 'the task never settled');
     const record = await restarted.internals.taskRegistry.record(run.id);
     expect(record?.settled).toMatchObject({ status: 'completed' });
+    expect(settledEvents).toEqual([run.id]);
     // A task's answer lives in its context's durable history, not on the task record.
     expect(record?.settled?.answer).toBeUndefined();
   });

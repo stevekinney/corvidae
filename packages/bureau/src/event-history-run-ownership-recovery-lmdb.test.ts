@@ -113,11 +113,24 @@ function expectedRecoveredPage(runId: string, toolCallId: string): unknown {
           parts,
           usage,
           finishReason: 'stop-condition',
+          costEstimate: undefined,
+          error: undefined,
+          output: undefined,
+          schemaValidation: undefined,
         },
+      },
+      {
+        kind: 'run.settled',
+        owner: { kind: 'run', id: runId },
+        sequence: 2,
+        cursor: '2',
+        emittedAtMs: expect.any(Number),
+        schemaVersion: 1,
+        payload: { runId },
       },
     ],
     hasMore: false,
-    nextCursor: '1',
+    nextCursor: '2',
   };
 }
 

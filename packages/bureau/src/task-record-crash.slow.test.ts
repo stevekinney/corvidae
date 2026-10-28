@@ -29,14 +29,14 @@ import { createBureau } from './create-bureau';
 import { unexpectedChildStderr } from './test/child-stderr';
 import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
 import { createAskingAgent, finishes } from './test/task-record-crash-agent';
-import type { Bureau, BureauReviews, BureauInternals } from './types';
+import type { Bureau, BureauReviews, BureauInternals, BureauOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 import { awakeTurns, waitUntil } from '@lostgradient/testing/wait-until';
 
 const CHILD = join(import.meta.dir, 'test', 'task-record-crash-child.ts');
 
 /** The Bureau every scenario boots over the dead process's storage. */
-function openBureau(storagePath: string) {
+function openBureau(storagePath: string, onEvent?: BureauOptions<AgentDefinitions>['onEvent']) {
   return createBureau<AgentDefinitions>({
     id: 'task-record-crash',
     agents: {
@@ -52,6 +52,7 @@ function openBureau(storagePath: string) {
     durableOwnership: { ownership: 'none' },
     // Shutting down while the recovered parked run is still in flight reports it as cut short.
     onDiagnostic: () => undefined,
+    ...(onEvent === undefined ? {} : { onEvent }),
   });
 }
 
@@ -64,6 +65,7 @@ async function crashScenario(
     } & { readonly internals: Pick<BureauInternals, 'taskRegistry'> },
     runId: string,
   ) => Promise<void>,
+  onEvent?: BureauOptions<AgentDefinitions>['onEvent'],
 ): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), `corvidae-task-record-crash-${mode}-`));
   const storagePath = join(directory, 'bureau.sqlite');
@@ -81,7 +83,7 @@ async function crashScenario(
     expect(unexpectedChildStderr(stderr)).toBe('');
     const { runId } = JSON.parse(readFileSync(markerPath, 'utf8')) as { runId: string };
 
-    const bureau = await openBureau(storagePath);
+    const bureau = await openBureau(storagePath, onEvent);
     scope.onHang(() => bureau.shutdown());
     try {
       await bureau.recovery();
@@ -151,14 +153,23 @@ async function disposedScenario(scope: ScenarioScope): Promise<void> {
 
 const outcomes = {
   disposed: await settleScenario((scope) => disposedScenario(scope), HANG_GUARD_MILLISECONDS),
-  settlement: await settleScenario(
-    (scope) =>
-      crashScenario('settlement', scope, async (bureau, runId) => {
+  settlement: await settleScenario((scope) => {
+    const settledEvents: string[] = [];
+    return crashScenario(
+      'settlement',
+      scope,
+      async (bureau, runId) => {
         const task = await bureau.internals.taskRegistry.get(runId);
         expect(task).toMatchObject({ id: runId, owner: 'api-key:alice', status: 'completed' });
-      }),
-    HANG_GUARD_MILLISECONDS,
-  ),
+        expect(settledEvents).toEqual([runId]);
+      },
+      (event) => {
+        if (event.type === 'run.settled') {
+          settledEvents.push((event as unknown as { readonly runId: string }).runId);
+        }
+      },
+    );
+  }, HANG_GUARD_MILLISECONDS),
   admission: await settleScenario(
     (scope) =>
       crashScenario('admission', scope, async (bureau, lostId) => {

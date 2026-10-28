@@ -236,6 +236,7 @@ import {
   ReviewSupersededEvent,
   RunAbortSettledEvent,
   RunRegisteredEvent,
+  RunSettledEvent,
   RunRemovedEvent,
 } from './events';
 import { createGoalAttemptFenceHost } from './goal-attempt-fence';
@@ -4390,6 +4391,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     // COR-1594: the end of a fire reaches a stream another process serves through the fire's
     // durable history. A Bureau with no persistent storage has none, and no second process.
     onFireSettled: appendFireSettledEvent,
+    onSettled: async (record) => {
+      emitter.dispatch(new RunSettledEvent(record.taskId));
+    },
     diagnose: (message, cause) =>
       diagnose({ level: 'error', scope: 'task-registry', message: `[bureau] ${message}`, cause }),
     host: {
