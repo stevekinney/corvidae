@@ -208,7 +208,13 @@ export function sessionApprovalsOf(
   }
   const started = new Set(
     Array.isArray(metadata?.['approvalResolutionStartedIds'])
-      ? metadata['approvalResolutionStartedIds'].filter((id) => typeof id === 'string')
+      ? metadata['approvalResolutionStartedIds'].map((entry) =>
+          typeof entry === 'string'
+            ? entry
+            : typeof entry === 'object' && entry !== null && !Array.isArray(entry)
+              ? entry['id']
+              : undefined,
+        )
       : [],
   );
   const rounds = metadata?.['pendingApprovalRounds'];
