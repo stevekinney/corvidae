@@ -225,6 +225,104 @@ describe('LongPollResultDelivery', () => {
     expect(fetchMock.mock.calls.length).toBe(2);
   });
 
+  it('retries on a 2xx body whose disposition is not one it knows', async () => {
+    let callCount = 0;
+    const fetchMock = mock(() => {
+      callCount += 1;
+      return Promise.resolve(
+        jsonResponse({ ok: true, disposition: callCount === 1 ? 'from-the-future' : 'applied' }),
+      );
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const delivery = new LongPollResultDelivery({
+      resultUrl: 'http://server/result',
+      retryBaseDelayMs: 5,
+      retryMaxDelayMs: 50,
+    });
+    delivery.deliver(completedResult({ operationId: 'op-unknown-disposition' }));
+
+    await waitForCondition(() => delivery.unacknowledgedCount === 0);
+    expect(fetchMock.mock.calls.length).toBe(2);
+  });
+
+  it('treats a 403 whose body is not JSON as uncorrelated and retries', async () => {
+    let callCount = 0;
+    const fetchMock = mock(() => {
+      callCount += 1;
+      return Promise.resolve(
+        callCount === 1
+          ? new Response('Forbidden', { status: 403 })
+          : jsonResponse({ ok: true, disposition: 'applied' }),
+      );
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    using warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+
+    const delivery = new LongPollResultDelivery({
+      resultUrl: 'http://server/result',
+      retryBaseDelayMs: 5,
+      retryMaxDelayMs: 50,
+    });
+    delivery.deliver(completedResult({ operationId: 'op-plain-403' }));
+
+    await waitForCondition(() => delivery.unacknowledgedCount === 0);
+    expect(fetchMock.mock.calls.length).toBe(2);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('uncorrelated 403'));
+  });
+
+  it('says so when a correlated 403 arrives for a result that is no longer buffered', async () => {
+    let releaseResponse: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      releaseResponse = resolve;
+    });
+    const fetchMock = mock(async () => {
+      await held;
+      return jsonResponse(
+        { error: 'Forbidden', operationId: 'op-gone', attemptToken: 'attempt-1', reason: 'stale' },
+        403,
+      );
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    using warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+
+    const delivery = new LongPollResultDelivery({ resultUrl: 'http://server/result' });
+    delivery.deliver(completedResult({ operationId: 'op-gone' }));
+    // Disposal empties the outbox while the POST is still in flight.
+    delivery.dispose();
+    releaseResponse!();
+
+    await waitForCondition(() => warnSpy.mock.calls.length > 0, { label: 'rejection logged' });
+    expect(String(warnSpy.mock.calls[0]?.[0])).toContain('(stale)');
+    expect(String(warnSpy.mock.calls[0]?.[0])).toContain('; no matching buffered result was found');
+  });
+
+  it('cancels the scheduled retry once a resend is acknowledged', async () => {
+    let callCount = 0;
+    const fetchMock = mock(() => {
+      callCount += 1;
+      return callCount === 1
+        ? Promise.reject(new Error('network down'))
+        : Promise.resolve(jsonResponse({ ok: true, disposition: 'applied' }));
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    useFakeTimers();
+
+    const delivery = new LongPollResultDelivery({
+      resultUrl: 'http://server/result',
+      retryBaseDelayMs: 1_000,
+      retryMaxDelayMs: 5_000,
+    });
+    delivery.deliver(completedResult({ operationId: 'op-resent' }));
+    await waitForCondition(() => callCount === 1);
+    // The failed POST left a retry armed; an immediate resend that is acknowledged must cancel it.
+    delivery.flush();
+    await waitForCondition(() => delivery.unacknowledgedCount === 0);
+
+    await advanceTimersByTime(10_000);
+    expect(fetchMock.mock.calls.length).toBe(2);
+  });
+
   it('suspend() cancels every scheduled retry — no further POST fires afterward', async () => {
     useFakeTimers();
 
