@@ -653,16 +653,23 @@ test('a package task keys on every root script it runs and every root script tho
   };
 
   const missing: string[] = [];
+  // Every root script each turbo task key can reach, across the workspaces it applies to.
+  const reachable = new Map<string, Set<string>>();
   for (const workspace of workspaces) {
     if (workspace.directory === '') continue;
     const manifest = await Bun.file(join(root, workspace.directory, 'package.json')).json();
     for (const [script, command] of Object.entries<string>(manifest.scripts ?? {})) {
       const task = tasks[`${manifest.name}#${script}`] ?? tasks[script];
       if (task === undefined) continue;
+      const taskKey =
+        tasks[`${manifest.name}#${script}`] === undefined ? script : `${manifest.name}#${script}`;
+      const reached = reachable.get(taskKey) ?? new Set<string>();
+      reachable.set(taskKey, reached);
       for (const token of command.split(/[\s&|;'"]+/)) {
         const resolved = posix.normalize(posix.join(workspace.directory, token));
         if (!isScript(resolved) || !paths.has(resolved)) continue;
         for (const file of closure(resolved)) {
+          reached.add(file);
           const covered = (task.inputs ?? []).some(
             (input) =>
               input === `$TURBO_ROOT$/${file}` || new Bun.Glob(input).match(`$TURBO_ROOT$/${file}`),
@@ -674,6 +681,32 @@ test('a package task keys on every root script it runs and every root script tho
     }
   }
   expect(missing.toSorted()).toEqual([]);
+
+  // The other direction: a root script listed as an input that no workspace running the task can
+  // reach widens the cache key, so a change to it re-runs work it cannot affect.
+  // Scripts reached indirectly (a spawned tool, a dynamic import) are invisible to this scan, so
+  // only a script some other task provably reaches counts as misplaced here.
+  const reachedAnywhere = new Set([...reachable.values()].flatMap((files) => [...files]));
+  const unreachable: string[] = [];
+  for (const [taskKey, definition] of Object.entries(tasks)) {
+    const reached = reachable.get(taskKey);
+    if (reached === undefined) continue;
+    for (const input of definition.inputs ?? []) {
+      const match = /^\$TURBO_ROOT\$\/(scripts\/[^*]+\.ts)$/.exec(input);
+      if (match !== null && reachedAnywhere.has(match[1]!) && !reached.has(match[1]!)) {
+        unreachable.push(`${taskKey} declares ${match[1]!}, which no script it runs reaches`);
+      }
+    }
+  }
+  // Over-declarations that predate this guard; the list can only shrink, so a fixed entry must be
+  // deleted here and a new one cannot be added without review.
+  const knownOverDeclarations = [
+    '@lostgradient/ventriloquist#typecheck declares scripts/check-documentation-coverage.ts, which no script it runs reaches',
+    '@lostgradient/ventriloquist#typecheck declares scripts/typecheck-contracts.ts, which no script it runs reaches',
+    'test:slow declares scripts/bun-test.ts, which no script it runs reaches',
+    'typecheck declares scripts/check-documentation-coverage.ts, which no script it runs reaches',
+  ];
+  expect(unreachable.toSorted()).toEqual(knownOverDeclarations);
 });
 
 test('every test lane that bypasses the JUnit wrapper goes through a runner that honours the selection', async () => {

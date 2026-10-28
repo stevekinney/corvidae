@@ -148,6 +148,7 @@ describe('defineOperation builder input', () => {
       transports: { http: false, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
       unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
       invoke: async () => ({
+        subscriptionId: 's',
         envelope: { subscriptionId: 's' },
         iterable: (async function* () {
           yield { value: 1 };

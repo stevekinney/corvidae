@@ -109,6 +109,7 @@ describe('subscription wire-format fixtures — new-error-contract', () => {
       transports: { http: false, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
       unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
       invoke: async () => ({
+        subscriptionId: 'sub_wire_error',
         envelope: { subscriptionId: `sub_${crypto.randomUUID()}`, cursor: '0' },
         iterable: (async function* () {
           // Any yield triggers element-validation failure since
@@ -190,6 +191,7 @@ describe('subscription wire-format fixtures — new-error-contract', () => {
       transports: { http: false, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
       unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
       invoke: async () => ({
+        subscriptionId: 'sub_wire_error',
         envelope: { subscriptionId: `sub_${crypto.randomUUID()}`, cursor: '0' },
         iterable: {
           [Symbol.asyncIterator]() {

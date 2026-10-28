@@ -83,6 +83,8 @@ export type StreamOperationInvocation<Element> = AsyncIterable<Element>;
 
 /** Invocation result for `kind: 'subscription'` operations. */
 export type SubscriptionOperationInvocation<Element, Envelope> = {
+  /** Internal lifecycle key used by transports; independent from the public envelope. */
+  readonly subscriptionId: string;
   readonly envelope: Envelope;
   readonly iterable: AsyncIterable<Element>;
   readonly close: () => Promise<void>;

@@ -190,6 +190,52 @@ async function createSubscribedWorkflowSession(feed: WorkflowEventFeed): Promise
 }
 
 describe('createJsonRpcWebSocketSession — frame dispatch', () => {
+  it('rejects invalid raw generic subscription requests before invocation', async () => {
+    const invalidFrames = [
+      JSON.stringify({ method: 'weft.audit.rawsubscription', id: 1, params: {} }),
+      JSON.stringify({ jsonrpc: '1.0', method: 'weft.audit.rawsubscription', id: 1, params: {} }),
+      JSON.stringify({ jsonrpc: '2.0', method: 'weft.audit.rawsubscription', id: {}, params: {} }),
+      JSON.stringify({ jsonrpc: '2.0', method: 'weft.audit.rawsubscription', id: 1, params: [] }),
+    ];
+
+    for (const frame of invalidFrames) {
+      let invocationCalls = 0;
+      let closeCalls = 0;
+      const operation = makeOp({
+        name: 'weft.audit.rawsubscription',
+        kind: 'subscription',
+        inputSchema: z.object({}),
+        outputSchema: z.unknown(),
+        eventSchema: z.unknown(),
+        invoke: async () => {
+          invocationCalls += 1;
+          return {
+            subscriptionId: 'should-not-start',
+            envelope: { kind: 'custom' },
+            iterable: (async function* () {})(),
+            close: async () => {
+              closeCalls += 1;
+            },
+          };
+        },
+      });
+      const emitter = makeEmitter();
+      const session = createJsonRpcWebSocketSession({
+        registry: createOperationRegistry([operation]),
+        engine: fakeEngine,
+        principal: anonymousPrincipal(),
+        emitter,
+      });
+
+      await session.handleMessage(frame);
+
+      expect(JSON.parse(emitter.sent[0]!).error.code).toBe(-32600);
+      expect(invocationCalls).toBe(0);
+      expect(closeCalls).toBe(0);
+      await session.close();
+    }
+  });
+
   it('does not synthesize missing subscription operations into a custom registry', async () => {
     const emitter = makeEmitter();
     const feed = createWorkflowEventFeed(createInMemoryEventBackend());
@@ -213,6 +259,95 @@ describe('createJsonRpcWebSocketSession — frame dispatch', () => {
     const response = JSON.parse(emitter.sent[0]!);
     expect(response.error.code).toBe(-32601);
     expect(response.error.data.weftCode).toBe('MethodNotFound');
+    await session.close();
+  });
+
+  it('preserves arbitrary subscription envelopes and uses the internal lifecycle id', async () => {
+    let closeCalls = 0;
+    let release: (() => void) | undefined;
+    const invalidSubscription = makeOp({
+      name: 'weft.audit.invalidenvelope',
+      kind: 'subscription',
+      inputSchema: z.object({}),
+      outputSchema: z.unknown(),
+      eventSchema: z.object({ value: z.string() }),
+      invoke: async () => ({
+        subscriptionId: 'internal-custom',
+        envelope: { kind: 'custom', token: 'x' },
+        iterable: (async function* () {
+          yield { value: 'delivered' };
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+        })(),
+        close: async () => {
+          closeCalls += 1;
+          release?.();
+        },
+      }),
+    });
+    const emitter = makeEmitter();
+    const session = createJsonRpcWebSocketSession({
+      registry: createOperationRegistry([invalidSubscription]),
+      engine: fakeEngine,
+      principal: anonymousPrincipal(),
+      emitter,
+    });
+
+    await session.handleMessage(
+      JSON.stringify({ jsonrpc: '2.0', method: 'weft.audit.invalidenvelope', params: {}, id: 1 }),
+    );
+
+    const response = JSON.parse(emitter.sent[0]!);
+    expect(response.result).toEqual({ kind: 'custom', token: 'x' });
+    await emitter.waitForParsedMessage(
+      'custom subscription event',
+      (message) =>
+        message['method'] === 'weft.events.deliver' &&
+        (message['params'] as { subscriptionId?: string }).subscriptionId === 'internal-custom',
+    );
+    expect(closeCalls).toBe(0);
+    await session.close();
+    expect(closeCalls).toBe(1);
+    await session.close();
+    expect(closeCalls).toBe(1);
+  });
+
+  it('emits invalid requests without an id before invoking a registered subscription', async () => {
+    let invocationCalls = 0;
+    let closeCalls = 0;
+    const operation = makeOp({
+      name: 'weft.audit.noid',
+      kind: 'subscription',
+      inputSchema: z.object({}),
+      outputSchema: z.unknown(),
+      eventSchema: z.unknown(),
+      invoke: async () => {
+        invocationCalls += 1;
+        return {
+          subscriptionId: 'should-not-start',
+          envelope: { kind: 'custom' },
+          iterable: (async function* () {})(),
+          close: async () => {
+            closeCalls += 1;
+          },
+        };
+      },
+    });
+    const emitter = makeEmitter();
+    const session = createJsonRpcWebSocketSession({
+      registry: createOperationRegistry([operation]),
+      engine: fakeEngine,
+      principal: anonymousPrincipal(),
+      emitter,
+    });
+
+    await session.handleMessage(JSON.stringify({ method: 'weft.audit.noid', params: {} }));
+
+    expect(emitter.sent).toHaveLength(1);
+    expect(JSON.parse(emitter.sent[0]!).error.code).toBe(-32600);
+    expect(invocationCalls).toBe(0);
+    expect(closeCalls).toBe(0);
     await session.close();
   });
 
@@ -312,6 +447,29 @@ describe('createJsonRpcWebSocketSession — frame dispatch', () => {
     expect(emitter.sent).toHaveLength(1);
     const response = JSON.parse(emitter.sent[0]!);
     expect(response.error.code).toBe(-32700);
+    await session.close();
+  });
+
+  it('falls through to standard dispatch when a feed-dependent primitive has no feed', async () => {
+    const emitter = makeEmitter();
+    const session = createJsonRpcWebSocketSession({
+      registry: createOperationRegistry([]),
+      engine: fakeEngine,
+      principal: anonymousPrincipal(),
+      emitter,
+    });
+
+    await session.handleMessage(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'weft.workflows.subscribe',
+        params: { workflowId: 'wf-1', selector: 'events' },
+        id: 'missing-feed',
+      }),
+    );
+
+    const response = JSON.parse(emitter.sent[0]!);
+    expect(response.error.code).toBe(-32601);
     await session.close();
   });
 

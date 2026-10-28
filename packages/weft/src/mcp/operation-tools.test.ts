@@ -92,6 +92,7 @@ const events = defineOperation<
   invoke: async ({ input, host }) => {
     const controller = new AbortController();
     return {
+      subscriptionId: 'sub_1',
       envelope: { subscriptionId: 'sub_1', cursor: input.fromCursor ?? '0' },
       iterable: host.feed.subscribe(input.fromCursor, controller.signal),
       close: async () => {
@@ -121,6 +122,7 @@ const finite = defineOperation<
   transports: { http: true, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
   unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
   invoke: async () => ({
+    subscriptionId: 'sub_finite',
     envelope: { subscriptionId: 'sub_finite', cursor: '0' },
     iterable: (async function* () {
       yield { kind: 'removed', cursor: '1', emittedAtMs: 0, payload: {} };
