@@ -51,7 +51,7 @@ import type { EngineInternals } from './internals.ts';
 import { getTimelineInputSummary, getTimelineOperationLabel } from './state-utilities.ts';
 import { buildPendingTimelineOperation } from './termination.ts';
 import {
-  captureActivityCompletionReceipt,
+  captureActivityCompletionReceipts,
   type ActivityCompletionReceipt,
 } from './timeline-coordinator-detail.ts';
 import { notifyWorkflowFeedCommit } from './workflow-feed.ts';
@@ -64,9 +64,8 @@ type PendingTimelineEntryValue = {
 function dispatchActivityCompletionReceipt(
   callbacks: Pick<PersistCheckpointCallbacks, 'dispatchEvent'>,
   workflowId: string,
-  receipt: ActivityCompletionReceipt | undefined,
+  receipt: ActivityCompletionReceipt,
 ): void {
-  if (receipt === undefined) return;
   callbacks.dispatchEvent(
     tagWorkflowEventGeneration(
       new ActivityCompletedEvent(
@@ -385,7 +384,7 @@ async function commitCheckpoint(
   callbacks: PersistCheckpointCallbacks,
   options: PersistCheckpointOptions,
 ): Promise<void> {
-  const activityCompletionReceipt = captureActivityCompletionReceipt(internals, workflowId);
+  const activityCompletionReceipts = captureActivityCompletionReceipts(internals, workflowId);
   dispatchCheckpointSizeWarning(internals, workflowId, commit, callbacks);
   const nextPendingTimelineEntry =
     options.timeline === 'preserve-pending'
@@ -467,7 +466,9 @@ async function commitCheckpoint(
     nextPendingTimelineEntry,
     pendingSideEffects !== undefined,
   );
-  dispatchActivityCompletionReceipt(callbacks, workflowId, activityCompletionReceipt);
+  for (const receipt of activityCompletionReceipts) {
+    dispatchActivityCompletionReceipt(callbacks, workflowId, receipt);
+  }
   // Archival runs only after the truncation has committed durably; it is a
   // best-effort export, never a rollback trigger (see ArchiveAdapter). The
   // Promise.resolve().then(...) wrapper turns synchronous adapter throws into

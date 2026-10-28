@@ -27,6 +27,7 @@ import {
   buildExternalTerminalRotationFragment,
   deriveWorkflowResultFromState,
 } from './storage-io.ts';
+import { forgetBranchActivityReceipts } from './timeline-coordinator-detail.ts';
 import { isTerminalWorkflowStatus } from './validation.ts';
 import { foldWorkflowGenerationBumpForPurge } from './workflow-generation-fence.ts';
 import { getWorkflowRetentionDeadline } from './workflow-retention-deadline.ts';
@@ -226,6 +227,7 @@ export function clearPurgedWorkflowInMemoryState(
   releaseLaunchCheckpoint(internals, workflowId);
   internals.heartbeatDetails.delete(workflowId);
   internals.lastHeartbeatDetailsByStep.delete(workflowId);
+  forgetBranchActivityReceipts(internals, workflowId);
   for (const [token, pending] of internals.pendingAsyncActivities) {
     if (pending.workflowId === workflowId) {
       internals.pendingAsyncActivities.delete(token);

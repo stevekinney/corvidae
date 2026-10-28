@@ -16,46 +16,129 @@ export type ActivityCompletionReceipt = {
 };
 
 /**
- * Whether `operationId` is the workflow's top-level durable activity: the only
- * activity whose committed result {@link captureActivityCompletionReceipt} can
- * report. `ctx.all`/`ctx.race` branches and `durableActivity()` helpers run
- * under an enclosing operation, so they report neither lifecycle event rather
- * than a start that never completes.
+ * Completion receipts for `ctx.all`/`ctx.race`/run-all branch activities that
+ * succeeded locally, keyed `workflowId -> operationId`, per engine. The
+ * enclosing coordinator's result commit reports the branches its timeline
+ * entry records as fulfilled or won and drops the rest (race losers, failed
+ * siblings). Held only in memory, collected with the engine, and dropped per
+ * workflow by {@link forgetBranchActivityReceipts} on terminal cleanup and purge.
  */
-export function isTopLevelDurableActivity(
+const branchActivityReceipts = new WeakMap<
+  EngineInternals,
+  Map<string, Map<string, ActivityCompletionReceipt>>
+>();
+
+/** Drop a workflow's held branch receipts when its run ends or is purged. */
+export function forgetBranchActivityReceipts(internals: EngineInternals, workflowId: string): void {
+  branchActivityReceipts.get(internals)?.delete(workflowId);
+}
+
+const COORDINATOR_OPERATION_TYPES: ReadonlySet<string> = new Set(['parallel', 'race', 'run-all']);
+
+/**
+ * Which lifecycle evidence an activity attempt reports, decided by the
+ * workflow's current durable operation. A `'top-level'` activity is that
+ * operation; a `'branch'` runs under an enclosing `ctx.all`/`ctx.race`/run-all
+ * whose result commit reports it. Anything else, such as a `durableActivity()`
+ * helper under `ctx.memo`, reports neither event rather than a start that
+ * never completes.
+ */
+export function activityLifecycleScope(
   internals: EngineInternals,
   workflowId: string,
   operationId: string,
-): boolean {
+): 'top-level' | 'branch' | undefined {
   const operation = internals.durableInlineOperations?.get(workflowId);
-  return operation?.type === 'activity' && operation.operationId === operationId;
+  if (operation === undefined) return undefined;
+  if (operation.type === 'activity') {
+    return operation.operationId === operationId ? 'top-level' : undefined;
+  }
+  return COORDINATOR_OPERATION_TYPES.has(operation.type) ? 'branch' : undefined;
 }
 
-export function captureActivityCompletionReceipt(
+/**
+ * Hold a succeeded branch activity's receipt until its coordinator commits. A
+ * race loser that finishes after its workflow moved on or ended has no
+ * coordinator left to report it, so it is not held.
+ */
+export function recordBranchActivityReceipt(
   internals: EngineInternals,
   workflowId: string,
-): ActivityCompletionReceipt | undefined {
-  // A remote-mode engine dispatches every top-level activity to a worker, and
+  receipt: ActivityCompletionReceipt,
+): void {
+  const operation = internals.durableInlineOperations?.get(workflowId);
+  if (
+    activityLifecycleScope(internals, workflowId, receipt.operationId) !== 'branch' ||
+    operation?.workflowExecutionToken !== receipt.workflowExecutionToken
+  ) {
+    return;
+  }
+  let byWorkflow = branchActivityReceipts.get(internals);
+  if (byWorkflow === undefined) {
+    byWorkflow = new Map();
+    branchActivityReceipts.set(internals, byWorkflow);
+  }
+  let receipts = byWorkflow.get(workflowId);
+  if (receipts === undefined) {
+    receipts = new Map();
+    byWorkflow.set(workflowId, receipts);
+  }
+  receipts.set(receipt.operationId, receipt);
+}
+
+/**
+ * The activity completions the commit about to run makes durable: the
+ * top-level activity's, or each branch the coordinator's timeline entry
+ * records as fulfilled or won. Branch receipts the commit does not report
+ * (race losers, failed siblings) are dropped with it.
+ */
+export function captureActivityCompletionReceipts(
+  internals: EngineInternals,
+  workflowId: string,
+): ActivityCompletionReceipt[] {
+  const operation = internals.durableInlineOperations?.get(workflowId);
+  if (operation === undefined) return [];
+  if (COORDINATOR_OPERATION_TYPES.has(operation.type)) {
+    return captureBranchCompletionReceipts(internals, workflowId);
+  }
+  // A remote-mode engine dispatches every activity to a worker, and
   // `task-result-application.ts` reports its completion under the task
   // ledger's operation id, the one its `activity:started` carried. Reporting
   // the committed checkpoint here too would publish a second completion.
-  if (internals.remoteActivityBroker) return undefined;
+  if (internals.remoteActivityBroker || operation.type !== 'activity') return [];
   const pending = internals.pendingTimelineEntries.get(workflowId);
-  const operation = internals.durableInlineOperations?.get(workflowId);
   if (
     pending?.entry.operationType !== 'activity' ||
     pending.entry.status !== 'completed' ||
-    pending.entry.duration === undefined ||
-    operation?.type !== 'activity'
+    pending.entry.duration === undefined
   ) {
-    return undefined;
+    return [];
   }
-  return {
-    operationId: operation.operationId,
-    workflowExecutionToken: operation.workflowExecutionToken,
-    activityName: pending.entry.operationLabel,
-    duration: Math.max(0, pending.entry.duration),
-  };
+  return [
+    {
+      operationId: operation.operationId,
+      workflowExecutionToken: operation.workflowExecutionToken,
+      activityName: pending.entry.operationLabel,
+      duration: Math.max(0, pending.entry.duration),
+    },
+  ];
+}
+
+function captureBranchCompletionReceipts(
+  internals: EngineInternals,
+  workflowId: string,
+): ActivityCompletionReceipt[] {
+  const receipts = branchActivityReceipts.get(internals)?.get(workflowId);
+  forgetBranchActivityReceipts(internals, workflowId);
+  const pending = internals.pendingTimelineEntries.get(workflowId);
+  if (receipts === undefined || pending?.entry.status !== 'completed') return [];
+  const committed: ActivityCompletionReceipt[] = [];
+  for (const branch of pending.entry.branches ?? []) {
+    if (branch.outcome !== 'fulfilled' && branch.outcome !== 'won') continue;
+    const receipt = receipts.get(branch.operationId);
+    if (receipt !== undefined) committed.push(receipt);
+  }
+  return committed;
 }
 
 function boundedString(value: string): string {

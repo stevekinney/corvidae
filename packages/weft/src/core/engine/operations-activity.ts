@@ -38,7 +38,8 @@ import {
   type CapturedRejectionReason,
 } from './strategy-helpers.ts';
 import {
-  isTopLevelDurableActivity,
+  activityLifecycleScope,
+  recordBranchActivityReceipt,
   recordTimelineTaskIdentity,
 } from './timeline-coordinator-detail.ts';
 
@@ -363,12 +364,28 @@ export async function executeActivity(
             attemptAbortController,
           );
 
+  // Remote attempts report their lifecycle from the task ledger instead.
+  const lifecycleScope = isRemoteMode
+    ? undefined
+    : activityLifecycleScope(internals, workflowId, operation.operationId);
+  let startedAt: number | undefined;
+  const recordBranchCompletion = (): void => {
+    if (lifecycleScope !== 'branch' || startedAt === undefined) return;
+    recordBranchActivityReceipt(internals, workflowId, {
+      operationId: operation.operationId,
+      workflowExecutionToken: operation.workflowExecutionToken,
+      activityName: operation.activityName,
+      duration: Math.max(0, internals.options.getNow() - startedAt),
+    });
+  };
+
   const invokeActivity = (
     activityName: string,
     input: unknown,
     headers: Map<string, string>,
   ): unknown => {
-    if (!isRemoteMode && isTopLevelDurableActivity(internals, workflowId, operation.operationId)) {
+    if (lifecycleScope !== undefined) {
+      startedAt = internals.options.getNow();
       internals.engine?.dispatchEvent(
         tagWorkflowEventGeneration(
           new ActivityStartedEvent(
@@ -431,6 +448,7 @@ export async function executeActivity(
     const generator = composedWorkflow.activity(interception, execute);
     const value = await driveWorkflowInterceptorGenerator(generator);
     copyActivityHeadersToOperation(operation, interception.headers);
+    recordBranchCompletion();
     return value;
   }
 
@@ -441,6 +459,7 @@ export async function executeActivity(
     headers,
   );
   copyActivityHeadersToOperation(operation, headers);
+  recordBranchCompletion();
   return result;
 }
 

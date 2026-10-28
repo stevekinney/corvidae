@@ -48,7 +48,7 @@ import {
   startPendingTerminalSettlement,
   type PendingTerminalSettlement,
 } from '../terminal-settlement-pending.ts';
-import { captureActivityCompletionReceipt } from '../timeline-coordinator-detail.ts';
+import { captureActivityCompletionReceipts } from '../timeline-coordinator-detail.ts';
 import { releaseWorkflowConcurrencySlotForRun } from '../workflow-concurrency.ts';
 import { updateWorkflowState } from '../workflow-state-update.ts';
 import {
@@ -488,7 +488,7 @@ export async function completeWorkflow(
         return operations;
       };
       const completionOperations = buildOperations(state);
-      const activityCompletionReceipt = captureActivityCompletionReceipt(internals, workflowId);
+      const activityCompletionReceipts = captureActivityCompletionReceipts(internals, workflowId);
 
       // completeWorkflow is a SELF-transition (ADR 0002): this engine is
       // finishing its own workflow.
@@ -506,21 +506,21 @@ export async function completeWorkflow(
       // must not be re-read after the awaits below.
       const claimEpoch = captureCurrentClaimEpoch(internals, workflowId);
       const executionToken = internals.checkpoints.get(workflowId)?.workflowExecutionToken;
-      return { duration, claimEpoch, executionToken, fence, activityCompletionReceipt };
+      return { duration, claimEpoch, executionToken, fence, activityCompletionReceipts };
     },
   );
   if (!completionMetadata) return;
-  const { claimEpoch, executionToken, fence, activityCompletionReceipt } = completionMetadata;
-  if (activityCompletionReceipt !== undefined) {
+  const { claimEpoch, executionToken, fence, activityCompletionReceipts } = completionMetadata;
+  for (const receipt of activityCompletionReceipts) {
     callbacks.dispatchEvent(
       tagWorkflowEventGeneration(
         new ActivityCompletedEvent(
-          activityCompletionReceipt.operationId,
+          receipt.operationId,
           workflowId,
-          activityCompletionReceipt.activityName,
-          activityCompletionReceipt.duration,
+          receipt.activityName,
+          receipt.duration,
         ),
-        activityCompletionReceipt.workflowExecutionToken,
+        receipt.workflowExecutionToken,
       ),
     );
   }

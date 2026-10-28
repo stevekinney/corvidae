@@ -257,19 +257,19 @@ describe('activity operation helpers', () => {
     expect(dispatched).toHaveLength(1);
   });
 
-  it('reports no start for an activity running under an enclosing operation', async () => {
+  it('reports no start for a durableActivity helper running under ctx.memo', async () => {
     const dispatched: Event[] = [];
     const internals = createInternals({
       engine: { dispatchEvent: (event: Event) => dispatched.push(event) },
-      // A `ctx.all` branch: the durable operation is the enclosing `parallel`,
-      // whose commit carries no completion receipt for this activity.
-      durableInlineOperations: topLevelActivityOperation('parallel'),
+      // No coordinator commit reports a helper's completion, so it reports
+      // neither event rather than an unmatched start.
+      durableInlineOperations: topLevelActivityOperation('memo'),
     });
 
     await executeActivity(
       internals as never,
       'workflow-id',
-      createActivityOperation({ fn: () => 'branch-result' }),
+      createActivityOperation({ fn: () => 'helper-result' }),
       createCallbacks(),
     );
 
