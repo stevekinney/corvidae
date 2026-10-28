@@ -111,7 +111,7 @@ function resolveWebExtensionNamespace(runtimeGlobals: RuntimeGlobalsLike): {
 
 function resolveIndexedDbRuntime(runtimeGlobals: RuntimeGlobalsLike): {
   indexedDB: Pick<typeof indexedDB, 'open'>;
-  IDBKeyRange: Pick<typeof IDBKeyRange, 'bound'>;
+  IDBKeyRange: Pick<typeof IDBKeyRange, 'bound' | 'lowerBound'>;
 } {
   const indexedDbFactory = runtimeGlobals.indexedDB;
   const keyRangeFactory = runtimeGlobals.IDBKeyRange;
@@ -122,7 +122,7 @@ function resolveIndexedDbRuntime(runtimeGlobals: RuntimeGlobalsLike): {
   }
   return {
     indexedDB: indexedDbFactory as Pick<typeof indexedDB, 'open'>,
-    IDBKeyRange: keyRangeFactory as Pick<typeof IDBKeyRange, 'bound'>,
+    IDBKeyRange: keyRangeFactory as Pick<typeof IDBKeyRange, 'bound' | 'lowerBound'>,
   };
 }
 

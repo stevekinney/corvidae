@@ -3,7 +3,8 @@ import type {
   ConditionalBatchCondition,
   Storage,
 } from '../../storage/interface.ts';
-import { KEYS, resolvePrefixRangeEnd, storageConditionalBatch } from '../../storage/interface.ts';
+import { KEYS, storageConditionalBatch } from '../../storage/interface.ts';
+import { resolveNonEmptyPrefixRangeEnd } from '../../storage/non-empty-prefix-range-end.ts';
 import { decode } from '../codec.ts';
 import type { TimerEntry } from '../types.ts';
 import { DEFAULT_POLL_INTERVAL_MS } from '../types/constants.ts';
@@ -270,23 +271,23 @@ export class Scheduler implements Disposable {
   #scanExpiredTimers(currentTime: number): TimerScanIterators {
     return {
       deadline: this.#storage.scan('wf-deadline:', {
-        lt: resolvePrefixRangeEnd(KEYS.deadline(currentTime, '')),
+        lt: resolveNonEmptyPrefixRangeEnd(KEYS.deadline(currentTime, '')),
         limit: EXPIRED_TIMER_SCAN_LIMIT_PER_SOURCE,
       }),
       delayedStart: this.#storage.scan('wf-delayed:', {
-        lt: resolvePrefixRangeEnd(KEYS.delayedStart(currentTime, '')),
+        lt: resolveNonEmptyPrefixRangeEnd(KEYS.delayedStart(currentTime, '')),
         limit: EXPIRED_TIMER_SCAN_LIMIT_PER_SOURCE,
       }),
       schedule: this.#storage.scan('schedule-due:', {
-        lt: resolvePrefixRangeEnd(KEYS.scheduleTick(currentTime, '')),
+        lt: resolveNonEmptyPrefixRangeEnd(KEYS.scheduleTick(currentTime, '')),
         limit: EXPIRED_TIMER_SCAN_LIMIT_PER_SOURCE,
       }),
       terminalCleanup: this.#storage.scan('wf-cleanup:', {
-        lt: resolvePrefixRangeEnd(KEYS.terminalCleanup(currentTime, '')),
+        lt: resolveNonEmptyPrefixRangeEnd(KEYS.terminalCleanup(currentTime, '')),
         limit: EXPIRED_TIMER_SCAN_LIMIT_PER_SOURCE,
       }),
       teardown: this.#storage.scan('wf-teardown:', {
-        lt: resolvePrefixRangeEnd(KEYS.teardownTimer(currentTime, '')),
+        lt: resolveNonEmptyPrefixRangeEnd(KEYS.teardownTimer(currentTime, '')),
         limit: EXPIRED_TIMER_SCAN_LIMIT_PER_SOURCE,
       }),
     };

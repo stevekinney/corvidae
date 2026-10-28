@@ -33,9 +33,10 @@ import {
 } from './interface.ts';
 import { assertSqlIdentifier } from './sql-identifier.ts';
 import {
+  buildSqliteCountKeysByPrefix,
+  buildSqliteDeleteKeysByPrefix,
   buildSqliteKeyRangeDelete,
   buildSqliteKeyRangeQuery,
-  buildSqlitePrefixRangeParameters,
 } from './sqlite-key-value-queries.ts';
 
 export type { Sql, SqlStorageCursor, SqlStorageValue } from './cloudflare-durable-object-sql.ts';
@@ -210,20 +211,14 @@ export class CloudflareDurableObjectSQLiteStorage implements Storage {
   }
 
   async count(prefix: string): Promise<number> {
-    const [rangeStart, rangeEnd] = buildSqlitePrefixRangeParameters(prefix);
-    const rows = [
-      ...this.#sql.exec<CountRow>(
-        `SELECT COUNT(*) AS count FROM ${this.#table} WHERE key >= ? AND key < ?`,
-        rangeStart,
-        rangeEnd,
-      ),
-    ];
+    const { parameters, sql } = buildSqliteCountKeysByPrefix(prefix, this.#table);
+    const rows = [...this.#sql.exec<CountRow>(sql, ...parameters)];
     return rows[0]?.count ?? 0;
   }
 
   async deletePrefix(prefix: string): Promise<number> {
-    const [rangeStart, rangeEnd] = buildSqlitePrefixRangeParameters(prefix);
-    this.#sql.exec(`DELETE FROM ${this.#table} WHERE key >= ? AND key < ?`, rangeStart, rangeEnd);
+    const { parameters, sql } = buildSqliteDeleteKeysByPrefix(prefix, this.#table);
+    this.#sql.exec(sql, ...parameters);
     return this.#logicalChangeCount();
   }
 

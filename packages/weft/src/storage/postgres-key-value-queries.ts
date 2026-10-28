@@ -76,8 +76,21 @@ export type PostgresBuiltQuery = {
   sql: string;
 };
 
-export function buildPostgresPrefixRangeParameters(prefix: string): [string, string] {
-  return [prefix, resolvePrefixRangeEnd(prefix)];
+/**
+ * The `WHERE` condition and bound parameters selecting every key under `prefix`,
+ * with `$1` (and `$2` when bounded) as its placeholders. An empty prefix matches
+ * every key and has no upper bound, so its condition has no `key < $2` clause:
+ * a sentinel end would drop keys that sort past it, such as those starting with
+ * a CJK character or an emoji.
+ */
+export function buildPostgresPrefixRange(prefix: string): {
+  condition: string;
+  parameters: string[];
+} {
+  const prefixEnd = resolvePrefixRangeEnd(prefix);
+  return prefixEnd === undefined
+    ? { condition: 'key >= $1', parameters: [prefix] }
+    : { condition: 'key >= $1 AND key < $2', parameters: [prefix, prefixEnd] };
 }
 
 /** The bound (gt/gte/lt/lte) fields shared by scan and delete range queries. */
@@ -98,8 +111,9 @@ function buildPostgresKeyRangeConditions(
 } {
   const { gt, gte, lt, lte } = bounds;
 
-  const parameters: PostgresKeyRangeQueryParameter[] = buildPostgresPrefixRangeParameters(prefix);
-  const conditions: string[] = ['key >= $1 AND key < $2'];
+  const prefixRange = buildPostgresPrefixRange(prefix);
+  const parameters: PostgresKeyRangeQueryParameter[] = prefixRange.parameters;
+  const conditions: string[] = [prefixRange.condition];
 
   if (gt !== undefined) {
     parameters.push(gt);
@@ -161,8 +175,8 @@ export type PostgresKeyValueQueries = {
   readonly upsertValueByKey: string;
   readonly deleteValueByKey: string;
   readonly selectKeyPresence: string;
-  readonly countKeysByPrefix: string;
-  readonly deleteKeysByPrefix: string;
+  countKeysByPrefix(prefix: string): PostgresBuiltQuery;
+  deleteKeysByPrefix(prefix: string): PostgresBuiltQuery;
   /** One-statement condition read for `conditionalBatch`: `key = ANY($1)`. */
   readonly selectValuesByKeys: string;
   /** One-statement multi-row upsert for `batch`: `unnest($1::text[], $2::bytea[])`. */
@@ -210,10 +224,19 @@ export function buildPostgresKeyValueQueries(tableReference: string): PostgresKe
     upsertValueByKey: `INSERT INTO ${tableReference} (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
     deleteValueByKey: `DELETE FROM ${tableReference} WHERE key = $1`,
     selectKeyPresence: `SELECT 1 AS present FROM ${tableReference} WHERE key = $1 LIMIT 1`,
-    countKeysByPrefix: `SELECT COUNT(*) AS count FROM ${tableReference} WHERE key >= $1 AND key < $2`,
+    countKeysByPrefix(prefix) {
+      const { condition, parameters } = buildPostgresPrefixRange(prefix);
+      return {
+        parameters,
+        sql: `SELECT COUNT(*) AS count FROM ${tableReference} WHERE ${condition}`,
+      };
+    },
     // No `RETURNING`: the caller reads the affected-row count from the driver's
     // result metadata, so a large prefix delete never materializes every key.
-    deleteKeysByPrefix: `DELETE FROM ${tableReference} WHERE key >= $1 AND key < $2`,
+    deleteKeysByPrefix(prefix) {
+      const { condition, parameters } = buildPostgresPrefixRange(prefix);
+      return { parameters, sql: `DELETE FROM ${tableReference} WHERE ${condition}` };
+    },
     selectValuesByKeys: `SELECT key, value FROM ${tableReference} WHERE key = ANY($1)`,
     upsertValuesByKeys: `INSERT INTO ${tableReference} (key, value) SELECT * FROM unnest($1::text[], $2::bytea[]) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
     deleteValuesByKeys: `DELETE FROM ${tableReference} WHERE key = ANY($1)`,
