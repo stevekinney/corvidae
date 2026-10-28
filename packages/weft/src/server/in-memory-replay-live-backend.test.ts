@@ -145,7 +145,7 @@ describe('the in-memory replay-live backend', () => {
     first.append(envelope(2));
     const currentCursor = first.encodeCursor?.(0) ?? '';
     expect(first.decodeCursor?.(currentCursor)).toEqual({ sequence: 0 });
-    expect(first.decodeCursor?.('0')).toBe('invalid');
+    expect(first.decodeCursor?.('0')).toBe('gap');
     expect(first.decodeCursor?.('bad')).toBe('invalid');
     expect(first.decodeCursor?.('not-an-incarnation:0')).toBe('invalid');
     expect(first.decodeCursor?.('-1')).toEqual({ sequence: -1 });
@@ -184,6 +184,36 @@ describe('the in-memory replay-live backend', () => {
       replayed.push(item);
     expect(replayed.map((item) => item.kind)).toEqual(['gap', 'probe']);
     expect(replayed[0]?.payload).toEqual({ requestedCursor: cursor, firstRetainedSequence: 0 });
+  });
+
+  it('stops a canceled subscription before emitting a gap after retention lookup', async () => {
+    const prior = createInMemoryReplayLiveBackend<ProbeEnvelope>();
+    const cursor = prior.encodeCursor?.(0) ?? '';
+    const lookup = Promise.withResolvers<number>();
+    const started = Promise.withResolvers<void>();
+    const backend = createInMemoryReplayLiveBackend<ProbeEnvelope>({
+      createGapEnvelope: ({ firstRetainedSequence, continuationCursor }) => ({
+        sequence: firstRetainedSequence - 1,
+        cursor: continuationCursor,
+        kind: 'gap',
+      }),
+    });
+    const feed = createReplayLiveFeed({
+      ...backend,
+      snapshotFirstRetainedSequence: () => {
+        started.resolve();
+        return lookup.promise;
+      },
+    });
+    const controller = new AbortController();
+    const subscription = feed.subscribe({ fromCursor: cursor, signal: controller.signal });
+    const iterator = subscription[Symbol.asyncIterator]();
+    const next = iterator.next();
+    await started.promise;
+    controller.abort();
+    lookup.resolve(0);
+    expect(await next).toEqual({ done: true, value: undefined });
+    await iterator.return?.();
   });
 
   it('counts the replay cap against filtered-in envelopes only', async () => {

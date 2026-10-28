@@ -865,6 +865,30 @@ describe('createBureauHandler WebSocket transport', () => {
           }),
         );
         expect(await unsubscribed).toMatchObject({ id: 2, result: {} });
+        const run = await bureau.tasks.start('default', 'hello');
+        await waitForCondition(
+          () => bureau.internals.runEventFeeds.get(run.id) !== undefined,
+          'expected a run feed for the WebSocket cursor check',
+        );
+        for (const [id, method, params] of [
+          [3, 'bureau.events', { bureauId: bureau.id, fromCursor: 'malformed' }],
+          [4, 'operative.runs.events', { runId: run.id, fromCursor: 'malformed' }],
+        ] as const) {
+          const response = new Promise<Record<string, unknown>>((resolve) => {
+            const listener = (event: MessageEvent) => {
+              const parsed = JSON.parse(String(event.data)) as Record<string, unknown>;
+              if (parsed['id'] !== id) return;
+              socket.removeEventListener('message', listener);
+              resolve(parsed);
+            };
+            socket.addEventListener('message', listener);
+          });
+          socket.send(JSON.stringify({ jsonrpc: '2.0', id, method, params }));
+          expect(await response).toMatchObject({
+            id,
+            error: { code: -32602, data: { weftCode: 'InvalidParams' } },
+          });
+        }
         socket.close();
       } finally {
         server.stop(true);

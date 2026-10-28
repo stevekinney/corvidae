@@ -19,9 +19,10 @@ export type FeedEventKind =
 // ---------------------------------------------------------------------------
 
 /**
- * Opaque cursor into a workflow or fleet event feed. Only `encodeCursor` /
- * `decodeCursor` know the format — treat it as an opaque string, pass it back
- * as `fromCursor` to resume a feed, and never parse it.
+ * Opaque cursor into a workflow or fleet event feed. Durable workflow and
+ * fleet feeds use numeric cursors; in-memory backends use an incarnation and
+ * sequence so a reconnect after restart can report a gap. Pass the cursor
+ * back as `fromCursor` to resume a feed, and never parse it in a client.
  *
  * @example
  * ```ts

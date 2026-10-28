@@ -9,10 +9,10 @@
  * not a client.
  *
  * WHAT IT COSTS TO CHOOSE THIS FIRST. Events are lost on restart, and a
- * client that reconnects after the process died cannot resume from its
- * cursor. `maxEvents` bounds the log so a long-lived producer cannot exhaust
- * memory; once it is reached the oldest envelopes are dropped, which a
- * reconnecting client observes as a cursor it can no longer replay from.
+ * client that reconnects after the process died receives a gap and can
+ * continue from the new log, but cannot recover lost events. `maxEvents`
+ * bounds the log so a long-lived producer cannot exhaust memory; once it is
+ * reached the oldest envelopes are dropped and a reconnect also sees a gap.
  *
  * Distinct from `in-memory-event-feed-backend.test-support.ts`, which
  * implements the workflow-specific `WorkflowEventFeedBackend` (bucketed by
@@ -69,6 +69,7 @@ export function createInMemoryReplayLiveBackend<TEnvelope extends SequencedEvent
       if (!Number.isSafeInteger(sequence)) return 'invalid';
       return structured[1] === incarnation ? { sequence } : 'gap';
     }
+    if (/^\d+$/.test(cursor) && Number.isSafeInteger(Number(cursor))) return 'gap';
     return 'invalid';
   };
   const retentionGap = (

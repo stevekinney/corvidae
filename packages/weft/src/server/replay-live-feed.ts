@@ -55,16 +55,29 @@ export function createReplayLiveFeed<TEnvelope extends SequencedEventEnvelope>(
   };
   const continuation = (sequence: number): Cursor =>
     backend.encodeCursor?.(sequence) ?? (sequence < 0 ? '-1' : encodeCursor(sequence));
-  const subscriptionGap = async (cursor: Cursor | undefined, snapshot: number) => {
-    if (cursor === undefined || decodedFor(cursor) !== 'gap') return undefined;
-    const firstRetainedSequence = (await backend.snapshotFirstRetainedSequence?.()) ?? snapshot + 1;
-    return backend.createGapEnvelope?.({
+  const subscriptionGap = async function* (
+    cursor: Cursor | undefined,
+    snapshot: number,
+    signal: AbortSignal | undefined,
+  ): AsyncIterable<TEnvelope> {
+    if (
+      signal?.aborted ||
+      cursor === undefined ||
+      backend.createGapEnvelope === undefined ||
+      decode(cursor) !== 'gap'
+    )
+      return;
+    const firstRetainedSequence =
+      backend.snapshotFirstRetainedSequence === undefined
+        ? snapshot + 1
+        : await backend.snapshotFirstRetainedSequence();
+    if (signal?.aborted) return;
+    yield backend.createGapEnvelope({
       requestedCursor: cursor,
       firstRetainedSequence,
       continuationCursor: continuation(firstRetainedSequence - 1),
     });
   };
-  const decodedFor = (cursor: Cursor) => decode(cursor);
   const gap = async function* (
     fromCursor: Cursor | undefined,
     replayOperation: () => AsyncIterable<TEnvelope>,
@@ -138,8 +151,8 @@ export function createReplayLiveFeed<TEnvelope extends SequencedEventEnvelope>(
       try {
         if (signal?.aborted) return;
         const snapshot = await backend.snapshotTailSequence();
-        const gapEnvelope = await subscriptionGap(fromCursor, snapshot);
-        if (gapEnvelope !== undefined) yield gapEnvelope;
+        yield* subscriptionGap(fromCursor, snapshot, signal);
+        if (signal?.aborted) return;
         yield* replayUpTo(backend, requestedAfter, snapshot, signal, args, fromCursor, decode);
         if (signal?.aborted) return;
         args?.onReplayComplete?.();

@@ -345,6 +345,70 @@ describe('bureau.events through createOperationHandler with no Engine', () => {
     expect(statuses).toEqual([400, 400, 400, 400]);
   });
 
+  it('reconnects both feeds after restart with an unfiltered gap and a usable cursor', async () => {
+    const previousBureau = createBureauEventFeed({ bureauId: 'bureau-1' });
+    const previousRun = createAgentRunEventFeed({ runId: 'run-1' });
+    const conversation = new Conversation(createConversationHistory());
+    const bureauCursor = previousBureau.publish(new RunRegisteredEvent('old'))!.cursor;
+    const runCursor = previousRun.publish(new RunStartedEvent(conversation))!.cursor;
+    previousBureau.dispose();
+    previousRun.dispose();
+
+    const bureauFeeds = createBureauEventRegistry();
+    const bureauFeed = createBureauEventFeed({ bureauId: 'bureau-1' });
+    bureauFeed.publish(new RunRegisteredEvent('new'));
+    bureauFeeds.set('bureau-1', bureauFeed);
+    const runFeeds = createAgentRunEventRegistry();
+    const runFeed = createAgentRunEventFeed({ runId: 'run-1' });
+    runFeed.publish(new RunStartedEvent(conversation));
+    runFeeds.set('run-1', runFeed);
+    const handler = serve(bureauFeeds, runFeeds);
+
+    for (const [path, cursor, gapKind, eventKind] of [
+      [
+        '/v1/subscriptions/bureau.events?bureauId=bureau-1&kinds=run.registered',
+        bureauCursor,
+        'feed.gap',
+        'run.registered',
+      ],
+      [
+        '/v1/subscriptions/operative.runs.events?runId=run-1&kinds=run.started',
+        runCursor,
+        'run.gap',
+        'run.started',
+      ],
+      [
+        '/v1/subscriptions/bureau.events?bureauId=bureau-1&kinds=run.registered',
+        '0',
+        'feed.gap',
+        'run.registered',
+      ],
+      [
+        '/v1/subscriptions/operative.runs.events?runId=run-1&kinds=run.started',
+        '0',
+        'run.gap',
+        'run.started',
+      ],
+    ]) {
+      const response = await handler(request(path!, { 'Last-Event-ID': cursor! }));
+      expect(response.status).toBe(200);
+      const reader = response.body!.getReader();
+      const [gap, event] = await readEventFrames(reader, 2);
+      await reader.cancel();
+      expect(frameField(gap ?? '', 'event')).toBe(gapKind);
+      expect(frameField(event ?? '', 'event')).toBe(eventKind);
+      const envelope = JSON.parse(frameField(gap ?? '', 'data') ?? '{}') as {
+        cursor?: string;
+        payload?: { requestedCursor?: string; firstRetainedSequence?: number };
+      };
+      expect(envelope.payload).toMatchObject({ requestedCursor: cursor, firstRetainedSequence: 0 });
+      expect(frameField(gap ?? '', 'id')).toBe(envelope.cursor);
+      expect(envelope.cursor).toMatch(/^[0-9a-f-]+:-1$/);
+    }
+    bureauFeed.dispose();
+    runFeed.dispose();
+  });
+
   it('lists both operations in the AsyncAPI, OpenRPC, and OpenAPI documents it serves', async () => {
     const handler = createOperationHandler({
       operations: [bureauEventsSubscriptionOperation, runEventsSubscriptionOperation],
