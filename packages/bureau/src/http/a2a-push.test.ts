@@ -7,7 +7,7 @@
 import type { GenerateFunction } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { COMMAND_RECEIPTS_EXTENSION_URI } from './a2a-command-receipts.ts';
 import { createA2APushCheckpoints } from './a2a-push-checkpoint.ts';
 

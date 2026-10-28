@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Engine } from '../core/engine.ts';
 import { nextAsyncPendingToken } from '../testing/async-activity.test-support.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   clientContractAsyncActivityWorkflow,
   clientContractEchoWorkflow,

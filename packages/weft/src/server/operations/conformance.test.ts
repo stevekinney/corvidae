@@ -17,8 +17,9 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { HANG_GUARD_MILLISECONDS } from '../../../scripts/lib/hang-guard.ts';
-import { waitUntil } from '../../../scripts/lib/wait-until.ts';
+import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { executeConformance } from '../../cli/conformance.ts';
 import { createWeftClient } from '../../client/generated/operation-client.generated.ts';
 import { runConformanceReport } from '../../conformance/run-conformance.ts';
@@ -30,7 +31,6 @@ import { Engine } from '../../core/engine.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { createConformanceTargets } from '../../testing/conformance-targets.ts';
 import { outcomeOf, rethrow } from '../../testing/module-scope-scenario.test-support.ts';
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import {
   REMOTE_WORKER_PROTOCOL_VERSION,
   REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS,

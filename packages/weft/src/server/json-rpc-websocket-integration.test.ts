@@ -1,4 +1,4 @@
-import { quietFor } from '../../scripts/lib/wait-until.ts';
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { waitForCondition } from '../testing/fake-timers.test-support.ts';
 /**
  * End-to-end integration — `serve()` WebSocket /jsonrpc endpoint wired to

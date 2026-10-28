@@ -1,9 +1,9 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { beforeEach, describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createMemory } from '../src/create-memory';
 import { createInMemoryMemoryRecordStorage, createMockEmbedder } from '../src/test/index';
-import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { Memory, MemoryRecordStorage } from '../src/types';
 
 const DIMENSION = 64;

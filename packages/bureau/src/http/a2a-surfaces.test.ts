@@ -12,7 +12,7 @@ import { MemoryStorage, principalFromApiKey, textValueStore } from '@lostgradien
 import { describe, expect, it } from 'bun:test';
 
 import { waitForCondition } from '../test';
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 
 import {
   A2UI_BASIC_CATALOG_ID,

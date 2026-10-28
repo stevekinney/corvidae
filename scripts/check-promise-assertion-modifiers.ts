@@ -16,10 +16,8 @@
  *   expect(await rejectionOf(promise)).toBeInstanceOf(SomeError);
  *   expect(await throwingRejectionOf(promise)).toThrow('message');
  *
- * `rejectionOf` and `throwingRejectionOf` live in `promise-outcome`. The mirror
- * ships packages to separate public targets, so the module is copied into each
- * package that cannot depend on `@lostgradient/testing`; `PROMISE_OUTCOME_COPIES`
- * lists every copy, and this check fails when one drifts from the canonical file.
+ * `rejectionOf` and `throwingRejectionOf` live in `@lostgradient/testing/promise-outcome`
+ * (`testing/testing/src/helpers/promise-outcome.ts`, which root scripts import by path).
  *
  * oxlint cannot express the ban: its `jest/valid-expect` and
  * `jest/no-restricted-matchers` recognize `expect` only as a global or an
@@ -60,20 +58,6 @@ const SCANNED_FILE_PATTERN = /(?<!\.d)\.tsx?$/;
  * that contract, that test fails and this ban needs revisiting.
  */
 export const EXEMPT_FILES = new Set(['scripts/bun-matchers.test.ts']);
-
-export const CANONICAL_PROMISE_OUTCOME = 'testing/testing/src/helpers/promise-outcome.ts';
-
-/** Byte-identical copies of the canonical module, one per package that cannot import it. */
-export const PROMISE_OUTCOME_COPIES = [
-  'packages/armorer/src/testing/promise-outcome.test-support.ts',
-  'packages/bureau/src/testing/promise-outcome.test-support.ts',
-  'packages/conversationalist/src/testing/promise-outcome.test-support.ts',
-  'packages/lifecycle/src/testing/promise-outcome.test-support.ts',
-  'packages/memory/src/testing/promise-outcome.test-support.ts',
-  'packages/operative/src/testing/promise-outcome.test-support.ts',
-  'packages/weft/src/testing/promise-outcome.test-support.ts',
-  'scripts/promise-outcome.test-support.ts',
-];
 
 export type PromiseAssertionModifierViolation = { line: number; text: string };
 
@@ -162,17 +146,6 @@ export function collectScannedFiles(directory: string, paths: string[]): void {
   }
 }
 
-/** Copies whose bytes differ from the canonical module, or that are missing. */
-export async function findDriftedCopies(repositoryRoot: string): Promise<string[]> {
-  const canonical = await Bun.file(join(repositoryRoot, CANONICAL_PROMISE_OUTCOME)).text();
-  const drifted: string[] = [];
-  for (const copy of PROMISE_OUTCOME_COPIES) {
-    const file = Bun.file(join(repositoryRoot, copy));
-    if (!(await file.exists()) || (await file.text()) !== canonical) drifted.push(copy);
-  }
-  return drifted;
-}
-
 async function scan(): Promise<string[]> {
   const findings: string[] = [];
   const paths: string[] = [];
@@ -200,31 +173,20 @@ async function scan(): Promise<string[]> {
 
 async function main(): Promise<void> {
   const findings = await scan();
-  const drifted = await findDriftedCopies(root);
-  if (findings.length === 0 && drifted.length === 0) {
-    process.stdout.write(
-      'check-promise-assertion-modifiers — OK (no .resolves/.rejects; promise-outcome copies match).\n',
-    );
+  if (findings.length === 0) {
+    process.stdout.write('check-promise-assertion-modifiers — OK (no .resolves/.rejects).\n');
     return;
   }
 
-  if (findings.length > 0) {
-    process.stderr.write(
-      'check-promise-assertion-modifiers — expect(...).resolves or .rejects.\n' +
-        'Bun runs these synchronously in a nested event loop, which can starve Worker\n' +
-        'messages until the test times out. Assert on the awaited value instead:\n\n' +
-        '  expect(await promise).toBe(value);\n' +
-        '  expect(await rejectionOf(promise)).toBeInstanceOf(SomeError);\n' +
-        "  expect(await throwingRejectionOf(promise)).toThrow('message');\n\n",
-    );
-    for (const finding of findings) process.stderr.write(`  ${finding}\n`);
-  }
-  if (drifted.length > 0) {
-    process.stderr.write(
-      `check-promise-assertion-modifiers — promise-outcome copies differ from ${CANONICAL_PROMISE_OUTCOME}:\n`,
-    );
-    for (const copy of drifted) process.stderr.write(`  ${copy}\n`);
-  }
+  process.stderr.write(
+    'check-promise-assertion-modifiers — expect(...).resolves or .rejects.\n' +
+      'Bun runs these synchronously in a nested event loop, which can starve Worker\n' +
+      'messages until the test times out. Assert on the awaited value instead:\n\n' +
+      '  expect(await promise).toBe(value);\n' +
+      '  expect(await rejectionOf(promise)).toBeInstanceOf(SomeError);\n' +
+      "  expect(await throwingRejectionOf(promise)).toThrow('message');\n\n",
+  );
+  for (const finding of findings) process.stderr.write(`  ${finding}\n`);
   process.exitCode = 1;
 }
 

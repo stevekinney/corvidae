@@ -16,7 +16,7 @@ import { resolveStorage, type Storage } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createDurableEventHistory } from '../durable-event-history';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   createDurableEventHistoryFixture,
   DURABLE_EVENT_HISTORY_FIXTURE_SEQUENCE,

@@ -33,7 +33,7 @@ import {
   regatingApprovalToolbox,
   reviewsOf,
 } from './schedule-fire-fixtures.test-support';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau } from './types';
 import { expireReviews } from './testing/expired-reviews.test-support';
 import { waitUntil } from '@lostgradient/testing/wait-until';

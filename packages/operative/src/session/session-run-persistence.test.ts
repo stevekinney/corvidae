@@ -3,10 +3,10 @@ import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory } from 'conversationalist';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createAgentSession } from '../agent-session';
 import { GuardrailTripwireError } from '../errors';
 import { drainMicrotasks } from '../testing/drain-microtasks.test-support.ts';
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import type { GenerateFunction } from '../types';
 import { createSessionStore } from './create-session-store';
 import { createSessionHandle } from './session-handle';

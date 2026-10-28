@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { jsonRpcEndpoint, sendJsonRpcRequest } from './json-rpc-request.ts';
 
 type StubServer = { url: string; stop: () => void };

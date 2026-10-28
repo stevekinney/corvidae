@@ -19,7 +19,7 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { type AuditRecord, computeInitialAuditSequence, createAuditTrail } from './audit-trail';
 import { ActionEvent, type BureauEventMap } from './events';
-import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau } from './types';
 
 // ── Minimal Bureau stub ──────────────────────────────────────────────

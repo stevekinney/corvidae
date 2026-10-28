@@ -19,7 +19,7 @@
  * fails with its own diagnostic before Bun stops the test.
  */
 
-import { HANG_GUARD_MILLISECONDS } from './hang-guard.ts';
+import { HANG_GUARD_MILLISECONDS } from '../testing/testing/src/hang-guard.ts';
 
 /** Bun's per-test timeout for every blocking lane. */
 export const TEST_TIMEOUT_MILLISECONDS = 2 * HANG_GUARD_MILLISECONDS;

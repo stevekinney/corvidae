@@ -32,7 +32,7 @@ import {
   readsDecisionRecord,
   reviewAuditEntries,
 } from './test/session-input-fixtures';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau, PendingHumanWaitReview, ResolveReviewInput } from './types';
 import { createMemoryAssetStorage } from './assets/storage';
 

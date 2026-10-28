@@ -3,7 +3,7 @@ import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { GenerateFunction } from '../types';
 import { createSessionStore } from './create-session-store';
 import { createSessionHandle } from './session-handle';

@@ -13,7 +13,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { createCommandLedger } from '../command-ledger.ts';
 import { base64Of, pngBytes } from '../testing/asset-fixtures.test-support.ts';
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createBureauAgentCard } from './a2a-agent-card.ts';
 import {
   A2A_SEND_LEDGER_KEY_PREFIX,

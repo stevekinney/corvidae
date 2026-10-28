@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   type BatchOperation,
   type ConditionalBatchCondition,
@@ -9,7 +10,6 @@ import {
 } from '../../../storage/interface.ts';
 import { MemoryStorage } from '../../../storage/memory.ts';
 import { flushMicrotasks, waitForCondition } from '../../../testing/fake-timers.test-support.ts';
-import { rejectionOf, throwingRejectionOf } from '../../../testing/promise-outcome.test-support.ts';
 import { TestEngine } from '../../../testing/test-engine.ts';
 import { ActivityRegistry } from '../../activity-registry.ts';
 import { Engine } from '../../engine.ts';

@@ -2,9 +2,9 @@ import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createInMemoryEvidenceProjectionStorage } from '../src/create-in-memory-evidence-projection-storage';
 import { EvidenceProjectionCapacityError } from '../src/evidence-projection-storage';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import {
   FIXED_AT,
   makeFact,

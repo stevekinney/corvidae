@@ -12,8 +12,8 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import {
   ActivityPerAttemptTimeoutError,
   MAX_PER_ATTEMPT_TIMEOUT_MS,

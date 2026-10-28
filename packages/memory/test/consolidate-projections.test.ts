@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { consolidateProjections } from '../src/consolidate-projections';
 import { rebuildDerivedIndexes } from '../src/derived-indexes';
 import {
   EvidenceProjectionCommitError,
   type EvidenceProjectionStorage,
 } from '../src/evidence-projection-storage';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import { makeAuthority, makeFact, makeInlineEvidence } from './evidence-projection-fixtures';
 import { TRANSITION_BACKENDS, type MakeBackend } from './transition-backends';
 import {

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import * as lmdb from 'lmdb';
 
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createDiskBackedTestFixture } from '../testing/storage-backends.test-support.ts';
 import { assertDurableStorageForRecovery } from './capabilities.ts';
 import { LMDBStorage } from './lmdb.ts';

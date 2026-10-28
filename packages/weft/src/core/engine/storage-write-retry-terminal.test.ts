@@ -9,10 +9,10 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS } from '../../storage/interface.ts';
 import { yieldToPortableEventLoop } from '../../testing/event-loop.ts';
 import { sleepForTesting } from '../../testing/fake-timers.test-support.ts';
-import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { decode, encode } from '../codec/api.ts';
 import { WorkflowCompletedEvent } from '../events.ts';
 import type { WorkflowState } from '../types.ts';

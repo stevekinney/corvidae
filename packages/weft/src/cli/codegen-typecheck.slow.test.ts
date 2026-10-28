@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { join, resolve } from 'node:path';
 
-import { spawnWithHangGuard } from '../../scripts/lib/hang-guard.ts';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
 
 // Isolated because it spawns a real `tsc --noEmit` subprocess: its wall-clock

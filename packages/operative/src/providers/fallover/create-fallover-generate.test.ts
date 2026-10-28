@@ -1,9 +1,9 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createAgent } from '../../create-agent.ts';
 import { readGenerationProfile } from '../../generation-profile.ts';
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import {
   readBackendDescriptors,
   withBackendDescriptors,

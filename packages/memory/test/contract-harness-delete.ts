@@ -1,6 +1,6 @@
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { MemoryRecordVersionConflictError } from '../src/memory-record-storage';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { MemoryRecord, MemoryRecordScope, MemoryRecordStorage } from '../src/types';
 
 export function registerDeleteContractTests(options: {

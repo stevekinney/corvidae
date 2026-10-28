@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 
-import { quietFor } from '../../scripts/lib/wait-until.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { Engine } from '../core/engine.ts';
 import { WorkflowResumedEvent } from '../core/events.ts';
 import { workflow } from '../core/types/workflow-function.ts';
@@ -9,7 +10,6 @@ import type { EventEnvelope, WorkflowEventFeed } from '../server/workflow-event-
 import { IndexedDBStorage } from '../storage/indexeddb.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { resetSetupServiceWorkerRegistry, setupServiceWorker } from './setup.ts';
 
 interface FakeEvent {

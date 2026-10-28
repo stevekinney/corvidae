@@ -22,7 +22,7 @@ import { z } from 'zod';
 import type { AgentDefinitions } from './agent-catalog';
 import { BureauError, createBureau } from './create-bureau';
 import { listHeldTasks, waitForTaskState } from './test';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau, BureauOptions } from './types';
 import { storageOverTextStore } from './testing/text-store-storage.test-support';
 

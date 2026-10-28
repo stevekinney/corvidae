@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { workflowSource } from '../../core/source/index.ts';
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { handleRequest } from '../handler.ts';
 import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
 import { principalFromApiKey } from '../principal.ts';

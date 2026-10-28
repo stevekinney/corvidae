@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   createAnthropicProvider,
   createAnthropicProviderStream,
@@ -70,7 +71,6 @@ import type {
   OpenAIChatCompletionCreateRequest,
   OpenAIStreamingClient,
 } from '../src/providers/types.ts';
-import { rejectionOf, throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { GenerateContext, StreamingHandle } from '../src/types.ts';
 
 const weatherTool = createTool({

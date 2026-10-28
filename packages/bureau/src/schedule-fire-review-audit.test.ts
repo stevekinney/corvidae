@@ -27,7 +27,7 @@ import {
   followedBy,
 } from './schedule-fire-fixtures.test-support';
 import { scheduledFireHoldings, scheduledFireReviewStateOf } from './scheduled-fire-review-state';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau } from './types';
 import { withAdvancingClock } from './testing/advancing-turn.test-support';
 import { expireReviews } from './testing/expired-reviews.test-support';

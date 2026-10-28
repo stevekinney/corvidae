@@ -52,7 +52,7 @@ import { createGoalValidatorCatalog } from './goal-validator-catalog';
 import type { CatalogRunRecoveryRecord } from './runtime-composition';
 import { isSessionAuthorityAuthorized } from './session-authority';
 import { freshHandoff, pollUntil, transcriptOf } from './testing/goal-fixtures.test-support';
-import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 
 const NOW = '2026-10-02T12:00:00.000Z';
 const CHECK = { name: 'check', version: '1' } as const;

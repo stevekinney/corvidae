@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { BunSQLiteStorage } from '../storage/bun-sql.ts';
 import type { BatchOperation, ConditionalBatchCondition } from '../storage/interface.ts';
 import { KEYS, MAX_BATCH_OPERATIONS } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { serializeCheckpoint } from './checkpoint.ts';
 import { Engine } from './engine.ts';
 import { CURRENT_CHECKPOINT_SCHEMA_VERSION, type Checkpoint, workflow } from './types.ts';

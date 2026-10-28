@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createEvidenceProjectionKeys } from '../src/evidence-projection-keys';
 import {
   EvidenceProjectionCommitError,
@@ -10,7 +11,6 @@ import {
   type PlannedBatch,
 } from '../src/evidence-projection-store-core';
 import { MemoryEvidenceValidationError } from '../src/evidence-schema';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import {
   FIXED_AT,
   makeFact,

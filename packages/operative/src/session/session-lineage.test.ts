@@ -9,8 +9,8 @@ import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory } from 'conversationalist';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createAgentSession } from '../agent-session';
-import { rejectionOf } from '../testing/promise-outcome.test-support';
 import { createSessionStore, summarizeSession } from './create-session-store';
 import {
   createSessionHandle,

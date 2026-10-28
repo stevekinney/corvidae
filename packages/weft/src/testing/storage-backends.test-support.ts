@@ -4,7 +4,7 @@ import { rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 
-import { awakeTurns } from '../../scripts/lib/wait-until.ts';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import type { Engine } from '../core/engine.ts';
 import type { WorkflowStatus } from '../core/types.ts';
 import { BunSQLiteStorage } from '../storage/bun-sql.ts';

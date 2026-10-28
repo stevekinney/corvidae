@@ -1,6 +1,6 @@
+import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { describe, expect, it } from 'bun:test';
-import { HANG_GUARD_MILLISECONDS } from '../../scripts/lib/hang-guard.ts';
-import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 import type { ActivityContext, WorkflowContext } from '../core/types.ts';
 import { activity, signal } from '../core/types.ts';
 import { workflow } from '../core/types/workflow-function.ts';

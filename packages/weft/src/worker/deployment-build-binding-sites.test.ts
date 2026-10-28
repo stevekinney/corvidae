@@ -11,6 +11,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { encode } from '../core/codec/index.ts';
 import { Engine } from '../core/engine.ts';
 import { EngineOwnedRemoteActivityBroker } from '../core/engine/remote-activity-broker.ts';
@@ -21,7 +22,6 @@ import { workflow } from '../core/types.ts';
 import { forkWorkflowOperation } from '../server/operations/fork-workflow.ts';
 import { startWorkflowOperation } from '../server/operations/start-workflow.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   buildManifest,
   DEPLOYMENT,

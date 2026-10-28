@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { composeGenerate, createFallbackGenerate } from '../src/generate-middleware';
-import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type {
   GenerateContext,
   GenerateFunction,

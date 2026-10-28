@@ -18,6 +18,7 @@ import {
 } from 'conversationalist';
 import { z } from 'zod';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { awakeTurns, waitUntil } from '@lostgradient/testing/wait-until';
 import { appendAgentInput } from '../agent-input';
 import { noToolCalls } from '../conditions/predicates';
@@ -27,7 +28,6 @@ import { SteeringAppliedEvent } from '../events';
 import type { OperativeHookMap } from '../hooks';
 import type { EventDispatcher } from '../run-step';
 import { drainMicrotasks } from '../testing/drain-microtasks.test-support.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import type { GenerateContext, GenerateFunction, SteeringGate } from '../types';
 import type { CheckpointStore } from './checkpoint-store';
 import { createCheckpointStore } from './checkpoint-store';

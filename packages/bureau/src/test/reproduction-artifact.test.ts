@@ -13,7 +13,7 @@ import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { BureauShutdownReport } from '../types';
 import type { BureauTestHarness } from './harness';
 import { closedTask } from './closed-task';

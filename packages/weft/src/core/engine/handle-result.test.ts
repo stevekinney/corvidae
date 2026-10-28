@@ -1,5 +1,6 @@
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import {
@@ -7,7 +8,6 @@ import {
   flushMicrotasks,
   waitForCondition,
 } from '../../testing/fake-timers.test-support.ts';
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { encode } from '../codec.ts';
 import { Engine } from '../engine.ts';
 import { workflow, type WorkflowContext, type WorkflowState } from '../types.ts';

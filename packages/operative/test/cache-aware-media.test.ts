@@ -2,13 +2,13 @@ import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createContextAssembler } from '../src/context/assembly.ts';
 import { createTokenBudget } from '../src/context/token-budget.ts';
 import { createActiveRun } from '../src/create-run';
 import { MediaAdmissionError } from '../src/errors';
 import { createAnthropicProvider } from '../src/providers/anthropic.ts';
 import { createMockAnthropicClient } from '../src/providers/test/mock-clients.ts';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { GenerateContext } from '../src/types.ts';
 
 const BYTES = 'QUJDREVGRw==';

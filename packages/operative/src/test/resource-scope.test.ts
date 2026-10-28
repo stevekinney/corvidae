@@ -4,10 +4,10 @@ import { file } from 'bun';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createChildRunRegistry } from '../child-run';
 import { noToolCalls } from '../conditions/predicates';
 import { createActiveRun } from '../create-run';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { createMockGenerate } from './index';
 import type { ClosableRun } from './resource-scope';
 import { createResourceScope, QuiescenceError } from './resource-scope';

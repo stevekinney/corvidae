@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { registerVectorSearchContractTests } from './contract-harness-vector-search';
 
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { MemoryRecordVersionConflictError } from '../src/memory-record-storage';
-import { rejectionOf, throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { MemoryRecord, MemoryRecordScope, MemoryRecordStorage } from '../src/types';
 import { registerDeleteContractTests } from './contract-harness-delete';
 

@@ -60,7 +60,7 @@ import {
   ReviewSupersededEvent,
 } from './events';
 import { createLmdbStorageFixture, createSqliteStorageFixture } from './test/storage-fixtures';
-import { rejectionOf, throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau, BureauDiagnostic } from './types';
 
 async function createMemoryStorage(): Promise<Storage> {

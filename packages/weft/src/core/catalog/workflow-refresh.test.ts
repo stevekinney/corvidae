@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
-import { waitUntil } from '../../../scripts/lib/wait-until.ts';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { rejectionOf, throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { buildWorkflowContract } from '../contract/build.ts';
 import { buildWorkflowRevisionManifest } from '../contract/manifest.ts';
 import type { WorkflowRevisionManifest } from '../contract/types.ts';

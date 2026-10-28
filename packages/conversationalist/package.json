@@ -26,6 +26,7 @@
     "@google/genai": "catalog:",
     "@types/bun": "catalog:",
     "openai": "catalog:",
+    "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
     "oxlint": "catalog:",
     "typescript": "catalog:",

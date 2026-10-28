@@ -4,6 +4,7 @@ import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { noToolCalls } from '../src/conditions/predicates';
 import { createActiveRun } from '../src/create-run';
 import { GeneratedMediaNotAdmittedError } from '../src/errors';
@@ -17,7 +18,6 @@ import { createModelCatalog } from '../src/providers/model-catalog';
 import { withStreaming } from '../src/streaming';
 import { withEnhancedStreaming } from '../src/streaming/enhanced-streaming';
 import { createScriptedMediaAdmitter } from '../src/testing/generated-media.test-support';
-import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { GenerateContext, GenerateResponse, StreamingGenerateFunction } from '../src/types';
 const run = (options: Parameters<typeof createActiveRun>[0]) => createActiveRun(options).result;
 

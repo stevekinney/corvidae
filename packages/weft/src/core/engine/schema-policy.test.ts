@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { buildWorkflowContract } from '../contract/build.ts';
 import { buildWorkflowManifestFromDefinition } from '../registry-workflow-manifest.ts';
 import { workflowSource } from '../source/index.ts';

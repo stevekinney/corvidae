@@ -7,6 +7,7 @@ import {
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createTool } from '../src/create-tool';
 import { createToolbox } from '../src/create-toolbox';
 import {
@@ -20,7 +21,6 @@ import {
 } from '../src/index';
 import { toCallToolResult } from '../src/integrations/mcp/content';
 import { toolContent } from '../src/protocol';
-import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support';
 import { connectInProcessClient, type NegotiationMode } from './fixtures/mcp-in-process-client';
 import { createStoreDouble } from './fixtures/mcp-task-harness';
 

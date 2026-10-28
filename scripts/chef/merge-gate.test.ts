@@ -10,7 +10,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnWithHangGuard } from '../hang-guard.ts';
+import { spawnWithHangGuard } from '../../testing/testing/src/hang-guard.ts';
 import { processStartTime } from '../run-exclusively.ts';
 import {
   mergeGate,

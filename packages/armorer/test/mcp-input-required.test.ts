@@ -2,6 +2,7 @@ import type { Client } from '@modelcontextprotocol/client';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createTool } from '../src/create-tool';
 import { createToolbox } from '../src/create-toolbox';
 import {
@@ -15,7 +16,6 @@ import {
 import { fromElicitResult } from '../src/integrations/mcp/elicitation';
 import { fromMcpClientTools } from '../src/integrations/mcp/oauth';
 import type { ToolElicitationRequest, ToolElicitationResult } from '../src/is-tool';
-import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support';
 import { connectInProcessClient } from './fixtures/mcp-in-process-client';
 
 /**

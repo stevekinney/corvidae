@@ -2,9 +2,9 @@ import { createManualRuntimeServices, TypedEventTarget } from '@lostgradient/lif
 import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { OperativeEventMap } from '../events';
 import { SessionMonitorDoneEvent, SessionMonitorTickEvent } from '../events';
-import { rejectionOf, throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import type { GenerateFunction } from '../types';
 import { createSessionStore } from './create-session-store';
 import { createSessionHandle } from './session-handle';

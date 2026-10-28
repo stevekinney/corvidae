@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createTool } from '../src/create-tool';
-import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import { postprocess } from '../src/utilities/postprocess';
 import { preprocess } from '../src/utilities/preprocess';
 

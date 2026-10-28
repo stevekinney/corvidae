@@ -14,7 +14,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { createCommandLedger } from '../command-ledger.ts';
 import { waitForCondition } from '../test';
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createBureauAgentCard } from './a2a-agent-card.ts';
 import { COMMAND_RECEIPTS_EXTENSION_URI } from './a2a-command-receipts.ts';
 import {

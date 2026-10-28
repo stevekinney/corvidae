@@ -4,7 +4,7 @@ import { describe, expect, it } from 'bun:test';
 import { createAgentCatalog } from './agent-catalog';
 import { createSupervisor } from './create-supervisor';
 import { makeAgent } from './supervisor-test-helpers';
-import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 describe('createSupervisor', () => {
   describe('abort signal', () => {
     it('rejects delegate() when the signal is already aborted', async () => {
