@@ -49,9 +49,8 @@ const runEventKindSchema = z.enum(PUBLISHED_RUN_EVENT_KINDS);
 const runEventsSubscriptionInput = z.object({
   runId: z.string().min(1),
   kinds: z.union([runEventKindSchema, z.array(runEventKindSchema).min(1)]).optional(),
-  // Checked here, in the schema, so a malformed cursor is `InvalidParams` over
-  // every transport (a WebSocket subscribe, or `Last-Event-ID` on the HTTP
-  // route) instead of an error thrown later from inside the feed.
+  // Bound the input here; invoke checks its structure against the resolved
+  // feed before opening a stream, so every transport returns `InvalidParams`.
   fromCursor: z.string().min(1).max(512).optional(),
 });
 

@@ -121,7 +121,7 @@ describe('the in-memory replay-live backend', () => {
     feed.dispose();
   });
 
-  it('classifies incarnation cursors and emits a retention gap', async () => {
+  it('distinguishes contiguous replay from a retention gap and advances its cursor', async () => {
     const makeGap = ({
       requestedCursor,
       firstRetainedSequence,
@@ -143,20 +143,32 @@ describe('the in-memory replay-live backend', () => {
     first.append(envelope(0));
     first.append(envelope(1));
     first.append(envelope(2));
+    const feed = createReplayLiveFeed(first);
     const currentCursor = first.encodeCursor?.(0) ?? '';
     expect(first.decodeCursor?.(currentCursor)).toEqual({ sequence: 0 });
     expect(first.decodeCursor?.('0')).toBe('gap');
     expect(first.decodeCursor?.('bad')).toBe('invalid');
     expect(first.decodeCursor?.('not-an-incarnation:0')).toBe('invalid');
     expect(first.decodeCursor?.('-1')).toEqual({ sequence: -1 });
+    const contiguous: ProbeEnvelope[] = [];
+    for await (const item of feed.replay({ fromCursor: currentCursor, limit: 1 }))
+      contiguous.push(item);
+    expect(contiguous.map((item) => item.sequence)).toEqual([1]);
+    expect(contiguous.map((item) => item.kind)).toEqual(['probe']);
+
+    first.append(envelope(3));
     const replayed: ProbeEnvelope[] = [];
-    for await (const item of createReplayLiveFeed(first).replay({ fromCursor: currentCursor }))
-      replayed.push(item);
+    for await (const item of feed.replay({ fromCursor: currentCursor })) replayed.push(item);
     expect(replayed.map((item) => item.kind)).toEqual(['gap', 'probe', 'probe']);
     expect(replayed[0]?.payload).toEqual({
       requestedCursor: currentCursor,
-      firstRetainedSequence: 1,
+      firstRetainedSequence: 2,
     });
+    const continued: ProbeEnvelope[] = [];
+    for await (const item of feed.replay({ fromCursor: replayed[0]!.cursor, limit: 1 }))
+      continued.push(item);
+    expect(continued.map((item) => item.sequence)).toEqual([2]);
+    expect(continued.map((item) => item.kind)).toEqual(['probe']);
   });
 
   it('emits a gap when a cursor belongs to a previous backend instance', async () => {

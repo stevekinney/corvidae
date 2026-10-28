@@ -79,7 +79,7 @@ export function createInMemoryReplayLiveBackend<TEnvelope extends SequencedEvent
   ) =>
     log.length > 0 &&
     first > 0 &&
-    replayOptions.afterSequence < first &&
+    replayOptions.afterSequence < first - 1 &&
     decoded !== 'gap' &&
     decoded !== 'invalid';
 
