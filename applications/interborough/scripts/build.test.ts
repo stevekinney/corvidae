@@ -32,6 +32,7 @@ import {
   DEFAULT_BUILD_DIRECTORY,
   ENTRY_HTML_PATH,
   exitWhenStandardInputCloses,
+  linkedStylesheets,
   PACKAGE_DIRECTORY,
   parseBuildArguments,
   replaceDirectory,
@@ -428,6 +429,69 @@ describe('buildApplication', () => {
     expect(rejection).toBeInstanceOf(AggregateError);
     expect(await Bun.file(join(outdir, 'index.html')).text()).toBe('old');
     expect(readdirSync(join(outdir, '..'))).toEqual(['build']);
+  });
+});
+
+describe('stylesheets', () => {
+  it('reads the href of each stylesheet link and nothing else', () => {
+    expect(
+      linkedStylesheets(
+        '<link rel="modulepreload" href="/assets/a.js"><link rel="stylesheet" crossorigin href="/assets/b.css"><link href="/assets/c.css" rel="stylesheet">',
+      ),
+    ).toEqual(['/assets/b.css', '/assets/c.css']);
+  });
+
+  it('drops the stylesheets and maps the page does not link, from the disk, the file list and the metafile', async () => {
+    const outdir = join(mkdtempSync(join(scratch, 'build-')), 'build');
+    const files: Record<string, string> = {
+      'index.html': '<link rel="stylesheet" crossorigin href="/assets/page-aaaaaaaa.css">',
+      'assets/page-aaaaaaaa.css': 'page',
+      'assets/page-aaaaaaaa.css.map': 'page map',
+      'assets/lazy-bbbbbbbb.css': 'duplicate',
+      'assets/lazy-bbbbbbbb.css.map': 'duplicate map',
+      'assets/lazy-bbbbbbbb.js': 'lazy',
+    };
+    const metafile = {
+      inputs: {},
+      outputs: {
+        './assets/page-aaaaaaaa.css': { inputs: {} },
+        './assets/lazy-bbbbbbbb.css': { inputs: {} },
+        './assets/lazy-bbbbbbbb.js': { inputs: {} },
+      },
+    };
+
+    const result = await buildApplication({
+      outdir,
+      bundle: async (configuration) => {
+        const staging = configuration.outdir ?? '';
+        for (const [name, contents] of Object.entries(files)) {
+          mkdirSync(join(staging, name, '..'), { recursive: true });
+          writeFileSync(join(staging, name), contents);
+        }
+        return {
+          success: true,
+          outputs: Object.keys(files).map((name) => ({ path: join(staging, name) })),
+          logs: [],
+          metafile,
+        } as unknown as Bun.BuildOutput;
+      },
+    });
+
+    expect(result.files).toEqual([
+      'assets/lazy-bbbbbbbb.js',
+      'assets/page-aaaaaaaa.css',
+      'assets/page-aaaaaaaa.css.map',
+      'index.html',
+    ]);
+    expect(readdirSync(join(outdir, 'assets')).toSorted()).toEqual([
+      'lazy-bbbbbbbb.js',
+      'page-aaaaaaaa.css',
+      'page-aaaaaaaa.css.map',
+    ]);
+    expect(Object.keys(result.metafile.outputs).toSorted()).toEqual([
+      './assets/lazy-bbbbbbbb.js',
+      './assets/page-aaaaaaaa.css',
+    ]);
   });
 });
 
