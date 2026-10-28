@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import type { EgressPolicy } from '../src/runtime/egress-policy.ts';
 import {
   type ExampleAgent,
   startExampleAgent,
   startExampleAgentAndReport,
+  trustingLoopback,
 } from './a2a-workflow-agent.ts';
 import { resolveExampleEnvironment } from './environment-configuration.ts';
 
@@ -165,5 +167,37 @@ describe('the A2A workflow agent example', () => {
 
     expect(Number.isInteger(environment.port)).toBe(true);
     expect(typeof environment.a2aExampleTrustLoopbackWebhooks).toBe('boolean');
+  });
+});
+
+describe('trustingLoopback', () => {
+  const deferred: string[] = [];
+  const policy: EgressPolicy = {
+    async check(url) {
+      deferred.push(String(url));
+      return { status: 'blocked', reason: 'not on the allowlist' };
+    },
+  };
+
+  test.each(['127.0.0.1', 'localhost'])(
+    'lets %s through without asking the policy',
+    async (host) => {
+      deferred.length = 0;
+      const url = `http://${host}:9999/webhook`;
+
+      const result = await trustingLoopback(policy).check(url);
+
+      expect(result).toEqual({ status: 'allowed', url: new URL(url) });
+      expect(deferred).toEqual([]);
+    },
+  );
+
+  test('leaves every other host to the policy it wraps', async () => {
+    deferred.length = 0;
+
+    const result = await trustingLoopback(policy).check('http://203.0.113.5/webhook');
+
+    expect(result).toEqual({ status: 'blocked', reason: 'not on the allowlist' });
+    expect(deferred).toEqual(['http://203.0.113.5/webhook']);
   });
 });

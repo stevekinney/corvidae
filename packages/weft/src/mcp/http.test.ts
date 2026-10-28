@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 
 import { HANG_GUARD_MILLISECONDS, afterAwakeTime } from '@lostgradient/testing/hang-guard';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Engine } from '../core/engine.ts';
 import { activity, type DefinitionSchema, type WorkflowContext } from '../core/types.ts';
 import { workflow } from '../core/types/workflow-function.ts';
@@ -1098,6 +1099,39 @@ describe('MCP Streamable HTTP transport', () => {
     expect(authenticated.status).toBe(200);
     const authenticatedBody = await readJsonRpcResponse(authenticated);
     expect(authenticatedBody.error).toBeUndefined();
+  });
+
+  it('refuses a further subscriptions/listen stream past the configured maxSubscriptions', async () => {
+    const engine = createEngine();
+    const endpoint = trackEndpoint(createMcpEndpoint(engine, { maxSubscriptions: 1 }));
+    const uri = 'weft://workflows/limit/state';
+    const first = await connectInProcessClient(endpoint, { pin: MCP_PROTOCOL_VERSION });
+    const second = await connectInProcessClient(endpoint, { pin: MCP_PROTOCOL_VERSION });
+    try {
+      await first.client.listen({ resourceSubscriptions: [uri] });
+
+      expect(
+        await throwingRejectionOf(second.client.listen({ resourceSubscriptions: [uri] })),
+      ).toThrow('Subscription limit reached');
+    } finally {
+      await first.client.close();
+      await second.client.close();
+    }
+  });
+
+  it('answers a resource read that fails for a reason other than access as an error', async () => {
+    const engine = createEngine();
+    const endpoint = trackEndpoint(createMcpEndpoint(engine));
+    spyOn(engine, 'get').mockRejectedValue(new Error('storage offline'));
+    const { client } = await connectInProcessClient(endpoint, { pin: MCP_PROTOCOL_VERSION });
+    try {
+      const failure = await rejectionOf(client.readResource({ uri: 'weft://workflows/w-1/state' }));
+
+      expect(failure).toBeInstanceOf(Error);
+      expect((failure as { code?: number }).code).not.toBe(-32011);
+    } finally {
+      await client.close();
+    }
   });
 
   it('refuses a subscriptions/listen stream for resources the principal cannot read', async () => {

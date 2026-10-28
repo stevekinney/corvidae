@@ -1,6 +1,6 @@
 import { Client } from '@modelcontextprotocol/client';
 import type { JSONRPCMessage, Transport } from '@modelcontextprotocol/server';
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 
 import { Engine } from '../core/engine.ts';
@@ -488,6 +488,64 @@ describe('runMcpStdioSession', () => {
     engine[Symbol.dispose]();
   });
 
+  it('re-registers a projected tool when a later workflow takes over its name', async () => {
+    const engine = createEngine();
+    const input = controllableInput();
+    const output = collectingOutput();
+    const session = runMcpStdioSession({
+      input: input.stream,
+      output: output.stream,
+      engine,
+      admission: { kind: 'allow-unauthenticated-local-admin' },
+    });
+    input.send({
+      jsonrpc: '2.0',
+      id: 'init',
+      method: 'initialize',
+      params: {
+        protocolVersion: '2025-11-25',
+        capabilities: {},
+        clientInfo: { name: 'stdio-test', version: '1.0.0' },
+      },
+    });
+    await waitForLine(output, (line) => line.id === 'init' && line.result !== undefined);
+    input.send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+
+    const register = (type: string) =>
+      engine.register(
+        workflow({
+          name: type,
+          description: `Workflow ${type}.`,
+          inputSchema: z.object({ value: z.string() }),
+        }).execute(async function* (_context: WorkflowContext, workflowInput: { value: string }) {
+          return { echoed: workflowInput.value };
+        }),
+      );
+    const toolTitles = async (id: string): Promise<Record<string, string | undefined>> => {
+      input.send({ jsonrpc: '2.0', id, method: 'tools/list', params: {} });
+      const line = await waitForLine(output, (candidate) => candidate.id === id);
+      const tools = (line.result as { tools: Array<{ name: string; title?: string }> }).tools;
+      return Object.fromEntries(tools.map((tool) => [tool.name, tool.title]));
+    };
+
+    // `foo_bar` owns the tool name `foo_bar` until `foo-bar`, which sorts first and maps to the
+    // same name, takes it over; the original workflow's tool is renamed.
+    register('foo_bar');
+    await waitForLine(output, (line) => line.method === 'notifications/tools/list_changed');
+    const before = await toolTitles('before');
+    expect(before['foo_bar']).toBe('foo_bar');
+
+    register('foo-bar');
+    // Registering announces the change synchronously, before the next request is answered.
+    const titles = await toolTitles('after');
+    expect(titles['foo_bar']).toBe('foo-bar');
+    expect(Object.values(titles)).toContain('foo_bar');
+
+    input.close();
+    expect(await session).toEqual({ exitCode: 0 });
+    engine[Symbol.dispose]();
+  });
+
   it('rejects startup-token admission for mismatch, malformed JSON, missing token, and oversize frames', async () => {
     await expectRejectedStartupTokenAdmission({
       frame: {
@@ -697,6 +755,69 @@ describe('runMcpStdioSession', () => {
     const result = await session;
     expect(result.exitCode).toBe(0);
     engine[Symbol.dispose]();
+  });
+
+  it('warns and keeps serving when a resource update cannot be sent', async () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {});
+    const engine = createEngine();
+    const input = controllableInput();
+    const output = collectingOutput();
+    const session = runMcpStdioSession({
+      input: input.stream,
+      output: output.stream,
+      engine,
+      admission: { kind: 'allow-unauthenticated-local-admin' },
+      registrars: [
+        (server) => {
+          server.server.sendResourceUpdated = async () => {
+            throw new Error('send failed');
+          };
+        },
+      ],
+    });
+    try {
+      input.send({
+        jsonrpc: '2.0',
+        id: 'init',
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-11-25',
+          capabilities: {},
+          clientInfo: { name: 'stdio-test', version: '1.0.0' },
+        },
+      });
+      await waitForLine(output, (line) => line.id === 'init' && line.result !== undefined);
+      input.send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+      const handle = await engine.start(
+        'hold-for-stdio-cancel',
+        { value: 'unsendable' },
+        { id: 'stdio-unsendable-update' },
+      );
+      input.send({
+        jsonrpc: '2.0',
+        id: 'subscribe',
+        method: 'resources/subscribe',
+        params: { uri: `weft://workflows/${handle.id}/state` },
+      });
+      await waitForLine(output, (line) => line.id === 'subscribe' && line.result !== undefined);
+
+      await engine.signal(handle.id, 'release', 'done');
+      await waitForCondition(() => warn.mock.calls.length > 0, {
+        label: 'the send failure warning',
+      });
+
+      expect(warn.mock.calls[0]?.[0]).toBe(
+        '[weft.mcp] Failed to send a resource update notification:',
+      );
+      expect(String(warn.mock.calls[0]?.[1])).toContain('send failed');
+      input.send({ jsonrpc: '2.0', id: 'still-serving', method: 'ping', params: {} });
+      await waitForLine(output, (line) => line.id === 'still-serving' && line.result !== undefined);
+    } finally {
+      warn.mockRestore();
+      input.close();
+      await session;
+      engine[Symbol.dispose]();
+    }
   });
 
   it('cancels the workflow of an in-flight tool call when the client cancels the request', async () => {

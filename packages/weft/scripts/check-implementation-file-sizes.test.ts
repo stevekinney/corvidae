@@ -132,6 +132,22 @@ describe('check-implementation-file-sizes', () => {
     expect(result.stderr).toContain('src/oversized.ts');
   });
 
+  it('lists unclassified files largest first, breaking ties by path', async () => {
+    await writeFixtureFile(root, 'src/b-tie.ts', IMPLEMENTATION_FILE_SIZE_LIMIT + 2);
+    await writeFixtureFile(root, 'src/a-tie.ts', IMPLEMENTATION_FILE_SIZE_LIMIT + 2);
+    await writeFixtureFile(root, 'src/largest.ts', IMPLEMENTATION_FILE_SIZE_LIMIT + 5);
+
+    const result = await runDirect(['--root', root]);
+
+    expect(result.exitCode).toBe(1);
+    const listed = result.stderr.split('\n').filter((line) => line.includes('src/'));
+    expect(listed.map((line) => line.trim().split(/\s+/).at(-1))).toEqual([
+      'src/largest.ts',
+      'src/a-tie.ts',
+      'src/b-tie.ts',
+    ]);
+  });
+
   it('excludes generated, test, and spec files from the implementation scan', async () => {
     await writeFixtureFile(
       root,

@@ -120,6 +120,16 @@ describe('ServiceWorkerScheduler — implementation-specific', () => {
     expect(keys.some((key) => key.startsWith('wf-delayed:'))).toBe(false);
   });
 
+  it('fires timers due at the same instant in timer id order, whatever order they were scheduled', async () => {
+    const dueAt = now() - 1000;
+    await scheduler.schedule(makeTimer({ id: 'timer-b', workflowId: 'wf-b', fireAt: dueAt }));
+    await scheduler.schedule(makeTimer({ id: 'timer-a', workflowId: 'wf-a', fireAt: dueAt }));
+
+    await scheduler.tick(now());
+
+    expect(firedEntries.map((entry) => entry.id)).toEqual(['timer-a', 'timer-b']);
+  });
+
   // -------------------------------------------------------------------------
   // flush() — poller stops after flush (service-worker only)
   // -------------------------------------------------------------------------

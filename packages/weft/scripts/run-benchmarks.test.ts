@@ -4,7 +4,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import packageJson from '../package.json' with { type: 'json' };
-import { listBenchmarkFiles, runBenchmarks } from './run-benchmarks.ts';
+import { outcomeOf, rethrow } from '../src/testing/module-scope-scenario.test-support.ts';
+import { listBenchmarkFiles, runBenchmarks, spawnBunTest } from './run-benchmarks.ts';
+
+// A real child is the behavior here, so it runs at module scope, off Bun's per-test clock.
+const childExitCode = await outcomeOf(async () => {
+  expect(await spawnBunTest(['bun', '-e', 'process.exit(3)'])).toBe(3);
+  expect(await spawnBunTest(['bun', '-e', 'void 0'])).toBe(0);
+});
 
 describe('listBenchmarkFiles', () => {
   it('lists only the *.bench.ts files directly in the directory, sorted', () => {
@@ -36,6 +43,10 @@ describe('listBenchmarkFiles', () => {
     expect(files).toContain('./scripts/benchmarks/cold-start.bench.ts');
     expect(files).toContain('./scripts/benchmarks/speculation.bench.ts');
   });
+});
+
+describe('spawnBunTest', () => {
+  it('returns the exit code of the child it runs', () => rethrow(childExitCode));
 });
 
 describe('runBenchmarks', () => {

@@ -25,6 +25,13 @@ describe('MCP list filter parsing', () => {
     });
   });
 
+  it('rejects a type that is not a string', () => {
+    expect(parseMcpListFilter({ type: 7 })).toEqual({
+      ok: false,
+      message: 'List filter type must be a string',
+    });
+  });
+
   it('accepts valid string arrays for tags', () => {
     expect(parseMcpListFilter({ tags: ['alpha', 'beta'] })).toEqual({
       ok: true,
