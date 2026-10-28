@@ -434,6 +434,40 @@ describe('termination helpers', () => {
     expect(cleanupReviews).not.toHaveBeenCalled();
   });
 
+  it('runDeferredTerminalCleanup cleans a terminal run on a storage without conditional batches', async () => {
+    const storage = new MemoryStorage();
+    storage.capabilities = () => ({
+      ...MemoryStorage.prototype.capabilities.call(storage),
+      conditionalBatch: false,
+    });
+    const workflowId = 'deferred-cleanup-unconditional';
+    const cleanupReviews = mock(async () => {});
+    await storage.put(KEYS.scheduleRun(workflowId), new Uint8Array([1]));
+
+    await runDeferredTerminalCleanup(
+      { storage } as never,
+      workflowId,
+      'terminal-cleanup:full:token',
+      createTerminationCallbacks({
+        cleanupReviews,
+        loadWorkflowState: async () => ({
+          createdAt: 1,
+          id: workflowId,
+          input: null,
+          startedAt: 1,
+          status: 'completed',
+          terminalCleanupToken: 'token',
+          type: 'workflow',
+          updatedAt: 1,
+          versionTuple: { workflowVersion: '1' },
+        }),
+      }),
+    );
+
+    expect(cleanupReviews).toHaveBeenCalled();
+    expect(await storage.get(KEYS.scheduleRun(workflowId))).toBeNull();
+  });
+
   it('completeWorkflow pins the post-commit notify-waiters ordering', async () => {
     const storage = new MemoryStorage();
     const engine = new Engine({ storage });

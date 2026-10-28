@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import type { StorageCapabilities } from '../../storage/interface.ts';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { encode } from '../codec.ts';
@@ -345,5 +346,24 @@ describe('bulk purge helpers', () => {
     );
     // The concurrent purge's generation 2 must survive untouched.
     expect(decodeGeneration((await storage.get(generationKey))!)).toBe(2);
+  });
+});
+
+class NonConditionalMemoryStorage extends MemoryStorage {
+  override capabilities(): StorageCapabilities {
+    return { ...super.capabilities(), conditionalBatch: false };
+  }
+}
+
+describe('bulk purge on storage without conditional batches', () => {
+  it('purges a workflow without fencing on the observed record', async () => {
+    const storage = new NonConditionalMemoryStorage();
+    const internals = createInternals(storage);
+    const state = createWorkflowState('purge-unconditional', 3_000);
+    await storage.put(KEYS.workflow(state.id), encode(state));
+
+    expect(await purgeWorkflow(internals, state, () => {})).toBe(true);
+
+    expect(await storage.get(KEYS.workflow(state.id))).toBeNull();
   });
 });
