@@ -52,6 +52,21 @@ export class RunRegisteredEvent extends Event {
 }
 
 /**
+ * Fired after a task's terminal state is committed to the task registry.
+ * Unlike {@link RunRemovedEvent}, this does not mean that the run was deleted.
+ */
+export class RunSettledEvent extends Event {
+  static readonly type = 'run.settled' as const;
+
+  readonly runId: string;
+
+  constructor(runId: string) {
+    super(RunSettledEvent.type);
+    this.runId = runId;
+  }
+}
+
+/**
  * Fired when a run is removed from the store.
  */
 export class RunRemovedEvent extends Event {
@@ -411,6 +426,7 @@ export class ReviewSupersededEvent extends ReviewLifecycleEvent {
 export interface BureauEventMap extends EventMap {
   [ActionEvent.type]: ActionEvent;
   [RunRegisteredEvent.type]: RunRegisteredEvent;
+  [RunSettledEvent.type]: RunSettledEvent;
   [RunRemovedEvent.type]: RunRemovedEvent;
   [RunAbortSettledEvent.type]: RunAbortSettledEvent;
   [BureauDisposedEvent.type]: BureauDisposedEvent;

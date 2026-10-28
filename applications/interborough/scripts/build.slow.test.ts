@@ -9,13 +9,29 @@
  * "previous build" by copying the shared one. Nothing asserts on how long a build takes.
  */
 import { afterAll, describe, expect, it } from 'bun:test';
-import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { outcomeOf, rethrow } from '@lostgradient/testing';
 
-import { type ApplicationBuild, BUILD_ASSET_DIRECTORY, buildApplication } from './build.ts';
+import { DEV_RELOAD_ROUTE } from '../src/host/dev-reload.ts';
+import {
+  type ApplicationBuild,
+  BUILD_ASSET_DIRECTORY,
+  buildApplication,
+  linkedStylesheets,
+  PACKAGE_DIRECTORY,
+  REPOSITORY_ROOT,
+} from './build.ts';
 
 const scratch = mkdtempSync(join(tmpdir(), 'interborough-build-slow-'));
 const outdir = join(scratch, 'build');
@@ -90,6 +106,12 @@ describe('buildApplication', () => {
     expect(html).toMatch(/<script type="module" crossorigin src="\/assets\/[^"]+\.js">/);
     expect(html).toMatch(/<link rel="stylesheet" crossorigin href="\/assets\/[^"]+\.css">/);
     expect(html).not.toContain('main.ts');
+    // The development reload client is injected by the development host at request time, so a
+    // production build carries neither the script nor the route it opens (COR-1745).
+    for (const file of result.files) {
+      const content = await Bun.file(join(result.directory, file)).text();
+      expect(content, file).not.toContain(DEV_RELOAD_ROUTE);
+    }
     // The metafile is returned, never written into the directory the host serves.
     expect(result.files.some((file) => file.includes('metafile'))).toBe(false);
     // A successful build leaves no staging directory of its own behind.
@@ -122,6 +144,74 @@ describe('buildApplication', () => {
       'yaml',
     ]);
     expect(emittedModules(metafile, THEME_MODULE)).toEqual(['github-dark', 'github-light']);
+  });
+});
+
+describe('buildApplication stylesheets', () => {
+  /** The first custom property Cinder's token stylesheet declares, which opens its root block. */
+  function firstCinderToken(): string {
+    const tokens = readFileSync(
+      join(REPOSITORY_ROOT, 'components', 'cinder', 'src', 'styles', 'tokens-base.css'),
+      'utf8',
+    );
+    const property = /^\s*(--[\w-]+)\s*:/m.exec(tokens)?.[1];
+    if (property === undefined) throw new Error('tokens-base.css declares no custom property');
+    return property;
+  }
+
+  async function emittedStylesheets(result: ApplicationBuild): Promise<Map<string, string>> {
+    const sheets = new Map<string, string>();
+    for (const file of result.files.filter((name) => name.endsWith('.css'))) {
+      sheets.set(file, await Bun.file(join(result.directory, file)).text());
+    }
+    return sheets;
+  }
+
+  it('emits Cinder’s root token block in exactly one stylesheet, and the page links it', async () => {
+    const result = sharedBuild();
+    const sheets = await emittedStylesheets(result);
+    const token = `${firstCinderToken()}:`;
+
+    const holders = [...sheets].filter(([, css]) => css.includes(token)).map(([file]) => file);
+    expect(holders).toHaveLength(1);
+    // Every stylesheet on disk is the one the page links: lazy routes make no copies of their own.
+    expect([...sheets.keys()]).toEqual(holders);
+    const html = await Bun.file(join(result.directory, 'index.html')).text();
+    expect(linkedStylesheets(html).map((href) => href.replace(/^\//, ''))).toEqual(holders);
+    // The disk holds nothing the build did not report.
+    const onDisk = readdirSync(join(result.directory, BUILD_ASSET_DIRECTORY)).map(
+      (name) => `${BUILD_ASSET_DIRECTORY}/${name}`,
+    );
+    expect(onDisk.filter((file) => file.endsWith('.css'))).toEqual(holders);
+  });
+
+  it('keeps the CSS of lazily imported routes in that one stylesheet', () => {
+    const { files, metafile } = sharedBuild();
+
+    const [stylesheet] = files.filter((file) => file.endsWith('.css'));
+    const inputs = Object.keys(metafile.outputs[`./${stylesheet}`]?.inputs ?? {});
+    // `workflow-detail.css` is imported only by a lazily loaded route.
+    expect(
+      inputs.some((input) => input.endsWith('routes/workflows/detail/workflow-detail.css')),
+    ).toBe(true);
+  });
+
+  it('still injects component style blocks into the JavaScript of the component that owns them', async () => {
+    const result = sharedBuild();
+    const component = readFileSync(
+      join(PACKAGE_DIRECTORY, 'src', 'routes', 'settings', 'setting-row.svelte'),
+      'utf8',
+    );
+    const selector = /<style>\s*(\.[\w-]+)/.exec(component)?.[1];
+    if (selector === undefined) throw new Error('setting-row.svelte has no leading style rule');
+
+    let injected = false;
+    for (const file of result.files.filter((name) => name.endsWith('.js'))) {
+      const code = await Bun.file(join(result.directory, file)).text();
+      // Svelte scopes the rule with a `svelte-<hash>` class and keeps the hash beside the CSS.
+      if (code.includes(`${selector}.svelte-`)) injected = true;
+    }
+    expect(injected, selector).toBe(true);
   });
 });
 

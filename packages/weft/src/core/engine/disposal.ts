@@ -45,6 +45,12 @@ function disposeWorkflowRefreshCoordinator(internals: EngineInternals): void {
   internals.workflowRefreshCoordinator?.dispose();
 }
 
+function disposeStorageSizeReportInterval(internals: EngineInternals): void {
+  if (internals.storageSizeReportInterval === null) return;
+  clearInterval(internals.storageSizeReportInterval);
+  internals.storageSizeReportInterval = null;
+}
+
 /**
  * Reject pending result waiters before clearing so external `handle.result()`
  * callers observe a deterministic rejection instead of a promise that never
@@ -156,6 +162,7 @@ export function disposeEngine(
   internals.remoteActivityBroker = null;
   internals.inlineStrategy = null;
   disposeEngineCleanupInterval(internals);
+  disposeStorageSizeReportInterval(internals);
   if (internals.retentionSweepInterval !== null) {
     clearInterval(internals.retentionSweepInterval ?? undefined);
     internals.retentionSweepInterval = null;

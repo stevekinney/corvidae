@@ -251,7 +251,7 @@ describe('assertions the guard accepts', () => {
 });
 
 describe('test file discovery', () => {
-  test('scans test files, and skips benchmark directories, bench files and generated output', () => {
+  test('scans test files, including those under scripts/benchmarks, and skips bench files and generated output', () => {
     const directory = mkdtempSync(join(tmpdir(), 'wall-clock-scan-'));
     try {
       for (const path of [
@@ -280,8 +280,12 @@ describe('test file discovery', () => {
       expect(paths.map((path) => relative(directory, path)).toSorted()).toEqual([
         'components/cinder/scripts/stylelint/z-index-scale.test.ts',
         'packages/markdown/src/benchmarks/not-a-scripts-directory.test.ts',
+        'packages/ventriloquist/scripts/benchmarks/helper.test-support.ts',
         'packages/ventriloquist/src/conformance/cases.test-support.ts',
+        'packages/weft/scripts/benchmarks/cold-start.test.ts',
+        'packages/weft/scripts/benchmarks/nested/deep.test.ts',
         'packages/weft/src/worker/index.test.ts',
+        'scripts/benchmarks/root.test.ts',
         'scripts/root-check.test.ts',
       ]);
     } finally {
