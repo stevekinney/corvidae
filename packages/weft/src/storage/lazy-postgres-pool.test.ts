@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { rejectionOf, throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createLazyPostgresPool } from './lazy-postgres-pool.ts';
 import type { PostgresPool } from './postgres-key-value-storage.ts';
 

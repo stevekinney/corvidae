@@ -1,7 +1,7 @@
 import { PGlite } from '@electric-sql/pglite';
 import { describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { NeonStorage } from './neon.ts';
 import { createPGliteTestFixture, pgliteAsPostgresPool } from './pglite.test-support.ts';
 import type { PostgresPool } from './postgres.ts';

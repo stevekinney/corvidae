@@ -1,5 +1,5 @@
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { awakeTurns } from '../../../scripts/lib/wait-until.ts';
 import { settleInlineLaunches } from '../../testing/inline-launch-settle.test-support.ts';
 import { TestEngine } from '../../testing/test-engine.ts';
 import type { QueryDefinition, WorkflowContext } from '../types.ts';

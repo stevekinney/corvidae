@@ -1,6 +1,7 @@
 import type { BatchOperation, ConditionalBatchCondition, Storage } from '@lostgradient/weft';
 import { beforeEach, describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { MemoryForgetResult } from '../../src/governance/governed-memory-types';
 import {
   createMemoryGovernanceLedger,
@@ -16,7 +17,6 @@ import {
   type MemoryRecordReference,
   MemoryRecordVersionConflictError,
 } from '../../src/memory-record-storage';
-import { rejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 import {
   createGovernedFixture,
   governancePrincipal,

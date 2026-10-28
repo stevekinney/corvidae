@@ -2,11 +2,11 @@ import { HookRegistry } from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createChildRunRegistry } from '../child-run';
 import { createClosedAcknowledgement } from '../closed-acknowledgement';
 import { createTokenBudget } from '../context/token-budget';
 import type { OperativeHookMap } from '../hooks';
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { createBarrierRegistry } from './barriers';
 import type { Schedule } from './schedule-runner';
 import {

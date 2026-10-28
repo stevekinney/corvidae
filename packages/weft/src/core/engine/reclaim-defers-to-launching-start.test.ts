@@ -16,10 +16,10 @@
  */
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS, type BatchOperation } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { createDeferred, waitForCondition } from '../../testing/fake-timers.test-support.ts';
-import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { workflow, type EngineOptions, type WorkflowServicesResolution } from '../types.ts';
 import { Engine } from './index.ts';
 import { getInternals } from './internals.ts';

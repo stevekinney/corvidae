@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
 import ts from 'typescript';
 
-import { runWithHangGuard } from './hang-guard.ts';
+import { runWithHangGuard } from '../testing/testing/src/hang-guard.ts';
 import {
   directoryGlob,
   verificationWorkspaceDirectories,

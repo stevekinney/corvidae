@@ -4,9 +4,9 @@ import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { spawnWithHangGuard } from './hang-guard.ts';
+import { spawnWithHangGuard } from '../testing/testing/src/hang-guard.ts';
+import { rejectionOf } from '../testing/testing/src/helpers/promise-outcome.ts';
 import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
-import { rejectionOf } from './promise-outcome.test-support.ts';
 import {
   acquireHostLock,
   heldLockTokenVariable,

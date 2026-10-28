@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { waitForCondition } from '../testing/fake-timers.test-support.ts';
 import { flush } from '../testing/storage-backends.test-support.ts';
 
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   encodeStorageKeyComponent,
   KEYS,
@@ -10,7 +11,6 @@ import {
   type ScanOptions,
 } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { rejectionOf, throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { BULK_WORKFLOW_FILTER_ERROR_MESSAGE } from './bulk-workflow-filter.ts';
 import { decode, encode } from './codec.ts';
 import { BulkDeleteRequiresTerminalWorkflowsError, Engine } from './engine.ts';

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { EvidenceProjectionCommitError } from '../src/evidence-projection-storage';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import { makeFact, makeInlineEvidence, NAMESPACE, TENANT } from './evidence-projection-fixtures';
 import { TRANSITION_BACKENDS } from './transition-backends';
 

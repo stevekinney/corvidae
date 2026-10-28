@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createProcessLocalApprovalStateStore, type ApprovalStateStore } from './approval-binding';
 import {
   approvalResolutionSecret as approvalSecret,
@@ -13,7 +14,6 @@ import {
 import { createTool, createToolCall } from './create-tool';
 import { createToolbox } from './create-toolbox';
 import { createToolResultCache, withToolboxIdempotency } from './idempotency';
-import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { ToolApprovalAction, ToolApprovalResolution } from './types';
 
 describe('approval resolution foundation metadata', () => {

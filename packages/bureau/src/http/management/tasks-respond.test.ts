@@ -10,7 +10,7 @@ import { waitForCondition } from '../../test';
 import type { ResolveReviewInput, TaskRespondResult } from '../../types.ts';
 import { createCommandLedger, digestCommandPayload } from '../../command-ledger.ts';
 import { BureauError } from '../../create-bureau.ts';
-import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { BUREAU_SCOPES } from '../bureau-scopes.ts';
 import {
   BUREAU_HANDLER_OPERATIONS,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { expectPromiseToReject } from '../src/async-assertion-test-helpers';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { defineTool } from '../src/core';
 import type { ToolConfiguration } from '../src/is-tool';
 import {
@@ -11,7 +12,6 @@ import {
   createUntrustedOutputFencingMiddleware,
 } from '../src/middleware/index';
 import { isToolContent, toolContent } from '../src/protocol';
-import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 
 // AB-308: `createToolbox()`/the middleware functions under test only need
 // the fields a `ToolConfiguration` actually carries at runtime — this

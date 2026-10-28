@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { DEFAULT_SCOPE, KEYS } from '../index.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import { createCoreStorageAdapter } from '../storage/storage-adapter.test-support.ts';
-import { rejectionOf, throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   AtomicState,
   AtomicStateChangeEvent,

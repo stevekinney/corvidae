@@ -6,6 +6,7 @@
     ".": "./src/index.ts",
     "./coverage-ratchet": "./src/coverage-ratchet/index.ts",
     "./hang-guard": "./src/hang-guard.ts",
+    "./promise-outcome": "./src/helpers/promise-outcome.ts",
     "./temporary-path": "./src/temporary-path.ts",
     "./wait-until": "./src/wait-until.ts"
   },

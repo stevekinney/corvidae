@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Conversation } from '../src/history';
 import { createConversationHistory, defineMessagePlugin } from '../src/index';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { MessagePluginIdentity } from '../src/types';
 
 describe('lifecycle streams and plugins', () => {

@@ -2,6 +2,7 @@ import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createSessionStore } from '../session/create-session-store';
 import { createSessionHandle } from '../session/session-handle';
 import {
@@ -9,7 +10,6 @@ import {
   createTestRunOptions,
 } from '../session/session-handle-test-support';
 import { drainMicrotasks } from '../testing/drain-microtasks.test-support.ts';
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   SecretBearingFreshAttemptArtifactError,
   StaleFreshAttemptArtifactError,

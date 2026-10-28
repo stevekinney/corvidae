@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createInMemoryEvidenceProjectionStorage } from '../src/create-in-memory-evidence-projection-storage';
 import { createEvidenceProjectionKeys } from '../src/evidence-projection-keys';
 import type { EvidenceProjectionStorage } from '../src/evidence-projection-storage';
@@ -8,7 +9,6 @@ import {
   EvidenceProjectionCommitError,
 } from '../src/evidence-projection-storage';
 import { MAX_COMMIT_BATCH_OPERATIONS } from '../src/evidence-projection-store-core';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import { makeFact, makeInlineEvidence, NAMESPACE, TENANT } from './evidence-projection-fixtures';
 import { failFirstBatch, recordBatches, TRANSITION_BACKENDS } from './transition-backends';
 

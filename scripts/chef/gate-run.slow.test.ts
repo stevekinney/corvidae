@@ -2,8 +2,8 @@ import { expect } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { rejectionOf } from '../promise-outcome.test-support.ts';
-import { awakeTurns, waitUntil } from '../wait-until.ts';
+import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
+import { awakeTurns, waitUntil } from '../../testing/testing/src/wait-until.ts';
 import { fakeSignals } from './gate-child.test-support.ts';
 import {
   processExists,

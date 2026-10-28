@@ -13,7 +13,7 @@ import {
   goalRequest,
   workerAgent,
 } from './testing/goal-fixtures.test-support';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { AgentDefinitions } from './agent-catalog';
 import { listHeldTasks } from './test';
 

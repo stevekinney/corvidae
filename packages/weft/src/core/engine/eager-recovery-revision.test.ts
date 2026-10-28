@@ -5,13 +5,13 @@
  */
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { z } from 'zod';
 import { WORKFLOW_CATALOG_KEYS } from '../../storage/catalog-keys.ts';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { OWNERSHIP_CLAIM_KEYS } from '../../storage/ownership-keys.ts';
 import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
-import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 
 import { decode, encode } from '../codec.ts';
 import { activity, workflow, type WorkflowContext, type WorkflowState } from '../types.ts';

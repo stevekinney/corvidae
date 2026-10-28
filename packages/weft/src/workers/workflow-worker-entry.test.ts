@@ -10,7 +10,7 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { HANG_GUARD_MILLISECONDS } from '../../scripts/lib/hang-guard.ts';
+import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import { WORKER_PROTOCOL_VERSION } from '../core/worker-protocol.ts';
 import type { WorkerRealmReadyMessage } from '../core/worker-realm-readiness.ts';
 import { computeWorkerManifestDigest } from '../worker/manifest/index.ts';

@@ -11,11 +11,11 @@
 
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { LocalClient } from '../client/local.ts';
 import { KEYS, type BatchOperation, type ConditionalBatchCondition } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import { nextAsyncPendingToken } from '../testing/async-activity.test-support.ts';
-import { rejectionOf, throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { encode } from './codec.ts';
 import { AsyncActivityTokenNotFoundError, Engine } from './engine.ts';
 import type { ActivityContext, WorkflowContext } from './types.ts';

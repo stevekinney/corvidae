@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { spawnWithHangGuard } from '../../../scripts/lib/hang-guard.ts';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { outcomeOf, rethrow } from '../../testing/module-scope-scenario.test-support.ts';
 
 // This spawns a real process, which takes seconds on a loaded host. The scenarios below run at

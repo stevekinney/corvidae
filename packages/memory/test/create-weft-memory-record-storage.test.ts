@@ -8,11 +8,11 @@ import {
 } from '@lostgradient/weft';
 import { beforeEach, describe, expect, it } from 'bun:test';
 
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   createWeftMemoryRecordStorage,
   DEFAULT_MEMORY_KEY_PREFIX,
 } from '../src/create-weft-memory-record-storage';
-import { rejectionOf, throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { MemoryRecord, MemoryRecordScope, MemoryRecordStorage } from '../src/types';
 
 /**

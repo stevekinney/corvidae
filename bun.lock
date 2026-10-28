@@ -283,6 +283,7 @@
       "devDependencies": {
         "@anthropic-ai/sdk": "catalog:",
         "@google/genai": "catalog:",
+        "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@types/bun": "catalog:",
         "openai": "catalog:",
@@ -340,6 +341,7 @@
       "devDependencies": {
         "@anthropic-ai/sdk": "catalog:",
         "@google/genai": "catalog:",
+        "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@types/bun": "catalog:",
         "@types/js-yaml": "catalog:",
@@ -360,6 +362,7 @@
     "packages/lifecycle": {
       "name": "@lostgradient/lifecycle",
       "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@types/bun": "catalog:",
         "oxlint": "catalog:",
@@ -413,6 +416,7 @@
       },
       "devDependencies": {
         "@lostgradient/operative": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@types/bun": "catalog:",
         "oxlint": "catalog:",
@@ -489,6 +493,7 @@
       },
       "devDependencies": {
         "@a2a-js/sdk": "catalog:",
+        "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@modelcontextprotocol/client": "catalog:",
         "@types/bun": "catalog:",

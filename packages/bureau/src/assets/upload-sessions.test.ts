@@ -21,7 +21,7 @@ import {
   textBytes,
 } from '../testing/asset-fixtures.test-support';
 import { holdAssetStorageCall } from '../testing/asset-storage-hold.test-support';
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   AssetAdmissionError,
   AssetConflictError,

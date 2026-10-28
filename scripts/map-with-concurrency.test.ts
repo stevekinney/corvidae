@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 
+import { throwingRejectionOf } from '../testing/testing/src/helpers/promise-outcome.ts';
+import { quietFor } from '../testing/testing/src/wait-until.ts';
 import { mapWithConcurrency } from './map-with-concurrency';
-import { throwingRejectionOf } from './promise-outcome.test-support.ts';
-import { quietFor } from './wait-until.ts';
 
 /** A promise the test settles by hand, so completion order is chosen rather than raced. */
 function deferred(): { promise: Promise<void>; resolve: () => void } {

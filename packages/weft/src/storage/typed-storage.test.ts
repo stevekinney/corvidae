@@ -11,7 +11,7 @@ import type { JSONValue } from '../core/json.ts';
 import type { JSONValue as JSONValueFromRoot } from '../index.ts';
 import type { JSONValue as JSONValueFromStorageBarrel } from './index.ts';
 
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { MemoryStorage } from './memory.ts';
 import {
   collect,

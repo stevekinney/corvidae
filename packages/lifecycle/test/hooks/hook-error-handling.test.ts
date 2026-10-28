@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { HookRegistry } from '../../src/hooks/hook-registry';
 import type { HookErrorHandler } from '../../src/hooks/types';
-import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 
 type TestHooks = {
   process: (value: string) => string | Promise<string>;

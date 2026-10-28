@@ -39,9 +39,9 @@
  * Moving a process to module scope takes it off the per-test clock, so nothing bounds it there:
  * a child that never exits would hold the whole run. A test file, or a `*.test-support.ts` module
  * beside one, therefore never calls a process API directly, wherever the call runs; it starts
- * every process through `spawnWithHangGuard` or
- * `runWithHangGuard` (`@lostgradient/testing/hang-guard`, or its checked copies at
- * `scripts/hang-guard.ts` and `packages/weft/scripts/lib/hang-guard.ts`). They kill a child after
+ * every process through `spawnWithHangGuard` or `runWithHangGuard`
+ * (`@lostgradient/testing/hang-guard`, which root scripts import from
+ * `testing/testing/src/hang-guard.ts` by path). They kill a child after
  * the owner-approved 120-second hang guard of awake time. Bun's own `timeout` option, which this
  * guard used to require, counts time the host spent asleep and killed children on wake
  * (COR-1541); a synchronous spawn blocks the thread, so no awake-time guard can run beside it.

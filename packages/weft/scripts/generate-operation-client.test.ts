@@ -9,12 +9,12 @@ import {
   runGenerateOperationClientCommand,
 } from './generate-operation-client.ts';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   createCatalogSnapshot,
   stringifyCatalogSnapshot,
 } from '../src/server/operation-catalog-snapshot.ts';
 import { MAX_BATCH_OPERATIONS, MAX_SCAN_LIMIT } from '../src/storage/interface.ts';
-import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import { assignAliasNames } from './operation-client-aliases.ts';
 import { canonicalKey, schemaToNode } from './operation-client-schema.ts';
 

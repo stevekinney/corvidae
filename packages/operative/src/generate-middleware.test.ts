@@ -7,6 +7,7 @@ import { createTestToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createAgent } from './create-agent';
 import { composeGenerate, createFallbackGenerate } from './generate-middleware';
 import { readGenerationProfile } from './generation-profile';
@@ -16,7 +17,6 @@ import {
 } from './providers/backend-descriptor-attachment';
 import type { BackendDescriptor } from './providers/model-catalog';
 import { createModelCatalog } from './providers/model-catalog';
-import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { GenerateContext, GenerateFunction, GenerateMiddleware } from './types';
 
 const FIXED_NOW = () => '2026-09-02T12:00:00.000Z';

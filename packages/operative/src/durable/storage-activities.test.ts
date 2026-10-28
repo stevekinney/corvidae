@@ -2,7 +2,7 @@ import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory } from 'conversationalist';
 
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createCheckpointStore } from './checkpoint-store';
 import { diffConversationSnapshot } from './snapshot-delta';
 import { createStorageActivities } from './storage-activities';

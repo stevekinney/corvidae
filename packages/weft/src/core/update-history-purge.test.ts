@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { BatchOperation, Storage } from '../storage/interface.ts';
 import { encodeStorageKeyComponent, KEYS } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   collectKeys,
   flush,

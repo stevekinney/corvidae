@@ -15,7 +15,7 @@ import {
   runWorkflowVisibilityDrop,
 } from './workflow-visibility-backfill.ts';
 
-import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   NoConditionalBatchStorage,
   RacingStorage,

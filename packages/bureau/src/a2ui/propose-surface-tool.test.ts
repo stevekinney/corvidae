@@ -8,7 +8,7 @@ import {
   TASK,
   updateComponentsMessage,
 } from './a2ui.test-support';
-import { rejectionOf } from '../testing/promise-outcome.test-support';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createProposeA2uiSurfaceTool } from './propose-surface-tool';
 
 function toolFor(h: ReturnType<typeof a2uiHarness>, continuation = true) {

@@ -12,14 +12,14 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { awakeTurns } from '../../../../scripts/lib/wait-until.ts';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import {
   KEYS,
   type BatchOperation,
   type ConditionalBatchCondition,
 } from '../../../storage/interface.ts';
 import { MemoryStorage } from '../../../storage/memory.ts';
-import { rejectionOf, throwingRejectionOf } from '../../../testing/promise-outcome.test-support.ts';
 import { encode } from '../../codec.ts';
 import { PayloadSizeExceededError } from '../../payload-size.ts';
 import {

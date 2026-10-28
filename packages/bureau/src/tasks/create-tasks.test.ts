@@ -22,7 +22,7 @@ import {
   type BureauStorageFixture as StorageFixture,
 } from '../test/storage-fixtures.ts';
 import { createAskingAgent } from '../test/task-record-crash-agent.ts';
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau } from '../types.ts';
 
 const ORIGIN = '2026-10-26T00:00:00.000Z';

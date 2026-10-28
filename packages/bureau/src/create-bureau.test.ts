@@ -123,7 +123,7 @@ import {
   createWakeupContext,
 } from './runtime-composition';
 import { listHeldTasks, waitForCondition, waitForRunState, waitForTaskState } from './test';
-import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { type Bureau, type BureauContexts, type BureauDiagnostic, type ServerFrame } from './types';
 import { advancingTurn, withAdvancingClock } from './testing/advancing-turn.test-support';
 import {

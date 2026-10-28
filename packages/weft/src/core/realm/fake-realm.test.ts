@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { rejectionOf, throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { buildInternalRealmManifest } from '../../worker/manifest/internal-realm.ts';
 import { FakeRealm, type FakeRealmActivation } from './fake-realm.test-support.ts';
 import { RealmEnvelopeMismatchError, type RealmTurnEnvelope } from './realm-protocol.ts';

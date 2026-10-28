@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   composeHooks,
   everyNSteps,
@@ -7,7 +8,6 @@ import {
   runOnce,
   withTimeout,
 } from '../src/hooks/composition';
-import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 
 function createManualTimer() {
   const timeoutHandlers = new Map<number, () => void>();

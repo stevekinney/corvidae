@@ -1,5 +1,6 @@
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
-import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 import { Engine } from '../core/engine.ts';
 import type { WorkflowContext } from '../core/types.ts';
 import { query, workflow } from '../core/types.ts';
@@ -12,7 +13,6 @@ import {
   nextAsyncPendingToken,
 } from '../testing/async-activity.test-support.ts';
 import { sleepForTesting, withTimeout } from '../testing/fake-timers.test-support.ts';
-import { rejectionOf, throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   clientContractAsyncActivityWorkflow,
   clientContractEchoWorkflow,

@@ -4,10 +4,10 @@ import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 import { assertDefined } from './assert-defined';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { noToolCalls } from '../src/conditions/predicates';
 import { createActiveRun } from '../src/create-run';
 import { createMockGenerate, createMockGenerateOnce, createRunRecorder } from '../src/test/index';
-import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { GenerateResponse } from '../src/types';
 const run = (options: Parameters<typeof createActiveRun>[0]) => createActiveRun(options).result;
 

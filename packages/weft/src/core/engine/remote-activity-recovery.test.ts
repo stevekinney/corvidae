@@ -23,6 +23,7 @@
  */
 import { afterEach, describe, expect, it, mock, setSystemTime } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { serve, type ServeOptions, type WeftServer } from '../../server/index.ts';
 import { commitTaskLedgerCompletion } from '../../server/runtime/task-ledger-completion.ts';
 import { useManualTaskReconciliationForTesting } from '../../server/runtime/task-reconciliation.ts';
@@ -31,7 +32,6 @@ import {
   waitForCondition,
   waitForever,
 } from '../../testing/fake-timers.test-support.ts';
-import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { RemoteWorker } from '../../worker/index.ts';
 import type { RemoteActivityBroker } from '../remote-activity-broker.ts';
 import { commitTaskLedgerTransition } from '../task-ledger/task-ledger-runtime.ts';

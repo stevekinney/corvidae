@@ -14,8 +14,8 @@ import { join, resolve } from 'node:path';
 
 import ts from 'typescript';
 
+import { HANG_GUARD_MILLISECONDS, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import manifest from '../../package.json';
-import { HANG_GUARD_MILLISECONDS, spawnWithHangGuard } from '../../scripts/lib/hang-guard.ts';
 
 import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
 import { codegenPackageName, executeCodegen } from './codegen.ts';

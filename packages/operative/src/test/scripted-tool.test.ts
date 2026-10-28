@@ -3,11 +3,11 @@ import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { noToolCalls } from '../conditions/predicates';
 import { createActiveRun } from '../create-run';
 import type { CombinedOperativeEventClassMap } from '../events';
 import type { OperativeHookMap } from '../hooks';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import type { GenerateResponse } from '../types';
 import { createEventRecorder } from './event-recorder';
 import { createScriptedGenerate } from './scripted-generate';

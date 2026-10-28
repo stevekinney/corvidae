@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import * as weft from '../../index.ts';
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { createAuthenticator, signJWT, type AuthContext } from '../authentication.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { ServerContext } from '../runtime/context.ts';

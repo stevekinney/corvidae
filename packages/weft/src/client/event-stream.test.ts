@@ -1,5 +1,5 @@
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { describe, expect, it } from 'bun:test';
-import { awakeTurns } from '../../scripts/lib/wait-until.ts';
 import type { WorkflowEvent } from '../core/types.ts';
 import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
 import { defaultWebSocketFactory, workflowWatchWebSocketUrl } from './event-stream-transport.ts';

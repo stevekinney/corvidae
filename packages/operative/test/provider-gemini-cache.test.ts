@@ -32,6 +32,7 @@ import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation, type Message } from 'conversationalist';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createContextAssembler } from '../src/context/assembly.ts';
 import { createTokenBudget } from '../src/context/token-budget.ts';
 import { ProviderError } from '../src/providers/errors.ts';
@@ -46,7 +47,6 @@ import type {
   GeminiGenerateContentRequest,
   GeminiGenerateContentResult,
 } from '../src/providers/types.ts';
-import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { GenerateContext, StreamingHandle } from '../src/types.ts';
 
 function makeContext(conversation: Conversation): GenerateContext {

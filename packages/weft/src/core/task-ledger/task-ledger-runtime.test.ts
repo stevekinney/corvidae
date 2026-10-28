@@ -10,9 +10,9 @@
 
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { commitTaskLedgerDelete } from './task-ledger-runtime.ts';
 import { canDeleteRetainedTerminalTask } from './task-ledger-transitions.ts';
 import {

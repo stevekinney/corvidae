@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { spawnWithHangGuard } from '../scripts/lib/hang-guard.ts';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import {
   customerProfileWorkflow,
   loadCustomerProfileActivity,

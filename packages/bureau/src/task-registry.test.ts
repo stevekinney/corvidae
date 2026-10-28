@@ -20,7 +20,7 @@ import {
   type TaskCleanupState,
   type TaskRegistryHost,
 } from './task-registry';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { CancelDurableRunOutcome, PendingReview } from './types';
 
 const OWNER = 'api-key:alice';

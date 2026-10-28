@@ -12,7 +12,7 @@ import { z } from 'zod';
 import type { BureauError } from './create-bureau';
 import { OWNER } from './http/management/management-fixtures.test-support.ts';
 import { createScheduleFireHarness, pollUntil } from './schedule-fire-fixtures.test-support';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 
 const harness = createScheduleFireHarness();
 afterEach(async () => {

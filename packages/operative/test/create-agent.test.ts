@@ -19,6 +19,7 @@ import { describe, expect, it } from 'bun:test';
 import { Conversation, isConversation } from 'conversationalist';
 import { z } from 'zod';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { noToolCalls, pendingApproval } from '../src/conditions/predicates';
 import { createAgent } from '../src/create-agent';
 import { MaximumStepsExceededError, OutputSchemaConversionError } from '../src/errors';
@@ -28,7 +29,6 @@ import { createModelCatalog } from '../src/providers/model-catalog';
 import type { ProviderName } from '../src/providers/types';
 import { OPERATIVE_RESOLVE_RUN_OPTIONS } from '../src/runnable-agent';
 import { waitForCondition } from '../src/test/index';
-import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { ConversationHistory, GenerateFunction, GenerateResponse } from '../src/types';
 
 // ---------------------------------------------------------------------------
