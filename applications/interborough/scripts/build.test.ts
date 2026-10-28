@@ -27,6 +27,7 @@ import {
   browserBuildOptions,
   BUILD_ASSET_DIRECTORY,
   buildApplication,
+  buildInputPaths,
   CURATED_SHIKI_REGISTRIES,
   curatedShikiPlugin,
   DEFAULT_BUILD_DIRECTORY,
@@ -524,7 +525,64 @@ describe('runBuildCommand', () => {
   });
 });
 
+describe('the recorded build inputs', () => {
+  const metafile = {
+    inputs: {
+      'index.html': { bytes: 1, imports: [] },
+      'src/main.ts': { bytes: 1, imports: [] },
+      '../../components/chat/src/index.ts': { bytes: 1, imports: [] },
+      'wasm-asset:/somewhere/onig.wasm.binary.wasm': { bytes: 1, imports: [] },
+    },
+    outputs: {},
+  } as Bun.BuildMetafile;
+
+  it('names every input as an absolute path, resolved against the working directory', () => {
+    expect(buildInputPaths(metafile, '/repository/applications/interborough')).toEqual([
+      '/repository/applications/interborough/index.html',
+      '/repository/applications/interborough/src/main.ts',
+      '/repository/components/chat/src/index.ts',
+    ]);
+  });
+
+  it('writes them to the --inputs-file when the command is given one, and only then', async () => {
+    const inputsFile = join(scratch, 'inputs', 'inputs.json');
+    mkdirSync(dirname(inputsFile), { recursive: true });
+    const build = { directory: 'x', files: [], metafile } as unknown as Awaited<
+      ReturnType<typeof buildApplication>
+    >;
+    const received: unknown[] = [];
+    await runBuildCommand(
+      () => {},
+      async (options) => {
+        received.push(options);
+        return build;
+      },
+      ['--development', '--inputs-file', inputsFile],
+    );
+
+    expect(received).toEqual([{ development: true }]);
+    expect(await Bun.file(inputsFile).json()).toEqual(buildInputPaths(metafile));
+    expect(readdirSync(dirname(inputsFile))).toEqual(['inputs.json']);
+
+    rmSync(inputsFile);
+    await runBuildCommand(
+      () => {},
+      async () => build,
+      ['--development'],
+    );
+    expect(existsSync(inputsFile)).toBe(false);
+  });
+});
+
 describe('parseBuildArguments', () => {
+  it('reads --inputs-file and refuses one without a file', () => {
+    expect(parseBuildArguments(['--inputs-file', '/tmp/inputs.json']).inputsFile).toBe(
+      '/tmp/inputs.json',
+    );
+    expect(() => parseBuildArguments(['--inputs-file'])).toThrow('--inputs-file needs a file');
+    expect(() => parseBuildArguments(['--inputs-file', ' '])).toThrow('--inputs-file needs a file');
+  });
+
   it('builds for production into the default directory when given nothing', () => {
     expect(parseBuildArguments([])).toEqual({ development: false, exitWithParent: false });
   });
