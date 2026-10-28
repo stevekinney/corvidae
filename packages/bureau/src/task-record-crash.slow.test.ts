@@ -6,12 +6,12 @@
  * test then opens a fresh Bureau over the same storage and asserts what boot recovery made of
  * the record:
  *
- * 1. a session run that finished but whose settlement was never written is settled from the
- *    durable state, not left `working` for ever;
- * 2. a durable `bureau.run()` run whose task record was never written has one;
- * 3. a recovered run that a graceful shutdown interrupts is not reported as over: it is still
- *    open (`working` or `input-required`) and cancelable at the boot after, and the engine
- *    still holds it `running`.
+ * 1. a task that finished but whose settlement was never written is settled from the durable
+ *    state, not left `working` for ever;
+ * 2. a task whose admission write never landed left no run going on without a record: the
+ *    engine holds no workflow for it, and its context takes the next task, which gets a whole
+ *    record and settles when it ends. (`tasks.start` writes the record before anything of the
+ *    run starts, so the start itself waits on the lost write.)
  *
  * It spawns a process, so it lives in the `test:slow` lane, each scenario once at module
  * scope off Bun's per-test clock (see `test/hoisted-scenario.ts`).
@@ -31,6 +31,7 @@ import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test
 import { createAskingAgent, finishes } from './test/task-record-crash-agent';
 import type { Bureau, BureauReviews, BureauInternals } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { awakeTurns, waitUntil } from '@lostgradient/testing/wait-until';
 
 const CHILD = join(import.meta.dir, 'test', 'task-record-crash-child.ts');
 
@@ -58,7 +59,7 @@ async function crashScenario(
   mode: 'settlement' | 'admission',
   scope: ScenarioScope,
   verify: (
-    bureau: Pick<Bureau, 'waitForDurableRun'> & {
+    bureau: Pick<Bureau, 'tasks'> & {
       readonly reviews: Pick<BureauReviews, 'list' | 'resolve'>;
     } & { readonly internals: Pick<BureauInternals, 'taskRegistry'> },
     runId: string,
@@ -83,7 +84,7 @@ async function crashScenario(
     const bureau = await openBureau(storagePath);
     scope.onHang(() => bureau.shutdown());
     try {
-      await bureau.waitForRecovery?.();
+      await bureau.recovery();
       await verify(bureau, runId);
     } finally {
       await bureau.shutdown();
@@ -104,14 +105,14 @@ async function taskStatusOf(
   return task?.status;
 }
 
-/** Process 2 recovers the parked run and is disposed; process 3 boots over what it left. */
+/** Process 2 recovers the parked task and is disposed; process 3 boots over what it left. */
 async function disposedScenario(scope: ScenarioScope): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), 'corvidae-task-record-crash-disposed-'));
   const storagePath = join(directory, 'bureau.sqlite');
   const markerPath = join(directory, 'marker.json');
   scope.onHang(() => rmSync(directory, { recursive: true, force: true }));
   try {
-    const child = spawnWithHangGuard(['bun', CHILD, 'admission', storagePath, markerPath], {
+    const child = spawnWithHangGuard(['bun', CHILD, 'parked', storagePath, markerPath], {
       stdout: 'pipe',
       stderr: 'pipe',
     });
@@ -119,27 +120,27 @@ async function disposedScenario(scope: ScenarioScope): Promise<void> {
     await child.exited;
     const stderr = await new Response(child.stderr).text();
     expect(child.signalCode ?? stderr).toBe('SIGKILL');
+    expect(unexpectedChildStderr(stderr)).toBe('');
     const { runId } = JSON.parse(readFileSync(markerPath, 'utf8')) as { runId: string };
 
     const second = await openBureau(storagePath);
-    await second.waitForRecovery?.();
+    await second.recovery();
     expect(OPEN_STATES.has(await taskStatusOf(second, runId))).toBe(true);
-    // Disposing the engine rejects the recovered run's result: the run is cut short, not over.
+    // A graceful shutdown leaves a task this process recovered, not started, for the next boot.
     await second.dispose();
 
     const third = await openBureau(storagePath);
     scope.onHang(() => third.shutdown());
     try {
-      await third.waitForRecovery?.();
-      const durable = await third.getDurableRun(runId);
+      await third.recovery();
+      const durable = await third.tasks.workflow(runId);
       expect(durable?.status).toBe('running');
       expect(OPEN_STATES.has(await taskStatusOf(third, runId))).toBe(true);
+      expect(third.reviews.list().some((review) => review.runId === runId)).toBe(true);
       await third.internals.taskRegistry.cancel(runId, 0);
-      for (let attempt = 0; attempt < 400; attempt += 1) {
-        if ((await taskStatusOf(third, runId)) === 'canceled') break;
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
-      expect(await taskStatusOf(third, runId)).toBe('canceled');
+      await waitUntil(async () => (await taskStatusOf(third, runId)) === 'canceled', {
+        message: 'the interrupted task can still be canceled',
+      });
     } finally {
       await third.shutdown();
     }
@@ -149,6 +150,7 @@ async function disposedScenario(scope: ScenarioScope): Promise<void> {
 }
 
 const outcomes = {
+  disposed: await settleScenario((scope) => disposedScenario(scope), HANG_GUARD_MILLISECONDS),
   settlement: await settleScenario(
     (scope) =>
       crashScenario('settlement', scope, async (bureau, runId) => {
@@ -159,10 +161,19 @@ const outcomes = {
   ),
   admission: await settleScenario(
     (scope) =>
-      crashScenario('admission', scope, async (bureau, runId) => {
-        const task = await bureau.internals.taskRegistry.get(runId);
-        // The context the dispatch named, not the run's own id.
-        expect(task).toMatchObject({
+      crashScenario('admission', scope, async (bureau, lostId) => {
+        // No run went on without its record: the lost task has neither.
+        expect(await bureau.internals.taskRegistry.get(lostId)).toBeUndefined();
+        expect(await bureau.tasks.workflow(lostId)).toBeNull();
+
+        const task = await bureau.tasks.start('asker', 'which environment?', {
+          principal: 'api-key:alice',
+          contextId: 'crash-context',
+        });
+        const runId = task.id;
+        const recorded = await bureau.internals.taskRegistry.get(runId);
+        // The context the start named, not the run's own id.
+        expect(recorded).toMatchObject({
           id: runId,
           owner: 'api-key:alice',
           agentName: 'asker',
@@ -176,9 +187,9 @@ const outcomes = {
         expect(inContext.tasks.map((listed) => listed.id)).toEqual([runId]);
         const history = await bureau.internals.taskRegistry.history(runId);
         expect(history?.map((message) => message.text)).toEqual(['which environment?']);
-        // The run was in flight across the crash, and it ends in this process: its task settles.
         let review = bureau.reviews.list().find((candidate) => candidate.runId === runId);
-        for (let attempt = 0; review === undefined && attempt < 400; attempt += 1) {
+        for await (const _turn of awakeTurns()) {
+          if (!(review === undefined)) break;
           await new Promise((resolve) => setTimeout(resolve, 10));
           review = bureau.reviews.list().find((candidate) => candidate.runId === runId);
         }
@@ -189,8 +200,8 @@ const outcomes = {
           principal: 'api-key:alice',
           payload: 'staging',
         });
-        await bureau.waitForDurableRun(runId);
-        for (let attempt = 0; attempt < 400; attempt += 1) {
+        await bureau.tasks.wait(runId);
+        for await (const _turn of awakeTurns()) {
           const current = await bureau.internals.taskRegistry.get(runId);
           if (current?.status === 'completed') break;
           await new Promise((resolve) => setTimeout(resolve, 10));
@@ -200,19 +211,18 @@ const outcomes = {
       }),
     HANG_GUARD_MILLISECONDS,
   ),
-  disposed: await settleScenario((scope) => disposedScenario(scope), HANG_GUARD_MILLISECONDS),
 };
 
 describe('a task record survives SIGKILL', () => {
-  it('settles a finished session run whose settlement write was lost', () => {
+  it('leaves a recovered task that a graceful shutdown interrupted working and cancelable at the next boot', () => {
+    expectScenarioPassed(outcomes.disposed);
+  });
+
+  it('settles a finished task whose settlement write was lost', () => {
     expectScenarioPassed(outcomes.settlement);
   });
 
-  it('gives a durable bureau.run() run whose admission write was lost a task record, which settles when the run ends', () => {
+  it('leaves no run going on without a record when a task’s admission write was lost, and its context takes the next task, which settles', () => {
     expectScenarioPassed(outcomes.admission);
-  });
-
-  it('leaves a recovered run that a graceful shutdown interrupted working and cancelable at the next boot', () => {
-    expectScenarioPassed(outcomes.disposed);
   });
 });

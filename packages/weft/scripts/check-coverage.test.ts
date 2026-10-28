@@ -1,5 +1,6 @@
 import { describe, expect, it, mock, spyOn } from 'bun:test';
 
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { outcomeOf, rethrow } from '../src/testing/module-scope-scenario.test-support.ts';
 import {
   assembleAllowanceLayers,
@@ -9,6 +10,7 @@ import {
   CORVIDAE_COVERAGE_ALLOWANCES,
   COVERAGE_ALLOWANCES,
   formatCoverageFailureReason,
+  isOtherWorkspaceSource,
   listCoverageTestFiles,
   memoryFootprintUncoveredOutsideDarwin,
   parseLcov,
@@ -17,7 +19,6 @@ import {
   runCoverageShard,
   workflowEventFeedUncoveredLines,
 } from './check-coverage.ts';
-import { spawnWithHangGuard } from './lib/hang-guard.ts';
 
 /** An already-closed byte stream, standing in for a spawned child's empty stdout/stderr. */
 function closedByteStream(): ReadableStream<Uint8Array> {
@@ -170,6 +171,22 @@ describe('parseLcov', () => {
     );
   });
 
+  it('rejects a strict allowance line absent from the LCOV file', () => {
+    expect(() =>
+      parseLcov(
+        [
+          'SF:src/core/context/parallel-operations.ts',
+          'FNF:0',
+          'FNH:0',
+          'DA:20,0',
+          'end_of_record',
+        ].join('\n'),
+      ),
+    ).toThrow(
+      'Coverage allowance for src/core/context/parallel-operations.ts:19, 21, 31, 37, 38, 39 is absent from the LCOV report',
+    );
+  });
+
   it('applies the strict parallel-operation allowance only to its current uncovered lines', () => {
     const coverage = parseLcov(
       [
@@ -190,6 +207,34 @@ describe('parseLcov', () => {
 
     expect(coverage.covered).toBe(true);
     expect(coverage.lines).toEqual({ total: 1, hit: 1, missed: 0 });
+  });
+
+  it("leaves another workspace's source to that workspace's own gate", () => {
+    const coverage = parseLcov(
+      [
+        'SF:../../testing/testing/src/hang-guard.ts',
+        'FNF:4',
+        'FNH:1',
+        'DA:10,0',
+        'end_of_record',
+        'SF:src/example.ts',
+        'FNF:0',
+        'FNH:0',
+        'DA:1,1',
+        'end_of_record',
+      ].join('\n'),
+    );
+
+    expect(coverage.covered).toBe(true);
+    expect(coverage.lines).toEqual({ total: 1, hit: 1, missed: 0 });
+    expect(coverage.functions).toEqual({ total: 0, hit: 0, missed: 0 });
+  });
+
+  it('still gates a path outside every workspace', () => {
+    expect(isOtherWorkspaceSource('../../testing/testing/src/hang-guard.ts')).toBe(true);
+    expect(isOtherWorkspaceSource('../../packages/weft/src/index.ts')).toBe(false);
+    expect(isOtherWorkspaceSource('../../../../private/tmp/unknown-fixture.ts')).toBe(false);
+    expect(isOtherWorkspaceSource('src/example.ts')).toBe(false);
   });
 
   it('ignores generated temporary workflow artifacts', () => {

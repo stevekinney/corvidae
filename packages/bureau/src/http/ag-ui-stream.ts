@@ -1,9 +1,9 @@
 /**
  * One AG-UI stream over one native run.
  *
- * A stream is a subscriber, never a consumer: it listens to Bureau's live frames
- * with a listener of its own, reads the run's recorded history without
- * advancing anything, and when the client goes away, or the stream reaches its
+ * A stream subscribes to a mount-owned projection for an active local run, or
+ * reads recorded history for a settled/peer run. Each attachment has its own
+ * output sink. When the client goes away, or the stream reaches its
  * maximum duration, or it falls too far behind, the stream ends and the native
  * run does not notice. Several streams, native observers, and telemetry can
  * watch one run at once.
@@ -12,10 +12,10 @@
  * continues a run replays the run's events from the beginning, because its
  * client holds none of them; one that attaches opens with the conversation as a
  * `MESSAGES_SNAPSHOT` and replays only the step still in flight, because
- * everything earlier is in the snapshot. Either way the snapshot and the live
- * tail meet without a gap: the stream subscribes first, buffers what arrives,
- * reads the recorded history, and drops the buffered events the history already
- * held, by the store's own sequence number.
+ * everything earlier is in the snapshot. For active local runs the producer
+ * cuts its checkpoint and retained output suffix synchronously after the
+ * conversation read, and buffers only outputs beyond that cut. The legacy
+ * recorded path joins its buffer by the store's sequence number.
  *
  * @module ag-ui-stream
  */
@@ -33,6 +33,7 @@ import type {
   ServerFrame,
   BureauContexts,
   BureauReviews,
+  BureauTasks,
   BureauInternals,
 } from '../types.ts';
 import { toInterrupt } from './ag-ui-interrupts.ts';
@@ -54,20 +55,21 @@ import {
   type SurfaceSource,
 } from './ag-ui-surface-source.ts';
 import { type AgUiErrorCode, type EventStamp, stamp } from './ag-ui-vocabulary.ts';
+import type {
+  AgUiLiveFeedRegistry,
+  AgUiLiveSubscription,
+  AgUiLiveUpdate,
+} from './ag-ui-live-feed.ts';
 
 /** What a stream reads from the Bureau. */
-export type AgUiStreamBureau = Pick<
-  Bureau,
-  | 'getRun'
-  | 'subscribeLiveFrames'
-  | 'subscribeRunSnapshot'
-  | 'eventHistory'
-  | 'subscribeEventHistory'
-  | 'waitForDurableRun'
-  | 'children'
-  | 'getDurableRun'
-  | 'surfaces'
-> & { readonly reviews: Pick<BureauReviews, 'list' | 'pendingOf'> } & {
+export type AgUiStreamBureau = Pick<Bureau, 'frames' | 'children' | 'surfaces'> & {
+  readonly tasks: Pick<
+    BureauTasks,
+    'detail' | 'snapshot' | 'wait' | 'workflow' | 'events' | 'subscribeEvents'
+  >;
+} & {
+  readonly reviews: Pick<BureauReviews, 'list' | 'pendingOf'>;
+} & {
   readonly contexts: Pick<BureauContexts, 'get' | 'inputsDeliveredBy' | 'subscribeEvents'>;
 } & {
   readonly internals: Pick<BureauInternals, 'whenTaskRecorded'>;
@@ -79,6 +81,7 @@ export type AgUiStreamEnvironment = {
   readonly maxStreamDurationMs: number;
   readonly liveBufferSize: number;
   readonly keepAliveMs: number;
+  readonly liveFeeds?: AgUiLiveFeedRegistry;
 };
 
 export type OpenRunStream = {
@@ -103,6 +106,8 @@ export type OpenRunStream = {
   readonly child?: BureauChildRecord | undefined;
   /** Replay the run from its first event, or only the step in flight behind a snapshot. */
   readonly replay: 'beginning' | 'open-step';
+  /** A durable SSE cursor the client has already consumed, when it is retained for this run. */
+  readonly resumeCursor?: string | undefined;
   readonly messagesSnapshot: boolean;
   /**
    * Replay of a call the run already settled, ahead of the live tail: a resume
@@ -165,6 +170,9 @@ type ReadHistory = {
         readonly recordedAs?: NativeTerminal['recordedAs'];
       }
     | undefined;
+  readonly resume:
+    | { readonly cursor: string; readonly after: ReadonlyArray<{ kind: string; payload: unknown }> }
+    | undefined;
 };
 
 const TERMINAL_OUTCOME: Readonly<Record<string, NativeTerminal['outcome']>> = {
@@ -173,18 +181,32 @@ const TERMINAL_OUTCOME: Readonly<Record<string, NativeTerminal['outcome']>> = {
   [RECORDED.runAborted]: 'aborted',
 };
 
-async function readRunHistory(bureau: AgUiStreamBureau, nativeRunId: string): Promise<ReadHistory> {
+async function readRunHistory(
+  bureau: AgUiStreamBureau,
+  nativeRunId: string,
+  resumeCursor?: string,
+): Promise<ReadHistory> {
   const lastCursorByKind = new Map<string, string>();
   let fence: string | undefined;
   let since: string | undefined;
   let terminal: ReadHistory['terminal'];
+  const after: Array<{ kind: string; payload: unknown }> = [];
+  let foundResume = resumeCursor === undefined;
+  let resumeGap = false;
   for (;;) {
-    const page = await bureau.eventHistory(
-      { kind: 'run', id: nativeRunId },
-      since === undefined ? {} : { since },
-    );
-    if (!('events' in page)) break;
+    const page = await bureau.tasks.events(nativeRunId, since === undefined ? {} : { since });
+    if (!('events' in page)) {
+      if (resumeCursor !== undefined) resumeGap = true;
+      break;
+    }
     for (const event of page.events) {
+      if (resumeCursor !== undefined) {
+        if (foundResume) after.push({ kind: event.kind, payload: event.payload });
+        if (event.cursor === resumeCursor) {
+          foundResume = true;
+          after.length = 0;
+        }
+      }
       lastCursorByKind.set(event.kind, event.cursor);
       fence = event.cursor;
       const outcome = TERMINAL_OUTCOME[event.kind];
@@ -200,7 +222,15 @@ async function readRunHistory(bureau: AgUiStreamBureau, nativeRunId: string): Pr
     if (!page.hasMore || page.nextCursor === undefined) break;
     since = page.nextCursor;
   }
-  return { fence, lastCursorByKind, terminal };
+  return {
+    fence,
+    lastCursorByKind,
+    terminal,
+    resume:
+      resumeCursor !== undefined && foundResume && !resumeGap
+        ? { cursor: resumeCursor, after }
+        : undefined,
+  };
 }
 
 function pendingFor(bureau: AgUiStreamBureau, nativeRunId: string): PendingReview[] {
@@ -214,11 +244,24 @@ const TERMINAL_EVENTS: ReadonlySet<string> = new Set([
 ]);
 
 /** Whether this process holds the run and it has not recorded its end. */
-export function runIsGoing(bureau: Pick<Bureau, 'getRun'>, nativeRunId: string): boolean {
-  const detail = bureau.getRun(nativeRunId);
+export function runIsGoing(
+  bureau: { readonly tasks: Pick<BureauTasks, 'detail'> },
+  nativeRunId: string,
+): boolean {
+  const detail = bureau.tasks.detail(nativeRunId);
   if (detail === undefined) return false;
   if (detail.status !== 'running' && detail.status !== 'aborting') return false;
   return !detail.events.some((event) => TERMINAL_EVENTS.has(event.event));
+}
+
+/** The recorded opening of the still-running step, or the end when no step is open. */
+function openStepOffset(events: RunDetail['events']): number {
+  let offset = events.length;
+  for (const [index, event] of events.entries()) {
+    if (event.event === RECORDED.stepStarted) offset = index;
+    if (event.event === RECORDED.stepCompleted) offset = events.length;
+  }
+  return offset;
 }
 
 /**
@@ -229,7 +272,9 @@ export function runIsGoing(bureau: Pick<Bureau, 'getRun'>, nativeRunId: string):
  * only a human wait the run is parked on is.
  */
 export function interruptibleReviews(
-  bureau: Pick<Bureau, 'getRun'> & { readonly reviews: Pick<BureauReviews, 'list'> },
+  bureau: { readonly tasks: Pick<BureauTasks, 'detail'> } & {
+    readonly reviews: Pick<BureauReviews, 'list'>;
+  },
   nativeRunId: string,
 ): PendingReview[] {
   const pending = bureau.reviews.list().filter((review) => review.runId === nativeRunId);
@@ -244,12 +289,12 @@ export function interruptibleReviews(
  * child has no final text or its step count cannot be read from its durable run.
  */
 async function childResultRow(
-  bureau: Pick<Bureau, 'getDurableRun'>,
+  bureau: { readonly tasks: Pick<BureauTasks, 'workflow'> },
   record: BureauChildRecord,
 ): Promise<{ readonly id: string; readonly content: string } | undefined> {
   const content = record.status === 'completed' ? record.outcome?.content : undefined;
   if (content === undefined || content === '') return undefined;
-  const state = await bureau.getDurableRun(record.childRunId).catch(() => undefined);
+  const state = await bureau.tasks.workflow(record.childRunId).catch(() => undefined);
   const result: unknown = state?.result;
   const steps =
     typeof result === 'object' && result !== null
@@ -328,7 +373,18 @@ export function openRunStream(
     sessionId: request.threadId,
     now: () => runtime.clock.now(),
   };
-  const projector = new RunProjector(request.nativeRunId, stampContext);
+  const liveFeed =
+    request.child === undefined && runIsGoing(bureau, request.nativeRunId)
+      ? environment.liveFeeds?.forRun(
+          request.nativeRunId,
+          stampContext,
+          () => bureau.tasks.detail(request.nativeRunId)?.events ?? [],
+        )
+      : undefined;
+  const projector =
+    liveFeed === undefined ? new RunProjector(request.nativeRunId, stampContext) : undefined;
+  let liveSubscription: AgUiLiveSubscription | undefined;
+  const releaseProducer = liveFeed?.reserve();
 
   let sink: AgUiSink;
   let ended = false;
@@ -336,7 +392,9 @@ export function openRunStream(
   let unsubscribeSnapshots: (() => void) | undefined;
   let surfaceSource: SurfaceSource | undefined;
   const buffer: ServerFrame[] = [];
+  const projected: AgUiLiveUpdate[] = [];
   let highestSequence = -1;
+  let resumedEventKeys: Set<string> | undefined;
   let opened = false;
   let lastState = '';
   let lastRevision = 0;
@@ -354,6 +412,8 @@ export function openRunStream(
     unsubscribeSnapshots = undefined;
     surfaceSource?.stop();
     buffer.length = 0;
+    projected.length = 0;
+    releaseProducer?.();
   };
 
   const enqueue = (task: () => Promise<void>): void => {
@@ -386,10 +446,10 @@ export function openRunStream(
     onClosed: dispose,
   });
 
-  const writeEvents = (events: ReadonlyArray<Event>): void => {
+  const writeEvents = (events: ReadonlyArray<Event>, cursor?: string): void => {
     for (const event of events) {
       if (ended) return;
-      if (opened ? !sink.writeLive(event) : (sink.writeOpening(event), false)) {
+      if (opened ? !sink.writeLive(event, cursor) : (sink.writeOpening(event, cursor), false)) {
         fail('STREAM_OVERFLOW', 'The stream fell too far behind; attach again.');
         return;
       }
@@ -497,8 +557,10 @@ export function openRunStream(
   };
 
   const finishAs = async (terminal: NativeTerminal): Promise<void> => {
-    const closing = projector.closeOpen();
-    const history = await readRunHistory(bureau, request.nativeRunId).catch(() => undefined);
+    const closing = projector?.closeOpen() ?? [];
+    const history = await readRunHistory(bureau, request.nativeRunId, request.resumeCursor).catch(
+      () => undefined,
+    );
     const kind =
       terminal.recordedAs ??
       (terminal.outcome === 'completed'
@@ -559,7 +621,7 @@ export function openRunStream(
   };
 
   const interruptNow = (interrupts: Interrupt[]): void => {
-    writeEvents(projector.closeOpen());
+    writeEvents(projector?.closeOpen() ?? liveFeed?.closeOpen() ?? []);
     if (ended) return;
     const last = stamp(
       {
@@ -576,8 +638,11 @@ export function openRunStream(
   };
 
   /** Applies one projection. Returns whether the stream is over. */
-  const apply = async (projection: ReturnType<RunProjector['handleRecorded']>): Promise<void> => {
-    writeEvents(projection.events);
+  const apply = async (
+    projection: ReturnType<RunProjector['handleRecorded']>,
+    cursor?: string,
+  ): Promise<void> => {
+    writeEvents(projection.events, cursor);
     if (ended) return;
     if (projection.terminal !== undefined) {
       await finishAs(projection.terminal);
@@ -596,7 +661,12 @@ export function openRunStream(
   };
 
   const processFrame = async (frame: ServerFrame): Promise<void> => {
+    if (projector === undefined) return;
     if (frame.type === 'event') {
+      if (resumedEventKeys?.delete(JSON.stringify([frame.event, frame.detail]))) {
+        highestSequence = Math.max(highestSequence, frame.sequence);
+        return;
+      }
       if (frame.sequence <= highestSequence) return;
       highestSequence = frame.sequence;
       await apply(projector.handleRecorded(frame.event, frame.detail));
@@ -610,23 +680,29 @@ export function openRunStream(
   const drain = async (): Promise<void> => {
     for (;;) {
       if (ended) return;
+      const update = projected.shift();
+      if (update !== undefined) {
+        if ('envelope' in update) writeEvents([update.envelope.event], update.envelope.cursor);
+        else if ('removed' in update) fail('RUN_NOT_FOUND', 'The run was removed');
+        else await apply({ events: [], ...update });
+        continue;
+      }
       const frame = buffer.shift();
       if (frame === undefined) return;
       await processFrame(frame);
     }
   };
 
-  // The stream listens before it reads anything, so nothing falls between the
-  // recorded history and the live tail; the buffered frames the history already
-  // held are dropped by sequence.
-  unsubscribeFrames = bureau.subscribeLiveFrames((frame) => {
-    const relevant =
-      (frame.type === 'event' || frame.type === 'stream:text-delta') &&
-      frame.runId === request.nativeRunId;
-    if (!relevant || ended) return;
-    buffer.push(frame);
-    if (opened) enqueue(drain);
-  });
+  // Only legacy child/peer/settled paths own a raw subscription. An active local
+  // run's sole subscriber and projector belong to the mount's producer.
+  if (liveFeed === undefined) {
+    unsubscribeFrames = bureau.frames((frame) => {
+      if (ended || !('runId' in frame) || frame.runId !== request.nativeRunId) return;
+      if (frame.type !== 'event' && frame.type !== 'stream:text-delta') return;
+      buffer.push(frame);
+      if (opened) enqueue(drain);
+    });
+  }
 
   /**
    * A child run's stream. Bureau holds no run for a child, only its record, so
@@ -773,7 +849,7 @@ export function openRunStream(
 
   const open = async (): Promise<void> => {
     if (request.child !== undefined) {
-      // The route authorized the run id on the owner `getOwner` reports, which reads run attribution
+      // The route authorized the run id on the owner `ownerOf` reports, which reads run attribution
       // before the child record. A child id can be chosen by whoever dispatches it, so the record
       // located under an authorized id can be another owner's; refuse it as a missing run.
       if (!runIsOwnedBy(request.child, request.owner)) {
@@ -783,7 +859,11 @@ export function openRunStream(
       await openChild(request.child);
       return;
     }
-    const history = await readRunHistory(bureau, request.nativeRunId).catch(() => undefined);
+    const history = await readRunHistory(
+      bureau,
+      request.nativeRunId,
+      liveFeed === undefined ? request.resumeCursor : undefined,
+    ).catch(() => undefined);
     // A client that went away during the read has already disposed the stream; a source started
     // now would never be stopped.
     if (ended) return;
@@ -794,8 +874,8 @@ export function openRunStream(
       surfaceSource = createSurfaceSource({
         surfaces: bureau.surfaces,
         subscribe: (listener, since) =>
-          bureau.subscribeEventHistory(
-            { kind: 'run', id: request.nativeRunId },
+          bureau.tasks.subscribeEvents(
+            request.nativeRunId,
             listener,
             since === undefined ? {} : { since },
           ),
@@ -811,7 +891,7 @@ export function openRunStream(
       surfaceSource.start(history?.fence);
     }
     const session = await readSessionOwnedBy(bureau, request.threadId, request.owner);
-    const detail: RunDetail | undefined = bureau.getRun(request.nativeRunId);
+    const detail: RunDetail | undefined = bureau.tasks.detail(request.nativeRunId);
     // A run held under another owner's name is not the one the route authorized. Nothing has been
     // written yet, so the stream is one error.
     if (detail !== undefined && !runIsOwnedBy(detail, request.owner)) {
@@ -821,7 +901,7 @@ export function openRunStream(
     // A run no process-local state names, held by another process or settled with an approval no
     // process restored, is streamed from its durable state.
     if (detail === undefined && pendingFor(bureau, request.nativeRunId).length === 0) {
-      const durable = await bureau.getDurableRun(request.nativeRunId).catch(() => undefined);
+      const durable = await bureau.tasks.workflow(request.nativeRunId).catch(() => undefined);
       if (durable !== undefined && durable !== null) {
         await openPeerStream(peerContext(), durable, history?.fence);
         return;
@@ -829,6 +909,24 @@ export function openRunStream(
     }
     const conversation: ConversationHistory | undefined =
       detail?.transcript ?? session?.conversationHistory;
+    if (liveFeed !== undefined) {
+      liveSubscription = liveFeed.subscribe(
+        (update) => {
+          if (ended) return;
+          projected.push(update);
+          if (opened) enqueue(drain);
+        },
+        request.resumeCursor,
+        new Set(conversation?.ids ?? []),
+        request.replay === 'beginning',
+      );
+      unsubscribeFrames = liveSubscription.unsubscribe;
+      releaseProducer?.();
+      if (liveSubscription.removed) {
+        fail('RUN_NOT_FOUND', 'The run was removed');
+        return;
+      }
+    }
     const fence = history?.fence;
     const liveness = detail?.liveness;
     // A run Bureau no longer holds (recovered after a restart, or removed by
@@ -852,19 +950,36 @@ export function openRunStream(
     // A run Bureau no longer holds has no events to replay, so a start retried
     // against it is shown the conversation as well, as an attach is.
     const answerRows = request.answerRows ?? [];
-    if (request.messagesSnapshot || detail === undefined || answerRows.length > 0) {
+    const recorded = detail?.events ?? [];
+    const openOffset = openStepOffset(recorded);
+    const hasOpenStep = openOffset < recorded.length;
+    const resumed =
+      liveSubscription?.resumed === true ||
+      (request.resumeCursor !== undefined && history?.resume !== undefined && !hasOpenStep);
+    if (
+      !resumed &&
+      (request.messagesSnapshot ||
+        detail === undefined ||
+        answerRows.length > 0 ||
+        liveSubscription?.snapshotRequired === true)
+    ) {
       // The answers a resume delivered ride in the snapshot (a row the run has not appended yet).
-      projector.holds(conversation?.ids ?? []);
-      writeEvents([
-        stamp(
-          {
-            type: EventType.MESSAGES_SNAPSHOT,
-            messages: snapshotMessagesWithAnswers(conversation, answerRows),
-          },
-          stampContext,
-          { durable: false, ...(fence === undefined ? {} : { cursor: fence }) },
-        ),
-      ]);
+      projector?.holds(conversation?.ids ?? []);
+      writeEvents(
+        [
+          stamp(
+            {
+              type: EventType.MESSAGES_SNAPSHOT,
+              messages: snapshotMessagesWithAnswers(conversation, answerRows),
+            },
+            stampContext,
+            { durable: false, ...(fence === undefined ? {} : { cursor: fence }) },
+          ),
+        ],
+        liveSubscription !== undefined && liveSubscription.opening.length === 0
+          ? liveSubscription.cursor
+          : undefined,
+      );
     }
     writeEvents([stateSnapshot(snapshot)]);
     lastState = stateKey(snapshot);
@@ -873,20 +988,26 @@ export function openRunStream(
 
     // Replay what the client has not seen, through the same projection the live
     // tail uses, so a replayed step and a live one cannot differ.
-    const recorded = detail?.events ?? [];
-    let from = 0;
-    if (request.replay === 'open-step') {
-      from = recorded.length;
-      let openAt: number | undefined;
-      for (const [index, event] of recorded.entries()) {
-        if (event.event === RECORDED.stepStarted) openAt = index;
-        if (event.event === RECORDED.stepCompleted) openAt = undefined;
-      }
-      if (openAt !== undefined) from = openAt;
-    }
+    const from = request.replay === 'open-step' ? openOffset : 0;
     let ending: NativeTerminal | undefined;
-    for (const event of recorded.slice(from)) {
+    const replayed =
+      liveSubscription !== undefined
+        ? []
+        : resumed
+          ? (history?.resume?.after ?? []).map((event) => ({
+              event: event.kind,
+              detail: event.payload,
+              sequence: 0,
+            }))
+          : recorded.slice(from);
+    if (resumed) {
+      resumedEventKeys = new Set(
+        (history?.resume?.after ?? []).map((event) => JSON.stringify([event.kind, event.payload])),
+      );
+    }
+    for (const event of replayed) {
       highestSequence = Math.max(highestSequence, event.sequence);
+      if (projector === undefined) break;
       const projection = projector.handleRecorded(event.event, event.detail);
       writeEvents(projection.events);
       if (ended) return;
@@ -901,7 +1022,15 @@ export function openRunStream(
         }
       }
     }
-    for (const event of recorded) highestSequence = Math.max(highestSequence, event.sequence);
+    if (!resumed) {
+      for (const event of recorded) highestSequence = Math.max(highestSequence, event.sequence);
+    }
+
+    if (liveSubscription !== undefined) {
+      for (const envelope of liveSubscription.opening)
+        writeEvents([envelope.event], envelope.cursor);
+      ending = liveSubscription.terminal;
+    }
 
     // A run parked on a human wait has finished its step natively (the park is
     // taken when the loop ends), so a stream that opens on it has no park event
@@ -942,6 +1071,8 @@ export function openRunStream(
         // and cursor: the run completed, and the interrupt is what is left.
         if (detail?.status === 'error' || detail?.status === 'aborted') {
           interruptNow(pending.map(toInterrupt));
+        } else if (resumed) {
+          interruptNow(pending.map(toInterrupt));
         } else {
           await finishAs({
             outcome: 'completed',
@@ -949,6 +1080,11 @@ export function openRunStream(
             tripwire: false,
           });
         }
+        return;
+      }
+      if (resumed) {
+        dispose();
+        sink.finish();
         return;
       }
       if (detail === undefined) {
@@ -975,7 +1111,7 @@ export function openRunStream(
     }
 
     try {
-      const subscription = bureau.subscribeRunSnapshot(request.nativeRunId, (next) => {
+      const subscription = bureau.tasks.snapshot(request.nativeRunId, (next) => {
         enqueue(async () => {
           const key = stateKey(next);
           if (key === lastState) return;

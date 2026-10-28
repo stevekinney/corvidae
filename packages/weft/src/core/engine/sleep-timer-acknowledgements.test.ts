@@ -1,8 +1,8 @@
 import { describe, expect, it, mock } from 'bun:test';
 
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { sleepForTesting } from '../../testing/fake-timers.test-support.ts';
-import { rejectionOf, throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
+import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
 import {
   workflow,
   type WorkflowContext,
@@ -465,7 +465,9 @@ describe('handleSleepTimerWithAcknowledgement + Scheduler: WFT-79 finding 2 regr
     await using nonOwner = await createSharedStoreEngine(storage, () => now);
 
     const handle = await owner.start('wft-79-shared-sleep', null);
-    await sleepForTesting(10);
+    await waitForCondition(async () => (await countSleepTimerIndexKeys(storage)) === 1, {
+      label: 'the sleep timer to be stored',
+    });
     expect(await owner.get(handle.id).then((state) => state?.status)).toBe('running');
     expect(await countSleepTimerIndexKeys(storage)).toBe(1);
 
@@ -495,7 +497,9 @@ describe('handleSleepTimerWithAcknowledgement + Scheduler: WFT-79 finding 2 regr
     await using owner = await createSharedStoreEngine(storage, () => now);
 
     const handle = await owner.start('wft-79-shared-sleep', null);
-    await sleepForTesting(10);
+    await waitForCondition(async () => (await countSleepTimerIndexKeys(storage)) === 1, {
+      label: 'the sleep timer to be stored',
+    });
     expect(await countSleepTimerIndexKeys(storage)).toBe(1);
 
     // Cancel BEFORE the sleep deadline: an intentionally external terminal

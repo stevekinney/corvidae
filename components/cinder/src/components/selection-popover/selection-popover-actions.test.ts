@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { createRawSnippet, flushSync } from 'svelte';
 
 setupHappyDom();
@@ -122,6 +123,7 @@ describe('SelectionPopover actions snippet', () => {
     const outside = document.createElement('button');
     document.body.append(outside);
     outside.dispatchEvent(new (globalThis.PointerEvent ?? Event)('pointerdown', { bubbles: true }));
+    // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(closeCalls).toBe(1);
@@ -187,7 +189,7 @@ describe('SelectionPopover actions focus timing', () => {
   test('holds focus back while a pointer is down and moves it on pointerup', async () => {
     await openDuringPointerGesture();
     // Positioned and open, but the drag-select that opened it is still in progress.
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await quietFor(20);
 
     expect(document.activeElement === screen.getByRole('button', { name: 'Quote' })).toBe(false);
 
@@ -200,7 +202,7 @@ describe('SelectionPopover actions focus timing', () => {
 
   test('moves focus on pointercancel as well', async () => {
     await openDuringPointerGesture();
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await quietFor(20);
     expect(document.activeElement === screen.getByRole('button', { name: 'Quote' })).toBe(false);
 
     window.dispatchEvent(pointerEvent('pointercancel'));
@@ -251,6 +253,7 @@ describe('SelectionPopover actions keyboard model', () => {
 describe('SelectionPopover actions opening without a pointer gesture', () => {
   test('moves focus to the first action when open goes false to true with no pointer events', async () => {
     const { component } = render(SelectionPopoverOpenFixture);
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     flushSync(() => (component as unknown as { show(): void }).show());
@@ -271,7 +274,8 @@ describe('SelectionPopover actions opening without a pointer gesture', () => {
 
     window.dispatchEvent(new (globalThis.PointerEvent ?? Event)('pointerdown', { bubbles: true }));
     window.dispatchEvent(new (globalThis.PointerEvent ?? Event)('pointerup', { bubbles: true }));
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    // load-proof: focus must stay on the outside button; a slow host can only delay a (wrong) move of it
+    await quietFor(20);
 
     expect(document.activeElement === outside).toBe(true);
   });
@@ -285,7 +289,8 @@ describe('SelectionPopover actions opening without a pointer gesture', () => {
       },
     }));
     await openWithActions({ actions: lateActions });
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    // load-proof: nothing may take focus before the late control renders; a slow host can only delay a (wrong) focus
+    await quietFor(20);
     expect(document.activeElement === document.body).toBe(true);
 
     const late = document.createElement('button');
@@ -334,9 +339,7 @@ describe('SelectionPopover actions focusability changes', () => {
     });
 
     quote.disabled = false;
-    await new Promise((resolve) => setTimeout(resolve, 20));
-
-    expect(tabStopCount(buttons)).toBe(1);
+    await waitFor(() => expect(tabStopCount(buttons)).toBe(1));
   });
 });
 

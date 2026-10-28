@@ -17,6 +17,7 @@ import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/
 
 import { createBureau } from './create-bureau';
 import type { AgentDefinitions } from './agent-catalog';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 function createNextTool() {
   return createTool({
@@ -33,15 +34,9 @@ function createNextTool() {
  * condition-checked poll with a real (tiny) per-iteration delay, never a
  * blind sleep-then-assume.
  */
-async function pollUntilWithRealDelay(
-  check: () => boolean | Promise<boolean>,
-  attempts = 400,
-): Promise<boolean> {
-  for (let i = 0; i < attempts; i++) {
-    if (await check()) return true;
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
-  return check();
+async function pollUntilWithRealDelay(check: () => boolean | Promise<boolean>): Promise<true> {
+  await waitUntil(check, { message: 'pollUntilWithRealDelay' });
+  return true;
 }
 
 function recoveredToolCallId(page: { events: readonly { payload?: unknown }[] }): string {
@@ -151,9 +146,7 @@ describe('bureau.eventHistory run ownership survives a process restart over LMDB
     });
 
     try {
-      const run = await bureauA.createRun({
-        agentName: 'default',
-        message: 'Attribute me to alice across a restart',
+      const run = await bureauA.tasks.start('default', 'Attribute me to alice across a restart', {
         principal: 'alice',
       });
       await pollUntilWithRealDelay(() => bureauAReachedStep1);
@@ -181,14 +174,14 @@ describe('bureau.eventHistory run ownership survives a process restart over LMDB
         // rather than a bare `!== 'running'` check that would read
         // "not yet recovered" as "already done" (copilot review, PR #564).
         await pollUntilWithRealDelay(() => {
-          const status = bureauB.getRun(run.id)?.status;
+          const status = bureauB.tasks.detail(run.id)?.status;
           return status !== undefined && status !== 'running';
         });
 
-        const recovered = bureauB.getRun(run.id);
+        const recovered = bureauB.tasks.detail(run.id);
         expect(recovered).toMatchObject({
           id: run.id,
-          sessionId: run.sessionId,
+          sessionId: run.contextId,
           status: 'completed',
           principal: 'alice',
           steps: 1,
@@ -196,10 +189,7 @@ describe('bureau.eventHistory run ownership survives a process restart over LMDB
           usage: { prompt: 0, completion: 0, total: 0 },
         });
 
-        const asOwner = await bureauB.eventHistory(
-          { kind: 'run', id: run.id },
-          { principal: 'alice' },
-        );
+        const asOwner = await bureauB.tasks.events(run.id, { principal: 'alice' });
         if ('outcome' in asOwner) {
           throw new Error(
             `expected a page for the owning principal, got ${JSON.stringify(asOwner)}`,
@@ -209,15 +199,12 @@ describe('bureau.eventHistory run ownership survives a process restart over LMDB
         expect(toolCallId).toMatch(/^tool-call-/);
         expect(asOwner as unknown).toEqual(expectedRecoveredPage(run.id, toolCallId));
 
-        const asStranger = await bureauB.eventHistory(
-          { kind: 'run', id: run.id },
-          { principal: 'mallory' },
-        );
+        const asStranger = await bureauB.tasks.events(run.id, { principal: 'mallory' });
         expect(asStranger).toEqual({ outcome: 'not-found' });
 
         // A trusted caller that omits `principal` entirely still bypasses
         // the check, exactly as it does for a never-restarted run.
-        const trusted = await bureauB.eventHistory({ kind: 'run', id: run.id });
+        const trusted = await bureauB.tasks.events(run.id);
         if ('outcome' in trusted) {
           throw new Error(`expected a page for a trusted caller, got ${JSON.stringify(trusted)}`);
         }
@@ -226,8 +213,8 @@ describe('bureau.eventHistory run ownership survives a process restart over LMDB
         // A run id the recovered bureau never registered has no status;
         // a trusted caller reading it gets an empty page, not another run's
         // events.
-        expect(bureauB.getRun('run-that-never-existed')).toBeUndefined();
-        expect(await bureauB.eventHistory({ kind: 'run', id: 'run-that-never-existed' })).toEqual({
+        expect(bureauB.tasks.detail('run-that-never-existed')).toBeUndefined();
+        expect(await bureauB.tasks.events('run-that-never-existed')).toEqual({
           events: [],
           hasMore: false,
         });

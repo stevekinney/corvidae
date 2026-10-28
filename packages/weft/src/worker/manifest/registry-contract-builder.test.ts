@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   activityContractHash,
   buildWorkflowContract,
@@ -11,7 +12,6 @@ import { Engine } from '../../core/engine.ts';
 import { buildRegistrySnapshot } from '../../core/registry-snapshot.ts';
 import { activity, query, signal, update, workflow } from '../../core/types.ts';
 import { definitionSchemaToJsonSchema } from '../../core/types/definition-schema-to-json.ts';
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { REMOTE_WORKER_PROTOCOL_VERSION } from '../protocol.ts';
 import {
   buildWorkerManifestFromRegistry,

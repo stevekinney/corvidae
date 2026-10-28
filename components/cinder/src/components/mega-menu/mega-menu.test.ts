@@ -99,6 +99,10 @@ const items = [
   },
 ];
 
+function nextAnimationFrame(): Promise<void> {
+  return new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+}
+
 describe('MegaMenu', () => {
   function getTriggerByLabel(container: ParentNode, label: string): HTMLButtonElement {
     const triggers = Array.from(
@@ -540,12 +544,12 @@ describe('MegaMenu', () => {
       // so this test isolates "does delivering a resize recreate the
       // observer" from that unrelated direction-tracking churn.
       await fireEvent.click(getTriggerByLabel(container, 'Products'));
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await nextAnimationFrame();
       const instanceCountBeforeDelivery = StubResizeObserver.instances.length;
       expect(instanceCountBeforeDelivery).toBeGreaterThan(0);
       const observer = StubResizeObserver.instances.at(-1);
       observer?.deliver();
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await nextAnimationFrame();
       expect(StubResizeObserver.instances).toHaveLength(instanceCountBeforeDelivery);
     } finally {
       globalThis.ResizeObserver = originalResizeObserver;
@@ -574,6 +578,7 @@ describe('MegaMenu', () => {
       // The ancestor-chain ResizeObserver is only attached while a menu item
       // is open (#1186 row 4b) — open one before it can exist to observe.
       await fireEvent.click(getTriggerByLabel(shadow, 'Products'));
+      // load-proof: the observer attaches in a Svelte effect that the click's own tick has already flushed, so only microtasks are pending
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(ChainResizeObserver.last?.observed).toContain(host);
       view.unmount();
@@ -612,7 +617,8 @@ describe('MegaMenu', () => {
       products.focus();
       focused = true;
       await fireEvent.focusIn(products);
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      // The focusin handler recomputes direction on the next animation frame.
+      await waitFor(() => expect(container.querySelector('nav')?.getAttribute('dir')).toBe('ltr'));
       await fireEvent.keyDown(products, { key: 'ArrowRight' });
       expect(document.activeElement).toBe(resources);
     } finally {
@@ -641,8 +647,7 @@ describe('MegaMenu', () => {
     document.head.append(style);
     const view = render(MegaMenuLocaleTestHarness, { items, direction: 'rtl' });
     try {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(listeners.size).toBeGreaterThan(0);
+      await waitFor(() => expect(listeners.size).toBeGreaterThan(0));
       const products = getTriggerByLabel(view.container, 'Products');
       const resources = getTriggerByLabel(view.container, 'Resources');
       products.focus();
@@ -650,7 +655,10 @@ describe('MegaMenu', () => {
       expect(document.activeElement).toBe(resources);
       matches = true;
       for (const listener of listeners) listener(new Event('change'));
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      // The media-query listener recomputes direction on the next animation frame.
+      await waitFor(() =>
+        expect(view.container.querySelector('nav')?.getAttribute('dir')).toBe('ltr'),
+      );
       products.focus();
       await fireEvent.keyDown(products, { key: 'ArrowRight' });
       expect(document.activeElement).toBe(resources);
@@ -669,19 +677,13 @@ describe('MegaMenu', () => {
     if (!nav || !ancestor) throw new Error('Missing menu ancestor.');
     expect(nav.getAttribute('dir')).toBe('rtl');
     ancestor.setAttribute('dir', 'ltr');
-    // observeTextDirection's MutationObserver delivers records through
-    // happy-dom's own `window.setTimeout(fn)` (a macrotask, not a spec
-    // microtask — see MutationObserverListener#report), and the
-    // direction-chain effect now coalesces its directionRevision bump onto
-    // requestAnimationFrame (#1186 row 4a). A bare `setTimeout(resolve, N)`
-    // races the MutationObserver's own timer instead of waiting for it: under
-    // load, both timers can become due in the same timers-phase pass, and a
-    // `requestAnimationFrame` callback registered mid-pass can't run until
-    // that pass finishes — letting this assertion fire before the restamp
-    // lands (#1204). Wait for both real hops of the scheduling contract
-    // instead of guessing a wall-clock delay.
+    // observeTextDirection's MutationObserver delivers records as a microtask in happy-dom (see
+    // MutationObserverListener#report), and the direction-chain effect coalesces its
+    // directionRevision bump onto requestAnimationFrame (#1186 row 4a). Draining microtasks
+    // delivers the records and registers that frame callback; the frame wait then runs after it.
+    // load-proof: happy-dom's MutationObserver delivers records as a microtask, and the frame wait below covers the frame-coalesced restamp
     await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    await nextAnimationFrame();
     expect(nav.getAttribute('dir')).toBe('ltr');
   });
 
@@ -779,10 +781,12 @@ describe('MegaMenu', () => {
     const second = getTriggerByLabel(container, 'Resources');
     if (!menu) throw new Error('Missing menu element.');
     menu.style.direction = 'ltr';
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    first.focus();
-    await fireEvent.keyDown(first, { key: 'ArrowRight' });
-    expect(document.activeElement).toBe(second);
+    // The mutation is observed asynchronously: retry the key until the new direction has applied.
+    await waitFor(async () => {
+      first.focus();
+      await fireEvent.keyDown(first, { key: 'ArrowRight' });
+      expect(document.activeElement === second).toBe(true);
+    });
   });
 
   test('repositions an open indicator after the resolved direction changes', async () => {
@@ -935,6 +939,7 @@ describe('MegaMenu', () => {
     globalThis.ResizeObserver = SpyResizeObserver;
     try {
       const { container } = render(MegaMenu, { items });
+      // load-proof: negative window, nothing is open at mount so no observer may exist whatever the turn count
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       // No menu item is open at mount — the ancestor chain must not be
@@ -943,12 +948,14 @@ describe('MegaMenu', () => {
 
       const trigger = getTriggerByLabel(container, 'Products');
       await fireEvent.click(trigger);
+      // load-proof: the observer attaches in a Svelte effect that the click's own tick has already flushed, so only microtasks are pending
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       // Opening an item attaches the observer across the ancestor chain.
       expect(SpyResizeObserver.observeCalls).toBeGreaterThan(0);
 
       await fireEvent.click(trigger);
+      // load-proof: the observer is disconnected by a Svelte effect cleanup that the click's own tick has already flushed, so only microtasks are pending
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       // Closing it disconnects the observer.

@@ -560,7 +560,9 @@ describe('createBureauHandler catalog', () => {
         'bureau.contexts.input',
         'bureau.contexts.list',
         'bureau.contexts.steer',
+        'bureau.decisions.decide',
         'bureau.deployment.get',
+        'bureau.events',
         'bureau.goals.cancel',
         'bureau.goals.create',
         'bureau.goals.get',
@@ -580,7 +582,12 @@ describe('createBureauHandler catalog', () => {
         'bureau.schedules.pause',
         'bureau.schedules.resume',
         'bureau.schedules.update',
+        'bureau.settings.events',
+        'bureau.settings.get',
+        'bureau.settings.schema',
+        'bureau.settings.update',
         'bureau.tasks.cancel',
+        'bureau.tasks.events',
         'bureau.tasks.get',
         'bureau.tasks.inspect',
         'bureau.tasks.list',
@@ -596,6 +603,7 @@ describe('createBureauHandler catalog', () => {
         'bureau.workflows.runs.list',
         'bureau.workflows.signal',
         'bureau.workflows.update',
+        'operative.runs.events',
         'rpc.discover',
         'weft.system.principal',
       ]);
@@ -627,6 +635,7 @@ describe('createBureauHandler catalog', () => {
   it('streams bureau.events over Server-Sent Events from the Bureau itself', async () => {
     await withBureau({ id: 'events-bureau' }, async (bureau) => {
       bureau.internals.eventFeed.publish(new RunRegisteredEvent('run-1'));
+      bureau.internals.eventFeed.publish(new RunRemovedEvent('run-1'));
       const handler = createBureauHandler(bureau, { authentication: allScopes });
 
       const response = await handler(
@@ -712,7 +721,7 @@ describe('createBureauHandler catalog', () => {
       assets: { storage: createMemoryAssetStorage() },
     });
     try {
-      const run = await bureau.createRun({ agentName: 'default', message: 'hello' });
+      const run = await bureau.tasks.start('default', 'hello');
       await waitForCondition(
         () => bureau.internals.runEventFeeds.get(run.id) !== undefined,
         'expected the bureau to create the run feed',
@@ -772,6 +781,98 @@ describe('createBureauHandler under Bun.serve', () => {
   });
 });
 
+describe('createBureauHandler WebSocket transport', () => {
+  it('refuses a bad API key before calling server.upgrade', async () => {
+    await withBureau({ id: 'websocket-auth-bureau' }, async (bureau) => {
+      const handler = createBureauHandler(bureau, { authentication: allScopes });
+      let upgrades = 0;
+      const upgraded = await handler.upgrade(
+        new Request('http://localhost/jsonrpc', { headers: { 'X-API-Key': 'wrong-key' } }),
+        { upgrade: () => ((upgrades += 1), true) },
+      );
+      expect(upgraded).toBe(false);
+      expect(upgrades).toBe(0);
+    });
+  });
+
+  it('serves bureau.events over a real authenticated WebSocket', async () => {
+    await withBureau({ id: 'websocket-bureau' }, async (bureau) => {
+      bureau.internals.eventFeed.publish(new RunRegisteredEvent('run-1'));
+      bureau.internals.eventFeed.publish(new RunRemovedEvent('run-1'));
+      const handler = createBureauHandler(bureau, { authentication: allScopes });
+      const server = Bun.serve({
+        port: 0,
+        fetch: async (request) => {
+          if (request.headers.get('upgrade')?.toLowerCase() === 'websocket') {
+            if (await handler.upgrade(request, server)) return undefined;
+          }
+          return handler(request);
+        },
+        websocket: handler.websocket,
+      });
+      try {
+        const socket = new WebSocket(`ws://localhost:${server.port}/jsonrpc`, {
+          headers: credentials,
+        } as never);
+        const frames: Array<Record<string, unknown>> = [];
+        const delivered = new Promise<Record<string, unknown>>((resolve, reject) => {
+          socket.addEventListener('message', (event) => {
+            const parsed = JSON.parse(String(event.data)) as Record<string, unknown>;
+            frames.push(parsed);
+            if (parsed['method'] === 'weft.events.deliver') resolve(parsed);
+          });
+          socket.addEventListener('error', () => reject(new Error('WebSocket failed')));
+        });
+        await new Promise<void>((resolve) => socket.addEventListener('open', () => resolve()));
+        socket.send(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'bureau.events',
+            params: { bureauId: bureau.id, kinds: ['run.registered'] },
+          }),
+        );
+        expect(await delivered).toMatchObject({
+          method: 'weft.events.deliver',
+          params: {
+            envelope: { kind: 'run.registered', payload: { runId: 'run-1' } },
+          },
+        });
+        expect(frames[0]).toMatchObject({
+          id: 1,
+          result: { subscriptionId: expect.any(String) },
+        });
+        expect(frames).toHaveLength(2);
+        const deliveredFrame = frames.find((frame) => frame['method'] === 'weft.events.deliver')!;
+        const subscriptionId = (deliveredFrame['params'] as { subscriptionId: string })
+          .subscriptionId;
+        expect(subscriptionId).toEqual(expect.any(String));
+        const unsubscribed = new Promise<Record<string, unknown>>((resolve) => {
+          const listener = (event: MessageEvent) => {
+            const parsed = JSON.parse(String(event.data)) as Record<string, unknown>;
+            if (parsed['id'] !== 2) return;
+            socket.removeEventListener('message', listener);
+            resolve(parsed);
+          };
+          socket.addEventListener('message', listener);
+        });
+        socket.send(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 2,
+            method: 'weft.workflows.unsubscribe',
+            params: { subscriptionId },
+          }),
+        );
+        expect(await unsubscribed).toMatchObject({ id: 2, result: {} });
+        socket.close();
+      } finally {
+        server.stop(true);
+      }
+    });
+  });
+});
+
 describe('the Bureau scope list', () => {
   it('registers the operator scopes, and not the delivery scopes', () => {
     expect([...BUREAU_SCOPES]).toEqual([
@@ -795,6 +896,9 @@ describe('the Bureau scope list', () => {
       'bureau.assets:read',
       'bureau.assets:write',
       'bureau.events:observe-all',
+      'bureau.decisions:write',
+      'bureau.settings:read',
+      'bureau.settings:write',
     ]);
   });
 });

@@ -26,7 +26,6 @@ import type { AgentDefinitions } from './agent-catalog';
 
 const PRINCIPAL = 'api-key:alice';
 const FILE = agentFileText({ model: KNOWN_MODEL }, 'Instructions.\n');
-const ATTEMPTS = 400;
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -60,8 +59,8 @@ async function taskStatusOf(
 }
 
 /** The status of a run in the durable engine. */
-async function durableStatusOf(bureau: Pick<Bureau, 'getDurableRun'>, runId: string) {
-  const state = await bureau.getDurableRun(runId);
+async function durableStatusOf(bureau: Pick<Bureau, 'tasks'>, runId: string) {
+  const state = await bureau.tasks.workflow(runId);
   return state?.status;
 }
 
@@ -95,16 +94,16 @@ describe('a recovered file-agent run', () => {
     const first = await open(directory, storagePath);
     await first.put('researcher.md', FILE);
     await first.bureau.agents.refresh();
-    const run = first.bureau.run('researcher', 'long question', { principal: PRINCIPAL });
+    const run = await first.bureau.tasks.start('researcher', 'long question', {
+      principal: PRINCIPAL,
+    });
     await waitForCondition(
       async () => (await first.bureau.internals.taskRegistry.record(run.id)) !== undefined,
       'the task is recorded',
-      ATTEMPTS,
     );
     await waitForCondition(
       async () => (await referenceOf(first.bureau, run.id)) !== undefined,
       'the run holds a snapshot reference',
-      ATTEMPTS,
     );
     return { directory, storagePath, runId: run.id };
   }
@@ -113,7 +112,7 @@ describe('a recovered file-agent run', () => {
     const { directory, storagePath, runId } = await startRun();
     const release = Promise.withResolvers<void>();
     const second = await open(directory, storagePath, release.promise);
-    await second.bureau.waitForRecovery?.();
+    await second.bureau.recovery();
     const held = await referenceOf(second.bureau, runId);
     expect(held).toBeDefined();
     expect(held?.settledAt).toBeUndefined();
@@ -123,26 +122,23 @@ describe('a recovered file-agent run', () => {
     await waitForCondition(
       async () => (await taskStatusOf(second.bureau, runId)) === 'completed',
       'the recovered run settled its task',
-      ATTEMPTS,
     );
-    await waitForCondition(
-      async () => {
-        const reference = await referenceOf(second.bureau, runId);
-        return typeof reference?.settledAt === 'string';
-      },
-      'the recovered run settled its snapshot reference',
-      ATTEMPTS,
-    );
+    await waitForCondition(async () => {
+      const reference = await referenceOf(second.bureau, runId);
+      return typeof reference?.settledAt === 'string';
+    }, 'the recovered run settled its snapshot reference');
   });
 
-  it('keeps its snapshot reference through maintenance for as long as the engine reports it unfinished', async () => {
+  it('keeps its snapshot reference through maintenance while this process runs it, whatever the engine reports', async () => {
     const { directory, storagePath, runId } = await startRun();
     const second = await open(directory, storagePath);
-    await second.bureau.waitForRecovery?.();
+    await second.bureau.recovery();
     const engine = second.bureau.durableEngine();
     if (engine === undefined) throw new Error('Expected a durable engine.');
-    // The recovered run is in no store and holds no handle in this process, so reconciliation
-    // decides from the engine alone. The engine is made to report each status in turn.
+    // A recovered task is held by this process's run store, so reconciliation leaves its
+    // reference to the run's own end (the test above) and never settles it from the engine. The
+    // engine is made to report each status in turn; 'completed' is the one reconciliation would
+    // settle for a run this process does not hold, so it is the control that the pass reached it.
     const original = engine.get.bind(engine);
     const reporting = (status: string) =>
       spyOn(engine, 'get').mockImplementation(async (id: string) => {
@@ -152,34 +148,26 @@ describe('a recovered file-agent run', () => {
           : record;
       });
 
-    for (const status of ['pending', 'running', 'suspended']) {
+    for (const status of ['pending', 'running', 'suspended', 'completed']) {
       const spy = reporting(status);
-      await second.bureau.runDurableMaintenance();
+      await second.bureau.maintain();
       spy.mockRestore();
       const held = await referenceOf(second.bureau, runId);
       expect([status, held !== undefined, held?.settledAt]).toEqual([status, true, undefined]);
     }
-
-    // The same pass settles it once the engine reports the run over, so the assertions above
-    // are not vacuous: reconciliation does reach this run.
-    const ended = reporting('completed');
-    await second.bureau.runDurableMaintenance();
-    ended.mockRestore();
-    const settled = await referenceOf(second.bureau, runId);
-    expect(typeof settled?.settledAt).toBe('string');
   });
 
   it('is not settled by a graceful shutdown that interrupts it: its task, its snapshot reference, and its cancel survive for the next boot', async () => {
     const { directory, storagePath, runId } = await startRun();
     const second = await open(directory, storagePath);
-    await second.bureau.waitForRecovery?.();
+    await second.bureau.recovery();
     expect(await taskStatusOf(second.bureau, runId)).toBe('working');
 
-    // Disposing the engine rejects the recovered run's result: the run is cut short, not over.
+    // A graceful shutdown leaves a task this process recovered, not started, for the next boot.
     await second.bureau.dispose();
 
     const third = await open(directory, storagePath);
-    await third.bureau.waitForRecovery?.();
+    await third.bureau.recovery();
     expect(await durableStatusOf(third.bureau, runId)).toBe('running');
     expect(await taskStatusOf(third.bureau, runId)).toBe('working');
     const held = await referenceOf(third.bureau, runId);
@@ -191,7 +179,6 @@ describe('a recovered file-agent run', () => {
     await waitForCondition(
       async () => (await taskStatusOf(third.bureau, runId)) === 'canceled',
       'the interrupted task can still be canceled',
-      ATTEMPTS,
     );
   });
 });
@@ -250,15 +237,10 @@ describe('a recovered child run', () => {
       });
     const first = await open();
     cleanups.push(() => first.dispose());
-    const parent = await first.createRun({
-      agentName: 'default',
-      message: 'parent',
-      principal: PRINCIPAL,
-    });
+    const parent = await first.tasks.start('default', 'parent', { principal: PRINCIPAL });
     await waitForCondition(
       () => first.reviews.list().some((review) => review.runId === parent.id),
       'the parent parks',
-      ATTEMPTS,
     );
     await first.children.dispatch({
       parentRunId: parent.id,
@@ -269,19 +251,17 @@ describe('a recovered child run', () => {
     await waitForCondition(
       async () => (await durableStatusOf(first, 'agent-run-child')) === 'running',
       'the child run is running',
-      ATTEMPTS,
     );
     // The second process recovers the child run the first one is still holding.
     const second = await open(release.promise);
     cleanups.push(() => second.dispose());
-    await second.waitForRecovery?.();
+    await second.recovery();
 
     release.resolve();
 
     await waitForCondition(
       async () => (await durableStatusOf(second, 'agent-run-child')) === 'completed',
       'the recovered child run ended',
-      ATTEMPTS,
     );
     // Let the settlement the run's end published reach its subscribers.
     await second.internals.taskRegistry.idle();

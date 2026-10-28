@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { encode } from '../core/codec.ts';
 import { PersistedDataCorruptError } from '../core/persisted-data-incompatible-error.ts';
 import {
@@ -9,7 +10,6 @@ import {
   type ScanOptions,
 } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { createFleetEventFeed, type FleetEventEnvelope } from './fleet-event-feed.ts';
 
 class FailingTailReadStorage extends MemoryStorage {
@@ -738,6 +738,7 @@ describe('createFleetEventFeed', () => {
     const controller = new AbortController();
     const subscription = collect(subscriberFeed.subscribe({ signal: controller.signal }), 1);
 
+    // load-proof: collect() attaches the subscription through promise continuations before this yield returns, so the append is ordered after the attach by microtasks, not by timing
     await new Promise<void>((resolve) => setImmediate(resolve));
     await appenderFeed.append({
       kind: 'worker:connected',
@@ -757,6 +758,7 @@ describe('createFleetEventFeed', () => {
     const controller = new AbortController();
     const iterator = feed.subscribe({ signal: controller.signal })[Symbol.asyncIterator]();
     const pending = iterator.next();
+    // load-proof: the iterator is already pending on in-memory storage, and abort() settles it synchronously through the promise chain
     await new Promise<void>((resolve) => setImmediate(resolve));
     controller.abort();
     expect(await pending).toEqual({ done: true, value: undefined });

@@ -18,7 +18,7 @@ import { parseClientMessage, toActionRequest } from '../a2ui/client-actions.ts';
 import { INTERACTIVE_SURFACE_CONTRACT_VERSION } from '../interactive-surface/types.ts';
 import type { TaskView } from '../task-registry.ts';
 import type { Bureau, BureauReviews } from '../types.ts';
-import type { TasksRespondInput } from './management/tasks-respond-operation.ts';
+import type { TasksRespondInput } from '../tasks/respond-to-task.ts';
 
 /**
  * The message-metadata key that carries the surface revision a renderer last received. A2UI's

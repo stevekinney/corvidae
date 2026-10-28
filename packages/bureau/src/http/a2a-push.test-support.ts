@@ -16,6 +16,7 @@ import {
 } from '@lostgradient/weft/a2a';
 
 import { type OpenedBureau, openBureau } from './management/management-fixtures.test-support.ts';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 export const SIGNING_SECRET = 'whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw';
 
@@ -206,13 +207,6 @@ export function webhook(fixture: PushFixture, extra: Json = {}): Json {
 }
 
 /** Polls `condition` every 10 ms until it holds, or fails after `timeoutMs`. */
-export async function eventually(
-  condition: () => boolean | Promise<boolean>,
-  timeoutMs = 10_000,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!(await condition())) {
-    if (Date.now() > deadline) throw new Error('The condition did not hold in time.');
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
+export async function eventually(condition: () => boolean | Promise<boolean>): Promise<void> {
+  await waitUntil(condition, { message: 'eventually' });
 }

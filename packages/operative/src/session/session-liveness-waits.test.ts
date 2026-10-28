@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 import { noToolCalls } from '../conditions';
 import { HumanWaitParkedEvent } from '../events';
+import { drainMicrotasks } from '../testing/drain-microtasks.test-support.ts';
 import { createSessionStore } from './create-session-store';
 import { createSessionEngine } from './session-engine-test-fixture';
 import { createSessionHandle, deriveRunId } from './session-handle';
@@ -71,7 +72,7 @@ describe('SessionHandle liveness — declared waits', () => {
     expect(resume).not.toHaveBeenCalled();
     released.resolve();
     await older.result();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
     expect(resume).toHaveBeenCalledTimes(1);
     expect(state.parkedRunId).toBeUndefined();
   });

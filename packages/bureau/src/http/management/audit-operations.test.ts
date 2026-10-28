@@ -60,14 +60,10 @@ async function seed(): Promise<Seeded> {
     ]) as unknown as Toolbox,
   });
   cleanups.push(() => opened.dispose());
-  const alice = await opened.bureau.createRun({
-    agentName: 'default',
-    message: `${TRANSCRIPT} from alice`,
+  const alice = await opened.bureau.tasks.start('default', `${TRANSCRIPT} from alice`, {
     principal: OWNER.alice,
   });
-  const bob = await opened.bureau.createRun({
-    agentName: 'default',
-    message: `${TRANSCRIPT} from bob`,
+  const bob = await opened.bureau.tasks.start('default', `${TRANSCRIPT} from bob`, {
     principal: OWNER.bob,
   });
   for (const run of [alice, bob]) {

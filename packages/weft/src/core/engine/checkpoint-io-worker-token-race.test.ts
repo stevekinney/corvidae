@@ -31,9 +31,10 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { deserializeCheckpoint, serializeCheckpoint } from '../checkpoint.ts';
 import type { ContextOperationRequest } from '../context.ts';
 import { Engine } from '../engine.ts';
@@ -97,7 +98,7 @@ async function waitForCheckpointQuiescence(
   workflowId: string,
 ): Promise<Uint8Array> {
   let previous = await storage.get(KEYS.checkpoint(workflowId));
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  for await (const _turn of awakeTurns()) {
     await new Promise((resolve) => setTimeout(resolve, 10));
     const current = await storage.get(KEYS.checkpoint(workflowId));
     if (

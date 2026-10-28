@@ -12,13 +12,14 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import {
   KEYS,
   type BatchOperation,
   type ConditionalBatchCondition,
 } from '../../../storage/interface.ts';
 import { MemoryStorage } from '../../../storage/memory.ts';
-import { rejectionOf, throwingRejectionOf } from '../../../testing/promise-outcome.test-support.ts';
 import { encode } from '../../codec.ts';
 import { PayloadSizeExceededError } from '../../payload-size.ts';
 import {
@@ -147,7 +148,7 @@ describe('engine.prepare() / handle.launch() / handle.abandon() (COR-75)', () =>
     // in-memory baseline for it; launch() must prime one from storage.
     forgetCommittedCheckpointBytes(internals, prepared.id);
     await prepared.launch();
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    for await (const _turn of awakeTurns()) {
       if (internals.parkedInlineWorkflows.has(prepared.id)) break;
       await new Promise((resolve) => setImmediate(resolve));
     }

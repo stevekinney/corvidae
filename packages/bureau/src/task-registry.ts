@@ -109,11 +109,9 @@ export type TaskKind = 'schedule-fire';
 /**
  * What a task reads as in the management plane (COR-1689), by how its record was written: a record
  * of the `schedule-fire` kind is `schedule-fire`; otherwise a non-empty incarnation, the session
- * incarnation the run ran in, is `chat`; and anything else is `catalog`. A `bureau.run()` dispatch
- * records no incarnation, so it is `catalog` and its `contextId` is its own handle unless the
- * caller named a session. A Bureau without a session store records none for a `createRun` task
- * either, so that task reads `catalog` too: `catalog` means no session incarnation was recorded,
- * not that the run is a dispatch. The kind a record stores ({@link TaskKind}) is only the fire.
+ * incarnation the run ran in, is `chat`; and anything else is `catalog`. A Bureau without a session store
+ * records no incarnation for a task, so that task reads `catalog`: `catalog` means no session
+ * incarnation was recorded. The kind a record stores ({@link TaskKind}) is only the fire.
  */
 export type TaskViewKind = 'chat' | 'schedule-fire' | 'catalog';
 
@@ -190,6 +188,22 @@ export interface TaskRecord {
    * `task.resynced` event it appends has committed, so a crash in between leaves the repair owed.
    */
   readonly resyncPending?: boolean | undefined;
+  /**
+   * The tools the task was granted when it started (COR-1710), read from `bureau.settings` once
+   * and never rebuilt: a task resumed after recovery, or answered after it parked, is offered
+   * these, whatever the settings say by then. Absent in a record written before it was kept; such
+   * a task resumes with the settings at resume, which are then recorded here.
+   */
+  readonly tools?: TaskToolGrant | undefined;
+}
+
+/** COR-1710 — the tools a task was granted at start: `tools.*` of `bureau.settings` at that moment. */
+export interface TaskToolGrant {
+  /** `false`, or the grant of `requestHumanInput` with its answer schemas per signal. */
+  readonly humanInput:
+    false | { readonly inputSchemas?: Readonly<Record<string, Readonly<Record<string, unknown>>>> };
+  readonly wakeup: boolean;
+  readonly decide: boolean;
 }
 
 /** A cleanup acknowledgement as a task record keeps it: its status and, when unresolved, why. */
@@ -210,6 +224,8 @@ export interface TaskAdmission {
   readonly kind?: TaskKind | undefined;
   /** The originating user message's text, when the request had one. */
   readonly message: string | undefined;
+  /** See {@link TaskRecord.tools}. */
+  readonly tools?: TaskToolGrant | undefined;
   /** When the work began, if that was before this record was written (ISO 8601). */
   readonly createdAt?: string | undefined;
 }
@@ -373,6 +389,11 @@ export interface TaskRegistry {
   expireListings(): Promise<number>;
   /** Writes the record of a task about to start. */
   recordAdmission(admission: TaskAdmission): Promise<void>;
+  /**
+   * COR-1710 — records `tools` on a task whose record has none, and returns the grant the record
+   * holds afterwards: the one it already had, or `tools`. `undefined` when there is no record.
+   */
+  recordToolGrant(taskId: string, tools: TaskToolGrant): Promise<TaskToolGrant | undefined>;
   /** Removes a record whose task never started. */
   discard(taskId: string): Promise<void>;
   /**
@@ -1275,6 +1296,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         ...(admission.kind === undefined ? {} : { kind: admission.kind }),
         createdAt,
         history,
+        ...(admission.tools === undefined ? {} : { tools: admission.tools }),
       };
       const key = recordKey(admission.taskId);
       const indexKey = contextIndexKey(admission.contextId, admission.taskId);
@@ -1289,6 +1311,19 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
           { type: 'set', key: indexKey, value: admission.taskId },
         ],
       );
+    },
+
+    async recordToolGrant(taskId, tools) {
+      let held: TaskToolGrant | undefined;
+      await update(
+        taskId,
+        (record) => {
+          held = record.tools ?? tools;
+          return record.tools === undefined ? { ...record, tools } : undefined;
+        },
+        false,
+      );
+      return held;
     },
 
     async discard(taskId) {

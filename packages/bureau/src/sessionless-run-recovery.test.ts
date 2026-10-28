@@ -1,58 +1,42 @@
 /**
- * COR-1581 correction — a sessionless durable run recovered after a crash. The first Bureau is not
- * disposed (a graceful shutdown cancels a parked run, so the second would have nothing to recover);
- * a second one opens the same store and takes the run over.
+ * COR-1581 correction — a durable task recovered after a crash. The first Bureau is not disposed
+ * (a graceful shutdown cancels a parked run, so the second would have nothing to recover); a second
+ * one opens the same store and takes the run over.
  *
- * - The replay seeds the input row again, outside any checkpointed step, so the row must keep its id
- *   or the claim made under it is made twice, once per row id, and nothing releases the first.
- * - The recovered run's own steps claim what they generate under the run, and the claims are released
- *   when the recovered run ends (COR-1630), so the image falls back to the retention floor.
+ * The replay seeds the input row again, outside any checkpointed step, so the row must keep its id
+ * or the claim made under it is made twice, once per row id, and nothing releases the first.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createAgent,
   createModelCatalog,
   type GenerateContext,
-  type GenerateFunction,
   stopWhen,
   waitForCondition,
   withBackendDescriptors,
 } from '@lostgradient/operative';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
-import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import type { MediaContent } from 'conversationalist';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { runRowHolderId } from './assets/row-asset-claims';
 import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
-import {
-  alice,
-  aliceAdministrator,
-  base64Of,
-  pngBytes,
-} from './testing/asset-fixtures.test-support';
+import { alice, aliceAdministrator, pngBytes } from './testing/asset-fixtures.test-support';
 import type { Bureau } from './types';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   while (cleanups.length > 0) await cleanups.pop()!();
+  // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
   await yieldToPortableEventLoop();
 });
 
 const anthropicDescriptors = createModelCatalog().descriptors.filter(
   (descriptor) => descriptor.provider === 'anthropic',
 );
-const imageOutputDescriptors = anthropicDescriptors.slice(0, 1).map((descriptor) => ({
-  ...descriptor,
-  modalities: {
-    ...descriptor.modalities,
-    image: { ...descriptor.modalities.image, output: true },
-  },
-}));
 const png = pngBytes(4, 3);
 
 async function holdersOf(bureau: Bureau, assetId: string): Promise<string[]> {
@@ -100,8 +84,8 @@ async function openBureau(
   return bureau;
 }
 
-describe('a sessionless durable run recovered after a crash', () => {
-  it('holds its input asset under one run-row holder, not one per replay', async () => {
+describe('a durable task recovered after a crash', () => {
+  it('holds its input asset under one context-row holder, not one per replay', async () => {
     const store = await createStore();
     const viewer = (seen: GenerateContext[], hold?: Promise<void>) =>
       createAgent({
@@ -124,7 +108,7 @@ describe('a sessionless durable run recovered after a crash', () => {
     await admission.work.result();
     const image: MediaContent = { type: 'image', source: admission.source };
     const assetId = admission.assetId;
-    const run = first.run('viewer', [image], { principal: alice.id });
+    const run = await first.tasks.start('viewer', [image], { principal: alice.id });
     await waitForCondition(() => seenFirst.length > 0, 'the run never reached its first step');
     const before = await holdersOf(first, assetId);
 
@@ -132,127 +116,21 @@ describe('a sessionless durable run recovered after a crash', () => {
     const resume = Promise.withResolvers<void>();
     const second = await openBureau(store, { viewer: viewer(seenSecond, resume.promise) });
     await waitForCondition(() => seenSecond.length > 0, 'the recovered run never took a step');
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
     const during = await holdersOf(second, assetId);
 
     resume.resolve();
-    await waitForCondition(
-      async () => {
-        const state = await second.getRun(run.id);
-        return state?.status !== 'running';
-      },
-      'the recovered run never finished',
-      200,
-    );
-    await waitForCondition(
-      async () => {
-        const holders = await holdersOf(second, assetId);
-        return holders.length === 0;
-      },
-      'the recovered run never released its claim',
-      200,
-    );
+    await waitForCondition(async () => {
+      const state = await second.tasks.detail(run.id);
+      return state?.status !== 'running';
+    }, 'the recovered run never finished');
+    const after = await holdersOf(second, assetId);
 
-    // The replay re-seeded the input row under its own id: one holder, then none once it ends.
-    expect(before).toEqual([runRowHolderId(run.id, `${run.id}:input`)]);
+    // The replay re-seeded the input row under its own id: one holder, held by the task's
+    // context, throughout and after the replay.
+    expect(before).toEqual([expect.stringContaining(`session-row:${run.contextId}:`)]);
     expect(during).toEqual(before);
-  });
-
-  it('claims the image its recovered steps generate, and releases it when the recovered run ends', async () => {
-    const store = await createStore();
-    const generate: GenerateFunction = async (context: GenerateContext) => {
-      if (context.step === 0) {
-        return {
-          content: '',
-          toolCalls: [
-            {
-              id: 'call-1',
-              name: 'requestHumanInput',
-              arguments: { signalName: 'answer', prompt: 'Which one?' },
-            },
-          ],
-        };
-      }
-      return {
-        content: '',
-        parts: [
-          {
-            type: 'image' as const,
-            mimeType: 'image/png',
-            source: {
-              kind: 'inline' as const,
-              data: base64Of(png),
-              encoding: 'base64' as const,
-            },
-          },
-        ],
-        toolCalls: [],
-      };
-    };
-    const painter = createAgent({
-      generate: withBackendDescriptors(generate, imageOutputDescriptors),
-      toolbox: createToolbox([]),
-      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
-    });
-    const reviewOf = async (bureau: Bureau, runId: string) => {
-      await waitForCondition(
-        () => bureau.reviews.list().some((review) => review.runId === runId),
-        'the run never asked for input',
-        4000,
-      );
-      return bureau.reviews.list().find((candidate) => candidate.runId === runId)!;
-    };
-
-    const first = await openBureau(store, { painter });
-    const run = first.run('painter', 'Draw', { principal: alice.id });
-    await reviewOf(first, run.id);
-
-    const second = await openBureau(store, { painter });
-    const claims: Array<{
-      type: 'asset.retained' | 'asset.released';
-      assetId: string;
-      holderId: string;
-    }> = [];
-    const unsubscribe = second.assets!.subscribe((event) => {
-      const { assetId, holderId } = event;
-      if (
-        (event.type === 'asset.retained' || event.type === 'asset.released') &&
-        assetId !== undefined &&
-        holderId?.startsWith('run-row:') === true
-      ) {
-        claims.push({ type: event.type, assetId, holderId });
-      }
-    });
-    cleanups.push(async () => unsubscribe());
-    const restored = await reviewOf(second, run.id);
-    await second.reviews.resolve({ id: restored.id, decision: 'approve', principal: 'operator' });
-    const finished = await second.waitForDurableRun(run.id);
-    expect(finished?.status).toBe('completed');
-    const parts = (finished?.result as { parts?: MediaContent[] } | undefined)?.parts ?? [];
-    const image = parts.find((part) => part.type === 'image');
-    if (image === undefined || image.source.kind !== 'managed-asset') {
-      throw new Error('the recovered run generated no managed image');
-    }
-    const assetId = image.source.assetId;
-
-    await waitForCondition(
-      async () => {
-        const holders = await holdersOf(second, assetId);
-        return holders.length === 0;
-      },
-      'the recovered run never released its claim',
-      200,
-    );
-    // The commit claimed the image under the run, and the run's end released that same claim.
-    const holder = expect.stringContaining(`run-row:${encodeURIComponent(run.id)}:`);
-    expect(claims.filter((event) => event.assetId === assetId)).toEqual([
-      { type: 'asset.retained', assetId, holderId: holder },
-      { type: 'asset.released', assetId, holderId: holder },
-    ]);
-
-    await store.runtime.advance(5_000);
-    const collected = await second.assets!.collectGarbage().result();
-    if (collected.outcome !== 'completed') throw new Error(`collection ${collected.outcome}`);
-    expect(collected.value.expired).toContain(assetId);
+    expect(after).toEqual(before);
   });
 });

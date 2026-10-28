@@ -13,14 +13,20 @@ import {
   type AgentInput,
   type AgentRun,
   type AgentSession,
+  type RunEvent,
+  type RunResult,
+  type SessionInputPayload,
   type ChildSignalContract, // COR-625: operative's OBJECT-form cleanup acknowledgement, aliased on
   // import because `./types` exports an unrelated string-union type under
   // the same name (armorer's shutdown-owner outcome vocabulary). The two are
   // genuinely different values and must not shadow each other here.
   type CleanupAcknowledgement as RunCleanupAcknowledgement,
+  appendAgentInput,
+  payloadText,
   assertAgentInput,
   type CombinedOperativeEventMap,
   createActiveRun,
+  createAgentRun,
   createAgentRunEventRegistry,
   createAgentScheduler,
   createFlowController,
@@ -157,11 +163,12 @@ import {
   sessionRowHolderId,
   sessionRowHolderPrefix,
 } from './assets/row-asset-claims';
+import { humanInputSchemasOf, validateHumanInputOption } from './human-input-option';
 import {
-  humanInputEnabled,
-  humanInputSchemasOf,
-  validateHumanInputOption,
-} from './human-input-option';
+  validateChildrenOption,
+  validateRetentionOptions,
+  validateSessionInputBacklogLimit,
+} from './option-validators.ts';
 import type { AssetService } from './assets/types';
 import { createAssetClaimReconciler } from './asset-claim-reconciliation';
 import {
@@ -171,7 +178,6 @@ import {
   AUDIT_WORKFLOW_OWNER_PREFIX,
   type AuditTrail,
   auditTrailSessionOwnerId,
-  type CheckpointRetentionOption,
   computeInitialAuditSequence,
   createAuditTrail,
 } from './audit-trail';
@@ -187,7 +193,9 @@ import {
 } from './child-topology';
 import { createChildTopologyStore } from './child-topology-store';
 import {
+  type CommandLedger,
   type CreatedRunSummary,
+  createPrunedCommandLedger,
   createRunCreationLedger,
   BureauLedgerConflictError,
   digestCommandPayload,
@@ -195,7 +203,8 @@ import {
   type RunCreationAttempt,
   type RunCreationObservation,
   type RunCreationReceiptLocation,
-  serializeAppendedMessages,
+  serializeTaskInput,
+  serializeTaskRequestContext,
 } from './command-ledger';
 import {
   createDurableEventHistory,
@@ -236,6 +245,18 @@ import type { BureauGoals } from './goal-types';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
 import { composeBureauGoals } from './goals-composition';
 import { leaseEvidenceFromLostHealth } from './liveness-projection';
+import { createDecisions, validateDecisionsOptions } from './decisions/create-decisions';
+import { createLateDecisions } from './decisions/late-decisions';
+import { createSettings, type SettingsComposition } from './settings/create-settings';
+import type { SettingsValues } from './settings/settings-schema';
+import {
+  bootSettings,
+  enginePatchOf,
+  modelPolicyOf,
+  settingsDefaultsOf,
+  toolGrantOf,
+  validateSettingsOptions,
+} from './settings/settings-options';
 import { createModels, validateModelsOptions, type Models } from './models/create-models';
 import { createOnlineEvalSampler, type OnlineEvalSampler } from './online-evals';
 import {
@@ -275,14 +296,13 @@ import {
   serializeActionDetail,
   serializeRunDetail,
   serializeRunState,
-  serializeUndispatchedCatalogRun,
-  serializeUndispatchedCatalogRunDetail,
   serializeUnknownError,
 } from './serialization';
 import { createCatalogTaskSettler } from './catalog-task-settlement';
 import {
   createCatalogRunAssetReleaser,
   createRecoveredRunReleaseListener,
+  type ReleasableConversation,
 } from './catalog-run-asset-release';
 import {
   createCatalogRunSettlementHook,
@@ -290,7 +310,6 @@ import {
   type DurableEnd,
   type DurableEndReader,
   createCatalogSettlementTracker,
-  publishFreshCatalogRun,
   settlementForRejection,
 } from './catalog-run-settlement';
 import {
@@ -301,6 +320,8 @@ import {
   TASK_STATUS_MESSAGE_LIMIT,
   type LiveTask,
   type TaskRecord,
+  type TaskRegistry,
+  type TaskToolGrant,
 } from './task-registry';
 import { createTaskResync, type TaskResync } from './task-resync';
 import {
@@ -308,7 +329,6 @@ import {
   EXPIRY_ACTOR,
   ownerFromPrincipal,
   ownerOrLocal,
-  principalDefect,
   RECOVERY_ACTOR,
   SCHEDULER_ACTOR,
 } from './owner-of-record';
@@ -335,6 +355,7 @@ import {
 } from './workflow-runtime';
 import { validateDefinitionSource } from './sources/validate-definition-source';
 import { collidingWorkflowToolName, createWorkflowTools } from './workflow-tools';
+import { createSettingsTools } from './settings/settings-tools';
 import { createWorkflowSnapshotStore } from './workflow-snapshot-store';
 import {
   type AgentStepRequest,
@@ -467,10 +488,8 @@ import {
 import type {
   AbortingRun,
   Bureau,
-  BureauChildrenOptions,
   BureauOptions,
   BureauRecoveryReport,
-  BureauRunOptions,
   BureauShutdownOptions,
   BureauShutdownOwnerReport,
   BureauShutdownReport,
@@ -479,6 +498,10 @@ import type {
   ContextDeletionReport,
   CreateRunRequest,
   LocateRunCreationReceiptRequest,
+  StartTaskOptions,
+  TaskHandle,
+  TaskInput,
+  TaskRespondResult,
   OwnedResource,
   DiagnosticSink,
   DurableScheduleDefinition,
@@ -492,7 +515,6 @@ import type {
   SessionPendingReview,
   ResolveReviewInput,
   ResolveReviewResult,
-  RetentionWindowOption,
   BureauRetentionOptions,
   ReviewStatus,
   RunSummary,
@@ -505,6 +527,12 @@ import {
 import { isSettlingRunAction, settledActionTimestamp } from './run-settlement';
 import { createAudit } from './audit/create-audit';
 import { createContexts } from './contexts/create-contexts';
+import { createTaskHandle, createTasks, seedsConversation } from './tasks/create-tasks';
+import {
+  TASKS_RESPOND_LEDGER_KEY_PREFIX,
+  type TaskRespondRefusal,
+  type TasksRespondClaim,
+} from './tasks/respond-to-task';
 import { createReviews } from './reviews/create-reviews';
 import { createSchedules } from './schedules/create-schedules';
 import { createWebhookNotifier, type WebhookNotifier } from './webhook-notifier';
@@ -780,7 +808,7 @@ export interface WaitForDurableRunDependencies {
 }
 
 /**
- * The resolution algorithm behind {@link Bureau.waitForDurableRun}, independent of a real
+ * The resolution algorithm behind {@link BureauTasks.wait}, independent of a real
  * `runtime.durable.engine`. A rejection of the result waiter is accepted only when the store then
  * confirms the run is terminal (a failed, cancelled or timed-out run rejects its own result);
  * any other rejection says nothing about the run and propagates.
@@ -801,7 +829,7 @@ export async function resolveWaitForDurableRun(
     throw new BureauError(
       `waitForDurableRun("${runId}") cannot wait under maintenance: 'manual', ` +
         `where nothing re-reads the durable store between maintenance passes; call ` +
-        `runDurableMaintenance() and then getDurableRun() instead`,
+        `maintain() and then getDurableRun() instead`,
       'UNSUPPORTED_CAPABILITY',
     );
   }
@@ -989,11 +1017,30 @@ class BureauShuttingDownError extends BureauError {
   }
 }
 
+/**
+ * A refusal of {@link BureauTasks.respond}, made before anything took effect. It is a
+ * `BureauError` (`NOT_FOUND`, `CONFLICT`, or `BAD_REQUEST`) that also says which request `field`
+ * a `BAD_REQUEST` is about, or the short `reason` an addressed wait cannot take the answer, so the
+ * management plane answers it as `InvalidParams` or `Unprocessable` without reading the message.
+ */
+class TaskRespondError extends BureauError {
+  readonly field: string | undefined;
+  readonly reason: string | undefined;
+
+  constructor(refusal: TaskRespondRefusal) {
+    super(refusal.message, refusal.code);
+    this.name = 'TaskRespondError';
+    this.field = refusal.field;
+    this.reason = refusal.reason;
+  }
+}
+
 export {
   ApprovalOutcomeNotWrittenError,
   BureauError,
   BureauShuttingDownError,
   ReviewRoundChangedError,
+  TaskRespondError,
 };
 
 /**
@@ -1170,30 +1217,74 @@ function validateMessageRequest(
   } else if (!request.message || typeof request.message !== 'string') {
     toBadRequest('Request must include a "message" string');
   }
+}
 
-  if (request.systemPrompt !== undefined && typeof request.systemPrompt !== 'string') {
-    toBadRequest('"systemPrompt" must be a string');
-  }
+/**
+ * What a task start adds to a run-creation request inside Bureau: the input it was given (the
+ * receipt digest covers it), the parts of a part-list input, and a hook that sees the run's
+ * `ActiveRun` the moment it exists, before any of its events can be missed.
+ */
+type SessionTaskFields = {
+  readonly taskInput?: TaskInput | undefined;
+  readonly inputParts?: Exclude<SessionInputPayload, string> | undefined;
+  readonly onActiveRun?: ((activeRun: ActiveRun) => void) | undefined;
+  /**
+   * The caller's start signal, bound to the run once its workflow is prepared and before its
+   * receipt is recorded: the run executes from that point, so an abort must reach it from there.
+   */
+  readonly signal?: AbortSignal | undefined;
+  /** The caller's trace context: the run's `parentContext`, the parent of its spans. */
+  readonly traceContext?: unknown;
+  /** The caller's tracer binding, which runs the run's generate and tool calls under the parent. */
+  readonly withTraceContext?:
+    (<T>(parent: unknown, fn: () => Promise<T>) => Promise<T>) | undefined;
+};
 
-  if (request.maximumSteps !== undefined) {
-    if (
-      typeof request.maximumSteps !== 'number' ||
-      !Number.isInteger(request.maximumSteps) ||
-      request.maximumSteps <= 0
-    ) {
-      toBadRequest('"maximumSteps" must be a positive integer');
+/** The run-creation fields a task input becomes: a message, its parts, or rows to append. */
+function taskRequestFieldsOf(
+  input: TaskInput,
+): Pick<CreateRunRequest & SessionTaskFields, 'message' | 'inputParts' | 'appendMessages'> {
+  if (typeof input === 'string') return { message: input };
+  if (Array.isArray(input)) {
+    // COR-716: an ordered list of user text and media parts, checked as every start path checks it.
+    try {
+      assertAgentInput(input);
+    } catch (error) {
+      if (error instanceof AgentContractError) toBadRequest(`"input" is invalid: ${error.message}`);
+      throw error;
     }
+    return { inputParts: input };
   }
-
-  if (request.maximumTokens !== undefined) {
-    if (
-      typeof request.maximumTokens !== 'number' ||
-      !Number.isInteger(request.maximumTokens) ||
-      request.maximumTokens <= 0
-    ) {
-      toBadRequest('"maximumTokens" must be a positive integer');
+  if (typeof input !== 'object' || input === null) {
+    return toBadRequest('"input" must be a string, a list of parts, or a task input object');
+  }
+  if ('append' in input) return { appendMessages: input.append };
+  if ('conversation' in input) {
+    const history = input.conversation;
+    if (!isConversationHistory(history)) {
+      return toBadRequest('"input.conversation" must be a valid ConversationHistory');
     }
+    return { appendMessages: history.ids.map((id) => history.messages[id]!) };
   }
+  if ('continue' in input) return {};
+  return toBadRequest('"input" must be a string, a list of parts, or a task input object');
+}
+
+/** The text that stands for a request where only text fits: its message, parts, or last user row. */
+function requestTextOf(request: CreateRunRequest & SessionTaskFields): string {
+  if (request.message !== undefined) return request.message;
+  return request.inputParts === undefined
+    ? lastUserTextOf(request.appendMessages)
+    : payloadText(request.inputParts);
+}
+
+/** The input a request that names no `taskInput` stands for, so its digest covers what it ran. */
+function legacyTaskInputOf(request: CreateRunRequest): unknown {
+  const rows = request.appendMessages ?? [];
+  if (request.message !== undefined) {
+    return rows.length === 0 ? request.message : { message: request.message, append: rows };
+  }
+  return rows.length === 0 ? { continue: true } : { append: rows };
 }
 
 function validateCreateRunRequest(request: CreateRunRequest): void {
@@ -1286,42 +1377,56 @@ function validateAgentRunInput(input: unknown): asserts input is AgentInput {
   );
 }
 
-function validateBureauRunOptions(
-  options: BureauRunOptions | undefined,
-  // AB-241 review finding: a `principal` value re-read from `options` here
-  // (a second, independent property access) could differ from the value
-  // the caller snapshots before/after this call if `options.principal` is
-  // a getter/proxy whose result changes between reads — a JavaScript
-  // caller could observe a validated string on the first read and hand a
-  // non-string (or a different principal entirely) to whichever read
-  // actually gets persisted, bypassing this synchronous `BAD_REQUEST`.
-  // The caller captures `options?.principal` exactly ONCE and passes that
-  // captured value here, so this validates the SAME value every other
-  // consumer downstream (context, recovery record, liveness owner) uses.
-  capturedPrincipal: unknown,
-): asserts options is BureauRunOptions | undefined {
-  if (options === undefined) return;
-  // `typeof [] === 'object'` — without excluding arrays explicitly, a
-  // JavaScript caller passing `[]` (or any array) as `options` passed this
-  // guard as an empty options bag instead of the synchronous rejection the
-  // contract advertises for malformed options (review round 2, Codex).
+/**
+ * The ledger {@link BureauTasks.respond} records its receipts in, in the Bureau's store. An
+ * ephemeral Bureau keeps it in memory: a receipt then lives as long as the process does.
+ */
+function createTasksRespondLedger(
+  kv: ConditionalTextValueStore | undefined,
+  runtime: RuntimeServices,
+): CommandLedger<TasksRespondClaim, TaskRespondResult> {
+  return createPrunedCommandLedger<TasksRespondClaim, TaskRespondResult>(
+    kv ?? textValueStore(new MemoryStorage()),
+    TASKS_RESPOND_LEDGER_KEY_PREFIX,
+    'respond-conflict',
+    runtime,
+  );
+}
+
+/**
+ * The options of one {@link BureauTasks.start} call, each read once. A caller-owned bag is read
+ * before the first `await` and never again, so a getter that answers differently on a later read
+ * cannot slip a value past this check. A malformed bag is `BAD_REQUEST` before anything is
+ * persisted; the owner and the context identifier are validated where the run is created.
+ */
+function snapshotStartOptions(options: StartTaskOptions): StartTaskOptions {
   if (options === null || typeof options !== 'object' || Array.isArray(options)) {
     toBadRequest('"options" must be an object');
   }
-  if (options.sessionId !== undefined && typeof options.sessionId !== 'string') {
-    toBadRequest('"options.sessionId" must be a string');
-  }
-  if (options.sessionId !== undefined) {
-    rejectReservedIdentifier('"options.sessionId"', options.sessionId.trim());
-  }
-  if (options.signal !== undefined && !(options.signal instanceof AbortSignal)) {
+  const {
+    contextId,
+    principal,
+    commandId,
+    requestContext,
+    signal,
+    traceContext,
+    withTraceContext,
+  } = options;
+  if (signal !== undefined && !(signal instanceof AbortSignal)) {
     toBadRequest('"options.signal" must be an AbortSignal');
   }
-  if (options.withTraceContext !== undefined && typeof options.withTraceContext !== 'function') {
+  if (withTraceContext !== undefined && typeof withTraceContext !== 'function') {
     toBadRequest('"options.withTraceContext" must be a function');
   }
-  const principalReason = principalDefect(capturedPrincipal, 'options.principal');
-  if (principalReason !== undefined) toBadRequest(principalReason);
+  return {
+    ...(contextId === undefined ? {} : { contextId }),
+    ...(principal === undefined ? {} : { principal }),
+    ...(commandId === undefined ? {} : { commandId }),
+    ...(requestContext === undefined ? {} : { requestContext }),
+    ...(signal === undefined ? {} : { signal }),
+    ...(traceContext === undefined ? {} : { traceContext }),
+    ...(withTraceContext === undefined ? {} : { withTraceContext }),
+  };
 }
 
 /**
@@ -1663,61 +1768,10 @@ export async function monitorRecoveredCatalogRun(
 }
 
 /**
- * AB-194 — `BureauOptions.sessionInput`'s `sessionBacklogLimit`/
- * `principalBacklogLimit` must each be a positive integer when supplied.
- * Throws `BureauError('...', 'BAD_REQUEST')` for 0, a negative number, or a
- * non-integer; a `undefined` value (option omitted) passes through untouched.
- */
-function validateSessionInputBacklogLimit(value: number | undefined, optionName: string): void {
-  if (value === undefined) return;
-  if (!Number.isInteger(value) || value <= 0) {
-    toBadRequest(`"options.sessionInput.${optionName}" must be a positive integer`);
-  }
-}
-
-/**
- * AB-388 (Codex review, PR #597, "Reject non-finite and negative retention
- * durations"): `BureauRetentionOptions.audit`'s `{ olderThan }` form feeds
- * `pruneAuditTrail`'s cutoff arithmetic (`now - retention.olderThan`)
- * directly — TypeScript's `number` type permits `NaN`, `Infinity`, and
- * negative values, none of which are safe here. `NaN` makes every
- * `record.timestampMs >= cutoffMs` comparison in `AuditTrail.prune` false,
- * deleting the ENTIRE trail even when a fleet retention floor exists;
- * `-Infinity` (or any negative value large enough) moves the cutoff into
- * the future and can remove records that were just written. Validated here
- * (BAD_REQUEST at construction time), the same boundary
- * `validateSessionInputBacklogLimit` above already uses for a different
- * destructive-if-malformed option.
- */
-function validateAuditRetentionOption(value: { olderThan: number } | 'forever' | undefined): void {
-  if (value === undefined || value === 'forever') return;
-  if (!Number.isFinite(value.olderThan) || value.olderThan < 0) {
-    toBadRequest('"options.retention.audit.olderThan" must be a finite, non-negative number');
-  }
-}
-
-/**
- * COR-1477 — `BureauRetentionOptions.events` and `retention.tasks` feed a cutoff
- * (`now - olderThan`) that decides what maintenance deletes, so they get the
- * same finite, non-negative rule `retention.audit` gets: `NaN` would compare
- * false against every timestamp, and a negative value moves the cutoff into
- * the future.
- */
-function validateRetentionWindowOption(
-  value: RetentionWindowOption | undefined,
-  optionName: string,
-): void {
-  if (value === undefined || value === 'forever') return;
-  if (!Number.isFinite(value.olderThan) || value.olderThan < 0) {
-    toBadRequest(`"options.${optionName}.olderThan" must be a finite, non-negative number`);
-  }
-}
-
-/**
  * COR-1700 — `humanInput` and `wakeup` are on by default for a durable Bureau, so `true` says
  * nothing and is refused: the only forms are `false`, and for `humanInput` an `inputSchemas` object.
  */
-function rejectOptInToolOption(name: 'humanInput' | 'wakeup', value: unknown): void {
+function rejectOptInToolOption(name: 'humanInput' | 'wakeup' | 'decide', value: unknown): void {
   if (value === undefined || value === false) return;
   if (name === 'humanInput' && typeof value === 'object' && value !== null) return;
   toBadRequest(
@@ -1732,69 +1786,11 @@ const DEFAULT_EVENT_RETENTION_MS = 7 * 86_400_000;
 const DEFAULT_TASK_RETENTION_MS = 30 * 86_400_000;
 
 /** {@link BureauRetentionOptions.tasks}, or its default window when none was given. */
-function taskRetentionOf(options: { readonly retention?: BureauRetentionOptions | undefined }) {
-  return options.retention?.tasks ?? { olderThan: DEFAULT_TASK_RETENTION_MS };
-}
-
-/**
- * COR-625 — `BureauRetentionOptions.checkpoints`'s `{ keepLast }` form feeds
- * weft's `Engine.pruneCheckpoints` (COR-11), whose own contract requires a
- * non-negative integer. Bureau narrows that further to a POSITIVE integer:
- * `keepLast: 0` would discard a terminal run's entire checkpoint history,
- * including the newest entry a postmortem needs, which is a destructive
- * default no operator means to configure — an operator who genuinely wants
- * nothing retained is asking to delete the run, not to retain zero of it.
- * `timeoutMilliseconds` bounds the step's own wait and its abort signal, so
- * `NaN` or a negative value would arm a timer that fires immediately (or
- * never), turning every step into a spurious `'timed-out'`. Validated here at
- * construction time, the same boundary `validateAuditRetentionOption` above
- * uses for the other destructive-if-malformed retention option.
- */
-function validateCheckpointRetentionOption(value: CheckpointRetentionOption | undefined): void {
-  if (value === undefined || value === 'keep-all') return;
-  if (!Number.isInteger(value.keepLast) || value.keepLast <= 0) {
-    toBadRequest('"options.retention.checkpoints.keepLast" must be a positive integer');
-  }
-  const timeout = value.timeoutMilliseconds;
-  if (timeout !== undefined && (!Number.isFinite(timeout) || timeout < 0)) {
-    toBadRequest(
-      '"options.retention.checkpoints.timeoutMilliseconds" must be a finite, non-negative number',
-    );
-  }
-}
-
-/**
- * COR-424 — `BureauRetentionOptions.receipts` decides when a run-creation request id may create a
- * second run, so a value that is not a positive integer is a construction-time error, as Weft's
- * mailbox treats its own `terminalRetentionMs`. COR-1701: only `{ olderThan }` exists. A receipt
- * is a deduplication ledger entry, and `'forever'` (or any other non-object) is refused rather
- * than silently reading as the default. The parameter is `unknown` because the type already
- * forbids what this refuses, and an untyped caller can still pass it.
- */
-function validateReceiptRetentionOption(value: unknown): void {
-  if (value === undefined) return;
-  if (typeof value !== 'object' || value === null) {
-    toBadRequest(
-      '"options.retention.receipts" must be { olderThan: number }; run-creation receipts cannot be kept forever',
-    );
-  }
-  const olderThan = (value as { readonly olderThan?: unknown }).olderThan;
-  if (typeof olderThan !== 'number' || !Number.isSafeInteger(olderThan) || olderThan <= 0) {
-    toBadRequest('"options.retention.receipts.olderThan" must be a positive integer');
-  }
+function taskRetentionOf(values: SettingsValues) {
+  return values['retention.tasks'] ?? { olderThan: DEFAULT_TASK_RETENTION_MS };
 }
 
 /** COR-1701 — validates every window of {@link BureauOptions.retention}, each under its own key. */
-function validateRetentionOptions(retention: BureauRetentionOptions | undefined): void {
-  if (retention !== undefined && (typeof retention !== 'object' || retention === null)) {
-    toBadRequest('"options.retention" must be an object of retention windows');
-  }
-  validateAuditRetentionOption(retention?.audit);
-  validateRetentionWindowOption(retention?.events, 'retention.events');
-  validateRetentionWindowOption(retention?.tasks, 'retention.tasks');
-  validateCheckpointRetentionOption(retention?.checkpoints);
-  validateReceiptRetentionOption(retention?.receipts);
-}
 
 /**
  * COR-1701: `Bureau.id` is the tenant every run's memory is written under, and the generated
@@ -1829,25 +1825,6 @@ function terminalActionTimestamp(
   actions: readonly { readonly type: string; readonly timestamp: number }[],
 ): number | undefined {
   return actions.findLast((action) => TERMINAL_RUN_ACTION_TYPES.has(action.type))?.timestamp;
-}
-
-/**
- * COR-772 — `BureauOptions.children.delegation` signs every child's grant, so
- * an empty secret or a lifetime that expires every grant on issue is a
- * construction-time error rather than a silently unusable topology.
- */
-function validateChildrenOption(value: BureauChildrenOptions | undefined): void {
-  const delegation = value?.delegation;
-  if (delegation === undefined) return;
-  if (typeof delegation.secret !== 'string' || delegation.secret.length === 0) {
-    toBadRequest('"options.children.delegation.secret" must be a non-empty string');
-  }
-  const timeToLive = delegation.defaultTimeToLiveMilliseconds;
-  if (timeToLive !== undefined && !(Number.isFinite(timeToLive) && timeToLive > 0)) {
-    toBadRequest(
-      '"options.children.delegation.defaultTimeToLiveMilliseconds" must be a positive, finite number',
-    );
-  }
 }
 
 /**
@@ -1978,24 +1955,21 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   validateSessionInputBacklogLimit(
     options.sessionInput?.sessionBacklogLimit,
     'sessionBacklogLimit',
+    toBadRequest,
   );
   validateSessionInputBacklogLimit(
     options.sessionInput?.principalBacklogLimit,
     'principalBacklogLimit',
+    toBadRequest,
   );
-  // COR-435: the values `ab-42-bureau-b` above anticipated. Resolved once,
-  // here, so every session's mailbox is constructed against the identical
-  // pair this bureau validated at construction time.
-  const sessionInputSessionBacklogLimit =
-    options.sessionInput?.sessionBacklogLimit ?? DEFAULT_SESSION_INPUT_BACKLOG_LIMIT;
-  const sessionInputPrincipalBacklogLimit =
-    options.sessionInput?.principalBacklogLimit ?? DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT;
   // COR-1674: an unacceptable answer schema is a startup error, not a failure on the first park.
   rejectOptInToolOption('humanInput', options.humanInput);
   rejectOptInToolOption('wakeup', options.wakeup);
+  rejectOptInToolOption('decide', options.decide);
+  validateDecisionsOptions(options.decisions, toBadRequest);
   validateHumanInputOption(options.humanInput);
-  validateRetentionOptions(options.retention);
-  validateChildrenOption(options.children);
+  validateRetentionOptions(options.retention, toBadRequest);
+  validateChildrenOption(options.children, toBadRequest);
   assertMemoryTenantIsStable(options);
   // COR-1577: `bureau` names the Bureau-wide default agent on the session path, which is told
   // apart from a catalog agent by name alone, so a catalog entry called `bureau` would be
@@ -2030,6 +2004,38 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     }
   }
   const diagnose = resolveDiagnosticSink(options.onDiagnostic);
+  // COR-1710 — the settings: validated here, read in `bootSettings` below, before the engine.
+  const settingsLocked = validateSettingsOptions(options, toBadRequest);
+  const settingsDefaults = settingsDefaultsOf(options);
+  const diagnoseSettings = (message: string, cause?: unknown): void =>
+    diagnose({
+      level: 'warn',
+      scope: 'settings',
+      message,
+      ...(cause === undefined ? {} : { cause }),
+    });
+  let settingsComposition: SettingsComposition | undefined;
+  // COR-1710 — the task registry, for the grant a resumed task reads back; it is built after the
+  // runtime composition, whose recovery paths reach it only once composition has finished.
+  const taskRegistryHolder: { current?: TaskRegistry } = {};
+  /** The tools a task starting now is granted. Before the settings exist, the code options. */
+  const toolGrantNow = (): TaskToolGrant => toolGrantOf(currentSettings());
+  function currentSettings() {
+    return settingsComposition === undefined ? settingsDefaults : settingsComposition.current();
+  }
+  // COR-435, COR-1710: the session-input backlog limits, read when a session's mailbox is built
+  // (the session limit, which Weft's mailbox fixes for its lifetime) and at each admission (the
+  // principal limit, and the session limit the cross-session identity read builds a mailbox
+  // with), from the settings, over the code options as defaults.
+  const sessionInputSessionBacklogLimit = (): number =>
+    currentSettings()['sessionInput.sessionBacklogLimit'] ?? DEFAULT_SESSION_INPUT_BACKLOG_LIMIT;
+  const sessionInputPrincipalBacklogLimit = (): number =>
+    currentSettings()['sessionInput.principalBacklogLimit'] ??
+    DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT;
+  const settingsOf = (): SettingsComposition => {
+    if (settingsComposition === undefined) throw new Error('Settings are not composed yet.');
+    return settingsComposition;
+  };
   const ownsStore = !options.store;
   // AB-260 — resolve the injectable runtime-service seam exactly once,
   // before any subsystem is constructed. Every run, session, schedule,
@@ -2137,9 +2143,14 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   // goal store, which exists only after the runtime composition, so it is bound
   // by `composeBureauGoals` below.
   const goalAttemptFenceHost = createGoalAttemptFenceHost();
+  // COR-1709: decisions read the model catalog, which is built after the validators and the
+  // runtime, so both reach them through this holder.
+  const lateDecisions = createLateDecisions();
   // Built first: two validators registered under one name and version are a
   // startup error, and it should fail before the durable engine exists.
-  const goalValidatorCatalog = createGoalValidatorCatalog(options.validators);
+  const goalValidatorCatalog = createGoalValidatorCatalog(
+    lateDecisions.bindValidators(options.validators),
+  );
   // COR-1510: a run the durable engine resumes on its own (a claim it reclaimed) before
   // `recoverDurableRuns` starts is still handed to `onRecoveredWorkflow`, ahead of its first step.
   // This hook waits for that function to be bound, which `recoverDurableRuns` does when it starts.
@@ -2195,10 +2206,28 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
    * they never touched. Cleared with `runAttribution` in `deleteRun`.
    */
   const runSessionIncarnations = new Map<string, string>();
+  // COR-1710 — the stored settings, read after the asset service is ready (so nothing touches
+  // the engine's storage first, COR-716) and before the engine exists.
+  const booted = await bootSettings(
+    options,
+    settingsDefaults,
+    settingsLocked,
+    diagnoseSettings,
+  ).catch((error: unknown) =>
+    // A storage that cannot open fails here, after the asset service started, as the
+    // composition below would: stop the service and report the storage error.
+    shutdownThenRethrow(error, async () => assetServiceInstance?.shutdown()),
+  );
+  options = booted.options;
   const runtime = await createRuntimeComposition(
     // COR-1546: the resolved identifier, so the memory tenant a run writes under is `Bureau.id`.
     { ...options, id: bureauId, runtime: runtimeServices },
     {
+      ownsStorage: booted.ownsStorage,
+      decideToolFor: (owner, offered) => lateDecisions.toolWiringFor(true, owner, offered),
+      toolGrantFor: async (taskId) =>
+        (await taskRegistryHolder.current?.recordToolGrant(taskId, toolGrantNow())) ??
+        toolGrantNow(),
       agentRunReferences: {
         reference: async (runId) => fileAgents?.snapshots.reference(runId),
         record: async (binding, runId) => fileAgents?.recordBoundRun(binding, runId),
@@ -2400,7 +2429,51 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         );
       },
       agents: agentsSnapshot,
-      modelPolicy: options.modelPolicy,
+      modelPolicy: () => modelPolicyOf(currentSettings()),
+    });
+    // COR-1709: decisions read the model catalog and write to the audit trail, which is built
+    // later in this function, so the trail is read at each call.
+    lateDecisions.compose(
+      createDecisions({
+        options: options.decisions,
+        settings: currentSettings,
+        models,
+        modelsOptions: options.models,
+        notConfigured: (message, cause) => {
+          const error = new BureauError(message, 'NOT_CONFIGURED', 'generate');
+          if (cause !== undefined) error.cause = cause;
+          return error;
+        },
+        badRequest: toBadRequest,
+        audit: async (entry) => {
+          await auditTrailInstance?.record(entry);
+        },
+      }),
+    );
+    // COR-1710: the settings, over the record read at boot. A live engine key is applied through
+    // `engine.reconfigure`, now for the stored values and on every later change.
+    settingsComposition = createSettings({
+      store: runtime.kv,
+      persisted: booted.persisted,
+      defaults: settingsDefaults,
+      locked: settingsLocked,
+      boot: booted.stored,
+      nowISO: runtimeServices.clock.nowISO,
+      diagnose: diagnoseSettings,
+      audit: async (entry) => {
+        await auditTrailInstance?.record(entry);
+      },
+      applyLive: (values, keys) => {
+        const engine = runtime.durable?.engine;
+        const patch = enginePatchOf(values, keys);
+        if (engine === undefined || patch === undefined) return;
+        const result = engine.reconfigure(patch);
+        if (result.outcome === 'rejected') {
+          diagnoseSettings(
+            `[bureau] The engine refused the settings ${result.keys.join(', ')}: ${result.message}`,
+          );
+        }
+      },
     });
     // AB-15/AB-22: the typed agent catalog — a plain literal map, fixed for
     // the bureau's lifetime, dispatched by name through `bureau.run`.
@@ -2416,16 +2489,22 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     // `bureau.agents.list()` and a resumed run both see the directory as it is now.
     // COR-1529: with a workflow directory the catalog also holds the workflow tools. They read the
     // workflow runtime and the run's identity when called, which is after construction has finished.
+    // COR-1710: the settings tools are always in the catalog; an agent file that lists them gets them.
+    const settingsTools = createSettingsTools({
+      settings: () => settingsOf().settings,
+      ownerOf: (runId) => ownerOf({ kind: 'run', id: runId }),
+    });
     agentToolCatalog =
       options.workflowSource === undefined
-        ? (options.agentSource?.tools ?? {})
+        ? { ...options.agentSource?.tools, ...settingsTools }
         : {
             ...options.agentSource?.tools,
+            ...settingsTools,
             ...createWorkflowTools({
               workflows: () => workflowRuntime?.workflows,
               runIdentity: async (runId) => ({
                 agent: runAttribution.get(runId)?.agentName,
-                owner: await getOwner({ kind: 'run', id: runId }),
+                owner: await ownerOf({ kind: 'run', id: runId }),
               }),
             }),
           };
@@ -2469,6 +2548,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       selectorAvailable: true,
       files: fileAgents?.files,
       snapshots: fileAgents?.snapshots,
+      descriptors: () => models.catalog().descriptors,
     });
     // COR-1527: the workflow files. The directory is scanned and the engine told about the documents
     // in `start()`, at the end of construction and before the engine recovers; the `agent` step runs
@@ -2600,6 +2680,12 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
    * durable run that completed (COR-1580).
    */
   const erroredActiveRuns = new Set<ActiveRun>();
+  /**
+   * Runs this process recovered from the durable engine instead of starting them. A graceful
+   * `'abort'` shutdown leaves these running for the next process to recover, as `'detach'` leaves
+   * every durable run: only the tasks a process started are its own to cancel (COR-1707).
+   */
+  const recoveredActiveRuns = new WeakSet<ActiveRun>();
   // AB-22: runs dispatched through `bureau.run(...)`, tracked separately from
   // `activeRuns` above (which holds only bureau-owned `ActiveRun` internals,
   // not the arbitrary `AgentRun` a catalog `RunnableAgent` may return on the
@@ -2787,7 +2873,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
           kv: runCreationKv,
           clock: runtimeServices.clock,
           identifiers: runtimeServices.identifiers,
-          terminalRetentionMs: options.retention?.receipts?.olderThan,
+          terminalRetentionMs: () => currentSettings()['retention.receipts']?.olderThan,
           observe: async ({ runId }): Promise<RunCreationObservation> => {
             const runState = store.getRun(runId);
             if (runState !== undefined) {
@@ -2846,7 +2932,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         storage,
         sessionId,
         incarnation,
-        sessionInputSessionBacklogLimit,
+        sessionInputSessionBacklogLimit(),
         runtimeServices.clock.now,
       );
       sessionInputMailboxes.set(cacheKey, mailbox);
@@ -4073,7 +4159,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   // COR-1421 — `engine.recoverAll()` resumes recovered workflows without
   // awaiting them, so recovered runs emit live frames while the rest of boot
   // still awaits, before `createBureau()` returns and a caller can subscribe.
-  // Until the FIRST `subscribeLiveFrames` listener attaches, frames are
+  // Until the FIRST `frames` listener attaches, frames are
   // therefore retained: every frame emitted while a recovery pass runs (no
   // per-run attribution, so anything the pass starts is covered), and after the
   // pass the frames of the runs it reattached. Ordinary runs outside a pass are
@@ -4116,10 +4202,12 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   // `closed()`'s answer for every bureau that never asked for retention. The
   // terminal listeners still call the step unconditionally, so the
   // `run.cleanup-settled` audit record exists either way.
-  const durableTerminalCleanup =
-    options.retention?.checkpoints && options.retention?.checkpoints !== 'keep-all'
-      ? runTerminalCheckpointCleanup
-      : undefined;
+  // COR-1710: read when each run starts, so a policy set while the Bureau runs applies to the
+  // next run; a run already started keeps what it started with.
+  const durableTerminalCleanup = () => {
+    const retention = currentSettings()['retention.checkpoints'];
+    return retention && retention !== 'keep-all' ? runTerminalCheckpointCleanup : undefined;
+  };
   // AB-205/AB-37 — ids `abortRun` has already requested cancellation for
   // (`ActiveRun.abort()` called) but whose teardown has not yet genuinely
   // settled. Guards `abortRun` itself against re-calling `abort()` (and
@@ -4223,7 +4311,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   }
 
   function emitLiveFrame(frame: ServerFrame): void {
-    // AB-96 codex review — a throwing `subscribeLiveFrames` listener must not
+    // AB-96 codex review — a throwing `frames` listener must not
     // abort the caller. `emitLiveFrame` is invoked synchronously from run-setup
     // call sites (e.g. the `run-started` frame fires BEFORE `store.register` and
     // the terminal listeners are installed), so an unguarded throw here would
@@ -4258,7 +4346,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       diagnose({
         level: 'error',
         scope: 'live-frames',
-        message: `[bureau] subscribeLiveFrames listener threw on a "${frame.type}" frame:`,
+        message: `[bureau] frames listener threw on a "${frame.type}" frame:`,
         cause: error,
       });
     }
@@ -4292,9 +4380,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         updatedAt: runState.actions.at(-1)?.timestamp,
       };
     }
-    return findCatalogRun(taskId) === undefined
-      ? undefined
-      : { phase: 'submitted', finishReason: undefined, error: undefined, updatedAt: undefined };
+    return undefined;
   }
 
   const tasks = createTaskRegistry({
@@ -4369,6 +4455,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         }),
     },
   });
+  taskRegistryHolder.current = tasks;
 
   /**
    * COR-1481 — the catalog-run settlement hook (`catalog-run-settlement.ts`): every `bureau.run()`
@@ -4713,17 +4800,19 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
    * COR-1622 — whether the Bureau's own maintenance timer runs, and so sweeps expired reviews: the
    * same rule that starts it below. A Bureau without one (no durable engine, memory or audit
    * retention to drive) would never expire an approval it holds, so it keeps a timer of its own
-   * for as long as it holds one. A `'manual'` host drives the sweep with `runDurableMaintenance`.
+   * for as long as it holds one. A `'manual'` host drives the sweep with `maintain`.
    */
-  const automaticMaintenanceRuns =
-    needsAutomaticMaintenance({
-      durableEngine: Boolean(runtime.durable),
-      memory: runtime.memory !== undefined,
-      keyValueStore: Boolean(runtime.kv),
-      activeAuditRetention: Boolean(
-        options.retention?.audit && options.retention?.audit !== 'forever',
-      ),
-    }) && options.maintenance !== 'manual';
+  function automaticMaintenanceRuns(): boolean {
+    const auditRetention = currentSettings()['retention.audit'];
+    return (
+      needsAutomaticMaintenance({
+        durableEngine: Boolean(runtime.durable),
+        memory: runtime.memory !== undefined,
+        keyValueStore: Boolean(runtime.kv),
+        activeAuditRetention: auditRetention !== undefined && auditRetention !== 'forever',
+      }) && options.maintenance !== 'manual'
+    );
+  }
 
   /**
    * Whether this process holds a tool approval, of a live run or a restored one, counting an
@@ -4764,7 +4853,12 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
    * process is never kept alive by it, and `shutdown` clears it.
    */
   function ensureLazyExpirySweep(): void {
-    if (lazyExpirySweepArmed || automaticMaintenanceRuns) return;
+    if (
+      lazyExpirySweepArmed ||
+      automaticRunOwnershipPruneTimerStarted ||
+      automaticMaintenanceRuns()
+    )
+      return;
     if (options.maintenance === 'manual' || maintenanceAdmissionClosed) return;
     lazyExpirySweepArmed = true;
     lazyExpirySweepTimer = runtimeServices.timers.setInterval(() => {
@@ -6977,7 +7071,146 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
    * run for its owner. Giving catalog runs their own deletion surface remains
    * its own design problem, outside COR-1302 as it was outside AB-241.
    */
-  async function createRunFromRequest(request: CreateRunRequest): Promise<CreatedRunSummary> {
+  /**
+   * Starts a task: a session run of `agentName` over `input`, in the context `options.contextId`
+   * names or in a new one, returned as a {@link TaskHandle}. A fresh task's handle iterates its
+   * run's events from the run's creation. A `commandId` retry that replays a task this process
+   * runs iterates the live tail; one this process does not run iterates nothing, and its
+   * `result()` settles from the durable store.
+   */
+  async function startTask(
+    agentName: string,
+    input: TaskInput,
+    callerOptions: StartTaskOptions = {},
+  ): Promise<TaskHandle> {
+    const startOptions = snapshotStartOptions(callerOptions);
+    if (typeof agentName !== 'string' || agentName.trim().length === 0) {
+      toBadRequest('"agentName" must be a non-empty string');
+    }
+    const fields = taskRequestFieldsOf(input);
+    if (seedsConversation(input) && startOptions.contextId !== undefined) {
+      toBadRequest('A task seeded with a "conversation" creates its context: omit "contextId"');
+    }
+    let live: { run: AgentRun<unknown, true>; events: AsyncIterator<RunEvent> } | undefined;
+    const created = await createRunFromRequest({
+      agentName,
+      ...fields,
+      ...(startOptions.contextId === undefined ? {} : { sessionId: startOptions.contextId }),
+      ...(startOptions.principal === undefined ? {} : { principal: startOptions.principal }),
+      ...(startOptions.commandId === undefined
+        ? {}
+        : { runCreationRequestId: startOptions.commandId }),
+      ...(startOptions.requestContext === undefined
+        ? {}
+        : { requestContext: startOptions.requestContext }),
+      ...(startOptions.traceContext === undefined
+        ? {}
+        : { traceContext: startOptions.traceContext }),
+      ...(startOptions.withTraceContext === undefined
+        ? {}
+        : { withTraceContext: startOptions.withTraceContext }),
+      ...(startOptions.signal === undefined ? {} : { signal: startOptions.signal }),
+      taskInput: input,
+      onActiveRun(activeRun) {
+        const run = createAgentRun<unknown, true>(activeRun, {
+          onCompletedIteration: 'empty',
+          hasOutput: true,
+        });
+        live = { run, events: run[Symbol.asyncIterator]() };
+      },
+    });
+    // A replay creates no run here: the handle follows the run this process holds, if any, and
+    // the signal is bound to it here. A fresh run's signal was bound as the run was created.
+    if (live === undefined) {
+      const held = store.getRun(created.id)?.activeRun;
+      if (held !== undefined) {
+        const run = createAgentRun<unknown, true>(held, {
+          onCompletedIteration: 'empty',
+          hasOutput: true,
+        });
+        live = { run, events: run[Symbol.asyncIterator]() };
+        if (startOptions.signal !== undefined) {
+          bindStartSignal(startOptions.signal, created.id, held.result);
+        }
+      }
+    }
+    return createTaskHandle<unknown>({
+      id: created.id,
+      contextId: created.sessionId,
+      receipt: created.receipt,
+      live,
+      settle: () => settledTaskResult(created.id),
+      abort: (reason) => abortTask(created.id, reason),
+      snapshot: () => taskSnapshot(created.id),
+    });
+  }
+
+  /**
+   * Binds a task's start signal to the run this process holds under `id`: an aborted signal
+   * aborts it now, a later abort when it fires. Once the run settles the signal has nothing left
+   * to abort, so the listener goes with it, and a long-lived caller signal does not collect one
+   * per task.
+   */
+  function bindStartSignal(signal: AbortSignal, id: string, settled: Promise<unknown>): void {
+    const onAbort = () => abortTask(id, 'Aborted by the start signal');
+    if (signal.aborted) {
+      onAbort();
+      return;
+    }
+    signal.addEventListener('abort', onAbort, { once: true });
+    const removeListener = () => signal.removeEventListener('abort', onAbort);
+    void settled.then(removeListener, removeListener);
+  }
+
+  /**
+   * Requests cancellation of a task through `abortRun`, so the abort is tracked as every other
+   * one is (`internals.abortingTasks()`). Does nothing once the task has settled or for a task
+   * this process does not hold. The reason reaches the run's abort signal and its children's
+   * parent-cancellation reason.
+   */
+  function abortTask(id: string, reason?: string): void {
+    if (store.getRun(id)?.status !== 'running') return;
+    abortRun(id, reason);
+  }
+
+  /**
+   * A task's liveness now, from the run this process holds. A task this process does not hold
+   * (a replay of a task another process ran) is `NOT_FOUND`.
+   */
+  function taskSnapshot(id: string): LivenessSnapshot {
+    const detail = getRun(id);
+    if (detail !== undefined) return detail.liveness;
+    throw new BureauError(`Task "${id}" is not held by this process`, 'NOT_FOUND');
+  }
+
+  /**
+   * The result of a task this process does not run, once its workflow is terminal in the durable
+   * store: the full `RunResult`, rebuilt from the workflow's summary and the run's checkpoint as
+   * every other durable reader does, since the workflow records only a summary (a step count, no
+   * usage or conversation). A task that did not complete rejects with its error.
+   */
+  async function settledTaskResult(id: string): Promise<RunResult> {
+    const state = await waitForDurableRun(id);
+    if (state === undefined || runtime.durable === undefined) {
+      throw new BureauError('Task results need a durable engine', 'NOT_CONFIGURED', 'durable');
+    }
+    if (state === null) throw new BureauError(`Task "${id}" not found`, 'NOT_FOUND');
+    if (state.status !== 'completed') {
+      throw new BureauError(
+        `Task "${id}" ended ${state.status}${state.error === undefined ? '' : `: ${state.error}`}`,
+        'CONFLICT',
+      );
+    }
+    const reading = await readDurableRunResult(runtime.durable, id, { runtime: runtimeServices });
+    if (reading.status !== 'completed') {
+      throw new BureauError(`Task "${id}" result cannot be read (${reading.status})`, 'CONFLICT');
+    }
+    return reading.result;
+  }
+
+  async function createRunFromRequest(
+    request: CreateRunRequest & SessionTaskFields,
+  ): Promise<CreatedRunSummary> {
     validateCreateRunRequest(request);
     // COR-718 — the owner of record: stored once, below, and unchanged afterward. A
     // host that states no principal owns the run as `anonymous:local`; one that
@@ -6996,7 +7229,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     const runId = runtimeServices.identifiers.next('run');
     // The text that stands for the request where only text fits: flow control,
     // and the session's `lastUserMessage`.
-    const requestText = request.message ?? lastUserTextOf(request.appendMessages);
+    const requestText = requestTextOf(request);
 
     // COR-1577 — which agent this run is. A session is bound to the agent of the run that
     // created it, so an existing session decides; a new one takes the named agent, or the
@@ -7028,11 +7261,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     if (resolution.status === 'resolver-failed') throw resolution.error;
     const sessionAgent: SessionAgentRun = resolution.run;
     // Request beats agent, and agent beats Bureau, for what the run is seeded and capped with.
-    const effectiveSystemPrompt =
-      request.systemPrompt ?? sessionAgent?.instructions ?? runtime.systemPrompt;
-    const effectiveMaximumSteps =
-      request.maximumSteps ?? sessionAgent?.options.maximumSteps ?? runtime.maximumSteps;
-    const effectiveMaximumTokens = request.maximumTokens ?? sessionAgent?.options.maximumTokens;
+    const effectiveSystemPrompt = sessionAgent?.instructions ?? runtime.systemPrompt;
+    const effectiveMaximumSteps = sessionAgent?.options.maximumSteps ?? runtime.maximumSteps;
+    const effectiveMaximumTokens = sessionAgent?.options.maximumTokens;
     const requestContext = normalizeRunRequestContext(
       request.requestContext,
       runId,
@@ -7085,12 +7316,10 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
             agentName,
             requestId: request.runCreationRequestId.trim(),
             payloadDigest: digestRunCreationPayload({
-              message: request.message,
-              appendMessages: serializeAppendedMessages(request.appendMessages),
-              sessionId: request.sessionId?.trim(),
-              systemPrompt: effectiveSystemPrompt,
-              maximumSteps: effectiveMaximumSteps,
-              maximumTokens: effectiveMaximumTokens,
+              agentName,
+              input: serializeTaskInput(request.taskInput ?? legacyTaskInputOf(request)),
+              contextId: request.sessionId?.trim(),
+              requestContext: serializeTaskRequestContext(request.requestContext),
             }),
             claim: { runId, sessionId },
           });
@@ -7143,6 +7372,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       }
 
       if (request.message !== undefined) conversation.appendUserMessage(request.message);
+      if (request.inputParts !== undefined) appendAgentInput(conversation, request.inputParts);
       appendRequestRows(conversation, request.appendMessages);
       // A run answers the row the conversation ends in: a user message, or a
       // tool result (the outcome of an approval) with nothing newer.
@@ -7192,22 +7422,12 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
             ? {}
             : { steeringStartingRuns: { [runId]: runtimeServices.clock.nowISO() } }),
           lastUserMessage: requestText,
-          // Always write these keys (null when absent) so a reused session never
-          // inherits a stale cap from a previous run. A conditional spread would leave
-          // the old value in place when the request omits the field; null is treated as
-          // "unset" by buildRunDepsFromSession (it gates on typeof === 'number'),
-          // so null is a safe sentinel for "caller did not specify a cap" (PRRT_kwDORvupsc6MZ1Mb).
-          lastMaximumTokens: request.maximumTokens ?? null,
           // COR-1577 — the definition the named agent had when this run started, so recovery can
           // tell when the catalog's has moved on. Null for the default agent, which has none.
           [SESSION_AGENT_REVISION_METADATA_KEY]: sessionAgent?.definitionRevision ?? null,
           // COR-1524 — the file the agent was read from, by hash, so recovery builds from the
           // snapshot. Null for a code-defined agent, and for the default one.
           [SESSION_AGENT_DEFINITION_HASH_METADATA_KEY]: sessionAgent?.agentBinding?.hash ?? null,
-          // Persist the per-request step cap too, so a recovered run honours the
-          // caller's maximumSteps instead of falling back to the bureau default
-          // (PRRT_kwDORvupsc6MZfl5 — mirror of the maximumTokens recovery fix).
-          lastMaximumSteps: request.maximumSteps ?? null,
           // Reset the active-skill snapshot at the start of every run so a reused
           // session never seeds a fresh run with the PREVIOUS run's active skills.
           // The snapshot is otherwise written only by createSkillRecordSnapshotHook
@@ -7305,8 +7525,13 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       // one's `onServices` property in the `createActiveRun` options object
       // literal, silently breaking whichever tool composed first.
       const servicesRef: { current?: DurableRunDeps } = {};
-      const wantsHumanInput = humanInputEnabled(options.humanInput) && !!runtime.durable;
-      const wantsWakeup = options.wakeup !== false && !!runtime.durable;
+      // COR-1710 — the tools this task is granted, read from the settings once and recorded on its
+      // admission record below, so its recovery offers the same ones.
+      const toolGrant = toolGrantNow();
+      const wantsHumanInput = toolGrant.humanInput !== false && !!runtime.durable;
+      const wantsWakeup = toolGrant.wakeup && !!runtime.durable;
+      // COR-1709: offered to exactly the runs that are offered `requestHumanInput`.
+      const decideWiring = lateDecisions.toolWiringFor(!!runtime.durable, owner, toolGrant.decide);
       if (wantsHumanInput) {
         humanInputEmitter = new CompletableEventTarget<CombinedOperativeEventMap>();
       }
@@ -7315,9 +7540,10 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       // (`runtime-composition.ts`), which used to omit it entirely.
       const runToolbox: BureauToolbox = wireDurableOptInTools(runRuntime.toolbox, servicesRef, {
         humanInput: wantsHumanInput,
-        inputSchemas: humanInputSchemasOf(options.humanInput),
+        inputSchemas: humanInputSchemasOf(toolGrant.humanInput),
         wakeup: wantsWakeup,
         runId,
+        decide: decideWiring,
         ...(humanInputEmitter ? { humanInputEmitter } : {}),
       });
       const durableServicesOnServices =
@@ -7438,6 +7664,10 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       // synchronous, so a `shutdown()` that started during the awaits above
       // rejects this run instead of letting it start outside shutdown's snapshot.
       let activeRun: ReturnType<typeof createActiveRun>;
+      // COR-1707 — with no session store, nothing saves the context's rows or claims what they
+      // reference, so the task holds its own rows, its input included, under its run for the
+      // task's life, as a catalog run does; its end releases them (the terminal listeners below).
+      const rowHolder: 'session' | 'run' = runtime.sessionStore === undefined ? 'run' : 'session';
       try {
         // COR-1481 — the task's record, before anything of the run starts, so a
         // record that cannot be written ends the start like any other start failure.
@@ -7449,6 +7679,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
           owner,
           // The text the run began with, whether it came as `message` or as an appended user row.
           message: request.message ?? (requestText === '' ? undefined : requestText),
+          tools: toolGrant,
         });
         // COR-1476 — inside the block below, so a gate that cannot be built
         // (its session read fails) ends the promoted run like any other start
@@ -7475,7 +7706,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
             ...copyAgentOwnedRunOptions(sessionAgent?.options),
             // COR-716 — a managed asset in this run's input (or in input admitted to
             // its session mid-run) resolves as the run's owner.
-            ...sessionRunMediaOptions(sessionAgent, runtime.mediaOptionsFor(owner, 'session')),
+            ...sessionRunMediaOptions(sessionAgent, runtime.mediaOptionsFor(owner, rowHolder)),
             maximumSteps: effectiveMaximumSteps,
             maximumTokens: effectiveMaximumTokens,
             // COR-1577 — a named agent's stop conditions replace the Bureau's default ones.
@@ -7517,6 +7748,11 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
             // carry an empty agentName while the session says 'bureau'.
             agentName,
             runId,
+            // The start's trace context parents this run's spans, as a catalog dispatch's does.
+            ...(request.traceContext === undefined ? {} : { parentContext: request.traceContext }),
+            ...(request.withTraceContext === undefined
+              ? {}
+              : { withTraceContext: request.withTraceContext }),
           },
           // Route through the durable engine when one was composed (durable
           // + storage). The conversation already carries the seeded user/system
@@ -7529,7 +7765,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
                 // COR-625: this run's terminal checkpoint-retention step,
                 // folded into its `closed()`. Memoized per run id, so the
                 // listeners below firing it independently costs nothing.
-                ...(durableTerminalCleanup ? { terminalCleanup: durableTerminalCleanup } : {}),
+                ...(durableTerminalCleanup()
+                  ? { terminalCleanup: runTerminalCheckpointCleanup }
+                  : {}),
                 runId,
                 // Carry the owning session in the durable input so boot recovery can
                 // correlate a recovered handle back to its session without a side
@@ -7569,6 +7807,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         throw error;
       }
       activeRuns.add(activeRun);
+      request.onActiveRun?.(activeRun);
       runToolboxes.add(runToolbox);
       runToolboxesByRunId.set(runId, runToolbox);
       // AB-96 — the versioned run-lifecycle frame stream. Registered before
@@ -7634,12 +7873,24 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         });
       });
 
+      /** A task that held its own rows (no session store) lets them go when it ends. */
+      const releaseTaskRowClaims = (ended: ReleasableConversation): void => {
+        if (rowHolder !== 'run') return;
+        void trackCatalogAssetRelease(
+          catalogRunAssets.releaseConversation({
+            runId,
+            principalId: ownerOrLocal(owner),
+            conversation: ended,
+          }),
+        );
+      };
       // The session will record this run's end once it is terminal; a reader that asks before that
       // (`whenRunRecorded`) waits for the save, whenever the run gets there.
       expectTerminalSessionRecord(runId);
       activeRun.once('run.completed', (event) => {
         activeRuns.delete(activeRun);
         erroredActiveRuns.delete(activeRun);
+        releaseTaskRowClaims(event.conversation);
         releaseRunToolboxWhenIdle(runToolbox);
         disposeRegisteredStreamListeners(disposeStreamListeners);
         // COR-625: a terminal transition owes this run one checkpoint-
@@ -7699,6 +7950,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       activeRun.once('run.aborted', (event) => {
         activeRuns.delete(activeRun);
         erroredActiveRuns.delete(activeRun);
+        releaseTaskRowClaims(event.conversation);
         releaseRunToolboxWhenIdle(runToolbox);
         disposeRegisteredStreamListeners(disposeStreamListeners);
         // COR-625: a terminal transition owes this run one checkpoint-
@@ -7835,6 +8087,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       if (runtime.durable) {
         await activeRun.durablyStarted;
       }
+      // Bound before the receipt write below: the run is executing by now, so an abort during a
+      // slow write reaches it at once rather than once the write returns.
+      if (request.signal !== undefined) bindStartSignal(request.signal, runId, activeRun.result);
 
       created = serializeRunState(store.getRun(runId)!, sessionId);
     } catch (error) {
@@ -7907,10 +8162,15 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     // COR-424: the ledger records the run only once it is durably started,
     // so a retry never replays a run that a restart could not recover. When
     // recording fails, `complete` rejects with a
-    // `RunCreationReceiptUnrecordedError` naming the run, which keeps
-    // executing; the claim stays pending, and a retry observes the run and
-    // records its receipt.
-    return ledgerClaim === undefined ? created : ledgerClaim.complete(created);
+    // `RunCreationReceiptUnrecordedError` naming the run. The caller holds no
+    // handle to that run, so it is aborted rather than left executing
+    // unowned; the claim stays pending, and a retry observes the aborted run
+    // and records its receipt.
+    if (ledgerClaim === undefined) return created;
+    return ledgerClaim.complete(created).catch((error: unknown) => {
+      abortTask(runId, 'Aborted: the task’s receipt was not recorded');
+      throw error;
+    });
   }
 
   /**
@@ -8160,7 +8420,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         checkpointStore: runtime.durable!.checkpointStore,
         // COR-625: same terminal checkpoint-retention step as the live path.
         // A run recovered after a restart still owes its cleanup.
-        ...(durableTerminalCleanup ? { terminalCleanup: durableTerminalCleanup } : {}),
+        ...(durableTerminalCleanup() ? { terminalCleanup: runTerminalCheckpointCleanup } : {}),
       },
       {
         runId,
@@ -8412,6 +8672,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     seedRunSeqGeneration(runId);
     store.register(recoveredRun, runId);
     activeRuns.add(recoveredRun);
+    recoveredActiveRuns.add(recoveredRun);
     runSessionIdentifiers.set(recoveredRun, sessionId);
 
     // AB-12 — stamp a `workflow.reattached` marker into this run's action
@@ -8913,7 +9174,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       });
     };
     for (const record of await tasks.unsettled()) {
-      if (store.getRun(record.taskId) !== undefined || findCatalogRun(record.taskId)) continue;
+      if (store.getRun(record.taskId) !== undefined) continue;
       await settle(record.taskId, await durable.engine.get(record.taskId));
     }
     // COR-1594: a fire whose settlement was written but whose history event never was, because its
@@ -9689,25 +9950,6 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     };
   }
 
-  function listRuns(status?: string): RunSummary[] {
-    const state = store.getState();
-    const summaries: RunSummary[] = [];
-
-    for (const [, runState] of state.runs) {
-      if (status && runState.status !== status) {
-        continue;
-      }
-      // COR-1302: a `bureau.run()` run is resolvable by id (`getRun`,
-      // `abortRun`) but not listed; run listing is COR-1304's.
-      if (catalogRunIds.has(runState.id)) continue;
-
-      const sessionId = getRunSessionIdentifier(runState);
-      summaries.push(serializeRunState(runState, sessionId, attributionOf(runState.id)));
-    }
-
-    return summaries;
-  }
-
   /**
    * COR-1588 — the one reader of what a held run is attributed to: its recorded attribution,
    * with a `principal` it lacks filled from the handle's liveness owner. A live `bureau.run()`
@@ -9719,8 +9961,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   function attributionOf(runId: string): RunAttribution | undefined {
     const recorded = runAttribution.get(runId);
     if (recorded?.principal !== undefined) return recorded;
-    const owner = findCatalogRun(runId)?.handle.snapshot().owner;
-    return owner === undefined ? recorded : { ...recorded, principal: owner };
+    return recorded;
   }
 
   /**
@@ -9730,11 +9971,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
    * names no run this Bureau knows.
    */
   async function runOwner(runId: string): Promise<string | undefined> {
-    if (
-      runAttribution.get(runId) !== undefined ||
-      store.getRun(runId) !== undefined ||
-      findCatalogRun(runId)
-    ) {
+    if (runAttribution.get(runId) !== undefined || store.getRun(runId) !== undefined) {
       return ownerOrLocal(attributionOf(runId)?.principal);
     }
     const child = await childTopologyStore.get(runId);
@@ -9865,7 +10102,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     return session === undefined ? undefined : resolveSessionOwner(session.metadata);
   }
 
-  async function getOwner(resource: OwnedResource): Promise<string | undefined> {
+  async function ownerOf(resource: OwnedResource): Promise<string | undefined> {
     switch (resource.kind) {
       case 'run':
         return runOwner(resource.id);
@@ -9910,17 +10147,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
 
   function getRun(id: string) {
     const runState = store.getRun(id);
-    if (!runState) {
-      // COR-1302: a `bureau.run()` handle whose run is not on `store` (not
-      // built yet, or never built) still resolves while it is unsettled.
-      const dispatched = findCatalogRun(id);
-      if (!dispatched) return undefined;
-      return serializeUndispatchedCatalogRunDetail(
-        id,
-        dispatched.handle.snapshot(),
-        undispatchedCatalogRunAttribution(id, dispatched.agentName),
-      );
-    }
+    if (!runState) return undefined;
 
     return serializeRunDetail(runState, getRunSessionIdentifier(runState), attributionOf(id));
   }
@@ -9936,20 +10163,6 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     }
 
     return runState.activeRun.subscribeSnapshot(observer, requestOptions);
-  }
-
-  /**
-   * COR-1302: the attribution an unsettled `bureau.run()` run reports before
-   * it is on `store`. The durable branch's recorded attribution wins, so the
-   * summary does not change once the run is registered; otherwise the catalog
-   * name the run was dispatched under.
-   */
-  function undispatchedCatalogRunAttribution(id: string, agentName: string): RunAttribution {
-    const recorded = attributionOf(id);
-    return {
-      agentName: recorded?.agentName ?? agentName,
-      ...(recorded?.principal === undefined ? {} : { principal: recorded.principal }),
-    };
   }
 
   /**
@@ -9972,27 +10185,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
    * "this run has settled" — falsely true before settlement has actually
    * happened.
    */
-  function abortRun(id: string): RunSummary {
+  function abortRun(id: string, reason = 'Aborted via API'): RunSummary {
     const runState = store.getRun(id);
-    if (!runState) {
-      // COR-1302: a `bureau.run()` run aborted before its dispatch has built
-      // it is cancelled through its handle, which forwards the cancellation
-      // to the run once it exists (or settles the run `'aborted'` without
-      // ever starting it). Its parent-cancellation policy is applied by the
-      // handle's own settlement (`onDurableRunAborted`), as for any handle
-      // abort.
-      const dispatched = findCatalogRun(id);
-      if (!dispatched) throw new BureauError('Run not found', 'NOT_FOUND');
-      dispatched.handle.abort('Aborted via API');
-      void tasks.watchCleanup(id, dispatched.handle.closed());
-      return {
-        ...serializeUndispatchedCatalogRun(
-          id,
-          undispatchedCatalogRunAttribution(id, dispatched.agentName),
-        ),
-        status: 'aborting',
-      };
-    }
+    if (!runState) throw new BureauError('Run not found', 'NOT_FOUND');
 
     if (runState.status !== 'running') {
       // AB-369 review finding (PR #583, Codex): do NOT clear `abortingRunIds`
@@ -10010,7 +10205,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
 
     if (!abortingRunIds.has(id)) {
       abortingRunIds.set(id, runtimeServices.clock.now());
-      runState.activeRun.abort('Aborted via API');
+      runState.activeRun.abort(reason);
       // COR-1481 — the task records where its cleanup ended.
       void tasks.watchCleanup(id, runState.activeRun.closed());
       // Evict the transitional marker once cleanup genuinely settles — never
@@ -10035,7 +10230,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       // COR-772 — the explicit parent-cancellation policy. A child never
       // shares this run's abort signal; each running child's recorded
       // `parentCancellation` decides whether it is cancelled or detached.
-      detachBestEffortPromise(childTopology.parentCancelled(id, 'Aborted via API'));
+      detachBestEffortPromise(childTopology.parentCancelled(id, reason));
     }
 
     return {
@@ -10237,7 +10432,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
 
   /**
    * Resolve once a run's durable workflow is terminal in the durable store — see the
-   * {@link Bureau.waitForDurableRun} doc comment. Built on Weft's result waiter
+   * {@link BureauTasks.wait} doc comment. Built on Weft's result waiter
    * (`engine.getHandle(runId).result()`), which settles from the store for a run another engine
    * finishes; its rejection carries a failed run's error, which this wrapper turns back into the
    * run's state.
@@ -10756,7 +10951,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   // acknowledged and removed. Three drivers all call this same function
   // (never a separate implementation each): the best-effort
   // `SessionOutboxAppendedEvent` trigger above (promptness only), the
-  // durable maintenance pass below (`runDurableMaintenance`, on the
+  // durable maintenance pass below (`maintain`, on the
   // runtime clock), and boot recovery (`recoverDurableRuns`, so a crash
   // between a commit and its own drain is caught up before this bureau
   // serves reads).
@@ -11087,7 +11282,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
    * (default `'forever'`, a no-op). References `auditTrailInstance` and
    * `eventHistoryInstance`, both declared further down this factory
    * function — safe because this function is only ever CALLED (from
-   * `runDurableMaintenance` below, or from the automatic-profile interval)
+   * `maintain` below, or from the automatic-profile interval)
    * after the whole factory body, including both of those assignments, has
    * already run; see `pruneStaleRunOwnership`'s own forward-reference to
    * `eventHistoryInstance` for the identical, already-established pattern.
@@ -11219,7 +11414,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
    */
   async function pruneAuditTrail(): Promise<void> {
     if (!auditTrailInstance) return;
-    const retention = options.retention?.audit;
+    const retention = currentSettings()['retention.audit'];
     if (!retention || retention === 'forever') return;
 
     await durableEventProducerInstance?.waitForAllActiveWrites();
@@ -11311,7 +11506,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
    * event, or `undefined` when events are kept for ever.
    */
   function eventRetentionCutoff(): number | undefined {
-    const retention = options.retention?.events ?? { olderThan: DEFAULT_EVENT_RETENTION_MS };
+    const retention = currentSettings()['retention.events'] ?? {
+      olderThan: DEFAULT_EVENT_RETENTION_MS,
+    };
     return retention === 'forever' ? undefined : runtimeServices.clock.now() - retention.olderThan;
   }
 
@@ -11325,14 +11522,14 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
    */
   async function retainWorkflowSnapshots(): Promise<void> {
     if (workflowRuntime === undefined) return;
-    const retention = options.retention?.tasks ?? { olderThan: DEFAULT_TASK_RETENTION_MS };
+    const retention = taskRetentionOf(currentSettings());
     if (retention === 'forever') return;
     await workflowRuntime.pruneSnapshots(runtimeServices.clock.now() - retention.olderThan);
   }
 
   async function retainAgentSnapshots(): Promise<void> {
     if (fileAgents === undefined) return;
-    const retention = options.retention?.tasks ?? { olderThan: DEFAULT_TASK_RETENTION_MS };
+    const retention = taskRetentionOf(currentSettings());
     if (retention === 'forever') return;
     await fileAgents.snapshots.pruneSettledBefore(
       runtimeServices.clock.now() - retention.olderThan,
@@ -11352,7 +11549,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       now: runtimeServices.clock.now(),
       isLive: (runId) => {
         const status = store.getRun(runId)?.status;
-        return status === 'running' || status === 'aborting' || findCatalogRun(runId) !== undefined;
+        return status === 'running' || status === 'aborting';
       },
       durableState: async (reference) => {
         // Without a durable engine nothing outlives the process, so a reference from before this
@@ -11398,7 +11595,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         cause: error,
       });
     }
-    const retention = options.retention?.tasks ?? { olderThan: DEFAULT_TASK_RETENTION_MS };
+    const retention = taskRetentionOf(currentSettings());
     if (retention === 'forever') return 0;
     const cutoff = runtimeServices.clock.now() - retention.olderThan;
     const expired: string[] = [];
@@ -11570,7 +11767,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     // Nothing durable to retain: a process-local run has no checkpoint
     // history, which is this issue's own documented out-of-scope case.
     if (!durable) return { status: 'not-required' };
-    const retention = options.retention?.checkpoints;
+    const retention = currentSettings()['retention.checkpoints'];
     if (!retention || retention === 'keep-all') return { status: 'not-required' };
 
     let state: WorkflowState | null;
@@ -11670,7 +11867,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   // AB-388 (Codex review, PR #597, "Await manual pruning before storage
   // teardown"): `automaticRunOwnershipPruneCurrentPass` below only tracks
   // the AUTOMATIC-profile timer's own tick. A caller invoking
-  // `runDurableMaintenance()` directly (the manual/serverless profile's own
+  // `maintain()` directly (the manual/serverless profile's own
   // alarm/Cron trigger) has no equivalent tracking, so `shutdown()` could
   // dispose storage while such a call's `pruneStaleRunOwnership()`/
   // `pruneAuditTrail()` sub-passes were still listing, deleting, or writing
@@ -11684,7 +11881,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   // shutdown starts"): closed SYNCHRONOUSLY (no `await` in between) as the
   // very first step of the "stop background work" section of `shutdown()`
   // below, strictly BEFORE that section takes its `manualDurableMaintenancePasses`
-  // snapshot. Without this, a `runDurableMaintenance()` call arriving after
+  // snapshot. Without this, a `maintain()` call arriving after
   // the snapshot but before `backgroundShutdownController.abort()` (e.g.
   // during the automatic pass's own await, which yields control) could add
   // itself to the set too late to be captured by that snapshot, and still
@@ -12043,7 +12240,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   const maintenanceMemoryAuthority = createMaintenanceMemoryAuthority(runtime.memory, bureauId);
 
   // The sweep in flight, shared by every caller. The automatic timer and a manual
-  // `runDurableMaintenance()` can overlap, and two concurrent sweeps can each open a receipt for the
+  // `maintain()` can overlap, and two concurrent sweeps can each open a receipt for the
   // same expired record, so a caller that arrives while one runs waits for it instead of starting
   // another. Within one Bureau this is the whole guard, as `automaticRunOwnershipPruneCurrentPass`
   // is for the timer's own passes.
@@ -12101,7 +12298,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     await runtime.memory?.processDeletionPropagation();
   }
 
-  async function runDurableMaintenance(now?: number): Promise<true | undefined> {
+  async function maintain(now?: number): Promise<true | undefined> {
     if (maintenanceAdmissionClosed) {
       throw new BureauError('Cannot run durable maintenance: bureau is shutting down', 'CONFLICT');
     }
@@ -12123,6 +12320,16 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     let tasksRemoved = 0;
 
     const pass = (async () => {
+      // COR-1710 — a settings change another process made applies from this pass on, ahead of the
+      // passes that read it.
+      try {
+        await settingsComposition?.reload();
+      } catch (error: unknown) {
+        diagnoseSettings(
+          `[bureau] Manual settings re-read failed: ${serializeUnknownError(error)}`,
+          error,
+        );
+      }
       if (hasDurableEngine) {
         try {
           await runtime.durable?.engine.runMaintenance(now);
@@ -12307,7 +12514,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   }
 
   // AB-363 — Codex review PR #568, "Run ownership pruning in the automatic
-  // maintenance profile": `runDurableMaintenance()` above is the ONLY
+  // maintenance profile": `maintain()` above is the ONLY
   // caller of `pruneStaleRunOwnership()`, but that wrapper is documented
   // (`BureauOptions.maintenance`) as something only a
   // manual/serverless host calls on its own alarm/Cron trigger. The
@@ -12321,7 +12528,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   // fleet-feed floor.
   //
   // This timer calls `pruneStaleRunOwnership()` ONLY, never the
-  // `runDurableMaintenance()` wrapper — that wrapper also calls
+  // `maintain()` wrapper — that wrapper also calls
   // `runtime.durable.engine.runMaintenance()`, which the automatic profile
   // is ALREADY running on its own schedule; calling it again here would
   // double-drive Weft's engine maintenance.
@@ -12399,7 +12606,17 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   // bureau (`runtime.durable` truthy) still always starts the timer
   // regardless of `retention.audit`, since `pruneStaleRunOwnership()` has
   // real work to do there independent of audit retention.
-  if (automaticMaintenanceRuns) {
+  // COR-1710 — the timer starts at boot when the settings in force need it, and later when a
+  // settings change makes them need it (an audit retention window set on a key-value-only Bureau).
+  if (automaticMaintenanceRuns()) startAutomaticMaintenance();
+  settingsOf().settings.subscribe(() => {
+    if (!automaticRunOwnershipPruneTimerStarted && !maintenanceAdmissionClosed) {
+      if (automaticMaintenanceRuns()) startAutomaticMaintenance();
+    }
+  });
+
+  /** Starts the automatic maintenance timer. */
+  function startAutomaticMaintenance(): void {
     automaticRunOwnershipPruneTimerStarted = true;
     automaticRunOwnershipPruneTimer = runtimeServices.timers.setInterval(() => {
       if (automaticRunOwnershipPruneCurrentPass) return;
@@ -12415,7 +12632,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       // all except via the post-commit trigger, which is best-effort by
       // design (a missed dispatch, or a process that crashes before it
       // fires, would otherwise never get a second chance until an operator
-      // manually calls `runDurableMaintenance()`).
+      // manually calls `maintain()`).
       //
       // AB-388: the same guarded, awaited pass now also prunes the durable
       // audit trail (`options.retention?.audit`) — never a second, separate
@@ -12424,6 +12641,16 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       // from running this tick; each is diagnosed under its own message so
       // all three remain distinguishable in `onDiagnostic` output.
       const pass = (async () => {
+        // COR-1710 — a settings change another process made applies from this pass on, ahead of the
+        // passes that read it.
+        try {
+          await settingsComposition?.reload();
+        } catch (error: unknown) {
+          diagnoseSettings(
+            `[bureau] Automatic settings re-read failed: ${serializeUnknownError(error)}`,
+            error,
+          );
+        }
         try {
           await pruneStaleRunOwnership();
         } catch (error: unknown) {
@@ -13444,8 +13671,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
           principal: request.principal,
           deliveryMode: request.deliveryMode,
           payload,
-          principalBacklogLimit: sessionInputPrincipalBacklogLimit,
-          sessionBacklogLimitForCrossSessionRead: sessionInputSessionBacklogLimit,
+          principalBacklogLimit: sessionInputPrincipalBacklogLimit(),
+          sessionBacklogLimitForCrossSessionRead: sessionInputSessionBacklogLimit(),
           nowMs: runtimeServices.clock.now(),
         });
       })();
@@ -14054,7 +14281,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       // covers every coordinate this can hold.
       let override: string | undefined = configurationRequest.override;
       if (configurationRequest.policyRef !== undefined) {
-        const profile = options.modelPolicy?.users?.[configurationRequest.policyRef];
+        const profile = modelPolicyOf(currentSettings())?.users?.[configurationRequest.policyRef];
         if (profile === undefined) {
           // Unknown policy name. Distinct from the case below, and the
           // caller is entitled to tell them apart: one is a typo or a
@@ -15260,6 +15487,51 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
    * none, so it rebuilds the context from the session's persisted authority, as recovery does,
    * and refuses when it cannot.
    */
+  /**
+   * Refuses a human-wait decision with `CONFLICT`, before anything is delivered, once the engine
+   * reports the run settled: canceled by the engine, say, before this process's review list heard.
+   * A signal to a settled workflow would be accepted and answered as success while deciding
+   * nothing. The engine, not the review list, is the source of truth here, as for a catalog park
+   * (`run-human-waits.ts`). A run the engine still holds is delivered to even when it is not yet
+   * waiting on the signal: the review is listed when the run parks, before the engine records
+   * the wait, and a signal sent in between is buffered for it. A run the engine has no workflow
+   * for (one registered on the store by hand) is left to the delivery, as before.
+   */
+  async function assertHumanWaitRunUnsettled(
+    review: Extract<SessionPendingReview, { kind: 'human-wait' }>,
+  ): Promise<void> {
+    const state = await runtime.durable?.engine.get(review.runId);
+    if (state === undefined || state === null) return;
+    if (!DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(state.status)) {
+      throw new BureauError(
+        `Run "${review.runId}" has settled, so review "${review.id}" is closed`,
+        'CONFLICT',
+      );
+    }
+  }
+
+  /**
+   * The check `resolveReview` makes on a human wait this call is the first to decide: it is
+   * delivered only to a run the engine has not settled ({@link assertHumanWaitRunUnsettled}). A
+   * same-decision re-drive skips it, because its claimant may have delivered already and the keyed
+   * signal lands at most once. A refusal gives up the claim this call wrote (nothing was
+   * delivered) and the in-process resolving mark, then throws.
+   */
+  async function refuseSettledHumanWait(
+    review: SessionPendingReview,
+    claim: Awaited<ReturnType<typeof reviewDecisions.claim>>,
+    claimRequest: ReviewDecisionRequest,
+  ): Promise<void> {
+    if (review.kind !== 'human-wait' || claim.outcome === 'same') return;
+    try {
+      await assertHumanWaitRunUnsettled(review);
+    } catch (error) {
+      if (claim.outcome === 'claimed') await releaseApprovalClaim(claimRequest, claim.value);
+      resolvingReviewIds.delete(review.id);
+      throw error;
+    }
+  }
+
   async function assertHumanWaitApprovalAuthority(
     review: Extract<SessionPendingReview, { kind: 'human-wait' }>,
     peer: boolean,
@@ -15658,6 +15930,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         resolvingReviewIds.delete(review.id);
       }
     }
+    await refuseSettledHumanWait(review, claim, claimRequest);
     const heldApprovalClaim =
       claim.outcome === 'claimed' && review.kind === 'tool-approval' ? claim.value : undefined;
     // Set once a step that cannot be shown not to have acted has begun: a throw before it is a
@@ -16761,8 +17034,18 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     runAdmissionClosed = true;
     sessionInputClosing.resolve();
 
-    const policy: 'abort' | 'drain' = shutdownOptions?.policy ?? 'abort';
+    const policy: 'abort' | 'drain' | 'detach' = shutdownOptions?.policy ?? 'abort';
     const timeoutMilliseconds = shutdownOptions?.timeoutMilliseconds;
+    // Capture the durable runs left for recovery at admission close: every one under 'detach',
+    // and under 'abort' the ones this process recovered rather than started. The report
+    // must count the same run identities that are still active when teardown
+    // settles, not a stale size snapshot: a run may complete while shutdown
+    // is waiting for workflow/toolbox/owner cleanup.
+    const detachedRuns = new Set<ActiveRun>(
+      runtime.durable && policy !== 'drain'
+        ? [...activeRuns].filter((run) => policy === 'detach' || recoveredActiveRuns.has(run))
+        : [],
+    );
 
     // COR-1527: stop reacting to the workflow files at once, so nothing registers with an engine
     // that is about to be disposed; the chain below waits for the apply in progress first.
@@ -16797,6 +17080,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       return Object.freeze({
         admissionClosed: true,
         policy,
+        detached: [...detachedRuns].filter((run) => activeRuns.has(run)).length,
         requested: owners.length,
         completed: owners.filter((owner) => owner.outcome === 'completed').length,
         failed: owners.filter((owner) => owner.outcome === 'failed').length,
@@ -16865,7 +17149,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       // COR-1630 — the results of the catalog runs 'abort' aborts: each handle settling is what
       // starts that run's asset release, so the release is known only after it.
       const abortedCatalogRunResults: Array<Promise<void>> = [];
-      if (policy === 'abort') {
+      const abortActiveRuns = policy === 'abort' || (policy === 'detach' && !runtime.durable);
+      const abortCatalogRuns = policy === 'abort' || policy === 'detach';
+      if (abortActiveRuns) {
         // Deliberately NOT awaited here (or anywhere gating the
         // unconditional engine/storage teardown below): a caller-owned
         // `ActiveRun` whose underlying provider call never honors its
@@ -16887,6 +17173,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         // terminal listeners remove it first), as `whenActiveRunTerminal`
         // requires.
         for (const activeRun of activeRuns) {
+          // A run this process recovered is left running for the next one, as under 'detach'.
+          if (runtime.durable && recoveredActiveRuns.has(activeRun)) continue;
           abortedRunTerminals.push(whenActiveRunTerminal(activeRun));
           activeRun.abort('Bureau disposed');
         }
@@ -16909,6 +17197,16 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         // already cached at this point, every subsequent shutdown()/dispose()
         // call would return the same rejection forever instead of ever
         // completing cleanup (review round 2, Codex).
+      } else {
+        // 'drain' waits caller-owned runs; 'detach' leaves durable caller-owned runs for recovery.
+        for (const activeRun of activeRuns) {
+          if (policy === 'drain') runTerminals.push(whenActiveRunTerminal(activeRun));
+        }
+        for (const erroredRun of erroredActiveRuns) {
+          runTerminals.push(whenErroredRunEnds(erroredRun));
+        }
+      }
+      if (abortCatalogRuns) {
         const currentCatalogRuns = [...catalogRuns];
         for (const catalogRun of currentCatalogRuns) {
           try {
@@ -16932,15 +17230,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
           }
         }
       } else {
-        // 'drain': let every caller-owned run reach its own natural terminal
-        // result instead of aborting it — only Bureau-owned background work
-        // (above/below) is stopped like 'abort'.
-        for (const activeRun of activeRuns) {
-          runTerminals.push(whenActiveRunTerminal(activeRun));
-        }
-        for (const erroredRun of erroredActiveRuns) {
-          runTerminals.push(whenErroredRunEnds(erroredRun));
-        }
+        // Catalog runs are caller-owned too, but unlike durable ActiveRuns they have no recovery
+        // record, so detach retains the existing abort behavior for them.
         const currentCatalogRuns = [...catalogRuns];
         for (const catalogRun of currentCatalogRuns) {
           runTerminals.push(Promise.allSettled([catalogRun.result()]));
@@ -16949,8 +17240,11 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       const toolboxes = [
         ...new Set([runtime.baseToolbox, ...runToolboxes, ...runToolboxesByRunId.values()]),
       ];
+      const toolboxPolicy = policy === 'detach' ? 'abort' : policy;
       const toolboxShutdownResults = await Promise.allSettled([
-        ...toolboxes.map((toolbox) => toolbox.shutdown({ policy, reason: 'Bureau disposed' })),
+        ...toolboxes.map((toolbox) =>
+          toolbox.shutdown({ policy: toolboxPolicy, reason: 'Bureau disposed' }),
+        ),
         ...runTerminals,
       ]);
       for (const result of toolboxShutdownResults) {
@@ -17028,8 +17322,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       // A child aborted by this shutdown records its `aborted` settlement only
       // once its own result arrives, which a durable child's fenced
       // cancellation makes later than the drain above looked. Wait for it,
-      // under the same bound, so the audit trail is still open to take it.
-      if (policy === 'abort' && childTopology.awaitingSettlements() > 0) {
+      // under the same bound, so the audit trail is still open to take it. 'detach' aborts
+      // children as 'abort' does, so it waits for them too.
+      if (abortCatalogRuns && childTopology.awaitingSettlements() > 0) {
         await awaitAbortedRunTerminals([childTopology.settlementsKnown()]);
       }
       await childTopology.drain();
@@ -17078,12 +17373,12 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         await automaticRunOwnershipPruneCurrentPass;
       }
       if (taskResyncBootPass) await taskResyncBootPass;
-      // AB-388: drain any manual `runDurableMaintenance()` call(s) still in
+      // AB-388: drain any manual `maintain()` call(s) still in
       // flight — see `manualDurableMaintenancePasses`'s own doc comment
       // above. `allSettled` (never `all`): a rejection here is either
       // already diagnosed by the pass's own sub-pass try/catch, or is a
       // re-thrown `engineMaintenanceError` the ORIGINAL caller of
-      // `runDurableMaintenance()` observes directly — `shutdown()` must
+      // `maintain()` observes directly — `shutdown()` must
       // still complete backend teardown either way. Drained in the SAME
       // place, and for the SAME reason, as the automatic pass's own await
       // just above: both must settle before the shared signal aborts and
@@ -17444,7 +17739,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
    * that cannot be paged by a stranger cannot be tailed by one either.
    *
    * Each kind compares the caller with that kind's owner of record, read the way
-   * {@link Bureau.getOwner} reads it (COR-718), and fails closed when there is
+   * {@link Bureau.ownerOf} reads it (COR-718), and fails closed when there is
    * none to read, so an id cannot be probed:
    *
    * - run: the owner `runAttribution` records for it (`anonymous:local` for a
@@ -17464,7 +17759,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   async function ownerReadableBy(owner: DurableEventOwner, principal: string): Promise<boolean> {
     switch (owner.kind) {
       case 'run':
-        // Read the way `getOwner` reads it, and closed for a run that no longer exists.
+        // Read the way `ownerOf` reads it, and closed for a run that no longer exists.
         return (await runOwner(owner.id)) === principal;
       case 'goal':
         return (await goalsComposition.goals.get(owner.id, { principal })) !== undefined;
@@ -18067,75 +18362,45 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     );
   }
 
-  const {
-    runAgent,
-    planChildRun,
-    startChildRun,
-    startGoalAttemptRun,
-    startWorkflowStepRun,
-    findCatalogRun,
-  } = createCatalogDispatcher({
-    agentCatalog,
-    runtime,
-    runtimeServices,
-    getShutdownPromise: () => shutdownPromise,
-    catalogRuns,
-    runAttribution,
-    detachBestEffortPromise,
-    createBureauError: (message, code) => new BureauError(message, code),
-    validateAgentRunInput,
-    validateBureauRunOptions,
-    registerCatalogRun,
-    // COR-1481 — a `bureau.run()` dispatch is a task: its record is written as the
-    // handle is returned (a write that fails is diagnosed, not thrown, because
-    // `bureau.run` returns synchronously), and its end is recorded from its result.
-    onCatalogRunAdmitted: ({ handle, agentName, owner, contextId, input }) => {
-      const taskId = handle.id;
-      catalogSettlements.follow(
-        publishFreshCatalogRun({
-          handle,
-          agentName,
-          admit: () =>
-            tasks.recordAdmission({
-              taskId,
-              contextId,
-              incarnation: '',
-              agentName,
-              owner,
-              message: originatingMessageText(input),
+  const { planChildRun, startChildRun, startGoalAttemptRun, startWorkflowStepRun } =
+    createCatalogDispatcher({
+      agentCatalog,
+      runtime,
+      runtimeServices,
+      getShutdownPromise: () => shutdownPromise,
+      catalogRuns,
+      runAttribution,
+      detachBestEffortPromise,
+      createBureauError: (message, code) => new BureauError(message, code),
+      validateAgentRunInput,
+      registerCatalogRun,
+      // COR-1630 — a run's asset claims are released when its handle settles, if the run ended.
+      onCatalogRunEnded: ({ runId, principal, settled }) =>
+        catalogSettlements.follow(
+          trackCatalogAssetRelease(
+            catalogRunAssets.releaseAfterHandle({
+              runId,
+              principalId: ownerOrLocal(principal),
+              settled,
             }),
-          hook: catalogRunSettlements,
-          durableEnd: catalogDurableEnd,
-          followCleanup: (closed) =>
-            void tasks.watchCleanup(taskId, closed as Promise<RunCleanupAcknowledgement>),
-          diagnose,
-        }),
-      );
-    },
-    // COR-1630 — a run's asset claims are released when its handle settles, if the run ended.
-    onCatalogRunEnded: ({ runId, principal, settled }) =>
-      catalogSettlements.follow(
-        trackCatalogAssetRelease(
-          catalogRunAssets.releaseAfterHandle({
-            runId,
-            principalId: ownerOrLocal(principal),
-            settled,
-          }),
+          ),
         ),
-      ),
-    fileAgents,
-    // COR-1577 — `requestHumanInput` for a durable `bureau.run()` run.
-    humanInput: runtime.durable !== undefined ? options.humanInput : false,
-    // COR-772 — a durable `bureau.run` parent aborted through its own handle
-    // is a cancelled parent like any other. Once shutdown has begun, dispose
-    // — not the policy — ends every live run, and boot recovery applies the
-    // policy to whatever it left running from the cancelled parent's
-    // durable state.
-    onDurableRunAborted: (runId, reason) => {
-      if (shutdownPromise) return;
-      void childTopology.parentCancelled(runId, reason);
-    },
-  });
+      fileAgents,
+      // COR-1577 — `requestHumanInput` for a durable `bureau.run()` run.
+      humanInput: runtime.durable !== undefined ? options.humanInput : false,
+      decideToolFor: (owner, offered) =>
+        lateDecisions.toolWiringFor(runtime.durable !== undefined, owner, offered),
+      toolGrant: toolGrantNow,
+      // COR-772 — a durable `bureau.run` parent aborted through its own handle
+      // is a cancelled parent like any other. Once shutdown has begun, dispose
+      // — not the policy — ends every live run, and boot recovery applies the
+      // policy to whatever it left running from the cancelled parent's
+      // durable state.
+      onDurableRunAborted: (runId, reason) => {
+        if (shutdownPromise) return;
+        void childTopology.parentCancelled(runId, reason);
+      },
+    });
 
   /**
    * COR-1527 — runs one `agent` step of a workflow file: a standalone durable run of the named
@@ -18325,6 +18590,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     signalContracts: options.children?.signals as
       Readonly<Record<string, ChildSignalContract>> | undefined,
     delegation: options.children?.delegation,
+    defaultTimeToLiveMilliseconds: () =>
+      currentSettings()['children.delegation.defaultTimeToLiveMilliseconds'],
   });
 
   // COR-1670 — the journal behind `createPeerCallTool({ durable })`.
@@ -18417,6 +18684,55 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     resolve: resolveAnyReview,
   });
 
+  /**
+   * The durable event history of a task, context, or schedule, which `tasks.events`,
+   * `contexts.events`, and `schedules.events` narrow to their owner kind.
+   */
+  function readEventHistory(
+    owner: DurableEventOwner,
+    eventHistoryOptions?: DurableEventHistoryPageOptions,
+  ): Promise<
+    | DurableEventPage
+    | DurableEventGap
+    | EventHistoryUnsupportedOutcome
+    | EventHistoryNotFoundOutcome
+    | EventHistoryDeletedAggregateOutcome
+  > {
+    if (!eventHistoryInstance) {
+      return Promise.resolve({
+        outcome: 'unsupported-capability',
+        reason: 'no-persistent-storage',
+      });
+    }
+    return resolveEventHistory(eventHistoryInstance, owner, eventHistoryOptions);
+  }
+
+  /**
+   * Subscribes to an owner's durable event history, a replay from the cursor and then the live
+   * tail, which each namespace's `subscribeEvents` narrows to its owner kind.
+   */
+  function subscribeToEventHistory(
+    owner: DurableEventOwner,
+    listener: (event: DurableEventEnvelope) => void,
+    subscribeOptions?: DurableEventHistorySubscribeOptions,
+  ): Subscription {
+    if (!eventHistoryInstance) {
+      // No persistent storage backend: nothing to subscribe to. Mirrors
+      // `eventHistory()`'s graceful `'unsupported-capability'` outcome,
+      // projected onto `Subscription`'s synchronous-return shape (which
+      // carries no room for an outcome value) as an already-closed
+      // subscription that never delivers — a caller that must
+      // distinguish "unsupported" from "supported but empty" calls
+      // `eventHistory()` first.
+      return { unsubscribe() {}, closed: true };
+    }
+    const principal = subscribeOptions?.principal;
+    // An omitted principal is a trusted caller, as it is for `eventHistory()`.
+    return principal === undefined
+      ? eventHistoryInstance.subscribeEventHistory(owner, listener, subscribeOptions)
+      : subscribeAuthorized(eventHistoryInstance, owner, listener, principal, subscribeOptions);
+  }
+
   // COR-1704: the schedule operations stay private implementations that share the durable engine,
   // the emitter, and the transition outbox; `events` reads the `schedule` owner of the history the
   // Bureau already serves.
@@ -18430,9 +18746,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     update: updateSchedule,
     agentName: getScheduleAgentName,
     inputPreview: getScheduleInputPreview,
-    eventHistory: (owner, eventHistoryOptions) => bureau.eventHistory(owner, eventHistoryOptions),
-    subscribeEventHistory: (owner, listener, subscribeOptions) =>
-      bureau.subscribeEventHistory(owner, listener, subscribeOptions),
+    eventHistory: readEventHistory,
+    subscribeEventHistory: subscribeToEventHistory,
   });
 
   // COR-1706: the context operations stay private implementations that share the session store,
@@ -18448,14 +18763,42 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     steer: submitSteeringCommand,
     steering: getSessionSteering,
     fork: forkSession,
-    eventHistory: (owner, eventHistoryOptions) => bureau.eventHistory(owner, eventHistoryOptions),
-    subscribeEventHistory: (owner, listener, subscribeOptions) =>
-      bureau.subscribeEventHistory(owner, listener, subscribeOptions),
+    eventHistory: readEventHistory,
+    subscribeEventHistory: subscribeToEventHistory,
   });
+
+  // COR-1707: `start` is a session run over the task input, returned as a handle; the reads and
+  // the cancel are the registry's and the Bureau's own, and `events` reads the `run` owner.
+  const bureauTasks = createTasks({
+    start: startTask,
+    detail: getRun,
+    receipt: (query) =>
+      locateRunCreationReceipt({
+        principal: query.principal,
+        runCreationRequestId: query.commandId,
+        ...(query.agentName === undefined ? {} : { agentName: query.agentName }),
+        ...(query.contextId === undefined ? {} : { sessionId: query.contextId }),
+      }),
+    workflow: getDurableRun,
+    workflows: listDurableRuns,
+    wait: waitForDurableRun,
+    snapshot: subscribeRunSnapshot,
+    registry: tasks,
+    children: childTopology.children,
+    eventHistory: readEventHistory,
+    subscribeEventHistory: subscribeToEventHistory,
+    notFound: (message) => new BureauError(message, 'NOT_FOUND'),
+    responder: {
+      reviews,
+      ledger: createTasksRespondLedger(runtime.kv, runtimeServices),
+      refusal: (refusal) => new TaskRespondError(refusal),
+      isRefusal: (error): error is BureauError => error instanceof BureauError,
+    },
+  }) as Bureau<D>['tasks'];
 
   const audit = createAudit({
     trail: () => auditTrailInstance,
-    ownerOf: ({ runId, detail }) => getOwner({ kind: 'audit', runId, detail }),
+    ownerOf: ({ runId, detail }) => ownerOf({ kind: 'audit', runId, detail }),
     refusal: (message, code) => new BureauError(message, code),
   });
 
@@ -18464,10 +18807,13 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     reviews,
     schedules,
     contexts,
+    tasks: bureauTasks,
     audit,
     internals: {
       hasExplicitId: options.id !== undefined,
-      taskRetention: taskRetentionOf(options),
+      get taskRetention() {
+        return taskRetentionOf(currentSettings());
+      },
       hasDurableEngine: runCreationLedger !== undefined,
       eventFeed,
       runEventFeeds,
@@ -18496,74 +18842,27 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     agents: agentCatalog,
     workflows: workflowRuntime?.workflows,
     models,
-    // `runAgent`'s runtime signature is deliberately widened (`string`,
-    // `AgentRun<unknown, boolean>`) — it looks the agent up by a plain
-    // runtime string via `agentCatalog.find`, the same widening
-    // `BureauAgentCatalog.find` itself documents. The precise per-`TName`
-    // return type on `Bureau<D>['run']` is a caller-side compile-time
-    // narrowing this cast restores; at runtime the returned `AgentRun` IS
-    // exactly the named entry's own handle, unaffected by the cast.
-    run: runAgent as Bureau<D>['run'],
+    decisions: lateDecisions.decisions,
+    // COR-1710: composed with the runtime, before this object exists.
+    settings: settingsOf().settings,
     // The topology is keyed by plain runtime strings; `D` only narrows which
-    // agent names a caller may pass, exactly as `run` above.
+    // agent names a caller may pass.
     children: childTopology.children as BureauChildren<AgentNames<D>>,
     peerCalls,
-    goals: goalsComposition.goals as BureauGoals<AgentNames<D>>,
-    eventHistory(
-      owner: DurableEventOwner,
-      eventHistoryOptions?: DurableEventHistoryPageOptions,
-    ): Promise<
-      | DurableEventPage
-      | DurableEventGap
-      | EventHistoryUnsupportedOutcome
-      | EventHistoryNotFoundOutcome
-      | EventHistoryDeletedAggregateOutcome
-    > {
-      if (!eventHistoryInstance) {
-        return Promise.resolve({
-          outcome: 'unsupported-capability',
-          reason: 'no-persistent-storage',
-        });
-      }
-      return resolveEventHistory(eventHistoryInstance, owner, eventHistoryOptions);
-    },
-    subscribeEventHistory(
-      owner: DurableEventOwner,
-      listener: (event: DurableEventEnvelope) => void,
-      subscribeOptions?: DurableEventHistorySubscribeOptions,
-    ): Subscription {
-      if (!eventHistoryInstance) {
-        // No persistent storage backend: nothing to subscribe to. Mirrors
-        // `eventHistory()`'s graceful `'unsupported-capability'` outcome,
-        // projected onto `Subscription`'s synchronous-return shape (which
-        // carries no room for an outcome value) as an already-closed
-        // subscription that never delivers — a caller that must
-        // distinguish "unsupported" from "supported but empty" calls
-        // `eventHistory()` first.
-        return { unsubscribe() {}, closed: true };
-      }
-      const principal = subscribeOptions?.principal;
-      // An omitted principal is a trusted caller, as it is for `eventHistory()`.
-      return principal === undefined
-        ? eventHistoryInstance.subscribeEventHistory(owner, listener, subscribeOptions)
-        : subscribeAuthorized(eventHistoryInstance, owner, listener, principal, subscribeOptions);
-    },
+    // COR-1707: a goal's history is the `goal` owner of the history the Bureau serves.
+    goals: {
+      ...goalsComposition.goals,
+      events: (goalRunId, eventHistoryOptions) =>
+        readEventHistory({ kind: 'goal', id: goalRunId }, eventHistoryOptions),
+      subscribeEvents: (goalRunId, listener, subscribeOptions) =>
+        subscribeToEventHistory({ kind: 'goal', id: goalRunId }, listener, subscribeOptions),
+    } as BureauGoals<AgentNames<D>>,
     get assets(): AssetService | undefined {
       return assetServiceInstance;
     },
-    createRun: createRunFromRequest,
-    locateRunCreationReceipt,
-    listRuns,
-    getRun,
-    getOwner,
-    subscribeRunSnapshot,
-    abortRun,
-    getDurableRun,
+    ownerOf,
     durableEngine,
-    waitForDurableRun,
-    cancelDurableRun,
-    listDurableRuns,
-    runDurableMaintenance,
+    maintain,
     setRequestAuthorityValidator(validator) {
       requestAuthorityValidator = validator;
       runtime.setRequestAuthorityValidator(validator);
@@ -18600,10 +18899,10 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         void recovery.then(() => trackCatalogAssetRelease(reconcileAssetClaims()));
       }
     },
-    waitForRecovery() {
+    recovery() {
       return durableRecoveryBarrier;
     },
-    subscribeLiveFrames(listener) {
+    frames(listener) {
       let active = true;
       const unsubscribe = () => {
         active = false;
@@ -18715,7 +19014,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     );
     taskResyncInstance = createTaskResync({
       answerOf: (taskId) => {
-        const content = bureau.getRun(taskId)?.stepDetails.findLast((step) => step.final)?.content;
+        const content = bureau.tasks
+          .detail(taskId)
+          ?.stepDetails.findLast((step) => step.final)?.content;
         if (content === undefined || content === '') return undefined;
         return {
           text: content.slice(0, TASK_ARTIFACT_TEXT_LIMIT),
@@ -18797,6 +19098,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         actor: SCHEDULER_ACTOR,
         kind: 'schedule-fire',
         message: fire.message,
+        // COR-1710: the fire's grant, recorded once with it; a rebuilt fire reads it back.
+        tools: toolGrantNow(),
       });
     } catch (error) {
       diagnose({

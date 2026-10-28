@@ -19,7 +19,13 @@ import {
   runAgentInput,
   startRequest,
 } from './ag-ui-fixtures.test-support.ts';
-import { FrameReader, parseAgUiFrames, typesOf } from './ag-ui-stream.test-support.ts';
+import {
+  bureauMetadata,
+  FrameReader,
+  parseAgUiFrames,
+  typesOf,
+} from './ag-ui-stream.test-support.ts';
+import { listHeldTasks } from '../test';
 
 async function withHarness<T>(
   options: Parameters<typeof openHarness>[0],
@@ -62,10 +68,10 @@ describe('the maximum stream duration', () => {
           code: 'STREAM_DEADLINE',
           message: 'The stream reached its maximum duration; attach again.',
         });
-        expect(bureau.listRuns()[0]!.status).toBe('running');
+        expect(listHeldTasks(bureau)[0]!.status).toBe('running');
 
         // The client reconnects with an attach and the run goes on.
-        const runId = bureau.listRuns()[0]!.id;
+        const runId = listHeldTasks(bureau)[0]!.id;
         const again = new FrameReader(await handler(attachRunRequest(runId)));
         await again.until(EventType.STATE_SNAPSHOT);
         generate.release('hold');
@@ -88,7 +94,7 @@ describe('a reader that falls behind', () => {
         const fast = new FrameReader(await handler(startRequest(runAgentInput())));
         await fast.until(EventType.STEP_STARTED);
         await generate.reached('hold');
-        const runId = bureau.listRuns()[0]!.id;
+        const runId = listHeldTasks(bureau)[0]!.id;
         // A second stream that is opened and never read from.
         const slow = await handler(attachRunRequest(runId));
 
@@ -194,12 +200,12 @@ describe('the live backlog bound', () => {
         const starter = await handler(startRequest(runAgentInput()));
         await waitForCondition(
           () =>
-            bureau
-              .getRun(bureau.listRuns()[0]?.id ?? '')
+            bureau.tasks
+              .detail(listHeldTasks(bureau)[0]?.id ?? '')
               ?.events.some((event) => event.event === 'tools.executing') === true,
           'the calls never started',
         );
-        const runId = bureau.listRuns()[0]!.id;
+        const runId = listHeldTasks(bureau)[0]!.id;
         const stalled = new FrameReader(await handler(attachRunRequest(runId)));
         // Read the whole opening: the snapshots, the step, the message, and each call.
         const opening = 4 + 3 + 3 * calls.length;
@@ -227,20 +233,20 @@ describe('the revision of the state a stream reports', () => {
       { script: [{ kind: 'block', barrier: 'hold' }, say('Done.')] },
       async ({ handler, bureau, generate }) => {
         const observers: Array<(snapshot: never) => void> = [];
-        const subscribe = bureau.subscribeRunSnapshot.bind(bureau);
-        bureau.subscribeRunSnapshot = (runId, observer, options) => {
+        const subscribe = bureau.tasks.snapshot.bind(bureau.tasks);
+        bureau.tasks.snapshot = (runId, observer, options) => {
           observers.push(observer);
           return subscribe(runId, observer, options);
         };
         const starter = new FrameReader(await handler(startRequest(runAgentInput())));
         await starter.until(EventType.STEP_STARTED);
         await generate.reached('hold');
-        const runId = bureau.listRuns()[0]!.id;
+        const runId = listHeldTasks(bureau)[0]!.id;
         const attached = new FrameReader(await handler(attachRunRequest(runId)));
         await attached.until(EventType.STEP_STARTED);
         const observe = observers.at(-1)!;
         const snapshot = (revision: number, status: string) =>
-          ({ ...bureau.getRun(runId)!.liveness, revision, status }) as never;
+          ({ ...bureau.tasks.detail(runId)!.liveness, revision, status }) as never;
 
         observe(snapshot(99, 'waiting'));
         observe(snapshot(1, 'running'));
@@ -262,28 +268,20 @@ describe('the revision of the state a stream reports', () => {
   });
 });
 
-describe('text deltas that arrive while a stream is still opening', () => {
-  it('are dropped, because the replay and the next delta carry everything they would', async () => {
+describe('the shared live producer', () => {
+  it('does not create another raw-frame subscription for a second attachment', async () => {
     await withHarness(
       { script: [{ kind: 'block', barrier: 'hold' }, say('Done.')] },
       async ({ handler, bureau, generate }) => {
         const starter = new FrameReader(await handler(startRequest(runAgentInput())));
         await starter.until(EventType.STEP_STARTED);
         await generate.reached('hold');
-        const runId = bureau.listRuns()[0]!.id;
-        // A delta from before the stream's replay was read reaches its listener
-        // while it is still buffering.
-        const subscribe = bureau.subscribeLiveFrames.bind(bureau);
-        bureau.subscribeLiveFrames = (listener) => {
-          const stop = subscribe(listener);
-          listener({
-            type: 'stream:text-delta',
-            runId,
-            content: 'stale',
-            accumulated: 'stale',
-            runSeq: 1,
-          });
-          return stop;
+        const runId = listHeldTasks(bureau)[0]!.id;
+        let additionalSubscriptions = 0;
+        const subscribe = bureau.frames.bind(bureau);
+        bureau.frames = (listener) => {
+          additionalSubscriptions += 1;
+          return subscribe(listener);
         };
 
         const attached = new FrameReader(await handler(attachRunRequest(runId)));
@@ -295,6 +293,7 @@ describe('text deltas that arrive while a stream is still opening', () => {
           .filter((frame) => frame.event.type === EventType.TEXT_MESSAGE_CONTENT)
           .map((frame) => (frame.event as unknown as { delta: string }).delta);
         expect(text).toEqual(['Done.']);
+        expect(additionalSubscriptions).toBe(0);
         await starter.rest();
       },
     );
@@ -308,16 +307,16 @@ describe('the answer an onMaximumSteps handler leaves', () => {
       async ({ handler, bureau, generate }) => {
         // A run completes with the handler's text recorded only on its completion event, which
         // is the one frame the stream cannot get that text from anywhere else.
-        let deliver: Parameters<Harness['bureau']['subscribeLiveFrames']>[0] | undefined;
-        const subscribe = bureau.subscribeLiveFrames.bind(bureau);
-        bureau.subscribeLiveFrames = (listener) => {
+        let deliver: Parameters<Harness['bureau']['frames']>[0] | undefined;
+        const subscribe = bureau.frames.bind(bureau);
+        bureau.frames = (listener) => {
           deliver = listener;
           return subscribe(listener);
         };
         const stream = new FrameReader(await handler(startRequest(runAgentInput())));
         await stream.until(EventType.STEP_STARTED);
         await generate.reached('hold');
-        const nativeRunId = bureau.listRuns()[0]!.id;
+        const nativeRunId = listHeldTasks(bureau)[0]!.id;
 
         deliver!({
           type: 'event',
@@ -366,20 +365,20 @@ describe('the answer an onMaximumSteps handler leaves', () => {
 });
 
 describe('the answer an onMaximumSteps handler leaves, for a client that attached', () => {
-  it('is not announced again when the snapshot the attach opened with already holds its row', async () => {
+  it('uses the snapshot row identity when the shared producer later announces that answer', async () => {
     await withHarness(
       { script: [{ kind: 'block', barrier: 'hold' }, say('Done.')] },
       async ({ handler, bureau, generate }) => {
-        let deliver: Parameters<Harness['bureau']['subscribeLiveFrames']>[0] | undefined;
-        const subscribe = bureau.subscribeLiveFrames.bind(bureau);
-        bureau.subscribeLiveFrames = (listener) => {
+        let deliver: Parameters<Harness['bureau']['frames']>[0] | undefined;
+        const subscribe = bureau.frames.bind(bureau);
+        bureau.frames = (listener) => {
           deliver = listener;
           return subscribe(listener);
         };
         const starter = new FrameReader(await handler(startRequest(runAgentInput())));
         await starter.until(EventType.STEP_STARTED);
         await generate.reached('hold');
-        const nativeRunId = bureau.listRuns()[0]!.id;
+        const nativeRunId = listHeldTasks(bureau)[0]!.id;
         // The run has already put its answer in the conversation, under the id the step
         // after its last would have had, as a run does before this stream's completion.
         const tailRow = {
@@ -387,8 +386,8 @@ describe('the answer an onMaximumSteps handler leaves, for a client that attache
           role: 'assistant' as const,
           content: 'Out of steps.',
         };
-        const getRun = bureau.getRun.bind(bureau);
-        bureau.getRun = (runId) => {
+        const getRun = bureau.tasks.detail.bind(bureau.tasks);
+        bureau.tasks.detail = (runId) => {
           const detail = getRun(runId);
           return detail?.transcript === undefined
             ? detail
@@ -429,9 +428,14 @@ describe('the answer an onMaximumSteps handler leaves, for a client that attache
         expect(
           attached.received.some((frame) => frame.event.type === EventType.MESSAGES_SNAPSHOT),
         ).toBe(true);
+        const messages = attached.received.filter(
+          (frame) => frame.event.type === EventType.TEXT_MESSAGE_START,
+        );
+        expect(messages).toHaveLength(1);
+        expect(messages[0]!.event).toMatchObject({ messageId: tailRow.id });
         expect(
-          attached.received.filter((frame) => frame.event.type === EventType.TEXT_MESSAGE_START),
-        ).toEqual([]);
+          attached.received.filter((frame) => frame.event.type === EventType.TEXT_MESSAGE_CONTENT),
+        ).toMatchObject([{ event: { messageId: tailRow.id, delta: tailRow.content } }]);
         expect(tail.at(-1)!.event).toMatchObject({
           type: EventType.RUN_ERROR,
           code: 'MAXIMUM_STEPS',
@@ -443,14 +447,14 @@ describe('the answer an onMaximumSteps handler leaves, for a client that attache
 });
 
 describe('cleanup', () => {
-  it('leaves no listener, timer, or snapshot subscription once every stream has ended', async () => {
+  it('retains the producer after disconnect until terminal transcript persistence', async () => {
     const runtime = createManualRuntimeServices();
     await withHarness(
       { script: [say('Hello.')], agUi: { runtime } },
       async ({ handler, bureau }) => {
         let listening = 0;
-        const original = bureau.subscribeLiveFrames.bind(bureau);
-        bureau.subscribeLiveFrames = (listener) => {
+        const original = bureau.frames.bind(bureau);
+        bureau.frames = (listener) => {
           listening += 1;
           const stop = original(listener);
           return () => {
@@ -464,8 +468,12 @@ describe('cleanup', () => {
         const abandoned = new FrameReader(
           await handler(startRequest(runAgentInput({ runId: 'r-2', threadId: 'thread-2' }))),
         );
-        await abandoned.next();
+        const opening = await abandoned.next();
+        const nativeRunId = String(bureauMetadata(opening!.event)['runId']);
         await abandoned.cancel();
+        await bureau.tasks.wait(nativeRunId);
+        await bureau.internals.whenTaskRecorded(nativeRunId);
+        await waitForCondition(() => listening === 0, 'persisted producers were not released');
 
         expect(listening).toBe(0);
         expect(runtime.pendingTimers()).toHaveLength(0);

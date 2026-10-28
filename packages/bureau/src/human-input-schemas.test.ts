@@ -19,7 +19,7 @@ import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau } from './types';
 
 const deploySchema: HumanInputSchema = {
@@ -85,7 +85,7 @@ describe('BureauOptions.humanInput with inputSchemas', () => {
       reachedStepOne = true;
       return new Promise<never>(() => {});
     });
-    const run = await crashed.createRun({ message: 'deploy it', agentName: 'scribe' });
+    const run = await crashed.tasks.start('scribe', 'deploy it');
     await waitForCondition(() => reachedStepOne, 'the first Bureau never reached step 1');
     // Not disposed: a graceful shutdown would cancel the run and leave nothing to recover.
 

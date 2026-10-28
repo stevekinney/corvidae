@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, mock } from 'bun:test';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { restoreRealTimers, useFakeTimers } from './fake-timers.test-support.ts';
-import { throwingRejectionOf } from './promise-outcome.test-support.ts';
 import {
   createDiskBackedTestFixture,
   flush,
@@ -26,9 +26,7 @@ describe('waitForWorkflowStatus', () => {
       }),
     };
 
-    expect(
-      await waitForWorkflowStatus(engine as never, 'workflow-1', 'completed', 500),
-    ).toBeUndefined();
+    expect(await waitForWorkflowStatus(engine as never, 'workflow-1', 'completed')).toBeUndefined();
   });
 
   it('throws when the workflow never reaches the requested status before timeout', async () => {
@@ -38,7 +36,10 @@ describe('waitForWorkflowStatus', () => {
 
     expect(
       await throwingRejectionOf(
-        waitForWorkflowStatus(engine as never, 'workflow-1', 'completed', 20),
+        // hang-guard-self-test: the workflow stays running, so no load can make it reach completed
+        waitForWorkflowStatus(engine as never, 'workflow-1', 'completed', {
+          hangGuardMilliseconds: 20,
+        }),
       ),
     ).toThrow('Expected workflow "workflow-1" to reach status "completed"');
   });

@@ -55,9 +55,10 @@ import {
   createDurableAssetStorage,
   resolveProviderGenerate,
   type Bureau,
+  type SettingsOptions,
 } from '@lostgradient/bureau';
 import { agentFileDirectory, workflowFileDirectory } from '@lostgradient/bureau/sources';
-import type { GenerateFunction } from '@lostgradient/operative';
+import { typesafeJev, type GenerateFunction } from '@lostgradient/operative';
 import {
   BunSQLiteStorage,
   serve,
@@ -85,6 +86,7 @@ import {
   loadProviders,
   PROVIDER_NAMES,
   PROVIDER_SECRET_KEYS,
+  TYPESAFE_SECRET_KEY,
   type ModelSelection,
 } from './providers.ts';
 import { allowedHosts, createRequestGuard } from './request-guard.ts';
@@ -174,6 +176,12 @@ export type HostOptions = {
   readonly resolveProviderGenerate?: typeof resolveProviderGenerate;
   /** Receives the host's startup warnings. Defaults to `console.warn`. */
   readonly warn?: (message: string) => void;
+  /**
+   * Which runtime settings the Bureau holds to their code options (`settings.locked`), so the
+   * settings page shows them read-only. A person's host locks none; the end-to-end host locks one,
+   * so the page's locked state is exercised against the real Bureau.
+   */
+  readonly settings?: SettingsOptions;
 };
 
 export type Host = {
@@ -316,6 +324,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       });
     const agentDirectory = bungalow.directory(AGENT_DIRECTORY_NAME);
     const workflowDirectory = bungalow.directory(WORKFLOW_DIRECTORY_NAME);
+    // The TypeSafe key, when the secrets hold one, gives Bureau a decision model for the kinds Jev
+    // serves. It is read here and handed to the model, which keeps it in memory.
+    const typesafeKey = bungalow.readSecret(TYPESAFE_SECRET_KEY)?.trim();
     const bureau = await createBureau({
       id: bungalow.deploymentId,
       agents: {
@@ -325,6 +336,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // A session run of a seeded agent is offered `requestHumanInput`, which `request-human-input`
       // calls to park for an operator's answer.
       validators: createSeededValidators(),
+      ...(typesafeKey === undefined || typesafeKey === ''
+        ? {}
+        : { decisions: { model: typesafeJev({ apiKey: typesafeKey }) } }),
       // A file's `model` is a row of this catalog, so it runs with the key in the secrets.
       models: {
         catalog: providers.rows,
@@ -349,6 +363,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // Workflow files: JSON files in Bungalow's `workflows/` directory are agent-authored
       // workflows (COR-1527), registered with the Bureau's engine and run on their schedules.
       workflowSource: workflowFileDirectory(workflowDirectory),
+      ...(options.settings === undefined ? {} : { settings: options.settings }),
     });
     held.bureau = bureau;
     if (options.seed !== false) {
@@ -506,7 +521,7 @@ async function teardown(held: Held): Promise<void> {
   };
   await step(held.publicServer && (() => held.publicServer?.stop(true)));
   await step(held.server && (() => held.server?.stop()));
-  await step(held.bureau && (() => held.bureau?.shutdown()));
+  await step(held.bureau && (() => held.bureau?.shutdown({ policy: 'detach' })));
   await step(held.replacementEngine && (() => held.replacementEngine?.[Symbol.asyncDispose]()));
   await step(held.storage && (() => held.storage?.[Symbol.dispose]()));
   await step(() => held.bungalow.close());

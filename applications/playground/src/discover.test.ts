@@ -670,7 +670,7 @@ describe('discoverComponentFilePaths', () => {
     const fromAnalyze = manifests.map((m) => m.kebabName).toSorted();
     const fromDiscover = await discoverComponents();
     expect(fromAnalyze).toEqual(fromDiscover);
-  }, 60_000);
+  });
 
   it('rejects duplicate route slugs claimed by two packages', () => {
     expect(() =>

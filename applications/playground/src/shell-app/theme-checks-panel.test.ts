@@ -11,6 +11,7 @@ import { flushSync, mount, tick, unmount } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import ThemeChecksPanel from './theme-checks-panel.svelte';
 import type { ThemeEvaluator } from './theme-draft-evaluation.ts';
 import { createDraft } from './theme-draft.ts';
@@ -69,7 +70,8 @@ afterEach(closeTarget);
 const { group, scenario, warmScenarios } = warmedTests({ before: openTarget, after: closeTarget });
 
 async function until(condition: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 160 && !condition(); attempt += 1) {
+  for await (const _ of awakeTurns()) {
+    if (condition()) break;
     await new Promise((resolve) => setTimeout(resolve, 25));
     flushSync();
     await tick();

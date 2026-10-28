@@ -6,7 +6,6 @@
  */
 
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
@@ -14,9 +13,10 @@ import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
-import { waitForRunState } from './test';
+import { runTask, waitForTaskState } from './test';
 import { withResolvedOptions } from './testing/named-agent.test-support';
 import type { Bureau } from './types';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const databasePaths: string[] = [];
@@ -53,12 +53,8 @@ function structuredAgent(generate: GenerateFunction) {
   );
 }
 
-async function pollUntil(check: () => boolean | Promise<boolean>, attempts = 400): Promise<void> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (await check()) return;
-    await yieldToPortableEventLoop();
-  }
-  throw new Error('Condition was not met.');
+async function pollUntil(check: () => boolean | Promise<boolean>): Promise<void> {
+  await waitUntil(check, { message: 'pollUntil' });
 }
 
 describe('a named agent’s structured output on a session run', () => {
@@ -80,16 +76,16 @@ describe('a named agent’s structured output on a session run', () => {
     });
     bureaus.push(bureau);
 
-    const direct = await bureau.run('viaRun', 'question').result();
-    const run = await bureau.createRun({ message: 'question', agentName: 'viaSession' });
-    await waitForRunState(bureau, run.id);
+    const direct = await runTask(bureau, 'viaRun', 'question');
+    const run = await bureau.tasks.start('viaSession', 'question');
+    await waitForTaskState(bureau, run.id);
 
     // The same contract: one retry, then the valid answer.
     expect(viaRun).toHaveLength(2);
     expect(direct.finishReason).not.toBe('error');
     expect(viaSession).toHaveLength(2);
     expect(messages.at(-1)).toContain('Reply with JSON');
-    expect(bureau.getRun(run.id)?.status).toBe('completed');
+    expect(bureau.tasks.detail(run.id)?.status).toBe('completed');
   });
 });
 
@@ -124,7 +120,7 @@ describe('a named agent’s structured output after a restart', () => {
       durableOwnership: { ownership: 'none' },
     });
     bureaus.push(crashed);
-    const run = await crashed.createRun({ message: 'go', agentName: 'scribe' });
+    const run = await crashed.tasks.start('scribe', 'go');
     await pollUntil(() => reachedStep1);
     // Left running on purpose: a graceful shutdown would cancel the run and leave nothing to resume.
 
@@ -152,7 +148,7 @@ describe('a named agent’s structured output after a restart', () => {
     });
     bureaus.push(restarted);
     await pollUntil(async () => {
-      const session = await restarted.contexts.get(run.sessionId);
+      const session = await restarted.contexts.get(run.contextId);
       return session?.metadata['lastRunStatus'] === 'completed';
     });
 

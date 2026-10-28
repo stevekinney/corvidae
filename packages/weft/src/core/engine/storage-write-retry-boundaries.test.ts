@@ -5,14 +5,14 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   KEYS,
   type BatchOperation,
   type ConditionalBatchCondition,
 } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { yieldToPortableEventLoop } from '../../testing/event-loop.ts';
-import { rejectionOf, throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
+import { drainMicrotasks } from '../../testing/fake-timers.test-support.ts';
 import { createCheckpoint, serializeCheckpoint } from '../checkpoint.ts';
 import { decode } from '../codec/api.ts';
 import type { ContextOperationRequest } from '../context.ts';
@@ -283,11 +283,11 @@ describe('disposal during a wait', () => {
     await engine.signal('dispose-wait', 'go', 'x');
     await refusing.whenAttempts(2, putsCheckpoint('dispose-wait'));
     // Let the engine reach its second wait before disposing it.
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
     engine[Symbol.dispose]();
 
     expect(await rejectionOf(result)).toBeInstanceOf(EngineDisposedError);
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
     const checkpointBatches = refusing.attemptsMatching(putsCheckpoint('dispose-wait'));
     expect(checkpointBatches.map((attempt) => attempt.outcome)).toEqual(['refused', 'refused']);
     const state = decode(

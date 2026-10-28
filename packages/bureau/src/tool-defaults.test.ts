@@ -1,7 +1,7 @@
 /**
  * COR-1700 — a durable Bureau offers `requestHumanInput` and `scheduleWakeup` by default, to the
  * run kinds that received them under the old `humanInput: true` / `wakeup: true` opt-ins:
- * session tasks (`createRun`), schedule fires, and durable catalog tasks (`bureau.run`). Child
+ * tasks (`tasks.start`, which always runs in a context) and schedule fires. Child
  * runs and goal attempts never receive them. `false` removes exactly one tool, `true` is refused
  * with `BAD_REQUEST`, and a non-durable Bureau offers neither whatever the options say.
  */
@@ -24,11 +24,12 @@ import {
 } from './schedule-fire-fixtures.test-support';
 import { createAgentSkills } from './agent-skills';
 import { removeSkillRoots, skillCatalogOnDisk } from './skill-policy-fixtures.test-support';
-import { waitForRunState } from './test';
+import { runTask, waitForTaskState } from './test';
 import { AGENT_STEP, workflowFileText } from './testing/workflow-file-fixtures.test-support';
 import { startWorkflowBureau } from './testing/workflow-bureau.test-support';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau, BureauOptions } from './types';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const harness = createScheduleFireHarness();
@@ -40,12 +41,8 @@ afterEach(async () => {
   await harness.dispose();
 });
 
-async function pollUntil(check: () => boolean, attempts = 400): Promise<void> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (check()) return;
-    await yieldToPortableEventLoop();
-  }
-  throw new Error('Condition was not met.');
+async function pollUntil(check: () => boolean): Promise<void> {
+  await waitUntil(check, { message: 'the condition' });
 }
 
 /** The tool names offered at each step an agent took. */
@@ -83,7 +80,10 @@ function parkingAgent(offered: Offered) {
   });
 }
 
-type ToolOptions = Pick<BureauOptions<AgentDefinitions>, 'humanInput' | 'wakeup'>;
+type ToolOptions = Pick<
+  BureauOptions<AgentDefinitions>,
+  'humanInput' | 'wakeup' | 'decide' | 'decisions'
+>;
 
 async function start(
   agents: AgentDefinitions,
@@ -106,16 +106,10 @@ async function sessionTaskTools(options: ToolOptions & { durable?: boolean }): P
     { alpha: recordingAgent(offered), default: recordingAgent([]) },
     options,
   );
-  const run = await bureau.createRun({ message: 'hello', agentName: 'alpha' });
-  await waitForRunState(bureau, run.id);
+  const run = await bureau.tasks.start('alpha', 'hello');
+  await waitForTaskState(bureau, run.id);
+  // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
   for (let turn = 0; turn < 10; turn += 1) await yieldToPortableEventLoop();
-  return offered.flat();
-}
-
-async function catalogTaskTools(options: ToolOptions & { durable?: boolean }): Promise<string[]> {
-  const offered: Offered = [];
-  const bureau = await start({ asker: recordingAgent(offered) }, options);
-  await bureau.run('asker', 'go').result();
   return offered.flat();
 }
 
@@ -152,14 +146,6 @@ describe('a durable Bureau offers the tools by default', () => {
     expect(tools).toContain('requestHumanInput');
   });
 
-  it('offers requestHumanInput, not scheduleWakeup, to a durable catalog task', async () => {
-    const absent = await catalogTaskTools({});
-    expect(absent).toContain('requestHumanInput');
-    expect(absent).not.toContain('scheduleWakeup');
-
-    expect(await catalogTaskTools({ humanInput: false })).not.toContain('requestHumanInput');
-  });
-
   it('offers requestHumanInput, not scheduleWakeup, to a schedule fire', async () => {
     const absent = await scheduleFireTools({});
     expect(absent).toContain('requestHumanInput');
@@ -174,7 +160,7 @@ describe('a durable Bureau offers the tools by default', () => {
       parent: parkingAgent([]),
       child: recordingAgent(childOffered),
     });
-    const parent = bureau.run('parent', 'go');
+    const parent = await bureau.tasks.start('parent', 'go');
     await pollUntil(() => bureau.reviews.list().some((review) => review.runId === parent.id));
 
     const dispatched = await bureau.children.dispatch({
@@ -187,6 +173,52 @@ describe('a durable Bureau offers the tools by default', () => {
 
     expect(childOffered.flat()).not.toContain('requestHumanInput');
     expect(childOffered.flat()).not.toContain('scheduleWakeup');
+  });
+
+  // COR-1709: `decide` goes to the runs `requestHumanInput` goes to, whatever `humanInput` says.
+  describe('the decide tool', () => {
+    const DECISION_MODEL = {
+      name: 'scripted/model',
+      kinds: new Set(['boolean' as const]),
+      decide: async () => ({ value: true, provider: 'scripted', model: 'model' }),
+    };
+
+    it('is offered to a session task and to a schedule fire, and left out under decide: false', async () => {
+      const decisions = { model: DECISION_MODEL };
+      expect(await sessionTaskTools({ decisions })).toContain('decide');
+      expect(await scheduleFireTools({ decisions })).toContain('decide');
+      expect(await sessionTaskTools({ decisions, decide: false })).not.toContain('decide');
+      expect(await scheduleFireTools({ decisions, decide: false })).not.toContain('decide');
+    });
+
+    it('is offered when requestHumanInput is not', async () => {
+      const tools = await sessionTaskTools({
+        decisions: { model: DECISION_MODEL },
+        humanInput: false,
+      });
+      expect(tools).toContain('decide');
+      expect(tools).not.toContain('requestHumanInput');
+    });
+
+    it('is not offered to a child run', async () => {
+      const childOffered: Offered = [];
+      const bureau = await start(
+        { parent: parkingAgent([]), child: recordingAgent(childOffered) },
+        { decisions: { model: DECISION_MODEL } },
+      );
+      const parent = await bureau.tasks.start('parent', 'go');
+      await pollUntil(() => bureau.reviews.list().some((review) => review.runId === parent.id));
+
+      const dispatched = await bureau.children.dispatch({
+        parentRunId: parent.id,
+        agentName: 'child',
+        input: 'go',
+      });
+      expect(dispatched.outcome).toBe('started');
+      await pollUntil(() => childOffered.length > 0);
+
+      expect(childOffered.flat()).not.toContain('decide');
+    });
   });
 
   it('narrows the tools to an active skill’s allowed-tools, the two it adds included', async () => {
@@ -208,7 +240,7 @@ describe('a durable Bureau offers the tools by default', () => {
         skills: createAgentSkills({ catalog: await catalog.discover() }),
       }),
     });
-    await bureau.run('asker', 'go').result();
+    await runTask(bureau, 'asker', 'go');
 
     expect(offered[0]).toContain('requestHumanInput');
     // `lock` allows only `deactivate_skill`: the Bureau's own tools are narrowed with the rest.
@@ -239,7 +271,7 @@ describe('a durable Bureau offers the tools by default', () => {
 
       // The control: the same agent, run directly on the same Bureau, is offered the tool.
       offered.length = 0;
-      await harness.bureau.run('writer', 'go').result();
+      await runTask(harness.bureau, 'writer', 'go');
       expect(offered.flat()).toContain('requestHumanInput');
     } finally {
       await harness.dispose();
@@ -283,11 +315,8 @@ describe('a non-durable Bureau offers neither tool', () => {
   it('whatever the options say', async () => {
     for (const options of [{}, { humanInput: false, wakeup: false } as const]) {
       const session = await sessionTaskTools({ ...options, durable: false });
-      const catalog = await catalogTaskTools({ ...options, durable: false });
-      for (const tools of [session, catalog]) {
-        expect(tools).not.toContain('requestHumanInput');
-        expect(tools).not.toContain('scheduleWakeup');
-      }
+      expect(session).not.toContain('requestHumanInput');
+      expect(session).not.toContain('scheduleWakeup');
     }
     const withSchemas = await sessionTaskTools({
       humanInput: { inputSchemas: { answer: { type: 'string' } } },

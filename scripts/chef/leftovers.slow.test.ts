@@ -2,7 +2,7 @@ import { expect } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnWithHangGuard } from '../hang-guard.ts';
+import { spawnWithHangGuard } from '../../testing/testing/src/hang-guard.ts';
 import { findLockProcesses, findWorktreeProcesses, processIsAlive, run } from './leftovers.ts';
 import { createScenarios } from './scenario.test-support.ts';
 

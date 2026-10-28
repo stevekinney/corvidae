@@ -9,9 +9,9 @@
 
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { decode, encode } from './codec.ts';
 import { ApplicationDeliveryValidationError } from './outbox-guards.ts';
 import {
@@ -304,8 +304,7 @@ describe('Outbox adapter runner', () => {
     let stateDuringSend: string | undefined;
     const release = adapter.block();
     const pending = outbox.deliverNext();
-    // Let the claim and the attempting commit land, then observe the record.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Wait for the send to reach the adapter (the claim and the attempting commit have landed), then observe the record.
     while (adapter.requests.length === 0) await new Promise((resolve) => setTimeout(resolve, 0));
     const observer = createOutboxFixture({ storage, clock }).outbox;
     stateDuringSend = await fieldOf(observer.receipt(deliveryId), 'state');

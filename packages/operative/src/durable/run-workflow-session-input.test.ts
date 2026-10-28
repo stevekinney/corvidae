@@ -17,7 +17,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { noToolCalls } from '../conditions/predicates';
+import { drainMicrotasks } from '../testing/drain-microtasks.test-support.ts';
 import type { GenerateContext, GenerateFunction } from '../types';
 import { type CheckpointStore, createCheckpointStore } from './checkpoint-store';
 import {
@@ -958,7 +960,7 @@ describe('session input delivery store and gate (COR-1476)', () => {
   }
 
   async function until(check: () => Promise<boolean>): Promise<void> {
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    for await (const _turn of awakeTurns()) {
       if (await check()) return;
       await yieldToPortableEventLoop();
     }
@@ -1380,7 +1382,7 @@ describe("the gate's lease lifecycle (COR-1476)", () => {
   }
 
   async function until(check: () => Promise<boolean>): Promise<void> {
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    for await (const _turn of awakeTurns()) {
       if (await check()) return;
       await yieldToPortableEventLoop();
     }
@@ -1457,8 +1459,7 @@ describe("the gate's lease lifecycle (COR-1476)", () => {
     const requested = await other.requestCancellation({ commandId, reason: 'elsewhere' });
     expect(requested.status).toBe('requested');
     tick();
-    await yieldToPortableEventLoop();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
     expect(await stateOf(mailbox)).toBe('cancellation-requested');
 
     // The checkpoint promotes the turn; the acknowledgement closes the command
@@ -1880,8 +1881,7 @@ describe("the gate's lease lifecycle (COR-1476)", () => {
       reason: 'elsewhere',
     });
     tick();
-    await yieldToPortableEventLoop();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
     expect(await stateOf(mailbox, commandB)).toBe('cancellation-requested');
     await gate.dispose?.();
 

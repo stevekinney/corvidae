@@ -14,6 +14,8 @@ import {
 } from './test/session-input-fixtures';
 import type { BureauDiagnostic } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { startTaskFrom } from './test/task-start-request.ts';
+import { quietFor } from '@lostgradient/testing/wait-until';
 
 /**
  * COR-1476 — `submitSessionInput` writes the marker, commits the admission,
@@ -34,6 +36,7 @@ async function finishedRunWithHeldTerminalWrite() {
   const bureau = await createBureau<AgentDefinitions>({
     agents: {
       default: createAgent({
+        maximumSteps: 1,
         generate: async () => ({ content: 'answer', toolCalls: [] }),
         toolbox: createToolbox([]),
         stopWhen: stopWhen.noToolCalls(),
@@ -44,11 +47,10 @@ async function finishedRunWithHeldTerminalWrite() {
     onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic),
   });
   const held = seam.holdWrite(savesSessionAs('completed'));
-  const run = await bureau.createRun({
+  const run = await startTaskFrom(bureau, {
     agentName: 'default',
-    message: 'First',
+    input: 'First',
     principal: 'alice',
-    maximumSteps: 1,
   });
   await held.reached;
   return { seam, bureau, run, held, diagnostics };
@@ -58,16 +60,16 @@ describe('submitSessionInput with no run to deliver the input (COR-1476)', () =>
   it('cancels its own input and returns the re-read receipt', async () => {
     const { seam, bureau, run, held } = await finishedRunWithHeldTerminalWrite();
     try {
-      const outcome = await bureau.contexts.input(run.sessionId, input);
+      const outcome = await bureau.contexts.input(run.contextId, input);
 
       expect(outcome.outcome).toBe('admitted');
       if (outcome.outcome !== 'admitted') throw new Error('expected admitted');
       expect(outcome.receipt.state).toBe('canceled');
       expect(outcome.receipt.id).toBe('input-x');
-      const session = await bureau.contexts.get(run.sessionId);
+      const session = await bureau.contexts.get(run.contextId);
       const mailbox = createSessionInputMailbox(
         seam.storage,
-        run.sessionId,
+        run.contextId,
         session?.incarnation ?? '',
         100,
       );
@@ -76,7 +78,7 @@ describe('submitSessionInput with no run to deliver the input (COR-1476)', () =>
       expect(receipt?.cancellationReason).toBe('the run ended before the input was delivered');
 
       // A retry reads the same terminal receipt.
-      const retry = await bureau.contexts.input(run.sessionId, input);
+      const retry = await bureau.contexts.input(run.contextId, input);
       expect(retry.outcome).toBe('replayed');
       if (retry.outcome === 'replayed') expect(retry.receipt.state).toBe('canceled');
     } finally {
@@ -94,7 +96,7 @@ describe('submitSessionInput with no run to deliver the input (COR-1476)', () =>
       seam.awaitWrite(admitsSessionInput),
     );
     try {
-      const outcome = await bureau.contexts.input(run.sessionId, input);
+      const outcome = await bureau.contexts.input(run.contextId, input);
 
       expect(outcome.outcome).toBe('admitted');
       if (outcome.outcome !== 'admitted') throw new Error('expected admitted');
@@ -138,16 +140,12 @@ describe('submitSessionInput marks the session again once its admission commits 
     });
     const holds: Array<{ release: () => void }> = [];
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'First',
-        principal: 'alice',
-      });
+      const run = await bureau.tasks.start('default', 'First', { principal: 'alice' });
       await started.promise;
       const kv = textValueStore(real, { disposeUnderlyingStorage: false });
       const admission = seam.holdWrite(admitsSessionInput);
       holds.push(admission);
-      const submitting = bureau.contexts.input(run.sessionId, input);
+      const submitting = bureau.contexts.input(run.contextId, input);
       await admission.reached;
       // The first marker is written; a remover deletes it in this window.
       const before = await kv.list('session-input-open:v2:');
@@ -189,17 +187,13 @@ describe('submitSessionInput while the bureau shuts down (COR-1476)', () => {
     });
     const holds: Array<{ release: () => void }> = [];
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'First',
-        principal: 'alice',
-      });
+      const run = await bureau.tasks.start('default', 'First', { principal: 'alice' });
       await started.promise;
       // One admission is committed and held at the engine read that follows.
       const held = seam.holdRead(readsWorkflows, seam.awaitWrite(admitsSessionInput));
       holds.push(held);
       const events: string[] = [];
-      const inFlight = bureau.contexts.input(run.sessionId, input).then((outcome) => {
+      const inFlight = bureau.contexts.input(run.contextId, input).then((outcome) => {
         events.push(`in-flight settled: ${outcome.outcome}`);
         return outcome;
       });
@@ -211,7 +205,7 @@ describe('submitSessionInput while the bureau shuts down (COR-1476)', () => {
       // A submit that begins after shutdown started is refused outright.
       let refusal: unknown;
       try {
-        await bureau.contexts.input(run.sessionId, { ...input, id: 'input-y' });
+        await bureau.contexts.input(run.contextId, { ...input, id: 'input-y' });
       } catch (error) {
         refusal = error;
       }
@@ -219,7 +213,7 @@ describe('submitSessionInput while the bureau shuts down (COR-1476)', () => {
       expect((refusal as Error).message).toContain('shutting down');
       // Shutdown waits for the held admission: across a real delay it has not
       // resolved, and nothing has settled.
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await quietFor(300);
       expect(events).toEqual([]);
 
       // Released, the admission finishes its protocol first, on a live engine.
@@ -261,13 +255,9 @@ describe('submitSessionInput with a live run (COR-1476)', () => {
       durable: true,
     });
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'First',
-        principal: 'alice',
-      });
+      const run = await bureau.tasks.start('default', 'First', { principal: 'alice' });
       await started.promise;
-      const outcome = await bureau.contexts.input(run.sessionId, input);
+      const outcome = await bureau.contexts.input(run.contextId, input);
       expect(outcome.outcome).toBe('admitted');
       if (outcome.outcome === 'admitted') expect(outcome.receipt.state).toBe('accepted');
     } finally {
@@ -297,7 +287,10 @@ async function parkingBureau() {
   const startRun = async (request: { message: string; sessionId?: string }) => {
     const started = deferred();
     starts.push(started.resolve);
-    const run = await bureau.createRun({ agentName: 'default', ...request, principal: 'alice' });
+    const run = await bureau.tasks.start('default', request.message, {
+      ...(request.sessionId === undefined ? {} : { contextId: request.sessionId }),
+      principal: 'alice',
+    });
     await started.promise;
     return run;
   };
@@ -335,9 +328,9 @@ describe('concurrent submissions of one id (COR-1476)', () => {
       const runA = await startRun({ message: 'A' });
       const runB = await startRun({ message: 'B' });
       const [first, second, elsewhere] = await Promise.all([
-        bureau.contexts.input(runA.sessionId, { ...input, payload: 'one' }),
-        bureau.contexts.input(runA.sessionId, { ...input, payload: 'two' }),
-        bureau.contexts.input(runB.sessionId, { ...input, payload: 'one' }),
+        bureau.contexts.input(runA.contextId, { ...input, payload: 'one' }),
+        bureau.contexts.input(runA.contextId, { ...input, payload: 'two' }),
+        bureau.contexts.input(runB.contextId, { ...input, payload: 'one' }),
       ]);
       expect(first.outcome).toBe('admitted');
       expect(second.outcome).toBe('conflict');
@@ -347,7 +340,7 @@ describe('concurrent submissions of one id (COR-1476)', () => {
         expect(elsewhere.conflict.reason).toBe('session-mismatch');
       }
       // Session B's mailbox holds nothing for the id.
-      const sessionB = await bureau.contexts.get(runB.sessionId);
+      const sessionB = await bureau.contexts.get(runB.contextId);
       expect(sessionB).toBeDefined();
     } finally {
       await bureau.dispose();

@@ -5,7 +5,7 @@
  * `generate` equal to what went in, in order, or a typed error names why not.
  */
 import { HookRegistry } from '@lostgradient/lifecycle';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import type {
@@ -23,6 +23,7 @@ import {
   UnsupportedContentError,
 } from 'conversationalist';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { z } from 'zod';
 import { noToolCalls } from '../src/conditions/predicates';
 import { createSlidingWindowStrategy } from '../src/context/compaction-strategies';
@@ -59,7 +60,7 @@ import {
 import { createSelectionGate } from '../src/selection-gate';
 import { createSessionStore } from '../src/session/create-session-store';
 import { createSessionHandle } from '../src/session/session-handle';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
+import { drainMicrotasks } from '../src/testing/drain-microtasks.test-support.ts';
 import type {
   ContentSourceResolver,
   GenerateContext,
@@ -244,7 +245,6 @@ describe('createLazyAgent.run: ordered parts as input', () => {
 
 describe('SessionHandle.run: ordered parts as input', () => {
   it('appends one user message holding the parts and persists them unchanged', async () => {
-    await yieldToPortableEventLoop();
     const store = createSessionStore(textValueStore(new MemoryStorage()));
     const { generate, histories } = recorder();
     const handle = createSessionHandle('session-parts', {
@@ -267,7 +267,6 @@ describe('SessionHandle.run: ordered parts as input', () => {
   });
 
   it('snapshots the caller’s array before the reservation, so later mutation cannot reach the run', async () => {
-    await yieldToPortableEventLoop();
     const store = createSessionStore(textValueStore(new MemoryStorage()));
     const { generate, histories } = recorder();
     const handle = createSessionHandle('session-snapshot', {
@@ -350,10 +349,9 @@ describe('SessionHandle.fork: media survives a fork (COR-716)', () => {
   }
 
   it('copies the history with every part unchanged, and the fork runs on with them intact', async () => {
-    await yieldToPortableEventLoop();
     const { handle, histories } = forkable('fork-media-source');
     await handle.run(parts()).result();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     const forked = await handle.fork();
     const forkedSession = await forked.getSession();
@@ -366,12 +364,11 @@ describe('SessionHandle.fork: media survives a fork (COR-716)', () => {
   });
 
   it('forks at a run boundary with the media of the runs up to it', async () => {
-    await yieldToPortableEventLoop();
     const { handle } = forkable('fork-media-boundary');
     await handle.run(parts()).result();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
     await handle.run('second').result();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     const forked = await handle.fork({ throughRun: 0 });
     const forkedSession = await forked.getSession();

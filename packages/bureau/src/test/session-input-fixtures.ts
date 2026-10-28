@@ -22,13 +22,13 @@ import {
   encodeStorageKeyComponent,
   resolveStorage,
   type Storage,
-  yieldToPortableEventLoop,
 } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 
 import type { AgentDefinitions } from '../agent-catalog';
 import { createBureau } from '../create-bureau';
 import type { Bureau, BureauOptions, BureauInternals } from '../types';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 export function deferred<T = void>() {
   let release!: (value: T) => void;
@@ -46,16 +46,8 @@ export function userTexts(conversation: GenerateContext['conversation']): string
 }
 
 /** Waits for a state to become true, yielding between reads; throws when it never does. */
-export async function pollUntil(
-  check: () => boolean | Promise<boolean>,
-  attempts = 400,
-): Promise<void> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (await check()) return;
-    await yieldToPortableEventLoop();
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
-  throw new Error('the condition never became true');
+export async function pollUntil(check: () => boolean | Promise<boolean>): Promise<void> {
+  await waitUntil(check, { message: 'pollUntil' });
 }
 
 const textDecoder = new TextDecoder();
@@ -480,12 +472,15 @@ export interface OpenedProcess {
  * Opens a Bureau over the SQLite file at `path` through a {@link seamStorage}, as one of several
  * processes sharing that file would: each call opens its own connection and shares nothing else.
  * `options` are spread over the defaults (no agents, an empty toolbox, durable execution, and a
- * run that stops when the model calls no tool).
+ * run that stops when the model calls no tool); `options.maximumSteps` caps the `default` agent.
  */
 export async function openProcess(
   path: string,
   generate: GenerateFunction,
-  options: Partial<BureauOptions<AgentDefinitions>> = {},
+  {
+    maximumSteps,
+    ...options
+  }: Partial<BureauOptions<AgentDefinitions>> & { readonly maximumSteps?: number } = {},
 ): Promise<OpenedProcess> {
   const real = await resolveStorage({ type: 'sqlite', path });
   const seam = seamStorage(real);
@@ -495,6 +490,7 @@ export async function openProcess(
         generate,
         toolbox: createToolbox([]),
         stopWhen: stopWhen.noToolCalls(),
+        ...(maximumSteps === undefined ? {} : { maximumSteps }),
       }),
     },
     durable: true,

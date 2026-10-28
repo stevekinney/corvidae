@@ -88,7 +88,7 @@ import {
 import { BureauError } from '../create-bureau.ts';
 import { TaskListingTokenError } from '../task-list-snapshots.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
-import type { Bureau, BureauContexts, BureauReviews } from '../types.ts';
+import type { Bureau, BureauContexts, BureauReviews, BureauTasks } from '../types.ts';
 import { A2UI_EXTENSION_URI, supportedCatalogIdsOf } from '../a2ui/catalogs.ts';
 import { surfaceActionOf } from './a2a-surface-actions.ts';
 import { declaredExtensionsOf } from './a2a-agent-card.ts';
@@ -113,7 +113,7 @@ import {
   isTerminal,
   type ProjectionShape,
 } from './a2a-task-projection.ts';
-import { type TasksRespondInput, tasksRespondInput } from './management/tasks-respond-operation.ts';
+import { type TasksRespondInput, tasksRespondInput } from '../tasks/respond-to-task.ts';
 import {
   COMMAND_RECEIPTS_EXTENSION_URI,
   CommandReceiptError,
@@ -269,17 +269,12 @@ export class BureauA2AUser implements User {
 /** The part of a Bureau the request handler reads. */
 export type A2ABureau = Pick<
   Bureau,
-  | 'createRun'
-  | 'locateRunCreationReceipt'
-  | 'getRun'
-  | 'getOwner'
-  | 'eventHistory'
-  | 'subscribeEventHistory'
-  | 'addEventListener'
-  | 'removeEventListener'
-  | 'assets'
-  | 'surfaces'
-> & { readonly reviews: Pick<BureauReviews, 'get'> } & {
+  'ownerOf' | 'addEventListener' | 'removeEventListener' | 'assets' | 'surfaces'
+> & {
+  readonly tasks: Pick<BureauTasks, 'detail' | 'receipt' | 'events' | 'subscribeEvents' | 'start'>;
+} & {
+  readonly reviews: Pick<BureauReviews, 'get'>;
+} & {
   readonly contexts: Pick<BureauContexts, 'get' | 'input'>;
 } & {
   readonly internals: FormsAuditInternals & {
@@ -1034,7 +1029,7 @@ export function createBureauA2ARequestHandler(
   /** The checks a message that starts a task passes before anything is admitted. Resolves its text. */
   async function checkNewTask(message: Message, owner: Owner): Promise<string> {
     if (message.contextId !== '') {
-      const contextOwner = await bureau.getOwner({ kind: 'session', id: message.contextId });
+      const contextOwner = await bureau.ownerOf({ kind: 'session', id: message.contextId });
       // A context another caller owns is answered as if it did not exist, before anything loads it.
       if (contextOwner !== undefined && contextOwner !== owner) {
         throw new TaskNotFoundError(`Context '${message.contextId}' was not found.`);
@@ -1065,11 +1060,11 @@ export function createBureauA2ARequestHandler(
    */
   async function holdsRun(message: Message, owner: Owner, version: string): Promise<boolean> {
     try {
-      const located = await bureau.locateRunCreationReceipt({
+      const located = await bureau.tasks.receipt({
         principal: owner,
         agentName,
-        ...(message.contextId === '' ? {} : { sessionId: message.contextId }),
-        runCreationRequestId: `a2a:${version}:${message.messageId}`,
+        ...(message.contextId === '' ? {} : { contextId: message.contextId }),
+        commandId: `a2a:${version}:${message.messageId}`,
       });
       return located.status === 'recorded';
     } catch {
@@ -1092,15 +1087,14 @@ export function createBureauA2ARequestHandler(
         : await checkNewTask(message, owner);
     let run;
     try {
-      run = await bureau.createRun({
+      // A message of text alone starts the task as a string; one with files appends a row whose id
+      // follows from the `messageId`, so an exact retry appends the same row.
+      run = await bureau.tasks.start(
         agentName,
-        principal: owner,
-        // A message of text alone starts the run as a string; one with files starts it as a row
-        // whose id follows from the `messageId`, so an exact retry appends the same row.
-        ...(inbound.content === undefined
-          ? { message: text }
+        inbound.content === undefined
+          ? text
           : {
-              appendMessages: [
+              append: [
                 {
                   // The id follows from the whole command (version, agent, message), not the bare
                   // `messageId`: the same id sent to two agents in one context is two commands, and
@@ -1114,10 +1108,13 @@ export function createBureauA2ARequestHandler(
                   hidden: false,
                 },
               ],
-            }),
-        ...(message.contextId === '' ? {} : { sessionId: message.contextId }),
-        runCreationRequestId: `a2a:${version}:${message.messageId}`,
-      });
+            },
+        {
+          principal: owner,
+          ...(message.contextId === '' ? {} : { contextId: message.contextId }),
+          commandId: `a2a:${version}:${message.messageId}`,
+        },
+      );
     } catch (error) {
       if (error instanceof BureauLedgerConflictError) {
         throw invalid(
@@ -1139,9 +1136,9 @@ export function createBureauA2ARequestHandler(
     await records.create({
       recordVersion: 1,
       taskId: run.id,
-      contextId: run.sessionId,
+      contextId: run.contextId,
       incarnation: admitted?.incarnation ?? '',
-      history: [historyEntryOf(inbound.history, run.id, run.sessionId)],
+      history: [historyEntryOf(inbound.history, run.id, run.contextId)],
       replyRecorded: false,
     });
     recordReplyWhenSettled(run.id);

@@ -11,19 +11,20 @@
 
 import { describe, expect, it } from 'bun:test';
 import { makeActivity } from '../../testing/activity.test-support.ts';
-import { sleepForTesting, waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { settleInlineLaunches } from '../../testing/inline-launch-settle.test-support.ts';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { decode } from '../codec.ts';
 import { Engine } from '../engine.ts';
 import type { WorkflowContext } from '../types.ts';
 import { activity, workflow } from '../types.ts';
 
 async function flush(): Promise<void> {
-  await sleepForTesting(10);
+  await settleInlineLaunches();
 }
 
 // ---------------------------------------------------------------------------
@@ -275,6 +276,7 @@ describe('ctx.onCancel()', () => {
       ctx: WorkflowContext,
     ) {
       ctx.onCancel(async () => {
+        // load-proof: the delay is the handler's own simulated async work inside the code under test; the engine awaits it and the test asserts only after cancel() and the rejected result() settle
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
         sequence.push('async-handler-done');
       });
@@ -783,7 +785,6 @@ describe('ctx.setFinalizerState() (#446)', () => {
       async () => (await storage.get(KEYS.finalizerState('finalizer-durable-1'))) !== null,
       {
         label: 'finalizer state committed after ctx.run checkpoint',
-        timeoutMs: 400,
         intervalMs: 5,
       },
     );
@@ -822,7 +823,6 @@ describe('ctx.setFinalizerState() (#446)', () => {
       async () => (await storage.get(KEYS.finalizerState('finalizer-park-1'))) !== null,
       {
         label: 'finalizer state committed after the workflow parks',
-        timeoutMs: 400,
         intervalMs: 5,
       },
     );
@@ -881,7 +881,6 @@ describe('ctx.setFinalizerState() (#446)', () => {
     const handle = await engine.start('finalizer-atomic', null, { id: 'finalizer-atomic-1' });
     await waitForCondition(async () => (await storage.get(finalizerKey)) !== null, {
       label: 'finalizer state committed atomically',
-      timeoutMs: 400,
       intervalMs: 5,
     });
 

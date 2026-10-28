@@ -91,7 +91,7 @@ async function waitForCheckpoint(engine: Engine, workflowId: string): Promise<vo
       const checkpoints = await engine.listCheckpoints(workflowId);
       return checkpoints.length > 0;
     },
-    { timeoutMs: 500, intervalMs: 1, label: `checkpoint for ${workflowId}` },
+    { intervalMs: 1, label: `checkpoint for ${workflowId}` },
   );
 }
 
@@ -105,7 +105,7 @@ async function waitForCheckpointStep(
       const checkpoints = await engine.listCheckpoints(workflowId);
       return checkpoints.some((checkpoint) => checkpoint.step === step);
     },
-    { timeoutMs: 500, intervalMs: 1, label: `checkpoint step ${step} for ${workflowId}` },
+    { intervalMs: 1, label: `checkpoint step ${step} for ${workflowId}` },
   );
 }
 

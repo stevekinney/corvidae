@@ -102,7 +102,9 @@ import {
   type SkillEventMap,
   type ToolPolicy,
 } from './skills';
+import { createDecideToolbox, type DecideToolWiring } from './decisions/decide-tool';
 import { humanInputEnabled, humanInputSchemasOf } from './human-input-option';
+import type { TaskToolGrant } from './task-registry';
 import { withAddedTools, withToolboxLayer } from './toolbox-additions';
 import {
   type AnyWorkflowDefinition,
@@ -268,6 +270,11 @@ export interface WireDurableOptInToolsOptions {
   /** Wires `requestHumanInput` in when true (AB-13/AB-41/AB-43). */
   readonly humanInput?: boolean;
   /**
+   * COR-1709 — wires the `decide` tool in when present. It needs no durable services, but the
+   * callers offer it to exactly the runs that are offered `requestHumanInput`.
+   */
+  readonly decide?: DecideToolWiring | undefined;
+  /**
    * COR-1674 — per-signal answer schemas handed to `requestHumanInput`. Ignored when `humanInput`
    * is falsy. Every wiring site, fresh and recovered, passes the same map.
    */
@@ -342,6 +349,13 @@ export function wireDurableOptInTools(
     toolbox = withAddedTools(toolbox, humanInputToolbox);
   }
 
+  if (options.decide !== undefined) {
+    toolbox = withAddedTools(
+      toolbox,
+      createDecideToolbox({ ...options.decide, taskId: options.runId }),
+    );
+  }
+
   if (options.wakeup) {
     // Unlike `requestHumanInput`, `scheduleWakeup` dispatches no event on
     // park — `ctx.sleep` is itself the durable checkpoint, and recovery
@@ -365,6 +379,18 @@ export function wireDurableOptInTools(
   }
 
   return toolbox;
+}
+
+/**
+ * COR-1709 — the owner of record of a recovered session run: the owner recorded for the run, else
+ * the session's, else none.
+ */
+function recoveredOwnerOf(session: AgentSession, runId: string): string | undefined {
+  const owners = session.metadata['lastRunOwningPrincipals'];
+  const runOwner = isPlainAuthorityRecord(owners) ? owners[runId] : undefined;
+  if (typeof runOwner === 'string') return runOwner;
+  const sessionOwner = session.metadata[SESSION_OWNER_METADATA_KEY];
+  return typeof sessionOwner === 'string' ? sessionOwner : undefined;
 }
 
 const requestAuthorityMetadataKey = 'lastRequestAuthority';
@@ -600,10 +626,39 @@ function raceRequestAuthorityValidation(
 }
 
 /**
+ * COR-1710 — what a task's tool grant offers it. Without a grant (a composition with no settings
+ * wired), the options decide, as they did before grants were recorded.
+ */
+export function grantedTools(
+  grant: TaskToolGrant | undefined,
+  options: Pick<RuntimeCompositionOptions, 'humanInput' | 'wakeup'>,
+): {
+  readonly humanInput: boolean;
+  readonly inputSchemas: Readonly<Record<string, HumanInputSchema>> | undefined;
+  readonly wakeup: boolean;
+  readonly decide: boolean;
+} {
+  if (grant === undefined) {
+    return {
+      humanInput: humanInputEnabled(options.humanInput),
+      inputSchemas: humanInputSchemasOf(options.humanInput),
+      wakeup: options.wakeup !== false,
+      decide: true,
+    };
+  }
+  return {
+    humanInput: grant.humanInput !== false,
+    inputSchemas: humanInputSchemasOf(grant.humanInput),
+    wakeup: grant.wakeup,
+    decide: grant.decide,
+  };
+}
+
+/**
  * Discriminate a `StorageConfiguration` object from a raw Weft `Storage`.
  * `StorageConfiguration` always carries a `type` string discriminant.
  */
-function isStorageConfiguration(
+export function isStorageConfiguration(
   value: StorageConfiguration | Storage,
 ): value is StorageConfiguration {
   const candidate = value as unknown as Record<string, unknown>;
@@ -814,6 +869,11 @@ export type GoalAttemptClaimFence = 'fenced' | 'foreign';
 
 export interface CatalogRunRecoveryRecord {
   readonly schemaVersion: 1;
+  /**
+   * COR-1710 — the tools the task was granted when it started, so its recovery offers the same
+   * ones. Absent in a record written before grants were recorded.
+   */
+  readonly tools?: TaskToolGrant | undefined;
   readonly agentName: string;
   readonly definitionRevision: number;
   readonly input: AgentInput;
@@ -1502,6 +1562,13 @@ export type MediaRowHolder = 'session' | 'run';
 export type RuntimeCompositionDependencies = {
   resolveProviderGenerate: typeof resolveProviderGenerate;
   /**
+   * COR-1710 — whether this composition disposes a raw `Storage` passed as `options.storage`.
+   * `createBureau` resolves a storage configuration itself, to read the settings record before
+   * the engine exists, and hands the resulting storage over with this set, so it is still
+   * disposed with the composition. A storage configuration is always disposed.
+   */
+  ownsStorage?: boolean;
+  /**
    * Builds the session store this composition uses over its resolved KV
    * view. Defaults to operative's own `createSessionStore` — the real
    * production wiring. A caller (test or platform package) that supplies a
@@ -1599,6 +1666,21 @@ export type RuntimeCompositionDependencies = {
    * composition, and a run resolves it only when it starts.
    */
   contentSourceResolverFor?: (principalId: string | undefined) => ContentSourceResolver | undefined;
+  /**
+   * COR-1709 — what a run owned by `principalId` needs to be offered the `decide` tool, or
+   * `undefined` when the tool is not offered (`decide: false`, or nothing can answer). Late-bound
+   * by `createBureau`: the decisions are built after this composition.
+   */
+  decideToolFor?: (
+    principalId: string | undefined,
+    offered: boolean,
+  ) => DecideToolWiring | undefined;
+  /**
+   * COR-1710 — the tools task `taskId` was granted when it started, from its admission record;
+   * for a task recorded before grants were, the settings now, recorded on it once. Without this,
+   * a resumed task is offered what the options say, as before grants existed.
+   */
+  toolGrantFor?: (taskId: string) => Promise<TaskToolGrant>;
   /**
    * COR-1524 — the definition a file-backed agent's run started with. A scheduled fire records its
    * binding here as a session run does, so recovering it resolves the agent it started with, not the
@@ -2772,6 +2854,7 @@ async function buildRuntimeComposition(
       ownsDurableStorage = true;
     } else {
       durableStorage = effectiveStorage;
+      ownsDurableStorage = dependencies.ownsStorage === true;
     }
     kv = textValueStore(durableStorage, { disposeUnderlyingStorage: false });
   }
@@ -2816,7 +2899,7 @@ async function buildRuntimeComposition(
     // In the default automatic profile, `startScheduler: true` is REQUIRED too:
     // recover:false decouples *who drives recovery* from *whether timers fire*,
     // and the poller otherwise follows recover. In manual mode the serverless
-    // host drives timers through `Bureau.runDurableMaintenance()`, so Weft
+    // host drives timers through `Bureau.maintain()`, so Weft
     // requires the in-process scheduler to remain stopped.
     durable = await createRunEngine({
       storage: durableStorage,
@@ -3725,17 +3808,6 @@ async function buildRuntimeComposition(
     agentName?: string,
   ): Promise<DurableRunDeps> {
     const message = session.metadata['lastUserMessage'];
-    // Recover the per-request token cap persisted by create-bureau's saveSession
-    // call. Without this, recovered generate calls receive maximumTokens:undefined
-    // and may produce more output than the original client cap allowed, changing
-    // cost and output length after a process crash (PRRT_kwDORvupsc6MZEri).
-    const maximumTokensRaw = session.metadata['lastMaximumTokens'];
-    const maximumTokens = typeof maximumTokensRaw === 'number' ? maximumTokensRaw : undefined;
-    // Restore the per-request step cap from session metadata so a recovered run
-    // honours the caller's original maximumSteps rather than the bureau default
-    // (PRRT_kwDORvupsc6MZfl5). Absent that, the named agent's cap, then the default
-    // `maximumSteps` closure value (COR-1577).
-    const maximumStepsRaw = session.metadata['lastMaximumSteps'];
     // Rehydrate the active skill set from the last-written snapshot so the
     // recovered toolbox is aware of skills activated in completed pre-crash steps.
     // Completed steps are memoized by Weft and do not re-run their tool executions,
@@ -3809,13 +3881,24 @@ async function buildRuntimeComposition(
     // this function returns).
     let runToolbox: BureauToolbox = runRuntime.toolbox;
     const servicesRef: { current?: DurableRunDeps } = {};
-    const wantsHumanInput = humanInputEnabled(options.humanInput) && runId !== undefined;
-    const wantsWakeup = options.wakeup !== false && runId !== undefined;
-    if (wantsHumanInput || wantsWakeup) {
+    // COR-1710 — the grant the task started with, not the settings of the moment.
+    const grant = grantedTools(
+      runId === undefined ? undefined : await dependencies.toolGrantFor?.(runId),
+      options,
+    );
+    const wantsHumanInput = grant.humanInput && runId !== undefined;
+    const wantsWakeup = grant.wakeup && runId !== undefined;
+    // COR-1709: offered to exactly the runs that are offered `requestHumanInput`.
+    const decide =
+      runId === undefined
+        ? undefined
+        : dependencies.decideToolFor?.(recoveredOwnerOf(session, runId), grant.decide);
+    if (wantsHumanInput || wantsWakeup || decide !== undefined) {
       runToolbox = wireDurableOptInTools(runRuntime.toolbox, servicesRef, {
         humanInput: wantsHumanInput,
-        inputSchemas: humanInputSchemasOf(options.humanInput),
+        inputSchemas: grant.inputSchemas,
         wakeup: wantsWakeup,
+        ...(decide === undefined ? {} : { decide }),
         // `runId` is non-undefined here (both `wantsHumanInput`/`wantsWakeup`
         // require it); `?? ''` only satisfies the type checker.
         runId: runId ?? '',
@@ -3865,10 +3948,9 @@ async function buildRuntimeComposition(
           sessionAgent,
           mediaOptionsFor(resolveSessionOwner(session.metadata), 'session'),
         ),
-        maximumSteps:
-          typeof maximumStepsRaw === 'number'
-            ? maximumStepsRaw
-            : (sessionAgent?.options.maximumSteps ?? maximumSteps),
+        // COR-1707: the caps are the named agent's, as when the run started; a run carries none of
+        // its own.
+        maximumSteps: sessionAgent?.options.maximumSteps ?? maximumSteps,
         stopWhen: sessionAgent?.options.stopWhen ?? options.stopWhen,
         // COR-1269 — stamped onto this run's hook-plan observations.
         sessionId: session.id,
@@ -3888,13 +3970,9 @@ async function buildRuntimeComposition(
         // pre-crash run (C3 parity). Without them, recovered runs emit blank ids.
         ...(agentName !== undefined ? { agentName } : {}),
         ...(runId !== undefined ? { runId } : {}),
-        // Restore the per-request token cap so recovered steps honour the same
-        // maximumTokens constraint as the original run (PRRT_kwDORvupsc6MZEri).
-        ...(maximumTokens !== undefined
-          ? { maximumTokens }
-          : sessionAgent?.options.maximumTokens !== undefined
-            ? { maximumTokens: sessionAgent.options.maximumTokens }
-            : {}),
+        ...(sessionAgent?.options.maximumTokens !== undefined
+          ? { maximumTokens: sessionAgent.options.maximumTokens }
+          : {}),
       },
     };
     if (wantsHumanInput || wantsWakeup) {
@@ -4436,27 +4514,45 @@ async function buildRuntimeComposition(
     // when its fresh dispatch was: the option is on, the engine is durable, and it is neither a
     // child nor a goal attempt. The tool parks through the services object being returned, so
     // that object is captured once it exists, as `buildRunDepsFromSession` does.
+    // COR-1710 — the grant recorded when the task started; one recorded before grants were
+    // resumes with the settings now.
+    const catalogGrant = grantedTools(
+      record.tools ?? (await dependencies.toolGrantFor?.(runId)),
+      options,
+    );
     const offersHumanInput =
-      humanInputEnabled(options.humanInput) &&
+      catalogGrant.humanInput &&
       durable !== undefined &&
       record.goalAttempt === undefined &&
       record.workflowStep === undefined &&
       resolution.recoveredChild !== true;
     const humanInputServices: { current?: DurableRunDeps } = {};
-    const toolbox = offersHumanInput
-      ? wireDurableOptInTools(resolution.options.toolbox, humanInputServices, {
-          humanInput: true,
-          inputSchemas: humanInputSchemasOf(options.humanInput),
-          wakeup: false,
-          runId,
-          humanInputEmitter: {
-            dispatchEvent: (event: Event) => {
-              const target = humanInputServices.current?.emitter;
-              return hasDispatchEvent(target) ? target.dispatchEvent(event) : false;
+    // COR-1709: the `decide` tool is offered on exactly the runs `requestHumanInput` is, but is
+    // independent of the `humanInput` option.
+    const offersDecide =
+      durable !== undefined &&
+      record.goalAttempt === undefined &&
+      record.workflowStep === undefined &&
+      resolution.recoveredChild !== true;
+    const decide = offersDecide
+      ? dependencies.decideToolFor?.(ownerOrLocal(record.principal), catalogGrant.decide)
+      : undefined;
+    const toolbox =
+      offersHumanInput || decide !== undefined
+        ? wireDurableOptInTools(resolution.options.toolbox, humanInputServices, {
+            humanInput: offersHumanInput,
+            inputSchemas: catalogGrant.inputSchemas,
+            wakeup: false,
+            runId,
+            ...(decide === undefined ? {} : { decide }),
+            humanInputEmitter: {
+              dispatchEvent: (event: Event) => {
+                const target = humanInputServices.current?.emitter;
+                return hasDispatchEvent(target) ? target.dispatchEvent(event) : false;
+              },
             },
-          },
-        })
-      : resolution.options.toolbox;
+          })
+        : resolution.options.toolbox;
     const services: DurableRunDeps = {
       options: {
         ...resolution.options,
@@ -4898,13 +4994,19 @@ async function buildRuntimeComposition(
     // object returned below, so that object is captured once it exists, as the recovery of a
     // catalog run captures it.
     const humanInputServices: { current?: DurableRunDeps } = {};
+    // COR-1709: a fire is offered `decide` as it is offered `requestHumanInput`, as its owner.
+    // COR-1710 — the grant recorded on the fire's task when it was first admitted.
+    const fireGrant = grantedTools(await dependencies.toolGrantFor?.(runId), options);
+    const fireDecide =
+      durable === undefined ? undefined : dependencies.decideToolFor?.(owner, fireGrant.decide);
     const fireToolbox =
-      humanInputEnabled(options.humanInput) && durable !== undefined
+      (fireGrant.humanInput && durable !== undefined) || fireDecide !== undefined
         ? wireDurableOptInTools(runRuntime.toolbox, humanInputServices, {
-            humanInput: true,
-            inputSchemas: humanInputSchemasOf(options.humanInput),
+            humanInput: fireGrant.humanInput && durable !== undefined,
+            inputSchemas: fireGrant.inputSchemas,
             wakeup: false,
             runId,
+            ...(fireDecide === undefined ? {} : { decide: fireDecide }),
             humanInputEmitter: {
               dispatchEvent: (event: Event) => {
                 const target = humanInputServices.current?.emitter;

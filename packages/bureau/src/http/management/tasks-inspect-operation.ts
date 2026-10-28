@@ -13,6 +13,7 @@
 import { defineOperation } from '@lostgradient/weft';
 import { z } from 'zod';
 
+import type { BureauTasks } from '../../types.ts';
 import { mayAccessTask, type BureauTasksOperationHost } from './tasks-operations.ts';
 import {
   resourceNotFound,
@@ -65,22 +66,12 @@ export type InspectedLiveness = {
   readonly evidence: readonly { readonly source: string; readonly at: number }[];
 };
 
-/** What the inspection reads beyond the task registry. */
+/**
+ * What the inspection reads beyond the task registry: {@link BureauTasks.inspect}, which this
+ * operation delegates to once the caller may read the task.
+ */
 export type BureauTasksInspectOperationHost = BureauTasksOperationHost & {
-  readonly inspection: {
-    /** The run's liveness snapshot, or `undefined` when this process holds no such run. */
-    readonly liveness: (runId: string) => InspectedLiveness | undefined;
-    /** The children of a run, in the order the topology records them. */
-    readonly children: (runId: string) => Promise<
-      readonly {
-        readonly childRunId: string;
-        readonly childAgentName: string;
-        readonly status: string;
-        readonly parentCancellation: string;
-        readonly revision: number;
-      }[]
-    >;
-  };
+  readonly inspect: BureauTasks['inspect'];
 };
 
 const finite = z.number();
@@ -168,22 +159,22 @@ export const tasksInspectOperation = defineOperation<
     if (!(await mayAccessTask(host, principal, input.taskId, 'bureau.tasks:read'))) {
       throw resourceNotFound('task', input.taskId);
     }
-    const task = await host.tasks.get(input.taskId);
-    if (task === undefined) throw resourceNotFound('task', input.taskId);
-    const children = await host.inspection.children(input.taskId);
+    const inspection = await host.inspect(input.taskId);
+    if (inspection === undefined) throw resourceNotFound('task', input.taskId);
+    const { task } = inspection;
     return {
       schemaVersion: TASK_INSPECTION_SCHEMA_VERSION,
       taskId: input.taskId,
       canCancel: await mayAccessTask(host, principal, input.taskId, 'bureau.tasks:write'),
       task: { ...task, openWaits: [...task.openWaits] },
-      liveness: projectLiveness(host.inspection.liveness(input.taskId)),
-      children: children.map((child) => ({
+      liveness: projectLiveness(inspection.liveness),
+      children: inspection.children.map((child) => ({
         runId: child.childRunId,
         agentName: child.childAgentName,
         status: child.status,
         parentCancellation: child.parentCancellation,
         revision: child.revision,
-        assessment: host.inspection.liveness(child.childRunId)?.assessment ?? null,
+        assessment: child.liveness?.assessment ?? null,
       })),
     };
   },

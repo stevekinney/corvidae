@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
 import { bus, evaluator, tab } from './theme-builder-test-support.ts';
 import type { ThemeEvaluator } from './theme-draft-evaluation.ts';
@@ -172,6 +173,7 @@ describe('history and reset', () => {
     const entries = controller.history!.entries.length;
     workbench.setContext({ colorMode: 'dark', motion: 'default' });
     await controller.flush();
+    // load-proof: the editors flush through Svelte and the in-memory evaluator, so the update settles inside the microtask queue
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(workbench.properties[0]?.value).toBe('9px');
     expect(workbench.context.colorMode).toBe('dark');
@@ -202,7 +204,8 @@ describe('context changes made before the previous one has landed', () => {
     workbench.setContext({ ...workbench.requestedContext, colorMode: 'dark' });
     workbench.setContext({ ...workbench.requestedContext, motion: 'reduced' });
     expect(workbench.requestedContext).toEqual({ colorMode: 'dark', motion: 'reduced' });
-    for (let attempt = 0; attempt < 100 && workbench.context.motion !== 'reduced'; attempt += 1) {
+    for await (const _ of awakeTurns()) {
+      if (!(workbench.context.motion !== 'reduced')) break;
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     expect(workbench.context).toEqual({ colorMode: 'dark', motion: 'reduced' });

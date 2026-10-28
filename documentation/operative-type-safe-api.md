@@ -57,7 +57,7 @@ const text = await run.unwrap();
 
 An `AgentRun` is an async iterable of `RunEvent` values and provides:
 
-- `id`, the run's identifier, which `snapshot().id` equals and a durable run keeps across recovery. A handle returned before its run exists, such as a lazy agent's or `bureau.run`'s, already carries it; pass `AgentRunContext.runId` to choose it. A session run's `id` is final only once the session has reserved the run, and a hand-written `RunnableAgent` that ignores `AgentRunContext.runId` runs under its own id, which the wrapping handle's `snapshot().id` then reports instead;
+- `id`, the run's identifier, which `snapshot().id` equals and a durable run keeps across recovery. A handle returned before its run exists, such as a lazy agent's, already carries it; pass `AgentRunContext.runId` to choose it. A session run's `id` is final only once the session has reserved the run, and a hand-written `RunnableAgent` that ignores `AgentRunContext.runId` runs under its own id, which the wrapping handle's `snapshot().id` then reports instead;
 - `result()`, which resolves to the terminal `RunResult`;
 - `unwrap()`, which resolves to plain text for a schema-less run or the validated output for a run with a schema, and rejects unsuccessful runs;
 - `output()`, only on the `H = true` type, for the typed validated value;
@@ -279,7 +279,7 @@ A source change produces a successor epoch with its own id and a `supersedes` li
 
 ## Bureau composition
 
-`createBureau` accepts an `AgentDefinitions` map of runnable agents and returns a typed Bureau catalog. `bureau.run(name, input, options?)` preserves the selected agent's output type and forwards the caller's principal and other run context. Bureau also owns durable composition, recovery classification, session and scheduler operations, model selection, event history, pending reviews, and shutdown reporting.
+`createBureau` accepts an `AgentDefinitions` map of runnable agents and returns a typed Bureau catalog. `bureau.tasks.start(name, input, options?)` resolves with a `TaskHandle` that preserves the selected agent's output type, and forwards the caller's principal and request context. Unlike `RunnableAgent.run`, a start is asynchronous: it resolves once the task's run exists, in a context it creates when `contextId` is omitted, and refuses an unknown agent, an agent with no definition resolver, and malformed input by rejecting before anything is persisted. A name that is only a `string` at run time (such as a file agent) resolves to an untyped `TaskHandle`. A handle iterates the task's run events and settles `result()` with the run's `RunResult`, whose `output` is the validated value for an agent with a schema. Bureau also owns durable composition, recovery classification, session and scheduler operations, model selection, event history, pending reviews, and shutdown reporting.
 
 The Bureau durable options that affect the Operative contract include `workflowVersion`, `durableOwnership`, `durableGuardrails`, persistence, and the durable storage configuration. `workflowVersion` is passed to both the workflow stamp and recovery comparison when a durable engine is composed.
 
@@ -314,8 +314,10 @@ export async function runExample(generate: GenerateFunction) {
 
   const bureau = await createBureau({ agents });
   try {
-    const structured = await bureau.run('researcher', 'Summarize this.').output();
-    const prose = await bureau.run('writer', 'Draft an introduction.').unwrap();
+    const researching = await bureau.tasks.start('researcher', 'Summarize this.');
+    const writing = await bureau.tasks.start('writer', 'Draft an introduction.');
+    const structured = (await researching.result()).output;
+    const prose = (await writing.result()).content;
     return { structured, prose };
   } finally {
     await bureau.shutdown();
@@ -323,7 +325,7 @@ export async function runExample(generate: GenerateFunction) {
 }
 ```
 
-The catalog is built from the literal `agents` object, so `structured` is typed as `{ summary: string }` while `prose` is typed as `string`.
+The catalog is built from the literal `agents` object, so `structured` is typed as `{ summary: string } | undefined` (a run that fails validation has no `output`) while `prose` is typed as `string`.
 
 ### Widened runtime modules
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   type BatchOperation,
   type ConditionalBatchCondition,
@@ -9,7 +10,6 @@ import {
 } from '../../../storage/interface.ts';
 import { MemoryStorage } from '../../../storage/memory.ts';
 import { flushMicrotasks, waitForCondition } from '../../../testing/fake-timers.test-support.ts';
-import { rejectionOf, throwingRejectionOf } from '../../../testing/promise-outcome.test-support.ts';
 import { TestEngine } from '../../../testing/test-engine.ts';
 import { ActivityRegistry } from '../../activity-registry.ts';
 import { Engine } from '../../engine.ts';
@@ -165,7 +165,6 @@ describe("engine.start onTerminalConflict: 'start-new'", () => {
     const first = await engine.start('throws-immediately', null, { id: 'reuse-failed' });
     expect(await throwingRejectionOf(first.result())).toThrow('boom');
     await waitForCondition(async () => (await statusOf(engine, 'reuse-failed')) === 'failed', {
-      timeoutMs: 2000,
       label: 'first run reached failed',
     });
 
@@ -196,7 +195,7 @@ describe("engine.start onTerminalConflict: 'start-new'", () => {
     expect(await settled).toBe('rejected');
     await waitForCondition(
       async () => (await statusOf(engine, 'reuse-cancelled')) === 'cancelled',
-      { timeoutMs: 2000, label: 'first run reached cancelled' },
+      { label: 'first run reached cancelled' },
     );
 
     const second = await engine.start('echo-input', 'after-cancel', {

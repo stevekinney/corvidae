@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import {
   descendantsOf,
   parseProcessTable,
@@ -78,7 +79,7 @@ describe('startTreeSampler', () => {
       readProcessTable: () => Promise.resolve('10 1 100\n'),
       intervalMilliseconds: 1,
     });
-    await Bun.sleep(5);
+    await quietFor(5);
     const series = await sampler.stop();
     expect(series.sampleCount).toBe(0);
     expect(series.peakResidentBytes).toBe(0);
@@ -94,7 +95,8 @@ describe('startTreeSampler', () => {
         }),
       intervalMilliseconds: 1,
     });
-    await Bun.sleep(10);
+    // load-proof: the 1 ms interval was armed before this 10 ms timer, and timers on one clock fire in order of their deadlines
+    await quietFor(10);
     release?.();
     const series = await sampler.stop();
     expect(series.skippedTicks).toBeGreaterThan(0);
@@ -151,7 +153,7 @@ describe('startTreeSampler memory pressure (CIN-588 harness fix 5)', () => {
       readPressureLevel: () => Promise.resolve(null),
       intervalMilliseconds: 1,
     });
-    await Bun.sleep(5);
+    await quietFor(5);
     const series = await sampler.stop();
     expect(series.maximumPressureLevel).toBeNull();
     expect(series.pressureReadings).toBe(0);

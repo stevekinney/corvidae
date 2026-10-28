@@ -52,6 +52,7 @@ import {
   seedRunning,
 } from './testing/goal-recovery-fixtures.test-support';
 import type { Bureau } from './types';
+import { quietFor } from '@lostgradient/testing/wait-until';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 let database: TestDatabase = createUnsetTestDatabase();
@@ -124,7 +125,7 @@ describe('a goal across a process restart', () => {
       validators: [createCheckValidator()],
     });
     await track(bureau);
-    const report = await bureau.waitForRecovery?.();
+    const report = await bureau.recovery();
 
     // Recovery neither cancelled the controller as an unowned run nor reported a failure.
     expect(report).toMatchObject({ outcome: 'clean', perRunFailures: [] });
@@ -148,7 +149,7 @@ describe('a goal across a process restart', () => {
 
     // The dead process's late writes are stale updates: the goal does not move.
     await dead.dispose();
-    await pollUntil(() => false, 10);
+    await quietFor(50);
     expect(await bureau.goals.get('g1')).toEqual(goal);
   });
 
@@ -169,7 +170,7 @@ describe('a goal across a process restart', () => {
       validators: [createCheckValidator()],
     });
     await track(bureau);
-    await bureau.waitForRecovery?.();
+    await bureau.recovery();
 
     // Still waiting, and recovery knows what on.
     expect(await goalStatus(bureau, 'g1')).toBe('running');
@@ -226,7 +227,7 @@ describe('a goal across a process restart', () => {
     expect(steps).toBe(0);
 
     stuck.release();
-    await pollUntil(() => false, 10);
+    await quietFor(50);
     expect(await bureau.goals.get('g1')).toEqual(goal);
   });
 
@@ -244,7 +245,7 @@ describe('a goal across a process restart', () => {
       validators: [createCheckValidator()],
     });
     await track(bureau);
-    await bureau.waitForRecovery?.();
+    await bureau.recovery();
     const view = await inspection();
     await seedRetrying(view);
     expect(await goalStatus(bureau, 'g1')).toBe('retrying');
@@ -299,7 +300,7 @@ describe('a goal across a process restart', () => {
       validators: [createCheckValidator()],
     });
     await track(bureau);
-    await bureau.waitForRecovery?.();
+    await bureau.recovery();
 
     expect(await bureau.goals.get('g1')).toEqual(succeeded);
     expect(await bureau.goals.get('g2')).toEqual(canceled);
@@ -410,7 +411,7 @@ describe('a goal that ended while its next attempt was still starting', () => {
         validators: [createCheckValidator()],
       });
       await track(bureau);
-      await bureau.waitForRecovery?.();
+      await bureau.recovery();
 
       // Ended either way: the resumed run's own fence stops it before its first
       // step, or the sweep cancels it first. Neither lets it work for a goal that is over.
@@ -447,7 +448,7 @@ describe('a goal that ended while its next attempt was still starting', () => {
         validators: [createCheckValidator()],
       });
       await track(bureau);
-      await bureau.waitForRecovery?.();
+      await bureau.recovery();
 
       // Nothing was created, and the claim a late start would continue from is now a tombstone.
       expect(await workflowStatus(bureau, 'goal-g1-a0')).toBeUndefined();
@@ -472,7 +473,7 @@ describe('a goal that ended while its next attempt was still starting', () => {
       validators: [createCheckValidator()],
     });
     await track(bureau);
-    await bureau.waitForRecovery?.();
+    await bureau.recovery();
     expect(await workflowStatus(bureau, 'goal-g1-a0')).toBe('running');
     const view = await inspection();
     await view.overwrite(await overtakingRecord('exhausted'));
@@ -511,7 +512,7 @@ describe('a run that existed before its controller opened the attempt', () => {
       validators: [createCheckValidator()],
     });
     await track(bureau);
-    await bureau.waitForRecovery?.();
+    await bureau.recovery();
 
     const goal = await ended(bureau);
     expect(goal).toMatchObject({ status: 'succeeded' });
@@ -618,7 +619,7 @@ describe('a cancellation that a process died in the middle of', () => {
     await status(bureau, 'running');
 
     // Someone cancels the controller's workflow directly, not through the goal.
-    expect(await bureau.cancelDurableRun('goal:g1')).toEqual({ status: 'requested' });
+    await bureau.durableEngine()!.cancel('goal:g1');
     expect(await goalStatus(bureau, 'g1')).toBe('running');
 
     // The controller's finalizer stops the attempt in the background, so recovery
@@ -682,7 +683,7 @@ describe('a controller left running in a superseded process', () => {
       validators: [createCheckValidator({ before: () => new Promise(() => {}) })],
     });
     await track(bureau);
-    await bureau.waitForRecovery?.();
+    await bureau.recovery();
     const { settled } = await cancelUntilSettled(bureau);
     expect(settled).toMatchObject({ outcome: 'canceled' });
     const canceled = await bureau.goals.get('g1');
@@ -690,7 +691,7 @@ describe('a controller left running in a superseded process', () => {
     // The superseded controller's verdict arrives late and passes. Its commit is refused.
     supersededVerdict.release();
     await verdictDelivered.promise;
-    await pollUntil(() => false, 20);
+    await quietFor(50);
 
     expect(await bureau.goals.get('g1')).toEqual(canceled);
     expect(canceled).toMatchObject({ status: 'canceled', terminalReason: 'goal-canceled' });
@@ -721,7 +722,7 @@ describe('the attempt behind a running goal', () => {
       validators: [createCheckValidator()],
     });
     await track(bureau);
-    await bureau.waitForRecovery?.();
+    await bureau.recovery();
     await seedRunning(view);
 
     expect(await bureau.goals.recover('g1')).toMatchObject({
@@ -783,7 +784,7 @@ describe('the attempt behind a running goal', () => {
         validators: [createCheckValidator()],
       });
       await track(bureau);
-      await bureau.waitForRecovery?.();
+      await bureau.recovery();
       await seedRunning(view, pendingGoal({ bounds: COST_BOUNDS }));
       const report = await bureau.goals.recover('g1');
       return { bureau, report };
@@ -897,7 +898,7 @@ describe('the attempt behind a running goal', () => {
       validators: [createCheckValidator()],
     });
     await track(bureau);
-    await bureau.waitForRecovery?.();
+    await bureau.recovery();
     // The start returned its handle and the controller committed `running`, then the
     // process died before the run's workflow existed.
     const view = await inspection();
@@ -928,7 +929,7 @@ describe('the attempt behind a running goal', () => {
       validators: [createCheckValidator()],
     });
     await track(bureau);
-    await bureau.waitForRecovery?.();
+    await bureau.recovery();
     const view = await inspection();
     await seedRunning(view);
     await view.corruptRunRecord('goal-g1-a0');
@@ -953,7 +954,7 @@ describe('the attempt behind a running goal', () => {
       validators: [createCheckValidator()],
     });
     await track(bureau);
-    await bureau.waitForRecovery?.();
+    await bureau.recovery();
     const view = await inspection();
     await seedRunning(view);
     await view.corruptRunRecord('goal-g1-a0');
@@ -988,7 +989,7 @@ describe('the attempt behind a running goal', () => {
       validators: [createCheckValidator()],
     });
     await track(bureau);
-    await bureau.waitForRecovery?.();
+    await bureau.recovery();
     await seedRunning(view);
 
     const recovered = await bureau.goals.recover('g1');
@@ -1014,7 +1015,7 @@ describe('the attempt behind a running goal', () => {
       validators: [createCheckValidator()],
     });
     await track(bureau);
-    await bureau.waitForRecovery?.();
+    await bureau.recovery();
     const view = await inspection();
     await view.claimRun('goal-g1-a0', {
       agentName: 'worker',
@@ -1024,7 +1025,7 @@ describe('the attempt behind a running goal', () => {
       goalAttempt: { goalRunId: 'g1', attemptIndex: 0 },
     });
     await view.store.create(pendingGoal());
-    expect(await bureau.getDurableRun('goal-g1-a0')).toBeNull();
+    expect(await bureau.tasks.workflow('goal-g1-a0')).toBeNull();
 
     expect(await bureau.goals.recover('g1')).toMatchObject({
       goals: [{ goalRunId: 'g1', outcome: 'started' }],
@@ -1059,8 +1060,8 @@ describe('two bureaus recovering the same goal', () => {
     });
     await track(first.bureau);
     await track(second.bureau);
-    await first.bureau.waitForRecovery?.();
-    await second.bureau.waitForRecovery?.();
+    await first.bureau.recovery();
+    await second.bureau.recovery();
     const view = await inspection();
     await view.store.create(pendingGoal());
 
@@ -1088,7 +1089,7 @@ describe('a create that died between recording the goal and starting its control
       validators: [createCheckValidator()],
     });
     await track(bureau);
-    await bureau.waitForRecovery?.();
+    await bureau.recovery();
     const view = await inspection();
     // The record is there; the process died before the controller was started.
     await view.store.create(pendingGoal());
@@ -1114,7 +1115,7 @@ describe('a controller that ends abnormally while its goal is unfinished', () =>
       validators: [createCheckValidator()],
     });
     await track(bureau);
-    await bureau.waitForRecovery?.();
+    await bureau.recovery();
     const view = await inspection();
     return { bureau, diagnostics, view };
   }
@@ -1192,7 +1193,7 @@ describe('a controller that ends abnormally while its goal is unfinished', () =>
       diagnostics,
     });
     await track(next.bureau);
-    const report = await next.bureau.waitForRecovery?.();
+    const report = await next.bureau.recovery();
 
     // The bytes that keep the controller from starting its attempt are also a run
     // record the engine's own batch recovery cannot read, so the batch failed too.
@@ -1247,7 +1248,7 @@ describe('a goal record that contradicts itself', () => {
     });
     await track(bureau);
 
-    const report = await bureau.waitForRecovery?.();
+    const report = await bureau.recovery();
     const recovered = await bureau.goals.recover('g1');
 
     expect(report?.perRunFailures).toEqual([
@@ -1368,7 +1369,7 @@ describe('a canceled goal whose workflow this bureau cannot read', () => {
     expect(marked.status).toBe('updated');
     const bureau = await bootWithoutEngine();
 
-    const report = await bureau.waitForRecovery?.();
+    const report = await bureau.recovery();
 
     // The boot sweep ran without an engine: the marker the user asked for is committed.
     const committed = await bureau.goals.get('g1');
@@ -1393,7 +1394,7 @@ describe('a canceled goal whose workflow this bureau cannot read', () => {
       validators: [createCheckValidator()],
     });
     await track(bureau);
-    await bureau.waitForRecovery?.();
+    await bureau.recovery();
 
     expect(await bureau.goals.close('g1')).toMatchObject({
       outcome: 'closed',
@@ -1422,7 +1423,7 @@ describe('a goal whose stored record cannot be read', () => {
   it('is a failure of the boot, not a clean recovery', async () => {
     const bureau = await bootOverUnreadable();
 
-    const report = await bureau.waitForRecovery?.();
+    const report = await bureau.recovery();
 
     expect(report?.outcome).toBe('partial');
     expect(report?.perRunFailures).toEqual([
@@ -1432,7 +1433,7 @@ describe('a goal whose stored record cannot be read', () => {
 
   it('is not called not-found by cancel, close, or recover', async () => {
     const bureau = await bootOverUnreadable();
-    await bureau.waitForRecovery?.();
+    await bureau.recovery();
 
     expect(await bureau.goals.cancel('g1')).toEqual({ outcome: 'record-unreadable' });
     expect(await bureau.goals.close('g1')).toEqual({ outcome: 'record-unreadable' });
@@ -1446,7 +1447,7 @@ describe('a goal whose stored record cannot be read', () => {
 
   it('reads to a principal-scoped caller exactly as a goal it does not own or that is not there', async () => {
     const bureau = await bootOverUnreadable();
-    await bureau.waitForRecovery?.();
+    await bureau.recovery();
     const scoped = { principal: 'alice' };
 
     // The record has no readable owner, so a scoped caller has no claim on it
@@ -1514,7 +1515,7 @@ describe('a goal read by a bureau with no durable engine', () => {
     expect(closure.status).toBe('updated');
     const bureau = await bootWithoutEngine();
 
-    const report = await bureau.waitForRecovery?.();
+    const report = await bureau.recovery();
 
     expect(report?.outcome).toBe('partial');
     expect(report?.perRunFailures).toEqual([

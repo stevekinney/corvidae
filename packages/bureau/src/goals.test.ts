@@ -33,9 +33,10 @@ import {
   workerAgent,
   workflowStatus,
 } from './testing/goal-fixtures.test-support';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { spyOnPrune } from './testing/prune-spy.test-support';
 import type { Bureau } from './types';
+import { quietFor } from '@lostgradient/testing/wait-until';
 
 const open: Bureau[] = [];
 
@@ -562,7 +563,7 @@ describe('bureau.goals', () => {
           transitionSeq: 1,
         },
       });
-      expect(await bureau.getDurableRun('goal:g1')).toBeNull();
+      expect(await bureau.tasks.workflow('goal:g1')).toBeNull();
       expect(ran).toBe(false);
     });
 
@@ -649,7 +650,7 @@ describe('bureau.goals', () => {
       await reaches(bureau, 'running');
       expect(await workflowStatus(bureau, 'goal-g1-a0')).toBe('running');
 
-      expect(await bureau.cancelDurableRun('goal:g1')).toEqual({ status: 'requested' });
+      await bureau.durableEngine()!.cancel('goal:g1');
 
       const stopped = await pollUntil(
         async () => (await workflowStatus(bureau, 'goal-g1-a0')) === 'cancelled',
@@ -699,7 +700,7 @@ describe('bureau.goals', () => {
 
       validating.release();
       await verdictDelivered.promise;
-      await pollUntil(() => false, 10);
+      await quietFor(50);
       expect(await bureau.goals.get('g1')).toEqual(canceled);
       expect(canceled?.attempts.map((attempt) => attempt.status)).toEqual(['aborted']);
       expect(canceled?.attempts[0]?.validation).toBeUndefined();
@@ -758,8 +759,8 @@ describe('bureau.goals', () => {
       // A principal sees its own goals. A goal created with no principal is owned by anonymous:local.
       expect(await listedIds(bureau, { principal: 'alice' })).toEqual(['g1']);
       expect(await listedIds(bureau, { principal: 'anonymous:local' })).toEqual(['g3']);
-      expect(await bureau.getOwner({ kind: 'goal', id: 'g1' })).toBe('alice');
-      expect(await bureau.getOwner({ kind: 'goal', id: 'g3' })).toBe('anonymous:local');
+      expect(await bureau.ownerOf({ kind: 'goal', id: 'g1' })).toBe('alice');
+      expect(await bureau.ownerOf({ kind: 'goal', id: 'g3' })).toBe('anonymous:local');
       // Omitting the principal is a trusted, internal call.
       expect(await listedIds(bureau)).toEqual(['g1', 'g2', 'g3']);
       // And the denied cancel changed nothing.
@@ -900,7 +901,7 @@ describe('bureau.goals', () => {
       validators: [createCheckValidator()],
     });
     await bureau.goals.create(goalRequest());
-    const run = bureau.run('worker', 'plain');
+    const run = await bureau.tasks.start('worker', 'plain');
 
     const result = await run.result();
     expect(result.content).toBe('done');

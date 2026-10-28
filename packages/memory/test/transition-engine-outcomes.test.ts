@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   EvidenceImmutableError,
   EvidenceProjectionBatchLimitError,
@@ -8,7 +9,6 @@ import {
   ProjectionRevisionConflictError,
 } from '../src/evidence-projection-storage';
 import { MemoryEvidenceValidationError } from '../src/evidence-schema';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import {
   createTransitionEngine,
   TransitionIdentifierConflictError,

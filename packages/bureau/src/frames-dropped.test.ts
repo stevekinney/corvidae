@@ -8,7 +8,7 @@ import { describe, expect, it } from 'bun:test';
 import { type BureauEventEnvelope, createBureauEventFeed } from './bureau-event-feed.ts';
 import { RunRegisteredEvent } from './events.ts';
 import { FRAMES_DROPPED_KIND } from './frames-dropped.ts';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   attachRunEventFeed,
   type MutableAgentRunEventRegistry,

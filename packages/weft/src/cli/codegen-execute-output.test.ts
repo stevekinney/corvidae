@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
+import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import { executeCodegen } from './codegen.ts';
 
 const FIXTURE_DIR = resolve(import.meta.dir, '__fixtures__/codegen');
@@ -29,7 +30,7 @@ describe('executeCodegen end-to-end', () => {
       server: 'http://example.invalid',
       from: REGISTRY_FIXTURE,
       out,
-      timeoutMs: 30_000,
+      timeoutMs: HANG_GUARD_MILLISECONDS,
     });
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('--server and --from cannot be used together');
@@ -42,7 +43,7 @@ describe('executeCodegen end-to-end', () => {
     const first = await executeCodegen({
       from: REGISTRY_FIXTURE,
       out,
-      timeoutMs: 30_000,
+      timeoutMs: HANG_GUARD_MILLISECONDS,
       json: true,
     });
     expect(first.exitCode).toBe(0);
@@ -56,7 +57,7 @@ describe('executeCodegen end-to-end', () => {
     const second = await executeCodegen({
       from: REGISTRY_FIXTURE,
       out,
-      timeoutMs: 30_000,
+      timeoutMs: HANG_GUARD_MILLISECONDS,
       json: true,
     });
     expect(second.exitCode).toBe(0);
@@ -75,7 +76,7 @@ describe('executeCodegen end-to-end', () => {
     const result = await executeCodegen({
       from: join(dir, 'no-such-file.json'),
       out: join(dir, 'weft.d.ts'),
-      timeoutMs: 30_000,
+      timeoutMs: HANG_GUARD_MILLISECONDS,
       json: true,
     });
     expect(result.exitCode).toBe(1);

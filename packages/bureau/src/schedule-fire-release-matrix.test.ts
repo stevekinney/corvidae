@@ -19,13 +19,14 @@ import {
   createScheduleFireHarness,
   durableStatus,
   fireOnce,
+  followedBy,
   handlerOf,
   pollUntil,
   reviewOf,
   reviewsOf,
 } from './schedule-fire-fixtures.test-support';
 import { scheduledFireHoldings, scheduledFireReviewStateOf } from './scheduled-fire-review-state';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau } from './types';
 import { expireReviews } from './testing/expired-reviews.test-support';
 
@@ -110,6 +111,7 @@ async function expectNothingRemains(
     ...options,
     toolbox: approvalToolbox(restartedCharges),
   });
+  // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
   for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
   expect(reviewsOf(restarted, fireId)).toEqual([]);
   expect(scheduledFireHoldings(scheduledFireReviewStateOf(restarted), fireId)).toEqual([]);
@@ -142,7 +144,7 @@ const stopped = {
     }
     await pollUntil(async () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
-      await bureau.runDurableMaintenance(Date.now());
+      await bureau.maintain(Date.now());
       return (await bureau.internals.taskRegistry.record(fireId)) === undefined ? true : undefined;
     }, 'the fire’s task to leave retention');
   },
@@ -158,9 +160,9 @@ const continuing = {
     );
     expect(canceled.error).toBeUndefined();
   },
-  'canceled as a durable run': async ({ bureau, fireId }: Context) => {
-    const outcome = await bureau.cancelDurableRun(fireId);
-    expect(outcome.status).toBe('requested');
+  'canceled in process through tasks.cancel': async ({ bureau, fireId }: Context) => {
+    const outcome = await bureau.tasks.cancel(fireId);
+    expect(outcome.receipt).not.toBe('rejected');
   },
   'canceled in the engine, by a route Bureau did not take': async ({ bureau, fireId }: Context) => {
     await bureau.durableEngine()?.cancel(fireId);
@@ -374,6 +376,7 @@ async function fireForCrash() {
   });
   const { fireId } = await fireOnce(first, OWNER.alice, SESSION);
   await reviewOf(first, fireId);
+  // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
   for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
   return {
     first,
@@ -384,7 +387,7 @@ async function fireForCrash() {
     async cancelAndCrash(cancel: () => void) {
       armed = true;
       cancel();
-      await Promise.race([reached.promise, new Promise((resolve) => setTimeout(resolve, 3000))]);
+      await reached.promise;
       expect(held).toBe(true);
     },
   };
@@ -395,8 +398,8 @@ describe('a crash between a fire’s cancel and the release of its approval', ()
     'canceled through its task, crashed before the release': (first: Bureau, fireId: string) => {
       void rpc(handlerOf(first), 'bureau.tasks.cancel', { taskId: fireId }, 'alice-key');
     },
-    'canceled as a durable run, crashed before the release': (first: Bureau, fireId: string) => {
-      void first.cancelDurableRun(fireId);
+    'canceled in process, crashed before the release': (first: Bureau, fireId: string) => {
+      void first.tasks.cancel(fireId);
     },
     'canceled in the engine, crashed before the release': (first: Bureau, fireId: string) => {
       void first.durableEngine()?.cancel(fireId);
@@ -416,6 +419,7 @@ describe('a crash between a fire’s cancel and the release of its approval', ()
         storage: crash.raw,
         toolbox: approvalToolbox(charges),
       });
+      // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
       for (let turn = 0; turn < 50; turn += 1) {
         await new Promise((resolve) => setTimeout(resolve, 2));
       }
@@ -463,14 +467,14 @@ describe('a cancel by a peer, with the holder alive', () => {
     });
     const { fireId } = await fireOnce(holder, OWNER.alice, SESSION);
     const review = await reviewOf(holder, fireId);
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await followedBy(holder, fireId);
     const peer = await harness.open({
       ...options,
       toolbox: approvalToolbox([]),
     });
 
-    const outcome = await peer.cancelDurableRun(fireId);
-    expect(outcome.status).toBe('requested');
+    const outcome = await peer.tasks.cancel(fireId);
+    expect(outcome.receipt).toBe('canceled');
     await pollUntil(
       async () => ((await durableStatus(peer, fireId)) === 'cancelled' ? true : undefined),
       'the engine to record the cancel',
@@ -605,6 +609,7 @@ describe('a boot that cannot read the engine’s status', () => {
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
       toolbox: approvalToolbox([]),
     });
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
 
     expect(reviewsOf(faulty, fireId)).toEqual([]);

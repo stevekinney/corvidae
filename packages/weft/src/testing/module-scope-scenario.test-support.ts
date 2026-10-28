@@ -10,7 +10,7 @@
  *
  * Module scope has no per-test timeout, so a scenario whose child never exits would otherwise
  * hold the whole run. {@link HANG_GUARD_MILLISECONDS} of awake time turns that hang into a failure
- * of the scenario's test; `scripts/lib/hang-guard.ts` explains why the guard counts only time the
+ * of the scenario's test; `@lostgradient/testing/hang-guard` explains why the guard counts only time the
  * process was awake (COR-1541). It is a uniform hang detector, set far above any healthy run on a
  * loaded host and never a performance bound; a scenario that needs a larger budget passes it
  * explicitly.
@@ -26,7 +26,7 @@
  */
 import { jest } from 'bun:test';
 
-import { afterAwakeTime, HANG_GUARD_MILLISECONDS } from '../../scripts/lib/hang-guard.ts';
+import { afterAwakeTime, HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import { restoreRealTimers } from './fake-timers.test-support.ts';
 
 /** The outcome {@link outcomeOf} records when a scenario does not settle before its hang guard. */

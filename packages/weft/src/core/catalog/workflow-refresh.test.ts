@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { rejectionOf, throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { buildWorkflowContract } from '../contract/build.ts';
 import { buildWorkflowRevisionManifest } from '../contract/manifest.ts';
 import type { WorkflowRevisionManifest } from '../contract/types.ts';
@@ -467,6 +468,7 @@ describe('WorkflowRefreshCoordinator', () => {
     coordinator.startPolling();
     await fetched;
     await warmed;
+    // load-proof: the installed-state commit runs inside the awaited fetch and warm promises on in-memory storage, so one extra turn is surplus
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(coordinator.diagnostics('checkout')[0]?.state).toBe('installed');
     await coordinator[Symbol.asyncDispose]();
@@ -492,7 +494,9 @@ describe('WorkflowRefreshCoordinator', () => {
     });
 
     coordinator.startPolling();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitUntil(() => coordinator.diagnostics('checkout')[0]?.state === 'failed', {
+      message: 'the refresh failure to be recorded',
+    });
     expect(coordinator.diagnostics('checkout')[0]?.state).toBe('failed');
     await coordinator[Symbol.asyncDispose]();
   });

@@ -16,7 +16,7 @@ function nextTool() {
   });
 }
 
-describe('a catalog run recovered after a restart (COR-718)', () => {
+describe('a task recovered after a restart (COR-718)', () => {
   it('keeps its owner, anonymous:local when it was dispatched with no principal, readable through event history', async () => {
     const databasePath = createTemporaryPath('owner-of-record-catalog-recovery', '.sqlite');
     let reachedStepOne = 0;
@@ -45,14 +45,10 @@ describe('a catalog run recovered after a restart (COR-718)', () => {
       onDiagnostic,
     });
     try {
-      first.run('echo', 'unowned');
-      first.run('echo', 'owned', { principal: 'api-key:alice' });
+      const unowned = await first.tasks.start('echo', 'unowned');
+      const owned = await first.tasks.start('echo', 'owned', { principal: 'api-key:alice' });
       await waitForCondition(() => reachedStepOne >= 2, 'both runs never reached step one');
-      const listed = await first.listDurableRuns();
-      const runIds = (listed?.items ?? [])
-        .filter((item) => item.id.startsWith('agent-run-'))
-        .map((item) => item.id);
-      expect(runIds).toHaveLength(2);
+      const runIds = [unowned.id, owned.id];
       // The first process is deliberately not disposed: it stands in for a crash.
 
       const second = await createBureau({
@@ -70,18 +66,18 @@ describe('a catalog run recovered after a restart (COR-718)', () => {
       });
       try {
         await waitForCondition(async () => {
-          const after = await second.listDurableRuns();
+          const after = await second.tasks.workflows();
           return runIds.every(
             (id) => after?.items.find((item) => item.id === id)?.status === 'completed',
           );
         }, 'the recovered runs never completed');
 
-        const owners = await Promise.all(runIds.map((id) => second.getOwner({ kind: 'run', id })));
+        const owners = await Promise.all(runIds.map((id) => second.ownerOf({ kind: 'run', id })));
         expect(owners.toSorted((left, right) => String(left).localeCompare(String(right)))).toEqual(
           ['anonymous:local', 'api-key:alice'],
         );
         const read = async (id: string, principal: string) => {
-          const page = await second.eventHistory({ kind: 'run', id }, { principal });
+          const page = await second.tasks.events(id, { principal });
           return 'outcome' in page ? page.outcome : 'page';
         };
         const verdicts = await Promise.all(

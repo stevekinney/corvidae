@@ -15,7 +15,8 @@
  * carries a `// wait-bound: <reason>` comment of at least 20 characters directly above its line.
  *
  * Blind spots: a bound reached through a wrapper the file declares itself (a local `watchdog`), a
- * name imported from another module, or a stand-in's `--wait-milliseconds` argument.
+ * name imported from another module, or a stand-in's `--wait-milliseconds` argument. An options
+ * object in the second place is the shared `waitUntil`'s; only its `hangGuardMilliseconds` is a bound.
  */
 import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
@@ -69,7 +70,23 @@ function shortWaitBounds(path: string, text: string): string[] {
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
       const [, second] = node.arguments;
-      if (BOUNDED_CALLS.has(node.expression.text) && second !== undefined) check(second);
+      if (BOUNDED_CALLS.has(node.expression.text) && second !== undefined) {
+        if (ts.isObjectLiteralExpression(second)) {
+          // The shared `waitUntil` from `@lostgradient/testing/wait-until`: an options object whose
+          // only deadline is `hangGuardMilliseconds`, which a test of the guard itself may shorten.
+          for (const property of second.properties) {
+            if (
+              ts.isPropertyAssignment(property) &&
+              ts.isIdentifier(property.name) &&
+              property.name.text === 'hangGuardMilliseconds'
+            ) {
+              check(property.initializer);
+            }
+          }
+        } else {
+          check(second);
+        }
+      }
       if (node.expression.text === 'interruptRunner') {
         for (const argument of node.arguments) {
           if (!ts.isObjectLiteralExpression(argument)) continue;
@@ -133,6 +150,15 @@ describe('waits on gate processes in playground tests', () => {
     ].join('\n');
 
     expect(shortWaitBounds('example.test.ts', source)).toEqual([]);
+  });
+
+  it('reads the shared waitUntil options object for its hang guard only', () => {
+    const source = [
+      'await waitUntil(ready, { message: "ready" });',
+      'await waitUntil(ready, { message: "ready", hangGuardMilliseconds: 50 });',
+    ].join('\n');
+
+    expect(shortWaitBounds('example.test.ts', source)).toEqual(['example.test.ts:2: 50']);
   });
 
   it('does not accept a short exemption reason', () => {

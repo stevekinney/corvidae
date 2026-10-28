@@ -3,9 +3,10 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { awakeTurns, quietFor } from '@lostgradient/testing/wait-until';
 import { startHost, type Host } from './host.ts';
+import { runTask } from './run-task.test-support.ts';
 import {
-  ECHO_NOTHING_TO_REPEAT,
   HUMAN_INPUT_PROMPT,
   HUMAN_INPUT_SIGNAL,
   NEVER_PASSING_VALIDATOR,
@@ -95,7 +96,7 @@ describe('the seeded agents', () => {
     try {
       for (const name of ['assistant', 'internal', 'tool-runner'] as const) {
         for (let turn = 0; turn < 3; turn += 1) {
-          const result = await host.bureau.run(name, `Message ${turn}`).result();
+          const result = await runTask(host.bureau, name, `Message ${turn}`);
           expect(result.steps.length, name).toBeGreaterThan(0);
         }
       }
@@ -107,30 +108,27 @@ describe('the seeded agents', () => {
 
   test('assistant and internal each give one fixed reply', async () => {
     const host = await start();
-    const assistant = await host.bureau.run('assistant', 'Hello').result();
+    const assistant = await runTask(host.bureau, 'assistant', 'Hello');
     expect(assistant.content).toBe(
       'Hello from the assistant. This reply is scripted; no model was called.',
     );
-    const internal = await host.bureau.run('internal', 'Hello').result();
+    const internal = await runTask(host.bureau, 'internal', 'Hello');
     expect(internal.content).toBe('Internal bookkeeping is done. This reply is scripted.');
   });
 
-  test('echo repeats the last user message it received, quotes and all, and says so when it has none', async () => {
+  test('echo repeats the last user message it received, quotes and all', async () => {
     const host = await start();
     const quoted = '> first excerpt\n\n> second\n> excerpt\n\nWhy does that matter?';
-    const echoed = await host.bureau.run('echo', quoted).result();
+    const echoed = await runTask(host.bureau, 'echo', quoted);
     expect(echoed.content).toBe(quoted);
     // A second turn on the same agent repeats that turn's message, not the first one.
-    const again = await host.bureau.run('echo', 'Another message').result();
+    const again = await runTask(host.bureau, 'echo', 'Another message');
     expect(again.content).toBe('Another message');
-    // A message with no text leaves nothing to repeat, and the echo says so.
-    const nothing = await host.bureau.run('echo', '').result();
-    expect(nothing.content).toBe(ECHO_NOTHING_TO_REPEAT);
   });
 
-  test('request-human-input, dispatched without a session, parks and resumes by its run id', async () => {
+  test('request-human-input parks its task and resumes through the review of its context', async () => {
     const host = await start();
-    const run = host.bureau.run('request-human-input', 'Ship it');
+    const run = await host.bureau.tasks.start('request-human-input', 'Ship it');
 
     const review = await waitForReview(host, run.id);
     expect(review).toMatchObject({
@@ -140,8 +138,8 @@ describe('the seeded agents', () => {
       signalName: HUMAN_INPUT_SIGNAL,
       prompt: HUMAN_INPUT_PROMPT,
     });
-    // A catalog run has no session; the run id addresses its review.
-    expect(review.sessionId).toBeUndefined();
+    // The task runs in a context of its own, which its review carries.
+    expect(review.sessionId).toBe(run.contextId);
 
     await host.bureau.reviews.resolve({
       id: review.id,
@@ -156,7 +154,7 @@ describe('the seeded agents', () => {
 
   test('tool-runner looks the order up, then stops on a refund waiting for approval', async () => {
     const host = await start();
-    const result = await host.bureau.run('tool-runner', 'Refund order-1001').result();
+    const result = await runTask(host.bureau, 'tool-runner', 'Refund order-1001');
     const calls = result.steps.flatMap((step) =>
       step.results.map((outcome) => [outcome.toolName, outcome.outcome] as const),
     );
@@ -243,9 +241,9 @@ describe('the seeded schedule and goal', () => {
 
   test('the goal passes its validator', async () => {
     const host = await start();
-    const deadline = Date.now() + 5_000;
     let status = await goalStatus(host);
-    while (status !== 'succeeded' && Date.now() < deadline) {
+    for await (const _ of awakeTurns()) {
+      if (!(status !== 'succeeded')) break;
       await Bun.sleep(25);
       status = await goalStatus(host);
     }
@@ -267,18 +265,21 @@ describe('the seeded schedule and goal', () => {
       const goal = await host.bureau.goals.get('goal-that-never-passes');
       return goal?.status;
     };
-    // The agent answers at once, and then the validator is what the goal waits on.
-    const deadline = Date.now() + 5_000;
-    while ((await statusOf()) !== 'evaluating' && Date.now() < deadline) await Bun.sleep(25);
+    for await (const _ of awakeTurns()) {
+      if (!((await statusOf()) !== 'evaluating')) break;
+      await Bun.sleep(25);
+    }
     expect(await statusOf()).toBe('evaluating');
-    await Bun.sleep(400);
+    await quietFor(400);
     expect(await statusOf()).toBe('evaluating');
 
     const cancelled = await host.bureau.goals.cancel('goal-that-never-passes');
 
     expect(['canceled', 'cancellation-pending']).toContain(cancelled.outcome);
-    const endBy = Date.now() + 5_000;
-    while ((await statusOf()) !== 'canceled' && Date.now() < endBy) await Bun.sleep(25);
+    for await (const _ of awakeTurns()) {
+      if (!((await statusOf()) !== 'canceled')) break;
+      await Bun.sleep(25);
+    }
     expect(await statusOf()).toBe('canceled');
   });
 
@@ -298,7 +299,7 @@ describe('the seeded schedule and goal', () => {
 });
 
 async function waitForReview(host: Host, runId: string) {
-  for (let attempt = 0; attempt < 400; attempt += 1) {
+  for await (const _ of awakeTurns()) {
     const review = host.bureau.reviews.list().find((candidate) => candidate.runId === runId);
     if (review !== undefined) return review;
     await Bun.sleep(5);
@@ -309,16 +310,13 @@ async function waitForReview(host: Host, runId: string) {
 describe('the seeded agents through session runs', () => {
   test('request-human-input parks for an operator and continues once answered', async () => {
     const host = await start();
-    const run = await host.bureau.createRun({
-      message: 'Ship it',
-      agentName: 'request-human-input',
-    });
+    const run = await host.bureau.tasks.start('request-human-input', 'Ship it');
 
     const review = await waitForReview(host, run.id);
     expect(review).toMatchObject({
       kind: 'human-wait',
       runId: run.id,
-      sessionId: run.sessionId,
+      sessionId: run.contextId,
       agentName: 'request-human-input',
       signalName: HUMAN_INPUT_SIGNAL,
       prompt: HUMAN_INPUT_PROMPT,
@@ -330,23 +328,20 @@ describe('the seeded agents through session runs', () => {
       principal: 'anonymous:local',
       payload: { environment: 'staging' },
     });
-    const finished = await host.bureau.waitForDurableRun(run.id);
+    const finished = await host.bureau.tasks.wait(run.id);
     expect(finished?.status).toBe('completed');
     expect(host.bureau.reviews.list()).toEqual([]);
   });
 
-  test('tool-runner raises its refund approval under the session run, and approving runs it', async () => {
+  test('tool-runner raises its refund approval under its task, and approving it through the task’s context runs it', async () => {
     const host = await start();
-    const run = await host.bureau.createRun({
-      message: 'Refund order-1001',
-      agentName: 'tool-runner',
-    });
+    const run = await host.bureau.tasks.start('tool-runner', 'Refund order-1001');
 
     const review = await waitForReview(host, run.id);
     expect(review.kind).toBe('tool-approval');
-    // The review belongs to the session run itself, not to a constant stand-in for it.
+    // The review belongs to the task itself, and its context's request context signed the approval.
     expect(review.runId).toBe(run.id);
-    expect(review.sessionId).toBe(run.sessionId);
+    expect(review.sessionId).toBe(run.contextId);
     if (review.kind !== 'tool-approval') throw new Error('unreachable');
     expect(review.approval.toolName).toBe('issue-refund');
 
@@ -361,12 +356,9 @@ describe('the seeded agents through session runs', () => {
 
   test('a second session run starts from the first response again', async () => {
     const host = await start();
-    const first = await host.bureau.createRun({ message: 'one', agentName: 'request-human-input' });
+    const first = await host.bureau.tasks.start('request-human-input', 'one');
     await waitForReview(host, first.id);
-    const second = await host.bureau.createRun({
-      message: 'two',
-      agentName: 'request-human-input',
-    });
+    const second = await host.bureau.tasks.start('request-human-input', 'two');
 
     const review = await waitForReview(host, second.id);
 

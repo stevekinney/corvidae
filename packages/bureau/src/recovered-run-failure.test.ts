@@ -12,7 +12,7 @@ import { createConversationHistory } from 'conversationalist';
 
 import { createBureau } from './create-bureau';
 import { createRuntimeComposition } from './runtime-composition';
-import { waitForCondition } from './test';
+import { listHeldTasks, waitForCondition } from './test';
 import type { AgentDefinitions } from './agent-catalog';
 
 /**
@@ -89,7 +89,7 @@ describe('a run Bureau recovers after the engine failed it', () => {
       onDiagnostic: () => undefined,
     });
     try {
-      await bureau.waitForRecovery?.();
+      await bureau.recovery();
       await waitForCondition(async () => {
         const session = await bureau.contexts.get(sessionId);
         return session?.metadata['lastRunStatus'] !== 'running';
@@ -97,7 +97,7 @@ describe('a run Bureau recovers after the engine failed it', () => {
 
       const session = await bureau.contexts.get(sessionId);
       expect(session?.metadata['lastRunStatus']).toBe('error');
-      expect(bureau.listRuns().find((run) => run.id === runId)?.status).toBe('error');
+      expect(listHeldTasks(bureau).find((run) => run.id === runId)?.status).toBe('error');
     } finally {
       recoverAllSpy.mockRestore();
       getSpy.mockRestore();

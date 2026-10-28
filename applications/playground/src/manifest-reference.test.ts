@@ -343,7 +343,7 @@ describe('isComponentManifest — every real manifest survives the round trip', 
       .filter((manifest) => !isComponentManifest(JSON.parse(JSON.stringify(manifest))))
       .map((manifest) => manifest.kebabName);
     expect(rejected).toEqual([]);
-  }, 30_000);
+  });
 });
 
 describe('isComponentManifest', () => {

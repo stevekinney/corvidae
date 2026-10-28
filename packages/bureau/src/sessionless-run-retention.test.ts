@@ -1,9 +1,10 @@
 /**
  * COR-1581 — a run with no session holds the managed assets its own rows reference. The asset
  * policy's retention floor would otherwise expire a supplied input image, or a generated one, while
- * the run (or its stored transcript) still points at it. A catalog dispatch (`bureau.run()`, a child,
- * a goal attempt) never has a session, whether or not the store registers it, so each claims under a
- * holder keyed by its own run id and the row. The claims are released when the run ends (COR-1630;
+ * the run (or its stored transcript) still points at it. A catalog dispatch (a child, a goal
+ * attempt, a workflow step) never has a session, whether or not the store registers it, so each
+ * claims under a holder keyed by its own run id and the row. A task always has a context, which
+ * holds its rows instead. The claims are released when the run ends (COR-1630;
  * see `catalog-run-asset-claims.test.ts`), so these tests hold the run in flight to show the claim
  * and let it end to show the asset fall back to the retention floor.
  */
@@ -14,9 +15,9 @@ import {
   type GenerateContext,
   stopWhen,
   waitForCondition,
-  waitForRunState,
   withBackendDescriptors,
 } from '@lostgradient/operative';
+import { waitForTaskState } from './test';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 import type { MediaContent } from 'conversationalist';
@@ -38,6 +39,7 @@ import type { Bureau } from './types';
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   while (cleanups.length > 0) await cleanups.pop()!();
+  // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
   await yieldToPortableEventLoop();
 });
 
@@ -208,11 +210,10 @@ function runRowPrefix(runId: string): string {
   return runRowHolderId(runId, '').slice(0, -1);
 }
 
-describe.each([
-  ['a durable engine', { storage: { type: 'memory' as const }, durable: true }],
-  ['no durable engine (the in-process path)', {}],
-] as const)('a sessionless bureau.run() with a supplied image, on %s', (_name, extra) => {
-  it('keeps the input asset resolvable while the run is parked past the retention floor', async () => {
+describe('a task with a supplied image, on a durable engine', () => {
+  const extra = { storage: { type: 'memory' as const }, durable: true };
+
+  it('keeps the input asset resolvable while the task is parked past the retention floor, held by its context', async () => {
     const environment = createEnvironment();
     const seen: GenerateContext[] = [];
     const parked = release();
@@ -220,15 +221,16 @@ describe.each([
     const image = await suppliedImage(bureau);
     const assetId = assetIdOf(image);
 
-    const run = bureau.run('viewer', [image], { principal: alice.id });
-    await waitForCondition(() => seen.length > 0, 'the run never reached its first step');
+    const run = await bureau.tasks.start('viewer', [image], { principal: alice.id });
+    await waitForCondition(() => seen.length > 0, 'the task never reached its first step');
 
     const report = await pastTheFloor(environment, bureau);
 
     expect(report.expired).not.toContain(assetId);
     expect(await resolves(bureau, assetId)).toBe(true);
+    // A task runs in a context, so the context's row holds the image, not a run-row holder.
     expect(await holdersOf(bureau, assetId)).toEqual([
-      expect.stringContaining(runRowPrefix(run.id)),
+      expect.stringContaining(`session-row:${run.contextId}:`),
     ]);
 
     parked.open();
@@ -236,24 +238,46 @@ describe.each([
     expect(result.finishReason).not.toBe('error');
     expect(await resolves(bureau, assetId)).toBe(true);
   });
+});
 
-  it('lets the input asset expire on the retention floor once the run has finished and released its claim', async () => {
+describe('a task with a supplied image, on no durable engine (the in-process path)', () => {
+  it('keeps the input asset resolvable while the task is parked past the retention floor, and lets it go when the task ends', async () => {
     const environment = createEnvironment();
-    const bureau = await openBureau(environment, { viewer: viewer([]) }, extra);
+    const seen: GenerateContext[] = [];
+    const parked = release();
+    const bureau = await openBureau(environment, { viewer: viewer(seen, parked.gate) });
     const image = await suppliedImage(bureau);
+    const assetId = assetIdOf(image);
 
-    const run = bureau.run('viewer', [image], { principal: alice.id });
-    await run.result();
-    await waitForCondition(
-      () => isUnheld(bureau, assetIdOf(image)),
-      'the finished run never released its claim',
-    );
+    const run = await bureau.tasks.start('viewer', [image], { principal: alice.id });
+    await waitForCondition(() => seen.length > 0, 'the task never reached its first step');
+
     const report = await pastTheFloor(environment, bureau);
 
-    expect(report.expired).toContain(assetIdOf(image));
-    expect(await resolves(bureau, assetIdOf(image))).toBe(false);
-  });
+    expect(report.expired).not.toContain(assetId);
+    expect(await resolves(bureau, assetId)).toBe(true);
+    // No session store saves the context's rows here, so the task holds its input under its run.
+    expect(await holdersOf(bureau, assetId)).toEqual([
+      expect.stringContaining(runRowPrefix(run.id)),
+    ]);
 
+    parked.open();
+    const result = await run.result();
+    expect(result.finishReason).not.toBe('error');
+    // Held for the task's life only: its end lets the claim go, and the floor then expires it.
+    await waitForCondition(
+      () => isUnheld(bureau, assetId),
+      'the finished task never released its claim',
+    );
+    const afterEnd = await pastTheFloor(environment, bureau);
+    expect(afterEnd.expired).toContain(assetId);
+  });
+});
+
+describe.each([
+  ['a durable engine', { storage: { type: 'memory' as const }, durable: true }],
+  ['no durable engine (the in-process path)', {}],
+] as const)('an image no run referenced, on %s', (_name, extra) => {
   it('is expired by the floor when no run referenced it', async () => {
     const environment = createEnvironment();
     const bureau = await openBureau(environment, { viewer: viewer([]) }, extra);
@@ -265,7 +289,7 @@ describe.each([
   });
 });
 
-describe('a sessionless bureau.run() across a restart', () => {
+describe('a task across a restart', () => {
   async function sqliteStorage() {
     const directory = await mkdtemp(join(tmpdir(), 'bureau-sessionless-retention-'));
     cleanups.push(async () => {
@@ -291,7 +315,7 @@ describe('a sessionless bureau.run() across a restart', () => {
       durable,
     );
     const image = await suppliedImage(first);
-    first.run('viewer', [image], { principal: alice.id });
+    await first.tasks.start('viewer', [image], { principal: alice.id });
     await waitForCondition(() => seen.length > 0, 'the run never reached its first step');
 
     // The recovered run is parked too, so it is still in flight when the floor passes.
@@ -300,38 +324,11 @@ describe('a sessionless bureau.run() across a restart', () => {
       { viewer: viewer([], new Promise<void>(() => {})) },
       durable,
     );
-    await second.waitForRecovery?.();
+    await second.recovery();
     const report = await pastTheFloor(environment, second);
 
     expect(report.expired).not.toContain(assetIdOf(image));
     expect(await resolves(second, assetIdOf(image))).toBe(true);
-  });
-
-  it('lets the input asset expire on the floor when a graceful shutdown cancelled the run for good', async () => {
-    const environment = createEnvironment();
-    const storage = await sqliteStorage();
-    const seen: GenerateContext[] = [];
-
-    const first = await openBureau(
-      environment,
-      { viewer: viewer(seen, new Promise<void>(() => {})) },
-      { storage, durable: true },
-    );
-    const image = await suppliedImage(first);
-    first.run('viewer', [image], { principal: alice.id });
-    await waitForCondition(() => seen.length > 0, 'the run never reached its first step');
-    // The default `abort` policy cancels the durable run for good, so it has ended.
-    await first.dispose();
-
-    const second = await openBureau(
-      environment,
-      { viewer: viewer([]) },
-      { storage, durable: true },
-    );
-    const report = await pastTheFloor(environment, second);
-
-    expect(report.expired).toContain(assetIdOf(image));
-    expect(await resolves(second, assetIdOf(image))).toBe(false);
   });
 });
 
@@ -350,14 +347,10 @@ describe('a child run', () => {
           }),
       }),
     });
-    const parent = await bureau.createRun({
-      agentName: 'default',
-      message: 'plan the work',
-      principal: alice.id,
-    });
+    const parent = await bureau.tasks.start('default', 'plan the work', { principal: alice.id });
     cleanups.push(async () => {
-      bureau.abortRun(parent.id);
-      await waitForRunState(bureau, parent.id);
+      await bureau.tasks.cancel(parent.id);
+      await waitForTaskState(bureau, parent.id);
     });
     return { bureau, parent };
   }
@@ -431,37 +424,5 @@ describe('a child run', () => {
       { type: 'asset.retained', assetId, holderId: holder },
       { type: 'asset.released', assetId, holderId: holder },
     ]);
-  });
-});
-
-describe.each([
-  ['a durable engine', { storage: { type: 'memory' as const }, durable: true }],
-  ['no durable engine (the in-process path)', {}],
-] as const)('a generated image from a sessionless bureau.run(), on %s', (_name, extra) => {
-  it('is claimed under the run when the row commits, and let go when the run ends', async () => {
-    const environment = createEnvironment();
-    const bureau = await openBureau(environment, { painter }, extra);
-    const claims = watchRunRowClaims(bureau);
-
-    const run = bureau.run('painter', 'Draw', { principal: alice.id });
-    const result = await run.result();
-    await run.closed();
-    const image = result.parts.find((part) => part.type === 'image');
-    if (image === undefined || image.type !== 'image')
-      throw new Error('the run generated no image');
-    const assetId = assetIdOf(image);
-    await waitForCondition(
-      () => isUnheld(bureau, assetId),
-      'the finished run never released its claim',
-    );
-
-    const holder = expect.stringContaining(runRowPrefix(run.id));
-    expect(claims.filter((event) => event.assetId === assetId)).toEqual([
-      { type: 'asset.retained', assetId, holderId: holder },
-      { type: 'asset.released', assetId, holderId: holder },
-    ]);
-    // Nothing holds the image now, so the retention floor expires it.
-    const report = await pastTheFloor(environment, bureau);
-    expect(report.expired).toContain(assetId);
   });
 });

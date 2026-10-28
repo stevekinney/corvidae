@@ -1,10 +1,12 @@
 /**
  * Guard against starting a child process inside a test body or hook in the default test gate.
  *
- * Bun gives every test, and every `beforeAll`/`beforeEach`/`afterAll`/`afterEach` hook, a
- * five-second clock. A test that spawns a process pays that process's boot and module load on
- * the clock, so on a host running several agents at once it times out, and it passes alone
- * (COR-1392, COR-1396, COR-1459). The fix is never a longer timeout. A test whose child only
+ * Bun gave every test, and every `beforeAll`/`beforeEach`/`afterAll`/`afterEach` hook, a
+ * five-second clock. A test that spawns a process paid that process's boot and module load on
+ * the clock, so on a host running several agents at once it timed out, and it passed alone
+ * (COR-1392, COR-1396, COR-1459). Every lane now runs with `scripts/test-deadlines.ts`'s timeout,
+ * twice the hang guard, so a loaded host no longer fails such a test, but the rule below stands: a
+ * child that never exits is bounded by the awake-time hang guard, not by a per-test clock. A test whose child only
  * runs repository logic calls that logic in process; a test whose child *is* the behavior —
  * real `git`, `tsc`, a SIGKILLed crash child, a fresh runtime — runs it at module scope with
  * top-level await, where no per-test timeout applies, and asserts on the recorded result.
@@ -37,9 +39,9 @@
  * Moving a process to module scope takes it off the per-test clock, so nothing bounds it there:
  * a child that never exits would hold the whole run. A test file, or a `*.test-support.ts` module
  * beside one, therefore never calls a process API directly, wherever the call runs; it starts
- * every process through `spawnWithHangGuard` or
- * `runWithHangGuard` (`@lostgradient/testing/hang-guard`, or its checked copies at
- * `scripts/hang-guard.ts` and `packages/weft/scripts/lib/hang-guard.ts`). They kill a child after
+ * every process through `spawnWithHangGuard` or `runWithHangGuard`
+ * (`@lostgradient/testing/hang-guard`, which root scripts import from
+ * `testing/testing/src/hang-guard.ts` by path). They kill a child after
  * the owner-approved 120-second hang guard of awake time. Bun's own `timeout` option, which this
  * guard used to require, counts time the host spent asleep and killed children on wake
  * (COR-1541); a synchronous spawn blocks the thread, so no awake-time guard can run beside it.

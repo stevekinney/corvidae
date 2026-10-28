@@ -1,5 +1,4 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 
@@ -21,6 +20,7 @@ import type { BackendDescriptor } from './providers/model-catalog';
 import type { ProviderName } from './providers/types';
 import type { RunnableAgent } from './runnable-agent';
 import { OPERATIVE_RESOLVE_RUN_OPTIONS } from './runnable-agent';
+import { drainMicrotasks } from './testing/drain-microtasks.test-support.ts';
 import type { CleanupAcknowledgement, RunOptions, RunResult } from './types';
 
 /** Mechanical AB-214 fixture stub shared by this file's hand-built `AgentRun` handles. */
@@ -185,7 +185,7 @@ function successResult(content: string): RunResult<string, false> {
  * than a flaky assertion.
  */
 function flushMicrotasks(): Promise<void> {
-  return yieldToPortableEventLoop();
+  return drainMicrotasks();
 }
 
 async function drain(run: AgentRun<unknown, boolean>): Promise<RunEvent[]> {

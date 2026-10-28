@@ -8,6 +8,7 @@ import { createManualRuntimeServices, type ManualRuntimeServices } from '@lostgr
 import { createAgent, stopWhen, type GenerateFunction } from '@lostgradient/operative';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { jest } from 'bun:test';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 
 import {
   readFrames,
@@ -47,9 +48,9 @@ export async function advanceFeedPoll(): Promise<void> {
   for (let turn = 0; turn < 5; turn += 1) await yieldToPortableEventLoop();
 }
 
-/** Drives the fake clock until `done()`, or fails after a bounded number of polls. */
+/** Drives the fake clock until `done()`, or fails once the hang guard's awake time passes. */
 export async function driveUntil(done: () => boolean, what: string): Promise<void> {
-  for (let poll = 0; poll < 200; poll += 1) {
+  for await (const _turn of awakeTurns()) {
     if (done()) return;
     await advanceFeedPoll();
   }
@@ -57,7 +58,7 @@ export async function driveUntil(done: () => boolean, what: string): Promise<voi
 }
 
 export async function settledEventsOf(bureau: Bureau, fireId: string) {
-  const page = await bureau.eventHistory({ kind: 'run', id: fireId });
+  const page = await bureau.tasks.events(fireId);
   if (!('events' in page)) return [];
   return page.events.filter((event) => event.kind === SCHEDULE_FIRE_SETTLED_EVENT_KIND);
 }
@@ -96,10 +97,7 @@ export async function followFire(bureau: Bureau, fireId: string, stopAfter?: num
     await handlerOf(bureau)(
       subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
     ),
-    {
-      timeoutMs: 30_000,
-      ...(stopAfter === undefined ? {} : { stop: (read) => read.length >= stopAfter }),
-    },
+    stopAfter === undefined ? {} : { stop: (read) => read.length >= stopAfter },
   ).finally(() => {
     ended = true;
   });

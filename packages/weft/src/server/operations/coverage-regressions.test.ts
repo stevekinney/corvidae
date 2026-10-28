@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Engine } from '../../core/engine.ts';
 import type { WorkflowContext } from '../../core/types.ts';
 import { workflow } from '../../core/types.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { faultToHttpResponse } from '../fault-to-http.ts';
 import { handleRequest } from '../handler.ts';
 import { createOperationRegistry } from '../operation-catalog.ts';

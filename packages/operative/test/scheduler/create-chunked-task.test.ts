@@ -2,12 +2,12 @@ import { createTestToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createChunkedTask } from '../../src/scheduler/create-chunked-task';
 import type { Scheduler } from '../../src/scheduler/create-scheduler';
 import { createScheduler } from '../../src/scheduler/create-scheduler';
 import type { SchedulerTask } from '../../src/scheduler/types';
 import { createMockGenerate } from '../../src/test/index';
-import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 import type { GenerateResponse } from '../../src/types';
 
 function textResponse(content: string): GenerateResponse {

@@ -20,13 +20,13 @@ import {
   type ValidatorInput,
   type ValidatorOutcome,
 } from '@lostgradient/operative';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { expect } from 'bun:test';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import type { GoalState } from '../goal-state';
 import type { BureauGoalRequest } from '../goal-types';
 import type { Bureau, BureauDiagnostic } from '../types';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 export interface TestDatabase {
   readonly path: string;
@@ -69,17 +69,16 @@ export function createTestDatabase(label: string): TestDatabase {
   };
 }
 
-export async function pollUntil(
-  check: () => boolean | Promise<boolean>,
-  attempts = 1000,
-): Promise<boolean> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (await check()) return true;
-    // A tiny real delay: SQLite's completion callbacks starve under a zero-delay loop.
-    await new Promise<void>((resolve) => realRuntime.timers.setTimeout(resolve, 2));
-    await yieldToPortableEventLoop();
-  }
-  return check();
+/**
+ * Waits until `check` holds, however long that takes; the hang guard throws if it never does. It
+ * resolves only with `true`, and its type says so: it cannot answer "did not happen", so
+ * `expect(await pollUntil(...)).toBe(false)` does not compile. A test that needs an absence waits on
+ * the event that proves the system settled and asserts the absence directly, or pauses with
+ * `quietFor`.
+ */
+export async function pollUntil(check: () => boolean | Promise<boolean>): Promise<true> {
+  await waitUntil(check, { message: 'pollUntil' });
+  return true;
 }
 
 export interface Latch {
@@ -228,13 +227,13 @@ export async function workflowStatus(
   bureau: Bureau,
   workflowId: string,
 ): Promise<string | undefined> {
-  const state = await bureau.getDurableRun(workflowId);
+  const state = await bureau.tasks.workflow(workflowId);
   return state?.status;
 }
 
 /** The ids of the durable workflows whose id starts with `prefix`. */
 export async function durableIds(bureau: Bureau, prefix: string): Promise<string[]> {
-  const page = await bureau.listDurableRuns();
+  const page = await bureau.tasks.workflows();
   return (page?.items ?? []).filter((item) => item.id.startsWith(prefix)).map((item) => item.id);
 }
 

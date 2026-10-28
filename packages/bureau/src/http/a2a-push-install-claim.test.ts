@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { completeSend, owedInstallOf, type OwedInstallInput } from './a2a-push-install-claim.ts';
 
 const base: OwedInstallInput = {

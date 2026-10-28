@@ -9,9 +9,9 @@ import {
   createAgent,
   createModelCatalog,
   stopWhen,
-  waitForRunState,
   withBackendDescriptors,
 } from '@lostgradient/operative';
+import { waitForTaskState } from './test';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { appendMessages, createConversationHistory, type Message } from 'conversationalist';
@@ -23,6 +23,7 @@ import { alice, aliceAdministrator, pngBytes } from './testing/asset-fixtures.te
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   while (cleanups.length > 0) await cleanups.pop()!();
+  // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
   await yieldToPortableEventLoop();
 });
 
@@ -77,13 +78,13 @@ describe.each([
       return retain(...args);
     });
 
-    const created = await bureau.createRun({
-      appendMessages: rowReferencing(admission.assetId),
-      agentName: 'echo',
-      principal: alice.id,
-      sessionId: 'chat',
-    });
-    const state = await waitForRunState(bureau, created.id);
+    const created = await bureau.tasks.start(
+      'echo',
+      { append: rowReferencing(admission.assetId) },
+      { contextId: 'chat', principal: alice.id },
+    );
+    const state = await waitForTaskState(bureau, created.id);
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
 
     // The run took its step; only the drain's claim failed, and it left its entry pending.
@@ -93,13 +94,12 @@ describe.each([
     expect(entries.some((entry) => entry.sessionId === 'chat')).toBe(true);
 
     failing = false;
-    const other = await bureau.createRun({
-      message: 'Hello',
-      agentName: 'echo',
+    const other = await bureau.tasks.start('echo', 'Hello', {
+      contextId: 'other',
       principal: alice.id,
-      sessionId: 'other',
     });
-    await waitForRunState(bureau, other.id);
+    await waitForTaskState(bureau, other.id);
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
 
     const descriptor = await bureau.assets!.inspect(admission.assetId, aliceAdministrator, {

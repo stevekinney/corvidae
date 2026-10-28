@@ -3,9 +3,9 @@ import { describe, expect, test } from 'bun:test';
 import { type Task, TaskState } from '@a2a-js/sdk';
 import { RequestMalformedError } from '@a2a-js/sdk/errors';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { SignalWaitingEvent } from '../core/events/signal-events.ts';
 import { workflow, type WorkflowContext } from '../core/types.ts';
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { createPushFixture, onCleanup } from './push-delivery.test-support.ts';
 import {
   callContext,

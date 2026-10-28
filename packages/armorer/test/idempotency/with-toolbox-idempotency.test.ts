@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { expectPromiseToReject } from '../../src/async-assertion-test-helpers';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { ToolRequestContext } from '../../src';
 import { createProcessLocalApprovalStateStore } from '../../src/approval-binding';
 import { createTool } from '../../src/create-tool';
@@ -17,7 +18,6 @@ import type {
   ToolResultCacheEntry,
 } from '../../src/idempotency/types';
 import { withToolboxIdempotency as createIdempotentToolbox } from '../../src/idempotency/with-toolbox-idempotency';
-import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 import type { Toolbox } from '../../src/toolbox-interface';
 import type { SignedPendingToolApproval, ToolCallInput } from '../../src/types';
 

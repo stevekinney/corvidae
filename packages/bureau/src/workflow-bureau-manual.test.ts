@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { startWorkflowBureau } from './testing/workflow-bureau.test-support';
 import { workflowFileText } from './testing/workflow-file-fixtures.test-support';
 import { workflowStepRunId } from './workflow-agent-step';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -48,8 +49,10 @@ describe('an agent step that a restart runs again', () => {
     await first.put('midstep.json', file);
     await first.bureau.workflows?.refresh();
     await first.bureau.durableEngine()!.start('midstep', null, { id: 'midstep-run' });
-    for (let attempt = 0; first.calls.length < 1 && attempt < 1000; attempt += 1)
+    for await (const _turn of awakeTurns()) {
+      if (!(first.calls.length < 1)) break;
       await Bun.sleep(5);
+    }
     await first.bureau.shutdown();
 
     const second = await startWorkflowBureau({
@@ -64,15 +67,15 @@ describe('an agent step that a restart runs again', () => {
       replies: { writer: async () => (await Bun.sleep(300), 'answered') },
     });
     cleanups.push(() => second.dispose());
-    await second.bureau.waitForRecovery?.();
-    for (let attempt = 0; attempt < 400; attempt += 1) {
-      await second.bureau.runDurableMaintenance();
-      const state = await second.bureau.getDurableRun('midstep-run');
+    await second.bureau.recovery();
+    for await (const _turn of awakeTurns()) {
+      await second.bureau.maintain();
+      const state = await second.bureau.tasks.workflow('midstep-run');
       if (state?.status !== 'running' && state?.status !== 'pending') break;
       await Bun.sleep(25);
     }
 
-    const state = await second.bureau.getDurableRun('midstep-run');
+    const state = await second.bureau.tasks.workflow('midstep-run');
     expect(state?.error).toBeUndefined();
     expect(state?.status).toBe('completed');
     const summary = state?.result as { content: string } | undefined;

@@ -146,6 +146,7 @@ describe('DatePicker', () => {
     expect(input.checkValidity()).toBe(false);
 
     form.reset();
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(input.value).toBe('');

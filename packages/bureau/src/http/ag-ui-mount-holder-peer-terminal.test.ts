@@ -9,7 +9,7 @@ import { EventType } from '@ag-ui/core';
 import { describe, expect, it, spyOn } from 'bun:test';
 
 import { savesSessionAs, textOf } from '../test/session-input-fixtures.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   cancelRequest,
   type Harness,
@@ -163,7 +163,7 @@ describe('the holder’s stream when another Bureau ends its run', () => {
         expect(rest.at(-1)!.event.type).toBe(EventType.RUN_FINISHED);
         expect(rest.at(-1)!.event).toMatchObject({ outcome: { type: 'cancelled' } });
         expect(typesOf(rest)).not.toContain(EventType.RUN_ERROR);
-        expect(holder.bureau.getRun(started.nativeRunId)?.status).toBe('aborted');
+        expect(holder.bureau.tasks.detail(started.nativeRunId)?.status).toBe('aborted');
         // The holder never starts a terminal save: its record of the run is abandoned, not written.
         expect(await throwingRejectionOf(recorded)).toThrow('without its end being recorded');
         expect(holderWroteAborted()).toBe(false);
@@ -194,7 +194,7 @@ describe('the holder’s stream when another Bureau ends its run', () => {
 
         expect(rest.at(-1)!.event.type).toBe(EventType.RUN_ERROR);
         expect(rest.at(-1)!.event).toMatchObject({ code: 'RUN_FAILED' });
-        expect(holder.bureau.getRun(started.nativeRunId)?.status).toBe('error');
+        expect(holder.bureau.tasks.detail(started.nativeRunId)?.status).toBe('error');
         expect(await throwingRejectionOf(recorded)).toThrow('without its end being recorded');
         expect(holderWroteError()).toBe(false);
         expect(holderRecordedEnd()).toBe(false);

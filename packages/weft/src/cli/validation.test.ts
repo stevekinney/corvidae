@@ -12,9 +12,9 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { ActivityDefinition, WorkflowDefinition } from '../index.ts';
 import { workflow } from '../index.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   formatValidationReport,
   loadRegistrationsFromModule,

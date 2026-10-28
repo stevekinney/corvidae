@@ -1,4 +1,5 @@
 /// <reference lib="dom" />
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { flushSync } from 'svelte';
 import { createReactiveBox } from './attach-reactive-watch-test-fixture.svelte.ts';
@@ -54,7 +55,7 @@ async function flushMicrotasks(): Promise<void> {
  * attaching rather than synchronously.
  */
 async function untilEditorCreationStarts(): Promise<void> {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  for await (const _turn of awakeTurns()) {
     if (createEditorMock.mock.calls.length > 0) return;
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
@@ -161,6 +162,7 @@ describe('createEditorAttachment', () => {
     const detach = expectDetachFunction(attachment(createEditorElement()));
 
     detach();
+    // load-proof: negative window, the assertion only requires that createEditor is still uncalled after the cancelled start has had its microtasks, and a longer wait could only give it more time to stay uncalled
     await new Promise((resolve) => setTimeout(resolve, 0));
     await flushMicrotasks();
 

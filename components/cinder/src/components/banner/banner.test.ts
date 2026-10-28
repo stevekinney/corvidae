@@ -8,6 +8,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 
 import { requiredInstance } from '@lostgradient/testing';
+import { quietFor } from '@lostgradient/testing/wait-until';
 import Banner from './banner.svelte';
 
 function textSnippet(text: string) {
@@ -222,7 +223,7 @@ describe('Banner persistence', () => {
       props: { children: emptySnippet },
     });
     // Wait a tick — no timer should remove it.
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await quietFor(20);
     expect(container.querySelector('.cinder-banner')).not.toBeNull();
   });
 });

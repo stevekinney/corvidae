@@ -59,7 +59,7 @@ describe('reservedIdentifierReason', () => {
 
 describe("reservedWorkflowIdentifierReason and the audit trail's synthetic owners", () => {
   // Every `AUDIT_*_OWNER_PREFIX` the audit trail files entries under is a `runId` that
-  // `getOwner` resolves without a run. A caller-chosen run id with that prefix would have its
+  // `ownerOf` resolves without a run. A caller-chosen run id with that prefix would have its
   // own audit entries attributed to that synthetic owner, so each one is reserved. Enumerating
   // the exports keeps a prefix added later from being missed.
   const prefixes = Object.entries(auditTrail)

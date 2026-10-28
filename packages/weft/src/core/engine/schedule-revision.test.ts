@@ -5,11 +5,11 @@
  */
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { createDeferred, yieldToEventLoop } from '../../testing/fake-timers.test-support.ts';
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
+import { createDeferred, drainMicrotasks } from '../../testing/fake-timers.test-support.ts';
 import { decode, encode } from '../codec.ts';
 import { Engine } from '../engine.ts';
 import type { ScheduleState, WorkflowContext } from '../types.ts';
@@ -368,8 +368,9 @@ describe('the terminal handler of a scheduled run applies its change to the curr
       await storage.loaded.promise;
 
       const pause = engine.pauseSchedule(id);
-      await yieldToEventLoop();
-      await yieldToEventLoop();
+      // The pause is a promise-chain transition on in-memory storage: it queues behind the held
+      // terminal handler without waiting on anything but microtasks.
+      await drainMicrotasks();
       storage.release.resolve();
       await Promise.all([terminal, pause]);
 
@@ -390,8 +391,9 @@ describe('the terminal handler of a scheduled run applies its change to the curr
       await storage.loaded.promise;
 
       const pause = engine.pauseSchedule(id);
-      await yieldToEventLoop();
-      await yieldToEventLoop();
+      // The pause is a promise-chain transition on in-memory storage: it queues behind the held
+      // terminal handler without waiting on anything but microtasks.
+      await drainMicrotasks();
       storage.release.resolve();
       await Promise.all([terminal, pause]);
       await drainEngine();

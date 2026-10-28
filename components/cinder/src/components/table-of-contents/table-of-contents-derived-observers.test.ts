@@ -61,7 +61,9 @@ describe('TableOfContents', () => {
     replacementTarget.id = 'replace-target';
     replacementTarget.appendChild(createHeading('replacement', 'Replacement', 'h2'));
     firstTarget.replaceWith(replacementTarget);
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await waitFor(() =>
+      expect(container.querySelectorAll('a.cinder-table-of-contents__link')).toHaveLength(1),
+    );
 
     const links = container.querySelectorAll('a.cinder-table-of-contents__link');
     expect(links.length).toBe(1);
@@ -88,7 +90,11 @@ describe('TableOfContents', () => {
     nextTarget.id = 'dynamic-target';
     nextTarget.appendChild(createHeading('dynamic-new', 'Dynamic new', 'h2'));
     document.body.appendChild(nextTarget);
-    await new Promise((resolve) => setTimeout(resolve, 80));
+    await waitFor(() =>
+      expect(
+        container.querySelectorAll('a.cinder-table-of-contents__link')[0]?.getAttribute('href'),
+      ).toBe('#dynamic-new'),
+    );
 
     const links = container.querySelectorAll('a.cinder-table-of-contents__link');
     expect(links.length).toBe(1);
@@ -145,8 +151,9 @@ describe('TableOfContents', () => {
     expect(container.querySelectorAll('a.cinder-table-of-contents__link').length).toBe(1);
 
     target.remove();
-    await new Promise((resolve) => setTimeout(resolve, 80));
-    expect(container.querySelectorAll('a.cinder-table-of-contents__link').length).toBe(0);
+    await waitFor(() =>
+      expect(container.querySelectorAll('a.cinder-table-of-contents__link').length).toBe(0),
+    );
   });
   test('clears derived items when an HTMLElement target becomes disconnected via ancestor removal', async () => {
     const wrapper = document.createElement('section');
@@ -164,8 +171,9 @@ describe('TableOfContents', () => {
     expect(container.querySelectorAll('a.cinder-table-of-contents__link').length).toBe(1);
 
     wrapper.remove();
-    await new Promise((resolve) => setTimeout(resolve, 80));
-    expect(container.querySelectorAll('a.cinder-table-of-contents__link').length).toBe(0);
+    await waitFor(() =>
+      expect(container.querySelectorAll('a.cinder-table-of-contents__link').length).toBe(0),
+    );
   });
   test('document-wide MutationObserver filters to id/class attributes (#1186 row 8a)', () => {
     const article = document.createElement('article');
@@ -214,6 +222,7 @@ describe('TableOfContents', () => {
 
     // An unrelated attribute mutation inside the target must not recompute.
     heading.setAttribute('data-highlight', 'true');
+    // load-proof: negative window: the assertion that follows only requires that nothing has fired once the microtask queue has drained
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(querySelectorAllSpy).toHaveBeenCalledTimes(0);
     expect(container.querySelector('a.cinder-table-of-contents__link')?.getAttribute('href')).toBe(
@@ -222,6 +231,7 @@ describe('TableOfContents', () => {
 
     // A heading id mutation must still recompute.
     heading.id = 'doc-8b-install-renamed';
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(querySelectorAllSpy.mock.calls.length).toBeGreaterThan(0);
     await waitFor(() => {

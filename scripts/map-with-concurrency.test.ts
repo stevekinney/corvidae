@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 
+import { throwingRejectionOf } from '../testing/testing/src/helpers/promise-outcome.ts';
+import { quietFor } from '../testing/testing/src/wait-until.ts';
 import { mapWithConcurrency } from './map-with-concurrency';
-import { throwingRejectionOf } from './promise-outcome.test-support.ts';
 
 /** A promise the test settles by hand, so completion order is chosen rather than raced. */
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -29,6 +30,7 @@ describe('mapWithConcurrency', () => {
     const results = await mapWithConcurrency(items, 4, async (item) => {
       inFlight += 1;
       peak = Math.max(peak, inFlight);
+      // load-proof: simulated work: the assertions are the peak count of items in flight, which the scheduler fixes before any item's await returns, whatever the duration of that await
       await Bun.sleep(1);
       inFlight -= 1;
       return item;
@@ -42,11 +44,12 @@ describe('mapWithConcurrency', () => {
     const mapped = mapWithConcurrency([0, 1, 2, 3, 4, 5], 2, async (item) => {
       started.push(item);
       if (item === 1) throw new Error('item 1 failed');
+      // load-proof: simulated work: what is asserted is which items started after the first failure, which the scheduler decides before any item's await returns
       await Bun.sleep(1);
       return item;
     });
     expect(await throwingRejectionOf(mapped)).toThrow('item 1 failed');
-    await Bun.sleep(10);
+    await quietFor(10);
     expect(started).toEqual([0, 1]);
   });
 

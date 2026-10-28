@@ -2,7 +2,8 @@ import { expect } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { rejectionOf } from '../promise-outcome.test-support.ts';
+import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
+import { awakeTurns, waitUntil } from '../../testing/testing/src/wait-until.ts';
 import { fakeSignals } from './gate-child.test-support.ts';
 import {
   processExists,
@@ -228,11 +229,10 @@ scenarios.describe('runGate', () => {
         },
         { signals, graceMilliseconds: 2_000 },
       );
-      const deadline = Date.now() + 10_000;
-      while (!existsSync(pidFile) || readFileSync(pidFile, 'utf8').trim() === '') {
-        if (Date.now() > deadline) throw new Error('the gate never started its worker');
-        await Bun.sleep(20);
-      }
+      await waitUntil(() => existsSync(pidFile) && readFileSync(pidFile, 'utf8').trim() !== '', {
+        message: 'the gate to start its worker',
+        yieldTurn: () => Bun.sleep(20),
+      });
       const worker = Number(readFileSync(pidFile, 'utf8').trim());
       expect(() => process.kill(worker, 0)).not.toThrow();
       signals.emit('SIGTERM');
@@ -278,11 +278,10 @@ scenarios.describe('runGate', () => {
         },
         { signals, graceMilliseconds: 60_000 },
       );
-      const deadline = Date.now() + 10_000;
-      while (!existsSync(pidFile) || readFileSync(pidFile, 'utf8').trim() === '') {
-        if (Date.now() > deadline) throw new Error('the gate never started its worker');
-        await Bun.sleep(20);
-      }
+      await waitUntil(() => existsSync(pidFile) && readFileSync(pidFile, 'utf8').trim() !== '', {
+        message: 'the gate to start its worker',
+        yieldTurn: () => Bun.sleep(20),
+      });
       const pids = readFileSync(pidFile, 'utf8').trim().split(' ').map(Number);
       const alive = (pid: number) => processExists(pid);
       expect(pids.every(alive)).toBe(true);
@@ -294,7 +293,10 @@ scenarios.describe('runGate', () => {
       const result = await running;
       expect(result.interrupted).toBe('SIGTERM');
       expect(result.code).not.toBe(0);
-      for (let waited = 0; waited < 50 && pids.some(alive); waited += 1) await Bun.sleep(20);
+      for await (const _turn of awakeTurns()) {
+        if (!pids.some(alive)) break;
+        await Bun.sleep(20);
+      }
       expect(pids.filter(alive)).toEqual([]);
     },
   );

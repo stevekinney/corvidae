@@ -1,9 +1,9 @@
 import { describe, expect, it, mock } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { sleepForTesting } from '../../testing/fake-timers.test-support.ts';
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import type { SignalReceivedInterception } from '../interceptor/interception-contexts.ts';
 import type { WorkflowState } from '../types.ts';
 import {
@@ -326,6 +326,7 @@ describe('engine signals', () => {
     class SlowSequenceStorage extends NoConditionalBatchMemoryStorage {
       override async get(key: string): Promise<Uint8Array | null> {
         if (key === KEYS.signalSequence('workflow-anonymous-concurrent')) {
+          // load-proof: storage double that stretches a race window; the yield is the injected latency itself and every assertion awaits the real results
           await sleepForTesting(5);
         }
 

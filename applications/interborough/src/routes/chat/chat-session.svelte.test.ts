@@ -4,6 +4,7 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import type { Fetcher } from '../../lib/bureau-client.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { ChatSessionState } from './chat-session.svelte.ts';
@@ -48,8 +49,7 @@ function open(fetchAgUi: Fetcher): ChatSessionState {
 }
 
 async function until(condition: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 300 && !condition(); attempt += 1) await Bun.sleep(5);
-  expect(condition()).toBe(true);
+  await waitUntil(condition, { message: 'until' });
 }
 
 describe('a message', () => {
@@ -236,7 +236,7 @@ describe('an attach', () => {
     expect(session.conversation.ids).toEqual([]);
   });
 
-  test('keeps a row typed while the transcript was being read, behind the rows it restores', async () => {
+  test('replaces even a row typed while the authoritative transcript was being read', async () => {
     let release: (() => void) | undefined;
     const held = new Promise<void>((resolve) => {
       release = resolve;
@@ -271,7 +271,7 @@ describe('an attach', () => {
     await attaching;
 
     const texts = slow.conversation.ids.map((id) => slow.conversation.messages[id]?.content);
-    expect(texts).toEqual(['An earlier question', 'An earlier answer.', 'Typed meanwhile']);
+    expect(texts).toEqual(['An earlier question', 'An earlier answer.']);
   });
 
   test('tells the page when a run it started begins', async () => {
@@ -793,7 +793,7 @@ describe('a stop before the run’s first event', () => {
     await until(() => mounted.signals.length === 1);
 
     const stopped = session.controller.stop();
-    await Bun.sleep(10);
+    await quietFor(10);
 
     // The request was not aborted, and the page still holds the turn: nothing can be sent yet.
     expect(mounted.signals[0]?.aborted).toBe(false);

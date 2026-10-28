@@ -59,10 +59,9 @@ async function openAt(
 
 /** The fire's settled events the history retains, reading past a retention gap. */
 async function settledEventsOf(bureau: Bureau, fireId: string) {
-  const owner = { kind: 'run', id: fireId } as const;
-  let page = await bureau.eventHistory(owner);
+  let page = await bureau.tasks.events(fireId);
   if ('outcome' in page && page.outcome === 'gap') {
-    page = await bureau.eventHistory(owner, {
+    page = await bureau.tasks.events(fireId, {
       since: String(Math.max(page.firstRetainedSequence - 1, -1)),
     });
   }
@@ -91,6 +90,7 @@ async function settleWithoutEvent(path: string) {
 
 async function letGoOfTheDeadAppend(hold: { release(): void }): Promise<void> {
   hold.release();
+  // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
   for (let turn = 0; turn < 10; turn += 1) await yieldToPortableEventLoop();
 }
 
@@ -110,7 +110,7 @@ describe('the boot pass after event retention removed a fire’s settled event',
       const at = ORIGIN + round * 8 * DAY;
       // Event retention (7 days) passes; task retention (30 days) does not.
       current.runtime.setTime(at);
-      await current.bureau.runDurableMaintenance(ORIGIN);
+      await current.bureau.maintain(ORIGIN);
       expect(await settledEventsOf(current.bureau, fireId)).toHaveLength(0);
       const view = await current.bureau.internals.taskRegistry.get(fireId);
       expect(view?.status).toBe('completed');

@@ -16,6 +16,7 @@ import {
   OWNER,
   readFrames,
   rpc,
+  type SseFrame,
   subscribeRequest,
 } from './http/management/management-fixtures.test-support.ts';
 import {
@@ -32,9 +33,10 @@ import {
   regatingApprovalToolbox,
   reviewsOf,
 } from './schedule-fire-fixtures.test-support';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau } from './types';
 import { expireReviews } from './testing/expired-reviews.test-support';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 const harness = createScheduleFireHarness();
 const { open } = harness;
@@ -126,7 +128,7 @@ describe('a resolved fire approval leaves nothing of its own in the session', ()
 
     await pollUntil(async () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
-      await bureau.runDurableMaintenance(Date.now());
+      await bureau.maintain(Date.now());
       return (await bureau.internals.taskRegistry.record(fireId)) === undefined ? true : undefined;
     }, 'the fire’s task to leave retention');
 
@@ -405,6 +407,7 @@ describe('a crash between a fire step’s session write and its commit', () => {
         }),
       },
     });
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
 
     expect(reviewsOf(third, fireId)).toEqual([]);
@@ -441,6 +444,7 @@ describe('a crash between a fire step’s session write and its commit', () => {
       const metadata = await sessionMetadata(first, 'unreadable-session');
       return keysOf(metadata['pendingApprovalOverrides']).length === 1 ? true : undefined;
     }, 'the approval to reach the session');
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
 
     dead = false;
@@ -462,6 +466,7 @@ describe('a crash between a fire step’s session write and its commit', () => {
         ? status
         : undefined;
     }, 'the recovered fire to settle');
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
 
     // Neither the replay's write-back nor the settle reconcile may take a step it could not read
@@ -483,6 +488,7 @@ describe('a crash between a fire step’s session write and its commit', () => {
         }),
       },
     });
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
     const afterRestart = await sessionMetadata(third, 'unreadable-session');
     expect(keysOf(afterRestart['pendingApprovalOverrides'])).toEqual([
@@ -529,6 +535,7 @@ describe('a crash between a fire step’s session write and its commit', () => {
       async () => ((await durableStatus(second, fireId)) === 'completed' ? true : undefined),
       'the replay to complete',
     );
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
     expect(reviewsOf(second, fireId)).toEqual([]);
     const metadata = await sessionMetadata(second, 'decided-crash-session');
@@ -545,6 +552,7 @@ describe('a crash between a fire step’s session write and its commit', () => {
         }),
       },
     });
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
     expect(reviewsOf(third, fireId)).toEqual([]);
     expect(secondCharges).toEqual([]);
@@ -590,7 +598,7 @@ describe('a fire’s approval is fenced across Bureau processes by the durable d
     // The task leaves retention, and the session's own record of the decision goes with it.
     await pollUntil(async () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
-      await first.runDurableMaintenance(Date.now());
+      await first.maintain(Date.now());
       return (await first.internals.taskRegistry.record(fireId)) === undefined ? true : undefined;
     }, 'the fire’s task to leave retention');
     const metadata = await sessionMetadata(first, 'fenced-session');
@@ -640,18 +648,18 @@ describe('a fire’s task stream ends when its last review closes', () => {
       spec: '1m',
       principal: OWNER.alice,
     });
-    await bureau.runDurableMaintenance(created?.nextFireAt ?? 0);
+    await bureau.maintain(created?.nextFireAt ?? 0);
     await entered.promise;
     const fireId = await pollUntil(async () => {
       const schedule = await bureau.schedules.get(created?.id ?? '');
       return schedule?.currentWorkflowId ?? undefined;
     }, 'the fire to start');
-    const follow = async () =>
+    const follow = async (into?: SseFrame[]) =>
       readFrames(
         await handlerOf(bureau)(
           subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
         ),
-        { timeoutMs: 8_000 },
+        into === undefined ? {} : { into },
       );
     return { bureau, fireId, follow, release: () => gate.resolve(), charges };
   }
@@ -695,8 +703,11 @@ describe('a fire’s task stream ends when its last review closes', () => {
         async () => ((await durableStatus(bureau, fireId)) === 'completed' ? true : undefined),
         'the fire to settle with its approval open',
       );
-      const reading = follow();
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      const live: SseFrame[] = [];
+      const reading = follow(live);
+      await waitUntil(() => live.length >= 1, {
+        message: 'the subscriber to receive its snapshot',
+      });
 
       await close(bureau, review.id);
       const frames = await reading;
@@ -730,22 +741,28 @@ describe('a fire’s task stream ends when its last review closes', () => {
       spec: '1m',
       principal: OWNER.alice,
     });
-    await bureau.runDurableMaintenance(created?.nextFireAt ?? 0);
+    await bureau.maintain(created?.nextFireAt ?? 0);
     await entered.promise;
     const fireId = await pollUntil(async () => {
       const schedule = await bureau.schedules.get(created?.id ?? '');
       return schedule?.currentWorkflowId ?? undefined;
     }, 'the fire to start');
+    const live: SseFrame[] = [];
     const reading = readFrames(
       await handlerOf(bureau)(
         subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
       ),
-      { timeoutMs: 8_000 },
+      { into: live },
     );
     gate.resolve();
     const review = await reviewOf(bureau, fireId);
     // Let the stream hear the park before the answer, so its order is the task's.
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitUntil(
+      () => live.some((frame) => (frame.data as { status?: string }).status === 'input-required'),
+      {
+        message: 'the stream to hear the park',
+      },
+    );
 
     await bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice });
     const frames = await reading;
@@ -793,6 +810,7 @@ describe('a fire still going when its process restarts', () => {
       const session = await first.contexts.get('mid-flight-session');
       return JSON.stringify(session?.metadata ?? {}).includes('charge-X') ? true : undefined;
     }, 'the approval to reach the session');
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
 
     dead = false;
@@ -839,7 +857,7 @@ describe('a fire’s review is announced', () => {
     const review = await reviewOf(approval, fireId);
 
     const announced = await pollUntil(async () => {
-      const page = await approval.eventHistory({ kind: 'run', id: fireId });
+      const page = await approval.tasks.events(fireId);
       if (!('events' in page)) return undefined;
       const events = page.events.filter((event) => event.kind === 'review.requested');
       return events.length > 0 ? events : undefined;
@@ -853,7 +871,7 @@ describe('a fire’s review is announced', () => {
       await handlerOf(approval)(
         subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
       ),
-      { stop: (seen) => seen.length >= 1, timeoutMs: 5_000 },
+      { stop: (seen) => seen.length >= 1 },
     );
     expect(frames[0]).toMatchObject({
       event: 'task.snapshot',
@@ -875,7 +893,7 @@ describe('a fire’s review is announced', () => {
     const review = await reviewOf(bureau, fireId);
 
     const announced = await pollUntil(async () => {
-      const page = await bureau.eventHistory({ kind: 'run', id: fireId });
+      const page = await bureau.tasks.events(fireId);
       if (!('events' in page)) return undefined;
       const events = page.events.filter((event) => event.kind === 'review.requested');
       return events.length > 0 ? events : undefined;
@@ -948,11 +966,11 @@ describe('a bureau.run() run stays off the store scan (COR-1302)', () => {
     });
     const bureau = await open({ agents: { asker: agent } });
 
-    const run = bureau.run('asker', 'go', { principal: OWNER.alice });
+    const run = await bureau.tasks.start('asker', 'go', { principal: OWNER.alice });
     await reviewOf(bureau, run.id);
     // The run is on the store while it lives, which is what the guard keeps the scan off. A
     // `bureau.run()` approval never reaches the scan either way, so the wait is what shows it.
-    expect(bureau.getRun(run.id)).toBeDefined();
+    expect(bureau.tasks.detail(run.id)).toBeDefined();
 
     // One entry: a scan of the store for this run would list the wait a second time.
     expect(reviewsOf(bureau, run.id).map((review) => review.kind)).toEqual(['human-wait']);

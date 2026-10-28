@@ -13,6 +13,7 @@ import {
 } from '@lostgradient/weft';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { WorkflowVersionMismatchEvent } from '../events';
 import { createCheckpointStore } from './checkpoint-store';
 import { createRunEngine } from './create-run-engine';
@@ -134,19 +135,8 @@ function makeSleepingWorkflow(sleepMilliseconds: number) {
     return { doubled: input.value * 2 };
   });
 }
-
-// Generously-bounded poll: yield the portable event loop until `predicate` holds.
-// The bound exists only to turn a genuine hang into a clear failure; it sits far
-// above what any non-hung durable transition needs, so loaded-CI scheduling jitter
-// and the inline-launch starvation this file otherwise guards against cannot turn a
-// passing run red. It is a backstop, NOT a tuned timing value.
-const POLL_UNTIL_MAX_ATTEMPTS = 1000;
 async function pollUntil(predicate: () => boolean | Promise<boolean>): Promise<void> {
-  for (let attempt = 0; attempt < POLL_UNTIL_MAX_ATTEMPTS; attempt++) {
-    if (await predicate()) return;
-    await yieldToPortableEventLoop();
-  }
-  throw new Error('pollUntil exceeded its attempt bound before the condition held');
+  await waitUntil(predicate, { message: 'pollUntil' });
 }
 
 describe('createRunEngine', () => {
@@ -937,7 +927,7 @@ describe('createRunEngine inline-launch scheduling (COR-207)', () => {
 
       // Under 'manual' nothing is scheduled at all, so no number of event-loop
       // turns can dispatch the first turn; the fixed count is immaterial.
-      await yieldToPortableEventLoop();
+      // load-proof: negative window: under manual launch scheduling nothing is scheduled, so no number of turns can start the run; load can only delay a start that nothing queues, never produce one
       await yieldToPortableEventLoop();
 
       expect(startedRunIds).toHaveLength(0);

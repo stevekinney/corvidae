@@ -45,8 +45,7 @@ import {
   SESSION_ID,
 } from './process-crash-work-integrity-fixtures';
 import type { AgentDefinitions } from '../agent-catalog';
-
-const POLL_ATTEMPTS = 2000;
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 /** Durable statuses a run never leaves. */
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
   'completed',
@@ -81,12 +80,8 @@ if (
  * bounded by `attempts`. A scenario whose parent enforces its own deadline
  * passes `Infinity`, so a slow host is not mistaken for a stuck one.
  */
-async function pollUntil(
-  description: string,
-  check: () => boolean | Promise<boolean>,
-  attempts = POLL_ATTEMPTS,
-) {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
+async function pollUntil(description: string, check: () => boolean | Promise<boolean>) {
+  for await (const _turn of awakeTurns()) {
     if (await check()) return;
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, POLL_DELAY_MS));
   }
@@ -139,12 +134,7 @@ async function parkAfterStepZero(): Promise<void> {
     process.exit(4);
   }
 
-  const run = await bureau.createRun({
-    agentName: 'default',
-    message: 'crash harness run',
-    principal: 'alice',
-  });
-  const session = { kind: 'session', id: run.sessionId } as const;
+  const run = await bureau.tasks.start('default', 'crash harness run', { principal: 'alice' });
 
   await pollUntil('generate to be invoked at step 1', () => reachedStepOne);
   await pollUntil('the step-0 step.completed audit record', async () => {
@@ -152,13 +142,13 @@ async function parkAfterStepZero(): Promise<void> {
     return records.length > 0;
   });
   await pollUntil('a non-empty session event page', async () => {
-    const page = await bureau.eventHistory(session);
+    const page = await bureau.contexts.events(run.contextId);
     return !('outcome' in page) && page.events.length > 0;
   });
 
   const records = await auditTrail.query({ runId: run.id });
   const maxAuditSequence = Math.max(...records.map((record) => record.sequence ?? -1));
-  const page = await bureau.eventHistory(session);
+  const page = await bureau.contexts.events(run.contextId);
   if ('outcome' in page) {
     process.stderr.write(`child: expected an event page, got ${JSON.stringify(page)}\n`);
     process.exit(4);
@@ -174,7 +164,7 @@ async function parkAfterStepZero(): Promise<void> {
     markerPath as string,
     JSON.stringify({
       runId: run.id,
-      sessionId: run.sessionId,
+      sessionId: run.contextId,
       maxAuditSequence,
       sessionCursor: last.cursor,
       sessionLastSequence: last.sequence,
@@ -217,11 +207,9 @@ async function chargeThenCrash(): Promise<void> {
     generate: async () => ({ content: 'charging', toolCalls: chargeToolCalls }),
     toolbox,
   });
-  const run = await bureau.createRun({
-    agentName: 'default',
-    message: 'crash harness charge',
+  const run = await bureau.tasks.start('default', 'crash harness charge', {
+    contextId: SESSION_ID,
     principal: 'alice',
-    sessionId: SESSION_ID,
     requestContext: requestContext(),
   });
   runState.id = run.id;
@@ -260,11 +248,9 @@ async function memoryWriteThenCrash(): Promise<void> {
     toolbox: createToolbox([createNextTool()]),
     memory,
   });
-  const run = await bureau.createRun({
-    agentName: 'default',
-    message: 'crash harness memory',
+  const run = await bureau.tasks.start('default', 'crash harness memory', {
+    contextId: SESSION_ID,
     principal: 'alice',
-    sessionId: SESSION_ID,
     requestContext: requestContext(),
   });
   runState.id = run.id;
@@ -286,16 +272,8 @@ async function twoParkedRuns(): Promise<void> {
     },
     toolbox: createToolbox([createNextTool()]),
   });
-  const x = await bureau.createRun({
-    agentName: 'default',
-    message: 'crash harness run X',
-    principal: 'alice',
-  });
-  const y = await bureau.createRun({
-    agentName: 'default',
-    message: 'crash harness run Y',
-    principal: 'alice',
-  });
+  const x = await bureau.tasks.start('default', 'crash harness run X', { principal: 'alice' });
+  const y = await bureau.tasks.start('default', 'crash harness run Y', { principal: 'alice' });
   await pollUntil('both runs to invoke generate at step 1', () => reachedStepOne.size === 2);
   writeMarker({ xRunId: x.id, yRunId: y.id });
 }
@@ -330,11 +308,7 @@ async function humanWaitParked(twoCalls = false): Promise<void> {
     generate: async () => ({ content: '', toolCalls: twoCalls ? [park, secondPark] : [park] }),
     toolbox: createToolbox([]),
   });
-  const run = await bureau.createRun({
-    agentName: 'default',
-    message: 'crash harness park',
-    principal: 'alice',
-  });
+  const run = await bureau.tasks.start('default', 'crash harness park', { principal: 'alice' });
   await pollUntil('the run to surface its human-wait review', () =>
     bureau.reviews.list().some((review) => review.runId === run.id),
   );
@@ -391,21 +365,16 @@ async function relaunchRecover(): Promise<void> {
       workflowClaimRenewIntervalMs: CLAIM_RENEW_MS,
     },
   });
-  const report = await bureau.waitForRecovery?.();
-  await pollUntil(
-    'the relaunched run to reach a terminal status',
-    async () => {
-      const durable = await bureau.getDurableRun(runId);
-      if (durable !== null && durable !== undefined && TERMINAL_STATUSES.has(durable.status)) {
-        return true;
-      }
-      await bureau.runDurableMaintenance();
-      return false;
-    },
-    // The parent test kills this child at its own deadline and reports that.
-    Number.POSITIVE_INFINITY,
-  );
-  const durable = await bureau.getDurableRun(runId);
+  const report = await bureau.recovery();
+  await pollUntil('the relaunched run to reach a terminal status', async () => {
+    const durable = await bureau.tasks.workflow(runId);
+    if (durable !== null && durable !== undefined && TERMINAL_STATUSES.has(durable.status)) {
+      return true;
+    }
+    await bureau.maintain();
+    return false;
+  });
+  const durable = await bureau.tasks.workflow(runId);
   if (durable?.status !== 'completed') {
     // A run that ended any other way will never complete, so say how it ended
     // now rather than leaving the parent to wait out its deadline.
@@ -420,7 +389,7 @@ async function relaunchRecover(): Promise<void> {
       runId,
       recoveryOutcome: report?.outcome,
       durableStatus: durable?.status,
-      runStatus: bureau.getRun(runId)?.status,
+      runStatus: bureau.tasks.detail(runId)?.status,
       stepZeroCalls,
       laterStepCalls,
     }),
@@ -442,8 +411,8 @@ async function verify(): Promise<void> {
     toolbox: createChargeToolbox(directory, async () => 'ok', { cache, wrap: true }),
     memory: governed.memory,
   });
-  const report = await bureau.waitForRecovery?.();
-  const runningRuns = await bureau.listDurableRuns({ status: 'running' });
+  const report = await bureau.recovery();
+  const runningRuns = await bureau.tasks.workflows({ status: 'running' });
   const running = runningRuns?.items.length;
   writeMarker({ recoveryOutcome: report?.outcome, running });
   await bureau.shutdown();

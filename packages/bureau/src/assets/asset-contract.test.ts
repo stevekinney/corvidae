@@ -13,7 +13,7 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { waitForRunState } from '@lostgradient/operative';
+import { waitForTaskState } from '../test';
 import type { BatchOperation, Storage } from '@lostgradient/weft';
 import { type ContentSource, type Modality } from 'conversationalist';
 
@@ -45,7 +45,7 @@ import {
   webpBytes,
   zipBytes,
 } from '../testing/asset-fixtures.test-support';
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { inspectMediaFacts } from './media-inspection';
 import {
   AssetAccessDeniedError,
@@ -619,6 +619,7 @@ describe('admission validation', () => {
     );
     await firstExtraction.promise;
     // Let part 1 run its own extraction and park on part 0's budget decision.
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 5; turn++) await yieldToPortableEventLoop();
 
     admissions[1]!.work.abort('caller gave up');
@@ -626,6 +627,7 @@ describe('admission validation', () => {
     void admissions[1]!.work.result().then(() => {
       settledBeforeRelease = true;
     });
+    // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
     await yieldToPortableEventLoop();
     expect(settledBeforeRelease).toBe(true);
     expect(await admissions[1]!.work.result()).toEqual({
@@ -954,12 +956,12 @@ describe('conversation state holds references, not bytes', () => {
     const sessionId = 'asset-conversation';
     const reference = JSON.stringify(admission.source);
     for (let turn = 0; turn < 2; turn++) {
-      const run = await harness.startSession({
+      const run = await harness.startTask({
         agentName: 'default',
-        message: `turn ${turn}: describe ${reference}`,
-        sessionId,
+        input: `turn ${turn}: describe ${reference}`,
+        contextId: sessionId,
       });
-      await waitForRunState(harness.bureau, run.id);
+      await waitForTaskState(harness.bureau, run.id);
     }
     const session = await harness.bureau.contexts.get(sessionId);
     const userTurns = Object.values(session!.conversationHistory.messages).filter(

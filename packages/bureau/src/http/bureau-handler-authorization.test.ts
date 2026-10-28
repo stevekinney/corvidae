@@ -22,7 +22,7 @@ import {
   createCheckValidator,
   hangUntilAborted,
 } from '../testing/goal-fixtures.test-support';
-import { waitForCondition } from '../test';
+import { listHeldTasks, waitForCondition } from '../test';
 import type { Bureau } from '../types.ts';
 import {
   attachRunRequest,
@@ -46,6 +46,7 @@ import {
 } from './create-bureau-handler.ts';
 import { mayAccessOwnedResource, type OwnerAccessPredicate } from './owner-predicate.ts';
 import { createMemoryAssetStorage } from '../assets/storage';
+import { startTaskFrom } from '../test/task-start-request.ts';
 
 type Handler = (request: Request) => Promise<Response>;
 type Credential = { subject: string; scopes: readonly AuthorizationScope[] };
@@ -175,6 +176,12 @@ const CONTEXT_COMMAND_PARAMETERS = {
 function definitionParameters(operation: CatalogOperation) {
   // The one agent operation that names an agent and nothing else (COR-1559).
   if (operation.name === 'bureau.agents.models') return { agentName: 'x' };
+  // COR-1709: a complete request, so the call reaches its own check instead of failing validation.
+  if (operation.name === 'bureau.decisions.decide') return { kind: 'boolean', question: 'Is it?' };
+  // COR-1710: a complete patch, so the call reaches its own check instead of failing validation.
+  if (operation.name === 'bureau.settings.update') {
+    return { patch: { 'tools.wakeup': false }, expectedRevision: 0 };
+  }
   if (operation.name.startsWith('bureau.assets.')) return ASSET_PARAMETERS;
   if (operation.name.startsWith('bureau.schedules.')) return SCHEDULE_PARAMETERS;
   if (operation.name.startsWith('bureau.goals.')) return GOAL_PARAMETERS;
@@ -291,9 +298,9 @@ async function openBureau(id = 'authorization-bureau') {
 
 /** A parked run, and the id of the review it is waiting on. */
 async function parkRun(bureau: Bureau, principal: string | undefined, message = 'park me') {
-  const run = await bureau.createRun({
+  const run = await startTaskFrom(bureau, {
     agentName: 'default',
-    message,
+    input: message,
     ...(principal === undefined ? {} : { principal }),
   });
   await waitForCondition(
@@ -414,7 +421,7 @@ describe('owner strings and reserved namespaces', () => {
       const listed = await call(handler, 'bureau.reviews.list', {}, 'any');
 
       expect(reviewIds(listed)).toHaveLength(1);
-      expect(await bureau.getOwner({ kind: 'run', id: run.id })).toBe('api-key:ops%20user%2F1%3Aa');
+      expect(await bureau.ownerOf({ kind: 'run', id: run.id })).toBe('api-key:ops%20user%2F1%3Aa');
     } finally {
       await bureau.dispose();
     }
@@ -731,7 +738,7 @@ describe('the local caller under allow', () => {
       });
 
       expect(resolved.result).toMatchObject({ id: reviewId, receipt: 'applied' });
-      expect(await bureau.getOwner({ kind: 'run', id: run.id })).toBe('anonymous:local');
+      expect(await bureau.ownerOf({ kind: 'run', id: run.id })).toBe('anonymous:local');
       const entries = await bureau.internals.auditTrail?.query({ runId: run.id });
       expect(
         entries
@@ -756,7 +763,7 @@ describe('the local caller under allow', () => {
       expect(reviewIds(listedByOne)).toEqual([first.reviewId, second.reviewId].toSorted());
       expect(reviewIds(listedByTwo)).toEqual(reviewIds(listedByOne));
       for (const { run } of [first, second]) {
-        expect(await bureau.getOwner({ kind: 'run', id: run.id })).toBe('anonymous:local');
+        expect(await bureau.ownerOf({ kind: 'run', id: run.id })).toBe('anonymous:local');
       }
     } finally {
       await bureau.dispose();
@@ -789,7 +796,7 @@ describe('identifiers grant nothing', () => {
         taskId: bob.run.id,
         scheduleId: bobScheduleId,
         goalRunId: bobGoalRunId,
-        contextId: bob.run.sessionId,
+        contextId: bob.run.contextId,
         bureauId: bureau.id,
       };
       let probed = 0;
@@ -927,7 +934,7 @@ describe('deployment isolation', () => {
 describe('transcripts stay inside the Bureau', () => {
   it('returns no session transcript content from any served operation', async () => {
     await withTwoOwners(async ({ bureau, alice }) => {
-      const session = await bureau.contexts.get(alice.run.sessionId);
+      const session = await bureau.contexts.get(alice.run.contextId);
       expect(JSON.stringify(session?.conversationHistory)).toContain(SENTINEL);
       // Let the run finish, so its feeds hold every kind of event it publishes.
       await bureau.reviews.resolve({
@@ -936,7 +943,7 @@ describe('transcripts stay inside the Bureau', () => {
         principal: 'api-key:alice',
       });
       await waitForCondition(
-        () => bureau.getRun(alice.run.id)?.status !== 'running',
+        () => bureau.tasks.detail(alice.run.id)?.status !== 'running',
         'the approved run never finished',
       );
       const handler = createBureauHandler(bureau, {
@@ -947,9 +954,13 @@ describe('transcripts stay inside the Bureau', () => {
         },
       });
       const bodies: string[] = [];
+      // The settings stream is live and replays nothing, so a resume from the first revision is what
+      // gives it an event to scan.
+      await bureau.settings.update({ 'decisions.maximumPerTask': 3 }, { expectedRevision: 0 });
 
       for (const operation of BUREAU_HANDLER_OPERATIONS) {
         const params = paramsFor(operation, {
+          ...(operation.name === 'bureau.settings.events' ? { fromCursor: '0' } : {}),
           id: operation.name.startsWith('bureau.agents.definitions.') ? 'support' : alice.reviewId,
           runId: alice.run.id,
           taskId: alice.run.id,
@@ -957,7 +968,7 @@ describe('transcripts stay inside the Bureau', () => {
           goalRunId: 'goal-none',
           // Not alice's own context for the one operation that would remove what the rest reads.
           contextId:
-            operation.name === 'bureau.contexts.delete' ? 'no-such-context' : alice.run.sessionId,
+            operation.name === 'bureau.contexts.delete' ? 'no-such-context' : alice.run.contextId,
           messageId: 'message-1',
           bureauId: bureau.id,
           decision: 'approve',
@@ -994,7 +1005,9 @@ describe('transcripts stay inside the Bureau', () => {
                 response,
                 operation.name === 'bureau.events'
                   ? 'event: review.approved'
-                  : 'event: run.completed',
+                  : operation.name === 'bureau.settings.events'
+                    ? 'event: settings.changed'
+                    : 'event: run.completed',
               ),
         );
       }
@@ -1138,7 +1151,7 @@ describe('the AG-UI routes owner predicate', () => {
 
   it('refuses a start on a thread the caller does not own, creates nothing, and writes no audit entry', async () => {
     await withAgUiOwners(async ({ harness, alice }) => {
-      const runsBefore = harness.bureau.listRuns().length;
+      const runsBefore = listHeldTasks(harness.bureau).length;
 
       const frames = await readAgUiStream(
         await harness.handler(
@@ -1154,7 +1167,7 @@ describe('the AG-UI routes owner predicate', () => {
       );
 
       expect(frames[0]!.event).toMatchObject({ code: 'THREAD_NOT_FOUND' });
-      expect(harness.bureau.listRuns()).toHaveLength(runsBefore);
+      expect(listHeldTasks(harness.bureau)).toHaveLength(runsBefore);
       // The refused start left no trace in the audit trail, whatever the parked runs wrote since.
       const audit = JSON.stringify(await harness.bureau.internals.auditTrail?.query({}));
       expect(audit).not.toContain('hijack');
@@ -1199,7 +1212,7 @@ describe('the AG-UI routes owner predicate', () => {
       };
       const mount = createAgUiMount(
         harness.bureau,
-        { mayAccess: counting, ownerOf: (resource) => harness.bureau.getOwner(resource) },
+        { mayAccess: counting, ownerOf: (resource) => harness.bureau.ownerOf(resource) },
         ['assistant'],
         {},
       );
@@ -1316,7 +1329,7 @@ describe('what bureau.tasks:write grants on the AG-UI routes', () => {
       );
       const finished = started.at(-1)!.event as { outcome: { interrupts: Array<{ id: string }> } };
       const id = finished.outcome.interrupts[0]!.id;
-      const runsBefore = harness.bureau.listRuns().length;
+      const runsBefore = listHeldTasks(harness.bureau).length;
 
       const refused = await maskedStream(
         harness.handler(
@@ -1347,7 +1360,7 @@ describe('what bureau.tasks:write grants on the AG-UI routes', () => {
       expect(refused).toContain('INTERRUPT_NOT_FOUND');
       expect(charges).toEqual([]);
       expect(harness.bureau.reviews.list()).toHaveLength(1);
-      expect(harness.bureau.listRuns()).toHaveLength(runsBefore);
+      expect(listHeldTasks(harness.bureau)).toHaveLength(runsBefore);
     } finally {
       await harness.dispose();
     }
@@ -1362,7 +1375,7 @@ describe('what bureau.tasks:write grants on the AG-UI routes', () => {
       await readAgUiStream(
         await harness.handler(startRequest(runAgentInput(), agUiCredentials('alice-key'))),
       );
-      const runsBefore = harness.bureau.listRuns().length;
+      const runsBefore = listHeldTasks(harness.bureau).length;
       const start = (key: string) =>
         harness.handler(
           startRequest(
@@ -1380,7 +1393,7 @@ describe('what bureau.tasks:write grants on the AG-UI routes', () => {
 
       expect(refused).toBe(stranger);
       expect(refused).toContain('THREAD_NOT_FOUND');
-      expect(harness.bureau.listRuns()).toHaveLength(runsBefore);
+      expect(listHeldTasks(harness.bureau)).toHaveLength(runsBefore);
       // The refused start left no trace in the audit trail, whatever the parked runs wrote since.
       const audit = JSON.stringify(await harness.bureau.internals.auditTrail?.query({}));
       expect(audit).not.toContain('intruder');
@@ -1425,7 +1438,7 @@ describe('what bureau.tasks:write grants on the AG-UI routes', () => {
       ]);
       expect(answered.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
       await waitForCondition(
-        () => harness.bureau.getRun(nativeRunId)?.status === 'completed',
+        () => harness.bureau.tasks.detail(nativeRunId)?.status === 'completed',
         'the run did not continue with the answer',
       );
 
@@ -1443,7 +1456,9 @@ describe('what bureau.tasks:write grants on the AG-UI routes', () => {
       );
       await second.until(EventType.STEP_STARTED);
       await harness.generate.reached('hold');
-      const secondRunId = harness.bureau.listRuns().find((run) => run.sessionId === 'thread-2')!.id;
+      const secondRunId = listHeldTasks(harness.bureau).find(
+        (run) => run.sessionId === 'thread-2',
+      )!.id;
       const cancelled = await harness.handler(
         cancelRequest(secondRunId, agUiCredentials('writer-key')),
       );

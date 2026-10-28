@@ -2,7 +2,7 @@ import { describe, expect, it, mock } from 'bun:test';
 
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { sleepForTesting } from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
 import { serializeCheckpoint } from '../checkpoint/serialization.ts';
 import { decode, encode } from '../codec.ts';
 import { DevelopmentWarningEvent } from '../events.ts';
@@ -1173,7 +1173,9 @@ describe('handleTimerFired "wait-condition" + Scheduler: WFT-79 findings 1 & 2 r
     await using nonOwner = await createSharedStoreEngine(storage, () => now);
 
     const handle = await owner.start('wft-79-shared-wait-condition', null);
-    await sleepForTesting(10);
+    await waitForCondition(async () => (await countConditionTimerIndexKeys(storage)) === 1, {
+      label: 'the wait-condition deadline timer to be stored',
+    });
     expect(await owner.get(handle.id).then((state) => state?.status)).toBe('running');
     expect(await countConditionTimerIndexKeys(storage)).toBe(1);
 

@@ -8,12 +8,12 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Engine } from '../core/engine.ts';
 import type { WorkflowContext } from '../core/types.ts';
 import { workflow } from '../core/types/workflow-function.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import { waitForCondition } from '../testing/fake-timers.test-support.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { createMcpEndpoint, type McpEndpoint, type McpEndpointOptions } from './http.ts';
 import { connectInProcessClient, type NegotiationMode } from './mcp-client.test-support.ts';
 import { MCP_LEGACY_PROTOCOL_VERSION, MCP_PROTOCOL_VERSION } from './protocol.ts';
@@ -77,7 +77,7 @@ async function runningWorkflowOf(engine: Engine, type: string): Promise<string> 
       workflowId = list.items.find((item) => item.status === 'running')?.id ?? '';
       return workflowId.length > 0;
     },
-    { timeoutMs: 2_000, intervalMs: 10, label: `running ${type} workflow` },
+    { intervalMs: 10, label: `running ${type} workflow` },
   );
   return workflowId;
 }
@@ -179,7 +179,7 @@ describe.each(eras)('MCP conformance ($era era)', ({ era, mode, version }) => {
             const state = await engine.get(workflowId);
             return state?.status === 'cancelled';
           },
-          { timeoutMs: 2_000, intervalMs: 10, label: 'cancelled workflow' },
+          { intervalMs: 10, label: 'cancelled workflow' },
         );
       } else {
         // The stateless 2025 lane answers `notifications/cancelled` on a fresh

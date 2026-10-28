@@ -7,6 +7,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { createQueryClient } from '../../lib/query.ts';
 import { router } from '../../lib/router.svelte.ts';
 import {
@@ -117,7 +118,7 @@ describe('Workers route while the lists are being read', () => {
         (call) => typeof call.init?.body === 'string' && call.init.body.includes(method),
       );
     await waitFor(() => expect(asked('weft.workers.list')).toBe(true));
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await quietFor(20);
     expect(view.getByLabelText('Loading fleet')).not.toBeNull();
     expect(view.queryAllByRole('tab').length).toBe(0);
 
@@ -131,7 +132,7 @@ describe('Workers route while the lists are being read', () => {
 
     const view = renderRoute();
 
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await quietFor(20);
     expect(view.getByLabelText('Loading fleet')).not.toBeNull();
     expect(view.queryByText(SENTENCE)).toBeNull();
 

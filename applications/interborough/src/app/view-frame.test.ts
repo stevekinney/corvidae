@@ -127,6 +127,11 @@ function answer(view: ViewName, outcome: Outcome, input: RequestInfo | URL, init
     const records = empty ? [] : [AUDIT_RECORD];
     return Response.json({ jsonrpc: '2.0', id: call.id, result: { records, nextCursor: null } });
   }
+  if (call !== undefined && call.method === 'bureau.settings.get') {
+    // The settings are never empty: the probe only asks whether the Bureau answers them.
+    const result = { values: {}, revision: 0, persisted: true, keys: {} };
+    return Response.json({ jsonrpc: '2.0', id: call.id, result });
+  }
   if (call !== undefined && call.method === 'bureau.goals.list') {
     const goals = empty ? [] : [GOAL];
     return Response.json({ jsonrpc: '2.0', id: call.id, result: { goals, nextOffset: null } });
@@ -472,6 +477,7 @@ describe('the chat list, a new chat, and the agents', () => {
     const answered: unknown = queryClient()?.getQueryData(queryKeys.agents.list());
     expect(answered).toEqual([]);
     // One turn of the event loop lets the page take the answer in.
+    // load-proof: the Bureau answer is already in the query cache, so the page only needs its Svelte flush, which settles inside the promise chain
     await new Promise((resolve) => setImmediate(resolve));
 
     expect(container.querySelector('[data-testid="welcome-agents"]')).toBeNull();

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { RevisionRealmRegistry } from './revision-realm-registry.ts';
 import type { RevisionRealm } from './revision-realm.ts';
 import type { WorkerRealm, WorkerRealmActivation } from './worker-realm.ts';

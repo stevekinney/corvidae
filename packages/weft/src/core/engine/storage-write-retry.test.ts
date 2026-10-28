@@ -9,9 +9,9 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS } from '../../storage/interface.ts';
 import { yieldToPortableEventLoop } from '../../testing/event-loop.ts';
-import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { Engine } from '../engine.ts';
 import { WorkflowFailedEvent } from '../events.ts';
 import { CheckpointCommitFailedError } from './checkpoint-commit-failed-error.ts';
@@ -172,6 +172,7 @@ describe('a refused failure write', () => {
 
     await engine.signal('deposed-failure', 'go', 'x');
     await run.refusing.whenAttempts(1, putsWorkflowStatus('deposed-failure', 'failed'));
+    // load-proof: negative window: asserts the deposed engine makes no second failed-status write; load can only delay a write, never create one
     await yieldToPortableEventLoop();
 
     expect(

@@ -13,9 +13,10 @@ import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { BureauShutdownReport } from '../types';
 import type { BureauTestHarness } from './harness';
+import { closedTask } from './closed-task';
 import { createBureauTestHarness } from './harness';
 import {
   assembleReproductionArtifact,
@@ -89,11 +90,11 @@ async function runScriptedCase(
   });
 
   const recorder = createEventRecorder(harness.runtime);
-  const run = harness.startRun('worker', 'hello');
+  const run = await harness.startTask({ agentName: 'worker', input: 'hello' });
   recorder.attachIterable(run, { kind: 'run', id: 'worker-run' });
 
   const terminalResult = await run.result();
-  const cleanupReport = await run.closed();
+  const cleanupReport = await closedTask(harness.bureau, run);
   // `attachIterable`'s consumption loop is tracked on `runtime.deferred`
   // (see `event-recorder.ts`) — drain it so every event the run emitted has
   // actually been captured before assembling, rather than racing the
@@ -353,6 +354,7 @@ describe('ReproductionArtifact — cross-package shape (AB-334)', () => {
     const shutdownReport: BureauShutdownReport = {
       admissionClosed: true,
       policy: 'drain',
+      detached: 0,
       requested: 1,
       completed: 1,
       failed: 0,

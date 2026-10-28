@@ -5,7 +5,7 @@ import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 
-const { cleanup, fireEvent, render } = await import('@testing-library/svelte');
+const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/svelte');
 const { tick } = await import('svelte');
 const { default: TagInput } = await import('./tag-input.svelte');
 const { default: FormFieldTagInputFixture } =
@@ -891,23 +891,17 @@ describe('TagInput FormField wiring', () => {
 });
 
 describe('TagInput ARIA live announcements', () => {
-  async function flushLiveRegion() {
-    // VisuallyHiddenLiveRegion uses setTimeout(0) for blank-then-set timing;
-    // we need to let that macro-task complete.
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    await tick();
-  }
-
   test('announces "<tag> added." in the live region after committing via Enter', async () => {
     const { container } = render(TagInput, { id: 'live-add' });
     const input = requiredInstance(container.querySelector('input'), HTMLInputElement);
 
     await fireEvent.input(input, { target: { value: 'Svelte' } });
     await fireEvent.keyDown(input, { key: 'Enter' });
-    await flushLiveRegion();
 
-    const liveRegion = container.querySelector('[role="status"]');
-    expect(liveRegion?.textContent).toContain('Svelte added.');
+    // VisuallyHiddenLiveRegion sets its text on a timer of its own (blank, then set).
+    await waitFor(() =>
+      expect(container.querySelector('[role="status"]')?.textContent).toContain('Svelte added.'),
+    );
   });
 
   test('announces "<tag> removed." after clicking the remove button', async () => {
@@ -920,10 +914,10 @@ describe('TagInput ARIA live announcements', () => {
     expect(removeButton).not.toBeNull();
 
     await fireEvent.click(removeButton);
-    await flushLiveRegion();
 
-    const liveRegion = container.querySelector('[role="status"]');
-    expect(liveRegion?.textContent).toContain('Svelte removed.');
+    await waitFor(() =>
+      expect(container.querySelector('[role="status"]')?.textContent).toContain('Svelte removed.'),
+    );
   });
 
   test('consecutive identical add announcements both fire via blank-then-set', async () => {
@@ -938,10 +932,9 @@ describe('TagInput ARIA live announcements', () => {
     // First add — live region should show "Svelte added."
     await fireEvent.input(input, { target: { value: 'Svelte' } });
     await fireEvent.keyDown(input, { key: 'Enter' });
-    await flushLiveRegion();
-
-    const liveRegion = container.querySelector('[role="status"]');
-    expect(liveRegion?.textContent).toContain('Svelte added.');
+    await waitFor(() =>
+      expect(container.querySelector('[role="status"]')?.textContent).toContain('Svelte added.'),
+    );
 
     // Second add of the SAME value (duplicateValuesAllowed=true, no intervening removal).
     // The live region still holds "Svelte added." — the announcementSequence bump
@@ -958,11 +951,11 @@ describe('TagInput ARIA live announcements', () => {
     await tick();
     expect(container.querySelector('[role="status"]')?.textContent?.trim()).toBe('');
 
-    await flushLiveRegion();
-
-    // After the macro-task the content must be back to "Svelte added." — proving the
+    // Once the deferred set runs the content must be back to "Svelte added." — proving the
     // identical message was genuinely re-announced.
-    expect(container.querySelector('[role="status"]')?.textContent).toContain('Svelte added.');
+    await waitFor(() =>
+      expect(container.querySelector('[role="status"]')?.textContent).toContain('Svelte added.'),
+    );
   });
 });
 

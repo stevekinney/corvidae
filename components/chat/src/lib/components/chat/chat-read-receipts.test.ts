@@ -130,7 +130,7 @@ describe('Chat — readReceipts prop', () => {
 
     expect(container.querySelector('[data-cinder-receipt-status]')).toBeNull();
     unmount(instance);
-  }, 20_000);
+  });
 
   test('receipt renders in metadata below the visual message bubble', () => {
     let conversation = createConversation();

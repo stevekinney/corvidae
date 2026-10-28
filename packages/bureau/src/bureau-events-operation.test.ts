@@ -18,7 +18,7 @@ import {
   createBureauEventRegistry,
 } from './bureau-events-operation.ts';
 import { BureauDisposedEvent, RunRegisteredEvent, RunRemovedEvent } from './events.ts';
-import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 
 function invoke(
   input: { bureauId: string; fromCursor?: string; kinds?: string | string[] },
@@ -365,6 +365,8 @@ describe('bureau.events through createOperationHandler with no Engine', () => {
       '/v1/subscriptions/operative.runs.events',
     ]);
     expect((openRpc['methods'] as { name: string }[]).map((method) => method.name)).toEqual([
+      'bureau.events',
+      'operative.runs.events',
       'rpc.discover',
     ]);
     expect(Object.keys(openApi['paths'] as object).toSorted()).toEqual([

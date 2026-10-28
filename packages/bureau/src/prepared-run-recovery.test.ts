@@ -170,12 +170,9 @@ async function prepareWithoutLaunching(configuration: StorageConfiguration | Sto
     hook.release();
     await crashed.dispose();
   });
-  const run = await crashed.createRun({
-    message: 'prepared, never launched',
-    agentName: 'researcher',
-  });
+  const run = await crashed.tasks.start('researcher', 'prepared, never launched');
   expect(await durableStatus(crashed, run.id)).toBe('pending');
-  const session = await crashed.contexts.get(run.sessionId);
+  const session = await crashed.contexts.get(run.contextId);
   expect(session?.metadata['lastRunStatus']).toBe('running');
   return { ...run, crashed, release: hook.release };
 }
@@ -184,7 +181,7 @@ async function durableStatus(
   bureau: Bureau<AgentDefinitions>,
   runId: string,
 ): Promise<string | undefined> {
-  const record = await bureau.getDurableRun(runId);
+  const record = await bureau.tasks.workflow(runId);
   return record?.status;
 }
 
@@ -200,7 +197,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
     const run = await prepareWithoutLaunching(fixture.configuration);
 
     const restarted = await open(fixture.configuration);
-    const report: BureauRecoveryReport = await restarted.waitForRecovery!();
+    const report: BureauRecoveryReport = await restarted.recovery();
 
     expect(report.perRunFailures).toContainEqual({
       runId: run.id,
@@ -211,18 +208,16 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
       async () => (await durableStatus(restarted, run.id)) === 'cancelled',
       'the prepared record was never cancelled',
     );
-    const session = await restarted.contexts.get(run.sessionId);
+    const session = await restarted.contexts.get(run.contextId);
     expect(session?.metadata['lastRunStatus']).toBe('aborted');
     expect(session?.metadata['lastFinishReason']).toBe('aborted');
     const lastError: unknown = session?.metadata['lastError'];
     expect(typeof lastError === 'string' && lastError.length > 0).toBe(true);
 
-    const next = await restarted.createRun({
-      message: 'after recovery',
-      agentName: 'researcher',
-      sessionId: run.sessionId,
+    const next = await restarted.tasks.start('researcher', 'after recovery', {
+      contextId: run.contextId,
     });
-    expect(next.sessionId).toBe(run.sessionId);
+    expect(next.contextId).toBe(run.contextId);
   });
 
   it('settles the run’s task at the same boot, even when its cancel lands late', async () => {
@@ -234,6 +229,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
       workflowId: string,
     ) {
       if (workflowId === run.id) {
+        // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
         for (let turn = 0; turn < 5; turn += 1) await yieldToPortableEventLoop();
       }
       return realCancel.call(this, workflowId);
@@ -241,7 +237,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
     cleanups.push(() => cancel.mockRestore());
 
     const restarted = await open(fixture.configuration);
-    await restarted.waitForRecovery!();
+    await restarted.recovery();
     cancel.mockRestore();
 
     const task = await restarted.internals.taskRegistry.get(run.id);
@@ -265,17 +261,17 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
       // The second read of the run is the status read, after the session was classified: another
       // process starts a run on the session in between.
       if (workflowId === run.id && ++reads === 2) {
-        await sessions.updateMetadata(run.sessionId, { lastRunId: 'another-run' });
+        await sessions.updateMetadata(run.contextId, { lastRunId: 'another-run' });
       }
       return realGet.call(this, workflowId);
     });
     cleanups.push(() => get.mockRestore());
 
     const restarted = await open(fixture.configuration);
-    await restarted.waitForRecovery!();
+    await restarted.recovery();
     get.mockRestore();
 
-    const session = await restarted.contexts.get(run.sessionId);
+    const session = await restarted.contexts.get(run.contextId);
     expect(session?.metadata['lastRunId']).toBe('another-run');
     expect(session?.metadata['lastRunStatus']).toBe('running');
   });
@@ -301,19 +297,19 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
     };
 
     const restarted = await open(fixture.configuration, { recovery });
-    await restarted.waitForRecovery!();
+    await restarted.recovery();
     claimHolder.mockRestore();
 
     expect(recovery.attempted).toContainEqual([run.id, 'skip']);
     expect(recovery.rejected.filter(([runId]) => runId === run.id)).toEqual([]);
     expect(await durableStatus(restarted, run.id)).toBe('pending');
-    const session = await restarted.contexts.get(run.sessionId);
+    const session = await restarted.contexts.get(run.contextId);
     expect(session?.metadata['lastRunStatus']).toBe('running');
 
     // The run is still the held process's: once its hook settles, it ends there.
     run.release();
     await waitForCondition(async () => {
-      const settled = await run.crashed.contexts.get(run.sessionId);
+      const settled = await run.crashed.contexts.get(run.contextId);
       return settled?.metadata['lastRunStatus'] !== 'running';
     }, 'the held process never settled its run');
   });
@@ -327,7 +323,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
       hook.release();
       await crashed.dispose();
     });
-    const run = crashed.run('researcher', 'prepared, never launched');
+    const run = await crashed.tasks.start('researcher', 'prepared, never launched');
     const runId = run.snapshot().id;
     await waitForCondition(
       async () => (await durableStatus(crashed, runId)) === 'pending',
@@ -335,7 +331,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
     );
 
     const restarted = await open(fixture.configuration);
-    const report = await restarted.waitForRecovery!();
+    const report = await restarted.recovery();
 
     expect(report.perRunFailures).toContainEqual({ runId, reason: 'prepared-not-launched' });
     expect(await durableStatus(restarted, runId)).toBe('cancelled');
@@ -352,7 +348,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
     };
 
     const restarted = await open(fixture.configuration, { recovery });
-    await restarted.waitForRecovery!();
+    await restarted.recovery();
 
     const verdicts = recovery.attempted.filter(([runId]) => runId === run.id).map(([, v]) => v);
     expect(verdicts).toContain('cancel');
@@ -370,7 +366,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
     const diagnostics: BureauDiagnostic[] = [];
 
     const restarted = await open(refusing, { diagnostics });
-    await restarted.waitForRecovery!();
+    await restarted.recovery();
 
     await waitForCondition(
       async () => (await durableStatus(restarted, run.id)) === 'cancelled',
@@ -409,7 +405,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
     };
 
     const restarted = await open(fixture.configuration, { diagnostics, recovery });
-    await restarted.waitForRecovery!();
+    await restarted.recovery();
     get.mockRestore();
 
     expect(recovery.attempted).toContainEqual([run.id, 'reattach']);

@@ -10,6 +10,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { HttpClient } from '@lostgradient/weft';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import {
   applyScheduleFleetFrame,
   subscribeScheduleInvalidation,
@@ -107,7 +108,7 @@ describe('ScheduleLastFire as the schedule fires again', () => {
 
     history.runs = [run('run-1', 'failed', 1_000)];
     applyScheduleFleetFrame(queryClient!, frame('workflow:failed', 'someone-elses-run'));
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await quietFor(50);
 
     expect(outcome()).toBe('succeeded');
   });

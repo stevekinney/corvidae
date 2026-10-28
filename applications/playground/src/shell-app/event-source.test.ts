@@ -10,6 +10,7 @@
  * the most recent URL, letting us assert the factory's open/close lifecycle
  * across URL changes and component teardown.
  */
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
@@ -163,11 +164,11 @@ describe('createEventSource factory', () => {
     handler?.(new MessageEvent('reload'));
     handler?.(new MessageEvent('reload'));
     expect(reloads).toBe(0);
-    await Bun.sleep(20);
+    await waitUntil(() => reloads >= 1, { message: 'the debounced reload' });
     expect(reloads).toBe(1);
     handler?.(new MessageEvent('reload'));
     unmount();
-    await Bun.sleep(20);
+    await quietFor(20);
     expect(reloads).toBe(1);
   });
 
@@ -196,7 +197,7 @@ describe('createEventSource factory', () => {
     messageHandler?.(new MessageEvent('message'));
     reloadHandler?.(new MessageEvent('reload'));
 
-    await Bun.sleep(20);
+    await waitUntil(() => messages >= 1 && reloads >= 1, { message: 'both debounced callbacks' });
     expect(messages).toBe(1);
     expect(reloads).toBe(1);
     unmount();

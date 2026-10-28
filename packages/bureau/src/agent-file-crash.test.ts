@@ -115,7 +115,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
         },
         storage: { type: 'sqlite', path: storagePath },
         durable: true,
-        // A session run is also offered `scheduleWakeup`; the snapshot assertion is one tool set.
+        // The recovered task keeps the grant it started with, whatever this option says (COR-1710).
         wakeup: false,
         durableOwnership: {
           ownership: 'workflow-lease',
@@ -128,8 +128,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
     expect(bureau.agents.list().map((listing) => listing.id)).toEqual(['edited']);
 
     const recovering = bureau;
-    const report = await scope.phase('recovery', async () => recovering.waitForRecovery?.());
-    if (report === undefined) throw new Error('waitForRecovery is unavailable');
+    const report = await scope.phase('recovery', async () => recovering.recovery());
     expect(report.perRunFailures).toEqual([]);
     expect(report.outcome).toBe('clean');
 
@@ -138,10 +137,10 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
         `durable run ${run.kind} ${run.name} ${run.runId}`,
         async () => {
           scope.observe(async () => {
-            const state = await recovering.getDurableRun(run.runId);
+            const state = await recovering.tasks.workflow(run.runId);
             return `durable status ${JSON.stringify(state?.status)}`;
           });
-          return recovering.waitForDurableRun(run.runId);
+          return recovering.tasks.wait(run.runId);
         },
       );
       // `waitForDurableRun` resolves for a run that failed too, so a run the engine ended before
@@ -157,7 +156,8 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
         [recovering],
         () =>
           marker.runs.every(
-            (run) => run.kind === 'catalog' || recovering.getRun(run.runId)?.status === 'completed',
+            (run) =>
+              run.kind === 'catalog' || recovering.tasks.detail(run.runId)?.status === 'completed',
           ),
         {
           scope,
@@ -165,10 +165,12 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
           describe: async () => {
             const sessions = marker.runs
               .filter((run) => run.kind === 'session')
-              .map((run) => `${run.name} ${run.runId}: ${recovering.getRun(run.runId)?.status}`);
+              .map(
+                (run) => `${run.name} ${run.runId}: ${recovering.tasks.detail(run.runId)?.status}`,
+              );
             const durable = await Promise.all(
               marker.runs.map(async (run) => {
-                const state = await recovering.getDurableRun(run.runId);
+                const state = await recovering.tasks.workflow(run.runId);
                 return `${run.kind} ${run.name} ${run.runId}: ${state?.status}${
                   state?.error === undefined ? '' : ` (${state.error})`
                 }`;
@@ -180,7 +182,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
       ),
     );
     for (const run of marker.runs) {
-      const durable = await bureau.getDurableRun(run.runId);
+      const durable = await bureau.tasks.workflow(run.runId);
       expect(durable?.status).toBe('completed');
     }
 
@@ -189,7 +191,9 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
     expect(calls).toHaveLength(4);
     for (const call of calls) {
       expect(call.model).toBe('claude-opus-5-5');
-      expect(call.tools).toEqual(['lookup-order', 'requestHumanInput']);
+      // COR-1710: the task was granted `scheduleWakeup` when it started in the child, whose options
+      // leave it on, and its recovery keeps that grant although this process's options turn it off.
+      expect(call.tools).toEqual(['decide', 'lookup-order', 'requestHumanInput', 'scheduleWakeup']);
     }
 
     // Retention: every one of those runs, a recovered `bureau.run` run included, had its snapshot
@@ -210,7 +214,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
         models: { generate: () => async () => ({ content: 'unused', toolCalls: [] }) },
         storage: { type: 'sqlite', path: storagePath },
         durable: true,
-        // A session run is also offered `scheduleWakeup`; the snapshot assertion is one tool set.
+        // The recovered task keeps the grant it started with, whatever this option says (COR-1710).
         wakeup: false,
         durableOwnership: { ownership: 'none' },
         maintenance: 'manual',
@@ -221,7 +225,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
         bureau.agents.revisions('edited'),
       ]);
       expect(before.map((revisions) => revisions.length)).toEqual([1, 1]);
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
       const after = await Promise.all([
         bureau.agents.revisions('gone'),
         bureau.agents.revisions('edited'),

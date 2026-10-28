@@ -7,6 +7,7 @@ import { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, jest, spyOn, test } from 'bun:test';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import { settle, until } from '../../lib/fake-timers.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
@@ -823,6 +824,27 @@ describe('a decision made somewhere else', () => {
 });
 
 describe('what went wrong', () => {
+  test('offers a Cinder reconnect action that starts a fresh attach after failure', async () => {
+    let attempts = 0;
+    restore = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url) => {
+      if (url.includes('/threads/')) {
+        attempts += 1;
+        return new Response('', { status: 403 });
+      }
+      return undefined;
+    }).restore;
+    landAt('/chat/session-1');
+    const { findByRole, findByText } = mount({
+      sessionId: 'session-1',
+      title: 'Reconnect',
+      agentName: 'assistant',
+    });
+    expect(await findByText('The AG-UI request failed with HTTP 403.')).not.toBeNull();
+    const before = attempts;
+    await fireEvent.click(await findByRole('button', { name: 'Reconnect' }));
+    await waitFor(() => expect(attempts).toBe(before + 1));
+  });
+
   test('is shown when the session could not be read, and again when the same thing fails after a dismissal', async () => {
     restore = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url) => {
       if (url.endsWith('/messages') || url.includes('/threads/')) {
@@ -1140,7 +1162,7 @@ describe('attachments', () => {
     await findByText('Plan the week');
     // The agents are known by now, which is what would turn the picker on.
     await waitFor(() => expect(container.querySelector('textarea')).not.toBeNull());
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await quietFor(100);
 
     expect(picker(container)).toBeNull();
   });

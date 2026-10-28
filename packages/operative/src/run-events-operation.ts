@@ -210,9 +210,11 @@ export const runEventsSubscriptionOperation = defineOperation<
       { close: () => controller.abort() },
     );
 
+    const subscriptionId = `sub_${crypto.randomUUID()}`;
     return {
+      subscriptionId,
       envelope: {
-        subscriptionId: `sub_${crypto.randomUUID()}`,
+        subscriptionId,
         cursor: input.fromCursor ?? '-1',
       },
       iterable,

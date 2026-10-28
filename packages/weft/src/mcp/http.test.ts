@@ -2,6 +2,7 @@ import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/cli
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 
+import { HANG_GUARD_MILLISECONDS, afterAwakeTime } from '@lostgradient/testing/hang-guard';
 import { Engine } from '../core/engine.ts';
 import { activity, type DefinitionSchema, type WorkflowContext } from '../core/types.ts';
 import { workflow } from '../core/types/workflow-function.ts';
@@ -113,7 +114,7 @@ async function waitForStatus(
       const state = await engine.get(workflowId);
       return state?.status === status;
     },
-    { timeoutMs: 2_000, intervalMs: 10, label: `workflow ${workflowId} to reach ${status}` },
+    { intervalMs: 10, label: `workflow ${workflowId} to reach ${status}` },
   );
 }
 
@@ -202,7 +203,7 @@ function waitForResourceUpdate(client: Client, uri: string): Promise<string> {
         if (notification.params.uri === uri) resolve(notification.params.uri);
       });
     }),
-    { timeoutMs: 2_000, label: `resources/updated for ${uri}` },
+    { label: `resources/updated for ${uri}` },
   );
 }
 
@@ -213,23 +214,23 @@ function parseToolText(result: unknown): unknown {
   return JSON.parse(toolResult.content[0]!.text);
 }
 
-async function resolveWithin<T>(
-  promise: Promise<T>,
-  options: { timeoutMs: number; label: string },
-): Promise<T> {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
+/**
+ * Resolves with `promise`, or fails naming `label` once the awake-time hang guard elapses: the wait
+ * ends on the result, never on a count of milliseconds a loaded host can overrun.
+ */
+async function resolveWithin<T>(promise: Promise<T>, options: { label: string }): Promise<T> {
+  let cancel = (): void => undefined;
   try {
     return await Promise.race([
       promise,
       new Promise<never>((_resolve, reject) => {
-        timeout = setTimeout(
-          () => reject(new Error(`${options.label} did not resolve within ${options.timeoutMs}ms`)),
-          options.timeoutMs,
+        cancel = afterAwakeTime(HANG_GUARD_MILLISECONDS, () =>
+          reject(new Error(`${options.label} did not resolve before the hang guard elapsed`)),
         );
       }),
     ]);
   } finally {
-    if (timeout !== undefined) clearTimeout(timeout);
+    cancel();
   }
 }
 
@@ -848,7 +849,6 @@ describe('MCP Streamable HTTP transport', () => {
 
     try {
       const response = await resolveWithin(pendingCall, {
-        timeoutMs: 500,
         label: 'timed-out MCP workflow tool call',
       });
       const toolResult = response.result as ToolCallResult;
@@ -921,7 +921,6 @@ describe('MCP Streamable HTTP transport', () => {
     });
 
     const response = await resolveWithin(pendingCall, {
-      timeoutMs: 500,
       label: 'timed-out MCP workflow tool call with timeoutMs input',
     });
     const payload = parseToolText(response.result) as { workflowId: string; timedOut: boolean };
@@ -979,7 +978,6 @@ describe('MCP Streamable HTTP transport', () => {
       request.abort();
 
       const toolResult = await resolveWithin(pendingCall, {
-        timeoutMs: 500,
         label: 'cancelled MCP workflow tool call',
       });
       expect(toolResult.isError).toBe(true);
@@ -1021,7 +1019,6 @@ describe('MCP Streamable HTTP transport', () => {
         content: [{ text: 'Workflow cancelled' }],
       });
       await waitForCondition(() => warnings.length > 0, {
-        timeoutMs: 2_000,
         intervalMs: 10,
         label: 'cancellation failure warning',
       });
@@ -1330,7 +1327,7 @@ async function runningHoldForCancel(engine: Engine): Promise<string> {
       workflowId = list.items.find((item) => item.status === 'running')?.id ?? '';
       return workflowId.length > 0;
     },
-    { timeoutMs: 2_000, intervalMs: 10, label: 'running MCP workflow tool call' },
+    { intervalMs: 10, label: 'running MCP workflow tool call' },
   );
   return workflowId;
 }

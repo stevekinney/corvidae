@@ -9,6 +9,7 @@
   "installCommand": "bun install --frozen-lockfile",
   "gateCommand": "bun run check",
   "affectedCheckCommand": "bun run check",
+  "fastCheckCommand": "bun scripts/run-exclusively.ts --shared 'bunx turbo run typecheck lint {filters}'",
   "batchCommand": "bun run validate",
   "lockPattern": "^[^ ]*bun [^ ]*run-exclusively\\.ts [^-]",
   "mergeMethod": "squash"

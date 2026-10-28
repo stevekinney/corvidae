@@ -2,6 +2,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { Terminal, type IBufferRange, type ILink, type ILinkProvider } from '@xterm/xterm';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { createCapturedEngine, type CapturedEngine } from './terminal-corpus-test-support.ts';
 import {
   INITIAL_GEOMETRY,
@@ -262,7 +263,7 @@ describe('the accepted parse boundary', () => {
     const { engine } = mountedEngine();
     const order: string[] = [];
     engine.write(Uint8Array.of(0x61, 0xe2, 0x80), () => order.push('first'));
-    await new Promise((resolve) => setTimeout(resolve, 40));
+    await quietFor(40);
     // `a` is parsed, but `E2 80` is not, so the chunk that carried them is not acknowledged.
     expect(order).toEqual([]);
     await new Promise<void>((resolve) =>
@@ -279,7 +280,7 @@ describe('the accepted parse boundary', () => {
     const order: string[] = [];
     engine.write(Uint8Array.of(0xf0, 0x9f), () => order.push('a'));
     engine.write(Uint8Array.of(0x91), () => order.push('b'));
-    await new Promise((resolve) => setTimeout(resolve, 40));
+    await quietFor(40);
     expect(order).toEqual([]);
     await new Promise<void>((resolve) =>
       engine.write(Uint8Array.of(0xa8), () => {
@@ -294,10 +295,10 @@ describe('the accepted parse boundary', () => {
     const { engine } = mountedEngine();
     const order: string[] = [];
     engine.write(Uint8Array.of(0x61, 0xe2, 0x80), () => order.push('held'));
-    await new Promise((resolve) => setTimeout(resolve, 40));
+    await quietFor(40);
     expect(order).toEqual([]);
     engine.finishOutput();
-    await new Promise((resolve) => setTimeout(resolve, 40));
+    await waitFor(() => order.length === 1, 'the held chunk to be acknowledged');
     expect(order).toEqual(['held']);
     // Nothing is held any more, so ending again is a no-op.
     engine.finishOutput();
@@ -328,7 +329,7 @@ describe('the accepted parse boundary', () => {
       acknowledged += 1;
     });
     engine.dispose();
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    await quietFor(30);
     expect(acknowledged).toBe(0);
   });
 
@@ -339,7 +340,7 @@ describe('the accepted parse boundary', () => {
     engine.write(bytes('after'), () => {
       acknowledged += 1;
     });
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    await quietFor(30);
     expect(acknowledged).toBe(0);
   });
 

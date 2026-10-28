@@ -21,6 +21,7 @@ import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { noToolCalls } from './conditions/predicates';
 import type { SteeringDesiredState } from './durable/types';
 import {
@@ -35,7 +36,6 @@ import type { OperativeHookMap } from './hooks';
 import { buildStepDeps, executeLoop } from './loop';
 import { awaitResumeOrAbort, type EventDispatcher, type RunState, runStep } from './run-step';
 import { createElicit } from './run-step-support';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { GenerateContext, GenerateResponse, RunOptions, SteeringGate } from './types';
 
 /** A minimal {@link EventDispatcher} test double that records every dispatched event. */

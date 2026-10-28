@@ -34,6 +34,7 @@ describe('fake-timer test isolation (preload safety net)', () => {
     // If the global afterEach did not run, fake timers would still be installed
     // here and the awaited Bun.sleep below would never settle (hang to timeout).
     expect(jest.isFakeTimers()).toBe(false);
+    // load-proof: the sleep is the probe itself; it settles only on real timers, however long it takes
     await Bun.sleep(5);
     expect(jest.isFakeTimers()).toBe(false);
   });

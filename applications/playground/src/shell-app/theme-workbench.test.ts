@@ -297,6 +297,7 @@ describe('the Edit, Preview, and Checks tabs below 768px', () => {
     window.scrollTo(0, 0);
     tab('Edit').click();
     flushSync();
+    // load-proof: the editors flush through Svelte and the in-memory evaluator, so the update settles inside the microtask queue
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(window.scrollY).toBe(240);
   });

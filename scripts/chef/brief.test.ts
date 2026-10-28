@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { rejectionOf } from '../promise-outcome.test-support.ts';
+import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
 import { charterRules, pathsIn, renderBrief, run, sectionOf } from './brief.ts';
 import type { FetchLike, IssueSummary } from './linear.ts';
 import { UsageError } from './process-runner.ts';
@@ -130,6 +130,27 @@ describe('charter rules', () => {
       expect(record.replace(/\s+/g, ' ')).toContain(phrase);
       expect(charterRules.join('\n').toLowerCase()).toContain(phrase.toLowerCase());
     }
+  });
+});
+
+describe('report rule', () => {
+  const rule = charterRules.find((candidate) => candidate.startsWith('**Report:**'));
+
+  test('makes the final message the report and keeps files out of it', () => {
+    expect(rule).toBeDefined();
+    expect(rule).toContain('final message is the report');
+    expect(rule).toContain('at most 15 lines');
+    expect(rule).toContain('do not create a `report.md`');
+    expect(rule).toContain('tmp/chef/<package>/round-<n>/');
+  });
+
+  test('no charter rule requires writing a report file', () => {
+    expect(charterRules.join('\n')).not.toMatch(/write (?:the )?(?:full )?report/i);
+  });
+
+  test('the brief a worker receives carries the report rule', () => {
+    const text = renderBrief(issue(description), { paths: [], verify: [], model: 'Sonnet' });
+    expect(text).toContain(rule!);
   });
 });
 

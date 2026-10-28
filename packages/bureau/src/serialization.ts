@@ -1,4 +1,4 @@
-import type { LivenessSnapshot, RunState } from '@lostgradient/operative';
+import type { RunState } from '@lostgradient/operative';
 import { AgentRunError, finishReasonOfError } from '@lostgradient/operative';
 import { Conversation, currentConversationFromSnapshot } from 'conversationalist';
 
@@ -203,8 +203,8 @@ export function findRunAgentName(runState: {
 
 /**
  * Run attribution resolved outside the operative store (AB-54 usage
- * analytics grouping): the agent and authenticated principal captured at
- * `createRun` time. Both are `undefined` when unresolved. `agentName` stays
+ * analytics grouping): the agent and authenticated principal captured when
+ * the task started. Both are `undefined` when unresolved. `agentName` stays
  * unresolved for a durably recovered run whose in-memory attribution was
  * lost to a process restart (`findRunAgentName`'s action-log heuristic is
  * the fallback). `principal` is rehydrated on recovery from the session's
@@ -221,8 +221,8 @@ export interface RunAttribution {
  * Maps a live RunState (which may contain non-serializable objects like
  * ActiveRun and Conversation) to a JSON-safe RunSummary DTO.
  *
- * `attribution` carries the agentName/principal resolved deterministically at
- * `createRun` time (see {@link RunAttribution}); when omitted (or its
+ * `attribution` carries the agentName/principal resolved deterministically when
+ * the task started (see {@link RunAttribution}); when omitted (or its
  * `agentName` is unset), `agentName` falls back to the {@link findRunAgentName}
  * heuristic scan of the run's own action log.
  */
@@ -286,47 +286,5 @@ export function serializeRunDetail(
       })),
     })),
     transcript: latestTranscript(runState),
-  };
-}
-
-/**
- * COR-1302: the `RunSummary` of a `bureau.run()` run whose handle exists but
- * whose `ActiveRun` is not on Bureau's run store: the window before the
- * dispatch builds it, or the whole life of a catalog run that never builds one
- * (a hand-written agent, the durable branch's in-memory fallback). Nothing has
- * been recorded for it there, so it reports the run as running with no steps,
- * actions, or usage.
- */
-export function serializeUndispatchedCatalogRun(
-  id: string,
-  attribution: RunAttribution,
-): RunSummary {
-  return {
-    id,
-    sessionId: '',
-    status: 'running',
-    steps: 0,
-    usage: { prompt: 0, completion: 0, total: 0 },
-    finishReason: undefined,
-    error: undefined,
-    actionCount: 0,
-    agentName: attribution.agentName,
-    principal: attribution.principal,
-    startedAt: undefined,
-  };
-}
-
-/** COR-1302: {@link serializeUndispatchedCatalogRun}, with the handle's own liveness. */
-export function serializeUndispatchedCatalogRunDetail(
-  id: string,
-  liveness: LivenessSnapshot,
-  attribution: RunAttribution,
-): RunDetail {
-  return {
-    ...serializeUndispatchedCatalogRun(id, attribution),
-    liveness: serializeLivenessSnapshot(liveness),
-    events: [],
-    stepDetails: [],
-    transcript: undefined,
   };
 }

@@ -10,6 +10,7 @@
 
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { WorkflowCatalogActivationResult } from '../../core/catalog/index.ts';
 import {
   WorkflowCatalogConflictError,
@@ -23,7 +24,6 @@ import {
 } from '../../core/engine/dynamic-source-errors.ts';
 import { WorkflowNotRegisteredError } from '../../core/engine/errors.ts';
 import { WorkflowSourceValidationError } from '../../core/source/errors.ts';
-import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { isOperationFault } from './operation-helpers.ts';
 import {
   activationRefusalToFault,

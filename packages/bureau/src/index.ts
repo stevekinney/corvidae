@@ -198,7 +198,6 @@ export type {
   CommandLedgerPruneResult,
   CommandPayloadValue,
   CreateCommandLedgerOptions,
-  CreatedRunSummary,
   CreateRunCreationLedgerOptions,
   LocateRunCreationReceiptInput,
   RunCreationAttempt,
@@ -219,6 +218,8 @@ export {
   digestRunCreationPayload,
   RUN_CREATION_OPERATION_VERSION,
   RunCreationReceiptUnrecordedError,
+  serializeTaskInput,
+  serializeTaskRequestContext,
 } from './command-ledger';
 export { createAgentDiscoveryTool } from './create-agent-discovery-tool';
 export type {
@@ -235,6 +236,7 @@ export {
   createBureau,
   ReviewRoundChangedError,
   ScheduleLocatorUnavailableError,
+  TaskRespondError,
   UnknownScheduleAgentError,
 } from './create-bureau';
 export {
@@ -331,6 +333,38 @@ export type {
 } from './model-policy';
 export { createModelPolicyPlanner } from './model-policy';
 export type { Models, ModelsOptions } from './models/create-models';
+export type {
+  BureauDecideOptions,
+  BureauDecisions,
+  DecisionSource,
+  DecisionsOptions,
+  DecisionValue,
+} from './decisions/types';
+export { createDecisionRouting } from './decisions/decision-routing';
+export type { DecisionRoutingOptions } from './decisions/decision-routing';
+export { decisionValidator } from './decisions/decision-validator';
+export type { DecisionValidatorOptions } from './decisions/decision-validator';
+export type { DecideRefusalReason, DecideToolResult } from './decisions/decide-tool';
+export {
+  SETTING_APPLY,
+  SETTING_KEYS,
+  settingsSchema,
+  type SettingApply,
+  type SettingKey,
+  type SettingsValues,
+} from './settings/settings-schema';
+export type {
+  BureauSettings,
+  SettingKeyState,
+  SettingsChange,
+  SettingsOptions,
+  SettingsRejectionReason,
+  SettingsSnapshot,
+  SettingsUpdateOptions,
+  SettingsUpdateResult,
+} from './settings/types';
+export { SETTINGS_TOOL_NAMES } from './settings/settings-tools';
+export type { TaskToolGrant } from './task-registry';
 export type {
   EvalScore,
   OnlineEvalJudge,
@@ -464,6 +498,15 @@ export type {
   AuditQueryRecord,
   BureauReviews,
   BureauContexts,
+  BureauTasks,
+  StartTaskOptions,
+  TaskHandle,
+  TaskInput,
+  TaskInspection,
+  TaskOutputOf,
+  TaskReceiptQuery,
+  TaskRespondRequest,
+  TaskRespondResult,
   BureauSchedules,
   BureauRunOptions,
   BureauShutdownOptions,

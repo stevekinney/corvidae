@@ -346,6 +346,7 @@ describe('a run nobody asked the result of', () => {
       // the first lets it land; disposing first would end the path early (it drops the claim
       // registry a workflow-lease announcement needs) and hide it.
       await failed.promise;
+      // load-proof: negative window: asserts a second announcement does not follow the first; load can only delay one, never create it
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(failures).toHaveLength(1);

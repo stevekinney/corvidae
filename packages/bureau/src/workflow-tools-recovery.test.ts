@@ -15,6 +15,7 @@ import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-s
 import type { Bureau } from './types';
 import { WORKFLOW_TOOL_NAMES } from './workflow-tools';
 import type { AgentDefinitions } from './agent-catalog';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { agentFileDirectory } from './sources/agent-file-directory';
 import { workflowFileDirectory } from './sources/workflow-file-directory';
 
@@ -54,9 +55,9 @@ it('writes the file as the agent after a restart, for a session run that was in 
   }
 
   const stuck = await open(() => new Promise<never>(() => {}));
-  const created = await stuck.createRun({ message: 'write it', agentName: 'scribe' });
-  for (let attempt = 0; attempt < 400; attempt += 1) {
-    if ((await stuck.getDurableRun(created.id)) !== undefined) break;
+  const created = await stuck.tasks.start('scribe', 'write it');
+  for await (const _turn of awakeTurns()) {
+    if ((await stuck.tasks.workflow(created.id)) !== undefined) break;
     await Bun.sleep(5);
   }
   // The first process is left as a crash leaves it: the run is in flight in the store, and nothing
@@ -88,8 +89,8 @@ it('writes the file as the agent after a restart, for a session run that was in 
     };
   });
   cleanups.push(() => second.dispose());
-  await second.waitForRecovery?.();
-  await second.waitForDurableRun(created.id);
+  await second.recovery();
+  await second.tasks.wait(created.id);
 
   expect(results).toHaveLength(1);
   expect(results[0]).toMatchObject({ outcome: 'success', content: { status: 'ok', id: 'digest' } });

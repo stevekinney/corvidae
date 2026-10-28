@@ -39,6 +39,8 @@ import { repositoryRoot, selectedFilesFor } from '../../../scripts/affected-test
 import { finishRun } from '../../../scripts/bun-test-junit.ts';
 import { readAllowlist } from '../../../scripts/check-test-durations.ts';
 import { rootScriptEnvironment } from '../../../scripts/environment-configuration.ts';
+import { TEST_TIMEOUT_ARGUMENT } from '../../../scripts/test-deadlines.ts';
+import { bunCrashReportsSince, workerCrashMessage } from '../../../scripts/worker-crash-report.ts';
 
 const TEST_ENV = {
   ...process.env,
@@ -233,12 +235,15 @@ async function runBunTest(
 ): Promise<number> {
   const reporter =
     reportPath === null ? [] : ['--reporter=junit', `--reporter-outfile=${reportPath}`];
-  const child = Bun.spawn(['bun', 'test', ...bunTestFlags(lane), ...reporter, ...args], {
-    cwd: PLAYGROUND_ROOT,
-    env: TEST_ENV,
-    stdout: 'inherit',
-    stderr: 'inherit',
-  });
+  const child = Bun.spawn(
+    ['bun', 'test', TEST_TIMEOUT_ARGUMENT, ...bunTestFlags(lane), ...reporter, ...args],
+    {
+      cwd: PLAYGROUND_ROOT,
+      env: TEST_ENV,
+      stdout: 'inherit',
+      stderr: 'inherit',
+    },
+  );
   return child.exited;
 }
 
@@ -266,6 +271,7 @@ async function main(): Promise<void> {
     throw new Error(`No playground ${lane} tests were discovered.`);
   }
   let failed = false;
+  const startedAt = Date.now();
 
   if (lane === 'fast') {
     mkdirSync(JUNIT_DIRECTORY, { recursive: true });
@@ -285,6 +291,12 @@ async function main(): Promise<void> {
     const reports = readdirSync(JUNIT_DIRECTORY)
       .filter((name) => name.startsWith('fast-') && name.endsWith('.xml'))
       .map((name) => readFileSync(join(JUNIT_DIRECTORY, name), 'utf8'));
+    const crashMessage = workerCrashMessage(
+      'applications/playground',
+      reports,
+      bunCrashReportsSince(startedAt),
+    );
+    if (crashMessage !== null) process.stderr.write(crashMessage);
     exitCode = finishRun('applications/playground', exitCode, reports, readAllowlist(), (message) =>
       process.stderr.write(message),
     );

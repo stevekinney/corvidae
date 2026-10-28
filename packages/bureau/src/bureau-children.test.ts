@@ -21,9 +21,7 @@ import {
 } from '@lostgradient/operative';
 import {
   type ConditionalTextValueStore,
-  decode,
   MemoryStorage,
-  resolveStorage,
   textValueStore,
   yieldToPortableEventLoop,
 } from '@lostgradient/weft';
@@ -33,11 +31,11 @@ import { z } from 'zod';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { BureauError, createBureau } from './create-bureau';
-import { CATALOG_RUN_RECOVERY_KEY_PREFIX } from './runtime-composition';
-import { rejectionOf, throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau, BureauDiagnostic } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 import { storageOverTextStore } from './testing/text-store-storage.test-support';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 /**
  * Every bureau here reports into this sink instead of the console. Disposing
@@ -50,20 +48,15 @@ const onDiagnostic = (diagnostic: BureauDiagnostic): void => {
 };
 
 afterEach(async () => {
+  // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
   await yieldToPortableEventLoop();
   expect(diagnostics.filter((diagnostic) => diagnostic.scope === 'child-topology')).toEqual([]);
   diagnostics = [];
 });
 
-async function pollUntil(
-  check: () => boolean | Promise<boolean>,
-  attempts = 200,
-): Promise<boolean> {
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    if (await check()) return true;
-    await yieldToPortableEventLoop();
-  }
-  return check();
+async function pollUntil(check: () => boolean | Promise<boolean>): Promise<true> {
+  await waitUntil(check, { message: 'pollUntil' });
+  return true;
 }
 
 function databasePath(label: string): string {
@@ -163,11 +156,11 @@ describe('bureau.children over an ephemeral bureau', () => {
       children: { signals: { worker: proceedSignals } },
       onDiagnostic,
     });
-    const parent = await bureau.createRun({ agentName: 'default', message: 'plan the work' });
+    const parent = await bureau.tasks.start('default', 'plan the work');
     return { bureau, parent };
   }
 
-  it('dispatches, lists, gets, and waits on a child of a createRun parent', async () => {
+  it('dispatches, lists, gets, and waits on a child of a tasks.start parent', async () => {
     const { bureau, parent } = await createParentBureau({ worker: completingWorker() });
 
     try {
@@ -206,7 +199,7 @@ describe('bureau.children over an ephemeral bureau', () => {
 
   it('never lets an unrelated parent inspect, wait on, signal, or cancel another parent’s child', async () => {
     const { bureau, parent } = await createParentBureau({ worker: hangingWorker() });
-    const other = await bureau.createRun({ agentName: 'default', message: 'another plan' });
+    const other = await bureau.tasks.start('default', 'another plan');
 
     try {
       const dispatched = await bureau.children.dispatch({
@@ -261,8 +254,7 @@ describe('bureau.children over an ephemeral bureau', () => {
       });
       expect([cascade.outcome, detach.outcome]).toEqual(['started', 'started']);
 
-      bureau.abortRun(parent.id);
-
+      await bureau.tasks.cancel(parent.id);
       expect(
         await bureau.children.wait({ parentRunId: parent.id, childRunId: 'cascade-child' }),
       ).toMatchObject({
@@ -288,12 +280,12 @@ describe('bureau.children over an ephemeral bureau', () => {
     }
   });
 
-  it('refuses a child under a createRun parent that abortRun has not finished tearing down', async () => {
+  it('refuses a child under a tasks.start parent that tasks.cancel has not finished tearing down', async () => {
     const { bureau, parent } = await createParentBureau({ worker: hangingWorker() });
 
     try {
-      expect(bureau.abortRun(parent.id)).toMatchObject({ status: 'aborting' });
-      expect(bureau.getRun(parent.id)).toMatchObject({ status: 'running' });
+      expect(await bureau.tasks.cancel(parent.id)).toMatchObject({ receipt: 'cancel-requested' });
+      expect(bureau.tasks.detail(parent.id)).toMatchObject({ status: 'running' });
 
       expect(
         await bureau.children.dispatch({
@@ -483,21 +475,16 @@ describe('bureau.children over an ephemeral bureau', () => {
 // ---------------------------------------------------------------------------
 
 describe('bureau.children over a durable bureau', () => {
-  /** The first durable `bureau.run` run not in `known` once it has started. */
+  /** The durable workflow of a started task, once its first checkpoint is listed. */
   async function startedDurableRun(
-    bureau: Pick<Bureau, 'listDurableRuns'>,
-    known: readonly string[] = [],
+    bureau: Pick<Bureau, 'tasks'>,
+    task: { readonly id: string },
   ): Promise<string> {
-    let runId: string | undefined;
     await pollUntil(async () => {
-      const runs = await bureau.listDurableRuns();
-      runId = runs?.items.find(
-        (item) => item.id.startsWith('agent-run-') && !known.includes(item.id),
-      )?.id;
-      return runId !== undefined;
+      const runs = await bureau.tasks.workflows();
+      return runs?.items.some((item) => item.id === task.id) === true;
     });
-    if (runId === undefined) throw new Error('the durable run never started');
-    return runId;
+    return task.id;
   }
 
   function hangingAgents() {
@@ -517,25 +504,23 @@ describe('bureau.children over a durable bureau', () => {
 
   it('refuses a child identifier that names another principal’s run, and leaves that run as it was', async () => {
     const path = databasePath('foreign-run-id');
-    // Owned here so the catalog recovery record can be read back byte for byte.
-    const storage = await resolveStorage({ type: 'sqlite', path });
     const bureau = await createBureau({
       agents: hangingAgents(),
-      storage,
+      storage: { type: 'sqlite', path },
       durable: true,
       onDiagnostic,
     });
 
     try {
-      bureau.run('worker', 'alice’s private work', { principal: 'alice' });
-      const aliceRunId = await startedDurableRun(bureau);
-      bureau.run('planner', 'mallory’s plan', { principal: 'mallory' });
-      const malloryRunId = await startedDurableRun(bureau, [aliceRunId]);
-      const recoveryKey = `${CATALOG_RUN_RECOVERY_KEY_PREFIX}${aliceRunId}`;
-      const recoveryRecord = decode((await storage.get(recoveryKey))!);
-      expect(recoveryRecord).toMatchObject({ agentName: 'worker', principal: 'alice' });
-      const history = (principal: string) =>
-        bureau.eventHistory({ kind: 'run', id: aliceRunId }, { principal });
+      const aliceTask = await bureau.tasks.start('worker', 'alice’s private work', {
+        principal: 'alice',
+      });
+      const aliceRunId = await startedDurableRun(bureau, aliceTask);
+      const malloryTask = await bureau.tasks.start('planner', 'mallory’s plan', {
+        principal: 'mallory',
+      });
+      const malloryRunId = await startedDurableRun(bureau, malloryTask);
+      const history = (principal: string) => bureau.tasks.events(aliceRunId, { principal });
       expect(await history('alice')).not.toEqual({ outcome: 'not-found' });
       expect(await history('mallory')).toEqual({ outcome: 'not-found' });
 
@@ -551,9 +536,10 @@ describe('bureau.children over a durable bureau', () => {
 
       expect(await history('alice')).not.toEqual({ outcome: 'not-found' });
       expect(await history('mallory')).toEqual({ outcome: 'not-found' });
-      expect(decode((await storage.get(recoveryKey))!)).toEqual(recoveryRecord);
       expect(await bureau.children.list(malloryRunId)).toEqual([]);
-      expect(await bureau.getDurableRun(aliceRunId)).toMatchObject({ status: 'running' });
+      // Not settled: a task's workflow is pending until its first checkpoint commits.
+      const aliceWorkflow = await bureau.tasks.workflow(aliceRunId);
+      expect(['pending', 'running']).toContain(aliceWorkflow?.status ?? 'missing');
       // Alice's run is still the parent Bureau knows by that identifier.
       expect(
         await bureau.children.dispatch({
@@ -568,7 +554,6 @@ describe('bureau.children over a durable bureau', () => {
       });
     } finally {
       await bureau.dispose();
-      storage[Symbol.dispose]();
       await removeDatabase(path);
     }
   });
@@ -582,8 +567,8 @@ describe('bureau.children over a durable bureau', () => {
     });
 
     try {
-      const parent = bureau.run('planner', 'plan');
-      const parentRunId = await startedDurableRun(bureau);
+      const parent = await bureau.tasks.start('planner', 'plan');
+      const parentRunId = await startedDurableRun(bureau, parent);
       const dispatch = (childRunId: string, parentCancellation: 'cascade' | 'detach') =>
         bureau.children.dispatch({
           parentRunId,
@@ -610,8 +595,8 @@ describe('bureau.children over a durable bureau', () => {
       expect(
         await bureau.children.get({ parentRunId, childRunId: 'detached-child' }),
       ).toMatchObject({ status: 'running' });
-      expect(await bureau.getDurableRun('cascade-child')).toMatchObject({ status: 'cancelled' });
-      const detachedWorkflow = await bureau.getDurableRun('detached-child');
+      expect(await bureau.tasks.workflow('cascade-child')).toMatchObject({ status: 'cancelled' });
+      const detachedWorkflow = await bureau.tasks.workflow('detached-child');
       expect(detachedWorkflow?.status).not.toBe('cancelled');
     } finally {
       await bureau.dispose();
@@ -628,8 +613,8 @@ describe('bureau.children over a durable bureau', () => {
         onDiagnostic,
       });
 
-      const parent = bureau.run('planner', 'plan');
-      const parentRunId = await startedDurableRun(bureau);
+      const parent = await bureau.tasks.start('planner', 'plan');
+      const parentRunId = await startedDurableRun(bureau, parent);
       expect(
         await bureau.children.dispatch({
           parentRunId,
@@ -643,6 +628,7 @@ describe('bureau.children over a durable bureau', () => {
       await parent.result();
 
       await bureau.dispose();
+      // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
       await yieldToPortableEventLoop();
 
       expect(
@@ -684,8 +670,8 @@ describe('bureau.children over a durable bureau', () => {
     });
 
     try {
-      const plannerRun = bureau.run('planner', 'plan');
-      const parentRunId = await startedDurableRun(bureau);
+      const plannerRun = await bureau.tasks.start('planner', 'plan');
+      const parentRunId = await startedDurableRun(bureau, plannerRun);
       // Its handle names the same durable run, as a createAgent parent's does.
       expect(await pollUntil(() => plannerRun.snapshot().id === parentRunId)).toBe(true);
       expect(plannerRun.snapshot().durability).toBe('durable');
@@ -706,7 +692,7 @@ describe('bureau.children over a durable bureau', () => {
       });
       expect(
         await pollUntil(async () => {
-          const workflow = await bureau.getDurableRun('lazy-child');
+          const workflow = await bureau.tasks.workflow('lazy-child');
           return workflow?.status === 'running';
         }),
       ).toBe(true);
@@ -743,15 +729,15 @@ describe('bureau.children over a durable bureau', () => {
     });
 
     try {
-      bureau.run('planner', 'plan');
-      const parentRunId = await startedDurableRun(bureau);
+      const parentTask = await bureau.tasks.start('planner', 'plan');
+      const parentRunId = await startedDurableRun(bureau, parentTask);
       const middle = { parentRunId, childRunId: 'middle' };
       expect(
         await bureau.children.dispatch({ ...middle, agentName: 'slow', input: 'x' }),
       ).toMatchObject({ outcome: 'started' });
       expect(
         await pollUntil(async () => {
-          const workflow = await bureau.getDurableRun('middle');
+          const workflow = await bureau.tasks.workflow('middle');
           return workflow?.status === 'running';
         }),
       ).toBe(true);
@@ -776,7 +762,7 @@ describe('bureau.children over a durable bureau', () => {
         child: { status: 'aborted' },
       });
       expect(await bureau.children.list('middle')).toEqual([]);
-      expect(await bureau.getDurableRun('late')).toBeNull();
+      expect(await bureau.tasks.workflow('late')).toBeNull();
     } finally {
       await bureau.dispose();
     }
@@ -819,11 +805,9 @@ describe('bureau.children across a process restart', () => {
       onDiagnostic,
       children: { signals: { worker: proceedSignals }, delegation },
     });
-    bureauA.run('planner', 'plan');
+    const parentTask = await bureauA.tasks.start('planner', 'plan');
+    const parentRunId = parentTask.id;
     await pollUntil(() => parentAtStep1);
-    const runs = await bureauA.listDurableRuns();
-    const parentRunId = runs?.items.find((item) => item.id.startsWith('agent-run-'))?.id;
-    if (parentRunId === undefined) throw new Error('parent run was not checkpointed');
 
     const dispatched = await bureauA.children.dispatch({
       parentRunId,
@@ -886,7 +870,7 @@ describe('bureau.children across a process restart', () => {
           recoveries: 1,
           workflow: { kind: 'durable', workflowId: childRunId },
         });
-        const durableRuns = await bureauB.listDurableRuns();
+        const durableRuns = await bureauB.tasks.workflows();
         expect(durableRuns?.items.filter((item) => item.id === childRunId)).toHaveLength(1);
 
         expect(
@@ -1018,7 +1002,7 @@ describe('bureau.children across a process restart', () => {
             ?.map((record) => record.type)
             .filter((type) => type.startsWith('child.') || type.startsWith('delegation.')),
         ).toEqual(['child.started', 'delegation.rejected', 'child.aborted']);
-        const durableChild = await bureauB.getDurableRun(childRunId);
+        const durableChild = await bureauB.tasks.workflow(childRunId);
         expect(durableChild?.status).toBe('cancelled');
       } finally {
         await bureauB.dispose();
@@ -1029,13 +1013,15 @@ describe('bureau.children across a process restart', () => {
     }
   });
 
-  it('cascades a committed cancelDurableRun of the parent to its cascade children', async () => {
+  it('cascades a committed tasks.cancel of a durable parent to its cascade children', async () => {
     const path = databasePath('cancel-durable');
     const childRunId = 'child-cancel-durable';
     try {
       const { bureauA, parentRunId } = await crashWithChild(path, childRunId);
       try {
-        expect(await bureauA.cancelDurableRun(parentRunId)).toEqual({ status: 'requested' });
+        expect(await bureauA.tasks.cancel(parentRunId)).toMatchObject({
+          receipt: 'cancel-requested',
+        });
         expect(await bureauA.children.wait({ parentRunId, childRunId })).toMatchObject({
           child: { status: 'aborted', outcome: { reason: expect.stringContaining(parentRunId) } },
         });

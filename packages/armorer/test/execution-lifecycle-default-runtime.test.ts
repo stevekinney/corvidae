@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createExecutionLifecycle } from '../src';
 
 /**
@@ -20,7 +21,9 @@ describe('execution lifecycle', () => {
       deadline: Date.now(),
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await waitUntil(() => handle.snapshot().state === 'abort-requested', {
+      message: 'the default runtime to fire the deadline',
+    });
 
     expect(handle.snapshot()).toMatchObject({
       state: 'abort-requested',

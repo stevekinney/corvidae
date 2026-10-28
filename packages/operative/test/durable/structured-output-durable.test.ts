@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createCheckpointStore } from '../../src/durable/checkpoint-store';
 import { createRunEngine } from '../../src/durable/create-run-engine';
 import { resumeDurableRunResult, startDurableRunResult } from '../../src/durable/index';
@@ -14,7 +15,6 @@ import {
 } from '../../src/durable/run-workflow-result';
 import { stopWhen } from '../../src/index';
 import { InvalidRunResultError, UnsupportedRunResultVersionError } from '../../src/run-envelope';
-import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 import type { FinishReason } from '../../src/types';
 
 // Drain Weft's deferred inline-launch queue between tests (see other durable

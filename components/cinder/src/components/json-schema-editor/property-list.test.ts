@@ -331,12 +331,14 @@ describe('PropertyList', () => {
     });
 
     await fireEvent.click(screen.getByRole('button', { name: 'Move age up' }));
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(document.querySelector('[aria-live="polite"]')?.textContent).toContain(
       'Moved age property to position 1 of 2.',
     );
 
     await fireEvent.click(screen.getByRole('button', { name: 'Delete email' }));
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(document.querySelector('[aria-live="polite"]')?.textContent).toContain(
       'Deleted email property.',

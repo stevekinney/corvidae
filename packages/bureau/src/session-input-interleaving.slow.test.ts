@@ -62,22 +62,18 @@ describe('a run whose session is recreated while it starts (COR-1476)', () => {
         a.seam.awaitWriteCommitted(savesSessionAs('running')),
       );
       holds.push(gateLoad);
-      const creating = a.bureau.createRun({
-        agentName: 'default',
-        message: 'First',
+      const creating = a.bureau.tasks.start('default', 'First', {
+        contextId: SESSION,
         principal: 'alice',
-        sessionId: SESSION,
       });
       await gateLoad.reached;
 
       // Process B deletes and recreates the session meanwhile, with a live run
       // of the new incarnation, and admits input to it.
       await b.bureau.contexts.delete(SESSION);
-      const second = await b.bureau.createRun({
-        agentName: 'default',
-        message: 'Second',
+      const second = await b.bureau.tasks.start('default', 'Second', {
+        contextId: SESSION,
         principal: 'alice',
-        sessionId: SESSION,
       });
       await run2Started.promise;
       const admitted = await b.bureau.contexts.input(SESSION, input);
@@ -92,7 +88,7 @@ describe('a run whose session is recreated while it starts (COR-1476)', () => {
 
       // The new incarnation's run delivers the input at its next boundary.
       release2.resolve();
-      await b.bureau.waitForDurableRun(second.id);
+      await b.bureau.tasks.wait(second.id);
       expect(prompts2).toEqual([['Second'], ['Second', 'X']]);
     } finally {
       release2.resolve();

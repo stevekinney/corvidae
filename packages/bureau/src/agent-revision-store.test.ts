@@ -13,7 +13,7 @@ import {
 import { describe, expect, it } from 'bun:test';
 
 import { AGENT_REVISION_KEY_PREFIX, createAgentRevisionStore } from './agent-revision-store';
-import { rejectionOf } from './testing/promise-outcome.test-support';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 
 const HASH_A = 'a'.repeat(64);
 const HASH_B = 'b'.repeat(64);

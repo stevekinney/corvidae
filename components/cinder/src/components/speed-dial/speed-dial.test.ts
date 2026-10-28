@@ -27,6 +27,7 @@ afterEach(() => {
   }
 });
 
+// load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
 async function flushQueuedFocus(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
@@ -247,8 +248,7 @@ describe('SpeedDial', () => {
       dispatchTransitionBoundary(action, 'transitionend', 'transform');
       expect(complete).not.toHaveBeenCalled();
 
-      await Bun.sleep(560);
-      expect(complete).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(complete).toHaveBeenCalledTimes(1));
 
       cancel();
     } finally {

@@ -37,11 +37,13 @@ import {
   reviewOf,
   reviewsOf,
   storedText,
+  followedBy,
 } from './schedule-fire-fixtures.test-support';
 import { scheduledFireHoldings, scheduledFireReviewStateOf } from './scheduled-fire-review-state';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau } from './types';
 import { expireReviews } from './testing/expired-reviews.test-support';
+import { quietFor } from '@lostgradient/testing/wait-until';
 
 const harness = createScheduleFireHarness();
 
@@ -95,7 +97,6 @@ async function followTask(bureau: Bureau, fireId: string) {
     await handlerOf(bureau)(
       subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
     ),
-    { timeoutMs: 20_000 },
   ).finally(() => {
     ended = true;
   });
@@ -144,7 +145,7 @@ describe('a re-gated fire approval with a task stream open', () => {
   for (const order of ['before', 'after'] as const) {
     it(`stays listed, open and deniable when the stream opens ${order} the re-gate`, async () => {
       const { bureau, fireId, review, stream } = await regated(order);
-      await sleep(300);
+      await quietFor(300);
 
       expect(stream.ended).toBe(false);
       expect(reviewsOf(bureau, fireId).map((listed) => listed.id)).toEqual([review.id]);
@@ -184,7 +185,7 @@ describe('a re-gated fire approval with a task stream open', () => {
     await reviewOf(peer, fireId);
 
     const stream = await followTask(peer, fireId);
-    await sleep(300);
+    await quietFor(300);
 
     expect(stream.ended).toBe(false);
     expect(reviewsOf(peer, fireId).map((listed) => listed.id)).toEqual([review.id]);
@@ -269,8 +270,8 @@ describe('a canceled human wait gets one canceled record, whichever route cancel
       rpc(handlerOf(bureau), 'bureau.tasks.cancel', { taskId: fireId }, 'alice-key').then(
         () => undefined,
       ),
-    'the durable run': (bureau: Bureau, fireId: string) =>
-      bureau.cancelDurableRun(fireId).then(() => undefined),
+    'tasks.cancel in process': (bureau: Bureau, fireId: string) =>
+      bureau.tasks.cancel(fireId).then(() => undefined),
     'the engine': (bureau: Bureau, fireId: string) =>
       bureau.durableEngine()?.cancel(fireId) ?? Promise.resolve(),
   };
@@ -290,9 +291,9 @@ describe('a canceled human wait gets one canceled record, whichever route cancel
       hold.arm();
 
       const canceling = cancel(bureau, fireId);
-      await Promise.race([hold.reached, sleep(3000)]);
+      await hold.reached;
       expect(hold.held).toBe(true);
-      await sleep(300);
+      await quietFor(300);
       hold.release();
       await canceling;
       await pollUntil(async () => {
@@ -304,7 +305,7 @@ describe('a canceled human wait gets one canceled record, whichever route cancel
         );
         return records.length > 0 ? true : undefined;
       }, 'the canceled wait to be recorded');
-      await sleep(300);
+      await quietFor(300);
 
       expect(
         await auditRecordsOf(bureau, fireId, 'review.human-wait.canceled', review.id),
@@ -341,7 +342,7 @@ describe('a re-gated fire approval that is canceled', () => {
       });
       const { fireId } = await fireOnce(bureau, OWNER.alice, 'regate-cancel-session');
       const review = await reviewOf(bureau, fireId);
-      await sleep(50);
+      await followedBy(bureau, fireId);
       const outcome = await bureau.reviews.resolve({
         id: review.id,
         decision: 'approve',
@@ -354,7 +355,7 @@ describe('a re-gated fire approval that is canceled', () => {
         const records = await canceledRecordsAt(bureau, fireId, review.id);
         return records.length > 0 ? true : undefined;
       }, 'the canceled approval to be recorded');
-      await sleep(250);
+      await quietFor(250);
 
       const records = await canceledRecordsAt(bureau, fireId, review.id);
       expect(records).toHaveLength(1);
@@ -383,11 +384,11 @@ describe('a re-gated fire approval that is canceled', () => {
     });
     const { fireId } = await fireOnce(first, OWNER.alice, 'regate-boot-session');
     const review = await reviewOf(first, fireId);
-    await sleep(50);
+    await followedBy(first, fireId);
     await first.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice });
     hold.arm();
     void first.durableEngine()?.cancel(fireId);
-    await Promise.race([hold.reached, sleep(3000)]);
+    await hold.reached;
     expect(hold.held).toBe(true);
 
     const restarted = await harness.open({
@@ -411,7 +412,7 @@ describe('a re-gated fire approval that is canceled', () => {
     expect(detail?.review?.round).toBe(1);
     // The process that was held finishes while its storage is still open.
     hold.release();
-    await sleep(300);
+    await quietFor(300);
   });
 });
 
@@ -437,7 +438,7 @@ describe('a canceled approval whose process died between its record and its prun
       });
       const { fireId } = await fireOnce(first, OWNER.alice, 'prune-crash-session');
       const review = await reviewOf(first, fireId);
-      await sleep(50);
+      await followedBy(first, fireId);
       for (let index = 0; index < filler; index += 1) {
         await first.internals.auditTrail?.record({
           runId: fireId,
@@ -448,7 +449,7 @@ describe('a canceled approval whose process died between its record and its prun
       }
       hold.arm();
       void first.durableEngine()?.cancel(fireId);
-      await Promise.race([hold.reached, sleep(3000)]);
+      await hold.reached;
       expect(hold.held).toBe(true);
       expect(
         await auditRecordsOf(first, fireId, 'review.tool-approval.canceled', review.id),
@@ -464,7 +465,7 @@ describe('a canceled approval whose process died between its record and its prun
           }),
         },
       });
-      await sleep(400);
+      await quietFor(400);
 
       expect(
         await auditRecordsOf(restarted, fireId, 'review.tool-approval.canceled', review.id),
@@ -513,11 +514,11 @@ describe('a fire approval this process expires, with a task stream open', () => 
     const review = await reviewOf(bureau, fireId);
     await settleAtApproval(bureau, fireId);
     await followTask(bureau, fireId);
-    await sleep(100);
+    await followedBy(bureau, fireId);
 
     failing.on = true;
     await expireReviews(bureau, Date.now() + 60 * 60 * 1000).catch(() => undefined);
-    await sleep(250);
+    await quietFor(250);
     failing.on = false;
 
     const refusal = await rejectionOf(

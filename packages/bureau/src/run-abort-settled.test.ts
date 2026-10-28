@@ -28,7 +28,7 @@ it('announces that an aborted run has left listAbortingRuns()', async () => {
     },
   });
   try {
-    const run = await bureau.createRun({ agentName: 'default', message: 'go' });
+    const run = await bureau.tasks.start('default', 'go');
     await generating.promise;
     const settled = Promise.withResolvers<{ runId: string; stillAborting: number }>();
     bureau.addEventListener(RunAbortSettledEvent.type, (event) => {
@@ -38,7 +38,7 @@ it('announces that an aborted run has left listAbortingRuns()', async () => {
       });
     });
 
-    expect(bureau.abortRun(run.id).status).toBe('aborting');
+    expect(await bureau.tasks.cancel(run.id)).toMatchObject({ receipt: 'cancel-requested' });
     const announcement = await settled.promise;
 
     expect(announcement).toEqual({ runId: run.id, stillAborting: 0 });

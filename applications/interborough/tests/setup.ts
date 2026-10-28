@@ -28,7 +28,7 @@ import { plugin } from 'bun';
 import { afterAll, afterEach, beforeEach, expect } from 'bun:test';
 import { Window } from 'happy-dom';
 
-import { sveltePlugin } from '@lostgradient/testing';
+import { configureAsyncUtilityDeadline, sveltePlugin } from '@lostgradient/testing';
 
 declare module 'bun:test' {
   interface Matchers<T = unknown> extends TestingLibraryMatchers<
@@ -149,6 +149,9 @@ async function registerGlobalCleanup(): Promise<void> {
 }
 
 await registerGlobalCleanup();
+
+// Testing Library's asynchronous utilities wait up to the hang guard, not one second.
+await configureAsyncUtilityDeadline();
 
 // The router is a module-scope singleton over `window.location`, so a test that navigates (the
 // route tests' `landAt('/runs/run-1')`) would leave that address for every later test file in the

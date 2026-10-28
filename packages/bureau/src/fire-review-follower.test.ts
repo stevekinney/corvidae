@@ -21,21 +21,17 @@ import { ReviewCanceledEvent } from './events';
 import { createFireReviewFollower, type FireReviewFollower } from './fire-review-follower';
 import { reviewCanceledDedupeKey } from './review-closing-events';
 import type { Bureau, BureauDiagnostic } from './types';
+import { awakeTurns, quietFor } from '@lostgradient/testing/wait-until';
 
 const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-async function eventually<T>(
-  check: () => T | undefined,
-  what: string,
-  timeoutMs = 3_000,
-): Promise<T> {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
+async function eventually<T>(check: () => T | undefined, what: string): Promise<T> {
+  for await (const _turn of awakeTurns()) {
     const value = check();
     if (value !== undefined) return value;
-    if (Date.now() > deadline) throw new Error(`Condition was not met: ${what}`);
     await sleep(5);
   }
+  throw new Error(`Condition was not met: ${what}`);
 }
 
 const cleanups: Array<() => Promise<void> | void> = [];
@@ -121,7 +117,7 @@ describe('the history subscription of several owners', () => {
     await history.record(runOwner('two'), 'review.denied', closing('d'));
 
     await eventually(() => (delivered.length >= 2 ? true : undefined), 'both followed events');
-    await sleep(50);
+    await quietFor(50);
     expect(delivered).toEqual(['one|review.approved', 'two|review.denied']);
     expect(subscription.followed().map((owner) => owner.id)).toEqual(['one', 'two']);
   });
@@ -142,7 +138,7 @@ describe('the history subscription of several owners', () => {
     await history.record(runOwner('two'), 'review.approved', closing('b'));
 
     await eventually(() => (delivered.length >= 1 ? true : undefined), 'the followed event');
-    await sleep(50);
+    await quietFor(50);
     expect(delivered).toEqual(['two|review.approved']);
   });
 
@@ -162,7 +158,7 @@ describe('the history subscription of several owners', () => {
     await history.record(runOwner('one'), 'review.expired', closing('b'));
 
     await eventually(() => (order.length >= 1 ? true : undefined), 'the first event');
-    await sleep(100);
+    await quietFor(100);
     expect(order).toEqual(['start review.approved']);
     gate.resolve();
     await eventually(() => (order.length >= 4 ? true : undefined), 'the second event');
@@ -225,7 +221,7 @@ describe('the fire review follower', () => {
     await history.record(runOwner('fire-a'), 'review.requested', closing('approval:fire-a:2'));
 
     await eventually(() => (closed.length >= 2 ? true : undefined), 'both closings');
-    await sleep(50);
+    await quietFor(50);
     expect(closed.toSorted()).toEqual([
       'fire-a|approval:fire-a:1|review.approved',
       'fire-b|approval:fire-b:1|review.expired',
@@ -256,13 +252,13 @@ describe('the fire review follower', () => {
     await history.record(runOwner('fire-a'), 'review.approved', closing('approval:fire-a:1'));
     await history.record(runOwner('fire-b'), 'review.approved', closing('approval:fire-b:1'));
     await eventually(() => (closed.length >= 1 ? true : undefined), 'the followed closing');
-    await sleep(50);
+    await quietFor(50);
     expect(closed).toEqual(['fire-b|approval:fire-b:1|review.approved']);
 
     follower.unfollow('fire-b');
     expect(follower.followed()).toEqual([]);
     await history.record(runOwner('fire-b'), 'review.expired', closing('approval:fire-b:2'));
-    await sleep(100);
+    await quietFor(100);
     expect(closed).toHaveLength(1);
 
     // A fire followed again after that reads what it recorded while nothing was followed.
@@ -332,16 +328,21 @@ describe('the fire review follower', () => {
     const writer = createDurableEventHistory(storage, createManualRuntimeServices());
     cleanups.push(() => writer.dispose());
     const gate = Promise.withResolvers<void>();
+    const entered = Promise.withResolvers<void>();
     const { follower, reread } = openFollower(history, {
       closeReview: async (_runId, reviewId) => {
-        if (reviewId === 'first') await gate.promise;
+        if (reviewId === 'first') {
+          entered.resolve();
+          await gate.promise;
+        }
       },
     });
     follower.follow('fire-a');
     follower.follow('fire-b');
     await follower.settled();
     await writer.record(runOwner('fire-a'), 'review.approved', closing('first'));
-    await sleep(100);
+    // The first closing is being applied, held at the gate, before the later ones are recorded.
+    await entered.promise;
     await writer.record(runOwner('fire-a'), 'review.expired', closing('second'));
     await writer.record(runOwner('fire-b'), 'review.expired', closing('third'));
     expect(await writer.retainBefore(Date.now() + 1_000_000)).toBeGreaterThan(0);
@@ -577,11 +578,15 @@ describe('a followed fire that cannot be read', () => {
     const writer = createDurableEventHistory(storage, createManualRuntimeServices());
     cleanups.push(() => writer.dispose());
     const gate = Promise.withResolvers<void>();
+    const entered = Promise.withResolvers<void>();
     const failedOnce = new Set<string>();
     const succeeded: string[] = [];
     const { follower } = openFollower(history, {
       closeReview: async (_runId, reviewId) => {
-        if (reviewId === 'first') await gate.promise;
+        if (reviewId === 'first') {
+          entered.resolve();
+          await gate.promise;
+        }
       },
       reread: async (runId) => {
         if (!failedOnce.has(runId)) {
@@ -597,7 +602,8 @@ describe('a followed fire that cannot be read', () => {
     succeeded.length = 0;
     failedOnce.clear();
     await writer.record(runOwner('fire-a'), 'review.approved', closing('first'));
-    await sleep(100);
+    // The first closing is being applied, held at the gate, before the later ones are recorded.
+    await entered.promise;
     await writer.record(runOwner('fire-a'), 'review.expired', closing('second'));
     await writer.record(runOwner('fire-b'), 'review.expired', closing('third'));
     expect(await writer.retainBefore(Date.now() + 1_000_000)).toBeGreaterThan(0);
@@ -626,14 +632,30 @@ describe('a followed fire that cannot be read', () => {
         return subscription;
       },
     };
-    const { follower } = openFollower(endingAtOnce, { retryDelayMilliseconds: 20 });
+    // The waits the follower asks for fire at once, so the test is not paced by a clock: what it
+    // proves is that every reopen is preceded by a wait of the configured length.
+    const { requested, timers } = recordingTimers();
+    const follower = createFireReviewFollower({
+      history: endingAtOnce,
+      closeReview: async () => undefined,
+      reread: async () => undefined,
+      now: () => Date.now(),
+      timers,
+      diagnose: () => undefined,
+      attempts: 3,
+      retryDelayMilliseconds: 20,
+      maximumRetryDelayMilliseconds: 20,
+    });
+    cleanups.push(() => follower.dispose());
     follower.follow('fire-a');
 
-    await sleep(400);
+    await eventually(() => (state.opens >= 5 ? true : undefined), 'five reopens');
+    await follower.dispose();
 
-    // One open per 20 milliseconds wait at the most: a few tens, not the thousands of a loop.
-    expect(state.opens).toBeGreaterThan(1);
-    expect(state.opens).toBeLessThan(40);
+    // Each reopen after the first waited its 20 milliseconds first: a reopen with no wait would
+    // be the thousands of a loop.
+    expect(requested.length).toBeGreaterThanOrEqual(state.opens - 1);
+    expect(requested.every((ms) => ms === 20)).toBe(true);
   });
 
   it('keeps no timer alive once it is disposed, however long its backoff', async () => {
@@ -683,6 +705,7 @@ function recordingTimers(holdMilliseconds?: number) {
     live,
     now: () => Date.now(),
     timers: {
+      // load-proof: tests wait for the callbacks to have RUN (the pending set `live` empties), never for a timer to be asked for, so the macrotask each callback waits for orders nothing
       setTimeout: (callback: () => void, ms?: number) => {
         requested.push(ms ?? 0);
         // A wait of the held length never ends: the stretch a subscription must stay up for.
@@ -723,15 +746,14 @@ describe('a followed fire whose subscription keeps ending', () => {
           return subscription;
         },
       };
+      // The waits fire at once, so what is checked is the waits asked for, not a window of time.
+      const { requested, timers } = recordingTimers(5_000);
       const follower = createFireReviewFollower({
         history: endingLater,
         closeReview: async () => undefined,
         reread: async () => undefined,
         now: () => Date.now(),
-        timers: {
-          setTimeout: (callback, ms) => setTimeout(callback, ms),
-          clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
-        },
+        timers,
         diagnose: () => undefined,
         attempts: 3,
         // The Bureau's own values.
@@ -741,12 +763,11 @@ describe('a followed fire whose subscription keeps ending', () => {
       cleanups.push(() => follower.dispose());
       follower.follow('fire-a');
 
-      await sleep(1_000);
+      await eventually(() => (state.opens >= 6 ? true : undefined), 'six reopens');
+      await follower.dispose();
 
-      // Waits of 10, 20, 40, ... milliseconds fit about eight opens in a second; a reopen with no
-      // wait made hundreds.
-      expect(state.opens).toBeGreaterThan(1);
-      expect(state.opens).toBeLessThan(20);
+      // Waits of 10, 20, 40, ... milliseconds: each reopen waits twice as long as the one before.
+      expect(requested.filter((ms) => ms !== 5_000).slice(0, 5)).toEqual([10, 20, 40, 80, 160]);
     });
   }
 
@@ -809,7 +830,7 @@ describe('a followed fire whose subscription keeps ending', () => {
   it('starts the wait over once a subscription has stayed up for the cap', async () => {
     const { history: real } = await openHistory();
     // The stretch a subscription must stay up for (5 000 ms) passes at once here.
-    const { requested, timers } = recordingTimers();
+    const { requested, live, timers } = recordingTimers();
     const lives: Array<() => void> = [];
     const endable: Pick<DurableEventHistory, 'page' | 'subscribeEventHistoryOfOwners'> = {
       page: (...args) => real.page(...args),
@@ -840,8 +861,13 @@ describe('a followed fire whose subscription keeps ending', () => {
     lives[0]?.();
     await eventually(() => (lives.length >= 2 ? true : undefined), 'the first reopen');
     await follower.settled();
-    // The stability timer fires (the recording timers run it at once), which is the cap elapsing.
-    await sleep(20);
+    // The stability timer fires (the recording timers run it on a macrotask of their own), which is
+    // the cap elapsing. Being asked for is not firing: end the subscription only once nothing the
+    // follower scheduled is still waiting to run.
+    await eventually(
+      () => (requested.length >= 3 && live.size === 0 ? true : undefined),
+      'the stability timer to have fired',
+    );
     lives[1]?.();
     await eventually(() => (lives.length >= 3 ? true : undefined), 'the second reopen');
 
@@ -886,7 +912,7 @@ describe('a followed fire whose subscription keeps ending', () => {
     await follower.settled();
     // The reopened subscription delivers an event of a followed fire.
     await real.record(runOwner('fire-b'), 'review.requested', closing('approval:fire-b:1'));
-    await sleep(100);
+    await quietFor(100);
     lives[lives.length - 1]?.();
     await eventually(() => (lives.length >= first + 3 ? true : undefined), 'the second reopen');
 
@@ -901,6 +927,7 @@ describe('a followed fire whose subscription keeps ending', () => {
       page: () =>
         new Promise((_resolve, reject) => {
           pageStarted?.();
+          // load-proof: a stand-in storage that fails after a delay, which nothing waits out as a deadline
           setTimeout(() => reject(new Error('storage unavailable')), 30);
         }),
       subscribeEventHistoryOfOwners(listener, options) {
@@ -931,7 +958,7 @@ describe('a followed fire whose subscription keeps ending', () => {
     await started;
     // The fire's last review is released while its catch-up read is in flight.
     follower.unfollow('fire-a');
-    await sleep(300);
+    await quietFor(300);
     await follower.settled();
 
     expect(follower.followed()).toEqual([]);
@@ -993,7 +1020,7 @@ describe('a followed fire whose reviews cannot all be verified', () => {
     await eventually(() => (times.length >= 2 ? true : undefined), 'the grace to end');
     expect(times[1]! - times[0]!).toBeGreaterThanOrEqual(50);
     expect(Date.now() - settledAt).toBeGreaterThanOrEqual(0);
-    await sleep(50);
+    await quietFor(50);
     expect(times).toHaveLength(2);
     expect(live.size).toBe(0);
   });
@@ -1144,7 +1171,7 @@ describe('a read the follower started beside its reconciliation', () => {
     const disposing = follower.dispose().then(() => {
       disposed = true;
     });
-    await sleep(50);
+    await quietFor(50);
     expect(disposed).toBe(false);
     gate.resolve();
     await disposing;
@@ -1178,7 +1205,7 @@ describe('a read the follower started beside its reconciliation', () => {
     const disposing = follower.dispose().then(() => {
       disposed = true;
     });
-    await sleep(50);
+    await quietFor(50);
     expect(disposed).toBe(false);
     gate.resolve();
     await disposing;
@@ -1261,7 +1288,7 @@ describe('a reaction that took the fire’s local copy away and then failed to n
       'the notification to be retried',
     );
     // One error per failed attempt, and none once it succeeded.
-    await sleep(30);
+    await quietFor(30);
     expect(calls).toEqual([
       'fire-a|approval:fire-a:1',
       'fire-a|approval:fire-a:1',
@@ -1302,7 +1329,7 @@ describe('a reaction that took the fire’s local copy away and then failed to n
 
     await follower.dispose();
     const atDispose = calls;
-    await sleep(50);
+    await quietFor(50);
 
     expect(calls).toBe(atDispose);
   });

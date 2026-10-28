@@ -15,6 +15,8 @@ import {
 } from '@lostgradient/operative';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
+
+import { closedTask, runTask } from './test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -27,6 +29,7 @@ import { alice, base64Of, bob, pngBytes } from './testing/asset-fixtures.test-su
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   while (cleanups.length > 0) await cleanups.pop()!();
+  // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
   await yieldToPortableEventLoop();
 });
 
@@ -91,7 +94,7 @@ async function openBureau(
 describe.each([false, true])('a generated image through Bureau (durable: %p)', (durable) => {
   it('is admitted as a managed asset the run owner may read, and no result shape holds the bytes', async () => {
     const bureau = await openBureau({ durable });
-    const run = bureau.run('painter', 'Draw', { principal: alice.id });
+    const run = await bureau.tasks.start('painter', 'Draw', { principal: alice.id });
 
     const result = await run.result();
 
@@ -129,13 +132,13 @@ describe.each([false, true])('a generated image through Bureau (durable: %p)', (
     expect(JSON.stringify(result.conversation.current)).not.toContain(base64Of(generatedPng));
 
     // closed() waits for the admission and acknowledges it.
-    expect(await run.closed()).toEqual({ status: 'completed' });
+    expect(await closedTask(bureau, run)).toEqual({ status: 'completed' });
     expect(bureau.assets!.activeWork()).toEqual([]);
   });
 
   it('ends the run with finishReason error, naming the part, when the policy refuses the admission, and closed() is completed', async () => {
     const bureau = await openBureau({ durable, policy: { maxAssetBytes: 8 } });
-    const run = bureau.run('painter', 'Draw', { principal: alice.id });
+    const run = await bureau.tasks.start('painter', 'Draw', { principal: alice.id });
 
     const result = await run.result();
 
@@ -146,7 +149,7 @@ describe.each([false, true])('a generated image through Bureau (durable: %p)', (
     expect(error.partIndex).toBe(1);
     expect(error.rejectionCode).toBe('per-part-limit-exceeded');
     expect(error.message).toContain('part 1');
-    expect(await run.closed()).toEqual({ status: 'completed' });
+    expect(await closedTask(bureau, run)).toEqual({ status: 'completed' });
     expect(bureau.assets!.activeWork()).toEqual([]);
   });
 });
@@ -171,14 +174,14 @@ describe('cancelling a run while its generated image is being admitted', () => {
         },
       },
     });
-    const run = bureau.run('painter', 'Draw', { principal: alice.id });
+    const run = await bureau.tasks.start('painter', 'Draw', { principal: alice.id });
 
     await extracting;
     const [pending] = bureau.assets!.activeWork();
     expect(pending?.workKind).toBe('admission');
     run.abort('stop');
     const result = await run.result();
-    const acknowledgement = await run.closed({ signal: new AbortController().signal });
+    const acknowledgement = await closedTask(bureau, run, { signal: new AbortController().signal });
 
     expect(result.finishReason).toBe('aborted');
     expect(['completed', 'unresolved']).toContain(acknowledgement.status);
@@ -213,17 +216,17 @@ describe('a durable run restarted over SQLite (COR-713)', () => {
     };
 
     const first = await open();
-    const run = first.run('painter', 'Draw', { principal: alice.id });
+    const run = await first.tasks.start('painter', 'Draw', { principal: alice.id });
     const result = await run.result();
     expect(result.finishReason).not.toBe('error');
-    await run.closed();
+    await closedTask(first, run);
     const image = result.parts.find((part) => part.type === 'image');
     expect(image).toMatchObject({ source: { kind: 'managed-asset' } });
     const runId = run.id;
     await first.dispose();
 
     const second = await open();
-    const durable = await second.getDurableRun(runId);
+    const durable = await second.tasks.workflow(runId);
     expect(durable?.status).toBe('completed');
     const summary = durable?.result as { schemaVersion: number; parts: typeof result.parts };
     expect(summary.schemaVersion).toBe(3);
@@ -239,7 +242,7 @@ describe('a Bureau without an asset service', () => {
       await bureau.dispose();
     });
 
-    const result = await bureau.run('painter', 'Draw').result();
+    const result = await runTask(bureau, 'painter', 'Draw');
 
     expect(result.finishReason).toBe('error');
     expect(result.error).toBeInstanceOf(GeneratedMediaNotAdmittedError);
@@ -271,7 +274,7 @@ describe('aggregate limits across the generated parts of one response (correctio
       twoImages,
     );
 
-    const run = bureau.run('painter', 'Draw', { principal: alice.id });
+    const run = await bureau.tasks.start('painter', 'Draw', { principal: alice.id });
     const result = await run.result();
 
     expect(result.finishReason).toBe('error');
@@ -279,7 +282,7 @@ describe('aggregate limits across the generated parts of one response (correctio
     expect((result.error as GeneratedMediaNotAdmittedError).rejectionCode).toBe(
       'aggregate-limit-exceeded',
     );
-    expect(await run.closed()).toEqual({ status: 'completed' });
+    expect(await closedTask(bureau, run)).toEqual({ status: 'completed' });
     expect(bureau.assets!.activeWork()).toEqual([]);
   });
 });
@@ -353,7 +356,7 @@ describe('streamed generated media under an aggregate limit (correction 2)', () 
         streamedPainter(wrapper),
       );
 
-      const run = bureau.run('painter', 'Draw', { principal: alice.id });
+      const run = await bureau.tasks.start('painter', 'Draw', { principal: alice.id });
       const result = await run.result();
 
       expect(result.finishReason).toBe('error');
@@ -362,7 +365,7 @@ describe('streamed generated media under an aggregate limit (correction 2)', () 
       expect(error.reason).toBe('admission-failed');
       expect(error.message).toContain('aggregate image limit');
       // The part was refused before any asset record was written, so nothing was left to wait for.
-      expect(await run.closed()).toEqual({ status: 'not-required' });
+      expect(await closedTask(bureau, run)).toEqual({ status: 'not-required' });
       expect(bureau.assets!.activeWork()).toEqual([]);
     },
   );
@@ -372,12 +375,12 @@ describe('streamed generated media under an aggregate limit (correction 2)', () 
     async (_name, wrapper) => {
       const bureau = await openBureau({}, streamedPainter(wrapper));
 
-      const run = bureau.run('painter', 'Draw', { principal: alice.id });
+      const run = await bureau.tasks.start('painter', 'Draw', { principal: alice.id });
       const result = await run.result();
 
       expect(result.finishReason).not.toBe('error');
       expect(result.parts.filter((part) => part.type === 'image')).toHaveLength(2);
-      expect(await run.closed()).toEqual({ status: 'completed' });
+      expect(await closedTask(bureau, run)).toEqual({ status: 'completed' });
     },
   );
 
@@ -391,7 +394,7 @@ describe('streamed generated media under an aggregate limit (correction 2)', () 
       streamedPainter(withStreaming),
     );
 
-    const result = await bureau.run('painter', 'Draw', { principal: alice.id }).result();
+    const result = await runTask(bureau, 'painter', 'Draw', { principal: alice.id });
 
     expect(result.finishReason).not.toBe('error');
   });

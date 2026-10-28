@@ -5,11 +5,12 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { rejectionOf, throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { A2APeerError } from './peer-client-types.ts';
 import { createScriptedPeer, type ScriptedPeerOptions } from './peer-client.test-support.ts';
 import { createA2APeerClient } from './peer-client.ts';
 
+// load-proof: the client's injected sleep seam replaces its real backoff delay and the client under test awaits it, so it is an input to the code, not a test-side wait for state
 const immediate = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 const nonStreaming: ScriptedPeerOptions['card'] = (card) => {

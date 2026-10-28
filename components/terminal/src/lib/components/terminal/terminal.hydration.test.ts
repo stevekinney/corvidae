@@ -15,6 +15,7 @@ import {
 } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { waitFor } from './terminal-test-support.ts';
 import Terminal from './terminal.svelte';
 import { TERMINAL_STATE_MESSAGE } from './terminal.types.ts';
@@ -90,7 +91,7 @@ describe('hydration', () => {
         () => !result.container.querySelector('.cinder-terminal__viewport')!.hasAttribute('inert'),
         'the viewport to become interactive',
       );
-      await new Promise((resolve) => setTimeout(resolve, 30));
+      await quietFor(30);
       expect(result.container.querySelectorAll('.xterm')).toHaveLength(1);
       expect(result.container.querySelectorAll('textarea')).toHaveLength(1);
       expect(result.warnings.filter((warning) => warning.toLowerCase().includes('hydrat'))).toEqual(

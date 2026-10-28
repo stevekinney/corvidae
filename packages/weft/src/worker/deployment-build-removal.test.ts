@@ -6,12 +6,12 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { forkWorkflowOperation } from '../server/operations/fork-workflow.ts';
 import { createStartOrSignalWorkflowOperation } from '../server/operations/start-or-signal-workflow.ts';
 import { startWorkflowOperation } from '../server/operations/start-workflow.ts';
 import { createRemoveWorkerDeploymentVersionOperation } from '../server/operations/worker-deployment-routing.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   buildManifest,
   DEPLOYMENT,

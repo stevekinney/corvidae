@@ -301,10 +301,10 @@ export interface AuditRecord {
    *
    * The `principal` is the actor (COR-718), never the owner. The owner of the
    * resource an entry concerns is derived from the entry: its `runId` names a
-   * run or a schedule, whose owner `Bureau.getOwner({ kind: 'audit', runId })`
+   * run or a schedule, whose owner `Bureau.ownerOf({ kind: 'audit', runId })`
    * reads, and a `session.deleted` entry carries the deleted session's owner as
    * `detail.owner`, captured at deletion because the session is gone by then
-   * (`Bureau.getOwner({ kind: 'audit', runId, detail })`). A service principal
+   * (`Bureau.ownerOf({ kind: 'audit', runId, detail })`). A service principal
    * (`system:scheduler`, `system:recovery`, `system:expiry`) appears only here.
    */
   principal?: string;
@@ -1621,7 +1621,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
 
   // AB-388 (Codex review, PR #597, "Serialize concurrent audit-pruning
   // passes"): two overlapping `prune()` calls on THIS instance — e.g. an
-  // explicit `runDurableMaintenance()` call landing while the automatic
+  // explicit `maintain()` call landing while the automatic
   // timer's own tick is still running, or two manual calls racing — could
   // both list the SAME qualifying key before either deletion completes,
   // double-counting `prunedCount` and writing two competing `audit.pruned`
@@ -2421,7 +2421,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
     }
 
     // Surfaced only AFTER the partial summary above has been durably
-    // written — a caller (`pruneAuditTrail`'s `runDurableMaintenance`
+    // written — a caller (`pruneAuditTrail`'s `maintain`
     // wrapper) still learns the pass did not fully complete, but the
     // records it DID remove are never silently unaccounted for.
     if (deleteError !== undefined) {
@@ -2656,7 +2656,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
       // — including one still in flight right now — has settled, so
       // awaiting it here (in addition to `activeWrites` above) means a
       // caller reaching `bureau.auditTrail.prune()` directly, with no
-      // `runDurableMaintenance()` in between, is also fully drained before
+      // `maintain()` in between, is also fully drained before
       // this trail is disposed. No `.catch()` needed here: `prunePassQueue`
       // is always reassigned through its OWN `.catch(() => undefined)`
       // inside `prune()` below, so the reference closed over here can

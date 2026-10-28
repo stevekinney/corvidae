@@ -17,8 +17,8 @@ export type OperationHandlerDocuments = {
  * - OpenAPI lists the direct routes the handler answers (health and the three
  *   documents), none of Weft's REST bindings, and not metrics, `api-catalog`,
  *   or `mcp.json`.
- * - OpenRPC declares only `http`, carries no MCP metadata, and is the document
- *   `rpc.discover` answers with.
+ * - OpenRPC declares `http` and `websocket`, carries no MCP metadata, and is
+ *   the document `rpc.discover` answers with.
  * - AsyncAPI lists each `transports.http` subscription as a Server-Sent Events
  *   channel at `/v1/subscriptions/<operation name>` and nothing else.
  *
@@ -53,7 +53,7 @@ export function createOperationHandlerDocuments(options: {
     openRpc: lazily(() =>
       generateOpenRpcDocument({
         registry,
-        transports: ['http'],
+        transports: ['http', 'websocket'],
         includeMcpMetadata: false,
         ...info,
       }),

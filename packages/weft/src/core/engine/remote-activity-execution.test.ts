@@ -72,7 +72,6 @@ describe('remote activity execution (COR-152)', () => {
     });
     await remoteWorker.connect();
     await waitForCondition(() => server?.registry.getWorker('formatting-worker') !== undefined, {
-      timeoutMs: 5_000,
       intervalMs: 25,
       label: 'remote worker to register',
     });
@@ -143,7 +142,7 @@ describe('remote activity execution (COR-152)', () => {
         const record = await readOnlyTaskLedgerRecord(engine!);
         return record !== null && record.state === 'queued';
       },
-      { timeoutMs: 2_000, intervalMs: 10, label: 'task to reach durable queued state' },
+      { intervalMs: 10, label: 'task to reach durable queued state' },
     );
 
     expect(localInvocationCount).toBe(0);
@@ -187,7 +186,7 @@ describe('remote activity execution (COR-152)', () => {
         const decoded = await readOnlyTaskLedgerRecord(engine!);
         return decoded !== null && decoded.state === 'queued';
       },
-      { timeoutMs: 2_000, intervalMs: 10, label: 'billing task to be durably queued' },
+      { intervalMs: 10, label: 'billing task to be durably queued' },
     );
     const record = await readOnlyTaskLedgerRecord(engine);
     if (record === null) throw new Error('expected a durable ledger record');
@@ -253,7 +252,6 @@ describe('remote activity execution (COR-152)', () => {
     const handle = await engine.start('headers-workflow', null, { id: 'headers-1' });
 
     await waitForCondition(() => requests.length > 0, {
-      timeoutMs: 2_000,
       intervalMs: 10,
       label: 'broker.enqueue to be called',
     });
@@ -343,7 +341,7 @@ describe('remote activity execution (COR-152)', () => {
     await remoteWorker.connect();
     await waitForCondition(
       () => server?.registry.getWorker('production-broker-worker') !== undefined,
-      { timeoutMs: 5_000, intervalMs: 25, label: 'remote worker to register' },
+      { intervalMs: 25, label: 'remote worker to register' },
     );
 
     const handle = await engine.start('production-broker-workflow', null, {
@@ -355,7 +353,7 @@ describe('remote activity execution (COR-152)', () => {
         const record = await readOnlyTaskLedgerRecord(engine!);
         return record !== null && record.state === 'leased';
       },
-      { timeoutMs: 5_000, intervalMs: 10, label: 'task to be claimed and leased' },
+      { intervalMs: 10, label: 'task to be claimed and leased' },
     );
 
     const leasedRecord = await readOnlyTaskLedgerRecord(engine);

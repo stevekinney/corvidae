@@ -24,6 +24,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { BunSQLiteStorage } from '../../storage/bun-sql.ts';
 import type {
   BatchOperation,
@@ -32,7 +33,6 @@ import type {
 } from '../../storage/interface.ts';
 import { KEYS } from '../../storage/interface.ts';
 import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
-import { rejectionOf, throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { workflow, type WorkflowContext } from '../types.ts';
 import {
   commitFencedEngineWrite,
@@ -787,7 +787,9 @@ describe('#470 Step 2: fenced-write fan-out — behavior-level coverage', () => 
       expect(internals.deposed).toBe(true);
       await engine[Symbol.asyncDispose]();
       // Let the deferred deposition teardown run; it must no-op (already disposed).
+      // load-proof: negative window for a late rejection from an already disposed engine: load can only delay a rejection, never produce one earlier
       await new Promise((resolve) => setImmediate(resolve));
+      // load-proof: negative window for a late rejection from an already disposed engine: load can only delay a rejection, never produce one earlier
       await new Promise((resolve) => setImmediate(resolve));
     } finally {
       process.off('warning', listener);

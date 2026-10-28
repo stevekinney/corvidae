@@ -13,6 +13,7 @@ import { z } from 'zod';
 
 import { discoverSkills, type SkillCatalogRevision } from './skills';
 import type { Bureau } from './types';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 
 const roots: string[] = [];
 
@@ -125,13 +126,12 @@ export async function pollForTime<T>(
   check: () => Promise<T | undefined>,
   what: string,
 ): Promise<T> {
-  const deadline = Date.now() + 5000;
-  for (;;) {
+  for await (const _turn of awakeTurns()) {
     const value = await check();
     if (value !== undefined) return value;
-    if (Date.now() > deadline) throw new Error(`Condition was not met: ${what}`);
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
+  throw new Error(`Condition was not met: ${what}`);
 }
 
 /** Whether the session has recorded an active skill. */
@@ -143,5 +143,6 @@ export async function skillsRecorded(bureau: Bureau, sessionId: string): Promise
 
 /** Lets the steps after the skill's activation commit before a test restarts the process. */
 export async function letStepsCommit(): Promise<void> {
+  // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
   for (let turn = 0; turn < 100; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
 }

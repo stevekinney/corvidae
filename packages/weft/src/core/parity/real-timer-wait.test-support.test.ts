@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitForParityCondition } from './real-timer-wait.test-support.ts';
 
 describe('waitForParityCondition', () => {
@@ -16,7 +16,7 @@ describe('waitForParityCondition', () => {
           }
           return attempt > 2;
         },
-        { intervalMs: 1, timeoutMs: 200 },
+        { intervalMs: 1 },
       ),
     ).toBeUndefined();
   });
@@ -24,6 +24,7 @@ describe('waitForParityCondition', () => {
   it('includes the last predicate error in timeout failures', async () => {
     expect(
       await throwingRejectionOf(
+        // hang-guard-self-test: the predicate never succeeds, so no load can satisfy the wait
         waitForParityCondition(
           () => {
             throw new Error('still failing');
@@ -37,6 +38,7 @@ describe('waitForParityCondition', () => {
   it('times out with the label when the predicate never succeeds', async () => {
     expect(
       await throwingRejectionOf(
+        // hang-guard-self-test: the predicate is never true, so no load can satisfy the wait
         waitForParityCondition(() => false, { intervalMs: 1, label: 'idle parity', timeoutMs: 50 }),
       ),
     ).toThrow('Timed out after 50ms waiting for idle parity');

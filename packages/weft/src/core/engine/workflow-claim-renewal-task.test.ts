@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createDeferred, flushMicrotasks } from '../../testing/fake-timers.test-support.ts';
-import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import type { OwnerSideSignalPollTarget } from './owner-side-signal-poll.ts';
 import type { OwnerSideUpdatePollTarget } from './owner-side-update-poll.ts';
 import type {

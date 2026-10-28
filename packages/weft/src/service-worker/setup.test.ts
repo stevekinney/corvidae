@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { Engine } from '../core/engine.ts';
 import { WorkflowResumedEvent } from '../core/events.ts';
 import { workflow } from '../core/types/workflow-function.ts';
@@ -7,8 +9,7 @@ import { principalFromApiKey } from '../server/principal.ts';
 import type { EventEnvelope, WorkflowEventFeed } from '../server/workflow-event-feed.ts';
 import { IndexedDBStorage } from '../storage/indexeddb.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
 import { resetSetupServiceWorkerRegistry, setupServiceWorker } from './setup.ts';
 
 interface FakeEvent {
@@ -198,6 +199,7 @@ describe('setupServiceWorker', () => {
       expect(dispose).toHaveBeenCalledTimes(1);
       await realDisposal;
       // The background disposal's rejection is absorbed rather than surfacing unhandled.
+      // load-proof: negative window: asserts the background disposal's rejection is absorbed; load can only delay an unhandled rejection, never produce one earlier
       await new Promise<void>((resolve) => setImmediate(resolve));
     } finally {
       dispose.mockRestore();
@@ -520,11 +522,13 @@ describe('setupServiceWorker', () => {
       expect(respondedWith).toBeDefined();
       // The response promise should still be pending. Race it against a
       // very short timer to confirm.
-      const racedBefore = await Promise.race([
-        respondedWith!.then(() => 'response'),
-        new Promise<string>((resolve) => setTimeout(() => resolve('timer'), 10)),
-      ]);
-      expect(racedBefore).toBe('timer');
+      let settledBefore = false;
+      void respondedWith!.then(() => {
+        settledBefore = true;
+      });
+      // Load can only delay a settlement, never bring it forward.
+      await quietFor(10);
+      expect(settledBefore).toBe(false);
       // Release register; respondedWith should now settle.
       releaseRegister();
       const setup = await setupPromise;
@@ -587,7 +591,7 @@ describe('setupServiceWorker', () => {
 
 /** Drain the microtask queue so fire-and-forget engine work settles. */
 async function flush(): Promise<void> {
-  await sleepForTesting(10);
+  await settleInlineLaunches();
 }
 
 const parkingWorkflow = workflow({ name: 'parking-workflow' }).execute(async function* (ctx) {
@@ -888,11 +892,13 @@ describe('setupServiceWorker recover option', () => {
       });
 
       // Response is still pending while scan (and thus recoverAll) is blocked.
-      const racedBefore = await Promise.race([
-        respondedWith!.then(() => 'response'),
-        new Promise<string>((resolve) => setTimeout(() => resolve('timer'), 10)),
-      ]);
-      expect(racedBefore).toBe('timer');
+      let settledBefore = false;
+      void respondedWith!.then(() => {
+        settledBefore = true;
+      });
+      // Load can only delay a settlement, never bring it forward.
+      await quietFor(10);
+      expect(settledBefore).toBe(false);
 
       // Release the scan latch; setup and response should now settle.
       releaseScan();
@@ -918,11 +924,13 @@ describe('setupServiceWorker recover option', () => {
       });
 
       // The waitUntil promise is still pending while scan is blocked.
-      const racedBefore = await Promise.race([
-        captured!.then(() => 'settled'),
-        new Promise<string>((resolve) => setTimeout(() => resolve('timer'), 10)),
-      ]);
-      expect(racedBefore).toBe('timer');
+      let settledBefore = false;
+      void captured!.then(() => {
+        settledBefore = true;
+      });
+      // Load can only delay a settlement, never bring it forward.
+      await quietFor(10);
+      expect(settledBefore).toBe(false);
 
       // Release the latch.
       releaseScan();

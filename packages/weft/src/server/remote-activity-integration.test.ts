@@ -15,6 +15,7 @@
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Engine } from '../core/engine.ts';
 import type { WorkflowInterceptor } from '../core/interceptor.ts';
 import type { RemoteTaskRecord } from '../core/task-ledger/task-ledger.ts';
@@ -27,7 +28,6 @@ import type { WorkflowContext } from '../core/types.ts';
 import { activity, workflow } from '../core/types.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import { waitForCondition } from '../testing/fake-timers.test-support.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { RemoteWorker } from '../worker/index.ts';
 import { serve, type WeftServer } from './index.ts';
 
@@ -77,7 +77,6 @@ describe('remote activity end-to-end integration (COR-152)', () => {
     });
     await remoteWorker.connect();
     await waitForCondition(() => server?.registry.getWorker('success-worker') !== undefined, {
-      timeoutMs: 5_000,
       intervalMs: 25,
       label: 'remote worker to register',
     });
@@ -147,7 +146,6 @@ describe('remote activity end-to-end integration (COR-152)', () => {
     });
     await remoteWorker.connect();
     await waitForCondition(() => server?.registry.getWorker('failure-worker') !== undefined, {
-      timeoutMs: 5_000,
       intervalMs: 25,
       label: 'remote worker to register',
     });
@@ -205,7 +203,6 @@ describe('remote activity end-to-end integration (COR-152)', () => {
     });
     await remoteWorker.connect();
     await waitForCondition(() => server?.registry.getWorker('retry-worker') !== undefined, {
-      timeoutMs: 5_000,
       intervalMs: 25,
       label: 'remote worker to register',
     });
@@ -264,7 +261,6 @@ describe('remote activity end-to-end integration (COR-152)', () => {
     });
     await remoteWorker.connect();
     await waitForCondition(() => server?.registry.getWorker('e2e-cancel-worker') !== undefined, {
-      timeoutMs: 5_000,
       intervalMs: 25,
       label: 'remote worker to register',
     });
@@ -291,7 +287,7 @@ describe('remote activity end-to-end integration (COR-152)', () => {
         const record = await readOnlyTaskLedgerRecord(engine!);
         return record !== null && record.state === 'leased';
       },
-      { timeoutMs: 2_000, intervalMs: 10, label: 'task to be leased' },
+      { intervalMs: 10, label: 'task to be leased' },
     );
 
     await engine.cancel(handle.id);
@@ -302,7 +298,7 @@ describe('remote activity end-to-end integration (COR-152)', () => {
         const record = await readOnlyTaskLedgerRecord(engine!);
         return record !== null && record.state !== 'leased';
       },
-      { timeoutMs: 2_000, intervalMs: 10, label: 'the durable attempt to leave "leased"' },
+      { intervalMs: 10, label: 'the durable attempt to leave "leased"' },
     );
     expect(localSlowActivity).toHaveBeenCalledTimes(0);
   });
@@ -337,7 +333,7 @@ describe('remote activity end-to-end integration (COR-152)', () => {
         queuedOperationId = record.operationId;
         return true;
       },
-      { timeoutMs: 2_000, intervalMs: 10, label: 'task to reach durable queued state' },
+      { intervalMs: 10, label: 'task to reach durable queued state' },
     );
     if (queuedOperationId === undefined) throw new Error('expected a queued operationId');
 
@@ -412,7 +408,6 @@ describe('remote activity end-to-end integration (COR-152)', () => {
     // above — this is the explicit barrier the delay exists to make room
     // for, not a hope that it finishes in time.
     await waitForCondition(() => server?.registry.getWorker('recovery-worker') !== undefined, {
-      timeoutMs: 5_000,
       intervalMs: 25,
       label: 'recovered remote worker to register',
     });

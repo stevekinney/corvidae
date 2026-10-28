@@ -24,12 +24,14 @@ import {
   reviewOf,
   reviewsOf,
   storedText,
+  followedBy,
 } from './schedule-fire-fixtures.test-support';
 import { scheduledFireHoldings, scheduledFireReviewStateOf } from './scheduled-fire-review-state';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau } from './types';
 import { withAdvancingClock } from './testing/advancing-turn.test-support';
 import { expireReviews } from './testing/expired-reviews.test-support';
+import { quietFor } from '@lostgradient/testing/wait-until';
 
 const harness = createScheduleFireHarness();
 
@@ -38,7 +40,6 @@ afterEach(async () => {
 });
 
 const SESSION = 'audit-session';
-const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 /** A continuing fire with a committed approval: its second step ends only when it is canceled. */
 const continuingGenerate: GenerateFunction = async (context) => {
@@ -80,10 +81,10 @@ describe('a fire canceled with a committed approval, then a crash before the can
       });
       const { fireId } = await fireOnce(first, OWNER.alice, SESSION);
       const review = await reviewOf(first, fireId);
-      await sleep(50);
+      await followedBy(first, fireId);
       hold.arm();
       cancel(first, fireId);
-      await Promise.race([hold.reached, sleep(3000)]);
+      await hold.reached;
       expect(hold.held).toBe(true);
       expect(await durableStatus(first, fireId)).toBe('cancelled');
 
@@ -131,7 +132,7 @@ describe('a fire canceled with a committed approval, then a crash before the can
           }),
         },
       });
-      await sleep(100);
+      await quietFor(100);
       expect(
         await auditRecordsOf(again, fireId, 'review.tool-approval.canceled', review.id),
       ).toHaveLength(1);
@@ -162,7 +163,7 @@ describe('a fire canceled while parked on a human wait', () => {
       const records = await auditRecordsOf(bureau, fireId, 'review.human-wait.canceled', review.id);
       return records.length > 0 ? true : undefined;
     }, 'the canceled wait to be recorded');
-    await sleep(100);
+    await quietFor(100);
     expect(
       await auditRecordsOf(bureau, fireId, 'review.human-wait.canceled', review.id),
     ).toHaveLength(1);
@@ -182,7 +183,7 @@ describe('a fire canceled while parked on a human wait', () => {
     const review = await reviewOf(first, fireId);
     hold.arm();
     void first.durableEngine()?.cancel(fireId);
-    await Promise.race([hold.reached, sleep(3000)]);
+    await hold.reached;
     expect(hold.held).toBe(true);
 
     const restarted = await harness.open({
@@ -198,7 +199,7 @@ describe('a fire canceled while parked on a human wait', () => {
       );
       return records.length > 0 ? true : undefined;
     }, 'the restart to record the canceled wait');
-    await sleep(100);
+    await quietFor(100);
 
     expect(
       await auditRecordsOf(restarted, fireId, 'review.human-wait.canceled', review.id),
@@ -280,7 +281,7 @@ describe('a fire approval’s session prune commits before its in-memory state i
     // The next release of the fire, here its task leaving retention, retries it.
     await runtime.advance(60_001);
     await pollUntil(async () => {
-      await bureau.runDurableMaintenance();
+      await bureau.maintain();
       return (await bureau.internals.taskRegistry.record(fireId)) === undefined ? true : undefined;
     }, 'the fire’s task to leave retention');
 

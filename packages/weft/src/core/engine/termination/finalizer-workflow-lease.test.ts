@@ -160,7 +160,6 @@ async function startAndTerminate(
   const handle = await engine.start(type, null, { id });
   await waitForCondition(async () => (await storage.get(KEYS.finalizerState(id))) !== null, {
     label: `workflow ${id} recorded finalizer state and parked`,
-    timeoutMs: 2000,
     intervalMs: 5,
   });
   if (terminate === 'cancel') {
@@ -381,7 +380,6 @@ for (const mode of MULTI_ENGINE_MODES) {
           drives.push(engine.scheduler.tick(clock.now));
           await waitForCondition(() => starts === attempt, {
             label: `attempt ${attempt} started`,
-            timeoutMs: 2000,
             intervalMs: 5,
           });
           expect(await engine.getFinalizerStatus(id)).toMatchObject({
@@ -1178,6 +1176,7 @@ for (const mode of MULTI_ENGINE_MODES) {
         await engine1[Symbol.asyncDispose]();
         await drive;
         // Let any queued process warning flush before asserting there was none.
+        // load-proof: negative window: asserts no claim-lost warning is emitted after disposal; load can only delay a warning, never produce one
         await new Promise<void>((resolve) => setImmediate(resolve));
 
         expect(warnings).not.toContain('WeftWorkflowClaimLostWarning');

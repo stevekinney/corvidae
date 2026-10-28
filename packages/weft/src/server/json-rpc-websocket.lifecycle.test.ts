@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import { createInMemoryEventBackend } from './in-memory-event-feed-backend.test-support.ts';
 import {
   createJsonRpcWebSocketSession,
@@ -48,8 +49,10 @@ function makeEmitter(): JsonRpcWebSocketEmitter & {
       const timeout = setTimeout(() => {
         const index = waiters.findIndex((waiter) => waiter.timeout === timeout);
         if (index >= 0) waiters.splice(index, 1);
-        reject(new Error(`${description} within 500ms; saw ${sent.length} frames`));
-      }, 500);
+        reject(
+          new Error(`${description} before the hang guard elapsed; saw ${sent.length} frames`),
+        );
+      }, HANG_GUARD_MILLISECONDS);
       waiters.push({ isSatisfied, resolve, reject, timeout });
     });
   }

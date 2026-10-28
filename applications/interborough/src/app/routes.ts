@@ -95,6 +95,7 @@ export const routes: readonly RouteDefinition[] = [
   { pattern: '/storage', view: 'storage', load: () => import('../routes/storage/index.svelte') },
   { pattern: '/system', view: 'system', load: () => import('../routes/system/index.svelte') },
   { pattern: '/audit', view: 'audit', load: () => import('../routes/audit/index.svelte') },
+  { pattern: '/settings', view: 'settings', load: () => import('../routes/settings/index.svelte') },
   // Not in the sidebar: a goal is made and cancelled here, and linked to from where it is mentioned.
   { pattern: '/goals', view: 'goals', load: () => import('../routes/goals/index.svelte') },
   { pattern: '/engine', view: 'engine', load: () => import('../routes/dashboard/index.svelte') },

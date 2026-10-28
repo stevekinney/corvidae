@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
+import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import { executeCodegen } from './codegen.ts';
 
 const FIXTURE_DIR = resolve(import.meta.dir, '__fixtures__/codegen');
@@ -37,7 +38,7 @@ describe('executeCodegen HTTP fetch path', () => {
       const result = await executeCodegen({
         server: server.url.toString(),
         out,
-        timeoutMs: 30_000,
+        timeoutMs: HANG_GUARD_MILLISECONDS,
       });
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('401');
@@ -58,7 +59,7 @@ describe('executeCodegen HTTP fetch path', () => {
       const result = await executeCodegen({
         server: server.url.toString(),
         out,
-        timeoutMs: 30_000,
+        timeoutMs: HANG_GUARD_MILLISECONDS,
       });
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('500');
@@ -77,7 +78,7 @@ describe('executeCodegen HTTP fetch path', () => {
       const result = await executeCodegen({
         server: server.url.toString(),
         out,
-        timeoutMs: 30_000,
+        timeoutMs: HANG_GUARD_MILLISECONDS,
       });
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('content-type');
@@ -96,7 +97,7 @@ describe('executeCodegen HTTP fetch path', () => {
       const result = await executeCodegen({
         server: server.url.toString(),
         out,
-        timeoutMs: 30_000,
+        timeoutMs: HANG_GUARD_MILLISECONDS,
       });
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('failed to parse response body');
@@ -122,7 +123,7 @@ describe('executeCodegen HTTP fetch path', () => {
       const result = await executeCodegen({
         server: server.url.toString(),
         out,
-        timeoutMs: 30_000,
+        timeoutMs: HANG_GUARD_MILLISECONDS,
       });
       expect(result.exitCode).toBe(0);
       expect(observedAuth).toBeNull();
@@ -142,7 +143,7 @@ describe('executeCodegen HTTP fetch path', () => {
     const result = await executeCodegen({
       server: 'http://127.0.0.1:1/',
       out,
-      timeoutMs: 30_000,
+      timeoutMs: HANG_GUARD_MILLISECONDS,
     });
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('127.0.0.1:1');
@@ -164,7 +165,7 @@ describe('executeCodegen HTTP fetch path', () => {
       const dir = makeTempDir();
       const out = join(dir, 'weft.d.ts');
       const url = new URL('/base', server.url).toString();
-      const result = await executeCodegen({ server: url, out, timeoutMs: 30_000 });
+      const result = await executeCodegen({ server: url, out, timeoutMs: HANG_GUARD_MILLISECONDS });
       expect(result.exitCode).toBe(0);
       expect(observedPath).toBe('/base/api/v1/registry');
     } finally {

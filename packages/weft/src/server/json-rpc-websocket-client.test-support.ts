@@ -12,6 +12,7 @@
  * near-identical copy.
  */
 
+import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import type { WeftServer } from './index.ts';
 import type { EventEnvelope } from './workflow-event-feed.ts';
 
@@ -23,7 +24,7 @@ import type { EventEnvelope } from './workflow-event-feed.ts';
 export function waitForMessage(
   ws: WebSocket,
   predicate: (parsed: unknown) => boolean,
-  timeoutMs = 3_000,
+  timeoutMs = HANG_GUARD_MILLISECONDS,
 ): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -96,7 +97,7 @@ export async function collectWebSocketDeliveredEnvelopes(
       const timer = setTimeout(() => {
         webSocket.removeEventListener('message', handler);
         reject(new Error('collectWebSocketDeliveredEnvelopes timed out'));
-      }, 3_000);
+      }, HANG_GUARD_MILLISECONDS);
 
       function finish(value: EventEnvelope[]): void {
         clearTimeout(timer);

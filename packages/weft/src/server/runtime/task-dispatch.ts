@@ -125,11 +125,11 @@ function buildRoutingOptions(
   if (task.fairShareKey !== undefined) {
     routingOptions.fairShareKey = task.fairShareKey;
   }
-  // Skip workers currently in the reconnect grace window. Their socket is
-  // still in `workerSockets` but the peer has closed; if `findWorker`
-  // returned one of them we would either fail the dispatch (returning false
-  // and falling back to long-poll while peers were ready) or — without this
-  // exclusion — send the frame on a dead socket.
+  // Skip workers currently in the reconnect grace window. Their registry
+  // entry remains available for reconnect proof, but their socket has closed;
+  // if `findWorker` returned one of them we would either fail the dispatch
+  // (returning false and falling back to long-poll while peers were ready) or
+  // — without this exclusion — send the frame on a dead socket.
   if (context.pendingWorkerRequeues.size > 0) {
     routingOptions.excludeWorkerIds = new Set(context.pendingWorkerRequeues.keys());
   }

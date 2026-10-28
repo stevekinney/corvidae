@@ -55,23 +55,13 @@ async function boot() {
 
 const RESERVED: string[] = ['goal:g1', 'goal-g1-s0', 'goal-g1-a0', 'bureau-goal-audit:g1'];
 
-function thrown(action: () => unknown): unknown {
-  try {
-    action();
-  } catch (error) {
-    return error;
-  }
-  return undefined;
-}
-
 async function expectChildRunIdRefused(bureau: Bureau, childRunId: string): Promise<void> {
-  bureau.run('planner', 'plan');
+  const parent = await bureau.tasks.start('planner', 'plan');
+  const parentRunId = parent.id;
   await pollUntil(async () => {
-    const parents = await durableIds(bureau, 'agent-run-');
-    return parents.length === 1;
+    const ids = await durableIds(bureau, parentRunId);
+    return ids.length === 1;
   });
-  const [parentRunId] = await durableIds(bureau, 'agent-run-');
-  if (parentRunId === undefined) throw new Error('the parent run never started');
 
   const outcome = await bureau.children.dispatch({
     parentRunId,
@@ -105,22 +95,12 @@ describe('an id an ordinary caller chooses', () => {
     },
   );
 
-  it.each(RESERVED)('may not be the session id %s of createRun', async (sessionId) => {
+  it.each(RESERVED)('may not be the session id %s of tasks.start', async (sessionId) => {
     const bureau = await boot();
 
-    const error = await bureau
-      .createRun({ agentName: 'default', message: 'hello', sessionId })
+    const error = await bureau.tasks
+      .start('default', 'hello', { contextId: sessionId })
       .catch((e: unknown) => e);
-
-    expect(error).toBeInstanceOf(BureauError);
-    expect(error).toMatchObject({ code: 'BAD_REQUEST' });
-    expect((error as Error).message).toContain('reserved-identifier');
-  });
-
-  it.each(RESERVED)('may not be the session id %s of bureau.run', async (sessionId) => {
-    const bureau = await boot();
-
-    const error = thrown(() => bureau.run('worker', 'hello', { sessionId }));
 
     expect(error).toBeInstanceOf(BureauError);
     expect(error).toMatchObject({ code: 'BAD_REQUEST' });
@@ -142,13 +122,9 @@ describe('an id an ordinary caller chooses', () => {
   it('is still free when it only resembles a goal prefix', async () => {
     const bureau = await boot();
 
-    const run = await bureau.createRun({
-      agentName: 'default',
-      message: 'hello',
-      sessionId: 'goalpost',
-    });
+    const run = await bureau.tasks.start('default', 'hello', { contextId: 'goalpost' });
 
-    expect(run.sessionId).toBe('goalpost');
+    expect(run.contextId).toBe('goalpost');
   });
 });
 

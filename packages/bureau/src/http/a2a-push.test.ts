@@ -7,7 +7,7 @@
 import type { GenerateFunction } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { COMMAND_RECEIPTS_EXTENSION_URI } from './a2a-command-receipts.ts';
 import { createA2APushCheckpoints } from './a2a-push-checkpoint.ts';
 
@@ -20,6 +20,7 @@ import {
   type PushFixture,
   webhook,
 } from './a2a-push.test-support.ts';
+import { quietFor } from '@lostgradient/testing/wait-until';
 
 const open: PushFixture[] = [];
 afterEach(async () => {
@@ -239,7 +240,7 @@ describe('delivery', () => {
       ...webhook(fixture),
     });
     fixture.startDelivery();
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await quietFor(150);
 
     expect(fixture.receiver.requests).toEqual([]);
   });
@@ -399,7 +400,7 @@ describe('delivery', () => {
       configuration: { returnImmediately: true, taskPushNotificationConfig: webhook(fixture) },
     });
     await eventually(() => fixture.receiver.requests.length === 1);
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await quietFor(200);
     // The first delivery is still open, so the second has not been enqueued.
     expect(fixture.receiver.requests).toHaveLength(1);
 
@@ -433,7 +434,7 @@ describe('delivery', () => {
     expect(deleted.error).toBeUndefined();
     const open = await fixture.outbox.list({ states: ['queued', 'claimed', 'attempting'] });
     expect(open).toEqual([]);
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await quietFor(300);
     expect(fixture.receiver.requests).toHaveLength(1);
   });
 

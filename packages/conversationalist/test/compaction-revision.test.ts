@@ -11,6 +11,7 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Conversation } from '../src/history';
 import {
   createConversationHistory,
@@ -19,7 +20,6 @@ import {
   type ConversationEvent,
   type Summarizer,
 } from '../src/index';
-import { rejectionOf, throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 
 type Gate = { readonly opened: Promise<void>; readonly release: () => void };
 

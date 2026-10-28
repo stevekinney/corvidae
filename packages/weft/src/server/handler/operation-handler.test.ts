@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import * as weft from '../../index.ts';
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { createAuthenticator, signJWT, type AuthContext } from '../authentication.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { ServerContext } from '../runtime/context.ts';
@@ -36,11 +36,367 @@ const echoOperation = defineOperation({
   invoke: async ({ input }) => ({ message: input.message }),
 });
 
+const websocketEchoOperation = defineOperation({
+  name: 'probe.websocket.echo',
+  mcpExposable: false,
+  summary: 'websocket echo',
+  destructive: false,
+  inputSchema: z.object({ message: z.string() }),
+  outputSchema: z.object({ message: z.string() }),
+  access: { kind: 'public' as const },
+  transports: { http: false, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
+  unknownKeyPolicy: { http: 'reject' as const, jsonRpc: 'reject' as const },
+  invoke: async ({ input }) => ({ message: input.message }),
+});
+
+const websocketSubscriptionOperation = defineOperation({
+  name: 'probe.websocket.events',
+  mcpExposable: false,
+  kind: 'subscription',
+  summary: 'websocket events',
+  destructive: false,
+  inputSchema: z.object({}),
+  outputSchema: z.object({ subscriptionId: z.string(), cursor: z.string() }),
+  eventSchema: z.object({ value: z.string() }),
+  access: { kind: 'public' as const },
+  transports: { http: false, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
+  unknownKeyPolicy: { http: 'reject' as const, jsonRpc: 'reject' as const },
+  invoke: async () => ({
+    subscriptionId: 'sub_probe',
+    envelope: { subscriptionId: 'sub_probe', cursor: '-1' },
+    iterable: (async function* () {
+      yield { value: 'event' };
+    })(),
+    close: async () => undefined,
+  }),
+});
+
+let websocketServer: ReturnType<typeof Bun.serve> | undefined;
+
+afterEach(() => {
+  websocketServer?.stop(true);
+  websocketServer = undefined;
+});
+
 async function jsonOf(response: Response): Promise<Record<string, unknown>> {
   return (await response.json()) as Record<string, unknown>;
 }
 
 describe('createOperationHandler', () => {
+  it('exposes a Bun WebSocket handler for catalog JSON-RPC operations', async () => {
+    const handler = createOperationHandler({ operations: [websocketEchoOperation], host: {} });
+    websocketServer = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        if (request.headers.get('upgrade')?.toLowerCase() === 'websocket') {
+          if (await handler.upgrade(request, websocketServer!)) return undefined;
+        }
+        return handler(request);
+      },
+      websocket: handler.websocket,
+    });
+
+    const socket = new WebSocket(`ws://localhost:${websocketServer.port}/jsonrpc`);
+    const response = new Promise<Record<string, unknown>>((resolve, reject) => {
+      socket.addEventListener('message', (event) => resolve(JSON.parse(String(event.data))));
+      socket.addEventListener('error', () => reject(new Error('WebSocket failed')));
+    });
+    await new Promise<void>((resolve) => socket.addEventListener('open', () => resolve()));
+    socket.send(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'probe.websocket.echo',
+        params: { message: 'hi' },
+      }),
+    );
+    expect(await response).toMatchObject({ id: 1, result: { message: 'hi' } });
+    socket.close();
+  });
+
+  it('refuses a WebSocket upgrade when authentication returns a response', async () => {
+    let upgradeCalls = 0;
+    const handler = createOperationHandler({
+      operations: [websocketEchoOperation],
+      host: {},
+      authenticate: async () => new Response('unauthorized', { status: 401 }),
+    });
+
+    const upgraded = await handler.upgrade(new Request('http://localhost/jsonrpc'), {
+      upgrade() {
+        upgradeCalls += 1;
+        return true;
+      },
+    });
+
+    expect(upgraded).toBe(false);
+    expect(upgradeCalls).toBe(0);
+  });
+
+  it('passes the authenticated principal to an accepted WebSocket upgrade', async () => {
+    let upgradeCalls = 0;
+    const handler = createOperationHandler({
+      operations: [websocketEchoOperation],
+      host: {},
+      authenticate: async () => readerContext(),
+    });
+
+    const upgraded = await handler.upgrade(new Request('http://localhost/jsonrpc'), {
+      upgrade(_request, options) {
+        upgradeCalls += 1;
+        expect(options.data.pathname).toBe('/jsonrpc');
+        expect(options.data.principal?.method).toBe('api-key');
+        return true;
+      },
+    });
+
+    expect(upgraded).toBe(true);
+    expect(upgradeCalls).toBe(1);
+  });
+
+  it('rejects disallowed WebSocket origins before authentication and upgrade', async () => {
+    let authenticationCalls = 0;
+    let upgradeCalls = 0;
+    const handler = createOperationHandler({
+      operations: [websocketEchoOperation],
+      host: {},
+      cors: { allowedOrigins: ['https://allowed.example'] },
+      authenticate: async () => {
+        authenticationCalls += 1;
+        return readerContext();
+      },
+    });
+
+    const rejected = await handler.upgrade(
+      new Request('http://localhost/jsonrpc', { headers: { Origin: 'https://evil.example' } }),
+      {
+        upgrade() {
+          upgradeCalls += 1;
+          return true;
+        },
+      },
+    );
+    expect(rejected).toBe(false);
+    expect(authenticationCalls).toBe(0);
+    expect(upgradeCalls).toBe(0);
+
+    for (const origin of ['https://allowed.example', undefined]) {
+      const headers = origin === undefined ? undefined : { Origin: origin };
+      const upgraded = await handler.upgrade(
+        new Request('http://localhost/jsonrpc', headers === undefined ? {} : { headers }),
+        {
+          upgrade() {
+            upgradeCalls += 1;
+            return true;
+          },
+        },
+      );
+      expect(upgraded).toBe(true);
+    }
+    expect(authenticationCalls).toBe(2);
+    expect(upgradeCalls).toBe(2);
+  });
+
+  it('starts and delivers a catalog subscription over a real WebSocket', async () => {
+    const handler = createOperationHandler({
+      operations: [websocketSubscriptionOperation],
+      host: {},
+    });
+    websocketServer = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        if (request.headers.get('upgrade')?.toLowerCase() === 'websocket') {
+          if (await handler.upgrade(request, websocketServer!)) return undefined;
+        }
+        return handler(request);
+      },
+      websocket: handler.websocket,
+    });
+    const socket = new WebSocket(`ws://localhost:${websocketServer.port}/jsonrpc`);
+    const frames: Array<Record<string, unknown>> = [];
+    const received = new Promise<void>((resolve, reject) => {
+      socket.addEventListener('message', (event) => {
+        frames.push(JSON.parse(String(event.data)) as Record<string, unknown>);
+        if (frames.length === 2) resolve();
+      });
+      socket.addEventListener('error', () => reject(new Error('WebSocket failed')));
+    });
+    await new Promise<void>((resolve) => socket.addEventListener('open', () => resolve()));
+    socket.send(
+      JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'probe.websocket.events', params: {} }),
+    );
+    await received;
+    expect(frames[0]).toMatchObject({ id: 1, result: { subscriptionId: 'sub_probe' } });
+    expect(frames[1]).toMatchObject({
+      method: 'weft.events.deliver',
+      params: { subscriptionId: 'sub_probe', envelope: { value: 'event' } },
+    });
+    socket.close();
+  });
+
+  it('cancels an unbounded catalog subscription with the session primitive', async () => {
+    let closed = 0;
+    let release: (() => void) | undefined;
+    const operation = defineOperation({
+      name: 'probe.websocket.unbounded',
+      mcpExposable: false,
+      kind: 'subscription',
+      summary: 'unbounded websocket events',
+      destructive: false,
+      inputSchema: z.object({}),
+      outputSchema: z.object({ subscriptionId: z.string(), cursor: z.string() }),
+      eventSchema: z.object({ value: z.string() }),
+      access: { kind: 'public' as const },
+      transports: { http: false, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
+      unknownKeyPolicy: { http: 'reject' as const, jsonRpc: 'reject' as const },
+      invoke: async () => ({
+        subscriptionId: 'sub_unbounded',
+        envelope: { subscriptionId: 'sub_unbounded', cursor: '-1' },
+        iterable: (async function* () {
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          yield { value: 'late' };
+        })(),
+        close: async () => {
+          closed += 1;
+          release?.();
+        },
+      }),
+    });
+    const handler = createOperationHandler({ operations: [operation], host: {} });
+    websocketServer = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        if (request.headers.get('upgrade')?.toLowerCase() === 'websocket') {
+          if (await handler.upgrade(request, websocketServer!)) return undefined;
+        }
+        return handler(request);
+      },
+      websocket: handler.websocket,
+    });
+    const socket = new WebSocket(`ws://localhost:${websocketServer.port}/jsonrpc`);
+    const frames: Array<Record<string, unknown>> = [];
+    const started = new Promise<void>((resolve) => {
+      socket.addEventListener('message', (event) => {
+        const frame = JSON.parse(String(event.data)) as { id?: number };
+        if (frame.id === 1) resolve();
+      });
+    });
+    const received = new Promise<void>((resolve, reject) => {
+      socket.addEventListener('message', (event) => {
+        frames.push(JSON.parse(String(event.data)) as Record<string, unknown>);
+        if (frames.length === 3) resolve();
+      });
+      socket.addEventListener('error', () => reject(new Error('WebSocket failed')));
+    });
+    await new Promise<void>((resolve) => socket.addEventListener('open', () => resolve()));
+    socket.send(
+      JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'probe.websocket.unbounded', params: {} }),
+    );
+    await started;
+    socket.send(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'weft.workflows.unsubscribe',
+        params: { subscriptionId: 'sub_unbounded' },
+      }),
+    );
+    await received;
+    expect(frames[0]).toMatchObject({ id: 1, result: { subscriptionId: 'sub_unbounded' } });
+    expect(frames[1]).toMatchObject({ id: 2, result: {} });
+    expect(frames[2]).toMatchObject({
+      method: 'weft.events.terminated',
+      params: { subscriptionId: 'sub_unbounded', reason: 'client-unsubscribed' },
+    });
+    expect(closed).toBe(1);
+    socket.close();
+  });
+
+  it('closes a subscription that completes setup after the socket closes', async () => {
+    let resolveSetup: (() => void) | undefined;
+    let setupEntered: (() => void) | undefined;
+    let closed = 0;
+    let pumpStarted = 0;
+    let resolveCloseCompleted: (() => void) | undefined;
+    const closeCompleted = new Promise<void>((resolve) => {
+      resolveCloseCompleted = resolve;
+    });
+    const entered = new Promise<void>((resolve) => {
+      setupEntered = resolve;
+    });
+    let resolveCloseObserved: (() => void) | undefined;
+    const closeObserved = new Promise<void>((resolve) => {
+      resolveCloseObserved = resolve;
+    });
+    const frames: Array<Record<string, unknown>> = [];
+    const operation = defineOperation({
+      name: 'probe.websocket.deferred',
+      mcpExposable: false,
+      kind: 'subscription',
+      summary: 'deferred websocket events',
+      destructive: false,
+      inputSchema: z.object({}),
+      outputSchema: z.object({ subscriptionId: z.string(), cursor: z.string() }),
+      eventSchema: z.object({ value: z.string() }),
+      access: { kind: 'public' as const },
+      transports: { http: false, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
+      unknownKeyPolicy: { http: 'reject' as const, jsonRpc: 'reject' as const },
+      invoke: async () => {
+        setupEntered?.();
+        await new Promise<void>((resolve) => {
+          resolveSetup = resolve;
+        });
+        return {
+          subscriptionId: 'sub_deferred',
+          envelope: { subscriptionId: 'sub_deferred', cursor: '-1' },
+          iterable: (async function* () {
+            pumpStarted += 1;
+            yield { value: 'late' };
+          })(),
+          close: async () => {
+            closed += 1;
+            resolveCloseCompleted?.();
+          },
+        };
+      },
+    });
+    const handler = createOperationHandler({ operations: [operation], host: {} });
+    websocketServer = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        if (request.headers.get('upgrade')?.toLowerCase() === 'websocket') {
+          if (await handler.upgrade(request, websocketServer!)) return undefined;
+        }
+        return handler(request);
+      },
+      websocket: {
+        ...handler.websocket,
+        close(ws) {
+          handler.websocket.close(ws);
+          resolveCloseObserved?.();
+        },
+      },
+    });
+    const socket = new WebSocket(`ws://localhost:${websocketServer.port}/jsonrpc`);
+    socket.addEventListener('message', (event) => {
+      frames.push(JSON.parse(String(event.data)) as Record<string, unknown>);
+    });
+    await new Promise<void>((resolve) => socket.addEventListener('open', () => resolve()));
+    socket.send(
+      JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'probe.websocket.deferred', params: {} }),
+    );
+    await entered;
+    socket.close();
+    await closeObserved;
+    resolveSetup?.();
+    await closeCompleted;
+    expect(closed).toBe(1);
+    expect(pumpStarted).toBe(0);
+    expect(frames).toEqual([]);
+  });
+
   it('is exported from the package entry point', () => {
     expect(weft.createOperationHandler).toBe(createOperationHandler);
     expect(weft.createOperationHandlerAuthenticator).toBe(createOperationHandlerAuthenticator);
@@ -107,6 +463,42 @@ describe('createOperationHandler', () => {
     const served = await jsonOf(await handler(new Request('http://localhost/openrpc.json')));
 
     expect(discovered['result']).toEqual(served);
+  });
+
+  it('answers rpc.discover over a real WebSocket with the configured HTTP and WebSocket document', async () => {
+    const handler = createOperationHandler({
+      operations: [websocketEchoOperation],
+      host: {},
+      discoveryInfo: { description: 'Configured over HTTP and WebSocket' },
+    });
+    websocketServer = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        if (request.headers.get('upgrade')?.toLowerCase() === 'websocket') {
+          if (await handler.upgrade(request, websocketServer!)) return undefined;
+        }
+        return handler(request);
+      },
+      websocket: handler.websocket,
+    });
+
+    const served = await jsonOf(await handler(new Request('http://localhost/openrpc.json')));
+    const socket = new WebSocket(`ws://localhost:${websocketServer.port}/jsonrpc`);
+    const response = new Promise<Record<string, unknown>>((resolve, reject) => {
+      socket.addEventListener('message', (event) => resolve(JSON.parse(String(event.data))));
+      socket.addEventListener('error', () => reject(new Error('WebSocket failed')));
+    });
+    await new Promise<void>((resolve) => socket.addEventListener('open', () => resolve()));
+    socket.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'rpc.discover', params: {} }));
+
+    const websocketResponse = await response;
+    expect(websocketResponse['result']).toEqual(served);
+    expect(
+      (served['methods'] as Array<{ name: string }>).some(
+        (method) => method.name === websocketEchoOperation.name,
+      ),
+    ).toBe(true);
+    socket.close();
   });
 });
 

@@ -32,7 +32,7 @@ import {
   readsDecisionRecord,
   reviewAuditEntries,
 } from './test/session-input-fixtures';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau, PendingHumanWaitReview, ResolveReviewInput } from './types';
 import { createMemoryAssetStorage } from './assets/storage';
 
@@ -142,7 +142,7 @@ async function parkedInA(parks = 1) {
   const seenByA: Seen = { resumed: [] };
   const b = await open({ resumed: [] }, parks);
   const a = await open(seenByA, parks);
-  const run = a.bureau.run('asker', 'deploy', { principal: OWNER });
+  const run = await a.bureau.tasks.start('asker', 'deploy', { principal: OWNER });
   const review = await localReview(a.bureau, run.id);
   await peerReview(b.bureau, run.id);
   return { a, b, run, review, seenByA };
@@ -235,9 +235,9 @@ describe('the park of a bureau.run() run another process holds (COR-1579)', () =
   it("names the owner of a peer's catalog run", async () => {
     const { a, b, run } = await parkedInA();
 
-    expect(await b.bureau.getOwner({ kind: 'run', id: run.id })).toBe(OWNER);
-    expect(await b.bureau.getOwner({ kind: 'run', id: run.id })).toBe(
-      await a.bureau.getOwner({ kind: 'run', id: run.id }),
+    expect(await b.bureau.ownerOf({ kind: 'run', id: run.id })).toBe(OWNER);
+    expect(await b.bureau.ownerOf({ kind: 'run', id: run.id })).toBe(
+      await a.bureau.ownerOf({ kind: 'run', id: run.id }),
     );
   });
 

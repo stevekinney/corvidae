@@ -1,5 +1,7 @@
 import { expect, jest } from 'bun:test';
 
+import { HANG_GUARD_MILLISECONDS, afterAwakeTime } from '@lostgradient/testing/hang-guard';
+
 type Deferred<T> = {
   promise: Promise<T>;
   resolve: (value: T | PromiseLike<T>) => void;
@@ -75,6 +77,7 @@ export async function sleepForTesting(milliseconds: number): Promise<void> {
   // Integration-style tests sometimes use this helper to let external
   // server/socket work breathe. Do not wait the requested wall-clock duration;
   // yield one minimal scheduler turn so real timers are not starved.
+  // load-proof: this is sleepForTesting's own single-turn yield; the guard reads each caller where it calls the helper, so this definition promises nothing about what the turn lets finish
   await new Promise<void>((resolve) => {
     setTimeout(resolve, 1);
   });
@@ -109,6 +112,7 @@ export async function yieldToEventLoop(): Promise<void> {
     return;
   }
 
+  // load-proof: this is yieldToEventLoop's own single-turn yield, a turn by contract; the guard reads each caller where it calls the helper, so this definition promises nothing about what the turn lets finish
   await new Promise<void>((resolve) => {
     setTimeout(resolve, 0);
   });
@@ -163,13 +167,17 @@ export async function withTimeout<T>(
  * Wait until an observable condition is true.
  *
  * Use this for event-driven tests where the exact delay is irrelevant. The
- * timeout is a failure guard; the helper returns as soon as the condition is
- * satisfied.
+ * timeout is a hang guard, not a performance bound: it defaults to
+ * `HANG_GUARD_MILLISECONDS` of awake time under real timers (and of virtual time
+ * under fake ones), so a loaded host never fails a wait whose condition does
+ * arrive. A test passes a shorter one only to prove the helper itself gives up,
+ * under a `// hang-guard-self-test:` comment. The helper returns as soon as the
+ * condition is satisfied.
  */
 export async function waitForCondition(
   predicate: () => boolean | Promise<boolean>,
   {
-    timeoutMs = 500,
+    timeoutMs = HANG_GUARD_MILLISECONDS,
     intervalMs = 1,
     label = 'condition',
   }: { timeoutMs?: number; intervalMs?: number; label?: string } = {},
@@ -216,28 +224,35 @@ async function waitForConditionWithRealTimers(
   label: string,
 ): Promise<void> {
   let lastError: unknown;
-  const start = performance.now();
+  // Awake time, not wall time: a host that sleeps or stalls mid-wait has not hung the condition.
+  let expired = false;
+  const cancel = afterAwakeTime(timeoutMs, () => {
+    expired = true;
+  });
 
-  while (true) {
-    const result = await checkWaitCondition(predicate);
-    if (result.satisfied) {
-      return;
-    }
-    lastError = result.error;
-
-    const remainingMilliseconds = timeoutMs - (performance.now() - start);
-    if (remainingMilliseconds <= 0) {
-      const finalResult = await checkWaitCondition(predicate);
-      if (finalResult.satisfied) {
+  try {
+    while (true) {
+      const result = await checkWaitCondition(predicate);
+      if (result.satisfied) {
         return;
       }
-      lastError = finalResult.error ?? lastError;
-      break;
-    }
+      lastError = result.error;
 
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, Math.min(intervalMs, remainingMilliseconds));
-    });
+      if (expired) {
+        const finalResult = await checkWaitCondition(predicate);
+        if (finalResult.satisfied) {
+          return;
+        }
+        lastError = finalResult.error ?? lastError;
+        break;
+      }
+
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, intervalMs);
+      });
+    }
+  } finally {
+    cancel();
   }
 
   throw createWaitConditionTimeoutError(timeoutMs, label, lastError);
@@ -282,4 +297,22 @@ export async function expectPromisePending(promise: Promise<unknown>): Promise<v
 
   await flushMicrotasks();
   expect(settled).toBe(false);
+}
+
+/**
+ * How many promise turns `drainMicrotasks` awaits. The turns are a property of the code under
+ * test's promise chains, never of host load: microtasks run to completion before the event loop
+ * takes any other task, so a chain that needs more hops than this fails the same way on every host.
+ */
+const DRAIN_MICROTASK_TURNS = 100;
+
+/**
+ * Let every promise continuation already queued, and every one those continuations queue, run.
+ * Use it where the next step depends only on microtask work: an in-memory storage, a scripted
+ * activity, a manual clock. It never yields to a timer, a message port or an I/O callback, so it
+ * cannot be too short on a loaded host. A step that needs one of those must wait on that state
+ * instead (`waitForCondition`, `settleInlineLaunches`, a promise the code under test resolves).
+ */
+export function drainMicrotasks(): Promise<void> {
+  return flushMicrotasks(DRAIN_MICROTASK_TURNS);
 }

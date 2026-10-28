@@ -34,7 +34,7 @@ import {
   skillCatalogOnDisk,
   skillsRecorded,
 } from './skill-policy-fixtures.test-support';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau, BureauDiagnostic } from './types';
 import { createAgentSkills } from './agent-skills';
 
@@ -328,7 +328,7 @@ describe('a restored fire approval whose snapshot names another fire', () => {
     if (created?.nextFireAt === null || created?.nextFireAt === undefined) {
       throw new Error('The schedule has no first occurrence.');
     }
-    await first.runDurableMaintenance(created.nextFireAt);
+    await first.maintain(created.nextFireAt);
     const fireId = await pollUntil(async () => {
       const current = await first.schedules.get(created.id);
       return current?.currentWorkflowId;
@@ -349,7 +349,7 @@ describe('a restored fire approval whose snapshot names another fire', () => {
     if (schedule?.nextFireAt === null || schedule?.nextFireAt === undefined) {
       throw new Error('The schedule has no second occurrence.');
     }
-    await first.runDurableMaintenance(schedule.nextFireAt);
+    await first.maintain(schedule.nextFireAt);
     const newer = await pollUntil(async () => {
       const current = await first.schedules.get(created.id);
       const id = current?.currentWorkflowId;
@@ -429,17 +429,13 @@ async function parkedRunWithSkill(catalog: SkillCatalogOnDisk) {
     storage: { type: 'sqlite', path },
     toolbox: chargeApprovalToolbox([]),
   });
-  const run = await first.createRun({
-    agentName: 'default',
-    message: 'charge, then lock',
-    principal: OWNER.alice,
-  });
+  const run = await first.tasks.start('default', 'charge, then lock', { principal: OWNER.alice });
   const review = await pollUntil(
     () => first.reviews.list().find((candidate) => candidate.runId === run.id),
     'the session run’s approval',
   );
   await pollForTime(
-    async () => ((await skillsRecorded(first, run.sessionId)) ? true : undefined),
+    async () => ((await skillsRecorded(first, run.contextId)) ? true : undefined),
     'the active skill to be recorded',
   );
   await letStepsCommit();
@@ -585,7 +581,7 @@ describe('a restored approval of a run that never activated a skill', () => {
     if (created?.nextFireAt === null || created?.nextFireAt === undefined) {
       throw new Error('The schedule has no first occurrence.');
     }
-    await first.runDurableMaintenance(created.nextFireAt);
+    await first.maintain(created.nextFireAt);
     const fireId = await pollUntil(async () => {
       const current = await first.schedules.get(created.id);
       return current?.currentWorkflowId;
@@ -600,7 +596,7 @@ describe('a restored approval of a run that never activated a skill', () => {
     if (schedule?.nextFireAt === null || schedule?.nextFireAt === undefined) {
       throw new Error('The schedule has no second occurrence.');
     }
-    await first.runDurableMaintenance(schedule.nextFireAt);
+    await first.maintain(schedule.nextFireAt);
     const newer = await pollUntil(async () => {
       const current = await first.schedules.get(created.id);
       const id = current?.currentWorkflowId;

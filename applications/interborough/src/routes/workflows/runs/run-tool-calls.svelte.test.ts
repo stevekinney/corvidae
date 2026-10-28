@@ -5,6 +5,7 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { RETRY_LABEL, TASK_COPY } from '../../../app/copy.ts';
 import {
   humanWaitFixture,
@@ -62,7 +63,7 @@ describe('a run’s tool calls', () => {
 
     // One read for a burst of elements, and the calls stay on screen while it is made.
     await waitFor(() => expect(reads.thread).toBe(2));
-    await Bun.sleep(400);
+    await quietFor(400);
     expect(reads.thread).toBe(2);
     expect(view.container.textContent).toContain('lookup-order');
   });

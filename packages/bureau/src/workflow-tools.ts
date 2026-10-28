@@ -6,7 +6,7 @@
  * use, never to the filesystem directly.
  *
  * Every workflow belongs to the deployment's owner of record. A tool acts only when the owner of
- * record of the run that called it, read through `getOwner` and not from anything the request
+ * record of the run that called it, read through `ownerOf` and not from anything the request
  * carried, is that owner; for any other run `workflows-list` is empty and every write answers
  * `not-found`, as if no workflow existed. The `agent` field of a file a tool writes is the calling
  * run's own agent identifier.
@@ -191,7 +191,7 @@ function resultOfFailure(error: unknown, id: string): WorkflowToolResult {
 }
 
 /** The identifier of the run that made `context`'s call, when it carries one. */
-function runIdOf(context: ToolContext | undefined): string | undefined {
+export function runIdOf(context: ToolContext | undefined): string | undefined {
   const fromExecution = context?.executionContext?.['parentRunId'];
   if (typeof fromExecution === 'string' && fromExecution !== '') return fromExecution;
   return typeof context?.runId === 'string' && context.runId !== '' ? context.runId : undefined;

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import * as v from 'valibot';
 import { z } from 'zod';
 
-import { rejectionOf, throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { DefinitionSchema, StandardSchemaV1 } from './definition-schema.ts';
 import {
   StandardSchemaValidationError,

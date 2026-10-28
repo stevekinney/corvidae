@@ -404,6 +404,7 @@ describe('JsonSchemaEditor — JSON view draft validity', () => {
 describe('JsonSchemaEditor — controlled and uncontrolled schema inputs', () => {
   afterEach(() => cleanup());
 
+  // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
   function flushEffects(): Promise<void> {
     return new Promise<void>((resolve) => setTimeout(resolve, 0));
   }
@@ -460,17 +461,14 @@ describe('JsonSchemaEditor — controlled and uncontrolled schema inputs', () =>
 
     const region = screen.getByRole('region', { name: 'JSON Schema editor' });
     // Real Shiki: the WebAssembly engine and the json grammar load on first use.
-    await waitFor(
-      () => {
-        expect(region.querySelector('.cinder-code-block__highlighted pre.shiki')).not.toBeNull();
-      },
-      { timeout: 30_000 },
-    );
+    await waitFor(() => {
+      expect(region.querySelector('.cinder-code-block__highlighted pre.shiki')).not.toBeNull();
+    });
     const highlighted = region.querySelector('.cinder-code-block__highlighted pre.shiki');
     expect(highlighted?.textContent).toBe('{\n  "type": "string"\n}');
     // Grammar tokens carry the light/dark theme colors, so the JSON really highlighted.
     expect(highlighted?.querySelectorAll('span[style*="--shiki-dark"]').length).toBeGreaterThan(0);
-  }, 60_000);
+  });
 
   test('keeps the textarea focused after discarding a malformed source draft', async () => {
     render(JsonSchemaEditorImplementation, {

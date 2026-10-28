@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Conversation } from '../src/history';
 import { appendUserMessage, createConversationHistory, defineMessagePlugin } from '../src/index';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 
 describe('lifecycle disposal and mutations', () => {
   it('honors caller cancellation when an async tool-result stream is blocked', async () => {

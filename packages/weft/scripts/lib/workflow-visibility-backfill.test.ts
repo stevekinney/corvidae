@@ -15,7 +15,7 @@ import {
   runWorkflowVisibilityDrop,
 } from './workflow-visibility-backfill.ts';
 
-import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   NoConditionalBatchStorage,
   RacingStorage,
@@ -34,6 +34,29 @@ class WatermarkProbingStorage extends MemoryStorage {
     }
     yield* super.scan(prefix, options);
   }
+}
+
+/** One pause, taken the first time the visibility index is swept, that a test releases when it is ready. */
+function createSweepGate() {
+  const reached = Promise.withResolvers<void>();
+  const released = Promise.withResolvers<void>();
+  let armed = false;
+  let used = false;
+  return {
+    /** Start pausing: sweeps before this (the seeding backfill's own) pass through. */
+    arm: () => {
+      armed = true;
+    },
+    /** Resolves when a sweep has started and is waiting on the gate. */
+    reached: reached.promise,
+    release: () => released.resolve(),
+    async pause(): Promise<void> {
+      if (!armed || used) return;
+      used = true;
+      reached.resolve();
+      await released.promise;
+    },
+  };
 }
 
 /** Index rows proper, without the `wf-idx-meta:` control keys the drop leaves alone. */
@@ -540,16 +563,31 @@ describe('runWorkflowVisibilityDrop', () => {
     expect(await storage.get(KEYS.workflow('wf-a'))).not.toBeNull();
   });
   it('holds the backfill lock until its sweep finishes, so no backfill can start mid-drop', async () => {
-    using storage = new MemoryStorage();
+    const sweepGate = createSweepGate();
+    class SweepGatedStorage extends MemoryStorage {
+      override async *scan(
+        prefix: string,
+        options?: ScanOptions,
+      ): AsyncIterable<[string, Uint8Array]> {
+        if (prefix.startsWith('wf-idx-') && !prefix.startsWith('wf-idx-meta:')) {
+          await sweepGate.pause();
+        }
+        yield* super.scan(prefix, options);
+      }
+    }
+    using storage = new SweepGatedStorage();
     await seedWorkflow(storage, makeWorkflowState({ id: 'wf-a' }));
     await runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 0 });
 
-    const drop = runWorkflowVisibilityDrop(storage, { settleMilliseconds: 50 });
-    // The drop is waiting out its settle window, rows not yet swept.
-    await Bun.sleep(10);
+    sweepGate.arm();
+    const drop = runWorkflowVisibilityDrop(storage, { settleMilliseconds: 0 });
+    // The drop holds the lock and is mid-sweep, rows not yet removed: the gate keeps it there until
+    // the backfill has been refused, however long the host takes to get that far.
+    await sweepGate.reached;
     expect(
       await throwingRejectionOf(runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 0 })),
     ).toThrow(WorkflowVisibilityBackfillInProgressError);
+    sweepGate.release();
     await drop;
 
     expect(await getWorkflowVisibilityWatermark(storage)).toBe('stale');
@@ -561,9 +599,14 @@ describe('runWorkflowVisibilityDrop', () => {
   });
 
   it('releases its lock on a backend without conditionalBatch, and only its own', async () => {
+    const sweepGate = createSweepGate();
     class CompareFreeStorage extends MemoryStorage {
       override capabilities() {
         return { ...super.capabilities(), conditionalBatch: false };
+      }
+      override async deletePrefix(prefix: string): Promise<number> {
+        await sweepGate.pause();
+        return super.deletePrefix(prefix);
       }
     }
     using storage = new CompareFreeStorage();
@@ -574,9 +617,11 @@ describe('runWorkflowVisibilityDrop', () => {
 
     // A run that took the lock over while this drop swept keeps it.
     const takeover = encode('another-run');
-    const drop = runWorkflowVisibilityDrop(storage, { settleMilliseconds: 30 });
-    await Bun.sleep(5);
+    sweepGate.arm();
+    const drop = runWorkflowVisibilityDrop(storage, { settleMilliseconds: 0 });
+    await sweepGate.reached;
     await storage.put(KEYS.workflowVisibilityMetaBuilding(), takeover);
+    sweepGate.release();
     await drop;
     expect(await storage.get(KEYS.workflowVisibilityMetaBuilding())).toEqual(takeover);
   });

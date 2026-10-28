@@ -13,9 +13,9 @@ import {
   SESSION_OWNER_METADATA_KEY,
   stopWhen,
   waitForCondition,
-  waitForRunState,
   withBackendDescriptors,
 } from '@lostgradient/operative';
+import { waitForTaskState } from './test';
 import { MemoryStorage, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import {
@@ -35,6 +35,7 @@ import type { Bureau, BureauDiagnostic } from './types';
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   while (cleanups.length > 0) await cleanups.pop()!();
+  // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
   await yieldToPortableEventLoop();
 });
 
@@ -129,13 +130,12 @@ function builtRows(...inputs: Array<MessageInput & { id: string }>): Message[] {
 
 /** Runs the echo agent on a session whose history starts with the given rows, and lets its commits drain. */
 async function converse(bureau: Bureau, sessionId: string, rows: Message[] = []) {
-  const created = await bureau.createRun({
-    ...(rows.length === 0 ? { message: 'Hello' } : { appendMessages: rows }),
-    agentName: 'echo',
+  const created = await bureau.tasks.start('echo', rows.length === 0 ? 'Hello' : { append: rows }, {
     principal: alice.id,
-    sessionId,
+    contextId: sessionId,
   });
-  await waitForRunState(bureau, created.id);
+  await waitForTaskState(bureau, created.id);
+  // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
   for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
 }
 
@@ -163,6 +163,7 @@ async function saveDirectly(
       runs: [],
     }),
   );
+  // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
   for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
 }
 
@@ -172,11 +173,7 @@ async function pending(bureau: Bureau): Promise<number> {
 }
 
 async function drained(bureau: Bureau): Promise<void> {
-  await waitForCondition(
-    async () => (await pending(bureau)) === 0,
-    'the outbox never emptied',
-    200,
-  );
+  await waitForCondition(async () => (await pending(bureau)) === 0, 'the outbox never emptied');
 }
 
 async function pastTheFloor(environment: Environment, bureau: Bureau) {

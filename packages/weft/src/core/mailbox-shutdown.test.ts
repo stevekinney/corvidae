@@ -10,6 +10,7 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { MemoryStorage } from '../storage/memory.ts';
 import {
   advanceTimersByTime,
@@ -17,7 +18,6 @@ import {
   restoreRealTimers,
   useFakeTimers,
 } from '../testing/fake-timers.test-support.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   admitOne,
   claimOne,
@@ -121,6 +121,7 @@ describe('Mailbox waitForAvailable', () => {
     const { mailbox } = createMailboxFixture();
     await admitOne(mailbox, { availableAfterMs: 10_000 });
     expect(
+      // load-proof: the signal is already aborted, so the wait ends at once and the deadline is never reached
       await mailbox.waitForAvailable({
         timeoutMs: 60_000,
         signal: AbortSignal.abort(),

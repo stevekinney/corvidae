@@ -31,7 +31,7 @@ import {
   type ChildTopologyStore,
   createChildTopologyStore,
 } from './child-topology-store';
-import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { BureauDiagnostic, CancelDurableRunOutcome } from './types';
 
 // ---------------------------------------------------------------------------
@@ -954,6 +954,7 @@ describe('children.list / get / wait authorization', () => {
     const midWait = new AbortController();
     const interrupted = wait(reference, { signal: midWait.signal });
     // Let the wait finish its record read and start listening before aborting it.
+    // load-proof: either order of the abort and the wait's listener yields wait-aborted, so the assertion holds whichever side runs first; the turn only chooses which of the two code paths this line exercises
     await new Promise((resolve) => setImmediate(resolve));
     midWait.abort();
     expect(await interrupted).toEqual({ outcome: 'wait-aborted', child });

@@ -28,15 +28,22 @@
  * everything exactly once, in order.
  */
 import type { WorkflowEvent } from '@lostgradient/weft';
-import { HttpClient } from '@lostgradient/weft';
+import { flushPortableMicrotasks, HttpClient } from '@lostgradient/weft';
 import { waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import {
   startLiveSourceTestServer,
   type LiveSourceTestServer,
 } from './live-source-test-server.test-support.ts';
 import { WorkflowTailSource } from './workflow-tail-source.svelte.ts';
+
+/**
+ * Promise turns that drain a delivery already queued behind the stream reader: a count of
+ * microtask hops, which never depends on host load.
+ */
+const MICROTASK_TURNS = 100;
 
 /**
  * `client.tail()` defaults to `eventTransport: 'auto'` (WebSocket first, real
@@ -157,14 +164,16 @@ describe('WorkflowTailSource (integration, real server)', () => {
       await waitFor(() => {
         expect(received.length).toBeGreaterThan(0);
       });
-      await new Promise((resolve) => setTimeout(resolve, 20));
 
       source.close();
       expect(source.status).toBe('closed');
+      // A delivery already queued when close() ran is a microtask; what arrives after that would
+      // be close() failing to stop the stream.
+      await flushPortableMicrotasks(MICROTASK_TURNS);
       const countAtClose = received.length;
 
       await server.engine.signal(workflowId, 'advance');
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await quietFor(100);
       expect(received.length).toBe(countAtClose);
     } finally {
       await server.stop();

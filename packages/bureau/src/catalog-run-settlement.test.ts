@@ -183,6 +183,7 @@ describe('publishing a fresh catalog dispatch', () => {
 describe('the settlement tracker a shutdown waits on', () => {
   /** A publish that ends after `turns` event-loop turns. */
   async function endsAfter(turns: number, ended: string[]): Promise<void> {
+    // load-proof: the tracker's own bound is a count of event-loop turns, so this publish counts turns the same way; no clock decides which finishes first
     for (let turn = 0; turn < turns; turn += 1) await yieldToPortableEventLoop();
     ended.push(`after ${String(turns)}`);
   }

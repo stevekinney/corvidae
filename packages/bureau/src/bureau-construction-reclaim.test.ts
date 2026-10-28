@@ -121,7 +121,7 @@ async function startLapsedCatalogRun(
     durableOwnership: leaseOptions,
   });
   bureaus.push(owner);
-  const run = owner.run('writer', 'go');
+  const run = await owner.tasks.start('writer', 'go');
   await started.promise;
   return { owner, runId: run.id };
 }
@@ -163,7 +163,7 @@ describe('a catalog agent run reclaimed while the Bureau scans its agent files (
     // defect. Releasing on the first makes the test red on code that does the second.
     const reached = await pollUntil(async () => {
       if (diagnostics.some((entry) => isParkedDiagnostic(entry, runId))) return true;
-      const durableRun = await owner.getDurableRun(runId);
+      const durableRun = await owner.tasks.workflow(runId);
       return durableRun?.status === 'failed';
     });
     expect(reached).toBe(true);
@@ -171,11 +171,11 @@ describe('a catalog agent run reclaimed while the Bureau scans its agent files (
     hold.release();
     const built = await successor;
 
-    const state = await built.waitForDurableRun(runId);
+    const state = await built.tasks.wait(runId);
     expect(state?.error).toBeUndefined();
     expect(state?.status).toBe('completed');
     expect(diagnostics.filter((entry) => entry.level === 'error')).toEqual([]);
-  }, 20_000);
+  });
 });
 
 describe('a named-agent session run reclaimed while the Bureau scans its agent files (COR-1586)', () => {
@@ -209,7 +209,7 @@ describe('a named-agent session run reclaimed while the Bureau scans its agent f
       durableOwnership: leaseOptions,
     });
     bureaus.push(owner);
-    const run = await owner.createRun({ message: 'Recover me', agentName: 'scribe' });
+    const run = await owner.tasks.start('scribe', 'Recover me');
     await reachedStepOne.promise;
 
     const hold = fixtures.holdAgentFileScan();
@@ -262,18 +262,18 @@ describe('a named-agent session run reclaimed while the Bureau scans its agent f
     const built = await successor;
 
     const completed = await pollUntil(async () => {
-      const session = await built.contexts.get(run.sessionId);
+      const session = await built.contexts.get(run.contextId);
       return session?.metadata['lastRunStatus'] === 'completed';
     });
     expect(completed).toBe(true);
-    const session = await built.contexts.get(run.sessionId);
+    const session = await built.contexts.get(run.contextId);
     const replies = (session === undefined ? [] : getMessages(session.conversationHistory))
       .filter((message) => message.role === 'assistant')
       .map((message) => (typeof message.content === 'string' ? message.content : ''));
     expect(replies).toEqual(['scribe step 0', 'scribe resumed at 1']);
     expect(wideSteps).toEqual([]);
     expect(diagnostics.filter((entry) => entry.level === 'error')).toEqual([]);
-  }, 20_000);
+  });
 });
 
 describe('a construction that fails while a run is parked for the resolver (COR-1586)', () => {
@@ -422,7 +422,7 @@ describe('a construction that fails while a run is parked for the resolver (COR-
       'storage disposed',
       'waiters settled',
     ]);
-  }, 20_000);
+  });
 });
 
 describe('a Bureau whose construction fails leaves a reclaimed run resumable (COR-1586)', () => {
@@ -497,7 +497,7 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
       // and the bounded poll sees it.
       failedBeforeDispose = settled
         ? await pollUntil(async () => {
-            const durableRun = await owner.getDurableRun(runId);
+            const durableRun = await owner.tasks.workflow(runId);
             return durableRun?.status === 'failed';
           })
         : false;
@@ -514,7 +514,7 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).message).toBe('catalog exploded');
     expect(failedBeforeDispose).toBe(false);
-    const afterFailure = await owner.getDurableRun(runId);
+    const afterFailure = await owner.tasks.workflow(runId);
     expect(afterFailure?.status).toBe('running');
 
     // A correctly configured boot over the same storage resumes the run under its own agent.
@@ -528,13 +528,13 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
       durableOwnership: leaseOptions,
     });
     try {
-      const state = await second.waitForDurableRun(runId);
+      const state = await second.tasks.wait(runId);
       expect(state?.status).toBe('completed');
       expect(state?.error).toBeUndefined();
     } finally {
       await second.shutdown();
     }
-  }, 30_000);
+  });
 
   it('settles a parked run when a step between the composition and the agent file scan throws', async () => {
     const root = await fixtures.scratchDirectory('bureau-reclaim-early-failure-');
@@ -590,7 +590,7 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
     expect(resolution.status === 'unavailable' ? resolution.reason : '').toContain(
       'workflow tools exploded',
     );
-  }, 20_000);
+  });
 });
 
 describe('the recovery-skip listener (COR-1586)', () => {

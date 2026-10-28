@@ -18,13 +18,15 @@ import { createBureau } from '../create-bureau.ts';
 import type { Bureau, BureauOptions } from '../types.ts';
 import { WORKFLOW_TOOL_NAMES } from '../workflow-tools.ts';
 import { agentFileText, KNOWN_MODEL } from './agent-file-fixtures.test-support.ts';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { agentFileDirectory } from '../sources/agent-file-directory';
 import { workflowFileDirectory } from '../sources/workflow-file-directory';
+import { startTaskFrom } from '../test/task-start-request.ts';
 
 /** Wait, by the clock and not by a count of turns, until a session run is no longer running. */
 async function settledRun(bureau: Bureau<AgentDefinitions>, runId: string): Promise<void> {
-  for (let attempt = 0; attempt < 2000; attempt += 1) {
-    const run = bureau.getRun(runId);
+  for await (const _turn of awakeTurns()) {
+    const run = bureau.tasks.detail(runId);
     if (run !== undefined && run.status !== 'running') return;
     await Bun.sleep(5);
   }
@@ -131,15 +133,15 @@ export async function startWorkflowToolsBureau(
       captured = undefined;
       let runId: string;
       if (callOptions.via === 'session') {
-        const created = await bureau.createRun({
-          message: 'go',
+        const created = await startTaskFrom(bureau, {
+          input: 'go',
           agentName: callOptions.agent ?? 'scribe',
           ...(callOptions.principal === undefined ? {} : { principal: callOptions.principal }),
         });
         await settledRun(bureau, created.id);
         runId = created.id;
       } else {
-        const run = bureau.run(
+        const run = await bureau.tasks.start(
           callOptions.agent ?? 'scribe',
           'go',
           callOptions.principal === undefined ? {} : { principal: callOptions.principal },

@@ -4,10 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   countLines,
+  escapeCell,
   localTimestamp,
   logPathFor,
   replaceSection,
   run,
+  splitRow,
   updateRow,
   writeAtomically,
 } from './note.ts';
@@ -111,6 +113,62 @@ describe('updateRow', () => {
     const table = '| K | V | W |\n| - | - | - |\n| row | 1 |  |\n';
     const result = updateRow(table, 'row', 'W', 'set');
     expect(result.found && result.text).toContain('| row | 1 | set |');
+  });
+});
+
+/** What a CommonMark renderer shows for a cell: `\\` plus ASCII punctuation is that punctuation. */
+function renderedCell(cell: string): string {
+  return cell.trim().replace(/\\([!-/:-@[-`{-~])/g, '$1');
+}
+
+describe('row cells survive any value', () => {
+  const awkward = [
+    'a|b',
+    '#12 @bob',
+    '# heading-like',
+    '@everyone',
+    'C:\\dir\\',
+    'ends with backslash\\',
+    'x\\|y',
+    'x\\\\|y',
+    '\\#12',
+    'two \\\\ slashes',
+    'a\rb',
+    'a\r\nb\n\nc',
+    'a\u2028b',
+    '$& $1 `code | span`',
+    '| leading and trailing |',
+    '',
+  ];
+  const wide = '| K | V | W |\n| - | - | - |\n| row | 1 |  |\n| other | 2 | 3 |\n';
+
+  for (const value of awkward) {
+    test(`keeps the table intact and the cell faithful for ${JSON.stringify(value)}`, () => {
+      const result = updateRow(wide, 'row', 'W', value);
+      expect(result.found).toBe(true);
+      if (!result.found) return;
+      const lines = result.text.split('\n');
+      expect(lines).toHaveLength(wide.split('\n').length);
+      expect(lines[3]).toBe('| other | 2 | 3 |');
+      const cells = splitRow(lines[2]!);
+      expect(cells).toHaveLength(3);
+      expect(cells![0]!.trim()).toBe('row');
+      expect(cells![1]!.trim()).toBe('1');
+      expect(renderedCell(cells![2]!)).toBe(value.replace(/\s*[\r\n\u2028\u2029]\s*/g, ' ').trim());
+      expect(escapeCell(value)).not.toMatch(/[\r\n\u2028\u2029]/);
+    });
+  }
+
+  test('the CLI writes such a value through the file without disturbing neighbours', () => {
+    const path = file('awkward.md', note);
+    const value = 'PR #12 by @bob | C:\\temp\\ \\#3\nsecond line';
+    const result = run(['row', path, '--key', 'B35', '--column', 'Notes', '--value', value]);
+    expect(result.code).toBe(0);
+    const lines = readFileSync(path, 'utf8').split('\n');
+    const row = lines.find((line) => line.startsWith('| B35'))!;
+    expect(splitRow(row)).toHaveLength(3);
+    expect(lines).toContain('| B60 sidebar | queued | b |');
+    expect(lines).toContain('## Later');
   });
 });
 

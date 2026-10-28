@@ -180,25 +180,6 @@ describe('a schedule fire’s tool approval', () => {
     expect(charges).toEqual([]);
     expect(bureau.reviews.list()).toEqual([]);
   });
-
-  it('leaves a bureau.run() approval unlisted, as COR-1302 requires', async () => {
-    const charges: number[] = [];
-    const bureau = await open({
-      agents: {
-        payer: createAgent({
-          generate: chargesOnce,
-          toolbox: approvalToolbox(charges),
-          stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
-        }),
-      },
-    });
-
-    const run = bureau.run('payer', 'charge it', { principal: OWNER.alice });
-    await run.result();
-
-    expect(bureau.reviews.list()).toEqual([]);
-    expect(charges).toEqual([]);
-  });
 });
 
 describe('a schedule fire’s human wait after a restart', () => {
@@ -234,7 +215,7 @@ describe('a schedule fire’s human wait after a restart', () => {
       prompt: 'Which environment?',
       sessionId: original.sessionId,
     });
-    expect(await restarted.getOwner({ kind: 'review', id: restored.id })).toBe(OWNER.alice);
+    expect(await restarted.ownerOf({ kind: 'review', id: restored.id })).toBe(OWNER.alice);
     const inbox = await rpc(handlerOf(restarted), 'bureau.reviews.list', {}, 'alice-key');
     expect(inbox.result?.['reviews']).toEqual([
       expect.objectContaining({ id: original.id, runId: fireId, sessionId: original.sessionId }),
@@ -287,7 +268,7 @@ describe('a schedule fire’s tool approval after a restart', () => {
       sessionId: original.sessionId,
       status: 'pending',
     });
-    expect(await restarted.getOwner({ kind: 'review', id: restored.id })).toBe(OWNER.alice);
+    expect(await restarted.ownerOf({ kind: 'review', id: restored.id })).toBe(OWNER.alice);
     const approved = await rpc(
       handlerOf(restarted),
       'bureau.reviews.resolve',

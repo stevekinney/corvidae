@@ -59,7 +59,7 @@ import { afterAll, describe, expect, it } from 'bun:test';
 import type { Browser, BrowserContext } from 'playwright';
 import { chromium } from 'playwright';
 
-import { spawnWithHangGuard } from '../../scripts/lib/hang-guard.ts';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { browserSmokeEnabled } from '../testing/browser-smoke-gate.test-support.ts';
 import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
 
@@ -215,7 +215,7 @@ describe.skipIf(!browserSmokeEnabled)('HttpClient — real Chromium construction
     } finally {
       await page.close();
     }
-  }, 30_000);
+  });
 
   it('a browser-constructed HttpClient can make a real request against a live server', async () => {
     rethrow(smokeSetup);
@@ -242,5 +242,5 @@ describe.skipIf(!browserSmokeEnabled)('HttpClient — real Chromium construction
     } finally {
       await page.close();
     }
-  }, 30_000);
+  });
 });

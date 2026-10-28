@@ -9,9 +9,9 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { decode, encode } from '../codec.ts';
 import { workflow, type WorkflowContext } from '../types.ts';
 import { adoptLaunchCheckpoint } from './checkpoint-commit-snapshots.ts';

@@ -4,7 +4,7 @@ import {
   requireOpenedPostgresTestDatabase,
 } from './postgres-server.test-support.ts';
 
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createPGliteTestFixture } from './pglite.test-support.ts';
 import { PostgresStorage, type PostgresPool } from './postgres.ts';
 import {

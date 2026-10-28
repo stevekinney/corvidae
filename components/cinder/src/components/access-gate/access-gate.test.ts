@@ -516,8 +516,10 @@ describe('AccessGate', () => {
       const status = document.createElement('span');
       status.textContent = 'status update';
       liveRegion.append(status);
+      // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
       await new Promise((resolve) => setTimeout(resolve, 0));
       status.remove();
+      // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(scopedCallCount).toBe(baseline);
@@ -527,6 +529,7 @@ describe('AccessGate', () => {
       newButton.type = 'button';
       newButton.textContent = 'New action';
       liveRegion.append(newButton);
+      // load-proof: happy-dom delivers MutationObserver records and DOM events through the microtask queue, so draining it is the whole wait
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(scopedCallCount).toBe(baseline + 1);

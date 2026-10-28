@@ -18,6 +18,8 @@ import {
 } from 'conversationalist';
 import { z } from 'zod';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { awakeTurns, waitUntil } from '@lostgradient/testing/wait-until';
 import { appendAgentInput } from '../agent-input';
 import { noToolCalls } from '../conditions/predicates';
 import type { MediaCostEstimator } from '../context/types';
@@ -25,7 +27,7 @@ import { GuardrailTripwireError } from '../errors';
 import { SteeringAppliedEvent } from '../events';
 import type { OperativeHookMap } from '../hooks';
 import type { EventDispatcher } from '../run-step';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { drainMicrotasks } from '../testing/drain-microtasks.test-support.ts';
 import type { GenerateContext, GenerateFunction, SteeringGate } from '../types';
 import type { CheckpointStore } from './checkpoint-store';
 import { createCheckpointStore } from './checkpoint-store';
@@ -1166,7 +1168,7 @@ describe('durable agentRun workflow', () => {
         // recoverAll itself must not throw — the engine survives.
         const recoveredHandles = await b.engine.recoverAll();
         expect(recoveredHandles).toBeDefined();
-        await yieldToPortableEventLoop();
+        await drainMicrotasks();
 
         // The single unresolvable run is now terminally `failed` (not left
         // `running`, which a later boot would re-attempt forever).
@@ -1340,7 +1342,7 @@ describe('durable agentRun workflow', () => {
       // Poll until engine A is parked on ctx.waitForSignal: step 0 committed AND
       // the workflow is 'running' (parked, not yet completed).
       let parkedOnA = false;
-      for (let i = 0; i < 100; i++) {
+      for await (const _turn of awakeTurns()) {
         await yieldToPortableEventLoop();
         const snap = await handleA.snapshot();
         if (snap?.status === 'running') {
@@ -1393,7 +1395,7 @@ describe('durable agentRun workflow', () => {
         // 'running' (parked on waitForSignal). With the BUG, it should be
         // 'completed' — the run finished because waitForSignal was skipped.
         let reParked = false;
-        for (let i = 0; i < 100; i++) {
+        for await (const _turn of awakeTurns()) {
           await yieldToPortableEventLoop();
           const snap = await recoveredHandle.snapshot();
           if (snap?.status === 'running') {
@@ -1480,7 +1482,7 @@ describe('durable agentRun workflow', () => {
       void handleA.result().catch(() => {});
 
       let parkedOnA = false;
-      for (let i = 0; i < 100; i++) {
+      for await (const _turn of awakeTurns()) {
         await yieldToPortableEventLoop();
         const snap = await handleA.snapshot();
         if (snap?.status === 'running') {
@@ -1524,7 +1526,7 @@ describe('durable agentRun workflow', () => {
         const recoveredHandle = handles[0]!;
 
         let reParked = false;
-        for (let i = 0; i < 100; i++) {
+        for await (const _turn of awakeTurns()) {
           await yieldToPortableEventLoop();
           const snap = await recoveredHandle.snapshot();
           if (snap?.status === 'running') {
@@ -1603,7 +1605,7 @@ describe('durable agentRun workflow', () => {
       void handleA.result().catch(() => {});
 
       let parkedOnA = false;
-      for (let i = 0; i < 100; i++) {
+      for await (const _turn of awakeTurns()) {
         await yieldToPortableEventLoop();
         const snap = await handleA.snapshot();
         if (snap?.status === 'running') {
@@ -1721,7 +1723,7 @@ describe('durable agentRun workflow', () => {
 
       // Poll until engine A parks on ctx.sleep (step 0 committed, status=running).
       let parkedOnA = false;
-      for (let i = 0; i < 100; i++) {
+      for await (const _turn of awakeTurns()) {
         await yieldToPortableEventLoop();
         const snap = await handleA.snapshot();
         if (snap?.status === 'running') {
@@ -1764,7 +1766,7 @@ describe('durable agentRun workflow', () => {
         // On the UNFIXED code: 'completed' (sleep was skipped because pendingWakeup
         // was unset on fresh services).
         let reParked = false;
-        for (let i = 0; i < 100; i++) {
+        for await (const _turn of awakeTurns()) {
           await yieldToPortableEventLoop();
           const snap = await recoveredHandle.snapshot();
           if (snap?.status === 'running') {
@@ -1864,7 +1866,7 @@ describe('durable agentRun workflow', () => {
         // Let the workflow run the first step and reach ctx.waitForSignal.
         // Weft inline-launch is async: we need to give the queue several ticks.
         let parked = false;
-        for (let i = 0; i < 50; i++) {
+        for await (const _turn of awakeTurns()) {
           await yieldToPortableEventLoop();
           const snap = await handle.snapshot();
           // The run stays 'running' while parked on waitForSignal.
@@ -1984,7 +1986,7 @@ describe('durable agentRun workflow', () => {
         );
 
         let parkedFirst = false;
-        for (let i = 0; i < 50; i++) {
+        for await (const _turn of awakeTurns()) {
           await yieldToPortableEventLoop();
           const snap = await handle.snapshot();
           if (snap?.status === 'running' && depsContainer.ref?.pendingHumanWait !== undefined) {
@@ -1999,7 +2001,7 @@ describe('durable agentRun workflow', () => {
 
         // Poll until the SECOND park (a fresh pendingHumanWait for 'second').
         let parkedSecond = false;
-        for (let i = 0; i < 50; i++) {
+        for await (const _turn of awakeTurns()) {
           await yieldToPortableEventLoop();
           const snap = await handle.snapshot();
           if (
@@ -2081,7 +2083,7 @@ describe('durable agentRun workflow', () => {
         );
 
         let parked = false;
-        for (let i = 0; i < 50; i++) {
+        for await (const _turn of awakeTurns()) {
           await yieldToPortableEventLoop();
           const snap = await handle.snapshot();
           if (snap?.status === 'running' && depsContainer.ref?.pendingHumanWait !== undefined) {
@@ -2164,7 +2166,7 @@ describe('durable agentRun workflow', () => {
         );
 
         let parked = false;
-        for (let i = 0; i < 50; i++) {
+        for await (const _turn of awakeTurns()) {
           await yieldToPortableEventLoop();
           const snap = await handle.snapshot();
           if (snap?.status === 'running' && depsContainer.ref?.pendingHumanWait !== undefined) {
@@ -2263,7 +2265,7 @@ describe('durable agentRun workflow', () => {
         );
 
         let parked = false;
-        for (let i = 0; i < 50; i++) {
+        for await (const _turn of awakeTurns()) {
           await yieldToPortableEventLoop();
           const snap = await handle.snapshot();
           if (snap?.status === 'running' && depsContainer.ref?.pendingHumanWait !== undefined) {
@@ -2340,7 +2342,7 @@ describe('durable agentRun workflow', () => {
         );
 
         let parked = false;
-        for (let i = 0; i < 50; i++) {
+        for await (const _turn of awakeTurns()) {
           await yieldToPortableEventLoop();
           const snap = await handle.snapshot();
           if (snap?.status === 'running' && depsContainer.ref?.pendingHumanWait !== undefined) {
@@ -2356,7 +2358,7 @@ describe('durable agentRun workflow', () => {
         await handle.cancel();
 
         let settled = false;
-        for (let i = 0; i < 50; i++) {
+        for await (const _turn of awakeTurns()) {
           await yieldToPortableEventLoop();
           const snap = await handle.snapshot();
           if (
@@ -2436,7 +2438,7 @@ describe('durable agentRun workflow', () => {
         );
 
         let parked = false;
-        for (let i = 0; i < 50; i++) {
+        for await (const _turn of awakeTurns()) {
           await yieldToPortableEventLoop();
           const snap = await handle.snapshot();
           if (snap?.status === 'running' && depsContainer.ref?.pendingHumanWait !== undefined) {
@@ -2589,7 +2591,7 @@ describe('durable agentRun workflow', () => {
         // drains the microtask chain from `saveCursor`'s settle through
         // `ctx.sleep`'s own `scheduler.schedule()` durable-storage write, so a
         // single `runMaintenance` tick finds the timer already registered.
-        await yieldToPortableEventLoop();
+        await drainMicrotasks();
         await engine.runMaintenance(clock.advance(20));
         const result = await handle.result();
         expect(result.finishReason).toBe('stop-condition');
@@ -2729,7 +2731,7 @@ describe('durable agentRun workflow', () => {
         );
 
         let parked = false;
-        for (let i = 0; i < 50; i++) {
+        for await (const _turn of awakeTurns()) {
           await yieldToPortableEventLoop();
           const snap = await handle.snapshot();
           if (snap?.status === 'running' && depsContainer.ref?.pendingWakeup !== undefined) {
@@ -2746,7 +2748,7 @@ describe('durable agentRun workflow', () => {
         await handle.cancel();
 
         let settled = false;
-        for (let i = 0; i < 50; i++) {
+        for await (const _turn of awakeTurns()) {
           await yieldToPortableEventLoop();
           const snap = await handle.snapshot();
           if (
@@ -3022,7 +3024,7 @@ describe('durable agentRun workflow', () => {
         // waitForSignal — observable as the test hanging or timing out.
         // With the FIX: only ctx.waitForSignal fires; the run parks immediately.
         let parked = false;
-        for (let i = 0; i < 100; i++) {
+        for await (const _turn of awakeTurns()) {
           await yieldToPortableEventLoop();
           const snap = await handle.snapshot();
           if (snap?.status === 'running') {
@@ -3167,7 +3169,7 @@ describe('durable agentRun workflow', () => {
         // Step 0 commits (schedules the wakeup), then fire its 20ms timer
         // explicitly via the manual clock.
         await waitForCursorSave(runId, 1);
-        await yieldToPortableEventLoop();
+        await drainMicrotasks();
         await engine.runMaintenance(clock.advance(20));
 
         // Step 1 (the continuation) commits: it sets both a new wakeup and a
@@ -3244,7 +3246,7 @@ describe('durable agentRun workflow', () => {
 
         // Poll until parked on ctx.sleep (status='running', step committed).
         let parked = false;
-        for (let i = 0; i < 100; i++) {
+        for await (const _turn of awakeTurns()) {
           await yieldToPortableEventLoop();
           const snap = await handle.snapshot();
           if (snap?.status === 'running') {
@@ -3497,7 +3499,7 @@ describe('durable agentRun workflow', () => {
 
         // Poll until parked on ctx.waitForSignal (step 0 committed, still running).
         let parked = false;
-        for (let i = 0; i < 50; i++) {
+        for await (const _turn of awakeTurns()) {
           await yieldToPortableEventLoop();
           const snap = await handle.snapshot();
           if (snap?.status === 'running' && depsContainer.ref?.pendingHumanWait !== undefined) {
@@ -3952,7 +3954,7 @@ describe('durable agentRun workflow', () => {
       );
       void handle.result().catch(() => {});
       await reached;
-      await yieldToPortableEventLoop();
+      await drainMicrotasks();
       a.engine[Symbol.dispose]();
 
       // Engine B: by replay time the live gate reports a floor of 3 (a later
@@ -4107,7 +4109,7 @@ describe('durable agentRun workflow', () => {
         );
         void handle.result().catch(() => {});
         await reached;
-        await yieldToPortableEventLoop();
+        await drainMicrotasks();
         engineA[Symbol.dispose]();
         expect(generateCalls).toBe(hangOnCall);
 
@@ -4196,10 +4198,11 @@ describe('durable agentRun workflow', () => {
           services,
         );
 
-        // Let the engine drive the workflow generator far enough to reach
-        // and block on the pause gate before asserting it never generated.
-        await yieldToPortableEventLoop();
-        await yieldToPortableEventLoop();
+        // Wait until the engine has driven the workflow generator to the pause gate and is blocked
+        // on it, then assert it never generated.
+        await waitUntil(() => resumeResolvers.length > 0, {
+          message: 'the driver to block on the pause gate',
+        });
         expect(generateCalls).toBe(0);
 
         paused = false;

@@ -6,6 +6,7 @@
 import { watch, type FSWatcher } from 'node:fs';
 
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { AgentFileError } from './agent-file';
@@ -135,15 +136,16 @@ describe('the watcher', () => {
     // `fs.watch` can drop an event, so a lost one is tolerated by touching the file again, never
     // by advancing the clock.
     let reported = false;
-    for (let attempt = 0; attempt < 12 && !reported; attempt += 1) {
-      const changed = fixture.nextChange(
+    void fixture
+      .nextChange(
         (change) => change.added.includes('watched') || change.changed.includes('watched'),
-      );
+      )
+      .then(() => {
+        reported = true;
+      });
+    for await (const attempt of awakeTurns()) {
+      if (reported) break;
       await fixture.put('watched.md', validAgentFile(`Attempt ${attempt}.\n`));
-      reported = await Promise.race([
-        changed.then(() => true),
-        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 250)),
-      ]);
     }
     expect(reported).toBe(true);
     expect(fixture.catalog.find('watched')).toBeDefined();

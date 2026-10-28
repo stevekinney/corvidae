@@ -12,7 +12,7 @@ import { z } from 'zod';
 import type { BureauError } from './create-bureau';
 import { OWNER } from './http/management/management-fixtures.test-support.ts';
 import { createScheduleFireHarness, pollUntil } from './schedule-fire-fixtures.test-support';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 
 const harness = createScheduleFireHarness();
 afterEach(async () => {
@@ -67,11 +67,7 @@ describe('a session-run approval whose approve is in flight', () => {
         }),
       },
     });
-    const run = await bureau.createRun({
-      agentName: 'default',
-      message: 'charge',
-      principal: OWNER.alice,
-    });
+    const run = await bureau.tasks.start('default', 'charge', { principal: OWNER.alice });
     const review = await pollUntil(
       () => bureau.reviews.list().find((candidate) => candidate.runId === run.id),
       'the approval',

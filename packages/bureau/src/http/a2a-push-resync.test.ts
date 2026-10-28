@@ -15,6 +15,7 @@ import {
   type PushFixture,
   webhook,
 } from './a2a-push.test-support.ts';
+import { quietFor } from '@lostgradient/testing/wait-until';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -39,7 +40,7 @@ describe('push across a lost run.completed append', () => {
 
     await eventually(() => fixture.receiver.kinds().includes('status:TASK_STATE_COMPLETED'));
     // Give a second, wrongly duplicated delivery time to arrive.
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await quietFor(300);
     expect(
       fixture.receiver.kinds().filter((kind) => kind === 'status:TASK_STATE_COMPLETED'),
     ).toHaveLength(1);

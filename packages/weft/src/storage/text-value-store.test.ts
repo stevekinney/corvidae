@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { storageBackends, teardown } from '../testing/storage-backends.test-support.ts';
 import type { Storage } from './interface.ts';
 import { MemoryStorage } from './memory.ts';

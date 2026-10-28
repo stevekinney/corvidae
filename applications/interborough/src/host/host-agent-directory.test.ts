@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { startHost, type Host, type HostOptions } from './host.ts';
+import { runTask } from './run-task.test-support.ts';
 
 const FIXTURE_KEY = 'fixture-anthropic-key-9c1d';
 const directories: string[] = [];
@@ -129,7 +130,7 @@ describe('the host’s agent directory', () => {
       name: 'Researcher',
       owner: 'anonymous:local',
     });
-    const result = await host.bureau.run('researcher', 'Hello').result();
+    const result = await runTask(host.bureau, 'researcher', 'Hello');
     expect(result.content).toBe('A reply from a file agent.');
     expect(handed.at(-1)).toMatchObject({ provider: 'anthropic', model: 'claude-sonnet-5' });
     // Compared, not printed: a failure must not show the value.
@@ -140,10 +141,10 @@ describe('the host’s agent directory', () => {
     const { handed, resolver } = fakeProvider('Session reply.');
     const home = await prepareHome({ 'researcher.md': RESEARCHER });
     const host = await startAt(home, { resolveProviderGenerate: resolver });
-    const created = await host.bureau.createRun({ message: 'Hello', agentName: 'researcher' });
-    const outcome = await host.bureau.waitForDurableRun(created.id);
+    const created = await host.bureau.tasks.start('researcher', 'Hello');
+    const outcome = await host.bureau.tasks.wait(created.id);
     expect(outcome).toBeDefined();
-    const session = await host.bureau.contexts.get(created.sessionId);
+    const session = await host.bureau.contexts.get(created.contextId);
     expect(session?.agentName).toBe('researcher');
     expect(handed.at(-1)).toMatchObject({ provider: 'anthropic', model: 'claude-sonnet-5' });
   });

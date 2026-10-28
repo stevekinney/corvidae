@@ -1,9 +1,9 @@
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, resolve } from 'node:path';
 import type { Component } from 'svelte';
-import { rejectionOf, throwingRejectionOf } from '../../promise-outcome.test-support.ts';
 import { appFixtureDeclarations } from '../src/app-fixture-declarations.ts';
 import { loadFixture } from '../src/fixture-loader.ts';
 import { assertUniqueFixtureNames, manifestFilePath, readManifest } from '../src/manifest.ts';

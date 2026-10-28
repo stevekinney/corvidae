@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { attenuateMemoryAuthority } from '../../src/governance/authority';
 import { DELETION_CLAIM_LEASE_MILLISECONDS } from '../../src/governance/deletion';
 import type { MemoryDeletionPropagator } from '../../src/governance/governed-memory-types';
 import type { MemoryDeletionReceipt } from '../../src/governance/ledger-types';
 import { collectionNamespace } from '../../src/governance/record-governance';
-import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 import {
   authority,
   createGovernedFixture,

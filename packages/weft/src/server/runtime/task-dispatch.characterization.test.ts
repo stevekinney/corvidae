@@ -26,8 +26,8 @@ import { minimalServeOptions, minimalServerContext } from './server-context.test
 import { dispatchTaskImpl, scheduleDelayedDispatch } from './task-dispatch.ts';
 import { commitTaskLedgerCompletion } from './task-ledger-completion.ts';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import type { ServerContext } from './context.ts';
 
 const createMinimalContext = minimalServerContext;
@@ -147,6 +147,49 @@ describe('dispatchTaskImpl', () => {
     });
 
     expect(context.registry.isAssigned('op-assign')).toBe(true);
+  });
+
+  it('routes around a worker whose socket dropped and whose reconnect grace window is still open', async () => {
+    context = createMinimalContext();
+    options = createMinimalOptions();
+
+    const sentTo: string[] = [];
+    for (const workerId of ['worker-draining', 'worker-ready']) {
+      context.registry.register({
+        manifest: testWorkerManifest(),
+        acceptedManifestDigest: TEST_ACCEPTED_MANIFEST_DIGEST,
+        id: workerId,
+        queue: 'default',
+        activities: ['doWork'],
+        concurrency: 5,
+      });
+      context.workerSockets.set(workerId, {
+        send: () => {
+          sentTo.push(workerId);
+        },
+      } as never);
+    }
+    // The first worker's socket closed and the server is holding its session for a same-id
+    // re-register, so a frame sent to it would go to a dead socket.
+    const timer = setTimeout(() => {}, 60_000);
+    context.pendingWorkerRequeues.set('worker-draining', { timer, endsAt: Date.now() + 60_000 });
+
+    try {
+      for (const operationId of ['op-grace-1', 'op-grace-2', 'op-grace-3']) {
+        const dispatched = await dispatchTaskImpl(context, options, {
+          operationId,
+          activityName: 'doWork',
+          workflowType: 'testWorkflow',
+          queue: 'default',
+          input: null,
+        });
+        expect(dispatched).toBe(true);
+      }
+
+      expect(sentTo).toEqual(['worker-ready', 'worker-ready', 'worker-ready']);
+    } finally {
+      clearTimeout(timer);
+    }
   });
 
   it('records workflow affinity after WebSocket dispatch with workflowId', async () => {

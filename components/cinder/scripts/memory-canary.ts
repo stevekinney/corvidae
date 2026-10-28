@@ -23,6 +23,7 @@
 
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { TEST_TIMEOUT_ARGUMENT } from '../../../scripts/test-deadlines.ts';
 import { environmentConfiguration } from './environment-configuration.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -66,7 +67,13 @@ export async function runMemoryCanary(
   slugs: readonly string[] = CANARY_COMPONENT_SLUGS,
 ): Promise<CanaryResult> {
   const directories = componentTestDirectories(slugs);
-  return runMemoryCanaryCommand([process.execPath, 'test', ...BUN_TEST_FLAGS, ...directories]);
+  return runMemoryCanaryCommand([
+    process.execPath,
+    'test',
+    TEST_TIMEOUT_ARGUMENT,
+    ...BUN_TEST_FLAGS,
+    ...directories,
+  ]);
 }
 
 /** Spawn one command and report its exit code and peak RSS in bytes. */

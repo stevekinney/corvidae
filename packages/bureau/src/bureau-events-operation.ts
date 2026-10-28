@@ -174,9 +174,11 @@ export function defineBureauEventsSubscriptionOperation(scope: BureauEventsAcces
           { close: () => controller.abort() },
         );
 
+        const subscriptionId = `sub_${runtime.identifiers.next('bureau-subscription')}`;
         return Promise.resolve({
+          subscriptionId,
           envelope: {
-            subscriptionId: `sub_${runtime.identifiers.next('bureau-subscription')}`,
+            subscriptionId,
             cursor: input.fromCursor ?? '-1',
           },
           iterable,

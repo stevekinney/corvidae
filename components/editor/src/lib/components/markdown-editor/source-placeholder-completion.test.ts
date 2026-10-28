@@ -19,7 +19,7 @@ import { detectSourceTokenQuery } from './source-placeholder-completion.ts';
 
 setupHappyDom();
 
-const [{ default: MarkdownEditor }, { cleanup, render }] = await Promise.all([
+const [{ default: MarkdownEditor }, { cleanup, render, waitFor }] = await Promise.all([
   import('./markdown-editor.svelte'),
   import('@testing-library/svelte'),
 ]);
@@ -765,11 +765,12 @@ describe('source completion under the low-level configuration', () => {
       { placeholderDefinitions: undefined, placeholderCompletion: completion },
       async ({ textarea }) => {
         await typeText(textarea, '{{a');
-        await new Promise((resolve) => setTimeout(resolve, 0));
-        expect(resolvers).toHaveLength(1);
+        // The lookup starts from the component's zero-delay debounce timer.
+        await waitFor(() => expect(resolvers).toHaveLength(1));
 
         textarea.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
         resolvers[0]?.([{ path: 'a.async' }]);
+        // load-proof: the resolved lookup settles through its promise chain and the result is held back until compositionend, so only microtasks are pending
         await new Promise((resolve) => setTimeout(resolve, 0));
         textarea.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
         await tick();
@@ -794,8 +795,7 @@ describe('source completion under the low-level configuration', () => {
       { placeholderDefinitions: undefined, placeholderCompletion: completion },
       async (editor) => {
         await typeText(editor.textarea, '{{a');
-        await new Promise((resolve) => setTimeout(resolve, 0));
-        expect(signals).toHaveLength(1);
+        await waitFor(() => expect(signals).toHaveLength(1));
 
         editor.textarea.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
         await editor.update({

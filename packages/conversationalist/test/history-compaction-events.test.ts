@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Conversation as ConversationHistory } from '../src/history';
 import { createConversationHistory as createConversation } from '../src/index';
-import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { Message } from '../src/types';
 
 const summarizer = async (messages: Message[]) => `Summary of ${messages.length} messages`;

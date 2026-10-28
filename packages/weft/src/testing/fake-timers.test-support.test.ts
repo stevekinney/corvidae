@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, jest } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   advanceTimersByTime,
   createDeferred,
@@ -14,7 +15,6 @@ import {
   withTimeout,
   yieldToEventLoop,
 } from './fake-timers.test-support.ts';
-import { throwingRejectionOf } from './promise-outcome.test-support.ts';
 
 describe('fake timer testing helpers', () => {
   afterEach(() => {
@@ -111,6 +111,7 @@ describe('fake timer testing helpers', () => {
       fired = true;
     }, 25);
 
+    // load-proof: timers fire in expiry order, so the helper's own 1 ms turn is always handled before the 25 ms timer even on a stalled loop; the assertion pins that order, not elapsed time
     await sleepForTesting(25);
 
     expect(fired).toBe(false);
@@ -127,6 +128,7 @@ describe('fake timer testing helpers', () => {
       });
     }, 0);
 
+    // load-proof: the helper under test: its zero-length timer is armed after the one that queues the continuation, and timers of one clock fire in order of their deadlines, so the continuation has run when it resolves
     await yieldToEventLoop();
 
     expect(continuationRan).toBe(true);
@@ -141,6 +143,7 @@ describe('fake timer testing helpers', () => {
       });
     }, 0);
 
+    // load-proof: the helper under test: its zero-length timer is armed after the one that queues the continuation, and timers of one clock fire in order of their deadlines, so the continuation has run when it resolves
     await yieldToEventLoop();
 
     expect(continuationRan).toBe(true);
@@ -203,6 +206,7 @@ describe('fake timer testing helpers', () => {
   it('waitForCondition includes the last real-timer predicate error in timeout failures', async () => {
     expect(
       await throwingRejectionOf(
+        // hang-guard-self-test: the predicate never succeeds, so no load can satisfy the wait
         waitForCondition(
           () => {
             throw new Error('still waiting');
@@ -216,16 +220,18 @@ describe('fake timer testing helpers', () => {
   it('waitForCondition checks the predicate at the real-timer timeout boundary', async () => {
     const startedAt = performance.now();
 
+    // hang-guard-self-test: the predicate holds once five milliseconds have passed, whatever the load
     await waitForCondition(() => performance.now() - startedAt >= 5, {
+      timeoutMs: 5,
       intervalMs: 50,
       label: 'real timer boundary',
-      timeoutMs: 5,
     });
   });
 
   it('waitForCondition returns a plain real-timer timeout when the predicate never throws', async () => {
     expect(
       await throwingRejectionOf(
+        // hang-guard-self-test: the predicate is never true, so no load can satisfy the wait
         waitForCondition(() => false, { timeoutMs: 5, intervalMs: 1, label: 'plain timeout' }),
       ),
     ).toThrow('Timed out after 5ms waiting for plain timeout');

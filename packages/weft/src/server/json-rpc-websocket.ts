@@ -17,6 +17,7 @@
 
 import { faultToJsonRpcError } from './fault-to-json-rpc.ts';
 import { dispatchJsonRpc } from './json-rpc-dispatch.ts';
+import { parseJsonRpcRequest } from './json-rpc-parse.ts';
 import { JSON_RPC_ERROR_CODES, JSON_RPC_VERSION, type JsonRpcId } from './json-rpc-protocol.ts';
 import { pumpSubscriptionIterable } from './json-rpc-websocket-subscription-pump.ts';
 import {
@@ -38,6 +39,7 @@ import {
   type DispatchResult,
   type SubscriptionStartEnvelope,
 } from './operation-catalog.ts';
+import type { ConnectionLease } from './runtime/context.ts';
 
 export type {
   JsonRpcWebSocketEmitter,
@@ -55,6 +57,14 @@ type ActiveSubscription = {
   isTerminating: boolean;
 };
 
+type PendingSubscription = {
+  readonly controller: AbortController;
+};
+
+async function closeSubscriptionAfterClose(closeSubscription: () => Promise<void>): Promise<void> {
+  await closeSubscription().catch(() => {});
+}
+
 type SessionRequest = {
   readonly id: JsonRpcId | undefined;
   readonly expectsResponse: boolean;
@@ -62,16 +72,34 @@ type SessionRequest = {
 
 type SubscriptionExecution = Promise<
   DispatchResult<{
+    subscriptionId: string;
     envelope: unknown;
     iterable: AsyncIterable<unknown>;
     close: () => Promise<void>;
   }>
 >;
 
-function isSubscriptionStartEnvelope(value: unknown): value is SubscriptionStartEnvelope {
-  if (value === null || typeof value !== 'object') return false;
-  if (!('subscriptionId' in value) || !('cursor' in value)) return false;
-  return typeof value.subscriptionId === 'string' && typeof value.cursor === 'string';
+function subscriptionResponseEnvelope(
+  envelope: unknown,
+  subscriptionId: string,
+  requiresStartEnvelope: boolean,
+): unknown {
+  if (!requiresStartEnvelope) return envelope;
+  return { subscriptionId, cursor: (envelope as SubscriptionStartEnvelope).cursor };
+}
+
+function requiresSubscriptionClose(disposed: boolean, signal: AbortSignal): boolean {
+  return disposed || signal.aborted;
+}
+
+function releaseSubscriptionLease(lease: ConnectionLease | undefined): void {
+  lease?.release();
+}
+
+function acquireSubscriptionLease(
+  acquire: (() => ConnectionLease) | undefined,
+): ConnectionLease | undefined {
+  return acquire?.();
 }
 
 function isSessionPrimitive(method: unknown): boolean {
@@ -86,30 +114,28 @@ function isSessionPrimitive(method: unknown): boolean {
 export function createJsonRpcWebSocketSession(
   options: JsonRpcWebSocketSessionOptions,
 ): JsonRpcWebSocketSession {
-  const { registry, engine, principal, emitter, feed, fleetFeed } = options;
+  const {
+    registry,
+    engine,
+    principal,
+    emitter,
+    feed,
+    fleetFeed,
+    discoverDocument,
+    acquireWorkflowSubscription,
+    acquireFleetSubscription,
+  } = options;
   const maxSubscriptions = options.maxSubscriptions ?? DEFAULT_MAX_SUBSCRIPTIONS;
   const maxFrameBytes = options.maxFrameBytes ?? DEFAULT_MAX_FRAME_BYTES;
   const transport = options.transport ?? 'jsonRpcWebSocket';
   const subscriptions = new Map<string, ActiveSubscription>();
-  // `emitterBroken` tracks the emitter's liveness — set to `true` only
-  // when `emitter.send` (or `JSON.stringify`) throws. `disposed`
-  // tracks whether `close()` ran — drives subscription teardown.
-  // Keeping them separate means a broken emitter does NOT skip the
-  // cleanup path in `close()`; background pumps would otherwise leak
-  // feed listeners indefinitely, spinning `deliver` → no-op `emit`.
+  const pendingSubscriptions = new Set<PendingSubscription>();
+  // Keep emitter failure separate from disposal so close() still tears down
+  // active subscriptions after a socket send fails.
   let emitterBroken = false;
   let disposed = false;
 
-  /**
-   * Send a frame on the wire. Guards against emitter failures: a
-   * thrown `JSON.stringify` (circular reference) or a thrown
-   * `emitter.send` (closed socket) cannot bubble into background
-   * subscription pumps as an unhandled rejection — swallowed here
-   * with `emitterBroken` set so subsequent emits are silent no-ops.
-   * Critically this does NOT set `disposed`: `close()` must still run
-   * its cleanup path to abort active subscriptions; otherwise the
-   * pumps leak feed listeners indefinitely.
-   */
+  /** Send a frame while containing closed-socket failures. */
   function emit(message: Record<string, unknown>): void {
     if (disposed || emitterBroken) return;
     try {
@@ -146,24 +172,28 @@ export function createJsonRpcWebSocketSession(
       return;
     }
 
-    await startSubscription(request, () =>
-      executeSubscription(
-        WORKFLOW_EVENTS_OPERATION_NAME,
-        {
-          workflowId: validation.workflowId,
-          selector: validation.selector,
-          ...(validation.fromCursor === undefined ? {} : { fromCursor: validation.fromCursor }),
-        },
-        {
-          principal,
-          host: { feed },
-          // Subscribe is a session primitive, but the transport identity still
-          // needs to reflect the adapter reusing this implementation so
-          // availability checks enforce stdio-only and websocket-only policies.
-          transport,
-          registry,
-        },
-      ),
+    await startSubscription(
+      request,
+      () =>
+        executeSubscription(
+          WORKFLOW_EVENTS_OPERATION_NAME,
+          {
+            workflowId: validation.workflowId,
+            selector: validation.selector,
+            ...(validation.fromCursor === undefined ? {} : { fromCursor: validation.fromCursor }),
+          },
+          {
+            principal,
+            host: { feed },
+            // Subscribe is a session primitive, but the transport identity still
+            // needs to reflect the adapter reusing this implementation so
+            // availability checks enforce stdio-only and websocket-only policies.
+            transport,
+            registry,
+          },
+        ),
+      true,
+      acquireWorkflowSubscription,
     );
   }
 
@@ -171,19 +201,25 @@ export function createJsonRpcWebSocketSession(
     request: SessionRequest,
     params: Record<string, unknown> | undefined,
   ): Promise<void> {
-    await startSubscription(request, () =>
-      executeSubscription(FLEET_EVENTS_OPERATION_NAME, params ?? {}, {
-        principal,
-        host: { fleetFeed },
-        transport,
-        registry,
-      }),
+    await startSubscription(
+      request,
+      () =>
+        executeSubscription(FLEET_EVENTS_OPERATION_NAME, params ?? {}, {
+          principal,
+          host: { fleetFeed },
+          transport,
+          registry,
+        }),
+      true,
+      acquireFleetSubscription,
     );
   }
 
   async function startSubscription(
     request: SessionRequest,
     execute: () => SubscriptionExecution,
+    requiresStartEnvelope = false,
+    acquire?: () => ConnectionLease,
   ): Promise<void> {
     if (subscriptions.size >= maxSubscriptions) {
       emitResponse(request, {
@@ -203,7 +239,10 @@ export function createJsonRpcWebSocketSession(
     }
 
     const controller = new AbortController();
+    const pending: PendingSubscription = { controller };
+    pendingSubscriptions.add(pending);
     const result = await execute();
+    pendingSubscriptions.delete(pending);
     if (!result.ok) {
       const error = faultToJsonRpcError(result.fault);
       emitResponse(request, {
@@ -214,21 +253,21 @@ export function createJsonRpcWebSocketSession(
       return;
     }
 
-    const { envelope, iterable, close: closeSubscription } = result.value;
-    if (!isSubscriptionStartEnvelope(envelope)) {
-      await closeSubscription().catch(() => {});
-      emitResponse(request, {
-        jsonrpc: JSON_RPC_VERSION,
-        error: { code: JSON_RPC_ERROR_CODES.INTERNAL_ERROR, message: 'internal error' },
-        id: request.id ?? null,
-      });
+    const { subscriptionId, envelope, iterable, close: closeSubscription } = result.value;
+    let closeStarted = false;
+    const closeOnce = async (): Promise<void> => {
+      if (closeStarted) return;
+      closeStarted = true;
+      await closeSubscription();
+    };
+    if (requiresSubscriptionClose(disposed, controller.signal)) {
+      await closeSubscriptionAfterClose(closeOnce);
       return;
     }
-    const { subscriptionId, cursor } = envelope;
-
+    const lease = acquireSubscriptionLease(acquire);
     emitResponse(request, {
       jsonrpc: JSON_RPC_VERSION,
-      result: { subscriptionId, cursor },
+      result: subscriptionResponseEnvelope(envelope, subscriptionId, requiresStartEnvelope),
       id: request.id ?? null,
     });
 
@@ -236,10 +275,13 @@ export function createJsonRpcWebSocketSession(
       subscriptionId,
       iterable,
       signal: controller.signal,
-      closeSubscription,
+      closeSubscription: closeOnce,
       shouldSuppressOutput,
       emit,
-      onComplete: () => subscriptions.delete(subscriptionId),
+      onComplete: () => {
+        releaseSubscriptionLease(lease);
+        subscriptions.delete(subscriptionId);
+      },
     });
     subscriptions.set(subscriptionId, {
       id: subscriptionId,
@@ -329,6 +371,52 @@ export function createJsonRpcWebSocketSession(
     }
   }
 
+  async function handleCatalogMethod(
+    validation: ReturnType<typeof validateMessageFrame> & { ok: true },
+  ): Promise<boolean> {
+    if (isSessionPrimitive(validation.method)) {
+      const feedDependentPrimitive =
+        validation.method === SESSION_METHODS.SUBSCRIBE ||
+        validation.method === WORKFLOW_EVENTS_OPERATION_NAME;
+      if (feed === undefined && feedDependentPrimitive) {
+        return false;
+      }
+      await handleSessionPrimitive(validation);
+      return true;
+    }
+
+    const method = validation.method;
+    if (typeof method === 'string' && registry.get(method)?.kind === 'subscription') {
+      const request: SessionRequest = {
+        id: validation.id,
+        expectsResponse: validation.hasRequestId,
+      };
+      const parsed = parseJsonRpcRequest(validation.parsed);
+      if (parsed.kind === 'invalid-request') {
+        emit({
+          jsonrpc: JSON_RPC_VERSION,
+          error: { code: parsed.code, message: parsed.message },
+          id: parsed.id,
+        });
+        return true;
+      }
+      await startSubscription(
+        request,
+        () =>
+          executeSubscription(method, validation.params ?? {}, {
+            principal,
+            host: engine,
+            transport,
+            registry,
+          }),
+        false,
+        undefined,
+      );
+      return true;
+    }
+    return false;
+  }
+
   async function handleMessage(frame: string): Promise<void> {
     if (disposed || emitterBroken) return;
 
@@ -342,11 +430,14 @@ export function createJsonRpcWebSocketSession(
       return;
     }
 
-    if (isSessionPrimitive(validation.method)) {
-      await handleSessionPrimitive(validation);
-      return;
-    }
+    if (await handleCatalogMethod(validation)) return;
 
+    await dispatchStandard(validation);
+  }
+
+  async function dispatchStandard(
+    validation: ReturnType<typeof validateMessageFrame> & { ok: true },
+  ): Promise<void> {
     // Standard dispatch — the dispatcher handles parse-error / invalid-
     // request / notification elision / success / error mapping.
     const result = await dispatchJsonRpc(validation.parsed, {
@@ -354,26 +445,29 @@ export function createJsonRpcWebSocketSession(
       host: engine,
       principal,
       transport,
+      ...(discoverDocument === undefined ? {} : { discoverDocument }),
     });
 
     if (result.kind === 'single') {
       emit(result.response);
     }
     // Notifications over WS are fire-and-forget (no response frame).
-    // Batch / notification-batch paths are unreachable because we
-    // rejected arrays above.
+    // Batch / notification-batch paths are unreachable because we rejected arrays above.
   }
 
   async function close(): Promise<void> {
     if (disposed) return;
     disposed = true;
-    const pending: Promise<void>[] = [];
+    const pendingCloses: Promise<void>[] = [];
     for (const sub of subscriptions.values()) {
       sub.controller.abort();
-      pending.push(sub.pump.catch(() => {}));
+      pendingCloses.push(sub.pump.catch(() => {}));
+    }
+    for (const pending of pendingSubscriptions) {
+      pending.controller.abort();
     }
     subscriptions.clear();
-    await Promise.all(pending);
+    await Promise.all(pendingCloses);
   }
 
   return { handleMessage, close };

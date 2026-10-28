@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 import { z } from 'zod';
 
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { PEER_CALL_KEY_PREFIX } from './child-topology-store';
@@ -30,9 +30,9 @@ const ORIGIN = 'https://agents.example.test';
 const databasePaths: string[] = [];
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const peers: OpenedBureau[] = [];
-/** `waitForCondition` with room for a loaded host: these waits cross sqlite, HTTP and a restart. */
+/** `waitForCondition`, which waits on the hang guard: these waits cross sqlite, HTTP and a restart. */
 const eventually = (condition: () => boolean | Promise<boolean>, failureMessage: string) =>
-  waitForCondition(condition, failureMessage, 2_000);
+  waitForCondition(condition, failureMessage);
 /** Writes held open to stand in for a process dying inside them; released so teardown can finish. */
 const heldWrites: Array<() => void> = [];
 
@@ -177,7 +177,7 @@ describe('a durable peer call across a restart', () => {
       mortalFetch(peer.fetchPeer, () => dead),
       firstHolder,
     );
-    const run = await first.createRun({ message: 'go', agentName: 'caller' });
+    const run = await first.tasks.start('caller', 'go');
     await eventually(
       () => firstHolder.writes.length === 1,
       'the call never recorded its peer task',
@@ -191,7 +191,7 @@ describe('a durable peer call across a restart', () => {
     const second = await callerBureau(databasePath, peer.fetchPeer, secondHolder);
     peer.release();
     await eventually(async () => {
-      const session = await second.contexts.get(run.sessionId);
+      const session = await second.contexts.get(run.contextId);
       return session?.metadata['lastRunStatus'] === 'completed';
     }, 'the restarted run never completed');
 
@@ -205,7 +205,7 @@ describe('a durable peer call across a restart', () => {
     ).toHaveLength(1);
     // The replay found the record and so wrote nothing new.
     expect(secondHolder.writes).toEqual([]);
-    const session = await second.contexts.get(run.sessionId);
+    const session = await second.contexts.get(run.contextId);
     const history = JSON.stringify(session?.conversationHistory);
     expect(history).toContain('peer answer');
     expect(PEER_CALL_KEY_PREFIX).toBeTruthy();
@@ -229,7 +229,7 @@ describe('a durable peer call across a restart', () => {
       mortalFetch(peer.fetchPeer, () => dead),
       firstHolder,
     );
-    const run = await first.createRun({ message: 'go', agentName: 'caller' });
+    const run = await first.tasks.start('caller', 'go');
     await eventually(() => diedInWrite, 'the call never reached its journal write');
     await eventually(() => peer.received.length === 1, 'the peer never started working');
     dead = true;
@@ -237,7 +237,7 @@ describe('a durable peer call across a restart', () => {
     const second = await callerBureau(databasePath, peer.fetchPeer, { writes: [] });
     peer.release();
     await eventually(async () => {
-      const session = await second.contexts.get(run.sessionId);
+      const session = await second.contexts.get(run.contextId);
       return session?.metadata['lastRunStatus'] === 'completed';
     }, 'the restarted run never completed');
 
@@ -246,7 +246,7 @@ describe('a durable peer call across a restart', () => {
     expect(peer.messageIds).toHaveLength(2);
     expect(peer.messageIds[1]).toBe(peer.messageIds[0]);
     expect(peer.received).toEqual(['run']);
-    const session = await second.contexts.get(run.sessionId);
+    const session = await second.contexts.get(run.contextId);
     expect(JSON.stringify(session?.conversationHistory)).toContain('peer answer');
   });
 });
@@ -263,9 +263,9 @@ describe('the Bureau peer call journal', () => {
       ...IMMEDIATE_TASK_RETENTION,
     });
     bureaus.push(bureau);
-    const run = await bureau.createRun({ message: 'go', agentName: 'caller' });
+    const run = await bureau.tasks.start('caller', 'go');
     await eventually(async () => {
-      const session = await bureau.contexts.get(run.sessionId);
+      const session = await bureau.contexts.get(run.contextId);
       return session?.metadata['lastRunStatus'] === 'completed';
     }, 'the run never completed');
     return { bureau, run };

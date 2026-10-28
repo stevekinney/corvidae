@@ -19,7 +19,7 @@ import {
   type TaskCleanupState,
   type TaskRegistryHost,
 } from './task-registry';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { CancelDurableRunOutcome, PendingReview } from './types';
 
 const OWNER = 'api-key:alice';
@@ -676,17 +676,11 @@ describe('cancel', () => {
     void registry.watchCleanup('run-1', new Promise(() => undefined));
     held.live.set('run-1', { ...running, phase: 'aborted', finishReason: 'aborted' });
 
-    const hung = Symbol('hung');
-    const bounded = <T>(promise: Promise<T>) =>
-      Promise.race([
-        promise,
-        new Promise<symbol>((resolve) => setTimeout(() => resolve(hung), 100)),
-      ]);
-    const immediate = await bounded(registry.cancel('run-1', 0));
+    const immediate = await registry.cancel('run-1', 0);
     const waiting = registry.cancel('run-1', 1000);
     for (let turn = 0; turn < 20; turn += 1) await Promise.resolve();
     await runtime.advance(1000);
-    const waited = await bounded(waiting);
+    const waited = await waiting;
 
     expect(immediate).toEqual({ receipt: 'cleanup-pending' });
     expect(waited).toEqual({ receipt: 'cleanup-pending' });
@@ -973,6 +967,7 @@ describe('idle', () => {
   /** An acknowledgement that arrives after `turns` event-loop turns. */
   function acknowledgedAfter(turns: number): Promise<{ status: 'completed' }> {
     return (async () => {
+      // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
       for (let turn = 0; turn < turns; turn += 1) await yieldToPortableEventLoop();
       return { status: 'completed' as const };
     })();

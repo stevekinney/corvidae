@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import { Engine } from '../core/engine.ts';
 import type { WorkflowContext } from '../core/types.ts';
 import { workflow } from '../core/types.ts';
@@ -157,7 +158,7 @@ describe('Discovery parity', () => {
           const timer = setTimeout(() => {
             webSocket.removeEventListener('message', handler);
             reject(new Error('rpc.discover websocket response timed out'));
-          }, 3_000);
+          }, HANG_GUARD_MILLISECONDS);
 
           function handler(event: MessageEvent): void {
             const parsed = JSON.parse(String(event.data)) as {

@@ -19,9 +19,10 @@ import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/
 import type { AgentDefinitions } from './agent-catalog';
 import * as auditTrailModule from './audit-trail';
 import { BureauError, createBureau } from './create-bureau';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { humanWaitDeliveryId } from './run-human-waits';
 import type { Bureau, BureauOptions, PendingReview } from './types';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const databasePaths: string[] = [];
@@ -33,12 +34,8 @@ afterEach(async () => {
   }
 });
 
-async function pollUntil(check: () => boolean | Promise<boolean>, attempts = 400): Promise<void> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (await check()) return;
-    await yieldToPortableEventLoop();
-  }
-  throw new Error('Condition was not met.');
+async function pollUntil(check: () => boolean | Promise<boolean>): Promise<void> {
+  await waitUntil(check, { message: 'pollUntil' });
 }
 
 type Seen = {
@@ -112,7 +109,7 @@ describe('a bureau.run() park', () => {
     const seen = newSeen();
     const bureau = await start({ asker: askingAgent(seen) });
 
-    const run = bureau.run('asker', 'deploy', { principal: 'alice' });
+    const run = await bureau.tasks.start('asker', 'deploy', { principal: 'alice' });
     const review = await nextReview(bureau, run.id);
 
     expect(review).toMatchObject({
@@ -124,8 +121,8 @@ describe('a bureau.run() park', () => {
       prompt: 'Which environment?',
       status: 'pending',
     });
-    // It has no session: the run id is what addresses it.
-    expect(review.sessionId).toBeUndefined();
+    // A task runs in a context, which the review carries.
+    expect(review.sessionId).toBe(run.contextId);
     expect(await bureau.reviews.get(review.id)).toMatchObject({ id: review.id, status: 'pending' });
 
     const resolved = await bureau.reviews.resolve({
@@ -149,8 +146,8 @@ describe('a bureau.run() park', () => {
     });
     const signal = spyOn(bureau.durableEngine()!, 'signal');
 
-    const first = bureau.run('denier', 'deploy');
-    const second = bureau.run('rejecter', 'deploy');
+    const first = await bureau.tasks.start('denier', 'deploy');
+    const second = await bureau.tasks.start('rejecter', 'deploy');
     const firstReview = await nextReview(bureau, first.id);
     const secondReview = await nextReview(bureau, second.id);
     await bureau.reviews.resolve({
@@ -176,7 +173,7 @@ describe('a bureau.run() park', () => {
 
   it('refuses a rejection without a reason and leaves the review pending', async () => {
     const bureau = await start({ asker: askingAgent(newSeen()) });
-    const run = bureau.run('asker', 'deploy');
+    const run = await bureau.tasks.start('asker', 'deploy');
     const review = await nextReview(bureau, run.id);
 
     const refusal = await rejectionOf(
@@ -189,7 +186,7 @@ describe('a bureau.run() park', () => {
 
   it('answers a second resolve with NOT_FOUND once the first has landed', async () => {
     const bureau = await start({ asker: askingAgent(newSeen()) });
-    const run = bureau.run('asker', 'deploy');
+    const run = await bureau.tasks.start('asker', 'deploy');
     const review = await nextReview(bureau, run.id);
     await bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'operator' });
     await run.result();
@@ -201,30 +198,12 @@ describe('a bureau.run() park', () => {
     expect((again as BureauError).code).toBe('NOT_FOUND');
   });
 
-  it('is CONFLICT when the run was signalled outside resolveReview and is still going', async () => {
-    const seen = newSeen(true);
-    const bureau = await start({ asker: askingAgent(seen) });
-    const run = bureau.run('asker', 'deploy');
-    const review = await nextReview(bureau, run.id);
-    await bureau.durableEngine()!.signal(run.id, 'answer', { environment: 'prod' });
-    // The run continues into its held step, so it is neither settled nor still parked.
-    await yieldToPortableEventLoop();
-
-    const stale = await rejectionOf(
-      bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'operator' }),
-    );
-
-    seen.release();
-    await run.result();
-    expect((stale as BureauError).code).toBe('CONFLICT');
-  });
-
   // A parked run that ends before its review is decided has two ways to end, and they answer
   // differently because the review index and the engine learn of the end at different moments.
   // The design's error table and the session path say the same.
   it('answers NOT_FOUND to a resolve after the run was aborted and has settled', async () => {
     const bureau = await start({ asker: askingAgent(newSeen()) });
-    const run = bureau.run('asker', 'deploy');
+    const run = await bureau.tasks.start('asker', 'deploy');
     const review = await nextReview(bureau, run.id);
 
     run.abort();
@@ -240,7 +219,7 @@ describe('a bureau.run() park', () => {
 
   it('answers CONFLICT to a resolve after the engine cancelled the run, before the index heard', async () => {
     const bureau = await start({ asker: askingAgent(newSeen()) });
-    const run = bureau.run('asker', 'deploy');
+    const run = await bureau.tasks.start('asker', 'deploy');
     const review = await nextReview(bureau, run.id);
 
     await bureau.durableEngine()!.cancel(run.id);
@@ -251,12 +230,65 @@ describe('a bureau.run() park', () => {
 
     // The engine, not the index, says the run has settled, so the review is closed.
     expect((refusal as BureauError).code).toBe('CONFLICT');
+    const workflow = await bureau.tasks.workflow(run.id);
+    expect(workflow?.status).toBe('cancelled');
+    await pollUntil(async () => {
+      const task = await bureau.tasks.get(run.id);
+      return task?.status === 'canceled';
+    });
+  });
+
+  it('lets a resolve that landed first win over a later engine cancel, which answers the registry outcome', async () => {
+    const seen = newSeen(true);
+    const bureau = await start({ asker: askingAgent(seen) });
+    const run = await bureau.tasks.start('asker', 'deploy');
+    const review = await nextReview(bureau, run.id);
+
+    const resolved = await bureau.reviews.resolve({
+      id: review.id,
+      decision: 'approve',
+      principal: 'operator',
+    });
+    const cancel = await bureau.tasks.cancel(run.id);
+    seen.release();
+    await run.result().catch(() => undefined);
+
+    expect(resolved).toMatchObject({ id: review.id, kind: 'human-wait', decision: 'approve' });
+    // The decision stands: the review is closed, and a second resolve finds nothing to decide.
+    expect(bureau.reviews.list().filter((pending) => pending.runId === run.id)).toEqual([]);
+    // The run was live when the cancel came, so the registry took the request.
+    expect(cancel.receipt).toBe('cancel-requested');
+  });
+
+  it('answers a resolve after the wait’s signal arrived outside it, while the run goes on, as main’s session path did', async () => {
+    // The review is listed on the park event, before the engine records the wait, and a signal
+    // sent in that window is buffered for it: the engine's `waitingForSignals` cannot tell this
+    // case from that one, so the resolve is not refused. `main`'s session path (`createRun`), which
+    // every `tasks.start` task now runs on, answered it the same way.
+    const seen = newSeen(true);
+    const bureau = await start({ asker: askingAgent(seen) });
+    const run = await bureau.tasks.start('asker', 'deploy');
+    const review = await nextReview(bureau, run.id);
+    if (review.kind !== 'human-wait') throw new Error('Expected a human wait.');
+
+    await bureau.durableEngine()!.signal(run.id, review.signalName, 'from outside');
+    const resolved = await bureau.reviews.resolve({
+      id: review.id,
+      decision: 'approve',
+      principal: 'operator',
+    });
+    seen.release();
+    await run.result();
+
+    expect(resolved).toMatchObject({ id: review.id, kind: 'human-wait', decision: 'approve' });
+    const workflow = await bureau.tasks.workflow(run.id);
+    expect(workflow?.status).toBe('completed');
   });
 
   it('lets exactly one of two concurrent resolves through', async () => {
     const seen = newSeen(true);
     const bureau = await start({ asker: askingAgent(seen) });
-    const run = bureau.run('asker', 'deploy');
+    const run = await bureau.tasks.start('asker', 'deploy');
     const review = await nextReview(bureau, run.id);
 
     const outcomes = await Promise.allSettled([
@@ -276,7 +308,7 @@ describe('a bureau.run() park', () => {
   it('delivers once when a failed delivery is retried', async () => {
     const seen = newSeen();
     const bureau = await start({ asker: askingAgent(seen) });
-    const run = bureau.run('asker', 'deploy');
+    const run = await bureau.tasks.start('asker', 'deploy');
     const review = await nextReview(bureau, run.id);
     const engine = bureau.durableEngine()!;
     const signal = spyOn(engine, 'signal');
@@ -319,7 +351,7 @@ describe('a bureau.run() park', () => {
     try {
       const seen = newSeen(true);
       const bureau = await start({ asker: askingAgent(seen) });
-      const run = bureau.run('asker', 'deploy');
+      const run = await bureau.tasks.start('asker', 'deploy');
       const review = await nextReview(bureau, run.id);
 
       await bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'operator' });
@@ -339,13 +371,13 @@ describe('a bureau.run() park', () => {
 
   it('is owned by the principal that dispatched it', async () => {
     const bureau = await start({ asker: askingAgent(newSeen()) });
-    const alice = bureau.run('asker', 'deploy', { principal: 'alice' });
-    const anonymous = bureau.run('asker', 'deploy');
+    const alice = await bureau.tasks.start('asker', 'deploy', { principal: 'alice' });
+    const anonymous = await bureau.tasks.start('asker', 'deploy');
     const aliceReview = await nextReview(bureau, alice.id);
     const anonymousReview = await nextReview(bureau, anonymous.id);
 
-    expect(await bureau.getOwner({ kind: 'review', id: aliceReview.id })).toBe('alice');
-    expect(await bureau.getOwner({ kind: 'review', id: anonymousReview.id })).toBe(
+    expect(await bureau.ownerOf({ kind: 'review', id: aliceReview.id })).toBe('alice');
+    expect(await bureau.ownerOf({ kind: 'review', id: anonymousReview.id })).toBe(
       'anonymous:local',
     );
   });
@@ -373,7 +405,7 @@ describe('a bureau.run() park', () => {
     });
     const bureau = await start({ refunder: agent });
 
-    const run = bureau.run('refunder', 'refund it', { principal: 'alice' });
+    const run = await bureau.tasks.start('refunder', 'refund it', { principal: 'alice' });
     await run.result();
 
     expect(bureau.reviews.list()).toEqual([]);
@@ -401,7 +433,7 @@ describe('a second park request in one catalog step is refused (COR-1578)', () =
     });
     const bureau = await start({ asker });
 
-    const run = bureau.run('asker', 'deploy', { principal: 'alice' });
+    const run = await bureau.tasks.start('asker', 'deploy', { principal: 'alice' });
     const review = await nextReview(bureau, run.id);
 
     // Which of the two parallel calls arrived first is not asserted; only that one parked.
@@ -409,6 +441,7 @@ describe('a second park request in one catalog step is refused (COR-1578)', () =
     expect(['a', 'b']).toContain(review.signalName);
     expect(review.id).toBe(`human-wait:${run.id}:${review.signalName}:0`);
     // Let any second review that would be listed arrive before counting.
+    // load-proof: the work this lets finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turn with one); no timer or I/O is pending
     await yieldToPortableEventLoop();
     const reviews = bureau.reviews.list().filter((candidate) => candidate.runId === run.id);
     expect(reviews.map((candidate) => candidate.id)).toEqual([review.id]);
@@ -435,9 +468,9 @@ describe('requestHumanInput on a catalog run', () => {
     bureaus.push(memoryOnly);
 
     const runs = [
-      withOption.run('asker', 'go'),
-      noOption.run('asker', 'go'),
-      memoryOnly.run('asker', 'go'),
+      await withOption.tasks.start('asker', 'go'),
+      await noOption.tasks.start('asker', 'go'),
+      await memoryOnly.tasks.start('asker', 'go'),
     ];
     await pollUntil(() => offered.tools.length > 0);
     await Promise.all(runs.slice(1).map((run) => run.result()));
@@ -456,7 +489,7 @@ describe('requestHumanInput on a catalog run', () => {
       parent: askingAgent(parentSeen),
       child: askingAgent(childSeen),
     });
-    const parent = bureau.run('parent', 'go');
+    const parent = await bureau.tasks.start('parent', 'go');
     await nextReview(bureau, parent.id);
 
     const dispatched = await bureau.children.dispatch({
@@ -550,7 +583,7 @@ describe('a bureau.run() park after a restart', () => {
       durableOwnership: { ownership: 'none' as const },
     };
     const crashed = await start({ asker: twoParks(newSeen()) }, options);
-    const run = crashed.run('asker', 'go');
+    const run = await crashed.tasks.start('asker', 'go');
     const first = await nextReview(crashed, run.id);
 
     const restarted = await start({ asker: twoParks(newSeen()) }, options);
@@ -568,7 +601,7 @@ describe('a bureau.run() park after a restart', () => {
 
     expect(second).toMatchObject({ kind: 'human-wait', signalName: 'second' });
     await restarted.reviews.resolve({ id: second!.id, decision: 'approve', principal: 'operator' });
-    const finished = await restarted.waitForDurableRun(run.id);
+    const finished = await restarted.tasks.wait(run.id);
     expect(finished?.status).toBe('completed');
   });
 
@@ -576,7 +609,7 @@ describe('a bureau.run() park after a restart', () => {
     const databasePath = nextDatabasePath();
     const before = newSeen();
     const crashed = await over(databasePath, before);
-    const run = crashed.run('asker', 'deploy', { principal: 'alice' });
+    const run = await crashed.tasks.start('asker', 'deploy', { principal: 'alice' });
     const original = await nextReview(crashed, run.id);
     // The first Bureau is not disposed: a graceful shutdown would cancel the parked run and
     // leave nothing for the restart to recover.
@@ -591,8 +624,8 @@ describe('a bureau.run() park after a restart', () => {
       signalName: 'answer',
       prompt: 'Which environment?',
     });
-    expect(restored.sessionId).toBeUndefined();
-    expect(await restarted.getOwner({ kind: 'review', id: restored.id })).toBe('alice');
+    expect(restored.sessionId).toBe(run.contextId);
+    expect(await restarted.ownerOf({ kind: 'review', id: restored.id })).toBe('alice');
 
     await restarted.reviews.resolve({
       id: restored.id,
@@ -600,7 +633,7 @@ describe('a bureau.run() park after a restart', () => {
       principal: 'operator',
       payload: { environment: 'production' },
     });
-    const finished = await restarted.waitForDurableRun(run.id);
+    const finished = await restarted.tasks.wait(run.id);
 
     expect(finished?.status).toBe('completed');
     expect(after.resumed.join('')).toContain('production');
@@ -615,10 +648,10 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
     if (call === undefined) throw new Error('Expected a delivery.');
     return (call[3] as { signalId: string }).signalId;
   };
-  // A catalog run id is about 62 bytes, so each name pushes the review id past 128 bytes.
+  // A task id is about 42 bytes, so each name pushes the review id past 128 bytes.
   const names = {
-    ascii: 'x'.repeat(70),
-    multibyte: 'é'.repeat(40),
+    ascii: 'x'.repeat(90),
+    multibyte: 'é'.repeat(50),
   } as const;
 
   for (const [label, signalName] of Object.entries(names)) {
@@ -627,7 +660,7 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
       const bureau = await start({ asker: askingAgent(seen, signalName) });
       const signal = spyOn(bureau.durableEngine()!, 'signal');
 
-      const run = bureau.run('asker', 'deploy');
+      const run = await bureau.tasks.start('asker', 'deploy');
       const review = await nextReview(bureau, run.id);
       expect(review.id).toBe(`human-wait:${run.id}:${signalName}:0`);
       expect(bytesOf(review.id)).toBeGreaterThan(MAXIMUM_DELIVERY_ID_BYTES);
@@ -651,7 +684,7 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
 
     it(`denies a ${label}-named park too`, async () => {
       const bureau = await start({ asker: askingAgent(newSeen(), signalName) });
-      const run = bureau.run('asker', 'deploy');
+      const run = await bureau.tasks.start('asker', 'deploy');
       const review = await nextReview(bureau, run.id);
 
       await bureau.reviews.resolve({
@@ -670,7 +703,7 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
   it('delivers once under the same derived id when a failed delivery is retried', async () => {
     const seen = newSeen();
     const bureau = await start({ asker: askingAgent(seen, names.ascii) });
-    const run = bureau.run('asker', 'deploy');
+    const run = await bureau.tasks.start('asker', 'deploy');
     const review = await nextReview(bureau, run.id);
     const signal = spyOn(bureau.durableEngine()!, 'signal');
     signal.mockRejectedValueOnce(new Error('transport lost'));
@@ -713,7 +746,7 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
       stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     });
     const bureau = await start({ asker: twice });
-    const run = bureau.run('asker', 'deploy');
+    const run = await bureau.tasks.start('asker', 'deploy');
     const first = await nextReview(bureau, run.id);
     await bureau.reviews.resolve({
       id: first.id,
@@ -732,6 +765,7 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
         { environment: 'duplicate' },
         { signalId: humanWaitDeliveryId(first.id) },
       );
+    // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
     for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
 
     expect(bureau.reviews.list().map((review) => review.id)).toEqual([
@@ -752,7 +786,7 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
       durableOwnership: { ownership: 'none' as const },
     };
     const crashed = await start({ asker: askingAgent(newSeen(), names.ascii) }, options);
-    const run = crashed.run('asker', 'deploy');
+    const run = await crashed.tasks.start('asker', 'deploy');
     const original = await nextReview(crashed, run.id);
     const before = spyOn(crashed.durableEngine()!, 'signal');
     before.mockRejectedValueOnce(new Error('transport lost'));
@@ -777,7 +811,7 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
       principal: 'operator',
       payload: { environment: 'production' },
     });
-    const finished = await restarted.waitForDurableRun(run.id);
+    const finished = await restarted.tasks.wait(run.id);
 
     expect(restored.id).toBe(original.id);
     const sentBefore = signalIdOf(before.mock.calls[0]);

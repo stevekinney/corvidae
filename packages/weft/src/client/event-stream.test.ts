@@ -1,3 +1,4 @@
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { describe, expect, it } from 'bun:test';
 import type { WorkflowEvent } from '../core/types.ts';
 import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
@@ -9,12 +10,12 @@ import {
   type WorkflowEventStreamHost,
 } from './open-event-subscription.ts';
 
-async function waitFor(predicate: () => boolean, timeoutMs = 1000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!predicate()) {
-    if (Date.now() > deadline) throw new Error('timed out waiting for predicate');
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for await (const _turn of awakeTurns()) {
+    if (predicate()) return;
     await sleepForTesting(2);
   }
+  throw new Error('timed out waiting for predicate');
 }
 
 const noHistory: EventHistoryFetcher = async () => [];
@@ -568,9 +569,8 @@ describe('WorkflowEventSubscription', () => {
       { webSocketFactory: server.factory },
     );
 
-    await waitFor(() => server.sockets.length === 1 && server.latest().opened);
-    // Give the failed catch-up a moment to settle, then deliver a live frame.
-    await sleepForTesting(5);
+    // The stream is live once its socket is open and the failed catch-up has settled.
+    await subscription.whenConnected();
     server.latest().deliver(event('workflow:started'));
     await waitFor(() => received.length === 1);
     expect(received[0]?.type).toBe('workflow:started');
@@ -649,9 +649,9 @@ describe('WorkflowEventSubscription', () => {
     );
 
     // First socket open, failed catch-up has settled.
-    await waitFor(() => server.sockets.length === 1 && server.latest().opened);
-    await waitFor(() => historyCalls === 1);
-    await sleepForTesting(5);
+    // Live once the socket is open and the failed catch-up has settled.
+    await subscription.whenConnected();
+    expect(historyCalls).toBe(1);
 
     // A live frame B lands after the failed catch-up. It is delivered, but must
     // not advance the (frozen) history watermark.
@@ -700,6 +700,7 @@ describe('WorkflowEventSubscription', () => {
 
     // Give any rogue reconnect timer a chance to fire; the count must stay put.
     const settledCount = server.sockets.length;
+    // load-proof: negative window: a loaded host can only delay a rogue reconnect timer, never make one fire, so the unchanged socket count cannot flip
     await sleepForTesting(20);
     expect(server.sockets.length).toBe(settledCount);
   });

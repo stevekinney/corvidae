@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Engine } from '../../core/engine.ts';
 import { StartWorkflowValidationError } from '../../core/start-workflow-validation.ts';
 import type { AnyActivityDefinition, WorkflowContext } from '../../core/types.ts';
@@ -7,7 +8,6 @@ import { activity, signal, workflow } from '../../core/types.ts';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { serve, type WeftServer } from '../index.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
 import { createOperationRegistry } from '../operation-catalog.ts';
@@ -79,7 +79,6 @@ async function waitForRecordedFinalizerState(engine: Engine, workflowId: string)
     async () => (await engine.storage.get(KEYS.finalizerState(workflowId))) !== null,
     {
       label: `workflow ${workflowId} recorded finalizer state`,
-      timeoutMs: 2000,
       intervalMs: 5,
     },
   );

@@ -35,13 +35,14 @@ import {
   textOf,
   writesDecisionRecord,
 } from './test/session-input-fixtures';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type {
   Bureau,
   BureauOptions,
   PendingHumanWaitReview,
   PendingReview,
   PendingToolApprovalReview,
+  StartTaskOptions,
 } from './types';
 
 const APPROVAL_SECRET = 'review-resolution-multi-instance-secret';
@@ -204,13 +205,13 @@ async function derived(
 async function sessionParkedInA(
   parks = 1,
   aOptions: Partial<BureauOptions<AgentDefinitions>> = {},
-  runOptions: Partial<Parameters<Bureau['createRun']>[0]> = { principal: 'alice' },
+  runOptions: StartTaskOptions = { principal: 'alice' },
 ) {
   const seenByA: Seen = { resumed: [] };
   const charges = newCharges();
   const b = await open(asking({ resumed: [] }, parks), charges);
   const a = await open(asking(seenByA, parks), charges, aOptions);
-  const run = await a.bureau.createRun({ agentName: 'default', message: 'deploy', ...runOptions });
+  const run = await a.bureau.tasks.start('default', 'deploy', runOptions);
   const review = await listed(a.bureau, run.id);
   await derived(b.bureau, run.id);
   return { a, b, run, review, seenByA };
@@ -233,14 +234,12 @@ async function settledApproval(charges: Charges) {
       }),
     },
   });
-  const run = await setup.bureau.createRun({
-    agentName: 'default',
-    message: 'Charge the customer',
+  const run = await setup.bureau.tasks.start('default', 'Charge the customer', {
     principal: 'alice',
   });
-  await setup.bureau.waitForDurableRun(run.id);
+  await setup.bureau.tasks.wait(run.id);
   await pollUntil(async () => {
-    const session = await setup.bureau.contexts.get(run.sessionId);
+    const session = await setup.bureau.contexts.get(run.contextId);
     return session?.metadata['lastRunStatus'] !== 'running';
   });
   await listed(setup.bureau, run.id);
@@ -279,14 +278,13 @@ describe('the by-run derivation (COR-1579)', () => {
     };
     const b = await open(asking({ resumed: [] }), charges, { agents });
     const a = await open(asking({ resumed: [] }), charges, { agents });
-    const sessionRun = await a.bureau.createRun({
-      agentName: 'default',
-      message: 'deploy',
-      principal: 'alice',
+    const sessionRun = await a.bureau.tasks.start('default', 'deploy', { principal: 'alice' });
+    const catalogRun = await a.bureau.tasks.start('asker', 'deploy', {
+      principal: 'api-key:alice',
     });
-    const catalogRun = a.bureau.run('asker', 'deploy', { principal: 'api-key:alice' });
 
-    for (const runId of [sessionRun.id, catalogRun.id]) {
+    for (const task of [sessionRun, catalogRun]) {
+      const runId = task.id;
       const local = (await listed(a.bureau, runId)) as PendingHumanWaitReview;
       const peer = await derived(b.bureau, runId);
       expect(await b.bureau.reviews.pendingOf(runId)).toHaveLength(1);
@@ -298,15 +296,16 @@ describe('the by-run derivation (COR-1579)', () => {
         prompt: local.prompt,
         status: 'pending',
       });
-      expect(peer.sessionId).toBe(runId === sessionRun.id ? sessionRun.sessionId : undefined);
+      expect(peer.sessionId).toBe(task.contextId);
     }
 
-    for (const runId of [sessionRun.id, catalogRun.id]) {
+    for (const task of [sessionRun, catalogRun]) {
+      const runId = task.id;
       const local = await listed(a.bureau, runId);
       await a.bureau.reviews.resolve({ id: local.id, decision: 'approve', principal: 'alice' });
     }
     await catalogRun.result();
-    await a.bureau.waitForDurableRun(sessionRun.id);
+    await a.bureau.tasks.wait(sessionRun.id);
     expect(await b.bureau.reviews.pendingOf(sessionRun.id)).toEqual([]);
     expect(await b.bureau.reviews.pendingOf(catalogRun.id)).toEqual([]);
   });
@@ -319,7 +318,7 @@ describe('a session human wait another process holds (COR-1579)', () => {
     expect(await b.bureau.reviews.get(review.id)).toMatchObject({
       id: review.id,
       kind: 'human-wait',
-      sessionId: run.sessionId,
+      sessionId: run.contextId,
       status: 'pending',
     });
     expect(
@@ -331,7 +330,7 @@ describe('a session human wait another process holds (COR-1579)', () => {
       }),
     ).toMatchObject({ id: review.id, kind: 'human-wait', decision: 'approve' });
 
-    await a.bureau.waitForDurableRun(run.id);
+    await a.bureau.tasks.wait(run.id);
     expect(seenByA.resumed).toHaveLength(1);
     expect(seenByA.resumed[0]).toContain('from-b');
     expect(await reviewAuditEntries(a.bureau, run.id, review.id)).toHaveLength(1);
@@ -652,11 +651,7 @@ describe('a Bureau with no key-value store (COR-1579)', () => {
     });
     composition.mockRestore();
     try {
-      const run = await bureau.createRun({
-        agentName: 'default',
-        message: 'deploy',
-        principal: 'alice',
-      });
+      const run = await bureau.tasks.start('default', 'deploy', { principal: 'alice' });
       const review = await listed(bureau, run.id);
       const decision = {
         id: review.id,
@@ -671,7 +666,7 @@ describe('a Bureau with no key-value store (COR-1579)', () => {
 
       expect(codeOf(concurrent)).toBe('CONFLICT');
       expect((concurrent as Error).message).toContain('already being resolved');
-      await bureau.waitForDurableRun(run.id);
+      await bureau.tasks.wait(run.id);
       expect(seen.resumed).toHaveLength(1);
       expect(seen.resumed[0]).toContain('staging');
       const decisionRecords: string[] = [];

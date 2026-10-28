@@ -76,6 +76,7 @@ function loseFirstCheckpointCommitAfter(
 
 /** Lets every settled promise and its continuations run; nothing here waits on a clock. */
 async function settle(): Promise<void> {
+  // load-proof: the work these turns let finish runs on in-memory storage and doubles and settles through promise continuations only, so a microtask drain completes it (checked by replacing the turns with one); no timer or I/O is pending
   for (let turn = 0; turn < 10; turn++) {
     await new Promise<void>((resolve) => setImmediate(resolve));
   }
@@ -118,10 +119,10 @@ describe('a durable run that fails and then loses its checkpoint compare-and-swa
     });
     try {
       const frames: RunFrame[] = [];
-      bureau.subscribeLiveFrames((frame) => {
+      bureau.frames((frame) => {
         if (frame.type === 'run-envelope') frames.push(frame.frame);
       });
-      const run = await bureau.createRun({ agentName: 'default', message: 'Go.' });
+      const run = await bureau.tasks.start('default', 'Go.');
       await race.lost;
       await settle();
       addListener.mockRestore();

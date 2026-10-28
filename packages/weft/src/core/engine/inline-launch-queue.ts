@@ -59,6 +59,16 @@ export function isEngineHeldForScheduledInlineFlushForTesting(internals: EngineI
   return enginesAwaitingScheduledInlineFlush.has(internals);
 }
 
+/**
+ * Test-only: whether any engine in this process still has a scheduled inline flush that has not
+ * started, so a queued start has not yet had its first turn driven. A test that has no handle on
+ * the engine can wait for this to turn false instead of guessing how many event-loop turns the
+ * flush needs.
+ */
+export function isAnyEngineAwaitingScheduledInlineFlushForTesting(): boolean {
+  return enginesAwaitingScheduledInlineFlush.size > 0;
+}
+
 async function yieldQueuedShutdownAdvanceOpportunity(): Promise<void> {
   await new Promise<void>((resolve) => {
     setTimeout(resolve, 0);

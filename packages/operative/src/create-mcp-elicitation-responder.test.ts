@@ -2,10 +2,10 @@ import { CompletableEventTarget } from '@lostgradient/lifecycle';
 import type { ToolElicitationRequest } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createMcpElicitationResponder } from './create-mcp-elicitation-responder';
 import type { CombinedOperativeEventMap } from './events';
 import { ElicitationRequestedEvent, ElicitationResolvedEvent } from './events';
-import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { ElicitationRequest, StepContext } from './types';
 
 function makeContext(): StepContext {

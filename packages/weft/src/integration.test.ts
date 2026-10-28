@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'bun:test';
-import { sleepForTesting } from './testing/fake-timers.test-support.ts';
+import { settleInlineLaunches } from './testing/inline-launch-settle.test-support.ts';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { workflow } from './core/types/workflow-function.ts';
 import { Engine, MemoryStorage, WorkflowCompletedEvent, WorkflowStartedEvent } from './index.ts';
-import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 
 /** Drain microtasks so fire-and-forget work completes. */
 async function flush(): Promise<void> {
-  await sleepForTesting(10);
+  await settleInlineLaunches();
 }
 
 describe('integration: full workflow lifecycle', () => {

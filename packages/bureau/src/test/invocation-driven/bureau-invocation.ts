@@ -7,8 +7,8 @@
  * - `start` creates the parent run, dispatches one `worker` child, waits for
  *   the child to finish and for the parent to park on its `scheduleWakeup`
  *   timer, then exits through `bureau.shutdown()` with its default policy.
- * - `maintain` is the wake-up: `waitForRecovery()`, then one
- *   `bureau.runDurableMaintenance(now)` pass, then it waits for every durable
+ * - `maintain` is the wake-up: `recovery()`, then one
+ *   `bureau.maintain(now)` pass, then it waits for every durable
  *   run to leave `running` before shutting down.
  * - `read` only reads.
  *
@@ -16,7 +16,7 @@
  * and `ownership: 'none'`. Bureau does not forward a `getNow` to that engine,
  * so its timers are scheduled on the wall clock; the driver's virtual clock
  * for these invocations therefore starts at the wall time, and only
- * `runDurableMaintenance(now)` reads it. With no claims to lapse, `'none'`
+ * `maintain(now)` reads it. With no claims to lapse, `'none'`
  * keeps the wall clock from deciding any outcome here.
  *
  * Not a test file: it is spawned by `invocation-driven-execution.test.ts`.
@@ -78,17 +78,13 @@ const bureau = await createBureau<AgentDefinitions>({
 });
 
 async function parentRunId(): Promise<string | undefined> {
-  const runs = await bureau.listDurableRuns();
+  const runs = await bureau.tasks.workflows();
   return runs?.items.find((item) => item.id !== CHILD_RUN_ID)?.id;
 }
 
 /** Starts the parent and its child, and returns once the child is done and the parent is parked. */
 async function startParentWithChild(): Promise<void> {
-  const parent = await bureau.createRun({
-    agentName: 'default',
-    message: 'plan the work',
-    principal: PRINCIPAL,
-  });
+  const parent = await bureau.tasks.start('default', 'plan the work', { principal: PRINCIPAL });
   const dispatched = await bureau.children.dispatch({
     parentRunId: parent.id,
     agentName: 'worker',
@@ -119,7 +115,7 @@ async function startParentWithChild(): Promise<void> {
 async function readState() {
   const id = await parentRunId();
   if (id === undefined) return { parent: null, child: null };
-  const parent = await bureau.getDurableRun(id);
+  const parent = await bureau.tasks.workflow(id);
   const child = await bureau.children.get({
     parentRunId: id,
     childRunId: CHILD_RUN_ID,
@@ -140,10 +136,10 @@ async function readState() {
 if (command === 'start') {
   await startParentWithChild();
 } else if (command === 'maintain') {
-  await bureau.waitForRecovery?.();
-  await bureau.runDurableMaintenance(now);
+  await bureau.recovery();
+  await bureau.maintain(now);
   await pollUntil('every durable run to leave running', async () => {
-    const runs = await bureau.listDurableRuns();
+    const runs = await bureau.tasks.workflows();
     return runs?.items.every((item) => item.status !== 'running') ?? false;
   });
 } else if (command !== 'read') {

@@ -4,10 +4,10 @@ import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 import { assertDefined } from './assert-defined';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { noToolCalls } from '../src/conditions/predicates';
 import { createActiveRun } from '../src/create-run';
 import { createMockGenerate, createMockGenerateOnce, createRunRecorder } from '../src/test/index';
-import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { GenerateResponse } from '../src/types';
 const run = (options: Parameters<typeof createActiveRun>[0]) => createActiveRun(options).result;
 
@@ -79,7 +79,7 @@ describe('edge cases', () => {
     // 4.4-4.6s in CI under 2-core/13-suite contention, brushing Bun's default
     // 5000ms ceiling. The headroom keeps a correctness test from flaking on
     // throughput; it is not masking a hang.
-  }, 30_000);
+  });
 
   it('stops at maximumSteps when generate returns the same tool calls repeatedly', async () => {
     const echoTool = createTool({

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { SCROLLBACK_LINES } from './terminal-engine-adapter.ts';
 import {
   MAXIMUM_RETAINED_TERMINAL_CELLS,
@@ -282,7 +283,7 @@ describe('scheduleFitOnNextFrame', () => {
       ran += 100;
     });
     cancel();
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await quietFor(5);
     expect(ran).toBe(1);
   });
 });

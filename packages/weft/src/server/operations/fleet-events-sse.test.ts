@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Engine } from '../../core/engine.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import {
   createFleetEventFeed,
   type FleetEventEnvelope,
@@ -40,8 +40,10 @@ class RecordingFleetEventFeed implements Pick<FleetEventFeed, 'subscribe'> {
         ? replayLimitFault.message
         : undefined;
     this.subscribeCalls.push({ fromCursor: options?.fromCursor, delivered });
+    const fromCursor = Number(options?.fromCursor ?? '-1');
     return (async function* replay() {
       for (const eventEnvelope of envelopes) {
+        if (eventEnvelope.sequence <= fromCursor) continue;
         if (!(options?.filterEnvelope?.(eventEnvelope) ?? true)) continue;
         delivered.push(eventEnvelope.sequence);
         yield eventEnvelope;
@@ -149,6 +151,34 @@ describe('weft.events.sse', () => {
     expect(feed.replayLimitFaultMessage).toBe(
       'Fleet event replay window is 1001 matching events; maximum is 1000. Supply a more recent fromCursor.',
     );
+  });
+
+  it('delivers catalog and workflow-source events, then replays them after reconnecting from a cursor', async () => {
+    const feed = new RecordingFleetEventFeed([
+      envelope(0, { kind: 'catalog:revision-installed', workflowId: undefined }),
+      envelope(1, { kind: 'workflow-source:load-ready', workflowId: undefined }),
+    ]);
+    await using engine = new Engine({ storage: new MemoryStorage() });
+
+    const firstResponse = await handleRequest(
+      request('/v1/events/sse?fromCursor=-1'),
+      engine,
+      handlerOptions(feed),
+    );
+    expect(firstResponse.status).toBe(200);
+    expect(await firstResponse.text()).toContain('event: catalog:revision-installed');
+    expect(feed.subscribeCalls[0]?.delivered).toEqual([0, 1]);
+
+    const reconnectResponse = await handleRequest(
+      request('/v1/events/sse?fromCursor=0'),
+      engine,
+      handlerOptions(feed),
+    );
+    expect(reconnectResponse.status).toBe(200);
+    const replayed = await reconnectResponse.text();
+    expect(replayed).toContain('event: workflow-source:load-ready');
+    expect(replayed).not.toContain('event: catalog:revision-installed');
+    expect(feed.subscribeCalls[1]?.delivered).toEqual([1]);
   });
 
   it('delivers retention gaps before applying workflow and kind filters', async () => {

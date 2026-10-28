@@ -26,8 +26,8 @@ import { assertDefined } from './assert-defined';
 import { workflow, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createDurableMultiAgentHarness } from '../src/test/durable-multi-agent-harness';
-import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 
 // Drain the inline-launch queue between tests — a pending deferred launch
 // from one test can starve the next under full `bun test` concurrency.
@@ -463,12 +463,15 @@ describe('createDurableMultiAgentHarness', () => {
       }
     });
 
-    it('throws after the maximum attempts when the condition is never true', async () => {
+    it('throws once the hang guard elapses when the condition is never true', async () => {
       const harness = await createDurableMultiAgentHarness();
 
       try {
         expect(
-          await throwingRejectionOf(harness.waitForCondition(() => false, 'always false', 3)),
+          await throwingRejectionOf(
+            // hang-guard-self-test: the condition is never true, so no load can satisfy it in time
+            harness.waitForCondition(() => false, 'always false', { hangGuardMilliseconds: 20 }),
+          ),
         ).toThrow('always false');
       } finally {
         harness.dispose();

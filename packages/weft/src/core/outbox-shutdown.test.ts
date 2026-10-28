@@ -7,6 +7,7 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { MemoryStorage } from '../storage/memory.ts';
 import {
   advanceTimersByTime,
@@ -14,7 +15,6 @@ import {
   restoreRealTimers,
   useFakeTimers,
 } from '../testing/fake-timers.test-support.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   beginOne,
   claimOne,

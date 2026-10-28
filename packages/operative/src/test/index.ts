@@ -122,7 +122,12 @@ export type {
 } from './scripted-tool';
 export { createStepwiseBlockingGenerate } from './stepwise-generate';
 export { createTestStore } from './store';
-export { waitForCondition, waitForRunState, type RunLookup } from './wait';
+export {
+  waitForCondition,
+  waitForRunState,
+  type RunLookup,
+  type WaitForConditionOptions,
+} from './wait';
 // Deterministic runtime services are owned by @lostgradient/lifecycle and exposed
 // with these test fixtures through the package root.
 export { createManualRuntimeServices } from '@lostgradient/lifecycle';

@@ -8,6 +8,7 @@
 
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   decodeRemoteTaskRecord,
   encodeRemoteTaskRecord,
@@ -20,7 +21,6 @@ import {
 } from '../../core/task-ledger/task-ledger.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { sha256Hex } from '../../worker/manifest/content-digest.ts';
 import { minimalServeOptions, minimalServerContext } from './server-context.test-support.ts';
 import { commitTaskLedgerCompletion } from './task-ledger-completion.ts';
@@ -285,7 +285,6 @@ describe('runTaskLedgerRecovery — queued', () => {
     await runTaskLedgerRecovery(context, options);
 
     await waitForCondition(() => context.taskQueue.isTracked(stored.operationId), {
-      timeoutMs: 1_000,
       intervalMs: 5,
       label: 'recovered queued task to reach the long-poll queue',
     });
@@ -507,7 +506,6 @@ describe('runTaskLedgerRecovery — shutdown interlock', () => {
     await runTaskLedgerRecovery(context, options);
 
     await waitForCondition(() => context.taskQueue.isTracked(first.operationId), {
-      timeoutMs: 1_000,
       intervalMs: 5,
       label: 'the record recovered before shutdown to reach the long-poll queue',
     });

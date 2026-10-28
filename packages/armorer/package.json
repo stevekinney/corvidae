@@ -19,6 +19,7 @@
   "devDependencies": {
     "@anthropic-ai/sdk": "catalog:",
     "@google/genai": "catalog:",
+    "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
     "@types/bun": "catalog:",
     "openai": "catalog:",

@@ -11,15 +11,12 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import {
-  sleepForTesting,
-  waitForCondition,
-  yieldToEventLoop,
-} from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { settleInlineLaunches } from '../../testing/inline-launch-settle.test-support.ts';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { encode } from '../codec.ts';
 import { DevelopmentWarningEvent, ScheduleFiredEvent } from '../events.ts';
 import type { ScheduleOverlapPolicy, WorkflowContext } from '../types.ts';
@@ -32,7 +29,7 @@ import { cleanupWorkflowStorage } from './termination/cleanup.ts';
 
 /** Drain microtasks so fire-and-forget inline work completes. */
 async function flush(): Promise<void> {
-  await sleepForTesting(10);
+  await settleInlineLaunches();
 }
 
 /** Advance engine clock and scheduler then drain pending inline work. */
@@ -43,8 +40,7 @@ async function tickEngine<TWorkflows extends object, TActivities extends object>
 ): Promise<void> {
   clock.now = nextNow;
   await engine.scheduler.tick(clock.now);
-  await yieldToEventLoop();
-  await yieldToEventLoop();
+  await settleInlineLaunches();
 }
 
 describe('ctx.services — launch path (inline)', () => {

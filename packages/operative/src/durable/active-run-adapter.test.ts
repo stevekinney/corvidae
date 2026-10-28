@@ -20,6 +20,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory } from 'conversationalist';
 import { z } from 'zod';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createDiagnosticAgentRun } from '../agent-run';
 import { createChildRunRegistry, dispatchChildRun } from '../child-run';
 import { stopWhen } from '../conditions/index';
@@ -53,7 +54,7 @@ import { UnsupportedRunResultVersionError } from '../run-envelope';
 import type { RunnableAgent } from '../runnable-agent';
 import { createManualDurableEngine, spyEngine, withTwoPhaseStart } from '../test/durable-engine';
 import { createManualCheckpointStore, createMockGenerate, waitForCondition } from '../test/index';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { drainMicrotasks } from '../testing/drain-microtasks.test-support.ts';
 import type { RunOptions, RunResult } from '../types';
 import { createDurableActiveRun } from './active-run-create';
 import { createRecoveredRunEventSurface } from './active-run-event-surface';
@@ -512,10 +513,12 @@ describe('createRun with durable routing', () => {
 
       // generate blocks until the run-level signal aborts, then rejects — so the
       // run is in-flight when we call abort().
+      const generateEntered = Promise.withResolvers<void>();
       const activeRun = createRun(
         {
           generate: ({ signal }) =>
             new Promise((_resolve, reject) => {
+              generateEntered.resolve();
               signal?.addEventListener(
                 'abort',
                 () => reject(new Error('aborted during generate')),
@@ -535,8 +538,8 @@ describe('createRun with durable routing', () => {
         abortedError = event.error;
       });
 
-      // Abort after the deferred-microtask start has begun the run.
-      await yieldToPortableEventLoop();
+      // Abort once the engine has driven the run into `generate`.
+      await generateEntered.promise;
       activeRun.abort('user requested stop');
 
       const result = await activeRun.result;
@@ -612,10 +615,12 @@ describe('createRun with durable routing', () => {
         throw new Error('cancel failed after abort signal fired');
       };
 
+      const generateEntered = Promise.withResolvers<void>();
       const activeRun = createRun(
         {
           generate: ({ signal }) =>
             new Promise((_resolve, reject) => {
+              generateEntered.resolve();
               signal?.addEventListener(
                 'abort',
                 () => reject(new Error('aborted despite cancel failure')),
@@ -629,7 +634,7 @@ describe('createRun with durable routing', () => {
         { ...context, runId: 'cancel-rejects-run', prompt: 'Hello' },
       );
 
-      await yieldToPortableEventLoop();
+      await generateEntered.promise;
       activeRun.abort('cancel can fail independently');
 
       const result = await activeRun.result;
@@ -921,6 +926,7 @@ describe('createRun with durable routing', () => {
       });
 
       const result = await activeRun.result;
+      // load-proof: a negative window: the assertion that follows is that no unhandled rejection was reported, and load can delay a report but never create one
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
       expect(result.finishReason).toBe('error');
@@ -2656,11 +2662,13 @@ describe('createDurableActiveRun.closed()', () => {
 
       // Run B is genuinely in flight — its generate() blocks on the shared
       // signal — when the signal aborts.
+      const liveGenerateEntered = Promise.withResolvers<void>();
       const live = createRun(
         {
           ...runOptions(
             ({ signal }) =>
               new Promise((_resolve, reject) => {
+                liveGenerateEntered.resolve();
                 signal?.addEventListener(
                   'abort',
                   () => reject(new Error('aborted during generate')),
@@ -2673,13 +2681,10 @@ describe('createDurableActiveRun.closed()', () => {
         { ...context, runId: 'ac2-live-run', prompt: 'Hello' },
       );
 
-      // Let the deferred-microtask `drive()` call begin for run B before
-      // aborting — matching this file's established pattern for exercising
-      // the real Weft engine (see e.g. "aborts a running durable run and
-      // propagates the abort reason" above); a real engine's inline launch
-      // is scheduled via a macrotask, so a bare microtask flush is not
-      // enough.
-      await yieldToPortableEventLoop();
+      // Abort only once run B is genuinely in flight: the engine has driven it into `generate`.
+      // A real engine launches inline workflows on a macrotask, so waiting for that state is what
+      // makes the abort land mid-generate however long the launch takes.
+      await liveGenerateEntered.promise;
       controller.abort('shared signal aborted');
 
       await live.result;
@@ -4521,7 +4526,7 @@ describe('AB-317: durable toolbox listeners survive abort() until the settle-awa
       // `inFlightTools` decrement (scheduled against `e.callbackCompletion`
       // inside `onSettled`) resolves quietly in the background.
       releaseStubbornTool?.('done');
-      await yieldToPortableEventLoop();
+      await drainMicrotasks();
       expect(await activeRun.closed()).toEqual({ status: 'completed' });
     } finally {
       context.engine[Symbol.dispose]();

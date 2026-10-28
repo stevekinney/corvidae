@@ -3,13 +3,13 @@ import {
   createDeferred,
   flushMicrotasks,
   waitForCondition,
-  yieldToEventLoop,
 } from '../testing/fake-timers.test-support.ts';
+import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { BatchOperation, ConditionalBatchCondition } from '../storage/interface.ts';
 import { KEYS } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { decode, encode } from './codec.ts';
 import { Engine } from './engine.ts';
 import { handleScheduledWorkflowTerminalForEngine } from './engine/callback-creators-schedule.ts';
@@ -216,8 +216,7 @@ class ControlledScheduleBatchStorage extends MemoryStorage {
 }
 
 async function drainEngine(): Promise<void> {
-  await yieldToEventLoop();
-  await yieldToEventLoop();
+  await settleInlineLaunches();
 }
 
 function registerWorkflow<TInput, TOutput>(
@@ -2637,7 +2636,6 @@ describe('recurring schedules', () => {
       const tickPromise = engine.scheduler.tick(clock.now);
       void tickPromise.catch(() => {});
       await waitForCondition(() => postMessageCount >= 1, {
-        timeoutMs: 100,
         label: 'initial queued inline workflow start',
       });
       await flushMicrotasks();

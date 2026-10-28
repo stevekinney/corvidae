@@ -2,13 +2,14 @@ import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createSessionStore } from '../session/create-session-store';
 import { createSessionHandle } from '../session/session-handle';
 import {
   createInstantGenerate,
   createTestRunOptions,
 } from '../session/session-handle-test-support';
-import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { drainMicrotasks } from '../testing/drain-microtasks.test-support.ts';
 import {
   SecretBearingFreshAttemptArtifactError,
   StaleFreshAttemptArtifactError,
@@ -79,7 +80,7 @@ describe('SessionHandle.startFreshAttempt()', () => {
       resolveFreshAttemptSource: resolverFor(createFixtureSource()),
     });
     await handle.run('Fix the flaky revision-realm test.').result();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
     const source = await handle.getSession();
     expect(source.conversationHistory.ids.length).toBeGreaterThan(0);
 
@@ -133,7 +134,7 @@ describe('SessionHandle.startFreshAttempt()', () => {
         },
       ])
       .result();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     const fresh = await handle.startFreshAttempt({
       artifact: await distinctArtifact(),
@@ -317,7 +318,7 @@ describe('SessionHandle.startFreshAttempt()', () => {
     });
 
     await fresh.run('Continue from the handoff.').result();
-    await yieldToPortableEventLoop();
+    await drainMicrotasks();
 
     const { runs, conversationHistory } = await fresh.getSession();
     expect(runs).toHaveLength(1);

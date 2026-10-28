@@ -166,7 +166,7 @@ Only the task's owner, or a trusted caller, may create, update, close, or abort 
 
 Each committed change is one event in the task's durable history, owned by `{ kind: 'run', id: taskId }`: `surface.created` (the whole surface), `surface.updated` (`baseRevision` and the changed fields), `surface.action.admitted` (the action, its continuation, and its value), `surface.closed`, and `surface.frozen` (the close result). The surface's current state is written in the same storage batch as its event, conditioned on the state the command was checked against, so the history and the state never disagree, and nothing outside that batch is a source of truth.
 
-`eventCursor` names the event that committed the current revision; replaying the task's history from it yields every later change. It is recorded just after the batch commits, so after a crash in between it reads `null` until the surface next changes. A subscriber that asks for a cursor older than the history's retention floor receives a gap, the same `gap` outcome `bureau.eventHistory` returns, and starts again from a snapshot.
+`eventCursor` names the event that committed the current revision; replaying the task's history from it yields every later change. It is recorded just after the batch commits, so after a crash in between it reads `null` until the surface next changes. A subscriber that asks for a cursor older than the history's retention floor receives a gap, the same `gap` outcome `bureau.tasks.events` returns, and starts again from a snapshot.
 
 ## Retention
 
@@ -331,7 +331,7 @@ What the surface contract and its A2UI and AG-UI projections do not do, so a con
 
 - **No AG-UI action route.** An AG-UI stream delivers surface snapshots one way. A renderer's action goes to the task as an A2A `SendMessage` data part (see [Over A2A](#over-a2a-experimental)), or in-process through `bureau.surfaces.act`. The mount's routes take no surface action, and `A2uiSurface` sends nothing itself.
 - **Snapshots only.** The stream sends `ACTIVITY_SNAPSHOT` with `replace: true`; it never sends `ACTIVITY_DELTA`. Beyond surfaces, the AG-UI mount also never sends `STATE_DELTA`, `RAW`, `SUBAGENT_*`, `REASONING_*`, or the `*_CHUNK` forms, and its only `CUSTOM` event is `bureau.asset-part`. `@lostgradient/chat`'s AG-UI transport, in turn, validates and ignores `ACTIVITY_*`, `STATE_*`, `RAW`, `CUSTOM`, and `SUBAGENT_*`.
-- **No resume cursor on AG-UI.** A reconnect is an attach that re-reads the surfaces as they stand. A client that wants a cursor-resumable history uses `bureau.eventHistory` and `subscribeEventHistory`.
+- **No resume cursor on AG-UI.** A reconnect is an attach that re-reads the surfaces as they stand. A client that wants a cursor-resumable history uses `bureau.tasks.events` and `subscribeEvents`.
 - **No opt-in, no surface.** A client that does not opt in receives no surface event over AG-UI, and AG-UI has no text fallback, so a surface in a catalog the client did not list is skipped. Over A2A, such a surface arrives as its `summary` text.
 - **Two catalogs, no inline catalogs.** Only the vendored basic catalog and Cinder's are known; the Agent Card says `acceptsInlineCatalogs: false`.
 - **A child run has no surfaces on its stream.**

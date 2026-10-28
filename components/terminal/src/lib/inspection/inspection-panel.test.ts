@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import {
   destroyAllHarnesses,
   mountHarness,
@@ -439,7 +440,7 @@ describe('accessible output', () => {
         harness.flush();
         await waitFor(() => document.activeElement === elsewhere, 'focus to move on');
         await waitFor(() => dialog() === null, 'the dialog to close');
-        await new Promise((resolve) => setTimeout(resolve, 30));
+        await quietFor(30);
         expect(document.activeElement?.textContent?.trim()).toBe('Elsewhere');
       } finally {
         document.removeEventListener('focusin', moveOn);

@@ -32,7 +32,7 @@ import {
   skillCatalogOnDisk,
   skillsRecorded,
 } from './skill-policy-fixtures.test-support';
-import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau } from './types';
 import { createAgentSkills } from './agent-skills';
 
@@ -163,17 +163,13 @@ describe('a run’s approval after a later run starts in its session', () => {
         }),
       },
     });
-    const run = await first.createRun({
-      agentName: 'default',
-      message: 'charge, then lock',
-      principal: OWNER.alice,
-    });
+    const run = await first.tasks.start('default', 'charge, then lock', { principal: OWNER.alice });
     const review = await pollUntil(
       () => first.reviews.list().find((candidate) => candidate.runId === run.id),
       'the session run’s approval',
     );
     await pollForTime(
-      async () => ((await skillsRecorded(first, run.sessionId)) ? true : undefined),
+      async () => ((await skillsRecorded(first, run.contextId)) ? true : undefined),
       'the active skill to be recorded',
     );
     await letStepsCommit();
@@ -204,10 +200,8 @@ describe('a run’s approval after a later run starts in its session', () => {
 
     // The next run starts in the session and has not finished its first step: the session's
     // snapshot is cleared, which is not a record that the earlier run had no skills.
-    await restarted.createRun({
-      agentName: 'default',
-      message: 'the next run',
-      sessionId: run.sessionId,
+    await restarted.tasks.start('default', 'the next run', {
+      contextId: run.contextId,
       principal: OWNER.alice,
     });
 
@@ -284,11 +278,7 @@ describe('a run’s approval after a later run starts in its session', () => {
         }),
       },
     });
-    const run = await first.createRun({
-      agentName: 'default',
-      message: 'charge',
-      principal: OWNER.alice,
-    });
+    const run = await first.tasks.start('default', 'charge', { principal: OWNER.alice });
     const review = await pollUntil(
       () => first.reviews.list().find((candidate) => candidate.runId === run.id),
       'the session run’s approval',
@@ -308,10 +298,8 @@ describe('a run’s approval after a later run starts in its session', () => {
       () => restarted.reviews.list().find((candidate) => candidate.id === review.id),
       'the restored approval',
     );
-    await restarted.createRun({
-      agentName: 'default',
-      message: 'the next run',
-      sessionId: run.sessionId,
+    await restarted.tasks.start('default', 'the next run', {
+      contextId: run.contextId,
       principal: OWNER.alice,
     });
 
@@ -488,13 +476,9 @@ describe('a session run reattached after its process died in a step', () => {
         }),
       },
     });
-    const run = await first.createRun({
-      agentName: 'default',
-      message: 'lock, then charge',
-      principal: OWNER.alice,
-    });
+    const run = await first.tasks.start('default', 'lock, then charge', { principal: OWNER.alice });
     await pollForTime(
-      async () => ((await skillsRecorded(first, run.sessionId)) ? true : undefined),
+      async () => ((await skillsRecorded(first, run.contextId)) ? true : undefined),
       'the active skill to be recorded',
     );
     await letStepsCommit();
@@ -543,7 +527,7 @@ describe('a session run reattached after its process died in a step', () => {
     expect(charges).toEqual([]);
     // The call is refused before it reaches an approval, because the policy is unverified.
     expect(restarted.reviews.list().filter((review) => review.runId === run.id)).toEqual([]);
-    expect(await recordedResultCode(restarted, run.sessionId, 'charge-Y')).toBe(
+    expect(await recordedResultCode(restarted, run.contextId, 'charge-Y')).toBe(
       'SKILL_TOOL_DENIED',
     );
     expect(charges).toEqual([]);
@@ -588,7 +572,7 @@ describe('a session run reattached after its process died in a step', () => {
     expect(charges).toEqual([]);
     // The call is refused before it reaches an approval, because the policy is unverified.
     expect(restarted.reviews.list().filter((review) => review.runId === run.id)).toEqual([]);
-    expect(await recordedResultCode(restarted, run.sessionId, 'charge-Y')).toBe(
+    expect(await recordedResultCode(restarted, run.contextId, 'charge-Y')).toBe(
       'SKILL_TOOL_DENIED',
     );
     expect(charges).toEqual([]);
@@ -624,7 +608,7 @@ describe('a fire replayed after its process died before committing the step that
       },
     });
     const { fireId } = await fireOnce(first, OWNER.alice, SESSION);
-    await Promise.race([crash.reached, new Promise((resolve) => setTimeout(resolve, 3000))]);
+    await crash.reached;
     // The session holds the skill the step activated; the step never committed.
     await pollForTime(
       async () => ((await skillsRecorded(first, SESSION)) ? true : undefined),

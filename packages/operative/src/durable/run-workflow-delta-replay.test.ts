@@ -154,7 +154,7 @@ describe('durable agentRun conversation deltas across recovery', () => {
     } finally {
       b.engine[Symbol.dispose]();
     }
-  }, 60_000);
+  });
 
   it('recovers a run crashed several steps after a signal continuation', async () => {
     const storage = new MemoryStorage();
@@ -209,5 +209,5 @@ describe('durable agentRun conversation deltas across recovery', () => {
     } finally {
       b.engine[Symbol.dispose]();
     }
-  }, 60_000);
+  });
 });

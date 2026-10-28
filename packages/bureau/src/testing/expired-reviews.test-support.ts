@@ -1,6 +1,6 @@
 /**
  * `Bureau` has no method that sweeps expired reviews: its own maintenance does, on a timer or when
- * a manual host runs `runDurableMaintenance`. A test that holds approvals past their bindings runs
+ * a manual host runs `maintain`. A test that holds approvals past their bindings runs
  * that pass at the clock reading it names and counts what the pass expired.
  */
 import type { Bureau } from '../types';
@@ -16,7 +16,7 @@ export async function expireReviews(bureau: Bureau, now?: number): Promise<numbe
   };
   bureau.addEventListener('review.expired', count);
   try {
-    await bureau.runDurableMaintenance(now);
+    await bureau.maintain(now);
   } finally {
     bureau.removeEventListener('review.expired', count);
   }

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { rejectionOf, throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   assembleBaselineArtifact,
   InvalidReproductionArtifactError,

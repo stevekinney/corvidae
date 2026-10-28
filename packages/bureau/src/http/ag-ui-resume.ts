@@ -50,11 +50,11 @@ import type { CommandLedger, CommandLedgerIdentity } from '../command-ledger.ts'
 import { ApprovalOutcomeNotWrittenError, ReviewRoundChangedError } from '../create-bureau.ts';
 import { humanWaitAnswerRowIdentifier, humanWaitDenialPayload } from '../human-wait-signal.ts';
 import type {
-  Bureau,
   PendingReview,
   ResolveReviewInput,
   BureauContexts,
   BureauReviews,
+  BureauTasks,
   BureauInternals,
 } from '../types.ts';
 import { type AgUiResumePayload, interruptKey, roundOfEntry } from './ag-ui-interrupts.ts';
@@ -102,7 +102,9 @@ type Settled = { readonly result: ResumeResult; readonly applied: boolean };
 
 type Refusal = { readonly code: AgUiErrorCode; readonly message: string };
 
-export type ResumeBureau = Pick<Bureau, 'getRun' | 'createRun' | 'locateRunCreationReceipt'> & {
+export type ResumeBureau = {
+  readonly tasks: Pick<BureauTasks, 'detail' | 'receipt' | 'start'>;
+} & {
   readonly reviews: Pick<BureauReviews, 'get' | 'list' | 'pendingOf' | 'resolve'>;
 } & {
   readonly contexts: Pick<BureauContexts, 'get'>;
@@ -269,7 +271,7 @@ export function createResume(context: ResumeContext) {
    */
   async function interruptibleReviewsOf(runId: string): Promise<PendingReview[]> {
     const local = interruptibleReviews(bureau, runId);
-    if (local.length > 0 || bureau.getRun(runId) !== undefined) return local;
+    if (local.length > 0 || bureau.tasks.detail(runId) !== undefined) return local;
     return bureau.reviews.pendingOf(runId);
   }
 
@@ -682,7 +684,7 @@ export function createResume(context: ResumeContext) {
     reviews: ReadonlyMap<string, PendingReview>,
   ): Promise<string> {
     // A tool approval is the owner's alone, so the session is the caller's own. Another owner's
-    // session under the same id is a missing one, and `createRun` below refuses it again.
+    // session under the same id is a missing one, and `tasks.start` below refuses it again.
     const session = await readSessionOwnedBy(bureau, request.threadId, request.owner);
     const history = session?.conversationHistory;
     for (const review of reviews.values()) {
@@ -692,12 +694,16 @@ export function createResume(context: ResumeContext) {
         .find((candidate) => candidate.toolResult?.callId === review.approval.callId);
       if (row?.toolResult?.outcome === 'action_required') throw new OutcomeNotWritten();
     }
-    const created = await bureau.createRun({
-      sessionId: request.threadId,
-      agentName: request.agentName,
-      principal: request.owner,
-      runCreationRequestId: `ag-ui-resume:${request.threadId}:${interruptKey([...reviews.values()])}`,
-    });
+    // The resume answers the conversation as it stands, which now ends in the resolved review's row.
+    const created = await bureau.tasks.start(
+      request.agentName,
+      { continue: true },
+      {
+        contextId: request.threadId,
+        principal: request.owner,
+        commandId: `ag-ui-resume:${request.threadId}:${interruptKey([...reviews.values()])}`,
+      },
+    );
     return created.id;
   }
 
@@ -714,7 +720,7 @@ export function createResume(context: ResumeContext) {
     );
   }
 
-  /** Whether a run can start from the thread's conversation: it ends in a user or tool-result row, as `createRun` requires. */
+  /** Whether a run can start from the thread's conversation: it ends in a user or tool-result row, as `tasks.start` requires of `{ continue: true }`. */
   async function conversationAnswerable(threadId: string, owner: string): Promise<boolean> {
     // Only a tool approval asks this, and a tool approval is the owner's alone.
     const session = await readSessionOwnedBy(bureau, threadId, owner);

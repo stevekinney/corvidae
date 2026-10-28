@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { Window } from 'happy-dom';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { PollingSource } from './polling-source.svelte.ts';
 
 /**
@@ -147,12 +148,13 @@ describe('PollingSource', () => {
     });
 
     setDocumentHidden(true);
-    // A tick already in flight when `hidden` flips is allowed to land — only
-    // the NEXT scheduling decision checks visibility — so settle briefly
-    // before taking the "paused" baseline, then prove no further growth.
-    await new Promise((resolve) => setTimeout(resolve, 15));
+    // A tick whose timer was already pending when `hidden` flips still runs (only the NEXT
+    // scheduling decision checks visibility). That timer was armed earlier with a 5 ms delay, so
+    // the 10 ms pause below, armed now, fires after it however busy the host is: timers run in
+    // deadline order. Take the "paused" baseline then, and prove no further growth.
+    await quietFor(10);
     const countWhileHidden = calls;
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    await quietFor(30);
     expect(calls).toBe(countWhileHidden);
 
     setDocumentHidden(false);
@@ -177,7 +179,7 @@ describe('PollingSource', () => {
     source.close();
     expect(source.status).toBe('closed');
     const countAtClose = calls;
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    await quietFor(30);
     expect(calls).toBe(countAtClose);
   });
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { sleepForTesting } from '../../testing/fake-timers.test-support.ts';
 
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { Engine } from '../../core/engine.ts';
 import type { WorkflowContext } from '../../core/types.ts';
 import { signal, workflow } from '../../core/types.ts';
@@ -40,10 +41,8 @@ async function waitForStatus(
   engine: Engine,
   workflowId: string,
   status: 'running' | 'completed' | 'failed' | 'cancelled' | 'timed-out',
-  timeoutMilliseconds = 500,
 ): Promise<void> {
-  const deadline = Date.now() + timeoutMilliseconds;
-  while (Date.now() < deadline) {
+  for await (const _turn of awakeTurns()) {
     const state = await engine.get(workflowId);
     if (state?.status === status) {
       return;
@@ -51,7 +50,7 @@ async function waitForStatus(
     await sleepForTesting(5);
   }
 
-  throw new Error(`Workflow ${workflowId} did not reach ${status} within ${timeoutMilliseconds}ms`);
+  throw new Error(`Workflow ${workflowId} did not reach ${status} before the hang guard elapsed`);
 }
 
 const registry = createOperationRegistry([signalWorkflowOperation]);

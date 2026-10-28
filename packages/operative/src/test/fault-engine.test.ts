@@ -4,10 +4,10 @@ import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { noToolCalls } from '../conditions/predicates';
 import { createActiveRun } from '../create-run';
 import type { OperativeHookMap } from '../hooks';
-import { rejectionOf, throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import type { GenerateContext, GenerateResponse } from '../types';
 import {
   createFaultEngine,

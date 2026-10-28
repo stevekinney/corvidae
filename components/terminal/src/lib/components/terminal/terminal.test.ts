@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { quietFor } from '@lostgradient/testing/wait-until';
 import {
   destroyAllHarnesses,
   mountHarness,
@@ -401,7 +402,7 @@ describe('cleanup and session replacement', () => {
     const before = document.querySelectorAll('.xterm').length;
     harness.destroy();
     await settle();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await quietFor(50);
     expect(controller.subscriptions).toBe(0);
     expect(document.querySelectorAll('.xterm')).toHaveLength(before);
     expect(document.querySelectorAll('textarea.xterm-helper-textarea')).toHaveLength(0);
@@ -446,7 +447,7 @@ describe('cleanup and session replacement', () => {
     props.controller = second;
     harness.flush();
     await waitFor(() => second.subscriptions === 1, 'the latest controller to be subscribed');
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    await quietFor(30);
     expect(first.subscriptions).toBe(0);
     expect(harness.target.querySelectorAll('.xterm')).toHaveLength(1);
   });
@@ -490,7 +491,7 @@ describe('geometry', () => {
         );
       }
       await settle();
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await quietFor(50);
       expect(geometries).toEqual([]);
     } finally {
       globalThis.ResizeObserver = original;
@@ -505,7 +506,7 @@ describe('geometry', () => {
       onGeometryChange: (geometry) => geometries.push(geometry),
     });
     window.dispatchEvent(new Event('resize'));
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await quietFor(60);
     expect(geometries).toEqual([]);
   });
 
@@ -523,7 +524,7 @@ describe('geometry', () => {
       'the owner row count',
     );
     window.dispatchEvent(new Event('resize'));
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await quietFor(60);
     expect(geometries).toEqual([]);
   });
 

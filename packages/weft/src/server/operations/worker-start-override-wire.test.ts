@@ -110,7 +110,7 @@ async function waitForTerminal(storage: MemoryStorage, id: string): Promise<void
       const bytes = await storage.get(KEYS.workflow(id));
       return bytes !== null && (decode(bytes) as WorkflowState).status === 'completed';
     },
-    { timeoutMs: 1_000, label: 'the restarted run to finish' },
+    { label: 'the restarted run to finish' },
   );
 }
 

@@ -7,6 +7,7 @@ import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { encode } from '../core/codec.ts';
 import { Engine } from '../core/engine.ts';
 import type { WorkflowContext, WorkflowState } from '../core/types.ts';
@@ -44,10 +45,8 @@ async function waitForStatus(
   engine: Engine,
   workflowId: string,
   status: 'running' | 'completed' | 'failed' | 'cancelled' | 'timed-out',
-  timeoutMilliseconds = 500,
 ): Promise<void> {
-  const deadline = Date.now() + timeoutMilliseconds;
-  while (Date.now() < deadline) {
+  for await (const _turn of awakeTurns()) {
     const state = await engine.get(workflowId);
     if (state?.status === status) return;
     await sleepForTesting(5);

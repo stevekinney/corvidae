@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { assertDurableStorageForRecovery, type BatchOperation } from './interface.ts';
 import { assertCapabilitiesShape } from './storage-adapter.test-support.ts';
 import { WebExtensionStorage } from './web-extension.ts';

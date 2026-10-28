@@ -71,7 +71,6 @@ async function waitForEventCount(
   engine: Engine,
   workflowId: string,
   expected: number,
-  timeoutMilliseconds = 500,
 ): Promise<void> {
   await waitForCondition(
     async () => {
@@ -80,7 +79,6 @@ async function waitForEventCount(
     },
     {
       label: `${expected} events for ${workflowId}`,
-      timeoutMs: timeoutMilliseconds,
       intervalMs: 5,
     },
   );
@@ -317,6 +315,7 @@ describe('createEngineEventFeedBackend — subscribeLive(events)', () => {
     try {
       await engine.signal(handle.id, 'release', 'go');
       await handle.result();
+      // load-proof: negative window for a late rejection: load can only delay an unhandled rejection, never produce one earlier, so the absence check cannot flip
       await sleepForTesting(10);
     } finally {
       process.off('unhandledRejection', handler);
@@ -403,7 +402,6 @@ describe('createEngineEventFeedBackend — tokens selector', () => {
     engine: Engine,
     workflowId: string,
     expected: number,
-    timeoutMilliseconds = 500,
   ): Promise<void> {
     await waitForCondition(
       async () => {
@@ -412,7 +410,6 @@ describe('createEngineEventFeedBackend — tokens selector', () => {
       },
       {
         label: `${expected} token chunks for ${workflowId}`,
-        timeoutMs: timeoutMilliseconds,
         intervalMs: 5,
       },
     );

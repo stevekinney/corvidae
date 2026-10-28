@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { quietFor } from '../../testing/testing/src/wait-until.ts';
 import {
   fakeSignals,
   fakeTree,
@@ -335,7 +336,7 @@ describe('runGate and signals', () => {
       expect(timer.state.milliseconds).toBe(5_000);
       // The wrapper exits, but turbo (901, in a session of its own) is still draining.
       child.finish(143);
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await quietFor(10);
       expect(timer.state.cancelled).toBe(false);
       // The grace period passes: the group and every collected process get SIGKILL.
       timer.fire();

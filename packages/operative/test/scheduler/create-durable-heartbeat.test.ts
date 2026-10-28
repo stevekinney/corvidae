@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 import { assertDefined } from '../assert-defined';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createRunEngine } from '../../src/durable/create-run-engine';
 import {
   assertDurableHeartbeatServicesStore,
@@ -22,7 +23,6 @@ import type {
 import { createDurableHeartbeat } from '../../src/scheduler/create-durable-heartbeat';
 import type { Scheduler } from '../../src/scheduler/create-scheduler';
 import type { SchedulerTask } from '../../src/scheduler/types';
-import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 import type { RunResult } from '../../src/types';
 
 type RunEngineInstance = Awaited<ReturnType<typeof createRunEngine>>['engine'];
@@ -892,6 +892,7 @@ describe('createDurableHeartbeat', () => {
         .catch(() => {
           createSettled = true;
         });
+      // load-proof: negative window: create must still be waiting on the held-open cancel; load can only delay a wrongly early settle, never produce one
       await yieldToPortableEventLoop();
       expect(createSettled).toBe(false);
 

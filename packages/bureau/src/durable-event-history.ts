@@ -557,7 +557,7 @@ export interface DurableEventHistory {
   /**
    * Snapshots the `run`-owner ids that still have at least one durable
    * event at or above the feed's CURRENT retention floor — the primitive
-   * `Bureau.runDurableMaintenance` uses to prune a session's
+   * `Bureau.maintain` uses to prune a session's
    * `lastRunOwningPrincipals` entries once a run's entire durable history
    * has been compacted away (AB-363's coordinator ruling). A single full
    * replay of the currently-retained window, not one `page()` call per

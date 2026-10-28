@@ -14,10 +14,10 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Storage, StorageCapabilities } from '../../storage/interface.ts';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import {
   CURRENT_PERSISTED_DATA_SCHEMA_VERSION,
   PERSISTED_DATA_SCHEMA_VERSION_KEY,

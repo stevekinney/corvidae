@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import {
   OWNER,
   readFrames,
+  readWireBlocks,
   rpc,
   subscribeRequest,
 } from './http/management/management-fixtures.test-support.ts';
@@ -61,7 +62,6 @@ describe('a task stream resumed at the snapshot cursor', () => {
 
     const reading = readFrames(
       await handler(subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key', '-1')),
-      { timeoutMs: 10_000 },
     );
     await bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: OWNER.alice });
     const frames = await reading;
@@ -70,6 +70,19 @@ describe('a task stream resumed at the snapshot cursor', () => {
       'input-required',
       'completed',
     ]);
+  });
+});
+
+describe('the replay marker of a schedule fire stream', () => {
+  it('follows the fire’s snapshot on the wire, never precedes it', async () => {
+    const { bureau, fireId } = await settledWithPendingReview();
+    const blocks = await readWireBlocks(
+      await handlerOf(bureau)(
+        subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
+      ),
+      (seen) => seen.some((block) => block.event === 'ping' && block.data.replayComplete === true),
+    );
+    expect(blocks.map((block) => block.event)).toEqual(['task.snapshot', 'ping']);
   });
 });
 
