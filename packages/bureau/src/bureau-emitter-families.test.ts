@@ -21,10 +21,12 @@ import { validAgentFile } from './testing/agent-file-fixtures.test-support';
 import { startFileBureau } from './testing/agent-file-bureau.test-support';
 import {
   answering,
+  cancelUntilSettled,
   createCheckValidator,
   createTestDatabase,
   createUnsetTestDatabase,
   goalRequest,
+  hangUntilAborted,
   pollUntil,
   TERMINAL_STATUSES,
   type TestDatabase,
@@ -97,6 +99,38 @@ describe('goal events on the bureau emitter', () => {
   });
 });
 
+describe('a canceled goal on the bureau emitter', () => {
+  it('dispatches goal.canceled once, though the host and the controller both commit it', async () => {
+    database = createTestDatabase('cor-1721-goal-cancel');
+    const canceled: Event[] = [];
+    const bureau = await createBureau({
+      agents: { worker: workerAgent(hangUntilAborted) },
+      validators: [createCheckValidator()],
+      storage: { type: 'sqlite', path: database.path },
+      durable: true,
+      durableOwnership: { ownership: 'none' },
+      onEvent: (event) => {
+        if (event.type === 'goal.canceled') canceled.push(event);
+      },
+    });
+    cleanups.push(() => bureau.dispose());
+    await bureau.goals.create(goalRequest());
+    await pollUntil(async () => {
+      const goal = await bureau.goals.get('g1');
+      return goal?.status === 'running';
+    });
+
+    await cancelUntilSettled(bureau as never);
+    await pollUntil(async () => {
+      const goal = await bureau.goals.get('g1');
+      return goal?.status === 'canceled';
+    });
+    await bureau.dispose();
+
+    expect(canceled).toHaveLength(1);
+  });
+});
+
 describe('diagnostic events on the bureau emitter', () => {
   it('dispatches a diagnostic with its level and scope, and a diagnostic raised by its own dispatch reaches the sink only', async () => {
     const sunk: BureauDiagnostic[] = [];
@@ -122,6 +156,45 @@ describe('diagnostic events on the bureau emitter', () => {
       scope: 'events',
     });
     expect(JSON.stringify(diagnostics[0])).not.toContain('MESSAGE-');
+  });
+});
+
+describe('diagnostic events from a listener that rejects', () => {
+  it('reports a rejection on a diagnostic event to the sink only, so it cannot loop', async () => {
+    const sunk: BureauDiagnostic[] = [];
+    const seen: Event[] = [];
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => ({ content: 'ok', toolCalls: [] }),
+          toolbox: createToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
+      onDiagnostic: (diagnostic) => sunk.push(diagnostic),
+      // Rejects on every event, so each failure is reported a microtask after its dispatch
+      // returned, outside the dispatcher's re-entrancy guard.
+      onEvent: async (event) => {
+        seen.push(event);
+        throw new Error(`MESSAGE-listener-rejected-on-${event.type}`);
+      },
+    });
+    cleanups.push(() => bureau.dispose());
+    const onDiagnostics = () =>
+      sunk.filter((diagnostic) => diagnostic.message.includes('on a "diagnostic" event'));
+    const diagnosticEvents = () => seen.filter((event) => event instanceof DiagnosticEvent);
+
+    await bureau.tasks.start('default', 'go');
+    await waitUntil(() => onDiagnostics().length > 0);
+    await bureau.dispose();
+    await waitUntil(() => onDiagnostics().length === diagnosticEvents().length);
+
+    // Each diagnostic event's own failure was reported once and dispatched as nothing, so every
+    // diagnostic event answers the failure on one other event.
+    const others = seen.filter((event) => !(event instanceof DiagnosticEvent));
+    expect(diagnosticEvents().length).toBeGreaterThan(0);
+    expect(diagnosticEvents().length).toBeLessThanOrEqual(others.length);
+    expect(onDiagnostics()).toHaveLength(diagnosticEvents().length);
   });
 });
 

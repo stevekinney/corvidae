@@ -117,7 +117,9 @@ const isAssetEvent =
     event instanceof AssetLifecycleEvent && event.type === kind;
 
 /** Copies the fields an object sets, leaving out each one that is `undefined`. */
-function definedFields(fields: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
+function definedFields(
+  fields: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
   return Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));
 }
 
@@ -198,7 +200,7 @@ export const BUREAU_EVENT_CLASSIFICATION = {
   'definitions.changed': 'published',
   'schedule.missed': 'published',
   'task.cleanup-acknowledged': 'published',
-  'diagnostic': 'published',
+  diagnostic: 'published',
 } as const satisfies Record<DeclaredKeys<BureauEventMap>, 'published' | { denied: string }>;
 
 export type PublishedBureauEventKind = {

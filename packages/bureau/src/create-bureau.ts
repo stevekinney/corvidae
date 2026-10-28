@@ -246,6 +246,7 @@ import {
   RunSettledEvent,
   RunRemovedEvent,
   TaskCleanupAcknowledgedEvent,
+  DiagnosticEvent,
 } from './events';
 import { createGoalAttemptFenceHost } from './goal-attempt-fence';
 import { createGoalWorkflowHost } from './goal-ports';
@@ -2139,7 +2140,11 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   if (options.onEvent) {
     const onEvent = options.onEvent;
     const reportOnEventFailure = (event: Event, error: unknown): void => {
-      diagnose({
+      // COR-1721 — a failure on a `diagnostic` event goes to the sink only. A rejected promise is
+      // reported after the dispatch has returned, outside the dispatcher's re-entrancy guard, so
+      // dispatching it would feed the same listener another `diagnostic` without end.
+      const report = event instanceof DiagnosticEvent ? diagnostics.report : diagnose;
+      report({
         level: 'error',
         scope: 'events',
         message: `[bureau] onEvent listener failed on a "${event.type}" event:`,
@@ -19469,7 +19474,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     }
     // COR-1721 — after the first scan `start()` made, as for the agent files.
     stopForwarding.push(
-      forwardDefinitionChanges('workflows', workflowRuntime.workflows, (event) => emitter.dispatch(event)),
+      forwardDefinitionChanges('workflows', workflowRuntime.workflows, (event) =>
+        emitter.dispatch(event),
+      ),
     );
     if (options.maintenance !== 'manual') runtime.durable?.engine.scheduler.start();
   }

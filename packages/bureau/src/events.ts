@@ -579,7 +579,7 @@ export class ScheduleMissedEvent extends Event {
 
 /**
  * Fired on the bureau emitter once a task's cleanup acknowledgement has been written to its record
- * (COR-1721). `cleanup` is the state `bureau.tasks.get(taskId).cleanup` now reads: `cleaned-up`,
+ * (COR-1721): for every task whose run's `closed()` Bureau follows, a canceled one or not. `cleanup` is the state `bureau.tasks.get(taskId).cleanup` now reads: `cleaned-up`,
  * `cleanup-failed`, `cleanup-unresolved`, or `unknown-outcome`. Not dispatched when the write fails
  * or the task record is gone.
  */

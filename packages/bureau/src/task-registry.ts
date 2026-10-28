@@ -571,7 +571,8 @@ export interface CreateTaskRegistryOptions {
    * (COR-1721), with the cleanup state the record now holds. Not told when the write fails or the
    * record is gone. A throw is diagnosed, never thrown into the watcher.
    */
-  readonly onCleanupAcknowledged?: ((taskId: string, cleanup: TaskCleanupState) => void) | undefined;
+  readonly onCleanupAcknowledged?:
+    ((taskId: string, cleanup: TaskCleanupState) => void) | undefined;
 }
 
 /** The task state a settled run maps to. */

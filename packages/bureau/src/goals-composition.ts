@@ -147,7 +147,11 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
   const observeEvents =
     dependencies.eventHistory === undefined && dependencies.dispatchGoalEvent === undefined
       ? undefined
-      : createGoalEventRecorder(dependencies.eventHistory, diagnose, dependencies.dispatchGoalEvent);
+      : createGoalEventRecorder(
+          dependencies.eventHistory,
+          diagnose,
+          dependencies.dispatchGoalEvent,
+        );
   const store = createGoalStore(dependencies.kv ?? textValueStore(new MemoryStorage()), {
     ...(observeEvents === undefined ? {} : { observe: observeEvents }),
     onObserverError: (error) =>

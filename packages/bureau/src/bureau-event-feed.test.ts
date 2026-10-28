@@ -378,7 +378,9 @@ describe('the COR-1721 event families on the feed', () => {
       },
     });
     expect(
-      payloadOf(new AssetLifecycleEvent('asset.blob.purged', { sequence: 2, at: 'a', digest: 'd' })),
+      payloadOf(
+        new AssetLifecycleEvent('asset.blob.purged', { sequence: 2, at: 'a', digest: 'd' }),
+      ),
     ).toEqual({ sequence: 2, at: 'a', digest: 'd' });
     expect(
       payloadOf(
@@ -425,7 +427,10 @@ describe('the COR-1721 event families on the feed', () => {
       payload: { scheduleId: 'schedule-1', missedCount: 3, windowStart: 100, windowEnd: 400 },
     });
     expect(projectBureauEvent(new TaskCleanupAcknowledgedEvent('run-1', 'cleanup-failed'))).toEqual(
-      { kind: 'task.cleanup-acknowledged', payload: { taskId: 'run-1', cleanup: 'cleanup-failed' } },
+      {
+        kind: 'task.cleanup-acknowledged',
+        payload: { taskId: 'run-1', cleanup: 'cleanup-failed' },
+      },
     );
     expect(projectBureauEvent(new DiagnosticEvent('error', 'event-feed'))).toEqual({
       kind: 'diagnostic',
