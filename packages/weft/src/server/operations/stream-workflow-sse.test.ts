@@ -5,7 +5,8 @@ import type { WorkflowContext } from '../../core/types.ts';
 import { workflow } from '../../core/types.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
-import { createOperationRegistry } from '../operation-catalog.ts';
+import { createOperationRegistry, executeStream } from '../operation-catalog.ts';
+import { principalFromApiKey } from '../principal.ts';
 import { streamWorkflowSseOperation, streamWorkflowSseRestBinding } from './stream-workflow-sse.ts';
 
 const holdWorkflow = workflow({ name: 'hold' }).execute(async function* (_ctx: WorkflowContext) {
@@ -185,6 +186,31 @@ describe('weft.workflows.streams.sse', () => {
       expect(await response.json()).toEqual({ error: 'Internal server error' });
     } finally {
       engine.getStreamChunks = original;
+    }
+  });
+
+  it('rejects an `after` that is neither a string nor a number on a streaming transport', async () => {
+    await using engine = createEngine();
+    const handle = await engine.start('hold', null, { id: 'wf-bad-cursor' });
+    engine.getStreamChunks = async () => {
+      throw new Error('must not read chunks for an invalid cursor');
+    };
+
+    const result = await executeStream(
+      'weft.workflows.streams.sse',
+      { workflowId: handle.id, after: { sequence: 1 } },
+      {
+        registry,
+        host: engine,
+        transport: 'jsonRpcWebSocket',
+        principal: principalFromApiKey({ subject: 'streams-reader', scopes: ['streams:read'] }),
+      },
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.fault.code).toBe('InvalidParams');
+      expect(result.fault.message).toBe('Invalid Last-Event-ID header: ');
     }
   });
 });

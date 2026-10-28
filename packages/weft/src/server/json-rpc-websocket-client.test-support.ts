@@ -76,7 +76,7 @@ export function openWebSocket(url: string, token?: string): Promise<WebSocket> {
  *
  * `apiKey` is presented as the upgrade Bearer token; `correlationPrefix`
  * distinguishes the subscribe request id so concurrent suites do not collide
- * on the same correlation id.
+ * on the same correlation id. `timeoutMs` bounds the wait like {@link waitForMessage}'s.
  */
 export async function collectWebSocketDeliveredEnvelopes(
   server: WeftServer,
@@ -84,6 +84,7 @@ export async function collectWebSocketDeliveredEnvelopes(
   expectedCount: number,
   apiKey: string,
   correlationPrefix = 'collect',
+  timeoutMs = HANG_GUARD_MILLISECONDS,
 ): Promise<EventEnvelope[]> {
   const webSocketUrl = `${server.url.replace('http://', 'ws://')}/jsonrpc`;
   const webSocket = await openWebSocket(webSocketUrl, apiKey);
@@ -97,7 +98,7 @@ export async function collectWebSocketDeliveredEnvelopes(
       const timer = setTimeout(() => {
         webSocket.removeEventListener('message', handler);
         reject(new Error('collectWebSocketDeliveredEnvelopes timed out'));
-      }, HANG_GUARD_MILLISECONDS);
+      }, timeoutMs);
 
       function finish(value: EventEnvelope[]): void {
         clearTimeout(timer);

@@ -218,7 +218,13 @@ function flushPendingBuffer<TEnvelope extends SequencedEventEnvelope>(
   return { batch, newWatermark };
 }
 
-async function armAndWait(
+/**
+ * Park until a live append wakes the drain. The waker is installed first and the buffer, overflow
+ * flag and signal are re-checked afterwards, so an append, overflow or abort that lands between the
+ * caller's last look and the arming is never slept through; in that case the waker is withdrawn
+ * and the wait returns at once.
+ */
+export async function armAndWait(
   buffer: SequencedEventEnvelope[],
   overflowed: () => boolean,
   signal: AbortSignal | undefined,

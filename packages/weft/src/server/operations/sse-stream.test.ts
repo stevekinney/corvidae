@@ -253,3 +253,57 @@ describe('Server-Sent Event helpers', () => {
     expect(body).not.toContain('storage secret leaked');
   });
 });
+
+describe('Server-Sent Event stream teardown', () => {
+  function intervalScheduler(): {
+    readonly scheduler: ServerSentEventTimerScheduler;
+    tick(intervalMs: number): void;
+  } {
+    const callbacks = new Map<number, () => void>();
+    return {
+      scheduler(callback, intervalMs) {
+        callbacks.set(intervalMs, callback);
+        // Clearing is a no-op here: a tick that was already queued still fires after it.
+        return () => undefined;
+      },
+      tick(intervalMs) {
+        const callback = callbacks.get(intervalMs);
+        if (callback === undefined) throw new Error(`no timer scheduled at ${intervalMs}ms`);
+        callback();
+      },
+    };
+  }
+
+  it('still cancels cleanly when the close hook rejects', async () => {
+    const stream = createEventEnvelopeSSEStream({
+      iterable: neverEnding(),
+      close: async () => {
+        throw new Error('close hook failed');
+      },
+    });
+    const reader = stream.getReader();
+
+    await expect(reader.cancel()).resolves.toBeUndefined();
+  });
+
+  it('ends the response at the maximum duration and tolerates a second deadline tick', async () => {
+    const timers = intervalScheduler();
+    let closeCalls = 0;
+    const stream = createEventEnvelopeSSEStream({
+      iterable: neverEnding(),
+      close: async () => {
+        closeCalls += 1;
+      },
+      maxDurationMs: 5_000,
+      heartbeat: { intervalMs: 1_000, schedule: timers.scheduler, now: () => 0 },
+    });
+    const reader = stream.getReader();
+
+    timers.tick(5_000);
+    expect(await reader.read()).toEqual({ done: true, value: undefined });
+    // The interval-shaped scheduler can fire again before the cleanup cancels it; the stream is
+    // already closed, so the second tick must neither throw nor run the close hook again.
+    expect(() => timers.tick(5_000)).not.toThrow();
+    expect(closeCalls).toBe(1);
+  });
+});
