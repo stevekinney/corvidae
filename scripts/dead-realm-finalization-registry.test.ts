@@ -13,6 +13,8 @@
 
 import { expect, test } from 'bun:test';
 
+import { runWithHangGuard } from '../testing/testing/src/hang-guard.ts';
+
 const fixture = /* js */ `
   import vm from 'node:vm';
   import { edenGC, fullGC } from 'bun:jsc';
@@ -47,17 +49,12 @@ const fixture = /* js */ `
 `;
 
 test('a FinalizationRegistry cleanup job is dropped when its realm dies before the job runs', async () => {
-  await using process_ = Bun.spawn({
-    cmd: [process.execPath, '--no-install', '-e', fixture],
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-  const [standardOutput, standardError, exitCode] = await Promise.all([
-    process_.stdout.text(),
-    process_.stderr.text(),
-    process_.exited,
-  ]);
-  expect({ standardOutput: standardOutput.trim(), standardError, exitCode }).toEqual({
+  const completed = await runWithHangGuard([process.execPath, '-e', fixture]);
+  expect({
+    standardOutput: completed.stdout.toString().trim(),
+    standardError: completed.stderr.toString(),
+    exitCode: completed.exitCode,
+  }).toEqual({
     standardOutput: '{"deadContextCleanups":0}',
     standardError: '',
     exitCode: 0,
