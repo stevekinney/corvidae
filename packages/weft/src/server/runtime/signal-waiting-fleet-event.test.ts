@@ -121,6 +121,8 @@ describe('watch copies of workflow events', () => {
     expect(await verifyEventLog(storage, workflowId)).toEqual({ valid: true });
     expect(await watchEventKinds(storage, workflowId)).toEqual([
       'workflow:started',
+      'activity:started',
+      'activity:completed',
       'signal:waiting',
     ]);
     firstBroadcasting.dispose();
@@ -144,7 +146,12 @@ describe('watch copies of workflow events', () => {
     secondFeed.dispose();
 
     const kinds = await watchEventKinds(storage, workflowId);
-    expect(kinds.slice(0, 2)).toEqual(['workflow:started', 'signal:waiting']);
+    expect(kinds.slice(0, 4)).toEqual([
+      'workflow:started',
+      'activity:started',
+      'activity:completed',
+      'signal:waiting',
+    ]);
     expect(kinds).toContain('signal:received');
     expect(kinds.at(-1)).toBe('workflow:completed');
     expect(await verifyEventLog(storage, workflowId)).toEqual({ valid: true });
