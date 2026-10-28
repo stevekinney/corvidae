@@ -290,22 +290,25 @@ function stableWorkerOperationFields(
     throw new WorkerProtocolError(`Unsupported Worker replay operation type: ${operationType}`);
   }
 
-  return toSortedStableRecord(operation as Record<string, unknown>);
+  return toSortedStableRecord(operation as Record<string, unknown>, []);
 }
 
 function isSupportedWorkerOperationType(operationType: string): boolean {
   return WORKER_SIGNATURE_OPERATION_TYPES.has(operationType);
 }
 
-function toSortedStableRecord(record: Record<string, unknown>): Record<string, unknown> {
+function toSortedStableRecord(
+  record: Record<string, unknown>,
+  stack: object[],
+): Record<string, unknown> {
   const stable: Record<string, unknown> = {};
   for (const key of Object.keys(record).toSorted()) {
     if (WORKER_SIGNATURE_EXCLUDED_FIELDS.has(key)) continue;
     if (record['type'] === 'run-all' && key === 'branches') {
-      stable[key] = toStableRunAllBranches(record[key], []);
+      stable[key] = toStableRunAllBranches(record[key], stack);
       continue;
     }
-    stable[key] = toSignatureValue(record[key], []);
+    stable[key] = toSignatureValue(record[key], stack);
   }
   return stable;
 }
@@ -354,7 +357,7 @@ function toSignatureValue(value: unknown, stack: object[]): unknown {
 
   stack.push(value as object);
   try {
-    return toSortedStableRecord(value as Record<string, unknown>);
+    return toSortedStableRecord(value as Record<string, unknown>, stack);
   } finally {
     stack.pop();
   }

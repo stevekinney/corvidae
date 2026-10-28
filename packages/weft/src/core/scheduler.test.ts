@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import {
   advanceTimersByTime,
   flushMicrotasks,
@@ -244,6 +244,63 @@ describe('Scheduler — implementation-specific', () => {
       { key: 'guard', expectedValue: new Uint8Array([1]) },
     ]);
     expect(await storage.get(`timer-idx:${timer.id}`)).toBeNull();
+  });
+
+  it('cancel drops a timer index that does not hold a deadline key and leaves other keys alone', async () => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const timer = makeTimer({ id: 'healthy', workflowId: 'w-healthy' });
+      await scheduler.schedule(timer);
+      await storage.put('timer-idx:corrupt', encode(42));
+
+      await scheduler.cancel('corrupt', 'w-corrupt');
+
+      expect(consoleError).toHaveBeenCalledWith(
+        'Corrupted timer index for corrupt: expected string, got number',
+      );
+      expect(await storage.get('timer-idx:corrupt')).toBeNull();
+      expect(await storage.get(`timer-idx:${timer.id}`)).not.toBeNull();
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it('keeps a fired timer in storage when its cleanup cannot be built, and fires it again next tick', async () => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const timer = makeTimer({
+        id: 'sleep:cleanup-fails',
+        workflowId: 'w-cleanup',
+        kind: 'sleep',
+        fireAt: now() - 1000,
+      });
+      await scheduler.schedule(timer);
+      const readIndex = storage.get.bind(storage);
+      let failIndexReads = true;
+      storage.get = async (key: string) => {
+        if (failIndexReads && key.startsWith('timer-idx:')) throw new Error('index read failed');
+        return readIndex(key);
+      };
+
+      await scheduler.tick(now());
+
+      expect(firedEntries).toHaveLength(1);
+      expect(consoleError).toHaveBeenCalledWith(
+        `Failed to delete timer keys for ${timer.id}:`,
+        expect.objectContaining({ message: 'index read failed' }),
+      );
+      const remaining = await collectStorageKeys();
+      expect(remaining.filter((key) => key.startsWith('wf-deadline:'))).toHaveLength(1);
+
+      failIndexReads = false;
+      await scheduler.tick(now());
+
+      expect(firedEntries).toHaveLength(2);
+      const keysAfterRetry = await collectStorageKeys();
+      expect(keysAfterRetry.filter((key) => key.startsWith('wf-deadline:'))).toHaveLength(0);
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it('limits each expired timer source scan and drains a larger backlog across ticks with one cleanup batch per tick', async () => {

@@ -1252,6 +1252,31 @@ describe('WorkerExecutionStrategy', () => {
       expect(mockPool.discard).toHaveBeenCalledWith(firstWorker());
     });
 
+    it('discards the worker and fails its workflow when it posts a message that names no workflow', async () => {
+      setup(1, {
+        workflowTurnTimeoutMs: 100,
+        maxProtocolMessageBytes: 4_096,
+        requireProtocolVersion: true,
+      });
+
+      strategy.startWorkflow({
+        workflowId: 'wf-anonymous-message',
+        workflowType: 'test',
+        input: null,
+        checkpoint: new ArrayBuffer(0),
+      });
+      await settleStrategy();
+
+      dispatchToMockWorker(firstWorker(), 'message', new MessageEvent('message', { data: null }));
+
+      expect(firstMessage()).toMatchObject({
+        type: 'failed',
+        workflowId: 'wf-anonymous-message',
+        failureCategory: 'system',
+      });
+      expect(mockPool.discard).toHaveBeenCalledWith(firstWorker());
+    });
+
     it('discards the worker when it emits a messageerror event', async () => {
       setup(1, {
         workflowTurnTimeoutMs: 100,
@@ -1685,6 +1710,27 @@ describe('WorkerExecutionStrategy', () => {
 
       expect(messages).toHaveLength(1);
       expect(messages.at(-1)?.type).toBe('checkpoint');
+    });
+
+    it('stamps the protocol version on a cooperative cancel when the host requires it', async () => {
+      setup(1, { maxProtocolMessageBytes: 4_096, requireProtocolVersion: true });
+
+      strategy.startWorkflow({
+        workflowId: 'wf-versioned-cancel',
+        workflowType: 'test',
+        input: null,
+        checkpoint: new ArrayBuffer(0),
+      });
+      await settleStrategy();
+
+      strategy.cancelWorkflow('wf-versioned-cancel');
+
+      expect(firstWorker().postMessage.mock.calls.at(-1)?.[0]).toEqual({
+        type: 'cancel',
+        workflowId: 'wf-versioned-cancel',
+        protocolVersion: WORKER_PROTOCOL_VERSION,
+      });
+      expect(mockPool.release).toHaveBeenCalledTimes(1);
     });
 
     it('discards the active worker on hardened cancellation without emitting a duplicate failure', async () => {

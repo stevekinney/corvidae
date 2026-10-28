@@ -448,3 +448,50 @@ describe('due index identity', () => {
     outbox.dispose();
   });
 });
+
+describe('waiting for due work past a stray index entry', () => {
+  it('skips an entry that names a waiting delivery at the wrong due instant and finds the real one', async () => {
+    const { outbox, storage } = createOutboxFixture();
+    const later = await enqueueOne(outbox, { availableAfterMs: 1000 });
+    const dueNow = await enqueueOne(outbox);
+    // Instant 0 sorts ahead of every genuine entry, but the delivery it names is due later.
+    const stray = KEYS.applicationDeliveryDue('bureau', 'agent-7', 0, later);
+    await storage.put(stray, encodeApplicationDeliveryEntry(later));
+
+    expect(await outbox.waitForDue()).toBe(true);
+    expect(await fieldOf(outbox.receipt(dueNow), 'state')).toBe('queued');
+    // The stray entry is only looked past by a wait, which mutates nothing.
+    expect(await storage.get(stray)).not.toBeNull();
+    outbox.dispose();
+  });
+});
+
+describe('listing more deliveries than one index page holds', () => {
+  it('continues from the last index key and returns every delivery in enqueue order', async () => {
+    const { outbox } = createOutboxFixture({ maxBacklog: 1000 });
+    const enqueued: string[] = [];
+    for (let index = 0; index < 201; index += 1) enqueued.push(await enqueueOne(outbox));
+
+    const listed = await outbox.list({ limit: 300 });
+
+    expect(listed.map((receipt) => receipt.deliveryId)).toEqual(enqueued);
+    outbox.dispose();
+  });
+});
+
+describe('outbox test helpers fail loudly', () => {
+  it('names the unexpected outcome when a helper does not get the result it expects', async () => {
+    const { outbox } = createOutboxFixture();
+    expect(await throwingRejectionOf(claimOne(outbox))).toThrow(
+      'Expected a claim, received "empty".',
+    );
+    expect(await throwingRejectionOf(deliverOne(outbox))).toThrow(
+      'Expected a settled delivery, received "empty".',
+    );
+    await enqueueOne(outbox, { idempotencyKey: 'once' });
+    expect(await throwingRejectionOf(enqueueOne(outbox, { idempotencyKey: 'once' }))).toThrow(
+      'Expected an enqueued delivery, received "duplicate".',
+    );
+    outbox.dispose();
+  });
+});

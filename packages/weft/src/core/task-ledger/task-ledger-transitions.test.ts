@@ -214,6 +214,22 @@ describe('claimQueued', () => {
     if (result.ok) expect(result.nextRecord.startedAt).toBe(500);
   });
 
+  it('carries the schedule-to-close deadline onto the leased record', () => {
+    const result = claimQueued(
+      queuedFixture({ scheduleToCloseDeadline: 90_000 }),
+      claimInput,
+      1_000,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.nextRecord.scheduleToCloseDeadline).toBe(90_000);
+  });
+
+  it('leaves the leased record without a deadline when the queued task has none', () => {
+    const result = claimQueued(queuedFixture(), claimInput, 1_000);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect('scheduleToCloseDeadline' in result.nextRecord).toBe(false);
+  });
+
   it('rejects when the task is not queued', () => {
     expect(claimQueued(leasedFixture(), claimInput, 1_000).ok).toBe(false);
     expect(claimQueued(null, claimInput, 1_000).ok).toBe(false);

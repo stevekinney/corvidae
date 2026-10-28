@@ -3011,3 +3011,17 @@ describe('eighteenth-round hardening, continued', () => {
     local.dispose();
   });
 });
+
+describe('mailbox test helpers fail loudly', () => {
+  it('names the unexpected outcome when a helper does not get the result it expects', async () => {
+    const { mailbox } = createMailboxFixture();
+    expect(await throwingRejectionOf(claimOne(mailbox))).toThrow(
+      'Expected a claim, received "empty".',
+    );
+    await admitOne(mailbox, { idempotencyKey: 'once' });
+    expect(await throwingRejectionOf(admitOne(mailbox, { idempotencyKey: 'once' }))).toThrow(
+      'Expected an admitted command, received "duplicate".',
+    );
+    mailbox.dispose();
+  });
+});
