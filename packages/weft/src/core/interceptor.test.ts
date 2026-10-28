@@ -13,7 +13,11 @@ import type {
   WorkflowInterceptor,
   WorkflowStartInterception,
 } from './interceptor.ts';
-import { composeActivityInterceptors, composeWorkflowInterceptors } from './interceptor.ts';
+import {
+  composeActivityInterceptors,
+  composeWorkflowInterceptors,
+  interceptor,
+} from './interceptor.ts';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1131,5 +1135,21 @@ describe('composeWorkflowInterceptors — signalReceived hook', () => {
         ),
       ).toThrow('child workflow failed');
     });
+  });
+});
+
+describe('interceptor()', () => {
+  it('returns the very specification it was given, keeping its name', () => {
+    const specification = interceptor({
+      name: 'tracer',
+      *activity(interception, next) {
+        return yield* next(interception);
+      },
+    });
+    const sameSpecification = interceptor(specification);
+
+    expect(sameSpecification).toBe(specification);
+    expect(sameSpecification.name).toBe('tracer');
+    expect(typeof sameSpecification.activity).toBe('function');
   });
 });

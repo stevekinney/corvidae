@@ -250,7 +250,7 @@ export class Scheduler implements Disposable {
       await advanceTimerSource(timerSource, this.#storage);
     }
 
-    while (this.#hasPendingTimer(timerSources)) {
+    while (true) {
       const selectedSource = selectNextTimerSource(timerSources);
       const nextEntry = selectedSource?.next;
       if (!nextEntry || !selectedSource) {
@@ -320,10 +320,6 @@ export class Scheduler implements Disposable {
         readNext: readNextTeardownTimerEntry,
       },
     ] satisfies TimerSource[];
-  }
-
-  #hasPendingTimer(timerSources: TimerSource[]): boolean {
-    return timerSources.some((timerSource) => timerSource.next !== null);
   }
 
   async #processSelectedTimer(
