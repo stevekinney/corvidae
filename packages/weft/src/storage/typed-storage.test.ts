@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { encode as encodeWithCodec } from '../core/codec.ts';
+import {
+  registerSerializer,
+  resetSerializerRegistryForTesting,
+} from '../core/codec/serializer-registry.ts';
 import type { JSONValue } from '../core/json.ts';
 // Pin the public surface: `JSONValue` must remain exported from both the
 // package root barrel and the `@lostgradient/weft` subpath barrel. If either export
@@ -255,6 +260,31 @@ describe('withCodec', () => {
     ).toThrow('msgpackCodec only supports structuredClone-compatible values.');
   });
 
+  it('jsonCodec rejects a value whose hidden toJSON erases it during serialization', () => {
+    const codec = jsonCodec();
+    const value = { visible: true };
+    // Non-enumerable, so the JSON-shape check never sees it, but JSON.stringify still calls it.
+    Object.defineProperty(value, 'toJSON', { value: () => undefined, enumerable: false });
+
+    expect(() => codec.encode(value as JSONValue)).toThrow(
+      'jsonCodec only supports JSON-serializable values.',
+    );
+  });
+
+  it('typed batch leaves delete operations as they are and encodes only put values', async () => {
+    const raw = new MemoryStorage();
+    await raw.put('gone', new TextEncoder().encode('"old"'));
+    const storage = withCodec(raw, jsonCodec());
+
+    await storage.batch([
+      { type: 'delete', key: 'gone' },
+      { type: 'put', key: 'kept', value: 'new' },
+    ]);
+
+    expect(await raw.get('gone')).toBeNull();
+    expect(new TextDecoder().decode((await raw.get('kept'))!)).toBe('"new"');
+  });
+
   it('jsonCodec requires validation before typed data crosses the storage boundary', async () => {
     const storage = new MemoryStorage();
     await storage.put(
@@ -353,5 +383,34 @@ describe('JSONValue is the single canonical public JSON value type', () => {
     void mutable;
 
     expect(Array.isArray(asJsonValue)).toBe(true);
+  });
+});
+
+describe('msgpackCodec decoding', () => {
+  afterEach(() => {
+    resetSerializerRegistryForTesting();
+  });
+
+  it('refuses to hand back a decoded value that is not structured-clone compatible', () => {
+    class Money {
+      constructor(readonly cents: number) {}
+      format(): string {
+        return `$${(this.cents / 100).toFixed(2)}`;
+      }
+    }
+    registerSerializer(
+      Money,
+      {
+        toJSON: (money) => ({ cents: money.cents }),
+        fromJSON: (data) => new Money((data as { cents: number }).cents),
+      },
+      { tag: 'Money' },
+    );
+    // Written by something that registered the type; read through a codec that validates clones.
+    const bytes = encodeWithCodec(new Money(1250));
+
+    expect(() => msgpackCodec().decode(bytes)).toThrow(
+      'msgpackCodec decoded a non-cloneable value.',
+    );
   });
 });

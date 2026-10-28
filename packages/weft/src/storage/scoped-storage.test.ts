@@ -78,6 +78,36 @@ describe('scopedStorage', () => {
     expect(await collect(nested.keys(''))).toEqual(['key']);
   });
 
+  it('scoping beneath or over an empty prefix keeps the other prefix as is', async () => {
+    const raw = new MemoryStorage();
+    await raw.put('a:x', encode('under-a'));
+    await raw.put('top', encode('top-level'));
+
+    const underEmpty = scopedStorage(raw, '').scoped('a');
+    const overEmpty = scopedStorage(raw, 'a').scoped('');
+
+    expect(decode((await underEmpty.get('x'))!)).toBe('under-a');
+    expect(decode((await overEmpty.get('x'))!)).toBe('under-a');
+    const underEmptyEntries = await collect(underEmpty.scan(''));
+    const overEmptyEntries = await collect(overEmpty.scan(''));
+    expect(underEmptyEntries.map(([key]) => key)).toEqual(['x']);
+    expect(overEmptyEntries.map(([key]) => key)).toEqual(['x']);
+  });
+
+  it('an empty scope prefix passes keys and ranges through unchanged', async () => {
+    const raw = new MemoryStorage();
+    const passThrough = scopedStorage(raw, '');
+    await passThrough.put('b', encode('2'));
+    await passThrough.put('c', encode('3'));
+    await passThrough.put('d', encode('4'));
+
+    expect(decode((await raw.get('c'))!)).toBe('3');
+    const bounded = await collect(passThrough.keys('', { gt: 'b', lte: 'd' }));
+    const everything = await collect(passThrough.scan(''));
+    expect(bounded).toEqual(['c', 'd']);
+    expect(everything.map(([key]) => key)).toEqual(['b', 'c', 'd']);
+  });
+
   it('storage.scoped(prefix) forwards deletePrefix and count within the namespace only', async () => {
     const storage = new MemoryStorage();
     if (!storage.scoped) {

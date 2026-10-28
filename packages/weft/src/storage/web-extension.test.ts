@@ -623,3 +623,66 @@ describe('WebExtensionStorage', () => {
     }
   });
 });
+
+describe('WebExtensionStorage namespace resolution', () => {
+  it('rejects an injected namespace that is not an object', () => {
+    expect(() => new WebExtensionStorage({}, 'not a namespace')).toThrow(
+      'WebExtensionStorage injected namespace must be an object.',
+    );
+  });
+
+  it('rejects an injected namespace whose storage or runtime member is not an object', () => {
+    expect(() => new WebExtensionStorage({}, { storage: 'nope' })).toThrow(
+      'WebExtensionStorage injected namespace must be an object.',
+    );
+    expect(() => new WebExtensionStorage({}, { runtime: 7, storage: {} })).toThrow(
+      'WebExtensionStorage injected namespace must be an object.',
+    );
+  });
+
+  it('requires a storage namespace on the globals when none is injected', () => {
+    const globalObject = globalThis as WebExtensionTestGlobal;
+    const previousBrowser = globalObject.browser;
+    const previousChrome = globalObject.chrome;
+    Object.assign(globalObject, { browser: undefined, chrome: undefined });
+    try {
+      expect(() => new WebExtensionStorage()).toThrow(
+        'WebExtensionStorage requires globalThis.browser.storage or globalThis.chrome.storage.',
+      );
+      Object.assign(globalObject, { browser: { runtime: {} } });
+      expect(() => new WebExtensionStorage()).toThrow(
+        'WebExtensionStorage requires globalThis.browser.storage or globalThis.chrome.storage.',
+      );
+    } finally {
+      Object.assign(globalObject, { browser: previousBrowser, chrome: previousChrome });
+    }
+  });
+
+  it('rejects a storage area the namespace does not provide', () => {
+    const area = new FakeStorageArea();
+
+    expect(
+      () => new WebExtensionStorage({ area: 'session' }, { storage: { local: area } }),
+    ).toThrow('WebExtensionStorage area "session" is not available.');
+  });
+
+  it('rejects a callback-style call that reports runtime.lastError', async () => {
+    const area = new FakeStorageArea({ callbackStyle: true });
+    const storage = new WebExtensionStorage(
+      {},
+      { runtime: { lastError: { message: 'storage quota exceeded' } }, storage: { local: area } },
+    );
+
+    expect(await throwingRejectionOf(storage.get('key'))).toThrow('storage quota exceeded');
+  });
+
+  it('refuses to read a keyspace record that is not a storage envelope map', async () => {
+    const area = new FakeStorageArea();
+    area.data.set('__weftStorageKeyspace', 'garbage');
+    const storage = new WebExtensionStorage({}, { storage: { local: area } });
+
+    expect(await throwingRejectionOf(storage.get('key'))).toThrow(
+      'WebExtensionStorage keyspace is not a valid storage envelope map.',
+    );
+  });
+});

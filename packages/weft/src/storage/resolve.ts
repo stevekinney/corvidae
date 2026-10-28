@@ -1,12 +1,10 @@
-import { resolveDefaultStorage } from './auto.ts';
-import { BunSQLiteStorage } from './bun-sql.ts';
 import { HTTPStorage } from './http.ts';
 import { IndexedDBStorage } from './indexeddb.ts';
 import type { Storage } from './interface.ts';
 import { LMDBStorage } from './lmdb.ts';
 import { MemoryStorage } from './memory.ts';
 import { NeonStorage } from './neon.ts';
-import { NodeSQLiteStorage } from './node-sqlite.ts';
+import { resolveAutoStorage, resolveSQLiteStorage } from './resolve-runtime.ts';
 import type {
   AutoStorageConfiguration,
   HTTPStorageConfiguration,
@@ -50,59 +48,6 @@ type StorageConfigurationValidatorMap = {
     configuration: Record<string, unknown>,
   ) => Extract<StorageConfiguration, { type: Type }>;
 };
-
-function isBunRuntime(): boolean {
-  return typeof Bun !== 'undefined';
-}
-
-function isNodeRuntime(): boolean {
-  return (
-    typeof globalThis.process === 'object' &&
-    globalThis.process !== null &&
-    typeof globalThis.process.versions === 'object' &&
-    typeof globalThis.process.versions.node === 'string'
-  );
-}
-
-function hasWebExtensionStorage(): boolean {
-  const candidate = globalThis as typeof globalThis & {
-    browser?: { storage?: unknown };
-    chrome?: { storage?: unknown };
-  };
-  return candidate.browser?.storage !== undefined || candidate.chrome?.storage !== undefined;
-}
-
-function hasIndexedDB(): boolean {
-  return typeof globalThis.indexedDB !== 'undefined';
-}
-
-async function resolveSQLiteStorage(path?: string): Promise<Storage> {
-  if (isBunRuntime()) {
-    return new BunSQLiteStorage(path);
-  }
-
-  if (isNodeRuntime()) {
-    return new NodeSQLiteStorage(path);
-  }
-
-  throw new Error('SQLite storage is only available in Bun or Node runtimes.');
-}
-
-async function resolveAutoStorage(): Promise<Storage> {
-  if (isBunRuntime() || isNodeRuntime()) {
-    return resolveDefaultStorage();
-  }
-
-  if (hasWebExtensionStorage()) {
-    return new WebExtensionStorage();
-  }
-
-  if (hasIndexedDB()) {
-    return new IndexedDBStorage();
-  }
-
-  return new MemoryStorage();
-}
 
 const storageResolvers = {
   memory: async (_configuration: MemoryStorageConfiguration) => new MemoryStorage(),
