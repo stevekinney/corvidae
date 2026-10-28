@@ -516,19 +516,6 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       },
     ],
     [
-      'src/storage/durability/adapter-spec.test-support.ts',
-      {
-        reason:
-          'Driver and runtime-specific behavior cannot be attributed in the default Bun LCOV process; fresh coverage confirms only these residual misses. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption): upstream’s coordinates no longer matched corvidae’s file.',
-        functions: 2,
-        lines: new Set([
-          36, 37, 41, 42, 45, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 194, 195, 196, 197,
-          200, 201, 203,
-        ]),
-        requireUncoveredLines: true,
-      },
-    ],
-    [
       'src/storage/indexeddb.ts',
       {
         reason:
@@ -1335,7 +1322,7 @@ export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERA
         "Two structurally environment-locked branches, plus a function-count consequence of the second one the original entry's lines-only allowance didn't cover. (1) rawRuntimeEnvironment()'s `typeof process !== 'undefined'` fallback and empty-object fallback: this workspace runs exclusively under Bun (AGENTS.md: \"Bun is the default runtime... Use Bun commands only\"), so `typeof Bun !== 'undefined'` is always true in every test process — reaching the fallback would require deleting globalThis.Bun for the duration of a test, corrupting every other test sharing the same Bun process (this repo's coverage shards run many files per process). rawRuntimeEnvironment itself is still called (and function-covered) via its happy path; only these two unreachable branch lines are allowed. (2) Every `load` closure on a `Source` object in this file (createEnvironmentSource's, at the object-literal line every one of its three call sites already marks line-covered by constructing the object, and readEnvironmentVariable()'s exactSource.load, lines 139-142): every call site in this file uses environmentalist.sync(...), never .async(...), and neither Source value is exported or returned, so nothing in this codebase ever invokes `load` on either one — only `loadSync`, which environmentalist.sync() calls exclusively. `load` exists solely to satisfy the Source interface's required shape. Because createEnvironmentSource's `load` is a single-expression arrow on the same source line as its own registration, the interior body has no separate DA line to report 0 on — line coverage alone hides it entirely, and only the function tally (FNF/FNH) reveals it, which is why `` (this arrow plus readEnvironmentVariable's) is needed alongside the line allowance below.",
       lines: new Set([8, 9]),
       requireUncoveredLines: true,
-      functions: 2,
+      functions: 1,
     },
   ],
   [
