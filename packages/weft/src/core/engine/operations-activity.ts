@@ -385,7 +385,8 @@ export async function executeActivity(
     headers: Map<string, string>,
   ): unknown => {
     if (lifecycleScope !== undefined) {
-      startedAt = internals.options.getNow();
+      // Only a branch needs its own start time; the timeline times a top-level one.
+      if (lifecycleScope === 'branch') startedAt = internals.options.getNow();
       internals.engine?.dispatchEvent(
         tagWorkflowEventGeneration(
           new ActivityStartedEvent(
