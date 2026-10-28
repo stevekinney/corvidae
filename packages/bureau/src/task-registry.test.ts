@@ -1,5 +1,6 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
+  type ConditionalTextValueStore,
   MemoryStorage,
   textValueStore,
   WEFT_RESERVED_KEY_PREFIXES,
@@ -50,7 +51,13 @@ type HostState = {
   abortOutcome?: 'requested' | 'already-terminal' | 'not-found';
 };
 
-function build(state?: Partial<HostState>) {
+function build(
+  state?: Partial<HostState>,
+  options: {
+    kv?: ConditionalTextValueStore;
+    onSettled?: Parameters<typeof createTaskRegistry>[0]['onSettled'];
+  } = {},
+) {
   const runtime = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
   const held: HostState = {
     live: new Map(),
@@ -89,13 +96,14 @@ function build(state?: Partial<HostState>) {
         runtime.timers.setTimeout(resolve, milliseconds);
       }),
   };
-  const kv = textValueStore(new MemoryStorage());
+  const kv = options.kv ?? textValueStore(new MemoryStorage());
   const registry = createTaskRegistry({
     kv,
     clock: runtime.clock,
     identifiers: runtime.identifiers,
     host,
     diagnose: (message) => diagnostics.push(message),
+    onSettled: options.onSettled,
   });
   return { registry, kv, host, held, runtime, diagnostics };
 }
@@ -709,6 +717,50 @@ describe('cancel', () => {
     }
   });
 
+  it('announces settlement only after the committed write and only once', async () => {
+    const release = Promise.withResolvers<void>();
+    const base = textValueStore(new MemoryStorage());
+    let hold = false;
+    const kv = new Proxy(base, {
+      get(target, property, receiver) {
+        if (property !== 'conditionalBatch') return Reflect.get(target, property, receiver);
+        return async (...args: Parameters<typeof base.conditionalBatch>) => {
+          if (hold) await release.promise;
+          return base.conditionalBatch(...args);
+        };
+      },
+    });
+    const events: string[] = [];
+    const { registry } = build(undefined, {
+      kv,
+      onSettled: async (record) => {
+        events.push(record.taskId);
+      },
+    });
+    await admit(registry, 'run-1');
+    hold = true;
+    const writing = registry.recordSettled('run-1', {
+      at: '2026-10-18T00:00:09.000Z',
+      status: 'completed',
+      finishReason: 'stop-condition',
+      message: null,
+    });
+    await Promise.resolve();
+    expect(events).toEqual([]);
+
+    hold = false;
+    release.resolve();
+    await writing;
+    await registry.recordSettled('run-1', {
+      at: '2026-10-18T00:00:10.000Z',
+      status: 'completed',
+      finishReason: 'stop-condition',
+      message: null,
+    });
+
+    expect(events).toEqual(['run-1']);
+  });
+
   it('stores an answer on a catalog task’s record only, never on a session task’s', async () => {
     const { registry } = build();
     await admit(registry, 'run-catalog', { incarnation: '' });
@@ -772,12 +824,87 @@ describe('cancel', () => {
   });
 
   it('cancels a durable run this process holds no live run for', async () => {
-    const requested = build();
+    const settled: string[] = [];
+    const requested = build(undefined, {
+      onSettled: async (record) => {
+        settled.push(record.taskId);
+      },
+    });
     await admit(requested.registry, 'run-1');
+    expect(settled).toEqual([]);
 
     expect(await requested.registry.cancel('run-1', 0)).toEqual({ receipt: 'canceled' });
     const afterwards = await requested.registry.get('run-1');
     expect(afterwards?.status).toBe('canceled');
+    expect(settled).toEqual(['run-1']);
+    expect(await requested.registry.cancel('run-1', 0)).toEqual({ receipt: 'canceled' });
+    expect(settled).toEqual(['run-1']);
+
+    const base = textValueStore(new MemoryStorage());
+    let failWrites = false;
+    const failingKv = new Proxy(base, {
+      get(target, property, receiver) {
+        if (property !== 'conditionalBatch') return Reflect.get(target, property, receiver);
+        return async (...args: Parameters<typeof base.conditionalBatch>) => {
+          if (failWrites) return false;
+          return base.conditionalBatch(...args);
+        };
+      },
+    });
+    const failedSettled: string[] = [];
+    const failed = build(undefined, {
+      kv: failingKv,
+      onSettled: async (record) => {
+        failedSettled.push(record.taskId);
+      },
+    });
+    await admit(failed.registry, 'run-2');
+    failWrites = true;
+    await rejectionOf(failed.registry.cancel('run-2', 0));
+    expect(failedSettled).toEqual([]);
+    const failedView = await failed.registry.get('run-2');
+    expect(failedView?.status).toBe('working');
+
+    const racedBase = textValueStore(new MemoryStorage());
+    const firstSettled: string[] = [];
+    const first = build(undefined, {
+      kv: racedBase,
+      onSettled: async (record) => {
+        firstSettled.push(record.taskId);
+      },
+    });
+    await admit(first.registry, 'run-3');
+    let interleave = false;
+    let interleaved = false;
+    const racedKv = new Proxy(racedBase, {
+      get(target, property, receiver) {
+        if (property !== 'conditionalBatch') return Reflect.get(target, property, receiver);
+        return async (...args: Parameters<typeof racedBase.conditionalBatch>) => {
+          if (interleave && !interleaved) {
+            interleaved = true;
+            await first.registry.recordSettled('run-3', {
+              at: '2026-10-18T00:00:10.000Z',
+              status: 'completed',
+              finishReason: 'stop-condition',
+              message: null,
+            });
+            return false;
+          }
+          return target.conditionalBatch(...args);
+        };
+      },
+    });
+    const secondSettled: string[] = [];
+    const second = build(undefined, {
+      kv: racedKv,
+      onSettled: async (record) => {
+        secondSettled.push(record.taskId);
+      },
+    });
+    interleave = true;
+    expect(await second.registry.cancel('run-3', 0)).toEqual({ receipt: 'canceled' });
+    expect(firstSettled).toEqual(['run-3']);
+    expect(secondSettled).toEqual([]);
 
     const terminal = build({ durable: { status: 'already-terminal' } });
     await admit(terminal.registry, 'run-1');

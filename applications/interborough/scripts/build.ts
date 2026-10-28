@@ -150,6 +150,44 @@ export function assertCleanBuild(result: Bun.BuildOutput): Bun.BuildMetafile {
   return result.metafile;
 }
 
+/** The `href` of every `<link rel="stylesheet">` in `html`. */
+export function linkedStylesheets(html: string): string[] {
+  const hrefs: string[] = [];
+  for (const [tag] of html.matchAll(/<link\b[^>]*>/g)) {
+    if (!/\brel="stylesheet"/.test(tag)) continue;
+    const href = /\bhref="([^"]+)"/.exec(tag)?.[1];
+    if (href !== undefined) hrefs.push(href);
+  }
+  return hrefs;
+}
+
+/**
+ * Delete the stylesheets (and their source maps) that `index.html` does not link, and return the
+ * files that remain. Bun makes one CSS bundle per JavaScript entry or dynamically imported chunk,
+ * and each bundle is the whole CSS graph reachable from that chunk, so Cinder's token block and
+ * every shared layer are emitted once per lazy route. Nothing loads those bundles: no chunk
+ * imports them and the page links only the one the HTML entry produces, which already holds the
+ * CSS of every lazily imported module, because the entry's graph reaches through dynamic imports.
+ * Component `<style>` blocks are not in any of these files: the Svelte plugin injects them into
+ * the JavaScript of the component that owns them.
+ */
+export async function pruneUnlinkedStylesheets(
+  staging: string,
+  files: readonly string[],
+): Promise<string[]> {
+  if (!files.includes('index.html')) return [...files];
+  const html = await Bun.file(join(staging, 'index.html')).text();
+  const linked = new Set(
+    linkedStylesheets(html).map((href) => relative('/', href).split(sep).join('/')),
+  );
+  const unlinked = new Set(files.filter((file) => file.endsWith('.css') && !linked.has(file)));
+  for (const stylesheet of unlinked) {
+    await rm(join(staging, stylesheet), { force: true });
+    await rm(join(staging, `${stylesheet}.map`), { force: true });
+  }
+  return files.filter((file) => !unlinked.has(file) && !unlinked.has(file.replace(/\.map$/, '')));
+}
+
 /** The filesystem operations {@link replaceDirectory} uses, replaceable in tests. */
 export type DirectoryOperations = {
   readonly rename: (from: string, to: string) => Promise<void>;
@@ -324,10 +362,23 @@ export async function buildApplication(
       }),
       minify: !development,
     });
-    const metafile = assertCleanBuild(result);
-    const files = result.outputs
-      .map((output) => relative(staging, output.path).split(sep).join('/'))
-      .toSorted();
+    const bundled = assertCleanBuild(result);
+    const files = await pruneUnlinkedStylesheets(
+      staging,
+      result.outputs
+        .map((output) => relative(staging, output.path).split(sep).join('/'))
+        .toSorted(),
+    );
+    const written = new Set(files);
+    // The metafile describes what is on disk: it keeps no entry for a stylesheet that was pruned.
+    const metafile: Bun.BuildMetafile = {
+      ...bundled,
+      outputs: Object.fromEntries(
+        Object.entries(bundled.outputs).filter(
+          ([name]) => !name.endsWith('.css') || written.has(name.replace(/^\.\//, '')),
+        ),
+      ),
+    };
     if (development) await retainPreviousAssets(staging, directory);
     await replaceDirectory(staging, directory);
     return { directory, files, metafile };
