@@ -45,6 +45,7 @@ import { sha256HexSync } from '@lostgradient/cryptography';
 import type { JSONValue, ProjectedValidatorOutcome } from '@lostgradient/operative';
 
 import type { DurableEventHistory } from './durable-event-history';
+import { GOAL_EVENT_KINDS, type GoalEventKind, GoalLifecycleEvent } from './events';
 import type { GoalAuditEvent, GoalState } from './goal-state';
 import { goalRestartId, goalTransitionId } from './goal-state';
 import type { GoalStoreObservation } from './goal-store';
@@ -246,29 +247,57 @@ export function projectGoalObservation(observation: GoalObservation): GoalEventD
  * write is diagnosed and swallowed, because the record is the truth and a lost
  * projection is repaired by `projectGoalHistory` at the next boot; failing the
  * commit over an audit write would stall the goal instead.
+ *
+ * With `dispatch` (COR-1721), each projected event is also dispatched live
+ * after its history write is attempted, whether or not that write succeeded:
+ * the goal store has already committed the transition. Without `history`, it
+ * only dispatches. The boot pass builds its recorder with neither dispatch nor
+ * a live observation, so a replay writes history and dispatches nothing.
  */
 export function createGoalEventRecorder(
-  history: Pick<DurableEventHistory, 'record'>,
+  history: Pick<DurableEventHistory, 'record'> | undefined,
   diagnose: DiagnosticSink,
+  dispatch?: (event: GoalLifecycleEvent) => void,
 ): (observation: GoalObservation) => Promise<void> {
   return async (observation) => {
     const owner = { kind: 'goal' as const, id: observation.record.goalRunId };
     for (const draft of projectGoalObservation(observation)) {
-      try {
-        await history.record(owner, draft.kind, draft.payload, {
-          dedupeKey: draft.dedupeKey,
-          ...(draft.emittedAtMs === undefined ? {} : { emittedAtMs: draft.emittedAtMs }),
-        });
-      } catch (error) {
-        diagnose({
-          level: 'error',
-          scope: 'goals',
-          message: `[bureau] Could not record ${draft.kind} for goal "${owner.id}" in the durable event history: ${error instanceof Error ? error.message : String(error)}`,
-          cause: error,
-        });
+      if (history !== undefined) {
+        try {
+          await history.record(owner, draft.kind, draft.payload, {
+            dedupeKey: draft.dedupeKey,
+            ...(draft.emittedAtMs === undefined ? {} : { emittedAtMs: draft.emittedAtMs }),
+          });
+        } catch (error) {
+          diagnose({
+            level: 'error',
+            scope: 'goals',
+            message: `[bureau] Could not record ${draft.kind} for goal "${owner.id}" in the durable event history: ${error instanceof Error ? error.message : String(error)}`,
+            cause: error,
+          });
+        }
+      }
+      if (dispatch !== undefined && isGoalEventKind(draft.kind)) {
+        // A throwing listener must not cost the drafts after this one their history write.
+        try {
+          dispatch(new GoalLifecycleEvent(draft.kind, draft.payload));
+        } catch (error) {
+          diagnose({
+            level: 'error',
+            scope: 'goals',
+            message: `[bureau] Dispatching ${draft.kind} for goal "${owner.id}" threw:`,
+            cause: error,
+          });
+        }
       }
     }
   };
+}
+
+const GOAL_EVENT_KIND_SET: ReadonlySet<string> = new Set(GOAL_EVENT_KINDS);
+
+function isGoalEventKind(kind: string): kind is GoalEventKind {
+  return GOAL_EVENT_KIND_SET.has(kind);
 }
 
 /**

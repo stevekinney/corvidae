@@ -566,6 +566,13 @@ export interface CreateTaskRegistryOptions {
   readonly onFireSettled?: ((record: TaskRecord) => Promise<void>) | undefined;
   /** Told once after a task's first terminal state is committed. */
   readonly onSettled?: ((record: TaskRecord) => Promise<void>) | undefined;
+  /**
+   * Told once per followed task after its cleanup acknowledgement has been written to its record
+   * (COR-1721), with the cleanup state the record now holds. Not told when the write fails or the
+   * record is gone. A throw is diagnosed, never thrown into the watcher.
+   */
+  readonly onCleanupAcknowledged?:
+    ((taskId: string, cleanup: TaskCleanupState) => void) | undefined;
 }
 
 /** The task state a settled run maps to. */
@@ -1146,6 +1153,15 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       : continueListing(query, scope, query.pageToken);
   }
 
+  /** Tells {@link CreateTaskRegistryOptions.onCleanupAcknowledged}; a throw is diagnosed. */
+  function announceCleanup(taskId: string, cleanup: TaskCleanupState): void {
+    try {
+      options.onCleanupAcknowledged?.(taskId, cleanup);
+    } catch (error) {
+      diagnose(`Could not announce the cleanup of task "${taskId}"`, error);
+    }
+  }
+
   async function watchCleanup(
     taskId: string,
     closed: Promise<CleanupAcknowledgement>,
@@ -1155,8 +1171,9 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     const watcher = closed.then(async (acknowledgement) => {
       const state = cleanupStateOf(acknowledgement);
       observed.set(taskId, state);
+      let written = false;
       try {
-        await track(
+        written = await track(
           update(taskId, (record) => ({
             ...record,
             cleanup: state,
@@ -1170,6 +1187,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       } catch (error) {
         diagnose(`Could not record the cleanup of task "${taskId}"`, error);
       }
+      if (written) announceCleanup(taskId, state);
       return state;
     });
     watchers.set(taskId, watcher);

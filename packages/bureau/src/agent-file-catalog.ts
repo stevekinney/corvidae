@@ -120,6 +120,8 @@ export interface AgentCatalogChange {
   readonly added: readonly string[];
   readonly changed: readonly string[];
   readonly removed: readonly string[];
+  /** Of `added` and `changed`, the identifiers whose file is invalid now and cannot run. */
+  readonly rejected: readonly string[];
 }
 
 /** The tie between a file agent object and the definition it was built from. */
@@ -563,6 +565,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     tooLarge,
     unreadable,
     sameSignature,
+    isRejected: (entry) => entry.problem !== undefined,
     settle: settleRevisions,
   });
   const { refresh } = directoryWatcher;

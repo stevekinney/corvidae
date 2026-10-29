@@ -28,7 +28,18 @@ import {
 import { FRAMES_DROPPED_KIND, withFramesDroppedMarker } from './frames-dropped.ts';
 import {
   ActionEvent,
+  AssetLifecycleEvent,
+  BUREAU_ASSET_EVENT_KINDS,
+  type BureauAssetEventKind,
   BureauDisposedEvent,
+  type BureauEventMap,
+  DefinitionsChangedEvent,
+  DiagnosticEvent,
+  GOAL_EVENT_KINDS,
+  type GoalEventKind,
+  GoalLifecycleEvent,
+  ScheduleMissedEvent,
+  TaskCleanupAcknowledgedEvent,
   RunAbortSettledEvent,
   RecoveryAttemptedEvent,
   RecoveryLeaseReleasedEvent,
@@ -66,7 +77,6 @@ import {
   SkillLoadedEvent,
   SkillRejectedEvent,
 } from './skills/events.ts';
-import type { BureauEventMap } from './events.ts';
 
 export type BureauEventEnvelope = SequencedEventEnvelope & {
   readonly bureauId: string;
@@ -92,6 +102,25 @@ const isInstance =
   <TEvent>(constructor: abstract new (...args: never[]) => TEvent) =>
   (event: unknown): event is TEvent =>
     event instanceof constructor;
+
+/** A goal event of one kind; every goal kind shares {@link GoalLifecycleEvent}. */
+const isGoalEvent =
+  (kind: GoalEventKind) =>
+  (event: unknown): event is GoalLifecycleEvent =>
+    event instanceof GoalLifecycleEvent && event.type === kind;
+
+/** An asset event of one kind; every forwarded asset kind shares {@link AssetLifecycleEvent}. */
+const isAssetEvent =
+  (kind: BureauAssetEventKind) =>
+  (event: unknown): event is AssetLifecycleEvent =>
+    event instanceof AssetLifecycleEvent && event.type === kind;
+
+/** Copies the fields an object sets, leaving out each one that is `undefined`. */
+function definedFields(
+  fields: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  return Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));
+}
 
 /**
  * A settled review, projected identically whichever verb settled it.
@@ -155,6 +184,22 @@ export const BUREAU_EVENT_CLASSIFICATION = {
   'review.canceled': 'published',
   'review.superseded': 'published',
   'steering.accepted': 'published',
+  'goal.started': 'published',
+  'goal.attempt.started': 'published',
+  'goal.attempt.validated': 'published',
+  'goal.succeeded': 'published',
+  'goal.exhausted': 'published',
+  'goal.canceled': 'published',
+  'goal.failed': 'published',
+  'goal.recovered': 'published',
+  'asset.upload.started': 'published',
+  'asset.upload.purged': 'published',
+  'asset.blob.purged': 'published',
+  'asset.expired': 'published',
+  'definitions.changed': 'published',
+  'schedule.missed': 'published',
+  'task.cleanup-acknowledged': 'published',
+  diagnostic: 'published',
 } as const satisfies Record<DeclaredKeys<BureauEventMap>, 'published' | { denied: string }>;
 
 export type PublishedBureauEventKind = {
@@ -324,6 +369,48 @@ const PROJECTIONS: readonly BureauEventProjection[] = [
   projection(ReviewRevokedEvent.type, isInstance(ReviewRevokedEvent), projectReview),
   projection(ReviewCanceledEvent.type, isInstance(ReviewCanceledEvent), projectReview),
   projection(ReviewSupersededEvent.type, isInstance(ReviewSupersededEvent), projectReview),
+  // The event already holds only the recorded fields its kind publishes; `goal.failed` has no
+  // validator message to drop by the time it gets here (see `GoalLifecycleEvent`).
+  ...GOAL_EVENT_KINDS.map((kind) =>
+    projection(kind, isGoalEvent(kind), (event) => ({ ...event.payload })),
+  ),
+  ...BUREAU_ASSET_EVENT_KINDS.map((kind) =>
+    projection(kind, isAssetEvent(kind), (event) =>
+      definedFields({
+        sequence: event.sequence,
+        at: event.at,
+        assetId: event.assetId,
+        revision: event.revision,
+        state: event.state,
+        principal: event.principal,
+        uploadId: event.uploadId,
+        digest: event.digest,
+      }),
+    ),
+  ),
+  projection(DefinitionsChangedEvent.type, isInstance(DefinitionsChangedEvent), (event) => ({
+    source: event.source,
+    added: [...event.added],
+    changed: [...event.changed],
+    removed: [...event.removed],
+    rejected: [...event.rejected],
+  })),
+  projection(ScheduleMissedEvent.type, isInstance(ScheduleMissedEvent), (event) => ({
+    scheduleId: event.scheduleId,
+    missedCount: event.missedCount,
+    windowStart: event.windowStart,
+    windowEnd: event.windowEnd,
+  })),
+  projection(
+    TaskCleanupAcknowledgedEvent.type,
+    isInstance(TaskCleanupAcknowledgedEvent),
+    (event) => ({ taskId: event.taskId, cleanup: event.cleanup }),
+  ),
+  // Level and scope only: a diagnostic's message and cause can carry error text and stacks.
+  projection(DiagnosticEvent.type, isInstance(DiagnosticEvent), (event) => ({
+    level: event.level,
+    scope: event.scope,
+  })),
 ];
 
 /** Every event kind this feed publishes, derived from the exhaustive classification. */
