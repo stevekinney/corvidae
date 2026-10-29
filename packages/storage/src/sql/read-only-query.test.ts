@@ -31,4 +31,10 @@ describe('assertReadOnlyQuery', () => {
       'Storage query only supports read-only SELECT and PRAGMA statements.',
     );
   });
+
+  it('rejects more than one statement', () => {
+    expect(() => assertReadOnlyQuery('SELECT 1; DELETE FROM kv')).toThrow(
+      'Storage query must contain exactly one read-only statement.',
+    );
+  });
 });

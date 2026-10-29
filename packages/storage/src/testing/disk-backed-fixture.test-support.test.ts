@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'bun:test';
-import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import { describe, expect, it, spyOn } from 'bun:test';
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import * as nodeOperatingSystem from 'node:os';
 import { join } from 'node:path';
 
 import {
@@ -80,5 +81,23 @@ describe('disk-backed test fixtures', () => {
         sidecarSuffixes: ['/outside'],
       }),
     ).toThrow('Fixture sidecar suffix must be a plain filename fragment');
+  });
+
+  it('refuses to clean up once the fixture path is outside the temporary directory', () => {
+    const fixture = createDiskBackedTestFixture({
+      prefix: 'weft-storage-helper-moved',
+      sidecarSuffixes: sqliteDatabaseSidecarSuffixes,
+    });
+    const elsewhere = mkdtempSync(join(fixture.path, '..', 'weft-storage-helper-elsewhere-'));
+    const temporaryDirectory = spyOn(nodeOperatingSystem, 'tmpdir').mockReturnValue(elsewhere);
+    try {
+      expect(() => fixture.cleanup()).toThrow(
+        'Disk-backed test fixture path must stay inside the system temporary directory',
+      );
+    } finally {
+      temporaryDirectory.mockRestore();
+      rmSync(elsewhere, { force: true, recursive: true });
+      fixture.cleanup();
+    }
   });
 });

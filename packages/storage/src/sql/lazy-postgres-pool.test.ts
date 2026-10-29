@@ -137,4 +137,19 @@ describe('createLazyPostgresPool', () => {
 
     expect(await rejectionOf(pool.query('SELECT 1'))).toBe(boom);
   });
+
+  it('end() during a failing driver load settles without throwing', async () => {
+    const boom = new Error('connection refused');
+    const pool = createLazyPostgresPool('postgresql://u:p@h/db', {
+      driverName: 'pg',
+      storageName: 'PostgresStorage',
+      loadPool: async () => {
+        throw boom;
+      },
+    });
+
+    const query = rejectionOf(pool.query('SELECT 1'));
+    expect(await pool.end()).toBeUndefined();
+    expect(await query).toBe(boom);
+  });
 });

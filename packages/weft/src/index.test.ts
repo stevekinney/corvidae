@@ -1,12 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
-import {
-  decodeStorageKeyComponent,
-  encodeStorageKeyComponent,
-  formatSortableStorageTimestamp,
-  MemoryStorage,
-  tryDecodeStorageKeyComponent,
-} from '@lostgradient/storage';
+import * as storageProtocol from '@lostgradient/storage';
+import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { workflow } from './core/types/workflow-function.ts';
 import {
@@ -22,13 +17,46 @@ import {
   WorkflowTeardownPendingError,
 } from './index.ts';
 
+/** The runtime exports that moved from Weft to `@lostgradient/storage` (COR-1766). */
+const MOVED_STORAGE_VALUES = [
+  'MAX_BATCH_OPERATIONS',
+  'MAX_SCAN_LIMIT',
+  'MemoryStorage',
+  'ScopedStorage',
+  'StorageBatchOperationLimitExceededError',
+  'assertDurableStorageForRecovery',
+  'assertStorageBatchOperationCount',
+  'copyTextKeyValueRowsToStorage',
+  'decodeStorageKeyComponent',
+  'encodeStorageKeyComponent',
+  'formatSortableStorageTimestamp',
+  'matchesScanOptions',
+  'requireStorageCapability',
+  'resolvePrefixRangeEnd',
+  'scopedStorage',
+  'storageBatch',
+  'storageConditionalBatch',
+  'storageCount',
+  'storageDeletePrefix',
+  'storageDeleteRange',
+  'storageHas',
+  'storageKeys',
+  'storageValuesEqual',
+  'textValueStore',
+  'tryDecodeStorageKeyComponent',
+] as const;
+
 describe('weft', () => {
-  it('exports storage key helpers used by workspace consumers', () => {
-    const encoded = encodeStorageKeyComponent('memory:tenant/item');
-    expect(encoded).toBe('memory%3Atenant%2Fitem');
-    expect(decodeStorageKeyComponent(encoded)).toBe('memory:tenant/item');
-    expect(tryDecodeStorageKeyComponent('%GG')).toBeNull();
-    expect(formatSortableStorageTimestamp(123)).toBe('0000000000000123');
+  it('leaves the storage protocol to @lostgradient/storage, at the root and in its storage barrel', async () => {
+    const root = await import('./index.ts');
+    const storageBarrel = await import('./storage/index.ts');
+    for (const name of MOVED_STORAGE_VALUES) {
+      expect(Reflect.has(storageProtocol, name), name).toBe(true);
+      expect(Reflect.has(root, name), name).toBe(false);
+      expect(Reflect.has(storageBarrel, name), name).toBe(false);
+    }
+    expect(Reflect.has(root, 'KEYS')).toBe(true);
+    expect(Reflect.has(storageBarrel, 'KEYS')).toBe(true);
   });
   it('exports normalizeScheduleSpec, which accepts what schedule() accepts and rejects what it rejects', () => {
     expect(normalizeScheduleSpec('*/5 * * * *')).toEqual({
@@ -42,10 +70,6 @@ describe('weft', () => {
 
   it('exports Engine class', () => {
     expect(Engine).toBeDefined();
-  });
-
-  it('exports MemoryStorage class', () => {
-    expect(MemoryStorage).toBeDefined();
   });
 
   it('exports timeline and replay types', () => {
