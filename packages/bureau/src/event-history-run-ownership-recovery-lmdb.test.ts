@@ -1,7 +1,8 @@
 /**
  * AB-359 — the LMDB variant of "bureau.eventHistory run ownership survives a
  * process restart" (the SQLite variant lives in `create-bureau.test.ts`,
- * alongside the rest of that suite's recovery tests).
+ * alongside the rest of that suite's recovery tests). Bureau A runs in a real
+ * child process that is killed with SIGKILL (COR-1767).
  *
  * It lives in its own file because it needs a real per-iteration poll delay.
  * A zero-delay macrotask poll (the kind `create-bureau.test.ts` uses) starves
@@ -9,15 +10,22 @@
  * delay instead (see `pollUntilWithRealDelay` below).
  */
 
+import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { stopWhen, createAgent } from '@lostgradient/operative';
+import { HANG_GUARD_MILLISECONDS, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { createBureau } from './create-bureau';
 import type { AgentDefinitions } from './agent-catalog';
+import { expectScenarioPassed, settleScenario } from './test/hoisted-scenario';
+import { createLmdbStorageFixture } from './test/storage-fixtures';
 import { waitUntil } from '@lostgradient/testing/wait-until';
+
+const CHILD = join(import.meta.dir, 'test', 'event-history-owner-crash-child.ts');
 
 function createNextTool() {
   return createTool({
@@ -134,109 +142,108 @@ function expectedRecoveredPage(runId: string, toolCallId: string): unknown {
   };
 }
 
-describe('bureau.eventHistory run ownership survives a process restart over LMDB (AB-359)', () => {
-  it('a run dispatched with a principal, recovered over LMDB in a fresh process, is readable by that principal and denied to another', async () => {
-    const databasePath = createTemporaryPath('bureau-event-history-owner-recovery-lmdb');
+/** What the crash child wrote once bureau A's run had durably committed step 0. */
+interface Marker {
+  readonly runId: string;
+  readonly contextId: string;
+}
 
-    let bureauAReachedStep1 = false;
-    const bureauA = await createBureau<AgentDefinitions>({
-      agents: {
-        default: createAgent({
-          generate: async ({ step }) => {
-            if (step === 0) {
-              return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-            }
-            bureauAReachedStep1 = true; // step 0's saveCursor has committed
-            return new Promise<never>(() => {}); // the "process" dies here
-          },
-          toolbox: createToolbox([createNextTool()]),
-          stopWhen: stopWhen.noToolCalls(),
-        }),
-      },
-      storage: { type: 'lmdb', path: databasePath },
-      durable: true,
-      durableOwnership: { ownership: 'none' },
+/**
+ * Bureau A runs in a child process the test kills with SIGKILL once step 0 is durably committed,
+ * so the store holds a genuinely non-terminal workflow and no live engine (COR-1767). Bureau B
+ * then opens the store through the fixture, whose handle is opened only after the child is gone:
+ * LMDB's single writer is never shared within one process.
+ */
+const outcome = await settleScenario(async (scope) => {
+  await using database = createLmdbStorageFixture();
+  const markerPath = `${database.path}-marker.json`;
+  const child = spawnWithHangGuard(['bun', CHILD, database.path, markerPath], {
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  scope.onHang(() => child.kill('SIGKILL'));
+  try {
+    await waitUntil(() => existsSync(markerPath) || child.exitCode !== null, {
+      message: 'the crash child to commit step 0',
+    });
+  } finally {
+    child.kill('SIGKILL');
+    await child.exited;
+  }
+  const stderr = await new Response(child.stderr).text();
+  // The test kills the child, so any other exit means bureau A never reached its crash point.
+  expect(child.signalCode ?? stderr).toBe('SIGKILL');
+  const run = JSON.parse(readFileSync(markerPath, 'utf8')) as Marker;
+  rmSync(markerPath, { force: true });
+
+  const bureauB = await createBureau<AgentDefinitions>({
+    agents: {
+      default: createAgent({
+        generate: async ({ step }) => ({ content: `B recovered step ${step}`, toolCalls: [] }),
+        toolbox: createToolbox([createNextTool()]),
+        stopWhen: stopWhen.noToolCalls(),
+      }),
+    },
+    storage: database.storage,
+    durable: true,
+    durableOwnership: { ownership: 'none' },
+  });
+
+  try {
+    // `undefined` (not yet registered by `reattachRecoveredRun`) is NOT
+    // a terminal status — keep polling for it exactly like `'running'`,
+    // rather than a bare `!== 'running'` check that would read
+    // "not yet recovered" as "already done" (copilot review, PR #564).
+    await pollUntilWithRealDelay(() => {
+      const status = bureauB.tasks.detail(run.runId)?.status;
+      return status !== undefined && status !== 'running';
     });
 
-    try {
-      const run = await bureauA.tasks.start('default', 'Attribute me to alice across a restart', {
-        principal: 'alice',
-      });
-      await pollUntilWithRealDelay(() => bureauAReachedStep1);
-      expect(bureauAReachedStep1).toBe(true);
-      // AB-207: deliberately not disposing bureauA — simulates a real crash
-      // (a genuinely non-terminal Weft workflow is what `recoverAll()` needs
-      // to surface for `reattachRecoveredRun` to run at all).
+    const recovered = bureauB.tasks.detail(run.runId);
+    expect(recovered).toMatchObject({
+      id: run.runId,
+      sessionId: run.contextId,
+      status: 'completed',
+      principal: 'alice',
+      steps: 1,
+      finishReason: 'stop-condition',
+      usage: { prompt: 0, completion: 0, total: 0 },
+    });
 
-      const bureauB = await createBureau<AgentDefinitions>({
-        agents: {
-          default: createAgent({
-            generate: async ({ step }) => ({ content: `B recovered step ${step}`, toolCalls: [] }),
-            toolbox: createToolbox([createNextTool()]),
-            stopWhen: stopWhen.noToolCalls(),
-          }),
-        },
-        storage: { type: 'lmdb', path: databasePath },
-        durable: true,
-        durableOwnership: { ownership: 'none' },
-      });
-
-      try {
-        // `undefined` (not yet registered by `reattachRecoveredRun`) is NOT
-        // a terminal status — keep polling for it exactly like `'running'`,
-        // rather than a bare `!== 'running'` check that would read
-        // "not yet recovered" as "already done" (copilot review, PR #564).
-        await pollUntilWithRealDelay(() => {
-          const status = bureauB.tasks.detail(run.id)?.status;
-          return status !== undefined && status !== 'running';
-        });
-
-        const recovered = bureauB.tasks.detail(run.id);
-        expect(recovered).toMatchObject({
-          id: run.id,
-          sessionId: run.contextId,
-          status: 'completed',
-          principal: 'alice',
-          steps: 1,
-          finishReason: 'stop-condition',
-          usage: { prompt: 0, completion: 0, total: 0 },
-        });
-
-        const asOwner = await bureauB.tasks.events(run.id, { principal: 'alice' });
-        if ('outcome' in asOwner) {
-          throw new Error(
-            `expected a page for the owning principal, got ${JSON.stringify(asOwner)}`,
-          );
-        }
-        const toolCallId = recoveredToolCallId(asOwner);
-        expect(toolCallId).toMatch(/^tool-call-/);
-        expect(asOwner as unknown).toEqual(expectedRecoveredPage(run.id, toolCallId));
-
-        const asStranger = await bureauB.tasks.events(run.id, { principal: 'mallory' });
-        expect(asStranger).toEqual({ outcome: 'not-found' });
-
-        // A trusted caller that omits `principal` entirely still bypasses
-        // the check, exactly as it does for a never-restarted run.
-        const trusted = await bureauB.tasks.events(run.id);
-        if ('outcome' in trusted) {
-          throw new Error(`expected a page for a trusted caller, got ${JSON.stringify(trusted)}`);
-        }
-        expect(trusted as unknown).toEqual(expectedRecoveredPage(run.id, toolCallId));
-
-        // A run id the recovered bureau never registered has no status;
-        // a trusted caller reading it gets an empty page, not another run's
-        // events.
-        expect(bureauB.tasks.detail('run-that-never-existed')).toBeUndefined();
-        expect(await bureauB.tasks.events('run-that-never-existed')).toEqual({
-          events: [],
-          hasMore: false,
-        });
-      } finally {
-        await bureauB.dispose();
-      }
-      await bureauA.dispose();
-    } finally {
-      removeTemporaryPath(databasePath);
+    const asOwner = await bureauB.tasks.events(run.runId, { principal: 'alice' });
+    if ('outcome' in asOwner) {
+      throw new Error(`expected a page for the owning principal, got ${JSON.stringify(asOwner)}`);
     }
+    const toolCallId = recoveredToolCallId(asOwner);
+    expect(toolCallId).toMatch(/^tool-call-/);
+    expect(asOwner as unknown).toEqual(expectedRecoveredPage(run.runId, toolCallId));
+
+    const asStranger = await bureauB.tasks.events(run.runId, { principal: 'mallory' });
+    expect(asStranger).toEqual({ outcome: 'not-found' });
+
+    // A trusted caller that omits `principal` entirely still bypasses
+    // the check, exactly as it does for a never-restarted run.
+    const trusted = await bureauB.tasks.events(run.runId);
+    if ('outcome' in trusted) {
+      throw new Error(`expected a page for a trusted caller, got ${JSON.stringify(trusted)}`);
+    }
+    expect(trusted as unknown).toEqual(expectedRecoveredPage(run.runId, toolCallId));
+
+    // A run id the recovered bureau never registered has no status;
+    // a trusted caller reading it gets an empty page, not another run's
+    // events.
+    expect(bureauB.tasks.detail('run-that-never-existed')).toBeUndefined();
+    expect(await bureauB.tasks.events('run-that-never-existed')).toEqual({
+      events: [],
+      hasMore: false,
+    });
+  } finally {
+    await bureauB.dispose();
+  }
+}, HANG_GUARD_MILLISECONDS);
+
+describe('bureau.eventHistory run ownership survives a process restart over LMDB (AB-359)', () => {
+  it('a run dispatched with a principal, recovered over LMDB in a fresh process, is readable by that principal and denied to another', () => {
+    expectScenarioPassed(outcome);
   });
 });

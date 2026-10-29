@@ -282,7 +282,9 @@ function register(fixture: BureauStorageFixture): () => void {
  * worker have finished.
  */
 export function undisposedStorageFixtures(): readonly string[] {
-  return [...registry()].map(({ fixture, createdBy }) => `${fixture.kind} fixture created at ${createdBy}`);
+  return [...registry()].map(
+    ({ fixture, createdBy }) => `${fixture.kind} fixture created at ${createdBy}`,
+  );
 }
 
 /** Options shared by the two persistent-backend fixture factories. */
@@ -307,7 +309,10 @@ export interface CreateLmdbStorageFixtureOptions extends CreatePersistentStorage
   readonly durability?: 'full' | 'relaxed';
 }
 
-function allocateFixturePath(kind: 'sqlite' | 'lmdb', runtime: RuntimeServices | undefined): string {
+function allocateFixturePath(
+  kind: 'sqlite' | 'lmdb',
+  runtime: RuntimeServices | undefined,
+): string {
   const label =
     runtime === undefined
       ? `bureau-${kind}-fixture`

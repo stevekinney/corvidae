@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent } from '@lostgradient/operative';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
-import { BunSQLiteStorage, KEYS } from '@lostgradient/weft';
+import { KEYS } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';
@@ -29,6 +29,8 @@ import { workflowFileText } from './testing/workflow-file-fixtures.test-support'
 import { workflowStepRunId } from './workflow-agent-step';
 import type { Bureau } from './types';
 import { workflowFileDirectory } from './sources/workflow-file-directory';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
+import type { Storage } from '@lostgradient/storage';
 
 const CHILD = join(import.meta.dir, 'test', 'workflow-file-crash-child.ts');
 const runtime = createDefaultRuntimeServices();
@@ -40,7 +42,7 @@ const agentStep = (message: string) => ({
   input: { agent: 'writer', message },
 });
 
-function openBureau(storagePath: string, workflows: string, messages: string[]): Promise<Bureau> {
+function openBureau(storage: Storage, workflows: string, messages: string[]): Promise<Bureau> {
   const agents: AgentDefinitions = {
     writer: createAgent({
       name: 'writer',
@@ -55,7 +57,7 @@ function openBureau(storagePath: string, workflows: string, messages: string[]):
   return createBureau<AgentDefinitions>({
     agents: { ...agents },
     workflowSource: workflowFileDirectory(workflows),
-    storage: { type: 'sqlite', path: storagePath },
+    storage,
     durable: true,
     durableOwnership: {
       ownership: 'workflow-lease',
@@ -90,9 +92,12 @@ async function parkedScenario(scope: ScenarioScope): Promise<void> {
   mkdirSync(workflows);
   const storagePath = join(directory, 'bureau');
   const markerPath = join(directory, 'marker.json');
+  // The child writes the store and is killed; this handle is opened only after it is gone.
+  const store = createSqliteStorageFixture({ path: storagePath });
   let bureau: Bureau | undefined;
   scope.onHang(async () => {
     await bureau?.shutdown();
+    await store.dispose();
     rmSync(directory, { recursive: true, force: true });
   });
   const trigger = { kind: 'schedule', spec: '1h' };
@@ -130,7 +135,7 @@ async function parkedScenario(scope: ScenarioScope): Promise<void> {
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, CLAIM_TTL_MS * 10));
 
     const messages: string[] = [];
-    bureau = await openBureau(storagePath, workflows, messages);
+    bureau = await openBureau(store.storage, workflows, messages);
     const report = await bureau.recovery();
     expect(report.perRunFailures).toEqual([]);
     expect(report.outcome).toBe('clean');
@@ -178,6 +183,7 @@ async function parkedScenario(scope: ScenarioScope): Promise<void> {
     expect(page.tasks).toEqual([]);
   } finally {
     const shutdown = await bureau?.shutdown();
+    await store.dispose();
     rmSync(directory, { recursive: true, force: true });
     if (shutdown !== undefined) expect(shutdown.unresolved).toBe(0);
   }
@@ -189,9 +195,12 @@ async function claimScenario(scope: ScenarioScope): Promise<void> {
   mkdirSync(workflows);
   const storagePath = join(directory, 'bureau');
   const markerPath = join(directory, 'marker.json');
+  // The child writes the store and is killed; this handle is opened only after it is gone.
+  const store = createSqliteStorageFixture({ path: storagePath });
   let bureau: Bureau | undefined;
   scope.onHang(async () => {
     await bureau?.shutdown();
+    await store.dispose();
     rmSync(directory, { recursive: true, force: true });
   });
   try {
@@ -205,17 +214,13 @@ async function claimScenario(scope: ScenarioScope): Promise<void> {
     await killChild(scope, 'claim', storagePath, workflows, markerPath);
     // The kill landed in the window: the step's run is claimed, and the engine has no workflow for it.
     const stepRunId = workflowStepRunId('claimed-run', 0);
-    const inspected = new BunSQLiteStorage(storagePath);
-    try {
-      expect(await inspected.get(`bureau-catalog-run:${stepRunId}`)).not.toBeNull();
-      expect(await inspected.get(KEYS.workflow(stepRunId))).toBeNull();
-    } finally {
-      inspected[Symbol.dispose]();
-    }
+    const inspected = store.storage;
+    expect(await inspected.get(`bureau-catalog-run:${stepRunId}`)).not.toBeNull();
+    expect(await inspected.get(KEYS.workflow(stepRunId))).toBeNull();
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, CLAIM_TTL_MS * 10));
 
     const messages: string[] = [];
-    bureau = await openBureau(storagePath, workflows, messages);
+    bureau = await openBureau(store.storage, workflows, messages);
     const report = await bureau.recovery();
     expect(report?.perRunFailures).toEqual([]);
     await bureau.tasks.wait('claimed-run');
@@ -232,6 +237,7 @@ async function claimScenario(scope: ScenarioScope): Promise<void> {
     expect(await bureau.internals.taskRegistry.record(stepRuns.items[0]!.id)).toBeUndefined();
   } finally {
     const shutdown = await bureau?.shutdown();
+    await store.dispose();
     rmSync(directory, { recursive: true, force: true });
     if (shutdown !== undefined) expect(shutdown.unresolved).toBe(0);
   }

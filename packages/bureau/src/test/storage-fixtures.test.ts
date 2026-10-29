@@ -3,14 +3,28 @@ import { dirname, join } from 'node:path';
 
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
-import { describe, expect, it } from 'bun:test';
+import type { Storage } from '@lostgradient/storage';
+import { BunSQLiteStorage } from '@lostgradient/weft';
+import { afterEach, describe, expect, it } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   createLmdbStorageFixture,
   createMemoryStorageFixture,
   createSqliteStorageFixture,
+  undisposedStorageFixtures,
+  type BureauStorageFixture,
 } from './storage-fixtures';
+
+/** Whether `storage` has been closed: every operation on a closed adapter throws or rejects. */
+async function isClosed(storage: Storage): Promise<boolean> {
+  try {
+    await storage.get('closed-probe');
+    return false;
+  } catch {
+    return true;
+  }
+}
 
 async function pathExists(path: string): Promise<boolean> {
   try {
@@ -30,30 +44,51 @@ interface VerbStorage {
 }
 
 describe('createMemoryStorageFixture', () => {
-  it('returns an owned Storage instance (AB-322: not a bare configuration) with no path', () => {
-    const fixture = createMemoryStorageFixture();
+  // Every memory fixture a test here creates is disposed after it, so the registry preload
+  // sees none left over; `dispose()` is idempotent, so a test that disposes its own is fine.
+  const created: BureauStorageFixture[] = [];
+  const memoryFixture = (...args: Parameters<typeof createMemoryStorageFixture>) => {
+    const fixture = createMemoryStorageFixture(...args);
+    created.push(fixture);
+    return fixture;
+  };
+  afterEach(async () => {
+    for (const fixture of created.splice(0)) await fixture.dispose();
+  });
 
-    // AB-322: `configuration` is now a real `Storage` instance this
-    // fixture constructed itself (wrapped with handle accounting), not a
-    // bare `{ type: 'memory' }` config — `get`/`put`/`delete` are callable
-    // directly, and `capabilities()` still reports the real MemoryStorage
-    // profile.
-    expect(typeof (fixture.configuration as { get?: unknown }).get).toBe('function');
-    expect(typeof (fixture.configuration as { put?: unknown }).put).toBe('function');
+  it('returns an owned Storage instance with no path', async () => {
+    const fixture = memoryFixture();
+
+    // AB-322: `storage` is a real `Storage` instance this fixture constructed itself (wrapped with
+    // handle accounting) — `get`/`put`/`delete` are callable directly.
+    expect(typeof (fixture.storage as { get?: unknown }).get).toBe('function');
+    expect(typeof (fixture.storage as { put?: unknown }).put).toBe('function');
+    expect(fixture.kind).toBe('memory');
     expect(fixture.path).toBeUndefined();
     expect(fixture.owned).toBe(true);
+    await fixture.dispose();
+  });
+
+  it('is one store: storage, open(), and reopen() all return the same instance', async () => {
+    await using fixture = memoryFixture();
+
+    await fixture.storage.put('k', new Uint8Array([1]));
+
+    expect(fixture.open()).toBe(fixture.storage);
+    expect(await fixture.reopen()).toBe(fixture.storage);
+    expect(await fixture.storage.get('k')).toEqual(new Uint8Array([1]));
   });
 
   it('is idempotent to dispose repeatedly', async () => {
-    const fixture = createMemoryStorageFixture();
+    const fixture = memoryFixture();
 
     await fixture.dispose();
     await fixture.dispose();
   });
 
   it('openHandles() is empty before any call and after every call settles', async () => {
-    const fixture = createMemoryStorageFixture();
-    const storage = fixture.configuration as {
+    const fixture = memoryFixture();
+    const storage = fixture.storage as {
       get(key: string): Promise<Uint8Array | null>;
       put(key: string, value: Uint8Array): Promise<void>;
     };
@@ -73,7 +108,7 @@ describe('createMemoryStorageFixture', () => {
       releaseGet = resolve;
     });
 
-    const fixture = createMemoryStorageFixture({
+    const fixture = memoryFixture({
       wrapStorage: (storage) =>
         new Proxy(storage, {
           get(target, property, receiver) {
@@ -85,7 +120,7 @@ describe('createMemoryStorageFixture', () => {
           },
         }),
     });
-    const storage = fixture.configuration as { get(key: string): Promise<Uint8Array | null> };
+    const storage = fixture.storage as { get(key: string): Promise<Uint8Array | null> };
 
     const getPromise = storage.get('key');
     expect(fixture.openHandles()).toEqual(['get#1']);
@@ -96,7 +131,7 @@ describe('createMemoryStorageFixture', () => {
   });
 
   it('openHandles() clears a call that REJECTS too, not only one that resolves', async () => {
-    const fixture = createMemoryStorageFixture({
+    const fixture = memoryFixture({
       wrapStorage: (storage) =>
         new Proxy(storage, {
           get(target, property, receiver) {
@@ -107,7 +142,7 @@ describe('createMemoryStorageFixture', () => {
           },
         }),
     });
-    const storage = fixture.configuration as { get(key: string): Promise<Uint8Array | null> };
+    const storage = fixture.storage as { get(key: string): Promise<Uint8Array | null> };
 
     let caught: unknown;
     try {
@@ -122,7 +157,7 @@ describe('createMemoryStorageFixture', () => {
 
   /** A fixture whose `verb` is replaced by `replacement`, through `wrapStorage`. */
   function fixtureWithVerb(verb: string, replacement: (...args: unknown[]) => unknown) {
-    const fixture = createMemoryStorageFixture({
+    const fixture = memoryFixture({
       wrapStorage: (storage) =>
         new Proxy(storage, {
           get(target, property, receiver) {
@@ -131,7 +166,7 @@ describe('createMemoryStorageFixture', () => {
           },
         }),
     });
-    return { fixture, storage: fixture.configuration as unknown as VerbStorage };
+    return { fixture, storage: fixture.storage as unknown as VerbStorage };
   }
 
   /** A thenable that is not a native Promise and settles only when told to. */
@@ -389,6 +424,19 @@ describe('createMemoryStorageFixture', () => {
   });
 });
 
+describe('the fixture registry', () => {
+  it('holds a fixture from creation until it is disposed, naming the file that created it', async () => {
+    const fixture = createSqliteStorageFixture();
+    const before = undisposedStorageFixtures();
+
+    expect(before.some((entry) => entry.includes('storage-fixtures.test.ts'))).toBe(true);
+
+    await fixture.dispose();
+
+    expect(undisposedStorageFixtures()).toHaveLength(before.length - 1);
+  });
+});
+
 describe('createSqliteStorageFixture', () => {
   it('allocates a unique path in a fresh temporary directory, named from the runtime identifier sequence', async () => {
     const runtime = createManualRuntimeServices();
@@ -401,7 +449,7 @@ describe('createSqliteStorageFixture', () => {
     expect(first.path).not.toBe(second.path);
     expect(first.path).toContain('storage-fixture-1');
     expect(second.path).toContain('storage-fixture-2');
-    expect(first.configuration).toEqual({ type: 'sqlite', path: first.path! });
+    expect(first.kind).toBe('sqlite');
     expect(first.owned).toBe(true);
     expect(dirname(first.path!)).not.toBe(dirname(second.path!));
 
@@ -448,28 +496,67 @@ describe('createSqliteStorageFixture', () => {
     await fixture.dispose();
   });
 
-  it('never deletes a caller-supplied path', async () => {
+  it('never deletes a caller-supplied path, and closes the handles it opened there', async () => {
     const runtime = createManualRuntimeServices();
-    const callerFixture = createSqliteStorageFixture();
-    const callerPath = callerFixture.path;
-    await writeFile(callerPath, '');
+    const callerPath = createTemporaryPath('bureau-caller-owned-sqlite', '.sqlite');
 
     try {
       const fixture = createSqliteStorageFixture({ runtime, path: callerPath });
 
       expect(fixture.owned).toBe(false);
       expect(fixture.path).toBe(callerPath);
-      expect(fixture.configuration).toEqual(callerFixture.storage);
+      const handle = fixture.storage;
+      await handle.put('k', new Uint8Array([1]));
 
       await fixture.dispose();
 
       expect(await pathExists(callerPath)).toBe(true);
+      expect(await isClosed(handle)).toBe(true);
     } finally {
-      await callerFixture.dispose();
+      removeTemporaryPath(callerPath);
     }
   });
 
-  it('openHandles() always returns empty — this fixture never opens its own handle (see the module doc)', async () => {
+  it('opens nothing until storage is first read, then returns that handle until reopen()', async () => {
+    await using fixture = createSqliteStorageFixture();
+
+    expect(await pathExists(fixture.path)).toBe(false);
+    const first = fixture.storage;
+    expect(await pathExists(fixture.path)).toBe(true);
+    expect(fixture.storage).toBe(first);
+    expect(first).toBeInstanceOf(BunSQLiteStorage);
+  });
+
+  it('reopen() closes the previous handle and returns a new one on the same store', async () => {
+    await using fixture = createSqliteStorageFixture();
+    const first = fixture.storage;
+    await first.put('k', new Uint8Array([7]));
+
+    const second = await fixture.reopen();
+
+    expect(second).not.toBe(first);
+    expect(fixture.storage).toBe(second);
+    expect(await isClosed(first)).toBe(true);
+    expect(await second.get('k')).toEqual(new Uint8Array([7]));
+  });
+
+  it('open() adds a handle on the same store, and dispose() closes every handle', async () => {
+    const fixture = createSqliteStorageFixture();
+    const first = fixture.storage;
+    const additional = fixture.open();
+    await first.put('k', new Uint8Array([3]));
+
+    expect(additional).not.toBe(first);
+    expect(await additional.get('k')).toEqual(new Uint8Array([3]));
+
+    await fixture.dispose();
+
+    expect(await isClosed(first)).toBe(true);
+    expect(await isClosed(additional)).toBe(true);
+    expect(() => fixture.open()).toThrow(/disposed/);
+  });
+
+  it('openHandles() always returns empty — only the memory fixture accounts for calls (see the module doc)', async () => {
     const runtime = createManualRuntimeServices();
     const fixture = createSqliteStorageFixture({ runtime });
 
@@ -487,11 +574,8 @@ describe('createLmdbStorageFixture', () => {
     const second = createLmdbStorageFixture({ runtime });
 
     expect(first.path).not.toBe(second.path);
-    expect(first.configuration).toEqual({
-      type: 'lmdb',
-      path: first.path!,
-      durability: 'full',
-    });
+    expect(first.kind).toBe('lmdb');
+    expect(first.storage.capabilities().persistence).toBe('local');
     expect(first.owned).toBe(true);
 
     await first.dispose();
@@ -504,11 +588,8 @@ describe('createLmdbStorageFixture', () => {
       durability: 'relaxed',
     });
 
-    expect(fixture.configuration).toEqual({
-      type: 'lmdb',
-      path: fixture.path!,
-      durability: 'relaxed',
-    });
+    // A relaxed-durability LMDB store reports itself as ephemeral (Weft's LMDB adapter).
+    expect(fixture.storage.capabilities().persistence).toBe('ephemeral');
 
     await fixture.dispose();
   });
@@ -553,7 +634,20 @@ describe('createLmdbStorageFixture', () => {
     await fixture.dispose();
   });
 
-  it('openHandles() always returns empty — this fixture never opens its own handle (see the module doc)', async () => {
+  it('refuses open(): one LMDB handle at a time, so reopen() closes the previous one first', async () => {
+    await using fixture = createLmdbStorageFixture();
+    const first = fixture.storage;
+    await first.put('k', new Uint8Array([9]));
+
+    expect(() => fixture.open()).toThrow(/one handle at a time/);
+    const second = await fixture.reopen();
+
+    expect(second).not.toBe(first);
+    expect(await isClosed(first)).toBe(true);
+    expect(await second.get('k')).toEqual(new Uint8Array([9]));
+  });
+
+  it('openHandles() always returns empty — only the memory fixture accounts for calls (see the module doc)', async () => {
     const runtime = createManualRuntimeServices();
     const fixture = createLmdbStorageFixture({ runtime });
 
