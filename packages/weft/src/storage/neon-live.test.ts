@@ -1,10 +1,10 @@
-import { neonConfig } from '@neondatabase/serverless';
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { createNeonTestProxy } from './neon-proxy.test-support.ts';
 import {
   openPostgresTestDatabase,
   requireOpenedPostgresTestDatabase,
-} from './postgres-server.test-support.ts';
+} from '@lostgradient/testing/postgres-server';
+import { neonConfig } from '@neondatabase/serverless';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import { createNeonTestProxy } from './neon-proxy.test-support.ts';
 
 import { restoreWorkflowCatalog } from '../core/catalog/storage-io.ts';
 import { WorkflowCatalog } from '../core/catalog/workflow-catalog.ts';

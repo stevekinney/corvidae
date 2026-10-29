@@ -48,3 +48,11 @@ test('the browser smoke flag is read from WEFT_BROWSER_SMOKE', () => {
   setEnvironment('WEFT_BROWSER_SMOKE', undefined);
   expect(environmentConfiguration().weftBrowserSmoke).toBeUndefined();
 });
+
+test('the supplied PostgreSQL URL is read from WEFT_TEST_POSTGRES_URL', () => {
+  setEnvironment('WEFT_TEST_POSTGRES_URL', 'postgres://localhost:5432/weft');
+  expect(environmentConfiguration().weftTestPostgresUrl).toBe('postgres://localhost:5432/weft');
+
+  setEnvironment('WEFT_TEST_POSTGRES_URL', undefined);
+  expect(environmentConfiguration().weftTestPostgresUrl).toBeUndefined();
+});

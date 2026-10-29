@@ -1,8 +1,8 @@
-import { afterAll, describe, expect, it } from 'bun:test';
 import {
   openPostgresTestDatabase,
   requireOpenedPostgresTestDatabase,
-} from './postgres-server.test-support.ts';
+} from '@lostgradient/testing/postgres-server';
+import { afterAll, describe, expect, it } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createPGliteTestFixture } from './pglite.test-support.ts';
