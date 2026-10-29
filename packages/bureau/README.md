@@ -58,7 +58,6 @@ Declare `"@lostgradient/bureau": "workspace:*"` in the consuming workspace's dep
   - [Quiescence report and `close()`](#quiescence-report-and-close)
   - [`assembleReproductionArtifact(harness, recorder, options)`](#assemblereproductionartifactharness-recorder-options)
   - [Bureau-scoped fault-plan vocabulary and selectors](#bureau-scoped-fault-plan-vocabulary-and-selectors)
-  - [Storage fixtures](#storage-fixtures)
 - [Development](#development)
 
 ## Overview
@@ -1974,13 +1973,7 @@ const discoveryTool = createAgentDiscoveryTool(bureau.agents);
 ## Test utilities
 
 ```typescript
-import {
-  createBureau,
-  createBureauTestHarness,
-  createLmdbStorageFixture,
-  createMemoryStorageFixture,
-  createSqliteStorageFixture,
-} from '@lostgradient/bureau';
+import { createBureau, createBureauTestHarness } from '@lostgradient/bureau';
 import { waitForCondition, waitForRunState } from '@lostgradient/operative';
 ```
 
@@ -1988,20 +1981,20 @@ import { waitForCondition, waitForRunState } from '@lostgradient/operative';
 
 ### `createBureauTestHarness(options)`
 
-`createBureauTestHarness` composes a real `Bureau` over an injected `ManualRuntimeServices` (`options.runtime`, which defaults to a fresh one) and an owned `BureauStorageFixture` (`options.storage`, required). The returned promise resolves once boot recovery has completed. Every other `BureauOptions` field passes through unchanged. `createManualRuntimeServices` and the `ManualRuntimeServices` type are re-exported from `@lostgradient/bureau` and `@lostgradient/operative`. Their source owner, `@lostgradient/lifecycle`, is a private workspace inlined into both, so a consumer never imports it directly.
+`createBureauTestHarness` composes a real `Bureau` over an injected `ManualRuntimeServices` (`options.runtime`, which defaults to a fresh one) and an owned storage fixture (`options.storage`, required: a `BureauTestHarnessOptions['storage']`). Bureau's own tests build that fixture from `src/test/storage-fixtures.ts`, which the package entry does not export. The returned promise resolves once boot recovery has completed. Every other `BureauOptions` field passes through unchanged. `createManualRuntimeServices` and the `ManualRuntimeServices` type are re-exported from `@lostgradient/bureau` and `@lostgradient/operative`. Their source owner, `@lostgradient/lifecycle`, is a private workspace inlined into both, so a consumer never imports it directly.
 
 ```typescript
 import { createAgent, type GenerateFunction } from '@lostgradient/operative';
 import {
   createBureauTestHarness,
   createManualRuntimeServices,
-  createSqliteStorageFixture,
+  type BureauTestHarnessOptions,
 } from '@lostgradient/bureau';
 
 declare const myGenerate: GenerateFunction;
+declare const storage: BureauTestHarnessOptions['storage'];
 
 const runtime = createManualRuntimeServices();
-const storage = createSqliteStorageFixture({ runtime });
 
 const harness = await createBureauTestHarness({
   agents: { worker: createAgent({ generate: myGenerate }) },
@@ -2038,7 +2031,7 @@ The bounded wait in `shutdown({ timeoutMilliseconds })` sleeps on the Bureau's o
 
 A tenth row, `abortingRuns`, is a `readonly { runId: string; since: number }[]` sourced from `bureau.internals.abortingTasks()`. It lists the runs a task's cancellation asked to abort and that have not closed, and `since` is the `RuntimeServices.clock.now()` timestamp of the first request. Unlike the nine rows above, a non-empty `abortingRuns` folds into `quiescent` directly (`quiescent = leaked.length === 0 && abortingRuns.length === 0`) rather than through `leaked`: a run whose `ActiveRun.closed()` never settles after its cancellation stays listed for the life of the process, which is exactly the leak this row exists to surface. `BureauQuiescenceError`'s message names each entry under an `abortingRuns:` heading when the report is non-quiescent for this reason.
 
-Of the nine, `activeEvaluations`, `pendingAuditWrites`, and `openStorageResources` read empty on the common path, because nothing survives an unbounded `bureau.shutdown()`, which awaits each owner's real drain. They populate once a fault plan forces a genuine leftover past a bounded `shutdown({ timeoutMilliseconds })`. `activeEvaluations` comes from `bureau.internals.onlineEvalSampler.activeEvaluationSnapshots()`, `pendingAuditWrites` from `harness.runtime.outstandingDeferred()` filtered to the `'audit-write'` label, and `openStorageResources` from the memory storage fixture's own call accounting (`BureauStorageFixture.openHandles()`; the sqlite and lmdb fixtures never open a handle of their own, so theirs always reads `[]`). The first two are read after `bureau.shutdown()` returns but are never folded into `leaked`: the owner each names (`online-evals`, `audit-trail`) is already reported under `incomplete` when a bounded `shutdown()` times out on it, and promoting the same fact into `leaked` would report it twice. `openStorageResources` is folded into `leaked`, because nothing in `bureau.shutdown()`'s owner accounting shadows a lingering low-level storage call. `incomplete` carries any owner `shutdown({ timeoutMilliseconds })` classified `'unresolved'`, reported distinctly from `leaked`.
+Of the nine, `activeEvaluations`, `pendingAuditWrites`, and `openStorageResources` read empty on the common path, because nothing survives an unbounded `bureau.shutdown()`, which awaits each owner's real drain. They populate once a fault plan forces a genuine leftover past a bounded `shutdown({ timeoutMilliseconds })`. `activeEvaluations` comes from `bureau.internals.onlineEvalSampler.activeEvaluationSnapshots()`, `pendingAuditWrites` from `harness.runtime.outstandingDeferred()` filtered to the `'audit-write'` label, and `openStorageResources` from the memory storage fixture's own call accounting (`openHandles()`; the sqlite and lmdb fixtures never open a handle of their own, so theirs always reads `[]`). The first two are read after `bureau.shutdown()` returns but are never folded into `leaked`: the owner each names (`online-evals`, `audit-trail`) is already reported under `incomplete` when a bounded `shutdown()` times out on it, and promoting the same fact into `leaked` would report it twice. `openStorageResources` is folded into `leaked`, because nothing in `bureau.shutdown()`'s owner accounting shadows a lingering low-level storage call. `incomplete` carries any owner `shutdown({ timeoutMilliseconds })` classified `'unresolved'`, reported distinctly from `leaked`.
 
 ```typescript
 import type { BureauTestHarness } from '@lostgradient/bureau';
@@ -2131,24 +2124,6 @@ import {
 ```
 
 `BureauFaultOperation` widens `@lostgradient/operative`'s `FaultOperation` with two boundaries Operative cannot see: `'webhook-delivery'` and `'audit-write'`. `BureauFaultPlanEntry` and `BureauFaultPlan` mirror Operative's `FaultPlanEntry` and `FaultPlan` with that widened operation, and every other fault type (`FaultBoundary`, `FaultOccurrence`, `FiredFault`, and so on) is re-exported from Operative verbatim, so the repository has exactly one `FaultBoundary` union. No engine executes a `BureauFaultPlan` yet. What ships is the type vocabulary plus two selectors that resolve a Bureau-scoped target to exactly one concrete resource and throw `BureauFaultSelectorResolutionError` otherwise: `selectWebhookDeliveryFaultTarget(deliveries, deliveryId)` (by `WebhookDeliveryRecord.id`, from `WebhookNotifier.listDeliveries()`) and `selectAuditWriteFaultTarget(records, auditEntryKey)` (by the audit entry key that `encodeAuditEntryKey`, also exported from this package's root, builds from a queried `AuditRecord`'s `timestampMs`, `sequence`, and `runId`).
-
-### Storage fixtures
-
-```typescript
-import {
-  createLmdbStorageFixture,
-  createMemoryStorageFixture,
-  createSqliteStorageFixture,
-} from '@lostgradient/bureau';
-```
-
-Each factory returns a `BureauStorageFixture`: `{ kind, path?, owned, storage, open(), reopen(), openHandles(), dispose(), [Symbol.asyncDispose] }`. Pass `storage` to `BureauOptions.storage`. Bureau never closes a storage it was given, so the fixture does: `dispose()` (or `await using`) closes every handle it opened and removes the files it allocated. `createSqliteStorageFixture` takes `{ runtime?, path? }`, and `createLmdbStorageFixture` also accepts `durability?: 'full' | 'relaxed'` and defaults to production-equivalent `full`.
-
-Creating a fixture opens nothing. `storage` opens the handle on first access and returns the same one until `reopen()`, so a crash test can pass the fixture's `path` to a child process that writes and is killed, and open its own handle only afterwards. `reopen()` closes the current handle and opens a new one on the same store, for a Bureau started after the previous one shut down. `open()` adds a handle for a test that runs two Bureaus at once; the LMDB fixture refuses it, because LMDB's single writer must not be shared within one process.
-
-Omit `path` for a fresh, unique path inside a new `mkdtemp` directory under the operating system's temporary directory, labeled with `runtime.identifiers.next('storage-fixture')` when a `runtime` is given (`owned: true`). Supply your own `path` for a fixture that never allocates or deletes anything (`owned: false`); `dispose()` then only closes its handles. Every fixture is registered on `globalThis` until it is disposed, and Bureau's test preload fails the run, naming the file that created it, when one is left undisposed.
-
-`createMemoryStorageFixture(options?: { wrapStorage?: (storage: Storage) => Storage })` wraps one `MemoryStorage` instance with call accounting; `storage`, `open()`, and `reopen()` all return it. `openHandles(): readonly string[]` names every call (`get`, `put`, `delete`, `scan`, `batch`, and so on) the fixture has seen start but not finish. It is empty on the happy path and a real diagnostic once something blocks a call deterministically, such as `createFaultEngine(...).wrapStorage` passed through `options.wrapStorage` before the fixture's own accounting wraps the result. The SQLite and LMDB fixtures return `[]`.
 
 ## Development
 

@@ -487,18 +487,6 @@ export type {
 } from './test/reproduction-artifact';
 export { assembleReproductionArtifact, locateWorkspaceRoot } from './test/reproduction-artifact';
 export type {
-  BureauStorageFixture,
-  CreateLmdbStorageFixtureOptions,
-  CreateMemoryStorageFixtureOptions,
-  CreatePersistentStorageFixtureOptions,
-  PersistentBureauStorageFixture,
-} from './test/storage-fixtures';
-export {
-  createLmdbStorageFixture,
-  createMemoryStorageFixture,
-  createSqliteStorageFixture,
-} from './test/storage-fixtures';
-export type {
   AbortingRun,
   Bureau,
   BureauChildrenOptions,
