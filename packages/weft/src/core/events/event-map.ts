@@ -20,6 +20,7 @@ import type {
 } from './catalog-events.ts';
 import type {
   LeaseHealthChangedEvent,
+  QueueDepthChangedEvent,
   RealmStateChangedEvent,
   StreamChunkEvent,
   WorkerDeploymentChangedEvent,
@@ -139,6 +140,7 @@ export type WeftEventMap = {
   'worker:registration-rejected': WorkerRegistrationRejectedEvent;
   'worker:deployment-changed': WorkerDeploymentChangedEvent;
   'stream:chunk': StreamChunkEvent;
+  'queue:depth-changed': QueueDepthChangedEvent;
 };
 
 /**

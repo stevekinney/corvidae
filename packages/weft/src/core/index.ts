@@ -93,6 +93,7 @@ export {
   ConstraintViolatedEvent,
   DevelopmentWarningEvent,
   LeaseHealthChangedEvent,
+  QueueDepthChangedEvent,
   RealmStateChangedEvent,
   RemoteActivityCancellationRequestedEvent,
   RemoteActivityQueuedEvent,

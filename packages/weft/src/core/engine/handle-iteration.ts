@@ -111,6 +111,7 @@ const WEFT_EVENT_KINDS = {
   'worker:registration-rejected': true,
   'worker:deployment-changed': true,
   'stream:chunk': true,
+  'queue:depth-changed': true,
 } as const satisfies Record<keyof WeftEventMap, true>;
 
 // The terminal lifecycle types come from the shared source of truth so the

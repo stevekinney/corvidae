@@ -319,11 +319,12 @@ export function buildServerContext(
     ...(options.routingPolicy !== undefined ? { policy: options.routingPolicy } : {}),
     dispatchEvent: (event) => options.engine.dispatchEvent(event),
   });
-  const taskQueue = new TaskQueue(
-    options.schedulingPolicy !== undefined
+  const taskQueue = new TaskQueue({
+    ...(options.schedulingPolicy !== undefined
       ? { schedulingPolicy: options.schedulingPolicy }
-      : undefined,
-  );
+      : {}),
+    dispatchEvent: (event) => options.engine.dispatchEvent(event),
+  });
   const workerDeploymentCatalog = new WorkerDeploymentCatalog(options.engine.storage);
   // Registry-erase the widened `ServeOptions.engine` back to the plain
   // default `Engine` these internal helpers expect — see the field's JSDoc /
