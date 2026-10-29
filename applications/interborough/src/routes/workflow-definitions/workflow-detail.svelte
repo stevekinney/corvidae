@@ -451,6 +451,7 @@
           {details}
           filePath={file?.state === 'ready' ? path : undefined}
           {document}
+          mode={hostPaths.data?.mode}
         />
       </Collapsible>
     {/if}

@@ -29,7 +29,7 @@ bun run --filter=@lostgradient/interborough typecheck
 
 `src/host/host.ts` starts everything:
 
-- **State** lives in Bungalow's directory, `~/.interborough` or `INTERBOROUGH_HOME`. The Bureau runs on Bun SQLite at Bungalow's database path with `BureauOptions.id` set to Bungalow's `deploymentId`, so a restart keeps its tasks, sessions, schedules, and goals. The host takes Bungalow's single-instance lock, so a second host on the same directory refuses to start.
+- **State** lives in Bungalow's directory, `~/.interborough` or `INTERBOROUGH_HOME`, or in Postgres and S3 (see "Running on Postgres and S3"). Locally the Bureau runs on Bun SQLite at Bungalow's database path with `BureauOptions.id` set to Bungalow's `deploymentId`, so a restart keeps its tasks, sessions, schedules, and goals. The host takes Bungalow's single-instance lock, so a second host on the same directory refuses to start.
 - **One caller.** There is no sign-in, and the host binds `127.0.0.1` only. Every request acts as `anonymous:local`, which holds every Weft scope and every Bureau scope. `weft.system.principal` reports that subject, and the shell names it in its top bar.
 - **Routes** on the public origin:
   - `/api/*`, `/v1/*`, `/jsonrpc`, `/mcp`, and Weft's discovery documents are Weft's engine operations.
@@ -40,6 +40,45 @@ bun run --filter=@lostgradient/interborough typecheck
 - **Seeded agents call no model.** Every seeded agent answers from `createScriptedGenerate`, whatever providers are configured. See `src/host/seed.ts`: `assistant`, `tool-runner` (a read-only tool and a mutating tool held for approval), `request-human-input` (free text, no schema), `echo` (repeats the text of the last message it was sent, so a quoted reply shows exactly what the agent received), `model-switcher` (a selectable agent over `claude-sonnet-5` and `claude-haiku-4-5`, whose reply names the model that answered; the host offers a model only when its provider is configured, so Chat shows the picker on a host that has both and none on a fresh one), and `internal`, which the host does not publish, plus one schedule and one goal. `tool-runner` answers from where the turn has got to, so the run that follows an approval reports what the refund came to, and each turn's calls carry the turn's number. Seeding creates the schedule and the goal once. `HostOptions.extraAgents` adds agents and their published names without changing the seed, which is how the end-to-end suite brings an agent that waits on a barrier. Real models come in through the catalog below.
 
 The only module that reads the environment is `src/host/environment-configuration.ts`.
+
+## Running on Postgres and S3
+
+By default the state is a directory on one machine. Set two variables and it is a PostgreSQL database and an S3-compatible bucket instead, so several hosts can run on the same state at once. A rolling deploy is the case this is for: the old release and the new one are both up for a while, they share one deployment, and a run the old release parked is finished by the new one. Remote mode is chosen only by the variables below, which the host reads from its environment (through Bungalow, `@lostgradient/bungalow`). An empty variable counts as unset, and `INTERBOROUGH_HOME` is not read in remote mode. Setting exactly one of the two selecting variables is an error that names the other.
+
+| Variable | What it is |
+| --- | --- |
+| `INTERBOROUGH_DATABASE_URL` | The Postgres connection URL. Selects remote mode, with `INTERBOROUGH_BUCKET`. It carries the password, so keep it out of logs and commands. |
+| `INTERBOROUGH_BUCKET` | The bucket that holds the configuration, the agent and workflow definitions, and the deployment ID. Selects remote mode. |
+| `INTERBOROUGH_BUCKET_PREFIX` | Optional. A folder in the bucket, such as `production`, so several installations share one bucket. A leading `/` is dropped and a trailing `/` is added. A prefix with an empty, `.`, or `..` segment is refused. |
+| `S3_ENDPOINT` | The S3 endpoint URL. Required. |
+| `S3_REGION` | The region. Required. |
+| `S3_ACCESS_KEY_ID` | The access key ID. Required. |
+| `S3_SECRET_ACCESS_KEY` | The secret access key. Required. |
+| `S3_SESSION_TOKEN` | Optional. A session token for temporary credentials. Bungalow refuses to open when the host's process itself carries an `AWS_SESSION_TOKEN` or `S3_SESSION_TOKEN` (an aws-vault or SSO shell, say) and the environment given to the host sets no `S3_SESSION_TOKEN`, because Bun would sign every request with the ambient token. |
+| `INTERBOROUGH_SECRET_APPROVAL_SECRET` | Required in remote mode. The secret that signs the approvals the seeded `tool-runner` raises. Give every host the same value: an approval one host signed must verify on another. A host without it does not start (the error names this variable, and nothing is listening yet). Locally the host creates it on first use. |
+| `INTERBOROUGH_SECRET_ANTHROPIC_API_KEY`, `INTERBOROUGH_SECRET_OPENAI_API_KEY`, `INTERBOROUGH_SECRET_GEMINI_API_KEY` | A model provider's API key, in place of the file in `secrets/`. |
+| `INTERBOROUGH_SECRET_TYPESAFE_API_KEY` | The optional TypeSafe key for Bureau's typed decisions (see "Decisions"). |
+
+Interborough reads none of the `S3_*` variables itself. Bungalow builds the `Bun.S3Client` from them and the host hands it to the definition sources. `bun run dev` passes all of these variables through Turborepo, so `bun run dev` can start remote mode.
+
+**The bucket layout.** With the prefix `P` (empty, or ending in `/`), the bucket holds:
+
+| Object or folder | What it is |
+| --- | --- |
+| `P` + `deployment-id` | The deployment's identifier, written once with `If-None-Match: *`. Hosts that start together agree on the one value the store kept. Do not edit it. |
+| `P` + `configuration.json` | The model providers (see "Model providers"). A missing object means no providers. Put it there yourself; the application cannot add a provider. |
+| `P` + `agents/<id>.md` | One agent per object, in the Markdown file format of "Agent files". The agent editor writes here. |
+| `P` + `workflows/<id>.json` | One workflow per object, in the format of "Workflow files". The Workflows pages write here. |
+
+The Settings page and the editors show these as `s3://<bucket>/<prefix>...`, and show a provider's key as its variable name. They never show the database URL or an S3 credential, and neither does `/host/paths` or the `database` the host reports (a Postgres server's host, port, and database name).
+
+**Durability is locked.** In remote mode the host locks the `durableOwnership.ownership` setting, which the Settings page shows under Durability as locked and disabled. Several hosts share a run only because each holds a lease on the runs it works on. Turning that off (`none`) from one host's Settings page would make every host run every task, so the setting stays at Bureau's lease default and a stored change is refused. A local host keeps the control editable. To make a run one host detached run on another host, the other host needs no restart and no call: it claims the run on its next claim-renewal tick, at most 5 seconds (`workflowClaimRenewIntervalMs`) after the first host closes and releases its claims. It is the renewal interval, not the claim TTL, so nothing waits for a crashed host's claim to expire in this path.
+
+**What polling costs.** The agent and workflow sources have no change feed to subscribe to, so each polls its prefix. A tick lists the prefix twice (the poll's scan, then Bureau's `load()`), so Bureau's default of one second would send about 172,800 `LIST` requests a day per source per host (two sources per host: agents and workflows). The host sets the interval to 30 seconds (`REMOTE_POLL_INTERVAL_MILLISECONDS` in `src/host/locations.ts`), about 5,760 requests a day per source per host. A change made from the application applies at once; a change made in the bucket by hand shows up within 30 seconds. Count the hosts you overlap when you read a bill: a rolling deploy doubles it for a while.
+
+**Conditional writes and deletes.** The sources write and delete with `If-Match` on the ETag they just read, so two hosts or a host and a person do not overwrite each other. The in-process S3 server the tests run against (`@lostgradient/testing/s3-server`, modeled on a Railway bucket) honors `If-Match` on `DELETE`, and `host-remote.test.ts` probes it. AWS S3 honors it on `DELETE` only for directory buckets, so on a general-purpose bucket a delete is unconditional after the source's own hash check. Probe the store you use before relying on it.
+
+**The overlap test.** `src/host/remote-overlap.slow.test.ts` starts two hosts at once on one fresh Postgres database and one bucket. Both define an agent that calls a counting tool and then `requestHumanInput`. It asserts that both hosts start, that one seeded schedule exists, that both report one `deploymentId`, that a task started on the first parks with the counter at 1, that after the first closes the review is resolved through the second and the task completes, and that the counter is still 1. Run it with `bun run --filter=@lostgradient/interborough test:slow`. It needs `initdb` and `pg_ctl` on `PATH` or `WEFT_TEST_POSTGRES_URL`, and skips without either.
 
 ## Model providers
 
@@ -149,7 +188,7 @@ The Playwright suite runs a second host (`E2E_BUREAU_PORT`, `tests/e2e/e2e-serve
 
 ## Settings
 
-`/settings` is the Bureau's runtime settings (`bureau.settings.get`, `schema`, and `update`), drawn from the schema the Bureau publishes, so a key it adds appears with no change here. Which control a key gets is read from the shape of its schema node (`src/routes/settings/settings-controls.ts`): a Cinder switch for a boolean, a select for an enum, an input for a string, a number input for a number; a select between the literals and a number input for each number of a union such as the retention windows; a switch and a JSON editor for `tools.humanInput`; and a JSON editor for any other object (`modelPolicy`, `engine.retention`, `engine.history`, `engine.payloadSize`). A shape nothing reads falls to the JSON editor, so no key is unsupported. Keys are grouped by their first segment, with `durable`, `maintenance`, `durableOwnership.ownership`, and `workflowVersion` under Durability. Each key says whether it applies live or needs a restart, and whether a stored value waits for one; a key the deployment locked (`HostOptions.settings.locked`; a person's host locks none) is shown and disabled.
+`/settings` is the Bureau's runtime settings (`bureau.settings.get`, `schema`, and `update`), drawn from the schema the Bureau publishes, so a key it adds appears with no change here. Which control a key gets is read from the shape of its schema node (`src/routes/settings/settings-controls.ts`): a Cinder switch for a boolean, a select for an enum, an input for a string, a number input for a number; a select between the literals and a number input for each number of a union such as the retention windows; a switch and a JSON editor for `tools.humanInput`; and a JSON editor for any other object (`modelPolicy`, `engine.retention`, `engine.history`, `engine.payloadSize`). A shape nothing reads falls to the JSON editor, so no key is unsupported. Keys are grouped by their first segment, with `durable`, `maintenance`, `durableOwnership.ownership`, and `workflowVersion` under Durability. Each key says whether it applies live or needs a restart, and whether a stored value waits for one; a key the deployment locked (`HostOptions.settings.locked`; a local host locks none, and a remote one locks `durableOwnership.ownership`) is shown and disabled.
 
 Save sends the keys that changed in one `bureau.settings.update` with the `expectedRevision` the page read; the Bureau applies all of them or none. A `StaleRevision` fault, or a read that finds the revision moved while there are unsaved edits, shows a prompt to reload, and a reload discards the edits. The page subscribes to `bureau.settings.events` over Server-Sent Events and reads the settings again on each event, and again when the window regains focus, which is how it catches up when the stream is down. Below the form the host's own paths (`/host/paths`) are shown read-only: they are the host's and not settings. Nothing about the page is persisted by the page; the Bureau keeps the record.
 

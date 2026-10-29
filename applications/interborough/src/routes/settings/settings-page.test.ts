@@ -13,7 +13,14 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { SETTINGS_COPY, VIEW_COPY } from '../../app/copy.ts';
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
-import { StubFault, type BureauStub } from '../../lib/bureau-stub.test-support.ts';
+import {
+  STUB_REMOTE_AGENT_DIRECTORY,
+  STUB_REMOTE_CONFIGURATION_FILE,
+  STUB_REMOTE_PROVIDERS,
+  STUB_REMOTE_WORKFLOW_DIRECTORY,
+  StubFault,
+  type BureauStub,
+} from '../../lib/bureau-stub.test-support.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import { landAt } from '../chat/pages.test-support.ts';
 import {
@@ -36,8 +43,9 @@ function open(
   served: SettingsServed,
   stream?: SettingsStream,
   extra: Record<string, (params: Record<string, unknown>) => unknown> = {},
+  hostMode?: 'local' | 'remote',
 ) {
-  stub = installSettingsBureau(served, extra, stream);
+  stub = installSettingsBureau(served, extra, stream, hostMode);
   landAt('/settings');
   const view = render(RouteOutletHarness, {
     props: {
@@ -467,3 +475,42 @@ describe('a page that follows the settings stream', () => {
     await waitFor(() => expect(reads()).toBeGreaterThan(before));
   });
 });
+
+describe.each(['local', 'remote'] as const)(
+  'where the host keeps its state, on a %s host',
+  (mode) => {
+    test('names each place in the words of its mode, and shows the host’s locations verbatim', async () => {
+      const { container, findByRole } = open(servedSettings(), undefined, {}, mode);
+      await findByRole('form', { name: SETTINGS_COPY.formLabel });
+
+      const words = mode === 'remote' ? SETTINGS_COPY.remote.hostPaths : SETTINGS_COPY.hostPaths;
+      const otherWords =
+        mode === 'remote' ? SETTINGS_COPY.hostPaths : SETTINGS_COPY.remote.hostPaths;
+      const section = container.querySelector<HTMLElement>('.weft-settings__paths');
+      await waitFor(() => expect(section?.querySelector('dl')).not.toBeNull());
+
+      expect(section?.querySelector('h2')?.textContent?.trim()).toBe(words.title);
+      expect([...(section?.querySelectorAll('dt') ?? [])].map((term) => term.textContent)).toEqual([
+        words.agents,
+        words.workflows,
+        words.configuration,
+        words.providers,
+      ]);
+      const text = section?.textContent ?? '';
+      expect(text).not.toContain(otherWords.title);
+      expect(text).not.toContain(otherWords.providers);
+      if (mode === 'remote') {
+        for (const location of [
+          STUB_REMOTE_AGENT_DIRECTORY,
+          STUB_REMOTE_WORKFLOW_DIRECTORY,
+          STUB_REMOTE_CONFIGURATION_FILE,
+          ...STUB_REMOTE_PROVIDERS.map((provider) => provider.secretFile),
+        ]) {
+          expect(text).toContain(location);
+        }
+      } else {
+        expect(text).not.toContain('s3://');
+      }
+    });
+  },
+);

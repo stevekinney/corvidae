@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
 import { VIEW_COPY, WORKFLOW_COPY } from '../../app/copy.ts';
-import { StubFault } from '../../lib/bureau-stub.test-support.ts';
+import { STUB_REMOTE_WORKFLOW_DIRECTORY, StubFault } from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import {
@@ -1102,5 +1102,28 @@ describe('the links on a type’s page', () => {
       expect(router.pathname).toBe(path);
       router.navigate('/workflows/digest', { replace: true });
     }
+  });
+});
+
+describe.each(['local', 'remote'] as const)('the details of a workflow on a %s host', (mode) => {
+  test('labels the file with the words of its mode, and shows the host’s location verbatim', async () => {
+    const { container } = open('/workflows/digest', { hostMode: mode });
+    const root = await ready(container);
+    await openDisclosure(root, WORKFLOW_COPY.page.details);
+
+    const labels = [...root.querySelectorAll('dt')].map((term) => term.textContent?.trim());
+    const [present, absent] =
+      mode === 'remote'
+        ? [WORKFLOW_COPY.remote.fileLabel, WORKFLOW_COPY.fileLabel]
+        : [WORKFLOW_COPY.fileLabel, WORKFLOW_COPY.remote.fileLabel];
+    expect(labels).toContain(present);
+    expect(labels).not.toContain(absent);
+    await waitFor(() =>
+      expect(testId(root, 'workflow-file-path')?.textContent).toBe(
+        mode === 'remote'
+          ? `${STUB_REMOTE_WORKFLOW_DIRECTORY}digest.json`
+          : `${STUB_WORKFLOW_DIRECTORY}/digest.json`,
+      ),
+    );
   });
 });
