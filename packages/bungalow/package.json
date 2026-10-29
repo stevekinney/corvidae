@@ -1,7 +1,7 @@
 {
   "name": "@lostgradient/bungalow",
   "private": true,
-  "description": "Resolves and prepares a local application's state directory: database, configuration, secrets, logs, and content directories.",
+  "description": "Resolves and prepares an application's home, locally in a directory or remotely in Postgres, an S3 bucket, and environment variables: database, configuration, secrets, logs, content, and deployment ID.",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
