@@ -55,7 +55,7 @@ export interface BaseProviderOptions {
    * Messages `metadata`; OpenAI Chat Completions `metadata` (native
    * string-keyed map, up to 16 keys). Gemini has no request-level metadata
    * field in its API — this option is an explicit no-op for
-   * {@link createGeminiProvider}.
+   * `createGeminiProvider` (in `@lostgradient/operative-gemini`).
    *
    * Anthropic caveat: its `Metadata` type documents exactly one field
    * (`user_id`) — the whole object is still forwarded as-is so a

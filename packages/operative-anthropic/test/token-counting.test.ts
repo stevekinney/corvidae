@@ -23,7 +23,7 @@
  * is never set at all: Anthropic's `messages.countTokens` reports no cache
  * attribution, unlike the Gemini counter's `cachedTokens`.
  *
- * Two kinds of test live here, following `test/gemini/token-counting.test.ts`.
+ * Two kinds of test live here, following `token-counting.test.ts` in `@lostgradient/operative-gemini`.
  *
  * The bulk are hermetic and inject a fake client typed as the structural
  * `AnthropicTokenCountingClient` from `src/anthropic-types.ts` — that typing is the

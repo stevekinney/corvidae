@@ -8,7 +8,7 @@
  * request parameter that way fails both directions of the bivariant method check, which makes
  * `createOpenAIBatchClient({ client })` — the documented escape hatch for a non-default base URL —
  * impossible to call without `as unknown as`. The same trap already cost a migration once; see
- * `GeminiGenerateContentRequest` in `gemini-types.ts` and `gemini-client-assignability.test-d.ts`.
+ * `GeminiGenerateContentRequest` in `@lostgradient/operative-gemini`'s `gemini-types.ts` and `gemini-client-assignability.test-d.ts`.
  *
  * Why the `.test-d.ts` suffix: `tsconfig.json` includes `src`, so `bun run check-types` checks this
  * file, while `tsconfig.build.json` excludes the suffix, so it never reaches `dist/` and cannot leak

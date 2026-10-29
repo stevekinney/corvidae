@@ -8,7 +8,7 @@
  * request parameter that way fails both directions of the bivariant method check, which makes
  * `createAnthropicBatchClient({ client })` — the documented escape hatch for a non-default base URL —
  * impossible to call without `as unknown as`. The same trap already cost a migration once; see
- * `GeminiGenerateContentRequest` in `gemini-types.ts` and `gemini-client-assignability.test-d.ts`.
+ * `GeminiGenerateContentRequest` in `@lostgradient/operative-gemini`'s `gemini-types.ts` and `gemini-client-assignability.test-d.ts`.
  *
  * This assertion also pins down a fact worth failing loudly on: Message Batches live on Anthropic's
  * *stable* `client.messages.batches` in the installed SDK (not only under `client.beta`).

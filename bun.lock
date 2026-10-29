@@ -46,6 +46,7 @@
         "@lostgradient/memory": "workspace:*",
         "@lostgradient/operative": "workspace:*",
         "@lostgradient/operative-anthropic": "workspace:*",
+        "@lostgradient/operative-gemini": "workspace:*",
         "@lostgradient/operative-openai": "workspace:*",
         "@lostgradient/storage": "workspace:*",
         "@lostgradient/storage-bun-sqlite": "workspace:*",
@@ -437,7 +438,6 @@
     "packages/operative": {
       "name": "@lostgradient/operative",
       "dependencies": {
-        "@google/genai": "catalog:",
         "@lostgradient/cryptography": "workspace:*",
         "@lostgradient/environmentalist": "catalog:",
         "@lostgradient/lifecycle": "workspace:*",
@@ -486,6 +486,26 @@
         "oxlint": "catalog:",
         "typescript": "catalog:",
         "zod": "catalog:",
+      },
+    },
+    "packages/operative-gemini": {
+      "name": "@lostgradient/operative-gemini",
+      "dependencies": {
+        "@google/genai": "catalog:",
+        "@lostgradient/cryptography": "workspace:*",
+        "@lostgradient/environmentalist": "catalog:",
+        "@lostgradient/lifecycle": "workspace:*",
+        "@lostgradient/operative": "workspace:*",
+        "armorer": "workspace:*",
+        "conversationalist": "workspace:*",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
       },
     },
     "packages/operative-openai": {
@@ -1042,6 +1062,8 @@
     "@lostgradient/operative": ["@lostgradient/operative@workspace:packages/operative"],
 
     "@lostgradient/operative-anthropic": ["@lostgradient/operative-anthropic@workspace:packages/operative-anthropic"],
+
+    "@lostgradient/operative-gemini": ["@lostgradient/operative-gemini@workspace:packages/operative-gemini"],
 
     "@lostgradient/operative-openai": ["@lostgradient/operative-openai@workspace:packages/operative-openai"],
 

@@ -25,7 +25,7 @@ if (!capabilities.batchInference) {
 }
 ```
 
-The native batch clients are intentionally provider-shaped: `createAnthropicBatchClient` (from `@lostgradient/operative-anthropic`), `createOpenAIBatchClient` (from `@lostgradient/operative-openai`), and `createGeminiBatchClient` expose each SDK's own request and result vocabulary. The shared contract stops at capability discovery; it does not pretend that three different batch APIs have identical payloads.
+The native batch clients are intentionally provider-shaped: `createAnthropicBatchClient` (from `@lostgradient/operative-anthropic`), `createOpenAIBatchClient` (from `@lostgradient/operative-openai`), and `createGeminiBatchClient` (from `@lostgradient/operative-gemini`) expose each SDK's own request and result vocabulary. The shared contract stops at capability discovery; it does not pretend that three different batch APIs have identical payloads.
 
 ## Selection plans and model policy
 

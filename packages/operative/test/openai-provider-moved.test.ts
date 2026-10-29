@@ -40,10 +40,8 @@ const entryPoints = { root, providerKit, providerTesting };
 /** The barrels under `src/providers/`, which re-export provider files by path. */
 const BARRELS = [
   'src/providers/index.ts',
-  'src/providers/batches/index.ts',
   'src/providers/embeddings/index.ts',
   'src/providers/structured-output/index.ts',
-  'src/providers/test/index.ts',
 ] as const;
 
 describe('the OpenAI provider has left Operative', () => {
