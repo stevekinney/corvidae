@@ -1,5 +1,3 @@
-import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
-import { describe, expect, it, mock, spyOn } from 'bun:test';
 import {
   advanceTimersByTime,
   flushMicrotasks,
@@ -8,8 +6,11 @@ import {
   useFakeTimers,
   withTimeout,
 } from '@lostgradient/testing/fake-timers';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
+import { describe, expect, it, mock, spyOn } from 'bun:test';
 import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
 
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { BunSQLiteStorage } from '../storage/bun-sql.ts';
 import { CompressedStorage } from '../storage/compressed-storage.ts';
@@ -21,7 +22,6 @@ import type {
 } from '../storage/interface.ts';
 import { encodeStorageKeyComponent, KEYS } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import { ActivityRegistry } from './activity-registry.ts';
 import { AtomicStateConflictEvent } from './atomic-state.ts';
 import { deserializeCheckpoint } from './checkpoint.ts';

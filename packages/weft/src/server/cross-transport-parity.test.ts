@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from 'bun:test';
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
+import { afterEach, describe, expect, it } from 'bun:test';
 
 import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import { awakeTurns } from '@lostgradient/testing/wait-until';

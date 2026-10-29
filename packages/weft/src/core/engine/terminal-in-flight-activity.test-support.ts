@@ -2,9 +2,9 @@
  * Shared fixtures for the COR-1597 suites: a held top-level activity, a storage that holds one
  * write, and observers that read a promise's state without awaiting it.
  */
+import { createDeferred, yieldToEventLoop } from '@lostgradient/testing/fake-timers';
 import type { BatchOperation, Storage } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { createDeferred, yieldToEventLoop } from '@lostgradient/testing/fake-timers';
 import type { ActivityContext, WorkflowContext } from '../types.ts';
 import { activity, workflow } from '../types.ts';
 import type { Engine } from './index.ts';

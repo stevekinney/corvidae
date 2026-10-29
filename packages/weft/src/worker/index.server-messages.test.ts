@@ -4,13 +4,13 @@
  * and (in the last test) a registration that finds its buffered results cannot all be flushed.
  */
 
-import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import {
   createDeferred,
   restoreRealTimers,
   waitForCondition,
 } from '@lostgradient/testing/fake-timers';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
+import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { RemoteWorker } from './index.ts';
 
 type ScriptedServer = {

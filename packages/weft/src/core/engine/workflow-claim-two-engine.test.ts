@@ -24,6 +24,7 @@
 import { ExtData, decode as msgpackDecode, encode as msgpackEncode } from '@msgpack/msgpack';
 import { describe, expect, it } from 'bun:test';
 
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { quietFor } from '@lostgradient/testing/wait-until';
 import { GENERATION_KEYS } from '../../storage/generation-keys.ts';
@@ -34,7 +35,6 @@ import {
   type ConditionalBatchCondition,
 } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { decode, encode } from '../codec.ts';
 import { workflow, type WorkflowContext } from '../types.ts';
 import { CURRENT_CHECKPOINT_SCHEMA_VERSION } from '../types/checkpoint.ts';

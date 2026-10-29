@@ -1,8 +1,8 @@
 import { describe, expect, it, mock } from 'bun:test';
 
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import {
   workflow,
   type WorkflowContext,

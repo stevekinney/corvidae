@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { ActivityRegistry } from '../activity-registry.ts';
 import { removeCatalogEntry } from '../catalog/index.ts';
 import { encode } from '../codec.ts';

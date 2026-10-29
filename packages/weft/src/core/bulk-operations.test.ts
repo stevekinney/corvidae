@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'bun:test';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
+import { describe, expect, it } from 'bun:test';
 import { flush } from '../testing/storage-backends.test-support.ts';
 
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';

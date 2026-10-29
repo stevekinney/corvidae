@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
 import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
-import { createRegisterCheck } from '../conformance/run-conformance.ts';
 import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
+import { createRegisterCheck } from '../conformance/run-conformance.ts';
 import { executeConformance } from './index.ts';
 
 describe('createRegisterCheck', () => {

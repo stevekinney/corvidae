@@ -3,8 +3,8 @@
  * counter of how often the workflow's one activity ran, an owner that dies before driving the
  * workflow, and an engine that takes the claim over with a services resolver a test can hold.
  */
-import type { Storage } from '../../storage/interface.ts';
 import { yieldToEventLoop } from '@lostgradient/testing/fake-timers';
+import type { Storage } from '../../storage/interface.ts';
 import { workflow, type WorkflowContext } from '../types.ts';
 import { Engine } from './index.ts';
 import { WORKFLOW_CLAIM_TAKEOVER_GRACE_MULTIPLIER } from './workflow-claim-transitions.ts';

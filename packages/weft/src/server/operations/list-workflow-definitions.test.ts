@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { removeWorkflowRevision } from '../../core/engine/catalog-removal.ts';
 import { deriveWorkflowDefinitionRevision } from '../../core/engine/definition-revision.ts';
@@ -9,7 +10,6 @@ import { buildRegistrySnapshot } from '../../core/registry-snapshot.ts';
 import { workflowSource } from '../../core/source/index.ts';
 import { query, signal, update, workflow, type WorkflowDefinition } from '../../core/types.ts';
 import { registerWorkflowDocuments } from '../../document-workflow/register.ts';
-import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { handleRequest } from '../handler.ts';
 import { generateOpenApiDocument } from '../openapi.ts';
 import { generateOpenRpcDocument } from '../openrpc.ts';

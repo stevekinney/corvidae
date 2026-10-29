@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'bun:test';
 import {
   sleepForTesting,
   waitForCondition,
   waitForRealTimersForTesting,
 } from '@lostgradient/testing/fake-timers';
+import { describe, expect, it } from 'bun:test';
 
 import { quietFor } from '@lostgradient/testing/wait-until';
 import type {

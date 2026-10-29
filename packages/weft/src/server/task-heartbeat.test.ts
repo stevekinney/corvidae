@@ -19,6 +19,11 @@
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import {
+  restoreRealTimers,
+  useFakeTimers,
+  waitForCondition,
+} from '@lostgradient/testing/fake-timers';
+import {
   ATTEMPT_DEADLINE_MULTIPLIER,
   beginCompletion,
   claimQueued,
@@ -34,11 +39,6 @@ import {
   type RemoteTaskQueued,
 } from '../core/task-ledger/task-ledger.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import {
-  restoreRealTimers,
-  useFakeTimers,
-  waitForCondition,
-} from '@lostgradient/testing/fake-timers';
 import { REMOTE_WORKER_PROTOCOL_VERSION } from '../worker/protocol.ts';
 import { manifestForActivities } from '../worker/registry-fixtures.test-support.ts';
 import type { WebSocketData } from './json-rpc-websocket-runtime.ts';

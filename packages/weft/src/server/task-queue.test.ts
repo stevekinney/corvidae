@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import {
   restoreRealTimers,
   sleepForTesting,
   useFakeTimers,
 } from '@lostgradient/testing/fake-timers';
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 
 import type { PendingTask, TaskResult } from './task-queue-types.ts';
 import { TaskQueue } from './task-queue.ts';

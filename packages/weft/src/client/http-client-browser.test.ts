@@ -59,8 +59,8 @@ import { afterAll, describe, expect, it } from 'bun:test';
 import type { Browser, BrowserContext } from 'playwright';
 import { chromium } from 'playwright';
 
-import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { browserSmokeEnabled } from '@lostgradient/testing/browser-smoke-gate';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 
 const repositoryRoot = fileURLToPath(new URL('../..', import.meta.url));

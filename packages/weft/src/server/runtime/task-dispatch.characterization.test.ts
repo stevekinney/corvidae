@@ -8,6 +8,7 @@
 
 import { afterEach, describe, expect, it, mock } from 'bun:test';
 
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { encode } from '../../core/codec.ts';
 import { decodeTaskAttemptRecord, taskAttemptPrefix } from '../../core/task-ledger/task-attempt.ts';
 import {
@@ -18,7 +19,6 @@ import {
 } from '../../core/task-ledger/task-ledger.ts';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import {
   TEST_ACCEPTED_MANIFEST_DIGEST,
   testWorkerManifest,

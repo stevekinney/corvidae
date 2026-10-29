@@ -1,9 +1,9 @@
 import { HANG_GUARD_MILLISECONDS, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import { expect, it } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 
 async function readHealthAddress(output: ReadableStream<Uint8Array>): Promise<string> {
   const reader = output.getReader();

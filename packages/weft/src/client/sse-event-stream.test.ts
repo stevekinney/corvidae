@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import type { WorkflowEvent } from '../core/types.ts';
 import { setPortableRuntimeTestOverridesForTesting } from '../runtime/portable.ts';
-import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import {
   openClientEventSubscription,
   type WorkflowEventStreamHost,

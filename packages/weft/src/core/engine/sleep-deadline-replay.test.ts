@@ -13,8 +13,8 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { MemoryStorage } from '../../storage/memory.ts';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
+import { MemoryStorage } from '../../storage/memory.ts';
 import { decode } from '../codec.ts';
 import type { TimerEntry } from '../types.ts';
 import { activity, workflow } from '../types.ts';

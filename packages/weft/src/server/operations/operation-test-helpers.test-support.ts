@@ -1,7 +1,7 @@
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import type { Engine } from '../../core/engine.ts';
 import type { WorkflowStatus } from '../../core/types.ts';
-import { waitForCondition } from '@lostgradient/testing/fake-timers';
 
 type WaitForWorkflowStatusOptions = {
   intervalMilliseconds?: number;

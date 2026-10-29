@@ -1,5 +1,5 @@
-import { quietFor } from '@lostgradient/testing/wait-until';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
+import { quietFor } from '@lostgradient/testing/wait-until';
 /**
  * End-to-end integration — `serve()` WebSocket /jsonrpc endpoint wired to
  * the JSON-RPC WebSocket session adapter.

@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   advanceTimersByTime,
   restoreRealTimers,
   useFakeTimers,
 } from '@lostgradient/testing/fake-timers';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { WorkerRealm, type WorkerRealmActivation } from './worker-realm.ts';
 
 const workerUrl = new URL('./__fixtures__/revision-realm-worker-entry.ts', import.meta.url);

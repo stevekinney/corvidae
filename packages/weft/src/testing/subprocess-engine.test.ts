@@ -3,13 +3,13 @@ import { mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
+import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { HttpClient } from '../client/http-client.ts';
 import type { WorkflowState } from '../core/types.ts';
-import { sleepForTesting } from '@lostgradient/testing/fake-timers';
-import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import {
   killAndReboot,
   spawnServerSubprocess,
