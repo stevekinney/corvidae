@@ -5,10 +5,10 @@ import {
   textValueStore,
 } from '@lostgradient/storage';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
+import { LMDBStorage } from '@lostgradient/storage-lmdb';
 import {
   type ApplicationCommandClaim,
   Engine,
-  LMDBStorage,
   Mailbox,
   yieldToPortableEventLoop,
 } from '@lostgradient/weft';

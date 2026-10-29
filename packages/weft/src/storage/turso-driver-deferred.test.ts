@@ -58,6 +58,11 @@ describe('storage/turso (optional-driver subprocess gate)', () => {
     rethrow(tursoDriverDeferred));
 
   it('links every dependency but the optional drivers into a sandbox it removes afterwards', async () => {
+    const installedDrivers = (): string[] =>
+      OPTIONAL_STORAGE_DRIVER_ENTRIES.filter((entry) =>
+        existsSync(join(weftRoot, 'node_modules', entry)),
+      );
+    const driversBefore = installedDrivers();
     const seen = await withOptionalStorageDriversAbsent(weftRoot, async (sandboxRoot) => ({
       sandboxRoot,
       drivers: OPTIONAL_STORAGE_DRIVER_ENTRIES.filter((entry) =>
@@ -71,7 +76,8 @@ describe('storage/turso (optional-driver subprocess gate)', () => {
     expect(seen.source).toBe(true);
     expect(existsSync(seen.sandboxRoot)).toBe(false);
     // The shared install the rest of the suite and a concurrent typecheck read is untouched.
-    expect(existsSync(join(weftRoot, 'node_modules', 'lmdb'))).toBe(true);
+    expect(driversBefore).not.toEqual([]);
+    expect(installedDrivers()).toEqual(driversBefore);
   });
 
   it('skips a dangling dependency link instead of failing to build the sandbox', async () => {

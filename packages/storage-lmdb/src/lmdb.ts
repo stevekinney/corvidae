@@ -1,5 +1,3 @@
-import { tryLoadNodeBuiltin } from '../runtime/portable.ts';
-
 import {
   assertStorageBatchOperationCount,
   matchesScanOptions,
@@ -14,16 +12,17 @@ import {
   type Storage,
   type StorageCapabilities,
 } from '@lostgradient/storage';
+import { tryLoadNodeBuiltin } from '@lostgradient/storage/runtime';
 
 /**
  * Construction options for {@link LMDBStorage}.
  *
  * @example
  * ```ts
- * import { LMDBStorage, type LMDBStorageOptions } from '@lostgradient/weft';
+ * import { LMDBStorage, type LMDBStorageOptions } from '@lostgradient/storage-lmdb';
  *
  * const options: LMDBStorageOptions = { durability: 'relaxed' };
- * await using storage = new LMDBStorage('./weft-data', options);
+ * using storage = new LMDBStorage('./app-data', options);
  * void storage;
  * ```
  */
@@ -124,12 +123,10 @@ function openLmdbEnvironment(options: Parameters<OpenLMDBEnvironment>[0]): LMDBD
  *
  * @example
  * ```ts
- * import { LMDBStorage } from '@lostgradient/weft';
- * import { workflow, Engine } from '@lostgradient/weft';
+ * import { LMDBStorage } from '@lostgradient/storage-lmdb';
  *
- * await using storage = new LMDBStorage('./weft-data');
- * await using engine = new Engine({ storage });
- * engine.register(workflow({ name: 'ping' }).execute(async function* () { return 'pong'; }));
+ * using storage = new LMDBStorage('./app-data');
+ * await storage.put('app:greeting', new TextEncoder().encode('hello'));
  * ```
  */
 export class LMDBStorage implements Storage {

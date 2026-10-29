@@ -16,7 +16,7 @@
 import { writeFileSync } from 'node:fs';
 
 import { stopWhen, createAgent } from '@lostgradient/operative';
-import { LMDBStorage } from '@lostgradient/weft';
+import { LMDBStorage } from '@lostgradient/storage-lmdb';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 

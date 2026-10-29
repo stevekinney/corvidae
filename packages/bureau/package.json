@@ -39,6 +39,7 @@
     "@modelcontextprotocol/client": "catalog:",
     "@lostgradient/typescript": "workspace:*",
     "@lostgradient/storage-bun-sqlite": "workspace:*",
+    "@lostgradient/storage-lmdb": "workspace:*",
     "@lostgradient/testing": "workspace:*",
     "@types/bun": "catalog:",
     "@types/js-yaml": "catalog:",

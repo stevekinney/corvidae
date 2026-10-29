@@ -39,12 +39,6 @@
           "types": "./dist/storage/node-sqlite.d.ts",
           "node": "./dist/storage/node-sqlite.js"
         },
-        "./storage/lmdb": {
-          "types": "./dist/storage/lmdb.d.ts",
-          "bun": "./dist/storage/lmdb.js",
-          "import": "./dist/storage/lmdb.js",
-          "default": "./dist/storage/lmdb.js"
-        },
         "./storage/turso": {
           "types": "./dist/storage/turso.d.ts",
           "bun": "./dist/storage/turso.js",

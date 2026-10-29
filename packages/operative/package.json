@@ -50,6 +50,7 @@
     "oxlint": "catalog:",
     "typescript": "catalog:",
     "@lostgradient/storage-bun-sqlite": "workspace:*",
+    "@lostgradient/storage-lmdb": "workspace:*",
     "@lostgradient/testing": "workspace:*"
   },
   "private": true
