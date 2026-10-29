@@ -346,6 +346,27 @@ export interface BureauRetentionOptions {
    * `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
    */
   tasks?: RetentionWindowOption;
+  /**
+   * COR-1809 — how long governed memory keeps an `episodic` memory (what a run writes about its
+   * chat), measured from when it was written on the runtime clock. Each maintenance pass sweeps
+   * governed memory under this window, in place of the 90 days the memory policy's `episodic` rule
+   * sets, without activating a policy revision; the sweep deletes an expired memory with a receipt
+   * and a `memory.retention.swept` event, and a legal hold keeps what it holds. Leave it out and
+   * the memory policy's own rule decides. The other classes keep the policy's rules. Has effect
+   * only on a Bureau composed with `memory`. `olderThan` must be a positive integer; otherwise
+   * `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
+   */
+  memory?: BureauMemoryRetentionOption | undefined;
+}
+
+/**
+ * COR-1809 — the window of {@link BureauRetentionOptions.memory}. Only `{ olderThan }` exists:
+ * keeping a memory forever is the memory policy's own decision, so a Bureau that wants no sweep
+ * simply does not set it.
+ */
+export interface BureauMemoryRetentionOption {
+  /** Milliseconds after an episodic memory is written; a positive integer. */
+  readonly olderThan: number;
 }
 
 /**

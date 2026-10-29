@@ -48,6 +48,15 @@ const credentials: Record<string, { subject: string; scopes: readonly Authorizat
   'plain-key': { subject: 'plain', scopes: [] },
   'reader-key': { subject: 'alice', scopes: ['bureau.memory:read'] },
   'writer-key': { subject: 'alice', scopes: ['bureau.memory:write'] },
+  'governor-key': { subject: 'alice', scopes: ['bureau.memory:govern'] },
+  'full-key': {
+    subject: 'alice',
+    scopes: ['bureau.memory:read', 'bureau.memory:write', 'bureau.memory:govern'],
+  },
+  'bob-full-key': {
+    subject: 'bob',
+    scopes: ['bureau.memory:read', 'bureau.memory:write', 'bureau.memory:govern'],
+  },
 };
 
 const authentication: AuthConfig = {
@@ -187,16 +196,41 @@ function recallAs(ownerId: string): MemoryAuthority {
   });
 }
 
+/** Each operation, a valid request for it, and the one scope it needs (COR-1809). */
 const OPERATIONS = [
-  ['bureau.memory.list', { agentId: 'assistant' }],
-  ['bureau.memory.search', { agentId: 'assistant', query: 'seats' }],
-  ['bureau.memory.get', { agentId: 'assistant', id: 'memory-1' }],
-  ['bureau.memory.forget', { agentId: 'assistant', id: 'memory-1' }],
-  ['bureau.memory.correct', { agentId: 'assistant', id: 'memory-1', content: 'Corrected.' }],
+  ['bureau.memory.list', { agentId: 'assistant' }, 'read'],
+  ['bureau.memory.search', { agentId: 'assistant', query: 'seats' }, 'read'],
+  ['bureau.memory.get', { agentId: 'assistant', id: 'memory-1' }, 'read'],
+  ['bureau.memory.export', { agentId: 'assistant' }, 'read'],
+  ['bureau.memory.forget', { agentId: 'assistant', id: 'memory-1' }, 'write'],
+  [
+    'bureau.memory.correct',
+    { agentId: 'assistant', id: 'memory-1', content: 'Corrected.' },
+    'write',
+  ],
+  [
+    'bureau.memory.share',
+    { agentId: 'assistant', id: 'memory-1', granteeOwnerId: 'api-key:bob' },
+    'write',
+  ],
+  [
+    'bureau.memory.share.revoke',
+    { agentId: 'assistant', id: 'memory-1', granteeOwnerId: 'api-key:bob' },
+    'write',
+  ],
+  [
+    'bureau.memory.quarantine',
+    { agentId: 'assistant', id: 'memory-1', reason: 'Looks poisoned.' },
+    'write',
+  ],
+  ['bureau.memory.hold', { agentId: 'assistant', id: 'memory-1' }, 'govern'],
+  ['bureau.memory.hold.release', { agentId: 'assistant', id: 'memory-1' }, 'govern'],
 ] as const;
 
+const SCOPE_KEYS = { read: 'reader-key', write: 'writer-key', govern: 'governor-key' } as const;
+
 describe('bureau.memory.* are served by the handler', () => {
-  it('registers all five operations, each reachable over JSON-RPC', () => {
+  it('registers all eleven operations, each reachable over JSON-RPC', () => {
     const names = BUREAU_HANDLER_OPERATIONS.map((operation) => operation.name);
     for (const [name] of OPERATIONS) expect(names).toContain(name);
   });
@@ -331,17 +365,17 @@ describe('the scopes bureau.memory:read and bureau.memory:write', () => {
         { status: 403, reason: expect.any(String) },
       ]);
     }
-    // Read alone does not write, and write alone does not read.
-    for (const [method, params] of OPERATIONS) {
-      const writes = method === 'bureau.memory.forget' || method === 'bureau.memory.correct';
-      const readOnly = await rpc(handler, method, params, 'reader-key');
-      const writeOnly = await rpc(handler, method, params, 'writer-key');
-      expect([method, 'read', faultOf(readOnly).status === 403]).toEqual([method, 'read', writes]);
-      expect([method, 'write', faultOf(writeOnly).status === 403]).toEqual([
-        method,
-        'write',
-        !writes,
-      ]);
+    // Each scope serves its own operations and none of another scope's: read does not write, write
+    // does not read, and neither implies the legal hold's `bureau.memory:govern`.
+    for (const [method, params, needs] of OPERATIONS) {
+      for (const scope of ['read', 'write', 'govern'] as const) {
+        const answered = await rpc(handler, method, params, SCOPE_KEYS[scope]);
+        expect([method, scope, faultOf(answered).status === 403]).toEqual([
+          method,
+          scope,
+          scope !== needs,
+        ]);
+      }
     }
   });
 
@@ -385,7 +419,7 @@ describe('a Bureau composed without governed memory', () => {
   it('answers UnsupportedCapability to every memory operation', async () => {
     const { handler } = await open({ memory: null });
     for (const [method, params] of OPERATIONS) {
-      const refused = await rpc(handler, method, params, 'alice-key');
+      const refused = await rpc(handler, method, params, 'full-key');
       expect([method, refused.error?.data?.httpStatus]).toEqual([method, 501]);
       expect(refused.error?.data?.['capability']).toBe('governed-memory');
     }
@@ -669,4 +703,253 @@ describe('two concurrent corrections of one memory', () => {
       expect(resultOf(original)['lineage']).toMatchObject({ correctedBy: successorId });
     });
   }
+});
+
+/** The ledger events of one type, as the owner `ownerId` reads them. */
+async function eventsOf(memory: GovernedMemory, ownerId: string, type: string) {
+  const reader = createMemoryAuthority({
+    principal: { kind: 'user', id: ownerId },
+    tenantId: BUREAU_ID,
+    ownerId,
+    purpose: 'audit',
+    capabilities: ['memory:list'],
+    policyRevision: 'bureau:test',
+    projection: 'bureau',
+  });
+  return memory.listEvents(reader, { type });
+}
+
+describe('bureau.memory.share and bureau.memory.share.revoke (COR-1809)', () => {
+  it('lets the grantee read the shared memory, and not after the share is revoked', async () => {
+    const { bureau, handler, memory } = await open();
+    await chat(bureau, ALICE, 'Alice prefers aisle seats.');
+    const id = onlyId(
+      await rpc(handler, 'bureau.memory.list', { agentId: 'assistant' }, 'alice-key'),
+    );
+    const read = { agentId: 'assistant', id, ownerId: ALICE };
+
+    // Before the share the memory is another owner's, in the words of a missing one.
+    const before = await rpc(handler, 'bureau.memory.get', read, 'bob-key');
+    expect(faultOf(before).status).toBe(404);
+
+    const granted = await rpc(
+      handler,
+      'bureau.memory.share',
+      { agentId: 'assistant', id, granteeOwnerId: 'api-key:bob' },
+      'alice-key',
+    );
+    expect(resultOf(granted)).toEqual({
+      id,
+      changed: true,
+      granteeOwnerId: 'api-key:bob',
+      grantedBy: ALICE,
+    });
+
+    const shared = await rpc(handler, 'bureau.memory.get', read, 'bob-key');
+    expect(resultOf(shared)['memory']).toMatchObject({ id, content: 'Alice prefers aisle seats.' });
+    // The ledger's history is the owner's alone, so a grantee's lineage is empty.
+    expect(resultOf(shared)['lineage']).toEqual({ runId: null, corrects: null, correctedBy: null });
+    // A share grants `get` and nothing else: the record is not in Bob's own partition or listing,
+    // and Bob can neither forget nor re-share it.
+    expect(
+      memoriesOf(await rpc(handler, 'bureau.memory.list', { agentId: 'assistant' }, 'bob-key')),
+    ).toEqual([]);
+    for (const [method, params] of [
+      ['bureau.memory.forget', { agentId: 'assistant', id }],
+      ['bureau.memory.share', { agentId: 'assistant', id, granteeOwnerId: 'api-key:carol' }],
+    ] as const) {
+      expect(faultOf(await rpc(handler, method, params, 'bob-key')).status).toBe(404);
+    }
+
+    // Every grant is audited under the grantor's owner, with the grantee in the event's details.
+    const [event] = await eventsOf(memory!, ALICE, 'memory.shared');
+    expect(event).toMatchObject({
+      recordIds: [id],
+      attribution: { ownerId: ALICE, principal: { kind: 'user', id: ALICE } },
+      details: { grantee: 'api-key:bob' },
+    });
+
+    const revoked = await rpc(
+      handler,
+      'bureau.memory.share.revoke',
+      { agentId: 'assistant', id, granteeOwnerId: 'api-key:bob' },
+      'alice-key',
+    );
+    expect(resultOf(revoked)).toMatchObject({ id, changed: true, grantedBy: ALICE });
+    expect(faultOf(await rpc(handler, 'bureau.memory.get', read, 'bob-key')).status).toBe(404);
+    expect(await eventsOf(memory!, ALICE, 'memory.share.revoked')).toHaveLength(1);
+  });
+
+  it('is idempotent, and refuses an empty grantee, the owner itself, and another owner’s memory', async () => {
+    const { bureau, handler } = await open();
+    await chat(bureau, ALICE, 'Alice prefers aisle seats.');
+    const id = onlyId(
+      await rpc(handler, 'bureau.memory.list', { agentId: 'assistant' }, 'alice-key'),
+    );
+    const share = { agentId: 'assistant', id, granteeOwnerId: 'api-key:bob' };
+
+    expect(resultOf(await rpc(handler, 'bureau.memory.share', share, 'alice-key'))['changed']).toBe(
+      true,
+    );
+    expect(resultOf(await rpc(handler, 'bureau.memory.share', share, 'alice-key'))['changed']).toBe(
+      false,
+    );
+    const neverGranted = { ...share, granteeOwnerId: 'api-key:carol' };
+    expect(
+      resultOf(await rpc(handler, 'bureau.memory.share.revoke', neverGranted, 'alice-key'))[
+        'changed'
+      ],
+    ).toBe(false);
+
+    const empty = await rpc(
+      handler,
+      'bureau.memory.share',
+      { ...share, granteeOwnerId: '' },
+      'alice-key',
+    );
+    expect(faultOf(empty).status).toBe(400);
+    const itself = await rpc(
+      handler,
+      'bureau.memory.share',
+      { ...share, granteeOwnerId: ALICE },
+      'alice-key',
+    );
+    expect(faultOf(itself)).toEqual({ status: 422, reason: 'memory-invalid-grantee' });
+    // Bob cannot grant what is not his.
+    expect(faultOf(await rpc(handler, 'bureau.memory.share', share, 'bob-key')).status).toBe(404);
+  });
+});
+
+describe('bureau.memory.hold and bureau.memory.hold.release (COR-1809)', () => {
+  it('holds a memory against forget, audits it under the caller’s owner, and resumes the deletion on release', async () => {
+    const { bureau, handler, memory } = await open();
+    await chat(bureau, ALICE, 'Alice prefers aisle seats.');
+    const id = onlyId(
+      await rpc(handler, 'bureau.memory.list', { agentId: 'assistant' }, 'alice-key'),
+    );
+    const target = { agentId: 'assistant', id };
+
+    // Releasing a memory that is not held changes nothing.
+    expect(
+      resultOf(await rpc(handler, 'bureau.memory.hold.release', target, 'full-key'))['changed'],
+    ).toBe(false);
+    const placed = await rpc(handler, 'bureau.memory.hold', target, 'full-key');
+    expect(resultOf(placed)).toEqual({ id, changed: true, legalHold: 'held' });
+    expect(resultOf(await rpc(handler, 'bureau.memory.hold', target, 'full-key'))['changed']).toBe(
+      false,
+    );
+    const [event] = await eventsOf(memory!, ALICE, 'memory.legal-hold.placed');
+    expect(event).toMatchObject({
+      recordIds: [id],
+      attribution: { ownerId: ALICE, principal: { kind: 'governance' } },
+    });
+
+    const forgotten = await rpc(handler, 'bureau.memory.forget', target, 'full-key');
+    expect(resultOf(forgotten)['deletion']).toBe('exempt');
+    expect(
+      idsOf(await rpc(handler, 'bureau.memory.list', { agentId: 'assistant' }, 'full-key')),
+    ).toEqual([id]);
+
+    const released = await rpc(handler, 'bureau.memory.hold.release', target, 'full-key');
+    expect(resultOf(released)).toEqual({ id, changed: true, legalHold: 'released' });
+    // The deletion that waited on the hold resumed at release.
+    expect(
+      idsOf(await rpc(handler, 'bureau.memory.list', { agentId: 'assistant' }, 'full-key')),
+    ).toEqual([]);
+    expect(await eventsOf(memory!, ALICE, 'memory.legal-hold.released')).toHaveLength(1);
+  });
+
+  it('reaches only the caller’s own partition, whatever scopes another owner holds', async () => {
+    const { bureau, handler } = await open();
+    await chat(bureau, ALICE, 'Alice prefers aisle seats.');
+    const id = onlyId(
+      await rpc(handler, 'bureau.memory.list', { agentId: 'assistant' }, 'alice-key'),
+    );
+    for (const method of ['bureau.memory.hold', 'bureau.memory.hold.release']) {
+      const refused = await rpc(handler, method, { agentId: 'assistant', id }, 'bob-full-key');
+      expect([method, faultOf(refused).status]).toEqual([method, 404]);
+    }
+  });
+});
+
+describe('bureau.memory.quarantine (COR-1809)', () => {
+  it('takes a memory out of use, audits it, and is idempotent', async () => {
+    const { bureau, handler, memory } = await open();
+    await chat(bureau, ALICE, 'Alice prefers aisle seats.');
+    const id = onlyId(
+      await rpc(handler, 'bureau.memory.list', { agentId: 'assistant' }, 'alice-key'),
+    );
+    const target = { agentId: 'assistant', id, reason: 'Looks poisoned.' };
+
+    const quarantined = await rpc(handler, 'bureau.memory.quarantine', target, 'alice-key');
+    expect(resultOf(quarantined)).toEqual({ id, changed: true, affected: 1 });
+    expect(
+      resultOf(await rpc(handler, 'bureau.memory.quarantine', target, 'alice-key'))['changed'],
+    ).toBe(false);
+
+    expect(
+      memoriesOf(await rpc(handler, 'bureau.memory.list', { agentId: 'assistant' }, 'alice-key')),
+    ).toEqual([]);
+    expect(
+      faultOf(await rpc(handler, 'bureau.memory.get', { agentId: 'assistant', id }, 'alice-key'))
+        .status,
+    ).toBe(404);
+    const [event] = await eventsOf(memory!, ALICE, 'memory.quarantined');
+    expect(event).toMatchObject({ recordIds: [id], attribution: { ownerId: ALICE } });
+  });
+
+  it('refuses a blank reason, and another owner’s memory', async () => {
+    const { bureau, handler } = await open();
+    await chat(bureau, ALICE, 'Alice prefers aisle seats.');
+    const id = onlyId(
+      await rpc(handler, 'bureau.memory.list', { agentId: 'assistant' }, 'alice-key'),
+    );
+    const blank = await rpc(
+      handler,
+      'bureau.memory.quarantine',
+      { agentId: 'assistant', id, reason: '   ' },
+      'alice-key',
+    );
+    expect(faultOf(blank).status).toBe(400);
+    const stranger = await rpc(
+      handler,
+      'bureau.memory.quarantine',
+      { agentId: 'assistant', id, reason: 'Not mine.' },
+      'bob-key',
+    );
+    expect(faultOf(stranger).status).toBe(404);
+  });
+});
+
+describe('bureau.memory.export (COR-1809)', () => {
+  it('exports the caller’s memories of the agent, with a manifest and a ledger event', async () => {
+    const { bureau, handler, memory } = await open();
+    await chat(bureau, ALICE, 'Alice prefers aisle seats.', 'alice-one');
+    await chat(bureau, ALICE, 'Alice likes tea.', 'alice-two');
+    await chat(bureau, 'api-key:bob', 'Bob prefers window seats.', 'bob-one');
+
+    const exported = await rpc(
+      handler,
+      'bureau.memory.export',
+      { agentId: 'assistant' },
+      'alice-key',
+    );
+    const result = resultOf(exported);
+    expect((result['memories'] as Row[]).map((row) => row.content).toSorted()).toEqual([
+      'Alice likes tea.',
+      'Alice prefers aisle seats.',
+    ]);
+    expect(typeof result['exportId']).toBe('string');
+    const [event] = await eventsOf(memory!, ALICE, 'memory.exported');
+    expect(event?.details).toMatchObject({ exportId: result['exportId'] });
+    expect(event?.recordIds).toHaveLength(2);
+
+    // Bob exports his own and none of Alice's.
+    const bobs = resultOf(
+      await rpc(handler, 'bureau.memory.export', { agentId: 'assistant' }, 'bob-key'),
+    );
+    expect((bobs['memories'] as Row[]).map((row) => row.content)).toEqual([
+      'Bob prefers window seats.',
+    ]);
+  });
 });

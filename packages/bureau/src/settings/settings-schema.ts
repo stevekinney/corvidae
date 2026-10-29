@@ -146,6 +146,12 @@ export const settingsSchema = z
       .object({ olderThan: z.number().int().positive() })
       .strict()
       .describe('How long a run-creation receipt is kept.'),
+    'retention.memory': z
+      .object({ olderThan: z.number().int().positive() })
+      .strict()
+      .describe(
+        'How long governed memory keeps an episodic memory, in milliseconds, in place of the memory policy’s own window; the next maintenance pass sweeps by it. Unset, the policy decides.',
+      ),
     'retention.checkpoints': z
       .union([
         z.literal('keep-all'),
@@ -248,6 +254,7 @@ export const SETTING_APPLY: Readonly<Record<SettingKey, SettingApply>> = {
   'retention.events': 'live',
   'retention.tasks': 'live',
   'retention.receipts': 'live',
+  'retention.memory': 'live',
   'retention.checkpoints': 'live',
   // Live from the next session (owner decision, COR-1710 revision 2026-10-27): a running session
   // keeps the limit its Weft mailbox was built with, which keeps Weft's backlog check atomic.

@@ -17,9 +17,10 @@ import type { PackageAuthorizationScope } from '@lostgradient/weft';
  * `bureau.events:observe-all` is the fleet-wide feed and is not implied by
  * `bureau.tasks:read`. The `bureau.deliveries:*` scopes are not registered.
  *
- * The two memory scopes are the exception to the rule above (COR-1546). `bureau.memory:read` and
- * `bureau.memory:write` do not grant cross-owner access: a caller reaches `bureau.memory.*` only
- * with the scope its operation needs, and then only its own memory. Memory is the one kind a
+ * The three memory scopes are the exception to the rule above (COR-1546, COR-1809).
+ * `bureau.memory:read`, `bureau.memory:write` and `bureau.memory:govern` do not grant cross-owner
+ * access: a caller reaches `bureau.memory.*` only with the scope its operation needs, and then only
+ * its own memory. `govern` serves the legal hold alone, and no other memory scope implies it. Memory is the one kind a
  * principal may not reach by owning it, because what an agent remembers is not something a
  * credential may be handed by default.
  */
@@ -48,6 +49,7 @@ export const BUREAU_SCOPES = [
   'bureau.settings:read',
   'bureau.settings:write',
   'bureau.diagnostics:read',
+  'bureau.memory:govern',
 ] as const satisfies readonly PackageAuthorizationScope[];
 
 /** One of the scopes in {@link BUREAU_SCOPES}. */

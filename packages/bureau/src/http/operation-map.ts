@@ -115,6 +115,12 @@ export const OPERATION_MAP = {
   'bureau.memory.forget': { member: 'memory.forget' },
   // `correct` stays composed in the handler over `forget` plus a write.
   'bureau.memory.correct': { member: 'memory.forget' },
+  'bureau.memory.share': { member: 'memory.share' },
+  'bureau.memory.share.revoke': { member: 'memory.revokeShare' },
+  'bureau.memory.hold': { member: 'memory.placeLegalHold' },
+  'bureau.memory.hold.release': { member: 'memory.releaseLegalHold' },
+  'bureau.memory.quarantine': { member: 'memory.quarantine' },
+  'bureau.memory.export': { member: 'memory.export' },
 
   'bureau.assets.get': { member: 'assets.inspect' },
   'bureau.assets.uploads.create': { member: 'assets.beginUpload' },

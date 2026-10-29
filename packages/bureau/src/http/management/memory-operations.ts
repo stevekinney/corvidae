@@ -13,9 +13,11 @@
  * about access depart from the rest of the management plane, deliberately:
  *
  * - A scope is required, not an alternative to ownership. `bureau.memory:read` serves `list`,
- *   `search` and `get`, and `bureau.memory:write` serves `forget` and `correct`. A caller without
- *   the operation's scope is answered `Forbidden`, though every record is its own. Neither scope
- *   grants another owner's memory.
+ *   `search`, `get` and `export`, `bureau.memory:write` serves `forget`, `correct`, `share`,
+ *   `revokeShare` and `quarantine`, and `bureau.memory:govern` serves `hold` and `releaseHold`
+ *   (COR-1809). A caller without the operation's scope is answered `Forbidden`, though every record
+ *   is its own. No scope grants another owner's memory; the one door to it is a share, which lets
+ *   the grantee `get` the record and nothing else.
  * - Another owner's record is answered `NotFound`, in the words of a missing one, because the
  *   governed predicate scopes every read to the caller's own partition.
  *
@@ -60,6 +62,9 @@ export type BureauMemoryOperationHost = {
     readonly tenantId: string;
   };
 };
+
+/** The governance principal a legal hold from this surface is placed by; the ledger's `ownerId` names the caller. */
+const GOVERNANCE_PRINCIPAL = 'governance:bureau.memory';
 
 /** The authorization revision a memory authority from this surface records on what it does. */
 const MEMORY_AUTHORIZATION_REVISION = 'bureau.memory:1';
@@ -176,8 +181,17 @@ function receiptViewOf(receipt: MemoryDeletionReceipt): z.infer<typeof memoryRec
 
 /** What a caller must hold, and what the operation then needs of governed memory. */
 type Access = {
-  readonly scope: Extract<BureauScope, 'bureau.memory:read' | 'bureau.memory:write'>;
+  readonly scope: Extract<
+    BureauScope,
+    'bureau.memory:read' | 'bureau.memory:write' | 'bureau.memory:govern'
+  >;
   readonly capabilities: readonly MemoryCapability[];
+  /**
+   * `governance` for the legal hold, which governed memory takes only from a chain made of
+   * governance principals alone (COR-806). The authority stays bound to the caller's own owner, so
+   * it reaches the caller's partition and no other; the scope is what lets a caller ask for it.
+   */
+  readonly principal?: 'governance';
 };
 
 const ACCESS = {
@@ -189,6 +203,14 @@ const ACCESS = {
   forget: { scope: 'bureau.memory:write', capabilities: ['memory:delete'] },
   // `correct` reads the record it supersedes, to carry its class, and the successor it wrote.
   correct: { scope: 'bureau.memory:write', capabilities: ['memory:get', 'memory:write'] },
+  share: { scope: 'bureau.memory:write', capabilities: ['memory:share'] },
+  quarantine: { scope: 'bureau.memory:write', capabilities: ['memory:quarantine'] },
+  export: { scope: 'bureau.memory:read', capabilities: ['memory:export'] },
+  hold: {
+    scope: 'bureau.memory:govern',
+    capabilities: ['memory:legal-hold'],
+    principal: 'governance',
+  },
 } as const satisfies Record<string, Access>;
 
 function forbidden(scope: Access['scope']): OperationFault {
@@ -225,13 +247,16 @@ function acting(host: BureauMemoryOperationHost, principal: Principal, access: A
   if (memory === undefined) throw noMemory();
   const owner = ownerOfPrincipal(principal);
   if (owner === undefined) return { memory, authority: undefined };
+  const governance = access.principal === 'governance';
   return {
     memory,
     authority: createMemoryAuthority({
-      principal: { kind: 'user', id: owner },
+      principal: governance
+        ? { kind: 'governance', id: GOVERNANCE_PRINCIPAL }
+        : { kind: 'user', id: owner },
       tenantId: host.memory.tenantId,
       ownerId: owner,
-      purpose: 'bureau.memory',
+      purpose: governance ? 'bureau.memory.legal-hold' : 'bureau.memory',
       capabilities: access.capabilities,
       policyRevision: MEMORY_AUTHORIZATION_REVISION,
       projection: 'bureau',
@@ -369,7 +394,18 @@ export const memorySearchOperation = defineOperation<
   },
 });
 
-const getInput = z.object({ agentId: agentIdentifier, id: recordIdentifier });
+const getInput = z.object({
+  agentId: agentIdentifier,
+  id: recordIdentifier,
+  ownerId: z
+    .string()
+    .min(1)
+    .max(256)
+    .optional()
+    .describe(
+      'The owner of the memory, for a grantee reading a memory another owner shared with it (`bureau.memory.share`). Omit it to read the caller’s own.',
+    ),
+});
 const getOutput = z.object({ memory: memoryViewSchema, lineage: lineageSchema });
 
 export const memoryGetOperation = defineOperation<
@@ -381,7 +417,7 @@ export const memoryGetOperation = defineOperation<
   mcpExposable: false,
   summary: 'Read one memory with its lineage',
   description:
-    'Reads one memory of the agent `agentId` with its lineage: `memory` (its text, class, source, trust, creation time and the chat, `sessionId`, that produced it), and `lineage`, read from the governance ledger: `runId`, the run that wrote it (`null` for one an operator wrote); `corrects`, the memory this one replaced; and `correctedBy`, the memory that replaced it. A corrected memory is no longer listed or searched, but is read here, which is how a correction is followed back. Another owner’s memory, a missing one, and a quarantined or revoked one are answered `NotFound`. Requires `bureau.memory:read`; a caller without it is `Forbidden`.',
+    'Reads one memory of the agent `agentId` with its lineage: `memory` (its text, class, source, trust, creation time and the chat, `sessionId`, that produced it), and `lineage`, read from the governance ledger: `runId`, the run that wrote it (`null` for one an operator wrote); `corrects`, the memory this one replaced; and `correctedBy`, the memory that replaced it. A corrected memory is no longer listed or searched, but is read here, which is how a correction is followed back. Another owner’s memory, a missing one, and a quarantined or revoked one are answered `NotFound`, except a memory its owner shared with the caller (`bureau.memory.share`): the grantee names the owner in `ownerId` and reads it, with an empty `lineage`, since the ledger’s history is the owner’s alone, until the owner revokes the share. Requires `bureau.memory:read`; a caller without it is `Forbidden`.',
   destructive: false,
   tags: ['Memory'],
   inputSchema: getInput,
@@ -394,8 +430,14 @@ export const memoryGetOperation = defineOperation<
   invoke: async ({ input, host, principal }) => {
     const { memory, authority } = acting(host, principal, ACCESS.get);
     if (authority === undefined) throw resourceNotFound('memory', input.id);
-    const record = await memory.get(authority, { id: input.id, collection: input.agentId });
+    const record = await memory.get(authority, {
+      id: input.id,
+      collection: input.agentId,
+      ...(input.ownerId === undefined ? {} : { ownerId: input.ownerId }),
+    });
     if (record === undefined) throw resourceNotFound('memory', input.id);
+    // The ledger's events are the owner's to read: a grantee reading another owner's memory gets
+    // the memory and an empty lineage, because the write and supersession events carry the owner.
     const events = await memory.listEvents(authority, { recordId: input.id });
     return { memory: viewOf(record), lineage: lineageOf(input.id, events) };
   },
@@ -549,11 +591,310 @@ export const memoryCorrectOperation = defineOperation<
   },
 });
 
-/** The five memory operations, in the order the documentation lists them. */
+/**
+ * What a governance operation reports: the memory it addressed and whether this call changed it.
+ * `changed` is `false` when the memory was already in the state asked for (a hold already held, a
+ * share already granted): the call still succeeds, because the state is what the caller wanted.
+ */
+const transitionOutput = z.object({
+  id: z.string(),
+  changed: z.boolean(),
+});
+
+/** The faults a governance operation can answer, beyond the scope and capability ones. */
+function transitionFault(
+  result: { readonly status: string; readonly reason?: string | undefined },
+  id: string,
+): OperationFault {
+  if (result.status === 'rejected' && result.reason === 'invalid-grantee') {
+    return {
+      code: 'Unprocessable',
+      message: 'A memory cannot be shared with its own owner, or with no one',
+      data: { reason: 'memory-invalid-grantee' },
+    };
+  }
+  // `not-found`, and `denied` for another owner's memory or one no longer active: both read as a
+  // missing memory, as everywhere else on this surface.
+  return resourceNotFound('memory', id);
+}
+
+const shareInput = z.object({
+  agentId: agentIdentifier,
+  id: recordIdentifier,
+  granteeOwnerId: z
+    .string()
+    .min(1)
+    .max(256)
+    .describe(
+      'The owner who may read this memory: another agent’s collection owner or, later, a user. Not the caller’s own owner.',
+    ),
+});
+const shareOutput = transitionOutput.extend({
+  granteeOwnerId: z.string(),
+  /** The owner who granted or revoked: the caller. The ledger records the same owner on its event. */
+  grantedBy: z.string(),
+});
+
+/** Runs a grant or a revoke and reports it; the two differ only in the governed call. */
+async function changeShare(
+  host: BureauMemoryOperationHost,
+  principal: Principal,
+  input: z.infer<typeof shareInput>,
+  grant: boolean,
+): Promise<z.infer<typeof shareOutput>> {
+  const { memory, authority } = acting(host, principal, ACCESS.share);
+  if (authority === undefined) throw resourceNotFound('memory', input.id);
+  const locator = { id: input.id, collection: input.agentId };
+  const result = grant
+    ? await memory.share(authority, locator, input.granteeOwnerId)
+    : await memory.revokeShare(authority, locator, input.granteeOwnerId);
+  if (result.status !== 'applied' && result.status !== 'unchanged') {
+    throw transitionFault(result, input.id);
+  }
+  return {
+    id: input.id,
+    changed: result.status === 'applied',
+    granteeOwnerId: input.granteeOwnerId,
+    grantedBy: authority.ownerId,
+  };
+}
+
+/** `bureau.memory.share`: lets another owner `get` one memory (COR-1809). */
+export const memoryShareOperation = defineOperation<
+  typeof shareInput,
+  typeof shareOutput,
+  BureauMemoryOperationHost
+>({
+  name: 'bureau.memory.share',
+  mcpExposable: false,
+  summary: 'Share one memory with another owner',
+  description:
+    'Lets the owner `granteeOwnerId` read one memory of the agent `agentId` with `bureau.memory.get` (naming the caller as `ownerId`), and read nothing else of it: the grantee cannot list, search, correct, forget or re-share it. `grantedBy` is the caller’s owner, and governed memory’s ledger records a `memory.shared` event under the same owner. Granting twice is not an error: `changed` is `false`. An empty grantee is `InvalidParams`; the caller’s own owner is `Unprocessable` with `data.reason` `memory-invalid-grantee`. Another owner’s memory, a missing one, and a quarantined or revoked one are `NotFound`. Requires `bureau.memory:write`; a caller without it is `Forbidden`.',
+  destructive: false,
+  tags: ['Memory'],
+  inputSchema: shareInput,
+  outputSchema: shareOutput,
+  producibleFaults: [
+    'InvalidParams',
+    'Forbidden',
+    'NotFound',
+    'Unprocessable',
+    'UnsupportedCapability',
+  ],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: ({ input, host, principal }) => changeShare(host, principal, input, true),
+});
+
+/** `bureau.memory.share.revoke`: withdraws a share (COR-1809). */
+export const memoryRevokeShareOperation = defineOperation<
+  typeof shareInput,
+  typeof shareOutput,
+  BureauMemoryOperationHost
+>({
+  name: 'bureau.memory.share.revoke',
+  mcpExposable: false,
+  summary: 'Withdraw a shared memory from another owner',
+  description:
+    'Withdraws the read access `bureau.memory.share` gave `granteeOwnerId` to one memory of the agent `agentId`: from then on the grantee’s `bureau.memory.get` is `NotFound`. Revoking a share that was never granted is not an error: `changed` is `false`. `grantedBy` is the caller’s owner, who is the one revoking. The same faults as `bureau.memory.share`. Requires `bureau.memory:write`; a caller without it is `Forbidden`.',
+  destructive: false,
+  tags: ['Memory'],
+  inputSchema: shareInput,
+  outputSchema: shareOutput,
+  producibleFaults: [
+    'InvalidParams',
+    'Forbidden',
+    'NotFound',
+    'Unprocessable',
+    'UnsupportedCapability',
+  ],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: ({ input, host, principal }) => changeShare(host, principal, input, false),
+});
+
+const holdInput = z.object({ agentId: agentIdentifier, id: recordIdentifier });
+const holdOutput = transitionOutput.extend({
+  /** `held` after a hold, `released` after a release. */
+  legalHold: z.enum(['held', 'released']),
+});
+
+/** Places or lifts the legal hold on one of the caller's memories. */
+async function changeHold(
+  host: BureauMemoryOperationHost,
+  principal: Principal,
+  input: z.infer<typeof holdInput>,
+  place: boolean,
+): Promise<z.infer<typeof holdOutput>> {
+  const { memory, authority } = acting(host, principal, ACCESS.hold);
+  if (authority === undefined) throw resourceNotFound('memory', input.id);
+  const locator = { id: input.id, collection: input.agentId };
+  const result = place
+    ? await memory.placeLegalHold(authority, locator)
+    : await memory.releaseLegalHold(authority, locator);
+  if (result.status !== 'applied' && result.status !== 'unchanged') {
+    throw transitionFault(result, input.id);
+  }
+  return {
+    id: input.id,
+    changed: result.status === 'applied',
+    legalHold: place ? 'held' : 'released',
+  };
+}
+
+/** `bureau.memory.hold`: places a legal hold on one memory (COR-1809). */
+export const memoryHoldOperation = defineOperation<
+  typeof holdInput,
+  typeof holdOutput,
+  BureauMemoryOperationHost
+>({
+  name: 'bureau.memory.hold',
+  mcpExposable: false,
+  summary: 'Place a legal hold on one memory',
+  description:
+    'Places a legal hold on one memory of the agent `agentId`: until it is released, neither `bureau.memory.forget` nor a retention sweep deletes it (the deletion opens a receipt whose targets are `exempt` and resumes at release). Holding a memory already held is not an error: `changed` is `false`. The hold is placed by the Bureau’s governance principal for the caller’s own partition, and governed memory’s ledger records a `memory.legal-hold.placed` event under the caller’s owner. Another owner’s memory and a missing one are `NotFound`. Requires `bureau.memory:govern`, which no other memory scope implies; a caller without it is `Forbidden`.',
+  destructive: false,
+  tags: ['Memory'],
+  inputSchema: holdInput,
+  outputSchema: holdOutput,
+  producibleFaults: ['InvalidParams', 'Forbidden', 'NotFound', 'UnsupportedCapability'],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: ({ input, host, principal }) => changeHold(host, principal, input, true),
+});
+
+/** `bureau.memory.hold.release`: lifts a legal hold (COR-1809). */
+export const memoryReleaseHoldOperation = defineOperation<
+  typeof holdInput,
+  typeof holdOutput,
+  BureauMemoryOperationHost
+>({
+  name: 'bureau.memory.hold.release',
+  mcpExposable: false,
+  summary: 'Lift the legal hold on one memory',
+  description:
+    'Lifts the legal hold `bureau.memory.hold` placed on one memory of the agent `agentId`. A deletion that was waiting on the hold resumes in the same call. Releasing a memory that is not held is not an error: `changed` is `false`. Another owner’s memory and a missing one are `NotFound`. Requires `bureau.memory:govern`; a caller without it is `Forbidden`.',
+  destructive: false,
+  tags: ['Memory'],
+  inputSchema: holdInput,
+  outputSchema: holdOutput,
+  producibleFaults: ['InvalidParams', 'Forbidden', 'NotFound', 'UnsupportedCapability'],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: ({ input, host, principal }) => changeHold(host, principal, input, false),
+});
+
+const quarantineInput = z.object({
+  agentId: agentIdentifier,
+  id: recordIdentifier,
+  reason: nonBlankText(1_000).describe(
+    'Why the memory is quarantined. Governed memory keeps it in the ledger, redacted from everyone without inspection rights.',
+  ),
+});
+const quarantineOutput = transitionOutput.extend({
+  /** Every record the quarantine reached: the memory, and anything derived from it. */
+  affected: z.number().int(),
+});
+
+/** `bureau.memory.quarantine`: takes one memory out of use (COR-1809). */
+export const memoryQuarantineOperation = defineOperation<
+  typeof quarantineInput,
+  typeof quarantineOutput,
+  BureauMemoryOperationHost
+>({
+  name: 'bureau.memory.quarantine',
+  mcpExposable: false,
+  summary: 'Quarantine one memory',
+  description:
+    'Takes one memory of the agent `agentId`, and everything derived from it, out of use pending inspection: it is no longer listed, searched, read or recalled, and the quarantine does not block deletion (`bureau.memory.forget` still removes it, and a legal hold still holds it). Bureau offers no way back to active use from here; the memory is kept for an inspector. Quarantining a memory already quarantined is not an error: `changed` is `false`. A blank `reason` is `InvalidParams`. Another owner’s memory and a missing one are `NotFound`. Requires `bureau.memory:write`; a caller without it is `Forbidden`.',
+  destructive: true,
+  tags: ['Memory'],
+  inputSchema: quarantineInput,
+  outputSchema: quarantineOutput,
+  producibleFaults: ['InvalidParams', 'Forbidden', 'NotFound', 'UnsupportedCapability'],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    const { memory, authority } = acting(host, principal, ACCESS.quarantine);
+    if (authority === undefined) throw resourceNotFound('memory', input.id);
+    const result = await memory.quarantine(
+      authority,
+      { id: input.id, collection: input.agentId },
+      input.reason,
+    );
+    if (result.status !== 'applied' && result.status !== 'unchanged') {
+      throw transitionFault(result, input.id);
+    }
+    return {
+      id: input.id,
+      changed: result.status === 'applied',
+      affected: result.status === 'applied' ? (result.recordIds?.length ?? 0) : 0,
+    };
+  },
+});
+
+const exportInput = z.object({ agentId: agentIdentifier });
+const exportOutput = z.object({
+  /** The manifest governed memory stored for this export, which a deletion scrubs a removed record from. */
+  exportId: z.string(),
+  memories: z.array(memoryViewSchema),
+});
+
+/** `bureau.memory.export`: exports an agent’s memories as data (COR-1809). */
+export const memoryExportOperation = defineOperation<
+  typeof exportInput,
+  typeof exportOutput,
+  BureauMemoryOperationHost
+>({
+  name: 'bureau.memory.export',
+  mcpExposable: false,
+  summary: 'Export an agent’s memories',
+  description:
+    'Exports every memory of the agent `agentId` that the caller may read, as data, with `exportId`, the manifest governed memory stored (a memory deleted later is scrubbed from it) and a `memory.exported` ledger event under the caller’s owner. A memory that was corrected is exported with its correction, which is the correction history; a quarantined or revoked one is not. An agent the caller has no memories of exports an empty list. Requires `bureau.memory:read`; a caller without it is `Forbidden`.',
+  destructive: false,
+  tags: ['Memory'],
+  inputSchema: exportInput,
+  outputSchema: exportOutput,
+  producibleFaults: ['InvalidParams', 'Forbidden', 'UnsupportedCapability'],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    const { memory, authority } = acting(host, principal, ACCESS.export);
+    if (authority === undefined) return { exportId: '', memories: [] };
+    const result = await memory.export(authority, {
+      collection: input.agentId,
+      visibility: 'private',
+    });
+    if (result.status !== 'applied' || result.exportId === undefined) {
+      throw new Error(`Governed memory answered an export ${result.status}.`);
+    }
+    return { exportId: result.exportId, memories: result.records.map(viewOf) };
+  },
+});
+
+/** The eleven memory operations, in the order the documentation lists them. */
 export const bureauMemoryOperations = [
   memoryListOperation,
   memorySearchOperation,
   memoryGetOperation,
   memoryForgetOperation,
   memoryCorrectOperation,
+  memoryShareOperation,
+  memoryRevokeShareOperation,
+  memoryHoldOperation,
+  memoryReleaseHoldOperation,
+  memoryQuarantineOperation,
+  memoryExportOperation,
 ] as const;
