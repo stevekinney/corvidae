@@ -22,8 +22,6 @@ import {
   toOpenAIMessages,
   UnsupportedContentError,
 } from 'conversationalist';
-
-import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { z } from 'zod';
 import { noToolCalls } from '../src/conditions/predicates';
 import { createSlidingWindowStrategy } from '../src/context/compaction-strategies';
@@ -38,27 +36,9 @@ import { createSubagentTool } from '../src/create-subagent-tool';
 import type { UserAdmissibleContent } from '../src/durable/types';
 import { AgentContractError, MediaAdmissionError, SelectionRevalidationError } from '../src/errors';
 import type { OperativeHookMap } from '../src/hooks';
-import { createAnthropicProvider } from '../src/providers/anthropic.ts';
 import { withBackendDescriptors } from '../src/providers/backend-descriptor-attachment';
-import { createGeminiProvider } from '../src/providers/gemini.ts';
 import type { BackendDescriptor } from '../src/providers/model-catalog';
 import { createModelCatalog } from '../src/providers/model-catalog';
-import { createOpenAIProvider } from '../src/providers/openai.ts';
-import {
-  anthropicTextResponse,
-  anthropicToolUseResponse,
-} from '../src/providers/test/anthropic-fixtures.ts';
-import { createMockAnthropicClient } from '../src/providers/test/anthropic-mock-clients.ts';
-import {
-  geminiFunctionCallResponse,
-  geminiTextResponse,
-} from '../src/providers/test/gemini-fixtures.ts';
-import { createMockGeminiModel } from '../src/providers/test/gemini-mock-clients.ts';
-import {
-  openAITextResponse,
-  openAIToolCallResponse,
-} from '../src/providers/test/openai-fixtures.ts';
-import { createMockOpenAIClient } from '../src/providers/test/openai-mock-clients.ts';
 import { createSelectionGate } from '../src/selection-gate';
 import { createSessionStore } from '../src/session/create-session-store';
 import { createSessionHandle } from '../src/session/session-handle';
@@ -951,199 +931,6 @@ describe('media admission: a part is delivered or refused before generation', ()
     );
     await result;
     expect(compacted).toBe(true);
-  });
-});
-
-describe('providers deliver every part or reject before the provider call', () => {
-  function contextFor(
-    content: MultiModalContent[],
-    resolvedSources?: GenerateContext['resolvedSources'],
-  ): GenerateContext {
-    const conversation = new Conversation();
-    conversation.appendUserMessage(content);
-    return { conversation, step: 0, toolbox: createToolbox([]), resolvedSources };
-  }
-
-  const dataUrlImage: MediaContent = {
-    type: 'image',
-    source: { kind: 'data-url', url: `data:image/png;base64,${BYTES}` },
-  };
-  const inlinePdf: MediaContent = {
-    type: 'document',
-    name: 'spec.pdf',
-    mimeType: 'application/pdf',
-    source: { kind: 'inline', data: BYTES, encoding: 'base64' },
-  };
-
-  it('OpenAI: sends the image and the file part in order, and records both in the response lineage', async () => {
-    const client = createMockOpenAIClient([openAITextResponse]);
-    const generate = createOpenAIProvider({ model: 'gpt-4.1', client });
-
-    const response = await generate(
-      contextFor([{ type: 'text', text: 'look' }, dataUrlImage, inlinePdf]),
-    );
-
-    expect(client._calls[0]?.messages).toEqual([
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: 'look' },
-          { type: 'image_url', image_url: { url: `data:image/png;base64,${BYTES}` } },
-          {
-            type: 'file',
-            file: { file_data: `data:application/pdf;base64,${BYTES}`, filename: 'spec.pdf' },
-          },
-        ],
-      },
-    ]);
-    expect(response.metadata?.['inputLineage']).toEqual([
-      expect.objectContaining({ partIndex: 1, modality: 'image', provider: 'openai' }),
-      expect.objectContaining({ partIndex: 2, modality: 'document', transform: 'inline-base64' }),
-    ]);
-  });
-
-  it('every provider records lineage on a response that only calls tools', async () => {
-    const openai = await createOpenAIProvider({
-      model: 'gpt-4.1',
-      client: createMockOpenAIClient([openAIToolCallResponse]),
-    })(contextFor([dataUrlImage]));
-    const anthropic = await createAnthropicProvider({
-      model: 'claude-sonnet-5-5',
-      client: createMockAnthropicClient([anthropicToolUseResponse]),
-    })(contextFor([dataUrlImage]));
-    const gemini = await createGeminiProvider({
-      model: 'gemini-2.5-flash',
-      client: createMockGeminiModel([geminiFunctionCallResponse]),
-    })(contextFor([dataUrlImage]));
-
-    for (const response of [openai, anthropic, gemini]) {
-      expect(response.toolCalls.length).toBeGreaterThan(0);
-      expect(response.metadata?.['inputLineage']).toEqual([
-        expect.objectContaining({ partIndex: 0, modality: 'image' }),
-      ]);
-    }
-  });
-
-  it('OpenAI: rejects audio before the client is called, with a typed error', async () => {
-    const client = createMockOpenAIClient([openAITextResponse]);
-    const generate = createOpenAIProvider({ model: 'gpt-4.1', client });
-
-    const reason = await rejectionOf(
-      generate(
-        contextFor([
-          { type: 'audio', source: { kind: 'inline', data: BYTES, encoding: 'base64' } },
-        ]),
-      ),
-    );
-
-    expect(reason).toBeInstanceOf(UnsupportedContentError);
-    expect(client._calls).toHaveLength(0);
-  });
-
-  it('Anthropic: substitutes a resolved source at export time and records the original asset identity', async () => {
-    const client = createMockAnthropicClient([anthropicTextResponse]);
-    const generate = createAnthropicProvider({ model: 'claude-sonnet-5-5', client });
-    const managed: MediaContent = {
-      type: 'document',
-      name: 'contract.pdf',
-      mimeType: 'application/pdf',
-      source: { kind: 'managed-asset', assetId: 'asset-9', revision: 2 },
-    };
-    const context = contextFor([managed]);
-    const messageId = context.conversation.current.ids[0]!;
-
-    const response = await generate({
-      ...context,
-      resolvedSources: new Map([
-        [
-          `${messageId}:0`,
-          {
-            outcome: 'resolved',
-            source: { kind: 'inline', data: BYTES, encoding: 'base64' },
-            safety: 'clean',
-          },
-        ],
-      ]),
-    });
-
-    expect(client._calls[0]?.messages).toEqual([
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'document',
-            title: 'contract.pdf',
-            source: { type: 'base64', media_type: 'application/pdf', data: BYTES },
-          },
-        ],
-      },
-    ]);
-    expect(response.metadata?.['inputLineage']).toEqual([
-      expect.objectContaining({
-        from: 'managed-asset',
-        to: 'inline',
-        transform: 'resolved',
-        assetId: 'asset-9',
-        revision: 2,
-      }),
-    ]);
-    // The stored message still names the asset and revision.
-    expect(context.conversation.getMessages()[0]?.content).toEqual([managed]);
-  });
-
-  it('Anthropic: rejects an unresolved managed asset instead of dropping it', async () => {
-    const client = createMockAnthropicClient([anthropicTextResponse]);
-    const generate = createAnthropicProvider({ model: 'claude-sonnet-5-5', client });
-
-    const reason = await rejectionOf(
-      generate(
-        contextFor([
-          {
-            type: 'document',
-            source: { kind: 'managed-asset', assetId: 'asset-9' },
-            mimeType: 'application/pdf',
-          },
-        ]),
-      ),
-    );
-
-    expect(reason).toBeInstanceOf(UnsupportedContentError);
-    expect((reason as UnsupportedContentError).reason).toBe('source-form-not-accepted');
-    expect(client._calls).toHaveLength(0);
-  });
-
-  it('Gemini: sends audio as inline data and a hosted video as file data', async () => {
-    const client = createMockGeminiModel([geminiTextResponse]);
-    const generate = createGeminiProvider({ model: 'gemini-2.5-flash', client });
-
-    const response = await generate(
-      contextFor([
-        {
-          type: 'audio',
-          mimeType: 'audio/mpeg',
-          source: { kind: 'inline', data: BYTES, encoding: 'base64' },
-        },
-        {
-          type: 'video',
-          mimeType: 'video/mp4',
-          source: { kind: 'remote-url', url: 'https://example.com/v.mp4' },
-        },
-      ]),
-    );
-
-    expect(client._calls[0]?.contents).toEqual([
-      {
-        role: 'user',
-        parts: [
-          { inlineData: { mimeType: 'audio/mpeg', data: BYTES } },
-          { fileData: { mimeType: 'video/mp4', fileUri: 'https://example.com/v.mp4' } },
-        ],
-      },
-    ]);
-    expect(response.metadata?.['inputLineage']).toEqual([
-      expect.objectContaining({ modality: 'audio', transform: 'inline-base64' }),
-      expect.objectContaining({ modality: 'video', transform: 'remote-url-delegated' }),
-    ]);
   });
 });
 

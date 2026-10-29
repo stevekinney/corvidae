@@ -368,7 +368,7 @@ export interface AnthropicStreamingClient {
 // documented on {@link GeminiGenerateContentRequest}. Widen only the
 // payload-shaped fields, and name the rest.
 //
-// `providers/batch-client-assignability.test-d.ts` locks all of this in against
+// `providers/anthropic-batch-client-assignability.test-d.ts` locks all of this in against
 // the real `Anthropic`, `OpenAI`, and `GoogleGenAI` classes.
 
 /**

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 
-import { checkProviderImports, classifyFile, type SourceFiles } from './check-provider-imports.ts';
+import packageJson from '../package.json' with { type: 'json' };
+import {
+  SELF_ENTRY_POINTS,
+  checkProviderImports,
+  classifyFile,
+  type SourceFiles,
+} from './check-provider-imports.ts';
 
 function files(entries: Record<string, string>): SourceFiles {
   return new Map(Object.entries(entries));
@@ -131,20 +137,160 @@ describe('checkProviderImports', () => {
     ]);
   });
 
-  it('skips tests by default and applies the test entry rule with includeTests', () => {
+  it('reads tests and test support as well as source', () => {
     const tree = {
       ...CLEAN,
       'src/providers/anthropic.test.ts': `import type { Hidden } from './types.ts';`,
+      'test/neutral.test.ts': `import { make } from '../src/providers/anthropic.ts';`,
+      'src/providers/test/anthropic-fixtures.ts': `import type { Hidden } from '../types.ts';`,
     };
 
-    expect(checkProviderImports(files(tree))).toEqual([]);
-    expect(checkProviderImports(files(tree), { includeTests: true })).toHaveLength(1);
+    expect(checkProviderImports(files(tree)).map((violation) => violation.file)).toEqual([
+      'src/providers/anthropic.test.ts',
+      'src/providers/test/anthropic-fixtures.ts',
+      'test/neutral.test.ts',
+    ]);
 
     const reachable = {
       ...tree,
+      'test/neutral.test.ts': `import { ProviderError } from '../src/provider-kit.ts';`,
       'src/index.ts': `export * from './providers/index.ts'; export type { Hidden } from './providers/types.ts';`,
     };
 
-    expect(checkProviderImports(files(reachable), { includeTests: true })).toEqual([]);
+    expect(checkProviderImports(files(reachable))).toEqual([]);
+  });
+
+  it('reads the package own entry-point specifiers like the files they name', () => {
+    const violations = checkProviderImports(
+      files({
+        ...CLEAN,
+        'test/neutral.test.ts': `import { make } from '@lostgradient/operative';`,
+        'test/other.test.ts': `import { ProviderError } from '@lostgradient/operative/provider-kit';`,
+      }),
+    );
+
+    expect(violations).toEqual([
+      expect.objectContaining({
+        file: 'test/neutral.test.ts',
+        message: expect.stringContaining('imports make through src/index.ts'),
+      }),
+    ]);
+  });
+
+  it('keeps SELF_ENTRY_POINTS equal to the exports field of package.json', () => {
+    const exported = Object.fromEntries(
+      Object.entries(packageJson.exports).map(([key, value]) => [
+        key === '.' ? packageJson.name : `${packageJson.name}/${key.slice(2)}`,
+        value.replace(/^\.\//, ''),
+      ]),
+    );
+
+    expect(SELF_ENTRY_POINTS).toEqual(exported);
+  });
+
+  describe('barrels', () => {
+    it('fails when a neutral file imports a provider-owned symbol through a barrel', () => {
+      const violations = checkProviderImports(
+        files({ ...CLEAN, 'src/run.ts': `import { make } from './providers/index.ts';` }),
+      );
+
+      expect(violations).toEqual([
+        expect.objectContaining({
+          file: 'src/run.ts',
+          line: 1,
+          message: expect.stringContaining('imports make through src/providers/index.ts'),
+        }),
+      ]);
+    });
+
+    it('follows renames, nested barrels, and star re-exports to the declaring file', () => {
+      const tree = {
+        ...CLEAN,
+        'src/providers/index.ts': `export * from './nested/index.ts'; export { errorsAlias } from './errors.ts';`,
+        'src/providers/errors.ts':
+          'export class ProviderError extends Error {} export const errorsAlias = 1;',
+        'src/providers/nested/index.ts': `export { make as renamed } from '../anthropic.ts';`,
+      };
+
+      expect(
+        checkProviderImports(
+          files({ ...tree, 'src/run.ts': `import { renamed } from './providers/index.ts';` }),
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          file: 'src/run.ts',
+          message: expect.stringContaining('anthropic file src/providers/anthropic.ts'),
+        }),
+      ]);
+      expect(
+        checkProviderImports(
+          files({ ...tree, 'src/run.ts': `import { errorsAlias } from './providers/index.ts';` }),
+        ),
+      ).toEqual([]);
+    });
+
+    it('fails a neutral test that imports a provider symbol through the test-support barrel', () => {
+      const violations = checkProviderImports(
+        files({
+          ...CLEAN,
+          'src/providers/test/anthropic-fixtures.ts': 'export const fixture = 1;',
+          'src/providers/test/index.ts': `export { fixture } from './anthropic-fixtures.ts';`,
+          'test/neutral.test.ts': `import { fixture } from '../src/index.ts';`,
+          'src/index.ts': `export * from './providers/index.ts'; export * from './providers/test/index.ts';`,
+        }),
+      );
+
+      expect(violations).toEqual([
+        expect.objectContaining({
+          file: 'test/neutral.test.ts',
+          message: expect.stringContaining(
+            'imports fixture through src/index.ts, declared in anthropic file src/providers/test/anthropic-fixtures.ts',
+          ),
+        }),
+      ]);
+    });
+
+    it('fails a whole-module import of a barrel that re-exports a provider file', () => {
+      const violations = checkProviderImports(
+        files({
+          ...CLEAN,
+          'src/run.ts': `import * as providers from './providers/index.ts'; export { providers };`,
+        }),
+      );
+
+      expect(violations).toEqual([
+        expect.objectContaining({
+          file: 'src/run.ts',
+          message: expect.stringContaining('whole of barrel src/providers/index.ts'),
+        }),
+      ]);
+    });
+
+    it('fails when one provider imports another provider symbol through a barrel', () => {
+      const violations = checkProviderImports(
+        files({
+          ...CLEAN,
+          'src/providers/openai.ts': `import { make } from './index.ts';`,
+        }),
+      );
+
+      expect(violations).toEqual([
+        expect.objectContaining({
+          file: 'src/providers/openai.ts',
+          message: expect.stringContaining('openai file imports make through'),
+        }),
+      ]);
+    });
+
+    it('lets a barrel and a provider file re-export or import provider symbols', () => {
+      expect(
+        checkProviderImports(
+          files({
+            ...CLEAN,
+            'src/providers/test/anthropic-fixtures.ts': `import { make } from '../index.ts'; export const fixture = make;`,
+          }),
+        ),
+      ).toEqual([]);
+    });
   });
 });

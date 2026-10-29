@@ -32,8 +32,13 @@
  * A namespace import, a star re-export, or a whole-module dynamic import of a neutral module from
  * a provider file cannot be checked by name and fails for the same reason.
  *
- * It reads non-test source only (`src/`, excluding `*.test.ts`, `*.test-d.ts`, `*.test-support.ts`,
- * and `src/providers/test/**`); `--scope all` also reads `src/` tests and `test/`.
+ * It reads all of `src/` and `test/`, tests and test support included.
+ *
+ * A name imported through a re-export is judged by the file that declares it, so a neutral file
+ * cannot reach a provider symbol by importing it from a barrel (or any other re-exporting module).
+ * Rules 1 and 2 follow `export … from` chains, renames, and `export *` to the declaring file; a
+ * whole-module import of a barrel that re-exports a provider-owned symbol fails too, except for the
+ * package root `src/index.ts`, whose namespace is the public surface and may be read whole.
  *
  * Run from the Operative directory, as `lint` does. `--root <directory>` points the check at
  * another copy of the package, which is how a seeded violation is shown to fail.
@@ -225,11 +230,23 @@ function firstQualifier(name: ts.EntityName): string {
   return current.text;
 }
 
+/**
+ * The package's own entry points by specifier, so `import … from '@lostgradient/operative/x'` is
+ * read like the file it names. A test pins this to the `exports` field of `package.json`.
+ */
+export const SELF_ENTRY_POINTS: Readonly<Record<string, string>> = {
+  '@lostgradient/operative': 'src/index.ts',
+  '@lostgradient/operative/provider-kit': 'src/provider-kit.ts',
+  '@lostgradient/operative/provider-testing': 'src/provider-testing.ts',
+  '@lostgradient/operative/run-engine-workflow-types': 'src/durable/run-engine-workflow-types.ts',
+};
+
 /** The source files of a package, keyed by package-relative path. */
 export type SourceFiles = ReadonlyMap<string, string>;
 
 /**
- * Resolves a relative specifier to a package-relative file path, if it names a file in `files`.
+ * Resolves a relative specifier, or one of the package's own entry-point specifiers, to a
+ * package-relative file path, if it names a file in `files`.
  *
  * @param fromPath - The importing file's package-relative path.
  * @param specifier - The specifier as written.
@@ -241,7 +258,10 @@ export function resolveSpecifier(
   files: ReadonlySet<string>,
 ): string | undefined {
   if (!specifier.startsWith('.')) {
-    return undefined;
+    const entry = Object.hasOwn(SELF_ENTRY_POINTS, specifier)
+      ? SELF_ENTRY_POINTS[specifier]
+      : undefined;
+    return entry !== undefined && files.has(entry) ? entry : undefined;
   }
   const base = join(dirname(fromPath), specifier).split(sep).join('/');
   const withoutExtension = base.replace(/\.(ts|js|mts|mjs)$/, '');
@@ -333,6 +353,102 @@ function collectBindingNames(name: ts.BindingName, into: Set<string>): void {
   }
 }
 
+function declaresLocally(sourceFile: ts.SourceFile, wanted: string): boolean {
+  const names = new Set<string>();
+  for (const statement of sourceFile.statements) {
+    if (ts.isExportDeclaration(statement)) {
+      if (statement.moduleSpecifier === undefined && statement.exportClause) {
+        if (ts.isNamedExports(statement.exportClause)) {
+          for (const element of statement.exportClause.elements) {
+            names.add(element.name.text);
+          }
+        }
+      }
+    } else if (ts.isExportAssignment(statement)) {
+      names.add('default');
+    } else if (
+      ts.canHaveModifiers(statement) &&
+      ts.getModifiers(statement)?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)
+    ) {
+      if (ts.isVariableStatement(statement)) {
+        for (const declaration of statement.declarationList.declarations) {
+          collectBindingNames(declaration.name, names);
+        }
+      } else if ('name' in statement && statement.name && ts.isIdentifier(statement.name)) {
+        names.add(statement.name.text);
+      }
+    }
+  }
+  return names.has(wanted);
+}
+
+/**
+ * Finds the file that declares a name an entry file exports, following `export … from` chains,
+ * renames, and `export *`. A name that is not re-exported from anywhere is declared in the file
+ * itself, and so is a name nothing resolves, which keeps an unresolved chain from inventing a
+ * violation.
+ *
+ * @param path - The file the name is imported from.
+ * @param name - The imported name.
+ * @param files - The files that exist and their text.
+ */
+export function resolveDeclaringFile(path: string, name: string, files: SourceFiles): string {
+  const known = new Set(files.keys());
+  const visited = new Set<string>();
+  const find = (current: string, wanted: string): string | undefined => {
+    const key = `${current}\0${wanted}`;
+    if (visited.has(key)) {
+      return undefined;
+    }
+    visited.add(key);
+    const source = files.get(current);
+    if (source === undefined) {
+      return undefined;
+    }
+    const sourceFile = ts.createSourceFile(current, source, ts.ScriptTarget.Latest, true);
+    const stars: string[] = [];
+    for (const statement of sourceFile.statements) {
+      if (
+        !ts.isExportDeclaration(statement) ||
+        statement.moduleSpecifier === undefined ||
+        !ts.isStringLiteral(statement.moduleSpecifier)
+      ) {
+        continue;
+      }
+      const target = resolveSpecifier(current, statement.moduleSpecifier.text, known);
+      const clause = statement.exportClause;
+      if (clause === undefined) {
+        if (target !== undefined) {
+          stars.push(target);
+        }
+      } else if (ts.isNamespaceExport(clause)) {
+        if (clause.name.text === wanted) {
+          return target ?? current;
+        }
+      } else {
+        for (const element of clause.elements) {
+          if (element.name.text === wanted) {
+            return target === undefined
+              ? current
+              : (find(target, (element.propertyName ?? element.name).text) ?? target);
+          }
+        }
+      }
+    }
+    if (declaresLocally(sourceFile, wanted)) {
+      return current;
+    }
+    for (const star of stars) {
+      const found = find(star, wanted);
+      if (found !== undefined) {
+        return found;
+      }
+    }
+    return undefined;
+  };
+  return find(path, name) ?? path;
+}
+
 /** One boundary violation. */
 export interface Violation {
   /** The importing file, relative to the package directory. */
@@ -343,19 +459,12 @@ export interface Violation {
   message: string;
 }
 
-/** Options for {@link checkProviderImports}. */
-export interface CheckOptions {
-  /** Read test files and `test/` too. Defaults to source only. */
-  includeTests?: boolean;
-}
-
 /**
  * Checks the boundary rules over a set of files.
  *
  * @param files - Every file under the package's `src/` and `test/`, keyed by package-relative path.
- * @param options - Whether to read tests.
  */
-export function checkProviderImports(files: SourceFiles, options: CheckOptions = {}): Violation[] {
+export function checkProviderImports(files: SourceFiles): Violation[] {
   const known = new Set(files.keys());
   const violations: Violation[] = [];
   const entryNames = new Map<string, Set<string>>();
@@ -378,9 +487,6 @@ export function checkProviderImports(files: SourceFiles, options: CheckOptions =
       continue;
     }
     const isTest = isTestFile(path);
-    if (isTest && !options.includeTests) {
-      continue;
-    }
     const owner = classifyFile(path);
     for (const reference of readImportReferences(path, source)) {
       const target = resolveSpecifier(path, reference.specifier, known);
@@ -388,11 +494,45 @@ export function checkProviderImports(files: SourceFiles, options: CheckOptions =
         continue;
       }
       const targetOwner = classifyFile(target);
+      // Judge each name by the file that declares it, so a re-export cannot hide a provider symbol.
+      const declared = reference.wholeModule
+        ? []
+        : reference.names.map((name) => ({
+            name,
+            file: resolveDeclaringFile(target, name, files),
+          }));
+      const reexported = declared.flatMap((entry) => {
+        const declaringOwner = classifyFile(entry.file);
+        return entry.file !== target && declaringOwner.kind === 'provider'
+          ? [{ name: entry.name, file: entry.file, provider: declaringOwner.provider }]
+          : [];
+      });
+      const barrelReachesProvider =
+        reference.wholeModule &&
+        targetOwner.kind === 'barrel' &&
+        target !== 'src/index.ts' &&
+        [...readExportedNames(target, files)].some(
+          (name) => classifyFile(resolveDeclaringFile(target, name, files)).kind === 'provider',
+        );
       if (owner.kind === 'neutral' && targetOwner.kind === 'provider') {
         violations.push({
           file: path,
           line: reference.line,
           message: `provider-neutral file imports ${targetOwner.provider} file ${target}`,
+        });
+      } else if (owner.kind === 'neutral' && reexported.length > 0) {
+        for (const entry of reexported) {
+          violations.push({
+            file: path,
+            line: reference.line,
+            message: `provider-neutral file imports ${entry.name} through ${target}, declared in ${entry.provider} file ${entry.file}`,
+          });
+        }
+      } else if (owner.kind === 'neutral' && barrelReachesProvider) {
+        violations.push({
+          file: path,
+          line: reference.line,
+          message: `provider-neutral file imports the whole of barrel ${target}, which re-exports provider-owned files`,
         });
       } else if (
         owner.kind === 'provider' &&
@@ -404,6 +544,19 @@ export function checkProviderImports(files: SourceFiles, options: CheckOptions =
           line: reference.line,
           message: `${owner.provider} file imports ${targetOwner.provider} file ${target}`,
         });
+      } else if (
+        owner.kind === 'provider' &&
+        reexported.some((entry) => entry.provider !== owner.provider)
+      ) {
+        for (const entry of reexported.filter(
+          (candidate) => candidate.provider !== owner.provider,
+        )) {
+          violations.push({
+            file: path,
+            line: reference.line,
+            message: `${owner.provider} file imports ${entry.name} through ${target}, declared in ${entry.provider} file ${entry.file}`,
+          });
+        }
       } else if (owner.kind === 'provider' && targetOwner.kind !== 'provider') {
         const entries = (isTest ? PROVIDER_TEST_ENTRY_FILES : PROVIDER_SOURCE_ENTRY_FILES).filter(
           (entry) => known.has(entry),
@@ -467,9 +620,7 @@ if (import.meta.main) {
   const commandArguments = process.argv.slice(2);
   const rootIndex = commandArguments.indexOf('--root');
   const root = resolve(rootIndex >= 0 ? (commandArguments[rootIndex + 1] ?? '.') : '.');
-  const scopeIndex = commandArguments.indexOf('--scope');
-  const includeTests = scopeIndex >= 0 && commandArguments[scopeIndex + 1] === 'all';
-  const violations = checkProviderImports(readPackageFiles(root), { includeTests });
+  const violations = checkProviderImports(readPackageFiles(root));
   for (const violation of violations) {
     console.error(`${violation.file}:${violation.line}: ${violation.message}`);
   }

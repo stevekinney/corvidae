@@ -3,7 +3,7 @@
  * reports the backends it can reach. Media admission costs parts against those
  * descriptors; a wrapper that dropped them would leave admission with nothing
  * to cost against and refuse every part as `no-estimator`. The provider
- * factories themselves are covered by `provider-backend-descriptors.test.ts`.
+ * factories themselves are covered by `test/{anthropic,openai,gemini}/backend-descriptors.test.ts`.
  */
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
