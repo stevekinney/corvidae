@@ -18,9 +18,9 @@ afterEach(async () => {
   for (const home of homes.splice(0)) await rm(home, { recursive: true, force: true });
 });
 
-async function start(): Promise<Host> {
-  const home = await mkdtemp(join(tmpdir(), 'interborough-boundary-'));
-  homes.push(home);
+async function start(existingHome?: string): Promise<Host> {
+  const home = existingHome ?? (await mkdtemp(join(tmpdir(), 'interborough-boundary-')));
+  if (existingHome === undefined) homes.push(home);
   const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
   hosts.push(host);
   return host;
@@ -110,6 +110,23 @@ describe('/host/paths', () => {
       'workflowDirectory',
     ]);
     expect(String(paths['workflowDirectory'])).toEndWith('workflows');
+  });
+
+  test('returns exactly the locations under the host home, built from Bungalow', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'interborough-boundary-'));
+    homes.push(home);
+    const host = await start(home);
+    const response = await fetch(new URL('/host/paths', host.url));
+    expect(await response.json()).toEqual({
+      agentDirectory: join(home, 'agents'),
+      workflowDirectory: join(home, 'workflows'),
+      configurationFile: join(home, 'configuration.json'),
+      providers: [
+        { name: 'anthropic', secretFile: join(home, 'secrets', 'anthropic-api-key') },
+        { name: 'openai', secretFile: join(home, 'secrets', 'openai-api-key') },
+        { name: 'gemini', secretFile: join(home, 'secrets', 'gemini-api-key') },
+      ],
+    });
   });
 
   test('is refused for a rebound Host and for a cross-site page, with the directories unnamed', async () => {

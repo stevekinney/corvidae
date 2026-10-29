@@ -40,7 +40,13 @@ const buildOptions = { inputsFile: BUILD_INPUTS_FILE };
 await buildBrowserApplication(buildOptions);
 const host = await startHost({ development: true });
 console.info(`Interborough is listening on ${host.url}`);
-console.info(`Its state lives in ${dirname(host.databasePath)}`);
+console.info(
+  `Its state lives in ${
+    host.database.kind === 'sqlite'
+      ? dirname(host.database.path)
+      : 'the configured Postgres database'
+  }`,
+);
 
 // The entry page is watched by its own poll below, so its input is not watched as a directory.
 const sources = createSourceWatcher({

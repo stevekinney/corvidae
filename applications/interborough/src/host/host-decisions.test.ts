@@ -40,7 +40,10 @@ afterEach(async () => {
 async function startWith(secrets: Readonly<Record<string, string>>): Promise<Host> {
   const home = await mkdtemp(join(tmpdir(), 'interborough-decisions-'));
   directories.push(home);
-  const bungalow = openBungalow({ name: 'interborough', environment: { INTERBOROUGH_HOME: home } });
+  const bungalow = await openBungalow({
+    name: 'interborough',
+    environment: { INTERBOROUGH_HOME: home },
+  });
   try {
     for (const [key, value] of Object.entries(secrets)) bungalow.writeSecret(key, value);
   } finally {

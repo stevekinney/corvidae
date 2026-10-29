@@ -53,9 +53,9 @@ describe('neither a secret value nor a secret key appears in an error', () => {
     expect(exposure(Object.assign(new Error('x'), { path: KEY_SENTINEL }))).toContain(KEY_SENTINEL);
   });
 
-  test('invalid key', () => {
+  test('invalid key', async () => {
     const root = temporaryDirectory();
-    using handle = openBungalow({ name: TEST_NAME, environment: homeEnvironment(root) });
+    using handle = await openBungalow({ name: TEST_NAME, environment: homeEnvironment(root) });
     handle.writeSecret(KEY_SENTINEL, SENTINEL);
 
     const error = thrownBy(() => handle.writeSecret('../Bad Key', SENTINEL));
@@ -68,13 +68,13 @@ describe('neither a secret value nor a secret key appears in an error', () => {
     expect(exposure(readKey)).not.toContain(KEY_SENTINEL.toUpperCase());
   });
 
-  test('filesystem failure carries a code, a system call, and an errno, and nothing else', () => {
+  test('filesystem failure carries a code, a system call, and an errno, and nothing else', async () => {
     const root = temporaryDirectory();
-    using handle = openBungalow({ name: TEST_NAME, environment: homeEnvironment(root) });
+    using handle = await openBungalow({ name: TEST_NAME, environment: homeEnvironment(root) });
     handle.writeSecret('known', SENTINEL);
 
     // A directory where the secret's file belongs makes the final rename fail.
-    mkdirSync(join(handle.secrets, KEY_SENTINEL));
+    mkdirSync(join(root, 'secrets', KEY_SENTINEL));
     const renameFailure = thrownBy(() => handle.writeSecret(KEY_SENTINEL, SENTINEL));
     expect(renameFailure).toBeInstanceOf(BungalowFilesystemError);
     const cause = (renameFailure as BungalowFilesystemError).cause as Record<string, unknown>;
@@ -82,28 +82,34 @@ describe('neither a secret value nor a secret key appears in an error', () => {
     expect(cause['code']).toBeString();
     expectNoLeak(renameFailure);
     // The temporary file that held the value was removed, not left in secrets/.
-    expect(readdirSync(handle.secrets).toSorted()).toEqual([KEY_SENTINEL, 'known'].toSorted());
+    expect(readdirSync(join(root, 'secrets')).toSorted()).toEqual(
+      [KEY_SENTINEL, 'known'].toSorted(),
+    );
 
     // A missing secrets directory makes the temporary file's creation fail.
-    rmSync(handle.secrets, { recursive: true, force: true });
+    rmSync(join(root, 'secrets'), { recursive: true, force: true });
     const createFailure = thrownBy(() => handle.writeSecret(KEY_SENTINEL, SENTINEL));
     expect(createFailure).toBeInstanceOf(BungalowFilesystemError);
     expect((createFailure as BungalowFilesystemError).cause).toBeDefined();
     expectNoLeak(createFailure);
 
     // Reading a key whose entry cannot be read as a file.
-    mkdirSync(handle.secrets);
-    mkdirSync(join(handle.secrets, KEY_SENTINEL));
+    mkdirSync(join(root, 'secrets'));
+    mkdirSync(join(root, 'secrets', KEY_SENTINEL));
     expectNoLeak(thrownBy(() => handle.readSecret(KEY_SENTINEL)));
   });
 
-  test('locked root', () => {
+  test('locked root', async () => {
     const root = temporaryDirectory();
-    using handle = openBungalow({ name: TEST_NAME, environment: homeEnvironment(root) });
+    using handle = await openBungalow({ name: TEST_NAME, environment: homeEnvironment(root) });
     handle.writeSecret(KEY_SENTINEL, SENTINEL);
 
-    const error = thrownBy(() =>
-      openBungalow({ name: TEST_NAME, environment: homeEnvironment(root) }),
+    const error = await openBungalow({
+      name: TEST_NAME,
+      environment: homeEnvironment(root),
+    }).then(
+      () => undefined,
+      (rejection: unknown) => rejection,
     );
     expect(error).toBeInstanceOf(BungalowLockedError);
     expectNoLeak(error);

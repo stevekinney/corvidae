@@ -39,23 +39,38 @@ const ROOT_TEMPORARY_FILE = new RegExp(`^deployment-id${TEMPORARY_SUFFIX}$`);
 /** The only temporary files Bungalow writes in `secrets/`: beside a valid secret key. */
 const SECRET_TEMPORARY_FILE = new RegExp(`^[a-z0-9][a-z0-9-]*${TEMPORARY_SUFFIX}$`);
 
+/** Where the application database lives: a SQLite file in local mode, a server in remote mode. */
+export type DatabaseLocation =
+  | { readonly kind: 'sqlite'; readonly path: string }
+  | { readonly kind: 'postgres'; readonly url: string };
+
+/** Where a named body of content lives: a directory in local mode, an object-store prefix remotely. */
+export type ContentLocation =
+  | { readonly kind: 'directory'; readonly path: string }
+  | { readonly kind: 's3'; readonly bucket: string; readonly prefix: string };
+
 /** An open application home. Holding one holds the root's single-instance lock. */
 export type Bungalow = {
   readonly name: string;
-  /** The absolute path of the root directory. */
-  readonly root: string;
-  /** `<root>/database.sqlite`. Bungalow never creates it. */
-  readonly database: string;
-  /** `<root>/configuration.json`. Bungalow never creates it, and its absence is valid. */
-  readonly configuration: string;
-  /** `<root>/secrets`, mode 0700, one 0600 file per secret. */
-  readonly secrets: string;
+  /** `'local'` when the home is a directory on this machine, `'remote'` when it is served elsewhere. */
+  readonly mode: 'local' | 'remote';
+  /** Local mode: `{ kind: 'sqlite', path: '<root>/database.sqlite' }`. Bungalow never creates the file. */
+  readonly database: DatabaseLocation;
+  /**
+   * Where the configuration lives, for messages and for a person editing it by hand: the path of
+   * `<root>/configuration.json` in local mode. Bungalow never creates the file.
+   */
+  readonly configurationLocation: string;
   /** `<root>/logs`. */
   readonly logs: string;
   /** A ULID generated when the root was first opened and the same on every reopen. */
   readonly deploymentId: string;
-  /** Create `<root>/<name>` (mode 0700) if absent and return its absolute path. */
-  directory(name: string): string;
+  /** Create the content named `name` (a mode-0700 `<root>/<name>` directory locally) if absent and return where it is. */
+  content(name: string): ContentLocation;
+  /** The text of the configuration, or `undefined` when none has been written. Absence is valid. */
+  readConfiguration(): Promise<string | undefined>;
+  /** Where the secret `key` is stored: its 0600 file path in local mode. The key is validated. */
+  secretLocation(key: string): string;
   /** Store `value` in its own 0600 file, replacing any earlier value. */
   writeSecret(key: string, value: string): void;
   /** The stored value, or `undefined` when the key has never been written. */
@@ -180,6 +195,7 @@ export function openAtRoot(
   const lock = acquireLock(root);
   const secrets = join(root, 'secrets');
   const logs = join(root, 'logs');
+  const configurationLocation = join(root, 'configuration.json');
   let deploymentId: string;
   try {
     filesystem('prepare the secrets directory', () =>
@@ -222,18 +238,28 @@ export function openAtRoot(
 
   return {
     name,
-    root,
-    database: join(root, 'database.sqlite'),
-    configuration: join(root, 'configuration.json'),
-    secrets,
+    mode: 'local',
+    database: { kind: 'sqlite', path: join(root, 'database.sqlite') },
+    configurationLocation,
     logs,
     deploymentId,
-    directory(directoryName) {
+    content(contentName) {
       assertOpen();
-      assertDirectoryName(directoryName);
-      const path = join(root, directoryName);
+      assertDirectoryName(contentName);
+      const path = join(root, contentName);
       filesystem('prepare a content directory', () => ensureDirectory(path, 'content directory'));
-      return path;
+      return { kind: 'directory', path };
+    },
+    async readConfiguration() {
+      assertOpen();
+      return filesystem('read the configuration', () =>
+        readEntry(configurationLocation, 'configuration file'),
+      );
+    },
+    secretLocation(key) {
+      assertOpen();
+      assertSecretKey(key);
+      return join(secrets, key);
     },
     writeSecret(key, value) {
       assertOpen();
@@ -269,7 +295,8 @@ export function resolveOpenRoot(options: OpenBungalowOptions): string {
 }
 
 /**
- * Open (creating if needed) an application's home and take its single-instance lock. The root is
+ * Open (creating if needed) an application's home and take its single-instance lock. The promise
+ * resolves once the home is ready; a failure rejects it. The root is
  * `<NAME>_HOME` or `~/.<name>`; see `resolveBungalowRoot`.
  *
  * Under `NODE_ENV=test` with no `<NAME>_HOME` in effect this throws rather than touch the real
@@ -277,7 +304,7 @@ export function resolveOpenRoot(options: OpenBungalowOptions): string {
  * an empty environment cannot opt a test out. A test points `<NAME>_HOME` at a disposable
  * directory or calls `openTemporaryBungalow`.
  */
-export function openBungalow(options: OpenBungalowOptions): Bungalow {
+export async function openBungalow(options: OpenBungalowOptions): Promise<Bungalow> {
   assertBungalowName(options.name);
   const environment = options.environment ?? processEnvironment();
   const variable = bungalowHomeVariable(options.name);
@@ -302,7 +329,9 @@ export function absoluteTemporaryDirectory(base: string = tmpdir()): string {
  * Open a Bungalow in a fresh directory under the operating system's temporary directory, and
  * remove that directory on `close()`. Independent of `<NAME>_HOME` and safe under `NODE_ENV=test`.
  */
-export function openTemporaryBungalow(options: OpenTemporaryBungalowOptions): Bungalow {
+export async function openTemporaryBungalow(
+  options: OpenTemporaryBungalowOptions,
+): Promise<Bungalow> {
   assertBungalowName(options.name);
   const root = filesystem('create the temporary root', () =>
     mkdtempSync(join(absoluteTemporaryDirectory(), `${options.name}-`)),

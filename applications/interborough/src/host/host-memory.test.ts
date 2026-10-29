@@ -155,9 +155,10 @@ describe('the host’s governed memory', () => {
     expect(external).toEqual([]);
 
     // The vector that was stored is the hashing embedder's, not another 256-dimension embedder's.
-    const { deploymentId, databasePath } = host;
+    const { deploymentId, database } = host;
+    if (database.kind !== 'sqlite') throw new Error('Expected the host to run on SQLite.');
     await host.close();
-    const storage = new BunSQLiteStorage(databasePath);
+    const storage = new BunSQLiteStorage(database.path);
     try {
       const [record] = await createWeftMemoryRecordStorage(storage).list({
         tenantId: deploymentId,
