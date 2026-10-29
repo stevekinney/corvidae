@@ -2,8 +2,8 @@
  * Feeds the notification store from the Bureau. It reads what is waiting on the person (the same
  * reviews query the navigation's count and `/reviews` read, so a decision made in a chat or on
  * Reviews refreshes the bell at once), the most recently changed tasks, and the chats they belong
- * to. The reviews follow `bureau.events` and are asked on a timer only while it is not live; the
- * tasks and chats are asked again every {@link REVIEW_POLL_MILLISECONDS}. Call it once, while the shell
+ * to. All three follow `bureau.events` (a run, a session, a review) and are asked on a timer, every
+ * {@link REVIEW_POLL_MILLISECONDS}, only while it is not live. Call it once, while the shell
  * initializes: the queries and effects belong to the calling component.
  *
  * Opening a chat reads the items about it, and that includes an answer that finishes while the
@@ -11,9 +11,11 @@
  */
 import { createQuery } from '@tanstack/svelte-query';
 
+import { queryKeys } from '../lib/query.ts';
 import { recentTasksQuery } from '../lib/recent-tasks.ts';
 import { router } from '../lib/router.svelte.ts';
 import { REVIEW_POLL_MILLISECONDS, bureauReviewsQuery } from '../routes/reviews/reviews-data.ts';
+import { useBureauEventsLive } from './live-polling.svelte.ts';
 import { buildNotificationEntries } from './notification-items.ts';
 import { isScheduledFailure, loadChats, loadScheduleNames } from './notification-sources.ts';
 import type { NotificationStore } from './notifications.svelte.ts';
@@ -26,20 +28,31 @@ function openChatSessionId(): string | undefined {
 
 export function connectNotificationFeed(store: NotificationStore): void {
   const reviews = bureauReviewsQuery();
-  // Polled until COR-1730 (COR-1725 removes these polls): a catalog run's settlement is published as
-  // `run.settled` but emits no `run.removed`, and its registration and actions are not published.
-  const tasks = createQuery(() => ({
-    ...recentTasksQuery(),
-    refetchInterval: REVIEW_POLL_MILLISECONDS,
-    retry: false,
-  }));
-  // Polled until COR-1730, as the tasks above.
-  const chats = createQuery(() => ({
-    queryKey: ['contexts', 'titles'] as const,
-    queryFn: ({ signal }) => loadChats({ signal }),
-    refetchInterval: REVIEW_POLL_MILLISECONDS,
-    retry: false,
-  }));
+  const bureauLive = useBureauEventsLive();
+  // Read in the option getters, so a query goes back to its timer when the feed is lost.
+  const tasks = createQuery(() => {
+    const polling = !bureauLive();
+    return {
+      ...recentTasksQuery(),
+      // The tasks follow `run.*` and `review.*`. A catalog run is announced by `run.settled` alone
+      // (its registration and actions are not published, and no `run.removed` follows it, COR-1730),
+      // so the timer is also what shows one that is still running whenever the feed is not live.
+      // poll-reason: fallback
+      refetchInterval: polling ? REVIEW_POLL_MILLISECONDS : false,
+      retry: false,
+    };
+  });
+  // The chats follow `session.created`, `session.saved` and `session.deleted`.
+  const chats = createQuery(() => {
+    const polling = !bureauLive();
+    return {
+      queryKey: queryKeys.contexts.titles(),
+      queryFn: ({ signal }: { signal: AbortSignal }) => loadChats({ signal }),
+      // poll-reason: fallback
+      refetchInterval: polling ? REVIEW_POLL_MILLISECONDS : false,
+      retry: false,
+    };
+  });
   const failedScheduledTasks = $derived((tasks.data?.tasks ?? []).filter(isScheduledFailure));
   const scheduleNames = createQuery(() => {
     // The tasks are read once, so the lookup answers for exactly the tasks its key names.

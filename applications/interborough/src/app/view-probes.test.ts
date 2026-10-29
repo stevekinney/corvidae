@@ -25,8 +25,12 @@ async function probeRuns(options: { tasks?: unknown[]; goals?: unknown[] }) {
 }
 
 describe('the runs probe', () => {
-  test('asks again while the runs are empty, so a first run is noticed without leaving the page', async () => {
-    expect(await probeRuns({})).toEqual({ empty: true, recheckMs: RUNS_RECHECK_MS });
+  test('asks again while the runs are empty, so a first run is noticed without leaving the page, and names the Bureau’s feed as the one that reports it', async () => {
+    expect(await probeRuns({})).toEqual({
+      empty: true,
+      recheckMs: RUNS_RECHECK_MS,
+      liveSource: 'bureau',
+    });
   });
 
   test('stops asking once the Bureau has a task or a goal', async () => {

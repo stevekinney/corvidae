@@ -53,6 +53,7 @@ import type { WorkflowEvent, WorkflowStatus } from '@lostgradient/weft';
 import type { QueryClient, QueryKey } from '@tanstack/svelte-query';
 
 import { isReviewFleetEventKind } from '../../routes/reviews/review-domain.ts';
+import { invalidateEmptyViews } from '../empty-views.ts';
 import type { FleetEventFrame } from './fleet-event-source.svelte.ts';
 import { workflowStatusForEventType } from './workflow-lifecycle-events.ts';
 
@@ -106,6 +107,9 @@ const SCHEDULE_FIRE_KINDS: ReadonlySet<string> = new Set([
 
 /** Fleet kinds that move a run's update history: an update arrived, or it was answered. */
 const WORKFLOW_UPDATE_KINDS: ReadonlySet<string> = new Set(['update:received', 'update:completed']);
+
+/** The fleet kind of a run beginning: the first run of a type fills a runs page that was empty. */
+const WORKFLOW_STARTED_KIND = 'workflow:started';
 
 /** The kind of the retention notice a fleet feed sends when a cursor names events it no longer holds (`FleetEventGapEnvelope`). */
 const FLEET_GAP_KIND = 'fleet:gap';
@@ -215,6 +219,7 @@ export function invalidateFleetDrivenQueries(queryClient: QueryClient): void {
   ]) {
     void queryClient.invalidateQueries({ queryKey });
   }
+  invalidateEmptyViews(queryClient);
 }
 
 /**
@@ -229,6 +234,7 @@ export function applyFleetEventFrame(queryClient: QueryClient, frame: FleetEvent
     return;
   }
   applyScheduleFleetFrame(queryClient, frame);
+  if (frame.kind === WORKFLOW_STARTED_KIND) invalidateEmptyViews(queryClient);
   if (isReviewFleetEventKind(frame.kind)) {
     void queryClient.invalidateQueries({ queryKey: REVIEWS_LIST_KEY_PREFIX });
   }

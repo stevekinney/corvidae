@@ -24,12 +24,18 @@ import type { ViewName } from './views.ts';
 /**
  * What a view's probe learned: whether the thing the view lists has nothing in it. A probe whose
  * empty answer is about to change by itself, such as a workflow's runs before its first fire, sets
- * `recheckMs`, and the frame asks again that often while the view is empty. Without it an empty
- * view stays as it is until the person leaves and comes back.
+ * `recheckMs` and names the feed that reports the change (`liveSource`): the frame asks again when
+ * that feed carries the event that can fill the view (`app/bureau-event-queries.ts` for the Bureau,
+ * `lib/live-source/cache-integration.ts` for the engine), and on a timer, that often, only while the
+ * feed is not live. Without it an empty view stays as it is until the person leaves and comes back.
  */
-export type ViewProbeResult = { readonly empty: boolean; readonly recheckMs?: number };
+export type ViewProbeResult = {
+  readonly empty: boolean;
+  readonly recheckMs?: number;
+  readonly liveSource?: 'bureau' | 'fleet';
+};
 
-/** How often an empty runs page asks again, the poll `/tasks/:id` uses for a task that has ended. */
+/** How often an empty runs page asks again while the feed that would fill it is not live, the poll `/tasks/:id` uses for a task that has ended. */
 export const RUNS_RECHECK_MS = 5_000;
 
 /** A failure with an HTTP status, for a probe that does not go through Weft's client. */
@@ -77,8 +83,9 @@ async function probeGoals(): Promise<ViewProbeResult> {
 async function probeRuns(): Promise<ViewProbeResult> {
   const [tasks, goals] = await Promise.all([listTasks({ limit: 1 }), listGoals({ limit: 1 })]);
   const empty = tasks.tasks.length === 0 && goals.goals.length === 0;
-  // A first run can arrive while the page is open, so an empty page asks again.
-  return empty ? { empty, recheckMs: RUNS_RECHECK_MS } : { empty };
+  // A first run can arrive while the page is open, so an empty page asks again: when the Bureau's
+  // feed reports a run or a goal, and on a timer while it does not.
+  return empty ? { empty, recheckMs: RUNS_RECHECK_MS, liveSource: 'bureau' } : { empty };
 }
 
 /** The editor for a new agent needs the models and tools it may offer, so it asks for them. */
@@ -135,7 +142,10 @@ async function probeWorkflowType(
   if ((await resolveWorkflow(client, type)) === undefined) throw notFound('workflow');
   if (pattern === '/workflows/:type/runs') {
     const page = await client.list({ type, limit: 1 });
-    return page.items.length === 0 ? { empty: true, recheckMs: RUNS_RECHECK_MS } : { empty: false };
+    // A first run of the type is the engine's `workflow:started`.
+    return page.items.length === 0
+      ? { empty: true, recheckMs: RUNS_RECHECK_MS, liveSource: 'fleet' }
+      : { empty: false };
   }
   return { empty: false };
 }

@@ -7,10 +7,16 @@
  *
  * - `review.*` (a review requested, or settled any way): the reviews, the engine's list of them, and
  *   the Bureau's tasks, whose open waits are the reviews (`../lib/review-queries.ts`).
- * - `run.registered`, `run.settled`, `run.removed`, `action`: the Bureau's tasks. A catalog run
+ * - `run.registered`, `run.settled`, `run.removed`, `action`, `task.cleanup-acknowledged`: the
+ *   Bureau's tasks (the cleanup of a cancelled run is read from its task). A catalog run
  *   (`bureau.run()`) is announced by `run.settled` alone: its registration, actions and release are
- *   not published (`packages/bureau/src/create-bureau.ts`, COR-1302), so a view of runs still polls
- *   (COR-1730, COR-1725).
+ *   not published (`packages/bureau/src/create-bureau.ts`, COR-1302), so a view of runs reads such a
+ *   run when it settles, and polls only while this feed is not live (COR-1730, COR-1725).
+ * - `session.created`, `session.saved`, `session.deleted`: the chats (`['contexts']`), whose titles
+ *   the notification feed and the runs list read.
+ * - `goal.*`: the goals (`['goals']`).
+ * - `run.registered`, `run.settled`, `goal.started`: a view whose probe found nothing to list, which
+ *   one of these can fill (`../lib/empty-views.ts`).
  * - a gap, dropped frames, or a resync: all of the above. The page was not told something, so no
  *   entry the feed drives can be trusted until it has asked again.
  *
@@ -18,6 +24,7 @@
  */
 import type { QueryClient } from '@tanstack/svelte-query';
 
+import { invalidateEmptyViews } from '../lib/empty-views.ts';
 import {
   BUREAU_FRAMES_DROPPED_KIND,
   BUREAU_GAP_KIND,
@@ -27,12 +34,28 @@ import {
 import { invalidateReviewQueries } from '../lib/review-queries.ts';
 
 const BUREAU_TASKS_KEY_PREFIX = ['bureau-tasks'] as const;
+const CONTEXTS_KEY_PREFIX = ['contexts'] as const;
+const GOALS_KEY_PREFIX = ['goals'] as const;
 
 const RUN_EVENT_KINDS: ReadonlySet<string> = new Set([
   'run.registered',
   'run.settled',
   'run.removed',
   'action',
+  'task.cleanup-acknowledged',
+]);
+
+/** The kinds that can put the first item in a view that has nothing to list. */
+const FIRST_ITEM_EVENT_KINDS: ReadonlySet<string> = new Set([
+  'run.registered',
+  'run.settled',
+  'goal.started',
+]);
+
+const SESSION_EVENT_KINDS: ReadonlySet<string> = new Set([
+  'session.created',
+  'session.saved',
+  'session.deleted',
 ]);
 
 const RECOVERY_EVENT_KINDS: ReadonlySet<string> = new Set([
@@ -46,10 +69,18 @@ export function isBureauReviewEventKind(kind: string): boolean {
   return kind.startsWith('review.');
 }
 
+/** Whether a kind is one of the feed's goal events (`goal.started`, `goal.succeeded`, and so on). */
+export function isBureauGoalEventKind(kind: string): boolean {
+  return kind.startsWith('goal.');
+}
+
 /** Invalidates every entry the Bureau feed drives. */
 export function invalidateBureauDrivenQueries(queryClient: QueryClient): void {
   void invalidateReviewQueries(queryClient);
   void queryClient.invalidateQueries({ queryKey: BUREAU_TASKS_KEY_PREFIX });
+  void queryClient.invalidateQueries({ queryKey: CONTEXTS_KEY_PREFIX });
+  void queryClient.invalidateQueries({ queryKey: GOALS_KEY_PREFIX });
+  invalidateEmptyViews(queryClient);
 }
 
 /**
@@ -69,11 +100,24 @@ export function invalidateForBureauEvent(
     void invalidateReviewQueries(queryClient);
     return true;
   }
+  let handled = false;
   if (RUN_EVENT_KINDS.has(frame.kind)) {
     void queryClient.invalidateQueries({ queryKey: BUREAU_TASKS_KEY_PREFIX });
-    return true;
+    handled = true;
   }
-  return false;
+  if (FIRST_ITEM_EVENT_KINDS.has(frame.kind)) {
+    invalidateEmptyViews(queryClient);
+    handled = true;
+  }
+  if (SESSION_EVENT_KINDS.has(frame.kind)) {
+    void queryClient.invalidateQueries({ queryKey: CONTEXTS_KEY_PREFIX });
+    handled = true;
+  }
+  if (isBureauGoalEventKind(frame.kind)) {
+    void queryClient.invalidateQueries({ queryKey: GOALS_KEY_PREFIX });
+    handled = true;
+  }
+  return handled;
 }
 
 /**

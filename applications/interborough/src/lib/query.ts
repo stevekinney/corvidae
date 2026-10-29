@@ -49,6 +49,10 @@ export const queryKeys = {
     waiting: (contextIds: readonly string[]) => ['contexts', 'waiting', contextIds] as const,
     /** Every session the caller owns, read to count and date each agent's chats. */
     usage: () => ['contexts', 'usage'] as const,
+    /** The chats' titles, read by the notification feed to name what finished. */
+    titles: () => ['contexts', 'titles'] as const,
+    /** Every session, read by the runs list to name the chat each run belongs to. */
+    runs: () => ['contexts', 'runs'] as const,
   },
   /** What an agent remembers (`bureau.memory.*`), under one agent's identifier. */
   memory: {
@@ -91,6 +95,8 @@ export const queryKeys = {
   /** The caller's goals (`bureau.goals.list`). */
   goals: {
     list: () => ['goals', 'list'] as const,
+    /** Every goal, a page at a time, read by the runs list and a run's page for a goal's attempts. */
+    runs: () => ['goals', 'runs'] as const,
   },
   /** The audit trail, narrowed by a search (`bureau.audit.query`). */
   audit: {

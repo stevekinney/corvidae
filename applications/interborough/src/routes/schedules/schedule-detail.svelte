@@ -7,7 +7,10 @@
    * is under "Engine", closed until it is asked for. The page refreshes the moment a
    * `schedule:fired` or `schedule:missed-fire` event arrives, and "Recent runs" is the engine's own
    * history of the runs the schedule launched (a `scheduleId` filter on `weft.workflows.list`), not
-   * only the fires seen since the page opened.
+   * only the fires seen since the page opened. A schedule that has missed fires shows how many and
+   * when it last did (the schedule's own record, which survives a reload); "Missed fires" lists the
+   * window and the count of each `schedule:missed-fire` event received while the page is open, which
+   * a reload empties.
    */
   import {
     Badge,
@@ -43,6 +46,12 @@
   import { cadenceToScheduleValue } from './cadence.ts';
   import { copyScheduleId } from './copy-schedule-id.ts';
   import FaultBanner from './fault-banner.svelte';
+  import {
+    formatMissedFireRange,
+    missedFireWindowOf,
+    withMissedFireWindow,
+    type MissedFireWindow,
+  } from './missed-fire-window.ts';
   import { OVERLAY_FAILURE } from './overlay-failure.ts';
   import { scheduleOverlayOptions } from './overlay-query.ts';
   import { overlapConsequence } from './overlap-policy.ts';
@@ -105,10 +114,19 @@
   // disposed before a new one opens — `$derived` has no equivalent
   // teardown-before-recompute hook, which would leak a subscription per
   // navigation between two schedule detail pages.
+  /** The windows of the `schedule:missed-fire` events received while this page is open, newest first. */
+  let missedWindows = $state.raw<readonly MissedFireWindow[]>([]);
+
   $effect(() => {
+    // A different schedule starts with a list of its own.
+    missedWindows = [];
     return fleetSource.subscribe((frame) => {
       if (frame.kind !== 'schedule:fired' && frame.kind !== 'schedule:missed-fire') return;
       if (!isRecord(frame.payload) || frame.payload['scheduleId'] !== id) return;
+      if (frame.kind === 'schedule:missed-fire') {
+        const missed = missedFireWindowOf(frame.payload);
+        if (missed !== undefined) missedWindows = withMissedFireWindow(missedWindows, missed);
+      }
       invalidateDetail();
     });
   });
@@ -284,6 +302,11 @@
       {#if schedule.missedFireCount > 0}
         <Badge variant="warning">{SCHEDULE_COPY.missed(schedule.missedFireCount)}</Badge>
       {/if}
+      {#if schedule.lastMissedFireAt !== undefined}
+        <span data-testid="schedule-last-missed">
+          · {SCHEDULE_COPY.lastMissed(formatRelativeTime(schedule.lastMissedFireAt))}
+        </span>
+      {/if}
     </p>
 
     {#if input !== undefined}
@@ -304,6 +327,17 @@
         <p class="ib-schedule__muted">{SCHEDULE_COPY.notScheduled(status.label.toLowerCase())}</p>
       {/if}
     </div>
+
+    {#if missedWindows.length > 0}
+      <div class="ib-schedule__block">
+        <h2 class="ib-schedule__label">{SCHEDULE_COPY.missedWindows}</h2>
+        <ul class="ib-schedule__fires" data-testid="schedule-missed-windows">
+          {#each missedWindows as missed (missed.id)}
+            <li>{SCHEDULE_COPY.missedWindow(formatMissedFireRange(missed), missed.missedCount)}</li>
+          {/each}
+        </ul>
+      </div>
+    {/if}
 
     <div class="ib-schedule__block">
       <h2 class="ib-schedule__label">{SCHEDULE_COPY.recentRuns}</h2>
