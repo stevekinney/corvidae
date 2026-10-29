@@ -233,6 +233,7 @@ describe('createSourceWatcher', () => {
     writeFileSync(inputsFile, JSON.stringify([changed]));
 
     let builds = 0;
+    let notified = 0;
     const scheduler = createRebuildScheduler({
       delayMilliseconds: 50,
       build: async () => {
@@ -242,7 +243,10 @@ describe('createSourceWatcher', () => {
     const watcher = createSourceWatcher({
       inputsFile,
       fallbackDirectory: join(workspace, 'elsewhere'),
-      onChange: () => scheduler.schedule(),
+      onChange: () => {
+        notified += 1;
+        scheduler.schedule();
+      },
       log: () => {},
     });
     await watcher.refresh();
@@ -250,18 +254,21 @@ describe('createSourceWatcher', () => {
 
     // `fs.watch` gives no sign that it is live, and a change made before the operating system's
     // stream has started is lost; a loaded host widens that window. So a probe file in the watched
-    // directory is rewritten until a build shows the watch delivering, and its events are let settle.
+    // directory is rewritten until the watch reports a change. Probing stops at that first report:
+    // every further rewrite would restart the scheduler's debounce, and the build it waits for below
+    // would never come. Then the probe's build and any late events are let settle.
     const probe = join(source, 'probe.ts');
     let probes = 0;
     await waitUntil(
       () => {
-        if (builds > 0) return true;
+        if (notified > 0) return true;
         probes += 1;
         writeFileSync(probe, `export const probe = ${probes};\n`);
         return false;
       },
-      { message: 'the watch to deliver a change' },
+      { message: 'the watch to report a change' },
     );
+    await waitUntil(() => builds > 0, { message: 'the probe to be built' });
     await quietFor(250);
     const before = builds;
 
