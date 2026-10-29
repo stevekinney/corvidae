@@ -5,7 +5,11 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
 
-import { createDefinitionScanner, type ScannedEntry } from './definition-scanner';
+import {
+  createDefinitionScanner,
+  REPAIR_RESCAN_MILLISECONDS,
+  type ScannedEntry,
+} from './definition-scanner';
 import { createMemoryDefinitionSource } from './testing/memory-definition-source.test-support';
 import type { DefinitionSource } from './sources/definition-source';
 
@@ -125,6 +129,72 @@ describe('a change report', () => {
         rejected: ['fresh-invalid', 'broken-later'],
       },
     ]);
+    await scanner.close();
+  });
+});
+
+describe('health (COR-1731)', () => {
+  it('has recorded no scan before the first one finishes', () => {
+    const memory = createMemoryDefinitionSource('workflow');
+    const { scanner } = scannerOver(memory.source);
+
+    expect(scanner.health()).toEqual({ lastScanAt: undefined, lastScanError: undefined });
+  });
+
+  it('records when the last scan finished, on the runtime clock', async () => {
+    const memory = createMemoryDefinitionSource('workflow');
+    const { scanner, runtime } = scannerOver(memory.source);
+
+    await scanner.refresh();
+    const first = runtime.clock.now();
+    expect(scanner.health()).toEqual({ lastScanAt: first, lastScanError: undefined });
+
+    await runtime.advance(5_000);
+    await scanner.refresh();
+    expect(scanner.health()).toEqual({ lastScanAt: first + 5_000, lastScanError: undefined });
+    await scanner.close();
+  });
+
+  it('records a failed scan’s time and message, and a later successful scan clears the message', async () => {
+    const memory = createMemoryDefinitionSource('workflow');
+    const { scanner, runtime } = scannerOver(memory.source);
+    await scanner.refresh();
+
+    await runtime.advance(1_000);
+    memory.failNextLoad(new Error('store unavailable'));
+    await scanner.refresh();
+    const failedAt = runtime.clock.now();
+    expect(scanner.health()).toEqual({ lastScanAt: failedAt, lastScanError: 'store unavailable' });
+
+    // The repair scan the failure scheduled succeeds and clears the message.
+    await runtime.advance(REPAIR_RESCAN_MILLISECONDS);
+    await scanner.refresh();
+    expect(scanner.health()).toEqual({
+      lastScanAt: failedAt + REPAIR_RESCAN_MILLISECONDS,
+      lastScanError: undefined,
+    });
+    await scanner.close();
+  });
+
+  it('records only the message of a failure, never its stack', async () => {
+    const memory = createMemoryDefinitionSource('workflow');
+    const { scanner } = scannerOver(memory.source);
+    memory.failNextLoad(new Error('boom'));
+
+    await scanner.refresh();
+
+    expect(scanner.health().lastScanError).toBe('boom');
+    await scanner.close();
+  });
+
+  it('records a non-Error failure as text', async () => {
+    const memory = createMemoryDefinitionSource('workflow');
+    const { scanner } = scannerOver(memory.source);
+    memory.failNextLoad('plain text failure' as unknown as Error);
+
+    await scanner.refresh();
+
+    expect(scanner.health().lastScanError).toBe('plain text failure');
     await scanner.close();
   });
 });

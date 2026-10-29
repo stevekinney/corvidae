@@ -15,7 +15,11 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import type { DocumentWorkflowHost } from '@lostgradient/weft';
 
-import { createDefinitionScanner, type DefinitionChange } from './definition-scanner';
+import {
+  createDefinitionScanner,
+  type DefinitionChange,
+  type DefinitionScannerHealth,
+} from './definition-scanner';
 import { ownerOrLocal } from './owner-of-record';
 import {
   type DefinitionEntry,
@@ -116,6 +120,8 @@ export interface WorkflowFileCatalog {
   ) => Promise<WorkflowFileWriteResult>;
   /** Rescan the directory; resolves once the catalog reflects it. */
   readonly refresh: () => Promise<void>;
+  /** When the directory was last scanned and the message of that scan's error (COR-1731). */
+  readonly health: () => DefinitionScannerHealth;
   /** Called after every rescan that added, changed, or removed a workflow. Returns its unsubscribe. */
   readonly onChange: (listener: (change: DefinitionChange) => void) => () => void;
   /** Stop watching and wait for a scan in flight. */
@@ -392,6 +398,7 @@ export function createWorkflowFileCatalog(
     },
 
     refresh: watched.refresh,
+    health: watched.health,
     onChange: watched.onChange,
     close: watched.close,
   };

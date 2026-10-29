@@ -1904,6 +1904,61 @@ export interface BureauContexts {
 }
 
 /**
+ * One definition source's watcher, as {@link BureauDiagnostics.watchers} reports it (COR-1731).
+ * Times and the error message only: never a definition's bytes or an error's stack.
+ */
+export interface BureauWatcherHealth {
+  /** Which definition source this watcher reads: the agent directory or the workflow directory. */
+  readonly source: 'agents' | 'workflows';
+  /**
+   * When the watcher's last scan finished, in epoch milliseconds on the Bureau's runtime clock,
+   * whether that scan succeeded or failed. `null` before the first scan finishes.
+   */
+  readonly lastScanAt: number | null;
+  /**
+   * The message of the error the last scan failed with, which the next successful scan clears.
+   * `null` when the last scan succeeded and before any scan finished.
+   */
+  readonly lastScanError: string | null;
+}
+
+/**
+ * A point-in-time reading of what a Bureau is holding, from {@link BureauInternals.diagnostics}
+ * and the `bureau.diagnostics.get` operation (COR-1731). Counts, statuses, and timestamps only:
+ * it names no run, review, agent, message, credential, or stack, so it is safe to serve to a
+ * caller that holds the `bureau.diagnostics:read` scope.
+ */
+export interface BureauDiagnostics {
+  /** How the boot recovery pass ended. */
+  readonly recovery: {
+    /**
+     * `'pending'` while a deferred recovery (one waiting on
+     * {@link Bureau.setRequestAuthorityValidator}) has not finished; otherwise the
+     * {@link BureauRecoveryReport.outcome} of the pass.
+     */
+    readonly status: 'pending' | BureauRecoveryReport['outcome'];
+    /** How many handles the pass cancelled: {@link BureauRecoveryReport.perRunFailures}'s length. */
+    readonly failedRunCount: number;
+  };
+  /** {@link Bureau.lifecycle}, as of this reading. */
+  readonly lifecycle: Bureau['lifecycle'];
+  /** How many {@link Bureau.frames} listeners are subscribed, one still being replayed boot frames included. */
+  readonly liveFrameSubscriberCount: number;
+  /** How many live subscriptions {@link BureauInternals.eventFeed} holds, `bureau.events` clients among them. */
+  readonly eventFeedSubscriberCount: number;
+  /** One entry per configured definition source (`agentSource`, `workflowSource`), in that order. */
+  readonly watchers: readonly BureauWatcherHealth[];
+  /** The model catalog's `revision`: `1` at boot, plus one for each `bureau.models.replace`. */
+  readonly modelCatalogRevision: number;
+  /** How many runs this process is executing: bureau-owned runs and `bureau.run()` catalog runs. */
+  readonly runningRunCount: number;
+  /** How many runs have a requested cancellation that has not settled ({@link BureauInternals.abortingTasks}). */
+  readonly abortingRunCount: number;
+  /** How many reviews await a human decision, as {@link BureauReviews.list} would return them. */
+  readonly pendingReviewCount: number;
+}
+
+/**
  * The seam between a Bureau and the code that serves or tests it: `createBureauHandler` reads
  * these members to serve the operations, and the test harness reads them to inspect what the
  * Bureau holds. An application builds on the other members of {@link Bureau}; none of these
@@ -2041,6 +2096,16 @@ export interface BureauInternals {
    * `task-registry.ts`.
    */
   readonly taskRegistry: TaskRegistry;
+
+  /**
+   * COR-1731 — what this Bureau is holding right now: the recovery outcome, the lifecycle, the
+   * live-frame and event-feed subscriber counts, each definition watcher's last scan, the model
+   * catalog revision, and the running, aborting, and pending-review counts. Synchronous: it reads
+   * what the Bureau already records and awaits nothing, so a watcher's health is what its scans
+   * recorded as they happened. Counts, statuses, and timestamps only (see
+   * {@link BureauDiagnostics}); `bureau.diagnostics.get` serves the same reading.
+   */
+  diagnostics(): BureauDiagnostics;
 }
 
 export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {

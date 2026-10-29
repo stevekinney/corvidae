@@ -68,7 +68,7 @@ import {
 import type { AgentSnapshot } from './agent-snapshot-store';
 import type { Models } from './models/create-models';
 import { ownerOrLocal } from './owner-of-record';
-import { createDefinitionScanner } from './definition-scanner';
+import { createDefinitionScanner, type DefinitionScannerHealth } from './definition-scanner';
 import type { AgentSource, DefinitionEntry } from './sources/definition-source';
 
 /** One agent as an editor needs it: the listing, the file's exact text, and what it parses to. */
@@ -193,6 +193,8 @@ export interface AgentFileCatalog extends AgentFileWriter {
   find(id: string): AnyRunnableAgent | undefined;
   /** Rescan the directory; resolves once the catalog reflects it. */
   refresh(): Promise<void>;
+  /** When the directory was last scanned and the message of that scan's error (COR-1731). */
+  health(): DefinitionScannerHealth;
   /** Called after every rescan that added, changed, or removed an agent. Returns its unsubscribe. */
   onChange(listener: (change: AgentCatalogChange) => void): () => void;
   /**
@@ -663,6 +665,8 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     },
 
     refresh,
+
+    health: directoryWatcher.health,
 
     onChange: directoryWatcher.onChange,
 
