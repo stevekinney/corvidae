@@ -14,14 +14,16 @@ import {
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import { removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau } from './types';
-import { createSqliteStorageFixture } from './test/storage-fixtures';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 
 const deploySchema: HumanInputSchema = {
   type: 'object',
@@ -30,12 +32,12 @@ const deploySchema: HumanInputSchema = {
   additionalProperties: false,
 };
 
-const databasePaths: string[] = [];
+const databasePaths: PersistentBureauStorageFixture[] = [];
 const bureaus: Bureau<AgentDefinitions>[] = [];
 
 afterEach(async () => {
   for (const bureau of bureaus.splice(0)) await bureau.dispose();
-  for (const path of databasePaths.splice(0)) removeTemporaryPath(path);
+  for (const fixture of databasePaths.splice(0)) await fixture.dispose();
 });
 
 const next = createTool({
@@ -60,9 +62,8 @@ describe('BureauOptions.humanInput with inputSchemas', () => {
   });
 
   it('gives a run recovered after a restart the schema on its next park', async () => {
-    await using database = createSqliteStorageFixture();
-    const databasePath = database.path;
-    databasePaths.push(databasePath);
+    const database = createSqliteStorageFixture();
+    databasePaths.push(database);
     const open = async (generate: GenerateFunction) => {
       const bureau = await createBureau<AgentDefinitions>({
         agents: {

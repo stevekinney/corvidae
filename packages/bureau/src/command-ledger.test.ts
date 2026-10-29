@@ -1018,7 +1018,7 @@ describe('createRunCreationLedger', () => {
 
 describe('two ledgers over one store', () => {
   it('keep their entries, claims, and pruning apart when they use different key prefixes', async () => {
-    const { kv, runtime, ledger } = memoryLedger();
+    const { fixture, kv, runtime, ledger } = memoryLedger();
     const other = createCommandLedger<{ readonly threadId: string }, TestResult>({
       kv,
       keyPrefix: 'command-ledger:other:v1',
@@ -1036,5 +1036,6 @@ describe('two ledgers over one store', () => {
     await runtime.advance(COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS + 1);
     expect(await ledger.prune()).toEqual({ entries: 1, conflicts: 0 });
     expect(await other.listClaims()).toEqual([{ threadId: 'thread-1' }]);
+    await fixture.dispose();
   });
 });

@@ -195,15 +195,20 @@ describe('a session run the durable engine resumes after a restart', () => {
     cleanups.push(() => removeTemporaryPath(directory));
     const agents = createTemporaryDirectory('bureau-revision-resume-agents');
     cleanups.push(() => removeTemporaryPath(agents));
-    await using storageFixture = createSqliteStorageFixture({
+    const storageFixture = createSqliteStorageFixture({
       path: join(directory, 'bureau.sqlite'),
     });
+    // Closed after the Bureaus, which the cleanups dispose first.
+    cleanups.push(() => storageFixture.dispose());
     const hold = new Promise<never>(() => undefined);
     const overrides = {
       durable: true,
       durableOwnership: { ownership: 'none' as const },
       maintenance: 'manual' as const,
-      storage: storageFixture.storage,
+      // Each Bureau these options open gets its own handle on the store.
+      get storage() {
+        return storageFixture.open();
+      },
     };
 
     const first = await open({

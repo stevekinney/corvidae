@@ -13,7 +13,6 @@ import {
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import { removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { createBureau, EXPIRY_SWEEP_INTERVAL_MILLISECONDS } from './create-bureau';
 import { OWNER } from './http/management/management-fixtures.test-support.ts';
@@ -22,24 +21,24 @@ import { scheduledFireHoldings, scheduledFireReviewStateOf } from './scheduled-f
 import type { Bureau } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 import { MemoryStorage } from '@lostgradient/storage';
-import { createSqliteStorageFixture } from './test/storage-fixtures';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 
 const bureaus: Bureau[] = [];
-const paths: string[] = [];
+const paths: PersistentBureauStorageFixture[] = [];
 
 afterEach(async () => {
   for (const bureau of bureaus.splice(0)) await bureau.shutdown();
-  for (const path of paths.splice(0)) {
-    removeTemporaryPath(path);
-  }
+  for (const fixture of paths.splice(0)) await fixture.dispose();
 });
 
 describe('expired review state under the automatic maintenance profile', () => {
   it('is removed by the Bureau’s own timer, for a fire and a session run, with no host call', async () => {
     const runtime = createManualRuntimeServices();
-    await using pathFixture = createSqliteStorageFixture();
-    const path = pathFixture.path;
-    paths.push(path);
+    const pathFixture = createSqliteStorageFixture();
+    paths.push(pathFixture);
     let calls = 0;
     const generate: GenerateFunction = async (context) => {
       if (context.step > 0) return { content: 'done', toolCalls: [] };
@@ -302,9 +301,8 @@ describe('expired review state of a Bureau with no maintenance timer of its own'
 
   it('is swept by a manual host’s own durable maintenance', async () => {
     const runtime = createManualRuntimeServices();
-    await using pathFixture = createSqliteStorageFixture();
-    const path = pathFixture.path;
-    paths.push(path);
+    const pathFixture = createSqliteStorageFixture();
+    paths.push(pathFixture);
     const bureau = await createBureau<AgentDefinitions>({
       id: 'expiry-manual-bureau',
       agents: {

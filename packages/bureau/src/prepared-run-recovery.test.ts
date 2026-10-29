@@ -196,7 +196,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
     const fixture = newFixture();
     const run = await prepareWithoutLaunching(fixture.storage);
 
-    const restarted = await open(await fixture.reopen());
+    const restarted = await open(fixture.open());
     const report: BureauRecoveryReport = await restarted.recovery();
 
     expect(report.perRunFailures).toContainEqual({
@@ -236,7 +236,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
     });
     cleanups.push(() => cancel.mockRestore());
 
-    const restarted = await open(await fixture.reopen());
+    const restarted = await open(fixture.open());
     await restarted.recovery();
     cancel.mockRestore();
 
@@ -247,7 +247,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
   it('leaves the session alone when another run has taken it over since recovery classified it', async () => {
     const fixture = newFixture();
     const run = await prepareWithoutLaunching(fixture.storage);
-    const storage = await fixture.reopen();
+    const storage = fixture.open();
     cleanups.push(() => storage[Symbol.dispose]());
     const sessions = createSessionStore(
       textValueStore(storage, { disposeUnderlyingStorage: false }),
@@ -267,7 +267,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
     });
     cleanups.push(() => get.mockRestore());
 
-    const restarted = await open(await fixture.reopen());
+    const restarted = await open(fixture.open());
     await restarted.recovery();
     get.mockRestore();
 
@@ -296,7 +296,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
       rejected: [] as Array<[string, string]>,
     };
 
-    const restarted = await open(await fixture.reopen(), { recovery });
+    const restarted = await open(fixture.open(), { recovery });
     await restarted.recovery();
     claimHolder.mockRestore();
 
@@ -330,7 +330,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
       'the catalog run was never prepared',
     );
 
-    const restarted = await open(await fixture.reopen());
+    const restarted = await open(fixture.open());
     const report = await restarted.recovery();
 
     expect(report.perRunFailures).toContainEqual({ runId, reason: 'prepared-not-launched' });
@@ -347,7 +347,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
       rejected: [] as Array<[string, string]>,
     };
 
-    const restarted = await open(await fixture.reopen(), { recovery });
+    const restarted = await open(fixture.open(), { recovery });
     await restarted.recovery();
 
     const verdicts = recovery.attempted.filter(([runId]) => runId === run.id).map(([, v]) => v);
@@ -359,7 +359,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
   it('still cancels the record when settling its session fails, and reports the failure', async () => {
     const fixture = newFixture();
     const run = await prepareWithoutLaunching(fixture.storage);
-    const storage = await fixture.reopen();
+    const storage = fixture.open();
     cleanups.push(() => storage[Symbol.dispose]());
     // Every session body write, which is what settling the session's metadata makes.
     const refusing = refuseWritesUnder(storage, 'agent-session-v2:body:');
@@ -404,7 +404,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
       rejected: [] as Array<[string, string]>,
     };
 
-    const restarted = await open(await fixture.reopen(), { diagnostics, recovery });
+    const restarted = await open(fixture.open(), { diagnostics, recovery });
     await restarted.recovery();
     get.mockRestore();
 

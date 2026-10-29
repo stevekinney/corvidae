@@ -272,6 +272,12 @@ export async function openBureau(
     options.durableHistory === true
       ? createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() })
       : undefined;
+  // A Bureau or handler that refuses its options still leaves nothing open behind it.
+  const refused = async (error: unknown, bureau?: { dispose(): Promise<void> }): Promise<never> => {
+    await bureau?.dispose();
+    await fixture?.dispose();
+    throw error;
+  };
   const bureau = await createBureau<AgentDefinitions>({
     id: options.id ?? 'management-bureau',
     agents: {
@@ -299,12 +305,17 @@ export async function openBureau(
       ? {}
       : { humanInput: options.humanInput }),
     ...options.bureauOptions,
-  });
-  const handler = createBureauHandler(bureau, {
-    authentication,
-    ...(options.publish === undefined ? {} : { publish: options.publish }),
-    ...options.handlerOptions,
-  });
+  }).catch((error: unknown) => refused(error));
+  let handler: ReturnType<typeof createBureauHandler>;
+  try {
+    handler = createBureauHandler(bureau, {
+      authentication,
+      ...(options.publish === undefined ? {} : { publish: options.publish }),
+      ...options.handlerOptions,
+    });
+  } catch (error) {
+    return refused(error, bureau);
+  }
   return {
     bureau,
     handler,

@@ -194,9 +194,9 @@ describe('command ledger retention', () => {
     ['negative', -1],
     ['fractional', 1.5],
     ['not finite', Number.POSITIVE_INFINITY],
-  ])('rejects a %s window', (_label, terminalRetentionMs) => {
+  ])('rejects a %s window', async (_label, terminalRetentionMs) => {
     const runtime: ManualRuntimeServices = createManualRuntimeServices({ origin: ORIGIN });
-    const fixture = createMemoryStorageFixture();
+    await using fixture = createMemoryStorageFixture();
     const kv = textValueStore(fixture.storage, { disposeUnderlyingStorage: false });
     expect(() =>
       createCommandLedger({

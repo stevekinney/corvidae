@@ -9,7 +9,6 @@ import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
-import { removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { z } from 'zod';
 
@@ -18,10 +17,13 @@ import { createBureau } from './create-bureau';
 import { createRuntimeComposition } from './runtime-composition';
 import type { Bureau } from './types';
 import { MemoryStorage } from '@lostgradient/storage';
-import { createSqliteStorageFixture } from './test/storage-fixtures';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
-const databasePaths: string[] = [];
+const databasePaths: PersistentBureauStorageFixture[] = [];
 
 async function waitForReview(bureau: Bureau<AgentDefinitions>, runId: string): Promise<void> {
   for await (const _turn of awakeTurns()) {
@@ -33,14 +35,13 @@ async function waitForReview(bureau: Bureau<AgentDefinitions>, runId: string): P
 
 afterEach(async () => {
   for (const bureau of bureaus.splice(0)) await bureau.dispose();
-  for (const path of databasePaths.splice(0)) removeTemporaryPath(path);
+  for (const fixture of databasePaths.splice(0)) await fixture.dispose();
 });
 
 describe('COR-1716 shutdown readiness baseline', () => {
   test('default shutdown aborts a durable parked run instead of leaving it recoverable', async () => {
-    await using database = createSqliteStorageFixture();
-    const databasePath = database.path;
-    databasePaths.push(databasePath);
+    const database = createSqliteStorageFixture();
+    databasePaths.push(database);
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
         asker: createAgent({
@@ -113,9 +114,8 @@ describe('COR-1716 shutdown readiness baseline', () => {
   });
 
   test('detach leaves a durable parked run recoverable and reports it separately', async () => {
-    await using database = createSqliteStorageFixture();
-    const databasePath = database.path;
-    databasePaths.push(databasePath);
+    const database = createSqliteStorageFixture();
+    databasePaths.push(database);
     const createAsker = () =>
       createAgent({
         generate: async () => ({

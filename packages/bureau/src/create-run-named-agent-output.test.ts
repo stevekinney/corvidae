@@ -9,7 +9,6 @@ import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/oper
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import { removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
@@ -18,16 +17,17 @@ import { withResolvedOptions } from './testing/named-agent.test-support';
 import type { Bureau } from './types';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { MemoryStorage } from '@lostgradient/storage';
-import { createSqliteStorageFixture } from './test/storage-fixtures';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
-const databasePaths: string[] = [];
+const databasePaths: PersistentBureauStorageFixture[] = [];
 
 afterEach(async () => {
   for (const bureau of bureaus.splice(0)) await bureau.dispose();
-  for (const path of databasePaths.splice(0)) {
-    removeTemporaryPath(path);
-  }
+  for (const fixture of databasePaths.splice(0)) await fixture.dispose();
 });
 
 const answerSchema = z.object({ answer: z.string() });
@@ -93,9 +93,8 @@ describe('a named agent’s structured output on a session run', () => {
 
 describe('a named agent’s structured output after a restart', () => {
   it('is still enforced when the run resumes', async () => {
-    await using database = createSqliteStorageFixture();
-    const databasePath = database.path;
-    databasePaths.push(databasePath);
+    const database = createSqliteStorageFixture();
+    databasePaths.push(database);
     const next = createTool({
       name: 'next',
       description: 'continue',

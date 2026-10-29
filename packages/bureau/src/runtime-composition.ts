@@ -102,6 +102,7 @@ import {
   type SkillEventMap,
   type ToolPolicy,
 } from './skills';
+import { fenceStorage } from './storage-fence';
 import { createDecideToolbox, type DecideToolWiring } from './decisions/decide-tool';
 import { humanInputEnabled, humanInputSchemasOf } from './human-input-option';
 import type { TaskToolGrant } from './task-registry';
@@ -2133,6 +2134,12 @@ export interface RuntimeComposition {
    */
   workflowVersionMismatches: Map<string, { storedVersion: string; registeredVersion: string }>;
   /**
+   * Stops this composition's use of the caller's `options.storage` (COR-1767): every later
+   * operation through `kv`, the checkpoint store, the engine, or `durableStorage` throws. It never
+   * closes the caller's storage, which stays the caller's to close. A no-op without storage.
+   */
+  stopUsingStorage(): void;
+  /**
    * The resolved durable `Storage` backend itself, when one exists.
    *
    * Distinct from `kv`, which is a `ConditionalTextValueStore` *view* over
@@ -2143,8 +2150,9 @@ export interface RuntimeComposition {
    * `undefined` when no persistent backend resolved — the caller is then
    * genuinely non-durable and must not pretend otherwise.
    *
-   * Lifecycle stays with whoever constructed the adapter and passed it as
-   * `options.storage`: neither this composition nor a borrower disposes it.
+   * This is the fenced view of the caller's `options.storage`, which
+   * `stopUsingStorage` closes. Neither this composition nor a borrower disposes
+   * the caller's adapter.
    */
   durableStorage: Storage | undefined;
   memory: GovernedMemory | undefined;
@@ -2822,13 +2830,15 @@ async function buildRuntimeComposition(
   const skillEvents = new TypedEventTarget<SkillEventMap>();
 
   // The caller's storage adapter. Bureau never disposes it: the caller constructed it and closes
-  // it after the Bureau has shut down.
+  // it after the Bureau has shut down. Everything here uses it through a fence, which the Bureau
+  // closes when it shuts down or fails to start, so no work left over from it writes afterwards.
   const effectiveStorage = options.storage;
+  const storageFence = effectiveStorage === undefined ? undefined : fenceStorage(effectiveStorage);
 
   let kv: ConditionalTextValueStore | undefined;
   // Keep the raw Storage so the durable engine can share the exact backend with
   // the text-value KV view (Weft requires one engine per durable store).
-  const durableStorage: Storage | undefined = effectiveStorage;
+  const durableStorage: Storage | undefined = storageFence?.storage;
   if (durableStorage) {
     kv = textValueStore(durableStorage, { disposeUnderlyingStorage: false });
   }
@@ -5328,6 +5338,7 @@ async function buildRuntimeComposition(
     workflowVersionMismatches,
     scheduleFireEvents,
     skillEvents,
+    stopUsingStorage: () => storageFence?.close(),
     durableStorage,
     memory,
     sessionStore,

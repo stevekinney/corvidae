@@ -2087,7 +2087,13 @@ describe('createRuntimeComposition durable execution', () => {
     });
 
     try {
-      expect(runtime.durable?.engine.storage).toBe(storage);
+      // The engine persists to the caller's storage, through Bureau's fence (COR-1767).
+      const engineStorage = runtime.durable?.engine.storage;
+      await engineStorage?.put('probe', new Uint8Array([5]));
+      expect(await storage.get('probe')).toEqual(new Uint8Array([5]));
+      runtime.stopUsingStorage();
+      expect(() => engineStorage?.get('probe')).toThrow(/stopped using its storage/);
+      expect(await storage.get('probe')).toEqual(new Uint8Array([5]));
     } finally {
       runtime.durable?.engine[Symbol.dispose]?.();
       storage[Symbol.dispose]();

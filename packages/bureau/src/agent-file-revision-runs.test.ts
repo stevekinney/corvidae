@@ -133,9 +133,11 @@ describe('a run resumed after a restart', () => {
     cleanups.push(() => removeTemporaryPath(directory));
     const agents = createTemporaryDirectory('bureau-revision-agents');
     cleanups.push(() => removeTemporaryPath(agents));
-    await using storageFixture = createSqliteStorageFixture({
+    const storageFixture = createSqliteStorageFixture({
       path: join(directory, 'bureau.sqlite'),
     });
+    // Closed after the Bureaus, which the cleanups dispose first.
+    cleanups.push(() => storageFixture.dispose());
     const hold = new Promise<never>(() => undefined);
     const overrides = {
       durableOwnership: { ownership: 'none' as const },

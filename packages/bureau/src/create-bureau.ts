@@ -2376,7 +2376,10 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         '"options.workflowSource" needs a durable engine: configure storage (or durable) so workflow instances and schedules can persist',
         'BAD_REQUEST',
       ),
-      async () => assetServiceInstance?.shutdown(),
+      async () => {
+        await assetServiceInstance?.shutdown();
+        runtime.stopUsingStorage();
+      },
     );
   }
   // COR-660 — the per-tick observation pair, forwarded the same way and for
@@ -2418,6 +2421,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     await attempt(() => assetServiceInstance?.shutdown());
     await attempt(() => runtime.durable?.observability?.dispose());
     await attempt(() => runtime.durable?.engine.shutdown());
+    // The store is fenced off before the waiters settle (see above): Bureau never closes a storage
+    // it was given, so this is what keeps a settled waiter from committing to it (COR-1767).
+    runtime.stopUsingStorage();
     runtime.abandonCatalogAgentRunOptionsResolver(
       `the bureau failed while it was being constructed: ${serializeUnknownError(error)}`,
     );
@@ -17606,10 +17612,11 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         // released when the engine is disposed below — there is no module-global
         // reconstructor to clear here anymore.
         //
-        // Dispose the durable run engine, then the store — each guarded so a throw
-        // in one stage does not skip the next (engine dispose is synchronous and can
-        // throw in a degraded environment). The raw Storage is the caller's: Bureau
-        // never closes it, so the caller closes it after this shutdown returns.
+        // Dispose the durable run engine, then fence off the raw Storage, then the
+        // store — each guarded so a throw in one stage does not skip the next (engine
+        // dispose is synchronous and can throw in a degraded environment). The raw
+        // Storage is the caller's: Bureau stops using it but never closes it, so the
+        // caller closes it after this shutdown returns.
         try {
           // Observability dispose runs BEFORE engine dispose: it ends still-open
           // spans and unsubscribes the engine lifecycle listeners. If the engine
@@ -17679,8 +17686,13 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
               // watcher stops and drains before storage closes under it (COR-1669).
               await fileAgents?.files.close();
             } finally {
-              if (ownsStore) {
-                store.dispose();
+              try {
+                // Bureau stops using the caller's storage, which the caller closes (COR-1767).
+                runtime.stopUsingStorage();
+              } finally {
+                if (ownsStore) {
+                  store.dispose();
+                }
               }
             }
           }
