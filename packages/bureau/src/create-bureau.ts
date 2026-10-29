@@ -1969,9 +1969,39 @@ function watcherHealthOf(
   return { source, lastScanAt: lastScanAt ?? null, lastScanError: lastScanError ?? null };
 }
 
-export async function createBureau<const D extends AgentDefinitions = Record<never, never>>(
+/**
+ * How a construction that fails part-way stops what it started (COR-1781). `constructBureau` names
+ * it as construction goes on: none while it fails before anything is guarded, then the shutdown of
+ * the composition (`abandonConstruction`), then, once the Bureau object exists, `bureau.shutdown()`.
+ */
+type BureauConstruction<D extends AgentDefinitions> = {
+  abandon?: (error: unknown) => Promise<never>;
+  /** Settles `createBureau`'s promise with the built Bureau. */
+  readonly built: (bureau: Bureau<D>) => void;
+};
+
+export function createBureau<const D extends AgentDefinitions = Record<never, never>>(
   options: BureauOptions<D>,
 ): Promise<Bureau<D>> {
+  // `constructBureau` resolves this promise itself, as its last step, rather than this function
+  // awaiting it: an await here would cost the caller a turn, and a recovered run's first events race
+  // the caller's first subscription (COR-1664). Only a failure takes the longer way, through the
+  // teardown construction had reached, so a step after the guarded block cannot leave the engine
+  // running and the storage in use.
+  const result = Promise.withResolvers<Bureau<D>>();
+  const construction: BureauConstruction<D> = { built: result.resolve };
+  void constructBureau(options, construction)
+    .catch((error: unknown) =>
+      construction.abandon === undefined ? Promise.reject(error) : construction.abandon(error),
+    )
+    .catch(result.reject);
+  return result.promise;
+}
+
+async function constructBureau<const D extends AgentDefinitions>(
+  options: BureauOptions<D>,
+  construction: BureauConstruction<D>,
+): Promise<void> {
   // AB-194: validated here (BAD_REQUEST at construction time). Admission
   // enforces these same validated values (defaulting to
   // `DEFAULT_SESSION_INPUT_BACKLOG_LIMIT`/`DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT`)
@@ -2643,6 +2673,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   } catch (error) {
     return abandonConstruction(error);
   }
+  // Every later step that fails is stopped the same way, by `createBureau`.
+  construction.abandon = abandonConstruction;
   // AB-240: wire boot recovery's catalog branch NOW that the catalog exists —
   // `runtime` (built above, before this catalog) deliberately knows nothing
   // about it (see `RuntimeCompositionOptions`'s doc comment), so this is the
@@ -19059,6 +19091,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     dispose,
     shutdown,
   } satisfies Bureau<D>;
+  // From here a failed step shuts the whole Bureau down, which stops what the composition's
+  // shutdown would and everything built since.
+  construction.abandon = (error) => shutdownThenRethrow(error, () => bureau.shutdown());
 
   // Wire the durable audit trail (Layer B) now that we have a bureau to
   // subscribe to. Only created when a KV store is available; ephemeral
@@ -19484,13 +19519,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   // revision it began on only if that revision is loaded by then. The scheduler waits for this (see
   // `startScheduler` in `runtime-composition.ts`) and starts as soon as it is done.
   if (workflowRuntime !== undefined) {
-    try {
-      await workflowRuntime.start();
-    } catch (error) {
-      await shutdownThenRethrow(error, async () => {
-        await bureau.shutdown();
-      });
-    }
+    await workflowRuntime.start();
     // COR-1721 — after the first scan `start()` made, as for the agent files.
     stopForwarding.push(
       forwardDefinitionChanges('workflows', workflowRuntime.workflows, (event) =>
@@ -19541,5 +19570,5 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   trackScheduledFireReviewState(bureau, scheduledFireReviewState);
   trackFireReviewSeeds(bureau, fireReviewSeeds);
   if (fireReviewFollower !== undefined) trackFireReviewFollower(bureau, fireReviewFollower);
-  return bureau;
+  construction.built(bureau);
 }
