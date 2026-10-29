@@ -69,6 +69,11 @@ function undescribedParameters(operation: AuditedOperation): string[] {
  * on the wire. The result is empty when the catalog is fully described, so a
  * catalog's own test asserts it equals `[]` and fails with the offending names.
  *
+ * Call `.describe()` last on a nullable field: `.describe('x').nullable()` wraps
+ * the described schema in an `anyOf`, so the field itself carries no
+ * `description` and is reported, while `.nullable().describe('x')` passes.
+ * Placing `.describe()` before `.optional()` or `.default()` also passes.
+ *
  * Accepts a registry (anything with `list()`) or an iterable of operations.
  * Entries read `<operation>: missing description` or
  * `<operation>: parameter "<field>" missing description`, sorted by operation.

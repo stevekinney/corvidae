@@ -51,13 +51,13 @@ const startOrSignalWorkflowInput = z.object({
     .refine(isSignalIdWithinByteLimit, 'signalId must be at most 128 bytes')
     .optional()
     .describe(
-      'Id that makes signal delivery idempotent: callers sharing an id deliver one signal. At most 128 bytes; when omitted it is derived from idempotencyKey.',
+      'Id of the signal to deliver. Provide exactly one of signalId or idempotencyKey. Concurrent callers converge on one run and one signal only when they share both id and signalId; a bare signalId, without id, starts a fresh run per caller. Required for onTerminalConflict "start-new". At most 128 bytes.',
     ),
   id: z
     .unknown()
     .optional()
     .describe(
-      'Client-chosen workflow id. Omit it to have one generated; a start with an id that already exists faults with Conflict.',
+      'Client-chosen id of the target workflow. Omit it to have one generated. An absent id is created and signalled (outcome "started"); a non-terminal run with this id is signalled (outcome "signalled"); a finished run with this id faults with Conflict unless onTerminalConflict is "start-new".',
     ),
   executionTimeout: z
     .unknown()
@@ -85,7 +85,7 @@ const startOrSignalWorkflowInput = z.object({
     .unknown()
     .optional()
     .describe(
-      'At-most-once key: a repeated key returns the existing run instead of starting another.',
+      'Alternative to signalId; provide exactly one. Callers sharing a key converge on one run and one delivered signal (the signal id derives from the key), and a repeated key signals the run it first started instead of starting another. A key whose run was purged by retention faults with Conflict. Cannot be combined with signalId or with onTerminalConflict "start-new".',
     ),
   searchAttributes: z
     .unknown()

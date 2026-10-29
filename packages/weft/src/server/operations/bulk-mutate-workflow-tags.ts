@@ -33,7 +33,9 @@ const bulkMutateWorkflowTagsInput = z
   .object({
     filter: bulkListFilterInputSchema
       .optional()
-      .describe('Select the workflows to change; omit it to select every workflow.'),
+      .describe(
+        'Select the workflows to change. It must name at least one scope: status, type, scheduleId, tags, attributes, or an idPrefix of 3 or more characters (failureCategory counts only together with status; time ranges only alongside another scope). An empty or omitted filter is rejected with InvalidParams.',
+      ),
     tags: z.array(z.string()).describe('Tags to add or remove.'),
     operation: z
       .enum(['add', 'remove'])
@@ -49,8 +51,10 @@ export const bulkMutateWorkflowTagsOperation = defineOperation({
   mcpExposable: false,
   summary: 'Add or remove workflow tags in bulk',
   description:
-    'Add or remove `tags` on every workflow that matches `filter` (every workflow ' +
-    'when omitted). Run it first with `dryRun: true` to preview the matches and ' +
+    'Add or remove `tags` on every workflow that matches `filter`, which must name at ' +
+    'least one scope (status, type, scheduleId, tags, attributes, an idPrefix of 3 or ' +
+    'more characters, or failureCategory together with status); an unscoped filter is ' +
+    'rejected with InvalidParams. Run it first with `dryRun: true` to preview the matches and ' +
     'receive a `confirmationToken`, then repeat the same request with that token to ' +
     'commit. Requires workflows:admin.',
   destructive: true,

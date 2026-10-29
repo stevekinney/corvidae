@@ -107,6 +107,22 @@ describe('findUndescribedOperations', () => {
     expect(findUndescribedOperations(operations)).toEqual([]);
   });
 
+  it('requires describe() after nullable() for the text to reach the field', () => {
+    const operations = [
+      operation({
+        name: 'weft.test.nullable',
+        description: 'Described.',
+        inputSchema: z.object({
+          inside: z.string().describe('Inside.').nullable(),
+          outside: z.string().nullable().describe('Outside.'),
+        }),
+      }),
+    ];
+    expect(findUndescribedOperations(operations)).toEqual([
+      'weft.test.nullable: parameter "inside" missing description',
+    ]);
+  });
+
   it('accepts a described reused schema that is emitted as a reference', () => {
     const shared = z.string().describe('Shared id.');
     const operations = [
@@ -117,6 +133,47 @@ describe('findUndescribedOperations', () => {
       }),
     ];
     expect(findUndescribedOperations(operations)).toEqual([]);
+  });
+
+  it('accepts a parameter whose referenced definition carries the description', () => {
+    const identifier = z.string().describe('Shared id.').meta({ id: 'SharedIdentifier' });
+    const operations = [
+      operation({
+        name: 'weft.test.definition',
+        description: 'Described.',
+        inputSchema: z.object({ first: identifier, second: identifier }),
+      }),
+    ];
+    expect(findUndescribedOperations(operations)).toEqual([]);
+  });
+
+  it('reports a parameter whose referenced definition has no description', () => {
+    const identifier = z.string().meta({ id: 'BareIdentifier' });
+    const operations = [
+      operation({
+        name: 'weft.test.baredefinition',
+        description: 'Described.',
+        inputSchema: z.object({ id: identifier }),
+      }),
+    ];
+    expect(findUndescribedOperations(operations)).toEqual([
+      'weft.test.baredefinition: parameter "id" missing description',
+    ]);
+  });
+
+  it('reports a parameter that refers back to the root schema', () => {
+    type Node = { readonly child?: Node | undefined };
+    const node: z.ZodType<Node> = z.object({ child: z.lazy(() => node).optional() });
+    const operations = [
+      operation({
+        name: 'weft.test.recursive',
+        description: 'Described.',
+        inputSchema: z.object({ root: node }),
+      }),
+    ];
+    expect(findUndescribedOperations(operations)).toEqual([
+      'weft.test.recursive: parameter "root" missing description',
+    ]);
   });
 
   it('skips an operation that discovery does not list', () => {

@@ -45,7 +45,7 @@ const updateScheduleInput = z.object({
     .unknown()
     .optional()
     .describe(
-      'When true, ticks missed during downtime are run on recovery; when false (default) late ticks are skipped.',
+      "When true, ticks missed during downtime are run on recovery; when false late ticks are skipped. Omit it to keep the schedule's current setting.",
     ),
   jitter: z
     .unknown()
