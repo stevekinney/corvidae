@@ -356,8 +356,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
   const bungalow: Bungalow = await openBungalow({ name: APPLICATION_NAME, environment });
   const held: Held = { bungalow };
   try {
-    // Read before anything opens, so a remote host without its approval secret stops before it
-    // connects to the database or the bucket, let alone listens.
+    // Read before the database opens, so a remote host without its approval secret stops before
+    // anything connects to Postgres or listens.
     const database = redactDatabase(bungalow.database);
     const approval = approvalSecret(bungalow);
     const storage = createHostStorage(bungalow.database);
