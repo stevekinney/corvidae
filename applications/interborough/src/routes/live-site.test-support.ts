@@ -8,18 +8,24 @@
  */
 import { HttpClient } from '@lostgradient/weft';
 import { QueryClient, type QueryKey } from '@tanstack/svelte-query';
-import { cleanup, render, type RenderResult } from '@testing-library/svelte';
+import { cleanup, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
 
 import { until } from '../lib/fake-timers.test-support.ts';
 import { createLiveFeeds, type LiveFeeds } from '../lib/live-source/live-feeds.test-support.ts';
 import LiveFeedPage from './live-feed-page.test-harness.svelte';
 
+/** The part of what Testing Library rendered that a test of what the page shows reads. */
+export interface LiveView {
+  getByText(text: string): HTMLElement;
+  queryByText(text: string): HTMLElement | null;
+}
+
 export interface LiveSiteMount {
   readonly feeds: LiveFeeds;
   readonly queryClient: QueryClient;
   /** What Testing Library rendered, for a test of what the page shows. */
-  readonly view: RenderResult;
+  readonly view: LiveView;
 }
 
 export interface LiveSite {
