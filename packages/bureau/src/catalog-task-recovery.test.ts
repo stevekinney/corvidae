@@ -43,7 +43,7 @@ async function open(fixture: ReturnType<typeof newFixture>) {
         stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
       }),
     },
-    storage: fixture.configuration,
+    storage: fixture.storage,
     durable: true,
     durableOwnership: { ownership: 'none' },
   });

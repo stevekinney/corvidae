@@ -20,7 +20,7 @@ async function withLeases<T>(
   }) => Promise<T>,
 ): Promise<T> {
   const fixture = createMemoryStorageFixture();
-  const kv = textValueStore(fixture.configuration, { disposeUnderlyingStorage: false });
+  const kv = textValueStore(fixture.storage, { disposeUnderlyingStorage: false });
   const runtime = createManualRuntimeServices();
   // A second claimant with a clock of its own, as another process has.
   const otherRuntime = createManualRuntimeServices();

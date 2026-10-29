@@ -12,7 +12,6 @@
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import type { DurableEventEnvelope } from '@lostgradient/operative';
-import { resolveStorage } from '@lostgradient/weft';
 import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
@@ -55,7 +54,8 @@ describe('createDurableEventHistoryFixture', () => {
       try {
         const runOwner = { kind: 'run' as const, id: 'fixture-run-1' };
 
-        const storage: Storage = await resolveStorage(fixture.storage.configuration);
+        // A fresh handle on the seeded store: `reopen()` closes the one the seed wrote through.
+        const storage: Storage = await fixture.storage.reopen();
         const history = createDurableEventHistory(storage, fixture.runtime);
         try {
           const page = await history.page(runOwner);
@@ -67,7 +67,6 @@ describe('createDurableEventHistoryFixture', () => {
           ]);
         } finally {
           await history.dispose();
-          storage[Symbol.dispose]();
         }
       } finally {
         await fixture.dispose();
@@ -87,7 +86,7 @@ describe('createDurableEventHistoryFixture', () => {
     });
     expect(fixture.storage.owned).toBe(false);
 
-    await fixture.dispose(); // a no-op for an unowned path
+    await fixture.dispose(); // closes its handle and leaves the unowned path
     await pathFixture.dispose(); // the caller's own cleanup
   });
 
@@ -119,7 +118,7 @@ describe('createDurableEventHistoryFixture', () => {
           runtime,
           // An invalid path (a directory that cannot be created as a sqlite
           // file — a null byte is rejected by every OS filesystem) forces
-          // `resolveStorage` itself to reject, exercising the catch branch's
+          // opening the fixture's handle to throw, exercising the catch branch's
           // fixture cleanup without needing a second seam.
           path: '/nonexistent-fixture-dir-\u0000/fixture.sqlite',
           sequence: badSequence,

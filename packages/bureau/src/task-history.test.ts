@@ -74,7 +74,7 @@ describe('a task’s own message history', () => {
         agents: {
           default: createAgent({ generate: finishes, toolbox, stopWhen: stopWhen.noToolCalls() }),
         },
-        storage: fixture.configuration,
+        storage: fixture.storage,
         durable: true,
       });
     try {
@@ -178,7 +178,7 @@ describe('a task’s own message history', () => {
         agents: {
           default: createAgent({ generate: parks, toolbox, stopWhen: stopWhen.noToolCalls() }),
         },
-        storage: fixture.configuration,
+        storage: fixture.storage,
         durable: true,
       });
     try {
@@ -204,7 +204,7 @@ describe('a task’s own message history', () => {
 
   it('writes a settlement still in flight before dispose closes the storage', async () => {
     const fixture = createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() });
-    const raw = await resolveStorage(fixture.configuration);
+    const raw = await resolveStorage(fixture.storage);
     const landed = { value: false };
     // Every write that records a settlement is slow, so it is still in flight when the run ends.
     const slowSettlements = new Proxy(raw, {
@@ -245,7 +245,7 @@ describe('a task’s own message history', () => {
       // A caller-supplied storage is not closed by dispose, so what shows the write was awaited
       // is that it had landed by the time dispose resolved.
       expect(landed.value).toBe(true);
-      const second = await open(fixture.configuration);
+      const second = await open(await fixture.reopen());
       try {
         const task = await second.internals.taskRegistry.get(run.id);
         expect(task?.status).toBe('completed');
@@ -274,7 +274,7 @@ describe('a task’s own message history', () => {
             ),
           }),
         },
-        storage: fixture.configuration,
+        storage: fixture.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
         ...(collect

@@ -88,7 +88,7 @@ async function withDurableBureau(
       }),
     },
     runtime,
-    storage: fixture.configuration,
+    storage: fixture.storage,
     durable: true,
     durableOwnership: { ownership: 'none' },
   });
@@ -152,7 +152,7 @@ describe('tasks.start with a run-creation request id', () => {
           }),
         },
         runtime,
-        storage: fixture.configuration,
+        storage: fixture.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });

@@ -27,7 +27,7 @@ async function open(durable: boolean): Promise<Bureau<AgentDefinitions>> {
   fixtures.push(fixture);
   const bureau = await createBureau<AgentDefinitions>({
     agents: { default: createAgent({ generate: finishes, toolbox: createToolbox([]) }) },
-    storage: durable ? fixture.configuration : new MemoryStorage(),
+    storage: durable ? fixture.storage : new MemoryStorage(),
     durable,
     ...(durable ? { durableOwnership: { ownership: 'none' as const } } : {}),
   });

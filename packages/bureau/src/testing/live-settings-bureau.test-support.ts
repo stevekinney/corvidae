@@ -49,7 +49,7 @@ export async function withLiveSettingsBureau(
       }),
     },
     runtime,
-    storage: fixture.configuration,
+    storage: fixture.storage,
     durable: true,
     durableOwnership: { ownership: 'none' },
     maintenance: 'manual',
@@ -61,7 +61,7 @@ export async function withLiveSettingsBureau(
       runtime,
       at: (offsetMs) => runtime.setTime(ORIGIN_MS + offsetMs),
       retentionFloor: async () => {
-        const storage = await resolveStorage(fixture.configuration);
+        const storage = await resolveStorage(fixture.storage);
         try {
           const feed = createFleetEventFeed(storage);
           try {

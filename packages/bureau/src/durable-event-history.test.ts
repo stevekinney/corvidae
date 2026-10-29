@@ -1569,14 +1569,14 @@ describe('createDurableEventHistory', () => {
       const owner = { kind: 'run' as const, id: 'run-1' };
 
       try {
-        const storage1 = await resolveStorage(fixture.configuration);
+        const storage1 = await resolveStorage(fixture.storage);
         const history1 = createDurableEventHistory(storage1, runtime);
         await history1.record(owner, 'run.started', { attempt: 1 });
         await history1.record(owner, 'step.completed', { attempt: 1 });
         await history1.dispose();
         storage1[Symbol.dispose]();
 
-        const storage2 = await resolveStorage(fixture.configuration);
+        const storage2 = await resolveStorage(await fixture.reopen());
         const history2 = createDurableEventHistory(storage2, runtime);
         const page = await history2.page(owner);
         if ('outcome' in page) throw new Error('expected a page, got a gap');
@@ -1597,14 +1597,14 @@ describe('createDurableEventHistory', () => {
       const owner = { kind: 'schedule' as const, id: 'sched-1' };
 
       try {
-        const storage1 = await resolveStorage(fixture.configuration);
+        const storage1 = await resolveStorage(fixture.storage);
         const history1 = createDurableEventHistory(storage1, runtime);
         await history1.record(owner, 'schedule.created', { scheduleId: 'sched-1' });
         await history1.record(owner, 'schedule.paused', { scheduleId: 'sched-1' });
         await history1.dispose();
         storage1[Symbol.dispose]();
 
-        const storage2 = await resolveStorage(fixture.configuration);
+        const storage2 = await resolveStorage(await fixture.reopen());
         const history2 = createDurableEventHistory(storage2, runtime);
         const page = await history2.page(owner);
         if ('outcome' in page) throw new Error('expected a page, got a gap');
@@ -1628,7 +1628,7 @@ describe('createDurableEventHistory', () => {
       const owner = { kind: 'session' as const, id: 'session-1' };
 
       try {
-        const storage1 = await resolveStorage(fixture.configuration);
+        const storage1 = await resolveStorage(fixture.storage);
         const history1 = createDurableEventHistory(storage1, runtime);
         await history1.record(owner, 'session.created', { attempt: 1 });
         await history1.record(owner, 'session.deleted', { attempt: 1 });
@@ -1638,7 +1638,7 @@ describe('createDurableEventHistory', () => {
         // open deadlocks (per the fixture's own doc comment).
         storage1[Symbol.dispose]();
 
-        const storage2 = await resolveStorage(fixture.configuration);
+        const storage2 = await resolveStorage(await fixture.reopen());
         const history2 = createDurableEventHistory(storage2, runtime);
         const page = await history2.page(owner);
         if ('outcome' in page) throw new Error('expected a page, got a gap');

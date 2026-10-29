@@ -89,7 +89,7 @@ async function withBureau(
       }),
     },
     runtime,
-    storage: fixture.configuration,
+    storage: fixture.storage,
     durable: true,
     durableOwnership: { ownership: 'none' },
     ...overrides,

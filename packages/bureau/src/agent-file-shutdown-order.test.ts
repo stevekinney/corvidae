@@ -36,7 +36,7 @@ describe('disposing a Bureau while the agent directory is being scanned', () => 
     console.error = capture(original.error);
     console.warn = capture(original.warn);
     const fixture = createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() });
-    const harness = await startFileBureau({ overrides: { storage: fixture.configuration } });
+    const harness = await startFileBureau({ overrides: { storage: fixture.storage } });
     try {
       for (let index = 0; index < 5; index += 1) {
         await harness.put(

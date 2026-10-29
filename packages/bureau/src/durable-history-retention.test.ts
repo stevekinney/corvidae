@@ -70,7 +70,7 @@ async function withBureau(
       }),
     },
     runtime,
-    storage: fixture.configuration,
+    storage: fixture.storage,
     durable: true,
     durableOwnership: { ownership: 'none' },
     maintenance: 'manual',
@@ -82,7 +82,7 @@ async function withBureau(
       runtime,
       at: (offsetMs) => runtime.setTime(ORIGIN_MS + offsetMs),
       retentionFloor: async () => {
-        const storage = await resolveStorage(fixture.configuration);
+        const storage = await resolveStorage(fixture.storage);
         try {
           const feed = createFleetEventFeed(storage);
           try {

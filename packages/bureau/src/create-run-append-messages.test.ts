@@ -173,7 +173,7 @@ describe('tasks.start appendMessages and the task it admits', () => {
           }),
         },
         runtime,
-        storage: fixture.configuration,
+        storage: fixture.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -212,7 +212,7 @@ describe('tasks.start appendMessages under a run-creation request id', () => {
         }),
       },
       runtime,
-      storage: fixture.configuration,
+      storage: fixture.storage,
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
@@ -298,7 +298,7 @@ describe('Bureau.hasDurableEngine', () => {
         default: createAgent({ generate: async () => ({ content: '', toolCalls: [] }) }),
       },
       runtime,
-      storage: fixture.configuration,
+      storage: fixture.storage,
       durable: true,
       durableOwnership: { ownership: 'none' },
     });

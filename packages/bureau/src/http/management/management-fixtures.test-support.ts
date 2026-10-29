@@ -292,7 +292,7 @@ export async function openBureau(
               : stopWhen.noToolCalls(),
       }),
     },
-    storage: options.storage ?? fixture?.configuration ?? new MemoryStorage(),
+    storage: options.storage ?? fixture?.storage ?? new MemoryStorage(),
     durable: true,
     assets: {
       storage: options.assetStorage ?? createMemoryAssetStorage(),

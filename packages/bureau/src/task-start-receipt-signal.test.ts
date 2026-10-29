@@ -143,7 +143,7 @@ async function withScenario(
 ): Promise<void> {
   const runtime = createManualRuntimeServices({ origin: ORIGIN });
   const fixture = createSqliteStorageFixture({ runtime });
-  const storage = await resolveStorage(fixture.configuration);
+  const storage = await resolveStorage(fixture.storage);
   const receipt = holdReceiptWrite(storage, outcome);
   const agent = heldToolAgent();
   const diagnostics: BureauDiagnostic[] = [];

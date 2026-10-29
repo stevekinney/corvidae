@@ -78,7 +78,7 @@ async function serve(): Promise<Served> {
     overrides: {
       id: 'tombstone-push-bureau',
       models: { generate: () => parksOnRequest },
-      storage: fixture.configuration,
+      storage: fixture.storage,
     },
   });
   await harness.put(

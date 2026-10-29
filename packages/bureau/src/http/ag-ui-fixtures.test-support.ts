@@ -167,7 +167,7 @@ async function build(
   let real: Storage | undefined;
   let seam: StorageSeam | undefined;
   if (options.seamStorage === true && fixture !== undefined) {
-    real = await resolveStorage(fixture.configuration);
+    real = await resolveStorage(fixture.storage);
     seam = seamStorage(real);
   }
   if (options.backends !== undefined) withBackendDescriptors(generate, options.backends);
@@ -205,7 +205,7 @@ async function build(
           options.stopWhen ?? stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
       }),
     },
-    storage: seam?.storage ?? fixture?.configuration ?? new MemoryStorage(),
+    storage: seam?.storage ?? fixture?.storage ?? new MemoryStorage(),
     durable: true,
     // The handler serves the asset operations and the content route, so it needs the service.
     assets: { storage: createMemoryAssetStorage() },

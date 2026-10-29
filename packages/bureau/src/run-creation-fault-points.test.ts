@@ -268,10 +268,10 @@ async function withScenario(
   const runtime = createDefaultRuntimeServices();
   const fixture = factory(runtime);
   const storageA = await resolveStorage(
-    fixture.configuration as Parameters<typeof resolveStorage>[0],
+    fixture.storage as Parameters<typeof resolveStorage>[0],
   );
   const storageB = await resolveStorage(
-    fixture.configuration as Parameters<typeof resolveStorage>[0],
+    fixture.storage as Parameters<typeof resolveStorage>[0],
   );
   const bureaus: Bureau[] = [];
   const crashes: CrashingStorage[] = [];

@@ -85,7 +85,7 @@ describe('interactive surfaces on a Bureau', () => {
   it('reads a surface’s latest revision back after a restart', async () => {
     const fixture = createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() });
     try {
-      const first = await open(fixture.configuration);
+      const first = await open(fixture.storage);
       let taskId: string;
       try {
         taskId = await startTask(first);
@@ -107,7 +107,7 @@ describe('interactive surfaces on a Bureau', () => {
         await first.shutdown({ policy: 'abort' });
       }
 
-      const second = await open(fixture.configuration);
+      const second = await open(await fixture.reopen());
       try {
         const receipt = await surfacesOf(second).snapshot(
           { type: 'surface.snapshot', contractVersion: version, taskId, surfaceId: 'confirm' },
@@ -131,7 +131,7 @@ describe('interactive surfaces on a Bureau', () => {
 
   it('freezes a cancelled task’s surfaces and resolves its cleanup evidence', async () => {
     const fixture = createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() });
-    const bureau = await open(fixture.configuration);
+    const bureau = await open(fixture.storage);
     try {
       const taskId = await startTask(bureau);
       await createForm(bureau, taskId);
@@ -168,7 +168,7 @@ describe('interactive surfaces on a Bureau', () => {
   it('keeps a run whose surfaces could not be removed, so the next retention pass retries', async () => {
     const runtime = createManualRuntimeServices();
     const fixture = createSqliteStorageFixture({ runtime });
-    const bureau = await open(fixture.configuration, { runtime, ...SHORT_TASK_RETENTION });
+    const bureau = await open(fixture.storage, { runtime, ...SHORT_TASK_RETENTION });
     try {
       const taskId = await startTask(bureau);
       await createForm(bureau, taskId);
@@ -203,7 +203,7 @@ describe('interactive surfaces on a Bureau', () => {
 
   it('refuses a review continuation the task does not hold, however well formed', async () => {
     const fixture = createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() });
-    const bureau = await open(fixture.configuration);
+    const bureau = await open(fixture.storage);
     try {
       const taskId = await startTask(bureau);
       const receipt = await surfacesOf(bureau).create(

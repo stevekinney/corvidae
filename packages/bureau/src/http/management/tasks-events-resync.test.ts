@@ -53,7 +53,7 @@ function isRunAppend(operation: StoredOperation): boolean {
 /** A SQLite store that survives Bureaus, and fails the next `faults.failAppends` history appends. */
 async function faultyStorage(): Promise<Faulty> {
   const fixture = createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() });
-  const base = await resolveStorage(fixture.configuration);
+  const base = await resolveStorage(fixture.storage);
   const faults: Faults = { failAppends: 0 };
   const storage = new Proxy(base, {
     get(target, property) {

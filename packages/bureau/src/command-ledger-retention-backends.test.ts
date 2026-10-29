@@ -54,7 +54,7 @@ async function withLedger(
   const runtime = createManualRuntimeServices({ origin: ORIGIN });
   const fixture = factory(runtime);
   const storage = await resolveStorage(
-    fixture.configuration as Parameters<typeof resolveStorage>[0],
+    fixture.storage as Parameters<typeof resolveStorage>[0],
   );
   try {
     const kv = textValueStore(storage, { disposeUnderlyingStorage: false });

@@ -73,7 +73,7 @@ async function open(
     ...(fixture === undefined
       ? { storage: new MemoryStorage() }
       : {
-          storage: fixture.configuration,
+          storage: fixture.storage,
           durable: true,
           durableOwnership: { ownership: 'none' as const },
         }),

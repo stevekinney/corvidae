@@ -19,7 +19,7 @@ export async function faultyStorage(cleanups: Array<() => Promise<void> | void>)
   readonly faults: { failCompletions: number; failResyncs: number };
 }> {
   const fixture = createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() });
-  const base = await resolveStorage(fixture.configuration);
+  const base = await resolveStorage(fixture.storage);
   const faults = { failCompletions: 0, failResyncs: 0 };
   const isCompletion = (operation: StoredOperation): boolean =>
     operation.key.startsWith('fleet-event:') &&
