@@ -12,10 +12,6 @@ export async function createStorage(backend: StorageBackend, database: string): 
       const { BunSQLiteStorage } = await import('../index.ts');
       return new BunSQLiteStorage(database);
     }
-    case 'lmdb': {
-      const { LMDBStorage } = await import('../index.ts');
-      return new LMDBStorage(database);
-    }
     case 'memory':
       return createMemoryStorage();
     default: {

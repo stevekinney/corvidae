@@ -1,7 +1,7 @@
 import type { ScheduleOverlapPolicy, ScheduleRevisionPolicy } from '../index.ts';
 
 /** Supported storage backend identifiers for the `--storage` flag. */
-export type StorageBackend = 'sqlite' | 'lmdb' | 'memory';
+export type StorageBackend = 'sqlite' | 'memory';
 
 /** Storage backends suitable for commands that must survive process exit. */
 export type PersistentStorageBackend = Exclude<StorageBackend, 'memory'>;
