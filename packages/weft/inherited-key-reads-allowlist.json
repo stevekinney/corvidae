@@ -176,12 +176,6 @@
       "reason": "the field is a key from Object.entries(fault.data), so it is an own key of the same object"
     },
     {
-      "file": "src/storage/web-extension.ts",
-      "expression": "keyspace[key]",
-      "count": 2,
-      "reason": "decodeEnvelope returns null for anything that is not a storage envelope, so an inherited member reads as a missing key"
-    },
-    {
       "file": "src/worker/manifest/json-scan.ts",
       "expression": "simple[escaped]",
       "count": 1,

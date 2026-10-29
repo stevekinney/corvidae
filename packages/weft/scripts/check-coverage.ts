@@ -325,14 +325,6 @@ const COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer('COVERAGE_ALLOWANCE_OVE
       functions: 1,
     },
   ],
-  [
-    'src/storage/web-extension.ts',
-    {
-      reason:
-        'Browser and worker-runtime behavior is exercised outside the Bun LCOV process, which cannot attribute these remaining paths.',
-      functions: 3,
-    },
-  ],
 ]);
 
 // Keep the fresh mainline coverage refresh separate from the historical base

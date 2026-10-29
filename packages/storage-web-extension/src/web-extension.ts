@@ -21,7 +21,7 @@ import {
 /** Named WebExtension storage area used by {@link WebExtensionStorage}.
  * @example
  * ```ts
- * import { WebExtensionStorage, type WebExtensionStorageArea } from '@lostgradient/weft';
+ * import { WebExtensionStorage, type WebExtensionStorageArea } from '@lostgradient/storage-web-extension';
  * const area: WebExtensionStorageArea = 'local';
  * const storage = new WebExtensionStorage({ area });
  * ```
@@ -33,7 +33,7 @@ type WebExtensionStoragePersistence = NonNullable<StorageCapabilities['persisten
 /** Constructor options for {@link WebExtensionStorage}.
  * @example
  * ```ts
- * import { WebExtensionStorage, type WebExtensionStorageOptions } from '@lostgradient/weft';
+ * import { WebExtensionStorage, type WebExtensionStorageOptions } from '@lostgradient/storage-web-extension';
  * const options: WebExtensionStorageOptions = { area: 'sync' };
  * const storage = new WebExtensionStorage(options);
  * ```
@@ -269,11 +269,10 @@ async function invokeWebExtensionMethod<T>(
  *
  * @example
  * ```ts
- * import { Engine } from '@lostgradient/weft';
- * import { WebExtensionStorage } from '@lostgradient/weft';
+ * import { WebExtensionStorage } from '@lostgradient/storage-web-extension';
  *
  * await using storage = new WebExtensionStorage({ area: 'local' });
- * await using engine = new Engine({ storage });
+ * await storage.put('app:greeting', new TextEncoder().encode('hello'));
  * ```
  */
 export class WebExtensionStorage implements Storage {

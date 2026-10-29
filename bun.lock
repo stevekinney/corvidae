@@ -572,6 +572,20 @@
         "typescript": "catalog:",
       },
     },
+    "packages/storage-web-extension": {
+      "name": "@lostgradient/storage-web-extension",
+      "dependencies": {
+        "@lostgradient/storage": "workspace:*",
+      },
+      "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "playwright": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/ventriloquist": {
       "name": "@lostgradient/ventriloquist",
       "devDependencies": {
@@ -978,6 +992,8 @@
     "@lostgradient/storage-postgres": ["@lostgradient/storage-postgres@workspace:packages/storage-postgres"],
 
     "@lostgradient/storage-turso": ["@lostgradient/storage-turso@workspace:packages/storage-turso"],
+
+    "@lostgradient/storage-web-extension": ["@lostgradient/storage-web-extension@workspace:packages/storage-web-extension"],
 
     "@lostgradient/terminal": ["@lostgradient/terminal@workspace:components/terminal"],
 

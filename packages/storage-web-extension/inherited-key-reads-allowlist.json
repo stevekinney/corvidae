@@ -1,0 +1,11 @@
+{
+  "description": "Dynamic reads allowed to use a key the code does not control, checked by scripts/check-inherited-key-reads.ts. Each entry names the file, the expression as written, how many such sites the file holds, and why no inherited key such as constructor can reach them. The list can only shrink: --shrink drops stale entries and lowers counts.",
+  "entries": [
+    {
+      "file": "src/web-extension.ts",
+      "expression": "keyspace[key]",
+      "count": 2,
+      "reason": "decodeEnvelope returns null for anything that is not a storage envelope, so an inherited member reads as a missing key"
+    }
+  ]
+}
