@@ -91,6 +91,7 @@ import {
   webSocketRelayData,
 } from './engine-proxy.ts';
 import { processEnvironment, resolvePort } from './environment-configuration.ts';
+import { buildDiagnostics, providerDiagnostics, type HostDiagnostics } from './host-diagnostics.ts';
 import {
   bureauUpgradeServer,
   hostWebSocketHandlers,
@@ -229,6 +230,13 @@ export type Host = {
    * not hold.
    */
   generateFor(selection: ModelSelection): GenerateFunction;
+  /**
+   * A point-in-time reading of the host's own state: the Bureau's diagnostics, the engine server's
+   * lease, workers, and connections, the build it serves, and the providers it offers. It holds no
+   * credential: a provider is its name and its models. The lock holder is left out, because it is
+   * always this process while the host runs.
+   */
+  diagnostics(): HostDiagnostics;
   /**
    * Tell every open page of a development host that the build has been replaced, so each reloads.
    * Call it after a successful rebuild. It does nothing on a host started without `development`.
@@ -544,6 +552,16 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       deploymentId: bungalow.deploymentId,
       database: bungalow.database,
       generateFor,
+      diagnostics: () => ({
+        bureau: bureau.internals.diagnostics(),
+        weft: {
+          lease: engine.getLeaseHealth(),
+          workers: server.registry.getWorkerSummaries(Date.now()),
+          connections: server.connections(),
+        },
+        build: buildDiagnostics(buildDirectory),
+        providers: providerDiagnostics(providers),
+      }),
       notifyRebuilt: () => devReload?.notify(),
       close: () => (held.closing ??= teardown(held)),
     };
