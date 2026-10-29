@@ -101,6 +101,19 @@ export const actual: string | null = conflict.actualHash;
 
 `agentFileDirectory(path, { tools, watch?, watchFactory? })` is the directory source: `fs.watch` is the trigger, a once-a-second rescan backs it up, files over 256 KiB are not read, only `*.md` files count, and a write goes to a temporary dotfile renamed into place. `watch: false` means no `fs.watch` and no poll, and a change is picked up by the next `load()`. `watchFactory` replaces how a directory is watched, for a test. It lives in `@lostgradient/bureau/sources`, apart from the main entry, because it needs Node's file system. There is no `path(id)`: a host that shows where a file lives computes the path itself.
 
+`agentObjectSource(location, options)` is the S3 counterpart, for a deployment whose definitions live in a bucket. `location` is `{ bucket, prefix }`: every `*.md` object directly under the prefix (`agents` and `agents/` mean the same folder) is an agent named by the key minus the extension, and nested keys, dotfiles, and other extensions are ignored. `options` takes `client`, a `Bun.S3Client` the caller builds (Bureau reads no environment and never sees a credential), `tools`, `pollIntervalMilliseconds` (default 1000), `watch` (default `true`; `false` means no poll, and a change is picked up by the next `load()`), `runtime`, and `diagnose`. It is Bun only. An object store has no change feed, so the poll is the whole watch: each tick lists the prefix (following continuations), reads only the objects whose ETag changed, and tells the listeners, with empty lists when nothing changed. `hash` and `expectedHash` are still the SHA-256 of the bytes; the ETag is used only as the condition on a change. A write reads the object, checks its hash, and sends that read's ETag as `If-Match` (`If-None-Match: *` to create) on a presigned request, because `S3Client.write` ignores a conditional header; a delete sends `If-Match` the same way. A store has to honor that header on `DELETE` for the delete to be conditional: the store COR-1759 probed (a Railway bucket) does, but AWS S3 honors `If-Match` on `DELETE` only for directory buckets, so on a store that ignores it the delete is unconditional and only the hash check just before it protects it. A refusal (`412`, or `404` for a key that vanished) reads the object again and rejects with a `SourceConflictError` whose `actualHash` is the hash of what is there now, or `null`. Like the directory source, it lives in `@lostgradient/bureau/sources`.
+
+```ts
+import { agentObjectSource } from '@lostgradient/bureau/sources';
+
+declare const client: Bun.S3Client;
+
+export const agentSource = agentObjectSource(
+  { bucket: 'my-definitions', prefix: 'agents/' },
+  { client, tools: {} },
+);
+```
+
 A file agent runs exactly as a code-defined one does. `bureau.tasks.start('researcher', input)` accepts any string name (a second overload of `start`, which resolves to an untyped `TaskHandle`) and runs it as a task in a context, resolving the same options, tools, and instructions. It is refused with `NOT_FOUND` for a name that is not a ready agent.
 
 `bureau.agents` keeps `names()`, `entries()`, `query()`, `get()`, and `has()` typed to the code-defined map. The combined view is `list()`: code agents first in definition order, then file agents by identifier, each with `id`, `source`, `state`, `name`, `description`, `published`, `owner`, `definitionHash`, `definitionRevision` (see [Revisions](#revisions)), and, for an invalid file, `problem`.
