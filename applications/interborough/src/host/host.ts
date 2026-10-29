@@ -396,10 +396,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     });
     held.bureau = bureau;
     if (options.seed !== false) {
-      await seedBureau(bureau, {
-        read: (key) => bungalow.readSecret(key),
-        write: (key, value) => bungalow.writeSecret(key, value),
-      });
+      await seedBureau(bureau, storage);
     }
     // The console serves the engine that owns the Bureau's runs. A second engine over the same
     // storage holds no lease on them, so its cancel would not be fenced by their owner and its
