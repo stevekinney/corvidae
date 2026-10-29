@@ -61,6 +61,29 @@ describe.skipIf(database === null)('a host on Postgres and S3', () => {
     expect(after.values['durableOwnership.ownership']).not.toBe('none');
   });
 
+  // COR-1797: the other restart-applied settings the overlap depends on.
+  test.each([
+    ['maintenance', 'manual'],
+    ['durable', false],
+    ['engine.workflowClaimTtl', 1_000],
+    ['engine.workflowClaimRenewInterval', 500],
+  ] as const)(
+    'locks %s, and refuses to store %p through the Bureau’s settings',
+    async (key, value) => {
+      const host = await start();
+
+      const snapshot = await host.bureau.settings.get();
+      expect(snapshot.keys[key]?.locked).toBe(true);
+      const refused = await host.bureau.settings.update(
+        { [key]: value },
+        { expectedRevision: snapshot.revision },
+      );
+      expect(refused).toMatchObject({ outcome: 'rejected', reason: 'locked' });
+      const after = await host.bureau.settings.get();
+      expect(after.values[key]).not.toBe(value);
+    },
+  );
+
   test('keeps the locks its caller asked for beside its own', async () => {
     const host = await start({ settings: { locked: ['workflowVersion'] } });
 
