@@ -1,0 +1,26 @@
+{
+  "description": "Members of exported interfaces, classes, and object type aliases allowed to lack a documentation comment, as \"<entry point> <Symbol>.<member>\", checked by scripts/check-documentation-coverage.ts. The list can only shrink: --shrink drops stale entries, --seed-members refuses to run once this file exists.",
+  "entries": [
+    ". BrowserSocket.addEventListener(overload 1)",
+    ". BrowserSocket.addEventListener(overload 2)",
+    ". BrowserSocket.addEventListener(overload 3)",
+    ". BrowserSocket.binaryType",
+    ". BrowserSocket.close",
+    ". BrowserSocket.readyState",
+    ". BrowserSocket.send",
+    ". CleanupResult.outcome",
+    ". CleanupResult.source",
+    ". InputRefusal.reason",
+    ". TerminalConnectError.code",
+    ". TerminalConnectError.reason",
+    ". TerminalGeometry.columns",
+    ". TerminalGeometry.rows",
+    ". TerminalInputPath.authorityRevoked",
+    ". TerminalInputPath.input",
+    ". TerminalInputPath.terms",
+    ". TerminalRendererFailure.message",
+    ". TerminalRendererFailure.phase",
+    ". TerminalWebSocketClient.state",
+    ". TerminalWebSocketClientOptions.requestedMode"
+  ]
+}

@@ -253,16 +253,6 @@ export function findUndocumentedExports(
   return findUndocumented(directory, entryPoints, options, declarationFiles).exports;
 }
 
-/** Lists the workspace's undocumented members and overload signatures as sorted keys. */
-export function findUndocumentedMemberKeys(
-  directory: string,
-  entryPoints: readonly EntryPoint[],
-  options: ts.CompilerOptions,
-  declarationFiles: readonly string[] = [],
-): string[] {
-  return findUndocumented(directory, entryPoints, options, declarationFiles).members;
-}
-
 export interface CoverageJudgement {
   /** Undocumented exports or members the allowlist does not name. */
   missing: string[];
