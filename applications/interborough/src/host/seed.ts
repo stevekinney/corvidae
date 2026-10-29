@@ -44,6 +44,12 @@ import {
   type ScriptedGenerateStep,
   type Validator,
 } from '@lostgradient/operative';
+import {
+  scopedStorage,
+  textValueStore,
+  type ConditionalTextValueStore,
+  type Storage,
+} from '@lostgradient/storage';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
@@ -351,32 +357,78 @@ export function createSeededValidators(): Validator[] {
   ];
 }
 
-/** The Bungalow entry that records the seeded schedule's identifier, beside the approval secret. */
-export const SEEDED_SCHEDULE_RECORD_KEY = 'seeded-schedule-id';
+/** The Weft key prefix Interborough keeps its own records under, inside the host's database. */
+export const INTERBOROUGH_STORAGE_PREFIX = 'app:interborough';
 
 /**
- * Where the seed remembers what it created. A schedule is edited and renamed by operators, so
- * nothing about it but its identifier says it is the seeded one.
+ * The record, under {@link INTERBOROUGH_STORAGE_PREFIX}, of the seeded schedule's identifier. A
+ * schedule is edited and renamed by operators, so nothing about it but its identifier says it is the
+ * seeded one. While a start is creating the schedule the record holds `claimed:<uuid>` instead.
  */
-export type SeedRecord = {
-  read(key: string): string | undefined;
-  write(key: string, value: string): void;
-};
+export const SEEDED_SCHEDULE_KEY = 'seeded-schedule';
+
+/** The seeded schedule was created, but the record no longer held this start's claim to be replaced by its identifier. */
+export class SeededScheduleRecordLostError extends Error {
+  constructor(scheduleId: string) {
+    super(
+      `Seeded schedule ${scheduleId} was created, but its claim on the "${SEEDED_SCHEDULE_KEY}" record was replaced first, so the record does not name it.`,
+    );
+    this.name = 'SeededScheduleRecordLostError';
+  }
+}
 
 /**
  * Create the seeded schedule and goal unless they already exist. The schedule is recognised by the
  * identifier recorded when it was created, so an operator who renames or edits it, or deletes it,
  * does not get a second one on the next start. The goal carries its own identifier.
+ *
+ * The record lives in the host's Weft `storage`, and every change to it is a conditional write, so
+ * starts that overlap, in one process or two over one database, create the schedule once: only the
+ * start whose write of `claimed:<uuid>` finds the record absent creates it. It then replaces its
+ * claim with the identifier. When the schedule is not created (`create` throws, or returns
+ * `undefined`) it removes its claim, and only its own, so the next start tries again.
+ *
+ * Previous releases kept the identifier in the Bungalow secret `seeded-schedule-id`. That file is
+ * not read, so an install that has it seeds one more schedule on its first start after this change.
  */
-export async function seedBureau(bureau: Bureau<SeededAgents>, record: SeedRecord): Promise<void> {
-  if (record.read(SEEDED_SCHEDULE_RECORD_KEY) === undefined) {
-    const created = await bureau.schedules.create({
-      description: SEEDED_SCHEDULE_DESCRIPTION,
-      agentName: 'assistant',
-      input: 'Summarize what happened yesterday.',
-      spec: '0 9 * * *',
-    });
-    if (created !== undefined) record.write(SEEDED_SCHEDULE_RECORD_KEY, created.id);
+export async function seedBureau(bureau: Bureau<SeededAgents>, storage: Storage): Promise<void> {
+  // `disposeUnderlyingStorage: false` because the host's storage outlives this call: nothing here closes the store.
+  const records = textValueStore(scopedStorage(storage, INTERBOROUGH_STORAGE_PREFIX), {
+    disposeUnderlyingStorage: false,
+  });
+  const key = SEEDED_SCHEDULE_KEY;
+  const claim = `claimed:${crypto.randomUUID()}`;
+  // Accepted window: a crash after this claim and before the identifier below is written leaves the
+  // claim behind, and every later start finds the record present, so the install has no seeded
+  // schedule (when the crash came before `create` returned) or an unrecorded one (after). Nothing
+  // recovers a claim, because a claim cannot be told from one a live start is still using.
+  if (
+    await records.conditionalBatch(
+      [{ key, expectedValue: null }],
+      [{ type: 'put', key, value: claim }],
+    )
+  ) {
+    let created: Awaited<ReturnType<Bureau<SeededAgents>['schedules']['create']>>;
+    try {
+      created = await bureau.schedules.create({
+        description: SEEDED_SCHEDULE_DESCRIPTION,
+        agentName: 'assistant',
+        input: 'Summarize what happened yesterday.',
+        spec: '0 9 * * *',
+      });
+    } catch (error) {
+      await releaseClaim(records, key, claim);
+      throw error;
+    }
+    if (created === undefined) {
+      await releaseClaim(records, key, claim);
+    } else {
+      const recorded = await records.conditionalBatch(
+        [{ key, expectedValue: claim }],
+        [{ type: 'put', key, value: created.id }],
+      );
+      if (!recorded) throw new SeededScheduleRecordLostError(created.id);
+    }
   }
   await bureau.goals.create({
     goalRunId: SEEDED_GOAL_RUN_IDENTIFIER,
@@ -386,4 +438,21 @@ export async function seedBureau(bureau: Bureau<SeededAgents>, record: SeedRecor
     validator: SEEDED_VALIDATOR,
     bounds: { maximumAttempts: 1, maximumTotalSteps: 10 },
   });
+}
+
+/**
+ * Remove `claim` from the record, and only if the record still holds it. A failure to remove it
+ * leaves the claim, which is the accepted window above, so it does not hide the error that sent the
+ * start here.
+ */
+async function releaseClaim(
+  records: ConditionalTextValueStore,
+  key: string,
+  claim: string,
+): Promise<void> {
+  try {
+    await records.conditionalBatch([{ key, expectedValue: claim }], [{ type: 'delete', key }]);
+  } catch {
+    // The caller rethrows the error that made the claim worth releasing.
+  }
 }
