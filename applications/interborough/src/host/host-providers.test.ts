@@ -44,7 +44,7 @@ async function prepareHome(setup: Setup): Promise<string> {
     await writeFile(join(home, 'configuration.json'), JSON.stringify(setup.configuration));
   }
   if (setup.secrets !== undefined) {
-    const bungalow = openBungalow({
+    const bungalow = await openBungalow({
       name: 'interborough',
       environment: { INTERBOROUGH_HOME: home },
     });

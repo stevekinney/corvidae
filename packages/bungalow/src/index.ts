@@ -1,5 +1,11 @@
 export { openBungalow, openTemporaryBungalow } from './bungalow.ts';
-export type { Bungalow, OpenBungalowOptions, OpenTemporaryBungalowOptions } from './bungalow.ts';
+export type {
+  Bungalow,
+  ContentLocation,
+  DatabaseLocation,
+  OpenBungalowOptions,
+  OpenTemporaryBungalowOptions,
+} from './bungalow.ts';
 export {
   BungalowError,
   BungalowFilesystemError,

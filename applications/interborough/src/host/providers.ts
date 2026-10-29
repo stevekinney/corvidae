@@ -146,18 +146,23 @@ export function parseProviderConfiguration(text: string, path: string): Provider
   return { providers };
 }
 
-/** Read `configuration.json`. A file that is not there means no providers. */
-export async function readProviderConfiguration(path: string): Promise<ProviderConfigurationFile> {
-  let text: string;
+/**
+ * Read the configuration through `read`, which Bungalow supplies as `readConfiguration()`. A
+ * configuration that is not there (`undefined`) means no providers; a read that fails is refused,
+ * naming `location`.
+ */
+export async function readProviderConfiguration(input: {
+  readonly location: string;
+  readonly read: () => Promise<string | undefined>;
+}): Promise<ProviderConfigurationFile> {
+  let text: string | undefined;
   try {
-    text = await Bun.file(path).text();
-  } catch (error) {
-    if (typeof error === 'object' && error !== null && Reflect.get(error, 'code') === 'ENOENT') {
-      return { providers: {} };
-    }
-    throw new ProviderConfigurationError(path, 'the file', 'it could not be read.');
+    text = await input.read();
+  } catch {
+    throw new ProviderConfigurationError(input.location, 'the file', 'it could not be read.');
   }
-  return parseProviderConfiguration(text, path);
+  if (text === undefined) return { providers: {} };
+  return parseProviderConfiguration(text, input.location);
 }
 
 function matchesEntry(row: BackendDescriptor, entry: string): boolean {
@@ -217,12 +222,18 @@ export type LoadedProviders = {
  * come after validation, so a start that fails reports the failure and nothing else.
  */
 export async function loadProviders(input: {
-  readonly configurationPath: string;
+  /** Where the configuration lives, named in every message about it. */
+  readonly configurationLocation: string;
+  /** The configuration's text, or `undefined` when none exists: Bungalow's `readConfiguration`. */
+  readonly readConfiguration: () => Promise<string | undefined>;
   readonly readSecret: (key: string) => string | undefined;
   readonly warn: (message: string) => void;
   readonly descriptors?: readonly BackendDescriptor[];
 }): Promise<LoadedProviders> {
-  const configuration = await readProviderConfiguration(input.configurationPath);
+  const configuration = await readProviderConfiguration({
+    location: input.configurationLocation,
+    read: input.readConfiguration,
+  });
   const apiKeys = new Map<GenerateProviderName, string>();
   const missing: GenerateProviderName[] = [];
   for (const provider of PROVIDER_NAMES) {
@@ -233,13 +244,13 @@ export async function loadProviders(input: {
   }
   const rows = selectCatalogRows({
     configuration,
-    path: input.configurationPath,
+    path: input.configurationLocation,
     available: new Set(apiKeys.keys()),
     ...(input.descriptors === undefined ? {} : { descriptors: input.descriptors }),
   });
   for (const provider of missing) {
     input.warn(
-      `The ${provider} provider is configured in ${input.configurationPath} but the secret "${PROVIDER_SECRET_KEYS[provider]}" is not set, so it is not offered.`,
+      `The ${provider} provider is configured in ${input.configurationLocation} but the secret "${PROVIDER_SECRET_KEYS[provider]}" is not set, so it is not offered.`,
     );
   }
   return { rows, apiKeys };

@@ -171,12 +171,6 @@ export const CLASSIFIED_OVERSIZED_IMPLEMENTATION_FILES = [
       'MCP tool schemas and handlers are intentionally adjacent so tool metadata and operation dispatch cannot drift.',
   },
   {
-    path: 'src/storage/web-extension.ts',
-    classification: 'justified-exception',
-    rationale:
-      'WebExtension storage keeps namespace detection, callback/promise bridging, quota handling, and scans in one adapter boundary.',
-  },
-  {
     path: 'src/core/engine/operations-coordination.ts',
     classification: 'justified-exception',
     rationale:

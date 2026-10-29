@@ -24,7 +24,7 @@ answer('READY');
 for await (const command of console) {
   if (command === 'open') {
     try {
-      handle = openBungalow({ name: TEST_NAME, environment: homeEnvironment(root) });
+      handle = await openBungalow({ name: TEST_NAME, environment: homeEnvironment(root) });
       answer(`HELD ${handle.deploymentId}`);
     } catch (error) {
       answer(

@@ -23,17 +23,22 @@ Every error extends `BungalowError`. None of them carries a secret value or a se
 ```typescript
 import { openBungalow } from '@lostgradient/bungalow';
 
-const bungalow = openBungalow({ name: 'interborough' });
+const bungalow = await openBungalow({ name: 'interborough' });
 
-bungalow.database; // <root>/database.sqlite
-bungalow.configuration; // <root>/configuration.json
-bungalow.directory('agents'); // <root>/agents, created 0700 if absent
+bungalow.mode; // 'local'
+bungalow.database; // { kind: 'sqlite', path: '<root>/database.sqlite' }
+bungalow.content('agents'); // { kind: 'directory', path: '<root>/agents' }, created 0700 if absent
+bungalow.configurationLocation; // '<root>/configuration.json'
+await bungalow.readConfiguration(); // the file's text, or undefined when it is absent
+bungalow.secretLocation('api-key'); // '<root>/secrets/api-key'
 
 bungalow.writeSecret('api-key', 'sk-example'); // <root>/secrets/api-key, mode 0600
 bungalow.readSecret('api-key'); // the value, or undefined when never written
 
 bungalow.close();
 ```
+
+`openBungalow` and `openTemporaryBungalow` return a promise, so a mode that reads from a network can open without blocking. A Bungalow hands out locations, not bare paths, so a caller never assumes the home is a directory: `mode` is `'local'` or `'remote'`; `database` is `{ kind: 'sqlite', path }` or `{ kind: 'postgres', url }`; `content(name)` is `{ kind: 'directory', path }` or `{ kind: 's3', bucket, prefix }`; `configurationLocation` and `secretLocation(key)` are strings for messages and for a person editing by hand (the file's path in local mode), and the configuration's text comes from `readConfiguration()`. Local mode, the only mode so far, returns the `sqlite` and `directory` variants. `content(name)` rejects the names Bungalow keeps in the root (`secrets`, `logs`, `lock`, `deployment-id`).
 
 Opening creates the root (mode `0700`), `secrets/` (mode `0700`), `logs/`, the `lock` file, and the `deployment-id` file. It does not create the database or configuration file, and a missing configuration file is valid. Every open sets the root and `secrets/` to `0700`, tightening a directory that was looser, and once it holds the lock it removes the temporary files a crash left in the root and in `secrets/`, matching only the names Bungalow itself gives them (`deployment-id.<pid>-<uuid>.tmp` in the root, `<key>.<pid>-<uuid>.tmp` in `secrets/`). `readSecret` sets a secret file that group or others could reach back to `0600` before it reads it.
 
@@ -59,6 +64,6 @@ The root must be on a local filesystem that supports `flock`. Network filesystem
 
 ## Tests
 
-`process.env.NODE_ENV === 'test'` is the guard against a test touching a developer's real home directory. Under it, `openBungalow` throws unless `<NAME>_HOME` is set. A test calls `openTemporaryBungalow({ name })`, which creates an isolated root under the operating system's temporary directory and removes it on `close()`, or points `<NAME>_HOME` at a directory it owns.
+`process.env.NODE_ENV === 'test'` is the guard against a test touching a developer's real home directory. Under it, `openBungalow` rejects unless `<NAME>_HOME` is set. A test calls `openTemporaryBungalow({ name })`, which creates an isolated root under the operating system's temporary directory and removes it on `close()`, or points `<NAME>_HOME` at a directory it owns.
 
 The one place the package reads `process.env` is `src/environment-configuration.ts`. Every function that depends on the environment also accepts it as a value.

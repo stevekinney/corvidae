@@ -48,7 +48,12 @@ import { createHash, randomBytes } from 'node:crypto';
 import { dirname, join, resolve as resolvePath, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { openBungalow, type Bungalow, type BungalowEnvironment } from '@lostgradient/bungalow';
+import {
+  openBungalow,
+  type Bungalow,
+  type BungalowEnvironment,
+  type DatabaseLocation,
+} from '@lostgradient/bungalow';
 import {
   createBureau,
   createBureauHandler,
@@ -85,6 +90,7 @@ import {
   type WebSocketRelayData,
 } from './engine-proxy.ts';
 import { processEnvironment, resolvePort } from './environment-configuration.ts';
+import { contentDirectoryPath, sqliteDatabasePath } from './locations.ts';
 import { mcpAppMounts } from './mcp-app-mounts.ts';
 import { createHostMemory } from './memory.ts';
 import {
@@ -208,8 +214,8 @@ export type Host = {
   readonly server: WeftServer;
   /** The Bureau's identifier, which is Bungalow's `deploymentId`. */
   readonly deploymentId: string;
-  /** The SQLite database file the Bureau and the engine share. */
-  readonly databasePath: string;
+  /** Where the Bureau and the engine share their database: the SQLite file, for the one kind the host supports. */
+  readonly database: DatabaseLocation;
   /**
    * The generate for an agent assigned a model in the Bureau's catalog, resolved through Bureau's
    * provider path with the API key from Bungalow's secrets. Throws for a model the catalog does
@@ -324,17 +330,18 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     }
   }
   const environment = options.environment ?? processEnvironment();
-  const bungalow: Bungalow = openBungalow({ name: APPLICATION_NAME, environment });
+  const bungalow: Bungalow = await openBungalow({ name: APPLICATION_NAME, environment });
   const held: Held = { bungalow };
   try {
-    const storage = new BunSQLiteStorage(bungalow.database);
+    const storage = new BunSQLiteStorage(sqliteDatabasePath(bungalow.database));
     held.storage = storage;
     // The catalog holds the models of the providers `configuration.json` names that have a key in
     // the secrets, and nothing else. The Bureau is created with exactly these rows, so no boot step
     // plans against a provider that is not configured. The seeded agents still answer from a
     // script.
     const providers = await loadProviders({
-      configurationPath: bungalow.configuration,
+      configurationLocation: bungalow.configurationLocation,
+      readConfiguration: () => bungalow.readConfiguration(),
       readSecret: (key) => bungalow.readSecret(key),
       warn: options.warn ?? ((message) => console.warn(message)),
     });
@@ -344,8 +351,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         apiKeys: providers.apiKeys,
         resolveProviderGenerate: options.resolveProviderGenerate ?? resolveProviderGenerate,
       });
-    const agentDirectory = bungalow.directory(AGENT_DIRECTORY_NAME);
-    const workflowDirectory = bungalow.directory(WORKFLOW_DIRECTORY_NAME);
+    const agentDirectory = contentDirectoryPath(bungalow.content(AGENT_DIRECTORY_NAME));
+    const workflowDirectory = contentDirectoryPath(bungalow.content(WORKFLOW_DIRECTORY_NAME));
     // The TypeSafe key, when the secrets hold one, gives Bureau a decision model for the kinds Jev
     // serves. It is read here and handed to the model, which keeps it in memory.
     const typesafeKey = bungalow.readSecret(TYPESAFE_SECRET_KEY)?.trim();
@@ -458,10 +465,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
             Response.json({
               agentDirectory,
               workflowDirectory,
-              configurationFile: bungalow.configuration,
+              configurationFile: bungalow.configurationLocation,
               providers: PROVIDER_NAMES.map((name) => ({
                 name,
-                secretFile: join(bungalow.secrets, PROVIDER_SECRET_KEYS[name]),
+                secretFile: bungalow.secretLocation(PROVIDER_SECRET_KEYS[name]),
               })),
             }),
         },
@@ -515,7 +522,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       engine,
       server,
       deploymentId: bungalow.deploymentId,
-      databasePath: bungalow.database,
+      database: bungalow.database,
       generateFor,
       notifyRebuilt: () => devReload?.notify(),
       close: () => (held.closing ??= teardown(held)),

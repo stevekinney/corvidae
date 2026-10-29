@@ -491,7 +491,7 @@ A small `Storage` interface over string keys and `Uint8Array` values: five requi
 - **`TursoStorage`** (package `@lostgradient/storage-turso`) for distributed libSQL deployments
 - **`NeonStorage`** (package `@lostgradient/storage-neon`) for durable remote Neon/Postgres deployments
 - **`IndexedDBStorage`** (package `@lostgradient/storage-indexeddb`) for browser environments
-- **`WebExtensionStorage`** (subpath `@lostgradient/weft/storage/web-extension`) for extension contexts using `browser.storage` or `chrome.storage`
+- **`WebExtensionStorage`** (package `@lostgradient/storage-web-extension`) for extension contexts using `browser.storage` or `chrome.storage`
 - **`HTTPStorage`** (subpath `@lostgradient/weft/storage/http`) for remote storage over Weft's HTTP storage routes
 - **`CompressedStorage`** wrapper for transparent `gzip` or `brotli` compression
 
@@ -822,12 +822,11 @@ The exported `WeftErrorCode` union lists every code that belongs to a public, ex
 bun add @lostgradient/weft
 ```
 
-Storage backends and adapters are exported under subpaths so they only load when imported (the Bun SQLite, Node SQLite, LMDB, Turso, Neon, and IndexedDB adapters are their own packages, `@lostgradient/storage-bun-sqlite`, `@lostgradient/storage-node-sqlite`, `@lostgradient/storage-lmdb`, `@lostgradient/storage-turso`, `@lostgradient/storage-neon`, and `@lostgradient/storage-indexeddb`):
+Storage backends and adapters are exported under subpaths so they only load when imported (the Bun SQLite, Node SQLite, LMDB, Turso, Neon, IndexedDB, and web-extension adapters are their own packages, `@lostgradient/storage-bun-sqlite`, `@lostgradient/storage-node-sqlite`, `@lostgradient/storage-lmdb`, `@lostgradient/storage-turso`, `@lostgradient/storage-neon`, `@lostgradient/storage-indexeddb`, and `@lostgradient/storage-web-extension`):
 
 ```typescript
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { IndexedDBStorage } from '@lostgradient/storage-indexeddb';
-import { WebExtensionStorage } from '@lostgradient/weft/storage/web-extension';
 import { HTTPStorage } from '@lostgradient/weft/storage/http';
 ```
 

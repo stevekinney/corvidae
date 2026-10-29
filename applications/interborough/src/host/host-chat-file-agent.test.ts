@@ -45,7 +45,10 @@ async function startWithFileAgents(files: Record<string, string>) {
     join(home, 'configuration.json'),
     JSON.stringify({ providers: { anthropic: { models: ['sonnet'] } } }),
   );
-  const bungalow = openBungalow({ name: 'interborough', environment: { INTERBOROUGH_HOME: home } });
+  const bungalow = await openBungalow({
+    name: 'interborough',
+    environment: { INTERBOROUGH_HOME: home },
+  });
   try {
     bungalow.writeSecret('anthropic-api-key', FIXTURE_KEY);
   } finally {

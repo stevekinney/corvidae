@@ -1,0 +1,186 @@
+{
+  "$schema": "../../node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "typescript", "promise", "unicorn", "import"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn"
+  },
+  "rules": {
+    "no-with": "error",
+    "no-labels": "error",
+    "no-console": [
+      "warn",
+      {
+        "allow": ["warn", "error", "info"]
+      }
+    ],
+    "no-underscore-dangle": [
+      "warn",
+      {
+        "allow": ["_meta", "_didMount", "_willUpdate"]
+      }
+    ],
+    "no-unused-vars": [
+      "warn",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "ignoreRestSiblings": true
+      }
+    ],
+    "promise/no-return-wrap": "error",
+    "promise/param-names": "error",
+    "promise/catch-or-return": "error",
+    "promise/no-nesting": "warn",
+    "promise/no-promise-in-callback": "warn",
+    "promise/no-callback-in-promise": "warn",
+    "promise/no-new-statics": "error",
+    "promise/no-return-in-finally": "warn",
+    "promise/valid-params": "warn",
+    "unicorn/no-null": "off",
+    "unicorn/no-await-expression-member": "error",
+    "unicorn/require-post-message-target-origin": "off",
+    "unicorn/prefer-add-event-listener": "off",
+    "import/first": "error",
+    "import/no-duplicates": "error",
+    "import/no-cycle": "error",
+    "import/no-unassigned-import": [
+      "error",
+      {
+        "allow": ["**/*.css"]
+      }
+    ],
+    "typescript/no-unused-vars": "off",
+    "typescript/no-floating-promises": "error",
+    "typescript/await-thenable": "error",
+    "typescript/no-unsafe-type-assertion": "off",
+    "complexity": [
+      "error",
+      {
+        "max": 10
+      }
+    ],
+    "max-lines": [
+      "error",
+      {
+        "max": 500,
+        "skipBlankLines": false,
+        "skipComments": false
+      }
+    ]
+  },
+  "ignorePatterns": [
+    "dist/**",
+    "build/**",
+    "coverage/**",
+    ".turbo/**",
+    ".bun/**",
+    ".playwright/**",
+    "node_modules/**",
+    "**/*.generated.d.ts",
+    "*.lock",
+    ".claude/worktrees/**",
+    "tests/**/*.test-d.ts"
+  ],
+  "overrides": [
+    {
+      "files": ["**/*.svelte", "scripts/**/*.ts"],
+      "rules": {
+        "complexity": [
+          "error",
+          {
+            "max": 300,
+            "variant": "classic"
+          }
+        ],
+        "max-lines": "off",
+        "no-console": "off"
+      }
+    },
+    {
+      "files": ["**/*test-utilities.ts"],
+      "rules": {
+        "no-console": [
+          "warn",
+          {
+            "allow": ["log", "warn", "error", "info"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/web-extension.ts"],
+      "rules": {
+        "max-lines": [
+          "error",
+          {
+            "max": 800,
+            "skipBlankLines": false,
+            "skipComments": false
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "**/*.test-d.ts",
+        "**/*.test.ts",
+        "**/*.spec.ts",
+        "**/*.test-support.ts",
+        "**/*test-fixtures.ts",
+        "**/*test-helpers.ts",
+        "**/*.playwright.ts",
+        "**/test/**/*.ts",
+        "**/tests/**/*.ts",
+        "**/__tests__/**/*.ts",
+        "**/__fixtures__/**/*.ts"
+      ],
+      "rules": {
+        "eslint/no-underscore-dangle": "off",
+        "complexity": "off",
+        "max-lines": "off",
+        "require-yield": "off",
+        "no-shadow": "off",
+        "no-console": "off",
+        "no-unmodified-loop-condition": "off",
+        "no-unused-expressions": "off",
+        "no-unused-vars": "off",
+        "typescript/no-explicit-any": "off",
+        "typescript/no-unsafe-argument": "off",
+        "typescript/no-unsafe-assignment": "off",
+        "typescript/no-unsafe-call": "off",
+        "typescript/no-unsafe-member-access": "off",
+        "typescript/no-unsafe-return": "off",
+        "typescript/no-unsafe-type-assertion": "off",
+        "typescript/no-floating-promises": "off",
+        "typescript/no-non-null-assertion": "off",
+        "typescript/unbound-method": "off",
+        "typescript/require-await": "off",
+        "typescript/await-thenable": "off",
+        "typescript/no-magic-numbers": "off",
+        "typescript/no-empty-function": "off",
+        "typescript/no-unused-expressions": "off",
+        "typescript/no-unused-vars": "off",
+        "unicorn/consistent-function-scoping": "off",
+        "unicorn/no-thenable": "off",
+        "promise/always-return": "off",
+        "import/no-unassigned-import": [
+          "error",
+          {
+            "allow": [
+              "**/*.css",
+              "fake-indexeddb/auto",
+              "@lostgradient/testing/real-timer-leak-guard"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["**/*.test-d.ts"],
+      "rules": {
+        "typescript/no-unnecessary-type-parameters": "off"
+      }
+    }
+  ]
+}
