@@ -437,8 +437,15 @@ describe('conditional writes and deletes', () => {
   it('refuses an identifier that is not a single object name', async () => {
     const { source, calls } = setup();
     for (const id of ['', '.hidden', 'a/b', 'a\\b', 'a\0b']) {
-      expect(() => source.write(id, new Uint8Array(), { expectedHash: null })).toThrow(TypeError);
-      expect(() => source.delete(id, { expectedHash: hashOf('x') })).toThrow(TypeError);
+      // `write` and `delete` are async, so the refusal is a rejection, never a synchronous throw.
+      const written = await source
+        .write(id, new Uint8Array(), { expectedHash: null })
+        .catch((thrown: unknown) => thrown);
+      const deleted = await source
+        .delete(id, { expectedHash: hashOf('x') })
+        .catch((thrown: unknown) => thrown);
+      expect(written).toBeInstanceOf(TypeError);
+      expect(deleted).toBeInstanceOf(TypeError);
     }
     expect(calls.puts + calls.reads.length).toBe(0);
   });
