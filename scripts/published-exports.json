@@ -35,11 +35,6 @@
           "import": "./dist/storage/compressed-storage.js",
           "default": "./dist/storage/compressed-storage.js"
         },
-        "./storage/cloudflare": {
-          "types": "./dist/storage/cloudflare.d.ts",
-          "import": "./dist/storage/cloudflare.js",
-          "default": "./dist/storage/cloudflare.js"
-        },
         "./storage/http": {
           "types": "./dist/storage/http.d.ts",
           "import": "./dist/storage/http.js",

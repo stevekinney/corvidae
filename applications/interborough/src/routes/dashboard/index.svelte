@@ -27,12 +27,12 @@
 
   const client = getClient();
 
-  const HEALTH_POLL_INTERVAL_MS = 30_000;
-
+  // The probe runs once, when the page opens. It is not asked again on a timer: the shell's fleet
+  // feed reports whether the engine is answering, and the status pill beside it shows that, so a
+  // second clock here would only repeat it.
   const healthQuery = createQuery(() => ({
     queryKey: ['dashboard', 'health'],
     queryFn: () => probeHealth(client),
-    refetchInterval: HEALTH_POLL_INTERVAL_MS,
   }));
 
   const statusQuery = createQuery(() => ({

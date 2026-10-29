@@ -177,7 +177,6 @@ export type {
   SequencedEventEnvelope,
 } from './server/workflow-event-feed.ts';
 export * from './service-worker/index.ts';
-export * from './storage/cloudflare.ts';
 export { CompressedStorage } from './storage/compressed-storage.ts';
 export * from './storage/http.ts';
 export { DEFAULT_SCOPE, KEYS, WEFT_RESERVED_KEY_PREFIXES } from './storage/keys.ts';

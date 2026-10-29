@@ -68,6 +68,7 @@
 
   let now = $state(Date.now());
   $effect(() => {
+    // poll-reason: clock
     const interval = setInterval(() => {
       now = Date.now();
     }, 1_000);

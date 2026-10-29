@@ -1,0 +1,29 @@
+{
+  "name": "@lostgradient/storage-cloudflare",
+  "private": true,
+  "description": "The Cloudflare Durable Object SQLite storage adapter: a durable Storage over a Durable Object's ctx.storage.sql binding, with the contract tests it runs.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json --report-unused-disable-directives-severity=error && bun ../../scripts/check-inherited-key-reads.ts && bun ../../scripts/check-documentation-coverage.ts",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
+    "types": "tsc -b tsconfig.source.json",
+    "typecheck": "tsc -b tsconfig.json && bun run typecheck:documentation",
+    "typecheck:documentation": "bun ../../scripts/check-documentation-code-blocks.ts",
+    "test": "bun ../../scripts/bun-test-junit.ts",
+    "test:coverage": "bun ../../scripts/bun-test.ts --coverage --coverage-reporter=text --coverage-reporter=lcov"
+  },
+  "dependencies": {
+    "@lostgradient/storage": "workspace:*"
+  },
+  "devDependencies": {
+    "@lostgradient/testing": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
+    "@types/bun": "catalog:",
+    "oxlint": "catalog:",
+    "typescript": "catalog:"
+  },
+  "sideEffects": false
+}

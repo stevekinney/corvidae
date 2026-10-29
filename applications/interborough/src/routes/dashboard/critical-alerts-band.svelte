@@ -19,6 +19,7 @@
   import { Lock } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
+  import { useFleetEventsLive } from '../../app/live-polling.svelte.ts';
   import { getClient } from '../../lib/client.ts';
   import { getPrincipalStore, isForbidden, scopeReason } from '../../lib/scopes.svelte.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -74,15 +75,26 @@
     queryFn: (): ReturnType<HttpClient['operations']['weft.tasks.diagnostics']> =>
       client.operations['weft.tasks.diagnostics'](DIAGNOSTICS_DEFAULT_INPUT),
     enabled: canReadSystem,
+    // A task turns stale by the clock (queued too long, no heartbeat), which no event announces; a
+    // dead letter asks again at once (`../../app/task-event-queries.ts`).
+    // poll-reason: time-derived
     refetchInterval: DIAGNOSTICS_POLL_INTERVAL_MS,
   }));
 
-  const reviewsQuery = createQuery(() => ({
-    queryKey: queryKeys.reviews.list({ status: 'pending' }),
-    queryFn: () => client.listReviews({ status: 'pending' }),
-    enabled: canReadReviews,
-    refetchInterval: DIAGNOSTICS_POLL_INTERVAL_MS,
-  }));
+  // `human-review:requested` and `human-review:completed`, and a run that ends with reviews open,
+  // ask for the pending reviews again; the timer runs only while the fleet feed is not live.
+  const fleetLive = useFleetEventsLive();
+  const reviewsQuery = createQuery(() => {
+    // Read here, not in the interval, which TanStack Query reads untracked.
+    const polling = !fleetLive();
+    return {
+      queryKey: queryKeys.reviews.list({ status: 'pending' }),
+      queryFn: () => client.listReviews({ status: 'pending' }),
+      enabled: canReadReviews,
+      // poll-reason: fallback
+      refetchInterval: polling ? DIAGNOSTICS_POLL_INTERVAL_MS : false,
+    };
+  });
 
   /**
    * `canReadSystem`/`canReadReviews` guards below are load-bearing, not a

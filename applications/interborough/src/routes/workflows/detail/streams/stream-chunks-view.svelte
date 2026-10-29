@@ -1,21 +1,29 @@
 <script lang="ts">
   /**
    * The stored chunks of one durable stream of a run (COR-1462), opened from the stream's step in
-   * the Timeline. While the run is not terminal the view asks for chunks after the last it holds every
-   * two seconds, so a stream being written appears as it grows; it stops once the run is terminal,
-   * and when it is closed.
+   * the Timeline. The view asks for chunks after the last it holds when the fleet feed announces one
+   * (`stream:chunk`, which names the run and the key and carries no body), so a stream being written
+   * appears as it grows. While the feed is not live and the run is not terminal it asks every two
+   * seconds instead; it stops polling once the run is terminal, and when it is closed. The feed never
+   * announces the `tokens` key, which reaches a run's page another way, so a view of it relies on the
+   * timer alone.
    *
    * An empty stream says why. A cancelled or timed-out run has its stream chunks swept, so an empty
    * stream there reads "no longer kept"; any other run simply has none yet.
    *
-   * A stream written in the seconds between the last poll and the run turning terminal can show a
-   * short tail until the view is reopened: nothing is requested once the run is terminal.
+   * Without the feed, a stream written in the seconds between the last poll and the run turning
+   * terminal can show a short tail until the view is reopened: no poll is made once the run is terminal.
    */
   import { Button, Skeleton } from '@lostgradient/cinder';
   import type { WorkflowStatus } from '@lostgradient/weft';
   import { onDestroy, untrack } from 'svelte';
 
   import { RUN_DETAIL_COPY } from '../../../../app/copy.ts';
+  import {
+    getFleetEventSource,
+    hasFleetEventSource,
+  } from '../../../../app/engine-status.svelte.ts';
+  import { useFleetEventsLive } from '../../../../app/live-polling.svelte.ts';
   import { faultTreatment, type FaultTreatment } from '../../../../lib/faults.ts';
   import RunFaultBanner from '../run-fault-banner.svelte';
   import { isTerminalStatus } from '../workflow-status.ts';
@@ -24,6 +32,7 @@
     displayStreamKey,
     readStreamChunks,
     STREAM_POLL_INTERVAL_MS,
+    TOKENS_STREAM_KEY,
     streamChunksAreSwept,
     type StreamChunk,
     type StreamChunksClient,
@@ -53,59 +62,100 @@
     chunks.length > 0 ? 'ready' : fault !== null ? 'error' : loaded ? 'empty' : 'loading',
   );
 
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  const fleetLive = useFleetEventsLive();
+  const fleetSource = hasFleetEventSource() ? getFleetEventSource() : undefined;
+
   let disposed = false;
+  let reading = false;
+  let readAgain = false;
 
-  function stopPolling(): void {
-    if (timer !== undefined) clearTimeout(timer);
-    timer = undefined;
-  }
-
+  /** Reads the chunks after the last held. One read at a time: a request made meanwhile is one more read after it. */
   async function load(): Promise<void> {
+    if (reading) {
+      readAgain = true;
+      return;
+    }
+    reading = true;
     try {
-      const incoming = await readStreamChunks(
-        client,
-        workflowId,
-        streamKey,
-        chunks.at(-1)?.sequence,
-      );
-      if (disposed) return;
-      chunks = appendNewChunks(chunks, incoming);
-      fault = null;
-      loaded = true;
-    } catch (error) {
-      if (disposed) return;
-      // Keep what is held: a fault on one poll does not take back the chunks already shown, and a
-      // view that has read nothing yet is a fault, not an empty stream.
-      fault = faultTreatment(error);
+      do {
+        readAgain = false;
+        try {
+          const incoming = await readStreamChunks(
+            client,
+            workflowId,
+            streamKey,
+            chunks.at(-1)?.sequence,
+          );
+          if (disposed) return;
+          chunks = appendNewChunks(chunks, incoming);
+          fault = null;
+          loaded = true;
+        } catch (error) {
+          if (disposed) return;
+          // Keep what is held: a fault on one poll does not take back the chunks already shown, and a
+          // view that has read nothing yet is a fault, not an empty stream.
+          fault = faultTreatment(error);
+        }
+      } while (readAgain);
+    } finally {
+      reading = false;
     }
   }
 
-  async function poll(): Promise<void> {
-    await load();
-    if (disposed || terminal) return;
-    timer = setTimeout(() => void poll(), STREAM_POLL_INTERVAL_MS);
-  }
-
-  // The first read always happens, for a run that is already terminal too; polling is only for a
-  // run that can still write. Everything read inside is untracked: the view is keyed by workflow and
-  // stream, so nothing here re-runs, and a status change must not trigger a read.
+  // The first read always happens, for a run that is already terminal too. Everything read inside
+  // is untracked: the view is keyed by workflow and stream, so nothing here re-runs, and a status
+  // change must not trigger a read.
   $effect(() => {
-    untrack(() => void poll());
+    untrack(() => void load());
     return () => {
       disposed = true;
-      stopPolling();
     };
   });
 
-  // A run that turns terminal between polls: the pending poll is cancelled, not run.
+  // A chunk of this stream was stored, or the feed lost events it retained no longer: read again.
+  // The subscription is the shell's one connection; this opens none of its own.
   $effect(() => {
-    if (terminal) stopPolling();
+    if (fleetSource === undefined) return;
+    return fleetSource.subscribe((frame) => {
+      if (frame.kind === 'fleet:gap') {
+        void load();
+        return;
+      }
+      if (frame.kind !== 'stream:chunk' || frame.workflowId !== workflowId) return;
+      const key: unknown =
+        typeof frame.payload === 'object' && frame.payload !== null
+          ? Reflect.get(frame.payload, 'key')
+          : undefined;
+      if (key === streamKey) void load();
+    });
+  });
+
+  // The timer is the fallback: it runs while the feed is not live and the run can still write. The
+  // effect re-runs when either changes, and its cleanup ends the pending timer, so a poll that was
+  // scheduled before the feed came back (or the run ended) never fires, and the one that is
+  // in flight reschedules nothing.
+  $effect(() => {
+    // The `tokens` key is never announced by the feed (`TOKENS_STREAM_KEY`), so its timer never rests.
+    if (terminal || (streamKey !== TOKENS_STREAM_KEY && fleetLive())) return;
+    let current = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    function schedule(): void {
+      // poll-reason: fallback
+      timer = setTimeout(() => void poll(), STREAM_POLL_INTERVAL_MS);
+    }
+    async function poll(): Promise<void> {
+      await load();
+      if (current && !disposed) schedule();
+    }
+    schedule();
+    return () => {
+      current = false;
+      if (timer !== undefined) clearTimeout(timer);
+    };
   });
 
   onDestroy(() => {
     disposed = true;
-    stopPolling();
   });
 </script>
 

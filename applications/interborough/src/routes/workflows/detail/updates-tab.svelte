@@ -70,6 +70,7 @@
       queryKey: [...updateHistoryQueryKey(workflow.id), pageCount],
       queryFn: () => readUpdateHistoryPages(client, workflow.id, pageCount),
       placeholderData: keepPreviousData,
+      // poll-reason: fallback
       refetchInterval: (query) =>
         polling &&
         !runIsTerminal &&

@@ -96,6 +96,7 @@ export class ActivityFeedBatcher {
 
   #scheduleFlush(): void {
     if (this.#flushTimer !== null) return;
+    // poll-reason: timer
     this.#flushTimer = setTimeout(() => {
       this.#flushTimer = null;
       this.#flushNow();

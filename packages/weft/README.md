@@ -491,6 +491,7 @@ A small `Storage` interface over string keys and `Uint8Array` values: five requi
 - **`TursoStorage`** (package `@lostgradient/storage-turso`) for distributed libSQL deployments
 - **`NeonStorage`** (package `@lostgradient/storage-neon`) for durable remote Neon/Postgres deployments
 - **`IndexedDBStorage`** (package `@lostgradient/storage-indexeddb`) for browser environments
+- **`CloudflareDurableObjectSQLiteStorage`** (package `@lostgradient/storage-cloudflare`) for Cloudflare Durable Objects, over `ctx.storage.sql`
 - **`WebExtensionStorage`** (package `@lostgradient/storage-web-extension`) for extension contexts using `browser.storage` or `chrome.storage`
 - **`HTTPStorage`** (subpath `@lostgradient/weft/storage/http`) for remote storage over Weft's HTTP storage routes
 - **`CompressedStorage`** wrapper for transparent `gzip` or `brotli` compression

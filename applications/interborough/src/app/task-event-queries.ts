@@ -33,6 +33,21 @@ export const TASK_EVIDENCE_EVENT_KINDS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Activity events that move a task's ledger record without settling its result: an attempt starts,
+ * fails, waits on an external completion, is queued for a worker, or is asked to stop. They stand in
+ * for `task:attempt-transition`, which the fleet feed does not carry (its payload holds execution
+ * identity, so it is on the deny-list, `client-visible-events.ts`), and each names the task by
+ * `operationId`. Only the task's own record is read again.
+ */
+export const TASK_LIFECYCLE_EVENT_KINDS: ReadonlySet<string> = new Set([
+  'activity:started',
+  'activity:failed',
+  'activity:async-pending',
+  'activity:remote-queued',
+  'activity:remote-cancellation-requested',
+]);
+
+/**
  * Invalidates the queries a task event makes stale. Returns whether the frame
  * was a task evidence event, so a caller can tell a handled frame from one it
  * should leave alone.
@@ -41,8 +56,14 @@ export function invalidateForTaskEvent(
   queryClient: Pick<QueryClient, 'invalidateQueries'>,
   frame: FleetEventFrame,
 ): boolean {
-  if (!TASK_EVIDENCE_EVENT_KINDS.has(frame.kind)) return false;
   const operationId = operationIdOf(frame.payload);
+  if (TASK_LIFECYCLE_EVENT_KINDS.has(frame.kind)) {
+    if (operationId !== undefined) {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.tasks.detail(operationId) });
+    }
+    return true;
+  }
+  if (!TASK_EVIDENCE_EVENT_KINDS.has(frame.kind)) return false;
   if (operationId !== undefined) {
     void queryClient.invalidateQueries({ queryKey: queryKeys.tasks.detail(operationId) });
     void queryClient.invalidateQueries({ queryKey: queryKeys.tasks.deliveries(operationId) });

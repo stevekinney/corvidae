@@ -2,6 +2,15 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Interborough (Dev)",
+      "type": "bun",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/applications/interborough",
+      "program": "src/host/dev.ts",
+      "watchMode": true,
+      "internalConsoleOptions": "neverOpen"
+    },
+    {
       "name": "Debug Tests",
       "type": "bun",
       "request": "launch",

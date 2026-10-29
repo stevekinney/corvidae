@@ -25,6 +25,7 @@ import {
   type QueryClient,
 } from '@tanstack/svelte-query';
 
+import { useFleetEventsLive } from '../../app/live-polling.svelte.ts';
 import { queryKeys } from '../../lib/query.ts';
 import { invalidateWorkerSurfaceQueries } from './workers-data.ts';
 
@@ -136,13 +137,21 @@ export async function loadDeploymentOverviews(
 }
 
 export function deploymentOverviewsQuery(client: DeploymentOperations) {
-  return createQuery(() => ({
-    queryKey: queryKeys.workers.deployments(),
-    queryFn: () => loadDeploymentOverviews(client),
-    // A malformed response is deterministic; the poll recovers a transient fault.
-    retry: false,
-    refetchInterval: REFETCH_INTERVAL_MS,
-  }));
+  // `worker:deployment-changed` asks for the overviews again; the timer runs only while the fleet
+  // feed is not live.
+  const fleetLive = useFleetEventsLive();
+  return createQuery(() => {
+    // Read here, not in the interval, which TanStack Query reads untracked.
+    const polling = !fleetLive();
+    return {
+      queryKey: queryKeys.workers.deployments(),
+      queryFn: () => loadDeploymentOverviews(client),
+      // A malformed response is deterministic; the poll recovers a transient fault.
+      retry: false,
+      // poll-reason: fallback
+      refetchInterval: polling ? REFETCH_INTERVAL_MS : false,
+    };
+  });
 }
 
 /** The routing generation a Conflict reported, when the fault is a stale-generation Conflict. */

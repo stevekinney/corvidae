@@ -12,14 +12,15 @@
  * `DEFAULT_TASK_DIAGNOSTICS_INPUT`), so their option getters use stable
  * keys. Task detail reads its selected operation inside a reactive getter.
  *
- * All three poll every 30s (plan §5.3: "the default for low-churn surfaces
- * … workers ~30s") as the baseline freshness guarantee; `index.svelte`
- * layers an opt-in subscription to the shell's ONE shared `FleetEventSource`
- * (`getFleetEventSource()`, `src/app/engine-status.svelte.ts`) on top for
- * instant invalidation on `worker:connected`/`worker:disconnected`. The
- * toggle only gates that subscription — it never opens a second connection —
- * per plan §5's ≤3-connection budget: "one fleet SSE … never per-row/
- * per-surface connections".
+ * The list queries follow the shell's ONE shared `FleetEventSource`
+ * (`src/app/engine-status.svelte.ts`): its frames ask again for what they
+ * change (`../../lib/live-source/cache-integration.ts`,
+ * `../../app/task-event-queries.ts`), and a query polls every 30s (plan §5.3:
+ * "the default for low-churn surfaces … workers ~30s") only while that feed is
+ * not live. A query that reads the feed's state is therefore made while a
+ * component initializes (`useFleetEventsLive` reads context), like every
+ * `createQuery`. Per plan §5's ≤3-connection budget, none opens a connection
+ * of its own: "one fleet SSE … never per-row/per-surface connections".
  */
 import type { HttpClient } from '@lostgradient/weft';
 
@@ -31,6 +32,7 @@ import {
   type QueryClient,
 } from '@tanstack/svelte-query';
 
+import { useFleetEventsLive } from '../../app/live-polling.svelte.ts';
 import { queryKeys } from '../../lib/query.ts';
 import type { RegistrySnapshotSource } from '../system/registry-view.ts';
 import {
@@ -77,32 +79,47 @@ export function parseTaskLedgerDetail(value: unknown): TaskLedgerDetail {
 
 /** Reads exactly one authoritative durable ledger record. */
 export function taskLedgerDetailQuery(client: WorkersOperations, operationId: () => string) {
-  return createQuery(() => ({
-    queryKey: queryKeys.tasks.detail(operationId()),
-    queryFn: async () => {
-      const selectedOperationId = operationId();
-      return parseTaskLedgerDetail(
-        await client.operations['weft.tasks.get']({ operationId: selectedOperationId }),
-      );
-    },
-    enabled: operationId().length > 0,
-    refetchInterval: REFETCH_INTERVAL_MS,
-  }));
+  // An attempt starting, failing, queueing or settling asks for the record again
+  // (`../../app/task-event-queries.ts`); the timer runs only while the fleet feed is not live.
+  const fleetLive = useFleetEventsLive();
+  return createQuery(() => {
+    // Read here, not in the interval, which TanStack Query reads untracked.
+    const polling = !fleetLive();
+    return {
+      queryKey: queryKeys.tasks.detail(operationId()),
+      queryFn: async () => {
+        const selectedOperationId = operationId();
+        return parseTaskLedgerDetail(
+          await client.operations['weft.tasks.get']({ operationId: selectedOperationId }),
+        );
+      },
+      enabled: operationId().length > 0,
+      // poll-reason: fallback
+      refetchInterval: polling ? REFETCH_INTERVAL_MS : false,
+    };
+  });
 }
 
 /** The server's answers to one task's result submissions (`weft.tasks.deliveries`, `system:read`). */
 export function taskDeliveriesQuery(client: WorkersOperations, operationId: () => string) {
-  return createQuery(() => ({
-    queryKey: queryKeys.tasks.deliveries(operationId()),
-    queryFn: async () =>
-      parseTaskDeliveries(
-        await client.operations['weft.tasks.deliveries']({ operationId: operationId() }),
-      ),
-    enabled: operationId().length > 0,
-    // A malformed response is deterministic, so retrying only delays naming it; the poll recovers a transient fault.
-    retry: false,
-    refetchInterval: REFETCH_INTERVAL_MS,
-  }));
+  // `task:result-delivery` and `activity:completed` ask for the history again; the timer runs only
+  // while the fleet feed is not live.
+  const fleetLive = useFleetEventsLive();
+  return createQuery(() => {
+    const polling = !fleetLive();
+    return {
+      queryKey: queryKeys.tasks.deliveries(operationId()),
+      queryFn: async () =>
+        parseTaskDeliveries(
+          await client.operations['weft.tasks.deliveries']({ operationId: operationId() }),
+        ),
+      enabled: operationId().length > 0,
+      // A malformed response is deterministic, so retrying only delays naming it; the poll recovers a transient fault.
+      retry: false,
+      // poll-reason: fallback
+      refetchInterval: polling ? REFETCH_INTERVAL_MS : false,
+    };
+  });
 }
 
 /**
@@ -133,6 +150,9 @@ export function conformanceTargetsQuery(client: WorkersOperations) {
     queryFn: async () =>
       parseConformanceTargets(await client.operations['weft.conformance.targets']({})),
     retry: false,
+    // The targets are what this server can run, fixed for the life of the process; the poll only
+    // recovers a transient fault.
+    // poll-reason: static
     refetchInterval: REFETCH_INTERVAL_MS,
   }));
 }
@@ -159,20 +179,35 @@ export function runConformanceMutation(
 
 /** `GET /v1/workers` (`system:read`) — fleet + deployment rollup + routing policy. */
 export function workersListQuery(client: WorkersOperations): CreateQueryResult<WorkersListOutput> {
-  return createQuery(() => ({
-    queryKey: queryKeys.workers.list(),
-    queryFn: () => client.operations['weft.workers.list']({}),
-    refetchInterval: REFETCH_INTERVAL_MS,
-  }));
+  // `worker:connected`, `worker:disconnected` and `worker:deployment-changed` ask for the list
+  // again; the timer runs only while the fleet feed is not live.
+  const fleetLive = useFleetEventsLive();
+  return createQuery(() => {
+    const polling = !fleetLive();
+    return {
+      queryKey: queryKeys.workers.list(),
+      queryFn: () => client.operations['weft.workers.list']({}),
+      // poll-reason: fallback
+      refetchInterval: polling ? REFETCH_INTERVAL_MS : false,
+    };
+  });
 }
 
 /** `GET /v1/task-queues` (`system:read`). */
 export function taskQueuesListQuery(client: WorkersOperations) {
-  return createQuery(() => ({
-    queryKey: queryKeys.queues.list(),
-    queryFn: () => client.operations['weft.task.queues.list']({}),
-    refetchInterval: REFETCH_INTERVAL_MS,
-  }));
+  // `queue:depth-changed` asks for the list again (`../../lib/live-source/cache-integration.ts`); the
+  // timer runs only while the fleet feed is not live.
+  const fleetLive = useFleetEventsLive();
+  return createQuery(() => {
+    // Read here, not in the interval, which TanStack Query reads untracked.
+    const polling = !fleetLive();
+    return {
+      queryKey: queryKeys.queues.list(),
+      queryFn: () => client.operations['weft.task.queues.list']({}),
+      // poll-reason: fallback
+      refetchInterval: polling ? REFETCH_INTERVAL_MS : false,
+    };
+  });
 }
 
 /**
@@ -196,6 +231,8 @@ export function taskDiagnosticsQuery(
           ...DEFAULT_TASK_DIAGNOSTICS_INPUT,
           ...active,
         }),
+      // A task goes stale by the clock (queued too long, no heartbeat), which no event announces.
+      // poll-reason: time-derived
       refetchInterval: REFETCH_INTERVAL_MS,
     };
   });

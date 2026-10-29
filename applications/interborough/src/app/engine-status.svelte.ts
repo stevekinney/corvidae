@@ -68,6 +68,7 @@ export class EngineStatusController {
         ? {}
         : { computeReconnectDelayMs: options.fleetReconnectDelayMs }),
     });
+    // poll-reason: fallback
     this.#healthPoll = new PollingSource(() => checkHealth(client), {
       intervalMs: options?.healthPollIntervalMs ?? DEFAULT_HEALTH_POLL_INTERVAL_MS,
     });

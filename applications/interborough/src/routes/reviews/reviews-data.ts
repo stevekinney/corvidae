@@ -57,6 +57,7 @@ export function weftReviewsQueryOptions(
     queryKey: queryKeys.reviews.list({ status }),
     queryFn: () => client.listReviews({ status }),
     enabled,
+    // poll-reason: fallback
     ...(status === 'pending' && !fleetLive ? { refetchInterval: REVIEW_POLL_MILLISECONDS } : {}),
   };
 }
@@ -86,6 +87,7 @@ export function bureauReviewsQuery(): CreateQueryResult<readonly BureauReview[]>
   return createQuery(() => ({
     queryKey: queryKeys.bureauReviews.list(),
     queryFn: ({ signal }) => listBureauReviews({ signal }),
+    // poll-reason: fallback
     refetchInterval: bureauLive() ? false : REVIEW_POLL_MILLISECONDS,
     // The poll (or the next event) asks again, so a failure is not retried in between.
     retry: false,

@@ -27,7 +27,7 @@
 
 {#if !locked}
   <div class="weft-workers-route__live">
-    {#if live}
+    {#if live || fleetSource.status === 'live'}
       <ConnectionIndicator status={fleetSource.status} />
     {:else}
       <ConnectionIndicator status="polling" label="Updated every 30s" />
