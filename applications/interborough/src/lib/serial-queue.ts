@@ -12,6 +12,7 @@ export interface SerialQueue {
   run<Result>(task: () => Promise<Result>): Promise<Result>;
 }
 
+/** Creates an empty queue that runs the writes handed to it one at a time, in order. */
 export function createSerialQueue(): SerialQueue {
   let tail: Promise<unknown> = Promise.resolve();
   let pending = 0;

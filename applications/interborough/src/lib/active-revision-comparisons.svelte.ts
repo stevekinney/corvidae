@@ -29,6 +29,10 @@ import {
   type WorkflowCatalogActivePointerLike,
 } from './workflow-revision.ts';
 
+/**
+ * What the comparisons need: the client that reads each type's active revision and the rows
+ * currently shown.
+ */
 export interface ActiveRevisionComparisonsOptions {
   readonly client: WorkflowActiveRevisionClient;
   /** The rows currently shown. Only rows carrying a persisted `revision` need a comparison (an unpinned row classifies as `unpinned` without one), so only their types are fetched; duplicates are fine. */
@@ -40,6 +44,7 @@ export interface ActiveRevisionComparisonsOptions {
   readonly enabled?: () => boolean;
 }
 
+/** Reads how a workflow revision compares with its type's active pointer, reactively. */
 export interface ActiveRevisionComparisons {
   /** How `revision` compares to `type`'s active pointer. `'unknown'` while loading, denied, never activated, or on any error. */
   compare(type: string, revision: string | undefined): RevisionActiveComparison;
@@ -50,6 +55,10 @@ export function distinctWorkflowTypes(types: readonly string[]): readonly string
   return [...new Set(types.filter((type) => type.length > 0))];
 }
 
+/**
+ * Creates the reactive comparisons for the rows shown, fetching each distinct workflow type's
+ * active revision once.
+ */
 export function createActiveRevisionComparisons(
   options: ActiveRevisionComparisonsOptions,
 ): ActiveRevisionComparisons {

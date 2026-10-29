@@ -31,6 +31,10 @@ export const memorySchema = z.object({
   sessionId: z.string().nullable(),
 });
 
+/**
+ * One memory as the Bureau shows it: its content, class, source, trust, creation time, and the
+ * chat that produced it.
+ */
 export type Memory = z.infer<typeof memorySchema>;
 
 const memoryPageSchema = z.object({
@@ -38,6 +42,7 @@ const memoryPageSchema = z.object({
   nextOffset: z.number().nullable(),
 });
 
+/** One page of memories and the offset of the next page, or `null` on the last. */
 export type MemoryPage = z.infer<typeof memoryPageSchema>;
 
 /**
@@ -61,6 +66,7 @@ const searchSchema = z.object({
   hits: z.array(z.object({ memory: memorySchema, score: z.number() })),
 });
 
+/** One search result: a memory and its score against the query. */
 export type MemoryHit = z.infer<typeof searchSchema>['hits'][number];
 
 /** The agent's memories ranked against `query`, best first. A blank `query` is refused by the Bureau. */
@@ -84,10 +90,15 @@ const lineageSchema = z.object({
   correctedBy: z.string().nullable(),
 });
 
+/**
+ * Where a memory came from: the run that wrote it, the memory it replaced, and the memory that
+ * replaced it.
+ */
 export type MemoryLineage = z.infer<typeof lineageSchema>;
 
 const memoryDetailSchema = z.object({ memory: memorySchema, lineage: lineageSchema });
 
+/** One memory together with its lineage. */
 export type MemoryDetail = z.infer<typeof memoryDetailSchema>;
 
 /** One memory with its lineage. A corrected memory is read here though it is no longer listed. */
@@ -122,6 +133,10 @@ const forgetSchema = z.object({
   receipt: receiptSchema,
 });
 
+/**
+ * What forgetting a memory answers: the memory's identifier, the state of its deletion, and the
+ * deletion's receipt.
+ */
 export type ForgetResult = z.infer<typeof forgetSchema>;
 
 /** Forgets one memory as a source deletion; the answer says whether it is gone, held, or not yet settled. */
@@ -135,6 +150,9 @@ export async function forgetMemory(
 
 const correctSchema = z.object({ id: z.string(), memory: memorySchema });
 
+/**
+ * What correcting a memory answers: the identifier of the memory it replaced and the correction.
+ */
 export type CorrectResult = z.infer<typeof correctSchema>;
 
 /** Replaces one memory with `content`; the answer is the correction, as the list shows it now. */

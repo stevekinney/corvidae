@@ -11,6 +11,10 @@ function escapeForPattern(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/**
+ * Splits `text` into segments, marking each whole-word occurrence of one of `identifiers` so it
+ * can be set in monospace. The longest identifier wins where one contains another.
+ */
 export function segmentIdentifiers(
   text: string,
   identifiers: readonly string[],

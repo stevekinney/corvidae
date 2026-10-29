@@ -21,6 +21,7 @@ import { callBureau, type Fetcher } from './bureau-client.ts';
  * refuses an identifier that breaks them.
  */
 export const AGENT_IDENTIFIER_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+/** The longest an agent identifier may be, in characters. */
 export const AGENT_IDENTIFIER_MAX_LENGTH = 64;
 
 /**
@@ -37,6 +38,7 @@ const skillSchema = z.looseObject({
   outputModes: z.array(z.string()).optional(),
 });
 
+/** An agent definition's `skills` entry, as the Bureau reads it back. */
 export type AgentSkill = z.infer<typeof skillSchema>;
 
 const definitionSchema = z.object({
@@ -61,6 +63,10 @@ const problemSchema = z.object({
   issues: z.array(z.object({ path: z.string(), message: z.string() })).nullable(),
 });
 
+/**
+ * A problem the Bureau found in an agent definition: a code, a message, and the field-level issues
+ * behind it when there are any.
+ */
 export type AgentProblem = z.infer<typeof problemSchema>;
 
 const detailSchema = z.object({

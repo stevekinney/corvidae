@@ -12,6 +12,13 @@
  * in another workspace is that workspace's to document, and a dependency's is no one's, so both
  * are skipped, as are Svelte components, which Cinder's component metadata documents instead.
  *
+ * An application has no `exports` map, so `--entries <glob>…` names the entry points instead:
+ * every file under the workspace directory that matches a glob is judged as an entry point, and a
+ * glob that begins with `!` removes the files it matches (`'!src/host/*.test.ts'`). In this mode the
+ * entry-point part of every key is the file's path relative to the workspace, with forward
+ * slashes (`src/host/host.ts Host`). A glob that matches no file fails, a file with no exports is
+ * skipped, and the flag combines with `--seed`, `--seed-members`, and `--shrink`.
+ *
  * Exports that were undocumented when the check arrived are listed in the workspace's
  * `documentation-coverage-allowlist.json`, and members in `documentation-member-allowlist.json`
  * under keys of the form `<entry point> <Symbol>.<member>` (an overload adds `(overload <n>)`). A
@@ -37,6 +44,65 @@ const MEMBER_ALLOWLIST_DESCRIPTION =
 export interface EntryPoint {
   subpath: string;
   file: string;
+  /** Set for a file named by an `--entries` glob: a file with no exports is skipped, not an error. */
+  optional?: boolean;
+}
+
+/**
+ * Resolves `--entries` globs to entry points. Each pattern is matched against the files under
+ * `directory`; a pattern that begins with `!` removes the files it matches from the others'
+ * matches. The subpath of each entry point is its path relative to `directory`, with forward
+ * slashes, and the result is sorted by it. A positive pattern that matches no file throws.
+ */
+export function expandEntries(directory: string, patterns: readonly string[]): EntryPoint[] {
+  const included = patterns.filter((pattern) => !pattern.startsWith('!'));
+  if (included.length === 0) throw new Error(`${directory}: --entries needs at least one glob`);
+  const excluded = patterns
+    .filter((pattern) => pattern.startsWith('!'))
+    .map((pattern) => new Bun.Glob(pattern.slice(1)));
+  const paths = new Set<string>();
+  for (const pattern of included) {
+    const matches = [...new Bun.Glob(pattern).scanSync({ cwd: directory })].map((match) =>
+      match.split(sep).join('/'),
+    );
+    if (matches.length === 0) throw new Error(`${directory}: --entries ${pattern} matches no file`);
+    for (const match of matches) paths.add(match);
+  }
+  return [...paths]
+    .filter((path) => !excluded.some((glob) => glob.match(path)))
+    .toSorted()
+    .map((path) => ({ subpath: path, file: resolve(directory, path), optional: true }));
+}
+
+/** The modes and options the command line accepts. */
+export interface Arguments {
+  mode: '--seed' | '--seed-members' | '--shrink' | undefined;
+  /** The `--entries` globs, or `undefined` when the workspace's `exports` map names the entries. */
+  entries: string[] | undefined;
+}
+
+/** Parses the command line; a string result is the error to print. */
+export function parseArguments(argv: readonly string[]): Arguments | string {
+  let mode: Arguments['mode'];
+  let entries: string[] | undefined;
+  let collecting = false;
+  for (const argument of argv) {
+    if (argument === '--entries') {
+      if (entries !== undefined) return 'unknown argument --entries given twice';
+      entries = [];
+      collecting = true;
+    } else if (argument === '--seed' || argument === '--seed-members' || argument === '--shrink') {
+      if (mode !== undefined) return `unknown argument ${argument} (already ${mode})`;
+      mode = argument;
+      collecting = false;
+    } else if (collecting && !argument.startsWith('--')) {
+      entries?.push(argument);
+    } else {
+      return `unknown argument ${argument}`;
+    }
+  }
+  if (entries?.length === 0) return '--entries needs at least one glob';
+  return { mode, entries };
 }
 
 /** Reads the workspace's `exports` map, which must map each subpath straight to a TypeScript file. */
@@ -236,7 +302,10 @@ export function findUndocumented(
   for (const entry of entryPoints) {
     const sourceFile = program.getSourceFile(entry.file);
     const moduleSymbol = sourceFile && checker.getSymbolAtLocation(sourceFile);
-    if (!moduleSymbol) throw new Error(`${directory}: cannot load export ${entry.subpath}`);
+    if (!moduleSymbol) {
+      if (entry.optional) continue;
+      throw new Error(`${directory}: cannot load export ${entry.subpath}`);
+    }
 
     for (const exported of checker.getExportsOfModule(moduleSymbol)) {
       const symbol =
@@ -325,18 +394,19 @@ async function writeAllowlist(
 }
 
 async function main(argv: readonly string[]): Promise<number> {
-  const mode = argv[0];
-  if (mode !== undefined && mode !== '--seed' && mode !== '--seed-members' && mode !== '--shrink') {
-    process.stderr.write(`check-documentation-coverage — unknown argument ${mode}\n`);
+  const parsed = parseArguments(argv);
+  if (typeof parsed === 'string') {
+    process.stderr.write(`check-documentation-coverage — ${parsed}\n`);
     return 2;
   }
+  const { mode, entries } = parsed;
   const directory = process.cwd();
   const name = relative(join(import.meta.dir, '..'), directory);
   const manifest: { exports?: unknown } = await Bun.file(join(directory, 'package.json')).json();
   const configuration = readConfiguration(directory);
   const found = findUndocumented(
     directory,
-    readEntryPoints(directory, manifest.exports),
+    entries ? expandEntries(directory, entries) : readEntryPoints(directory, manifest.exports),
     configuration.options,
     configuration.fileNames.filter((fileName) => fileName.endsWith('.d.ts')),
   );

@@ -9,6 +9,7 @@ import type { BadgeVariant } from '@lostgradient/cinder';
 import { TASK_COPY } from '../app/copy.ts';
 import type { TaskState } from './bureau-tasks.ts';
 
+/** How a task state reads on screen: its label and badge variant. */
 export type TaskStatePresentation = {
   readonly label: string;
   readonly variant: BadgeVariant;
@@ -23,6 +24,7 @@ const VARIANTS: Readonly<Record<TaskState, BadgeVariant>> = {
   canceled: 'neutral',
 };
 
+/** The label and badge variant a task state is shown with. */
 export function taskStatePresentation(state: TaskState): TaskStatePresentation {
   return { label: TASK_COPY.states[state], variant: VARIANTS[state] };
 }

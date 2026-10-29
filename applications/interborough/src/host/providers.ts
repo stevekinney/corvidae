@@ -47,11 +47,13 @@ export const PROVIDER_SECRET_KEYS: Readonly<Record<GenerateProviderName, string>
  */
 export const TYPESAFE_SECRET_KEY = 'typesafe-api-key';
 
+/** One provider's entry in the provider configuration file. */
 export type ProviderEntry = {
   /** An allowlist of models, matched on a row's `model` or an alias. Absent means every model. */
   readonly models?: readonly string[];
 };
 
+/** The shape of the provider configuration file: an entry per provider the host may call. */
 export type ProviderConfigurationFile = {
   readonly providers: Readonly<Partial<Record<GenerateProviderName, ProviderEntry>>>;
 };

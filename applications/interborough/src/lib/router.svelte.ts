@@ -15,6 +15,7 @@
 import { routes, type RouteDefinition } from '../app/routes.ts';
 import { identifierPath, withEscapedIdentifier } from './identifier-paths.ts';
 
+/** A route pattern a location matched and the parameters it captured. */
 export interface RouteMatch {
   readonly pattern: string;
   readonly params: Readonly<Record<string, string>>;
@@ -239,4 +240,8 @@ class DashboardRouter {
   }
 }
 
+/**
+ * The dashboard's one router: it parses the browser location, navigates with the History API, and
+ * exposes the current route reactively.
+ */
 export const router = new DashboardRouter();

@@ -5,10 +5,12 @@ import { join } from 'node:path';
 import ts from 'typescript';
 
 import {
+  expandEntries,
   findUndocumented,
   findUndocumentedExports,
   judgeCoverage,
   MEMBER_ALLOWLIST_FILE,
+  parseArguments,
   readAllowlist,
   readEntryPoints,
 } from './check-documentation-coverage.ts';
@@ -136,6 +138,22 @@ files['members/src/index.ts'] = [
   '/** Single signature with an implementation. */',
   'export function single(input: string): string { return input; }',
 ].join('\n');
+files['application/src/host/server.ts'] = [
+  '/** Documented export. */',
+  'export interface Settings {',
+  '  /** Documented member. */',
+  '  port: number;',
+  '  host: string;',
+  '}',
+  'export function start(): void {}',
+].join('\n');
+files['application/src/host/server.test.ts'] = 'export const testOnly = 1;\n';
+files['application/src/lib/helper.ts'] =
+  '/** Helps. */\nexport const help = 1;\nexport const bare = 2;\n';
+files['application/src/lib/helper.test-support.ts'] = 'export const supportOnly = 1;\n';
+files['application/src/lib/script.ts'] = 'const local = 1;\nlocal;\n';
+files['application/src/lib/nested/deep.ts'] = 'export class Deep {}\n';
+files['application/src/routes/page.ts'] = 'export const outsideTheGlobs = 1;\n';
 for (const [path, contents] of Object.entries(files)) {
   await Bun.write(join(fixture, path), contents);
 }
@@ -272,5 +290,80 @@ describe('judgeCoverage for members', () => {
       missing: ['. Shape.bare'],
       stale: [],
     });
+  });
+});
+
+describe('--entries mode', () => {
+  const applicationDirectory = join(fixture, 'application');
+  const patterns = [
+    'src/host/**/*.ts',
+    'src/lib/**/*.ts',
+    '!**/*.test.ts',
+    '!**/*.test-support.ts',
+  ];
+
+  test('matches the globs relative to the workspace and removes test files', () => {
+    expect(expandEntries(applicationDirectory, patterns).map((entry) => entry.subpath)).toEqual([
+      'src/host/server.ts',
+      'src/lib/helper.ts',
+      'src/lib/nested/deep.ts',
+      'src/lib/script.ts',
+    ]);
+  });
+
+  test('fails a positive glob that matches nothing and a list with no positive glob', () => {
+    expect(() => expandEntries(applicationDirectory, ['src/missing/**/*.ts'])).toThrow(
+      'matches no file',
+    );
+    expect(() => expandEntries(applicationDirectory, ['!**/*.test.ts'])).toThrow(
+      'needs at least one glob',
+    );
+  });
+
+  test('judges every export and member of the matching files under path keys', () => {
+    const found = findUndocumented(
+      applicationDirectory,
+      expandEntries(applicationDirectory, patterns),
+      options,
+    );
+    expect(found.exports).toEqual([
+      'src/host/server.ts start',
+      'src/lib/helper.ts bare',
+      'src/lib/nested/deep.ts Deep',
+    ]);
+    expect(found.members).toEqual(['src/host/server.ts Settings.host']);
+    expect(found.exports.concat(found.members).join('\n')).not.toMatch(/testOnly|supportOnly/);
+  });
+
+  test('a glob that also matches test-support and other files judges them too', () => {
+    const everything = findUndocumented(
+      applicationDirectory,
+      expandEntries(applicationDirectory, ['src/**/*.ts']),
+      options,
+    );
+    expect(everything.exports).toContain('src/lib/helper.test-support.ts supportOnly');
+    expect(everything.exports).toContain('src/routes/page.ts outsideTheGlobs');
+  });
+});
+
+describe('parseArguments', () => {
+  test('reads a mode, the entries globs, or both in either order', () => {
+    expect(parseArguments([])).toEqual({ mode: undefined, entries: undefined });
+    expect(parseArguments(['--entries', 'a/**/*.ts', '!b.ts', '--seed-members'])).toEqual({
+      mode: '--seed-members',
+      entries: ['a/**/*.ts', '!b.ts'],
+    });
+    expect(parseArguments(['--shrink', '--entries', 'a.ts'])).toEqual({
+      mode: '--shrink',
+      entries: ['a.ts'],
+    });
+  });
+
+  test('rejects an unknown flag, a stray word, an empty --entries, and two modes', () => {
+    expect(parseArguments(['--bogus'])).toContain('unknown argument');
+    expect(parseArguments(['stray.ts'])).toContain('unknown argument');
+    expect(parseArguments(['--entries'])).toContain('at least one glob');
+    expect(parseArguments(['--entries', '--seed'])).toContain('at least one glob');
+    expect(parseArguments(['--seed', '--shrink'])).toContain('unknown argument');
   });
 });

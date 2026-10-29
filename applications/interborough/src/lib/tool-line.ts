@@ -10,6 +10,9 @@
 /** The most characters a tool row shows before the person expands it. */
 export const TOOL_LINE_LIMIT = 120;
 
+/**
+ * The one line a tool row shows and whether the tool's description holds more than that line does.
+ */
 export type ToolLine = {
   /** At most {@link TOOL_LINE_LIMIT} characters, on one line. */
   readonly line: string;
