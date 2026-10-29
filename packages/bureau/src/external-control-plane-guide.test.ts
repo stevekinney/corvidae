@@ -23,7 +23,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { createBureau, createBureauHandler, createMemoryAssetStorage } from './index';
 import type { AgentDefinitions } from './agent-catalog';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
-import { createSqliteStorageFixture, type PersistentBureauStorageFixture } from './test/storage-fixtures';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 
 let database: PersistentBureauStorageFixture;
 

@@ -451,7 +451,7 @@ describe('createSqliteStorageFixture', () => {
     expect(second.path).toContain('storage-fixture-2');
     expect(first.kind).toBe('sqlite');
     expect(first.owned).toBe(true);
-    expect(dirname(first.path!)).not.toBe(dirname(second.path!));
+    expect(dirname(first.path)).not.toBe(dirname(second.path));
 
     await first.dispose();
     await second.dispose();
@@ -473,7 +473,7 @@ describe('createSqliteStorageFixture', () => {
   it('deletes only a path it allocated itself', async () => {
     const runtime = createManualRuntimeServices();
     const fixture = createSqliteStorageFixture({ runtime });
-    const path = fixture.path!;
+    const path = fixture.path;
 
     await writeFile(path, '');
     await writeFile(`${path}-wal`, '');
@@ -597,7 +597,7 @@ describe('createLmdbStorageFixture', () => {
   it('deletes only a directory it allocated itself', async () => {
     const runtime = createManualRuntimeServices();
     const fixture = createLmdbStorageFixture({ runtime });
-    const path = fixture.path!;
+    const path = fixture.path;
 
     await mkdir(path, { recursive: true });
     await writeFile(join(path, 'data.mdb'), '');

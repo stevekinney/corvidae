@@ -377,7 +377,7 @@ function createPersistentStorageFixture(
       if (disposed) return;
       disposed = true;
       try {
-        for (const handle of handles.splice(0).reverse()) await handle.close();
+        for (const handle of handles.splice(0).toReversed()) await handle.close();
       } finally {
         current = undefined;
         if (owned) removeTemporaryPath(path);

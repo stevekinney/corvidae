@@ -30,7 +30,6 @@ import {
 
 type BunSQLiteStoragePersistence = NonNullable<StorageCapabilities['persistence']>;
 
-
 /**
  * Runtime-neutral alias for the Bun SQLite adapter. Consumers that import
  * from `@lostgradient/weft` get this class under Bun.

@@ -25,7 +25,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { type Bureau, createBureau, type TaskHandle } from './index';
-import { createSqliteStorageFixture, type PersistentBureauStorageFixture } from './test/storage-fixtures';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 
 let database: PersistentBureauStorageFixture;
 

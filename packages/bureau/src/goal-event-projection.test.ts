@@ -705,10 +705,7 @@ describe('live goal events (COR-1721)', () => {
     );
     const live = dispatched.length;
     // A history that missed every write, as after a crash: the boot pass has work to do.
-    const repaired = createDurableEventHistory(
-      new MemoryStorage(),
-      createManualRuntimeServices(),
-    );
+    const repaired = createDurableEventHistory(new MemoryStorage(), createManualRuntimeServices());
     const repair = createGoalEventRecorder(repaired, () => undefined);
 
     await projectGoalHistory(await store.list(), boot);

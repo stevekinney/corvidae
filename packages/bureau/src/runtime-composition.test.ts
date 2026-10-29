@@ -5896,7 +5896,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
 });
 
 describe('createRuntimeComposition storage and durable engine options', () => {
-  it('builds a durable engine over a memory storage configuration when durable is on', async () => {
+  it('builds a durable engine over a memory storage when durable is on', async () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       storage: new MemoryStorage(),

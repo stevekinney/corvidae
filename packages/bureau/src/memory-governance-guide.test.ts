@@ -27,7 +27,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { createBureau } from './index';
 import type { AgentDefinitions } from './agent-catalog';
 import { startTaskFrom } from './test/task-start-request.ts';
-import { createSqliteStorageFixture, type PersistentBureauStorageFixture } from './test/storage-fixtures';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 
 /**
  * Where a run's memory lives (COR-1546): the Bureau's identifier is the tenant, the run's owner of
@@ -385,9 +388,7 @@ describe('documented Bureau memory limits', () => {
         id: BUREAU_ID,
         agents: { parent, assistant },
         memory,
-        ...(durability === 'durable'
-          ? { storage: database.storage }
-          : {}),
+        ...(durability === 'durable' ? { storage: database.storage } : {}),
       });
       try {
         const task = await bureau.tasks.start('parent', 'Plan.');

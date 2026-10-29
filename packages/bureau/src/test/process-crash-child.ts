@@ -124,7 +124,7 @@ async function parkAfterStepZero(): Promise<void> {
     storage:
       backend === 'lmdb'
         ? new LMDBStorage(storagePath as string)
-        : new BunSQLiteStorage(storagePath as string),
+        : new BunSQLiteStorage(storagePath),
     durable: true,
     durableOwnership: {
       ownership: 'workflow-lease',
@@ -210,7 +210,7 @@ async function chargeThenCrash(): Promise<void> {
     storage:
       backend === 'lmdb'
         ? new LMDBStorage(storagePath as string)
-        : new BunSQLiteStorage(storagePath as string),
+        : new BunSQLiteStorage(storagePath),
     generate: async () => ({ content: 'charging', toolCalls: chargeToolCalls }),
     toolbox,
   });
@@ -252,7 +252,7 @@ async function memoryWriteThenCrash(): Promise<void> {
     storage:
       backend === 'lmdb'
         ? new LMDBStorage(storagePath as string)
-        : new BunSQLiteStorage(storagePath as string),
+        : new BunSQLiteStorage(storagePath),
     generate: async () => ({ content: REMEMBERED_ANSWER, toolCalls: [] }),
     toolbox: createToolbox([createNextTool()]),
     memory,
@@ -273,7 +273,7 @@ async function twoParkedRuns(): Promise<void> {
     storage:
       backend === 'lmdb'
         ? new LMDBStorage(storagePath as string)
-        : new BunSQLiteStorage(storagePath as string),
+        : new BunSQLiteStorage(storagePath),
     generate: async (context) => {
       if (context.step === 0) {
         return { content: 'step 0', toolCalls: [{ name: 'next', arguments: {} }] };
@@ -317,7 +317,7 @@ async function humanWaitParked(twoCalls = false): Promise<void> {
     storage:
       backend === 'lmdb'
         ? new LMDBStorage(storagePath as string)
-        : new BunSQLiteStorage(storagePath as string),
+        : new BunSQLiteStorage(storagePath),
     generate: async () => ({ content: '', toolCalls: twoCalls ? [park, secondPark] : [park] }),
     toolbox: createToolbox([]),
   });
@@ -373,7 +373,7 @@ async function relaunchRecover(): Promise<void> {
     storage:
       backend === 'lmdb'
         ? new LMDBStorage(storagePath as string)
-        : new BunSQLiteStorage(storagePath as string),
+        : new BunSQLiteStorage(storagePath),
     durable: true,
     durableOwnership: {
       ownership: 'workflow-lease',
@@ -424,7 +424,7 @@ async function verify(): Promise<void> {
     storage:
       backend === 'lmdb'
         ? new LMDBStorage(storagePath as string)
-        : new BunSQLiteStorage(storagePath as string),
+        : new BunSQLiteStorage(storagePath),
     generate: async () => ({ content: 'verify', toolCalls: [] }),
     toolbox: createChargeToolbox(directory, async () => 'ok', { cache, wrap: true }),
     memory: governed.memory,
@@ -451,7 +451,7 @@ async function approveThenCrash(): Promise<void> {
     storage:
       backend === 'lmdb'
         ? new LMDBStorage(storagePath as string)
-        : new BunSQLiteStorage(storagePath as string),
+        : new BunSQLiteStorage(storagePath),
     generate: async () => {
       calls += 1;
       return {

@@ -223,7 +223,7 @@ describe('a task’s own message history', () => {
           });
         };
       },
-    }) as Storage;
+    });
     const open = (storage: Storage) =>
       createBureau<AgentDefinitions>({
         id: 'history-flush',

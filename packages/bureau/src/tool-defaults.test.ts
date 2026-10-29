@@ -341,7 +341,7 @@ describe('humanInput and wakeup accept only their documented forms', () => {
         storage: new MemoryStorage(),
         durable: true,
         [name]: value,
-      } as unknown as BureauOptions<AgentDefinitions>),
+      }),
     );
     expect(error).toBeInstanceOf(BureauError);
     expect((error as BureauError).code).toBe('BAD_REQUEST');

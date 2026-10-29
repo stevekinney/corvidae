@@ -201,7 +201,10 @@ export async function bootSettings<D extends AgentDefinitions, O extends BureauO
           diagnose,
         );
   return {
-    options: withRestartSettings(options, effectiveSettings(defaults, stored.record?.values, locked)),
+    options: withRestartSettings(
+      options,
+      effectiveSettings(defaults, stored.record?.values, locked),
+    ),
     persisted:
       storage !== undefined && ['local', 'remote'].includes(storage.capabilities().persistence),
     stored,

@@ -90,7 +90,7 @@ async function faultyStorage(): Promise<Faulty> {
       }
       return typeof value === 'function' ? (value as () => unknown).bind(target) : value;
     },
-  }) as Storage;
+  });
   cleanups.push(async () => {
     await (base as unknown as { dispose?: () => Promise<void> | void }).dispose?.();
     await fixture.dispose();

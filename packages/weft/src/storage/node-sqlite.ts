@@ -40,7 +40,6 @@ import {
 
 type NodeSQLiteStoragePersistence = NonNullable<StorageCapabilities['persistence']>;
 
-
 /**
  * Runtime-neutral alias for the Node SQLite adapter. Consumers that import
  * from `@lostgradient/weft` get this class under Node.

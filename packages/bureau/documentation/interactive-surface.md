@@ -89,13 +89,14 @@ import {
   type InteractiveSurfaceActionReceipt,
 } from '@lostgradient/bureau';
 import { createAgent, type GenerateFunction } from '@lostgradient/operative';
+import { BunSQLiteStorage } from '@lostgradient/weft';
 
 declare const generate: GenerateFunction;
 declare const taskId: string;
 
 const bureau = await createBureau({
   agents: { assistant: createAgent({ generate }) },
-  storage: { type: 'sqlite', path: './bureau.db' },
+  storage: new BunSQLiteStorage('./bureau.db'),
   durable: true,
 });
 const surfaces = bureau.surfaces;

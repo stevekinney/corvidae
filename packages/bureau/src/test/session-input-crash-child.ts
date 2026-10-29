@@ -131,7 +131,9 @@ if (mode === 'running') {
 // `ended`: the run finishes; its terminal session write is held so the session
 // still reads as running; the input is admitted into that window; the process
 // dies as soon as the admission is durable.
-const seam = seamStorage(backend === 'lmdb' ? new LMDBStorage(storagePath) : new BunSQLiteStorage(storagePath));
+const seam = seamStorage(
+  backend === 'lmdb' ? new LMDBStorage(storagePath) : new BunSQLiteStorage(storagePath),
+);
 const bureau = await createBureau<AgentDefinitions>({
   agents: {
     default: createAgent({

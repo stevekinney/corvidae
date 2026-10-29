@@ -13,10 +13,7 @@ import {
   type Storage,
   textValueStore,
 } from '@lostgradient/storage';
-import {
-  Engine,
-  yieldToPortableEventLoop,
-} from '@lostgradient/weft';
+import { Engine, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
