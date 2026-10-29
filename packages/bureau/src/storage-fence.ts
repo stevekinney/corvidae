@@ -6,7 +6,7 @@
  * fails, because work left over from a Bureau that is going away (a waiter settled after the engine
  * stopped, a session record settled after a failed boot) would otherwise write to a store that a
  * later Bureau or another process owns. Closing the fence is that stop: every write through the
- * fenced view throws once it is closed, as a write to a closed handle does, and the caller's own
+ * fenced view rejects once it is closed, as a write to a closed handle does, and the caller's own
  * handle stays open. Reads still pass, as they always did for a storage the caller supplied: a
  * read changes nothing, and a host may inspect what a Bureau left behind.
  *
@@ -37,7 +37,7 @@ interface FenceState {
   closed: boolean;
 }
 
-/** The error an operation through a closed fence throws. */
+/** The error an operation through a closed fence is refused with. */
 function fenceClosed(operation: string): Error {
   return new Error(
     `Bureau has stopped writing to its storage (it shut down or failed to start), so "${operation}" was refused.`,
@@ -65,7 +65,8 @@ function fencedView(inner: Storage, state: FenceState): Storage {
           fencedView(method.apply(target, parameters) as Storage, state);
       }
       return (...parameters: unknown[]) => {
-        if (state.closed) throw fenceClosed(String(property));
+        // Every adapter reports a failed write as a rejected promise, never a synchronous throw.
+        if (state.closed) return Promise.reject(fenceClosed(String(property)));
         return method.apply(target, parameters);
       };
     },

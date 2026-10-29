@@ -2092,9 +2092,11 @@ describe('createRuntimeComposition durable execution', () => {
       await engineStorage?.put('probe', new Uint8Array([5]));
       expect(await storage.get('probe')).toEqual(new Uint8Array([5]));
       runtime.stopUsingStorage();
-      expect(() => engineStorage?.put('probe', new Uint8Array([6]))).toThrow(
-        /stopped writing to its storage/,
-      );
+      // A refused write is a rejected promise, as every adapter reports a failed write, never a
+      // synchronous throw.
+      const refused = engineStorage?.put('probe', new Uint8Array([6]));
+      expect(refused).toBeInstanceOf(Promise);
+      await expect(refused).rejects.toThrow(/stopped writing to its storage/);
       expect(await engineStorage?.get('probe')).toEqual(new Uint8Array([5]));
       await storage.put('probe', new Uint8Array([7]));
       expect(await storage.get('probe')).toEqual(new Uint8Array([7]));

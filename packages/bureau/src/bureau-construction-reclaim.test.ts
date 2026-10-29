@@ -392,6 +392,11 @@ describe('a construction that fails while a run is parked for the resolver (COR-
       order.push('waiters settled');
       realAbandon(reason);
     });
+    const realStopUsingStorage = composition.stopUsingStorage.bind(composition);
+    spyOn(composition, 'stopUsingStorage').mockImplementation(() => {
+      order.push('storage fenced');
+      realStopUsingStorage();
+    });
     await composition.persistCatalogRunRecoveryRecord('parked-run', {
       agentName: 'writer',
       definitionRevision: 1,
@@ -429,6 +434,7 @@ describe('a construction that fails while a run is parked for the resolver (COR-
       'asset service shut down',
       'observability disposed',
       'engine shut down',
+      'storage fenced',
       'waiters settled',
     ]);
   });

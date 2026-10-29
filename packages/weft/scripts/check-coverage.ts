@@ -634,7 +634,7 @@ const CURRENT_BRANCH_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       {
         reason:
           'Exhaustive default for an unknown storage backend is unreachable through the validated CLI/API surface; no caller can construct an invalid StorageBackend.',
-        lines: new Set([21, 22, 23]),
+        lines: new Set([17, 18, 19]),
         requireUncoveredLines: true,
       },
     ],
