@@ -110,6 +110,10 @@ function reply(content: string): ScriptedGenerateStep {
 
 /** The signal the seeded `request-human-input` agent parks on, and the question it asks. */
 export const HUMAN_INPUT_SIGNAL = 'environment';
+/**
+ * The question the seeded `request-human-input` agent asks the person while it is parked on its
+ * signal.
+ */
 export const HUMAN_INPUT_PROMPT = 'Which environment should the release go to?';
 
 /**

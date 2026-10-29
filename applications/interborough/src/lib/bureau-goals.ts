@@ -27,11 +27,13 @@ export const GOAL_STATUSES = [
   'canceled',
 ] as const;
 
+/** Where a goal is in its life, from queued through to one of the ending statuses. */
 export type GoalStatus = (typeof GOAL_STATUSES)[number];
 
 /** The statuses a goal ends in: it starts no new attempt, and there is nothing left to cancel. */
 const ENDED: ReadonlySet<GoalStatus> = new Set(['succeeded', 'exhausted', 'failed', 'canceled']);
 
+/** Whether a goal has ended, so it starts no new attempt and has nothing left to cancel. */
 export function goalHasEnded(status: GoalStatus): boolean {
   return ENDED.has(status);
 }

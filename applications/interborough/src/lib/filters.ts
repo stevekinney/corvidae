@@ -18,6 +18,7 @@ import {
   type AttributeFilter,
 } from './attribute-filters.ts';
 
+/** A range of creation times a workflow list can be narrowed to. */
 export type TimeRange = NonNullable<ListFilter['createdAt']>;
 
 /**

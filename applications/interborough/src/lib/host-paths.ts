@@ -20,6 +20,10 @@ const hostPathsSchema = z.object({
   providers: z.array(z.object({ name: z.string().min(1), secretFile: z.string().min(1) })),
 });
 
+/**
+ * Where the host keeps the agent and workflow files, the provider configuration file, and the
+ * secret file of each provider.
+ */
 export type HostPaths = z.infer<typeof hostPathsSchema>;
 
 /** Asks the host where it keeps its files. */

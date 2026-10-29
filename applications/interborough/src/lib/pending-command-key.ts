@@ -18,6 +18,10 @@ export type PendingCommandKey = {
   confirmed(): void;
 };
 
+/**
+ * Creates the holder of one pending command's idempotency key, which a retry of the same command
+ * reuses until a response confirms it.
+ */
 export function createPendingCommandKey(): PendingCommandKey {
   let pending:
     { readonly scope: string; readonly content: string; readonly key: string } | undefined;

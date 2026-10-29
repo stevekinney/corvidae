@@ -15,7 +15,9 @@
  */
 import type { HttpClient } from '@lostgradient/weft';
 
+/** Weft's answer to `weft.system.lease`: the state of the engine's lease. */
 export type SystemLease = Awaited<ReturnType<HttpClient['operations']['weft.system.lease']>>;
+/** The status a `weft.system.lease` answer reports. */
 export type SystemLeaseStatus = SystemLease['status'];
 
 /** A `weft.system.lease` response the dashboard refuses to render. */
@@ -120,8 +122,12 @@ export async function loadSystemLease(
   return parseSystemLease(await client.operations['weft.system.lease']({}));
 }
 
+/** The badge variant a lease status is shown with. */
 export type LeaseStatusVariant = 'success' | 'warning' | 'danger' | 'neutral';
 
+/**
+ * How a lease status reads on screen: its label, badge variant, and a sentence that explains it.
+ */
 export interface LeaseStatusPresentation {
   readonly label: string;
   readonly variant: LeaseStatusVariant;
