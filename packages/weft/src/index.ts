@@ -185,7 +185,6 @@ export { DEFAULT_SCOPE, KEYS, WEFT_RESERVED_KEY_PREFIXES } from './storage/keys.
 export * from './storage/lmdb.ts';
 export * from './storage/neon.ts';
 export { NodeSQLiteStorage } from './storage/node-sqlite.ts';
-export * from './storage/postgres.ts';
 export * from './storage/turso.ts';
 export { jsonCodec, msgpackCodec, withCodec } from './storage/typed-storage.ts';
 export type {

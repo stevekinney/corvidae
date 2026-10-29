@@ -1,0 +1,34 @@
+{
+  "name": "@lostgradient/storage-postgres",
+  "private": true,
+  "description": "The Postgres storage adapter: a durable, remote Storage over a standard Postgres server through the pg driver, with the contract tests it runs.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json --report-unused-disable-directives-severity=error && bun ../../scripts/check-inherited-key-reads.ts && bun ../../scripts/check-documentation-coverage.ts",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
+    "types": "tsc -b tsconfig.source.json",
+    "typecheck": "tsc -b tsconfig.json && bun run typecheck:documentation",
+    "typecheck:documentation": "bun ../../scripts/check-documentation-code-blocks.ts",
+    "test": "bun ../../scripts/bun-test-junit.ts --path-ignore-patterns='**/*.slow.test.ts'",
+    "test:slow": "bun ../../scripts/bun-test-selected.ts .slow.test.ts",
+    "test:coverage": "bun ../../scripts/bun-test.ts --coverage --coverage-reporter=text --coverage-reporter=lcov",
+    "test:benchmarks": "bun ../../scripts/bun-test.ts ./scripts/benchmarks/postgres-binding-stamp.bench.ts"
+  },
+  "dependencies": {
+    "@lostgradient/storage": "workspace:*",
+    "pg": "catalog:"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "catalog:",
+    "@lostgradient/testing": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
+    "@types/bun": "catalog:",
+    "@types/pg": "catalog:",
+    "oxlint": "catalog:",
+    "typescript": "catalog:"
+  },
+  "sideEffects": false
+}

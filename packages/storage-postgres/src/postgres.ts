@@ -1,10 +1,10 @@
+import { tryLoadNodeBuiltin } from '@lostgradient/storage/runtime';
 import {
   createLazyPostgresPool,
   PostgresKeyValueStorage,
   type PostgresKeyValueStorageOptions,
   type PostgresPool,
 } from '@lostgradient/storage/sql';
-import { tryLoadNodeBuiltin } from '../runtime/portable.ts';
 
 /**
  * Configuration for connecting to a standard Postgres database over the ordinary
@@ -14,7 +14,7 @@ import { tryLoadNodeBuiltin } from '../runtime/portable.ts';
  *
  * @example
  * ```ts
- * import { PostgresStorage, type PostgresStorageOptions } from '@lostgradient/weft';
+ * import { PostgresStorage, type PostgresStorageOptions } from '@lostgradient/storage-postgres';
  *
  * const options: PostgresStorageOptions = {
  *   url: 'postgresql://user:password@localhost:5432/weft',
@@ -70,7 +70,7 @@ function postgresPoolFactory(url: string): PostgresPool {
  * base. Implements the same `Storage` interface as the SQLite adapters over a
  * single `kv(key TEXT COLLATE "C", value BYTEA)` table.
  *
- * Use this instead of {@link NeonStorage} when connecting to a self-hosted or
+ * Use this instead of the Neon serverless adapter when connecting to a self-hosted or
  * managed Postgres over TCP — including sharing the same database as your
  * application's tables by pointing `schema` at a dedicated Weft schema. The Neon
  * serverless (WebSocket) driver is not required and never imported.
@@ -82,13 +82,12 @@ function postgresPoolFactory(url: string): PostgresPool {
  *
  * @example
  * ```ts
- * import { PostgresStorage } from '@lostgradient/weft';
- * import { Engine } from '@lostgradient/weft';
+ * import { PostgresStorage } from '@lostgradient/storage-postgres';
  *
  * await using storage = new PostgresStorage({
  *   url: process.env['DATABASE_URL']!,
  * });
- * await using engine = new Engine({ storage });
+ * await storage.put('app:greeting', new TextEncoder().encode('hello'));
  * ```
  */
 export class PostgresStorage extends PostgresKeyValueStorage {

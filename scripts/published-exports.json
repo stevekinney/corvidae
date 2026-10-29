@@ -57,12 +57,6 @@
           "import": "./dist/storage/neon.js",
           "default": "./dist/storage/neon.js"
         },
-        "./storage/postgres": {
-          "types": "./dist/storage/postgres.d.ts",
-          "bun": "./dist/storage/postgres.js",
-          "import": "./dist/storage/postgres.js",
-          "default": "./dist/storage/postgres.js"
-        },
         "./storage/cloudflare": {
           "types": "./dist/storage/cloudflare.d.ts",
           "import": "./dist/storage/cloudflare.js",

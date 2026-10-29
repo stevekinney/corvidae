@@ -1,3 +1,6 @@
+// Neon's test fixture over PGlite. `@lostgradient/storage-postgres` carries its own copy for its
+// tests; this one serves `neon.test.ts` until Neon moves into its own package (COR-1775), which
+// takes it along.
 import { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll } from 'bun:test';
 
