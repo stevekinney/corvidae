@@ -248,11 +248,28 @@ describe('createSourceWatcher', () => {
     await watcher.refresh();
     expect(watcher.directories()).toEqual([source]);
 
+    // `fs.watch` gives no sign that it is live, and a change made before the operating system's
+    // stream has started is lost; a loaded host widens that window. So a probe file in the watched
+    // directory is rewritten until a build shows the watch delivering, and its events are let settle.
+    const probe = join(source, 'probe.ts');
+    let probes = 0;
+    await waitUntil(
+      () => {
+        if (builds > 0) return true;
+        probes += 1;
+        writeFileSync(probe, `export const probe = ${probes};\n`);
+        return false;
+      },
+      { message: 'the watch to deliver a change' },
+    );
+    await quietFor(250);
+    const before = builds;
+
     writeFileSync(changed, 'export const value = 2;\n');
-    await waitUntil(() => builds === 1);
+    await waitUntil(() => builds === before + 1);
     // One save is one build: the debounce folds the file system's repeated events together.
     await quietFor(250);
-    expect(builds).toBe(1);
+    expect(builds).toBe(before + 1);
 
     watcher.close();
     scheduler.close();

@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnWithHangGuard } from '../../testing/testing/src/hang-guard.ts';
+import { waitUntil } from '../../testing/testing/src/wait-until.ts';
 import { processStartTime } from '../run-exclusively.ts';
 import {
   mergeGate,
@@ -738,25 +739,20 @@ async function lockScenarios() {
       }),
     );
   };
-  const settled = (promise: Promise<unknown>, milliseconds: number) =>
-    Promise.race([
-      promise.then(() => 'done'),
-      new Promise((resolve) => setTimeout(() => resolve('waiting'), milliseconds)),
-    ]);
-
   // A live holder: the second session waits, touches nothing, and proceeds once it is released.
+  // The wait is read from the lock's own report, never from a timer: reading the holder's start time
+  // runs `ps`, which a loaded host can make slower than any window a timer would allow.
   plantHolder(process.pid, processStartTime(process.pid));
   const waiting = fake();
   const waits: unknown[] = [];
   const pending = mergeGateExclusively(lockOptions, { runner: waiting.runner }, (holder) =>
     waits.push(holder),
   );
-  const whileHeld = await settled(pending, 150);
+  await waitUntil(() => waits.length > 0, { message: 'the second holder to report its wait' });
   const callsWhileHeld = waiting.calls.length;
   rmSync(lockDirectory, { recursive: true });
   const afterRelease = await pending;
   const waited = {
-    whileHeld,
     callsWhileHeld,
     waits: waits.length,
     afterRelease,
@@ -795,7 +791,6 @@ const locks = await lockScenarios();
 
 describe('the cross-session merge lock', () => {
   test('a second holder waits while the first holds the lock, then proceeds when it releases', () => {
-    expect(locks.waited.whileHeld).toBe('waiting');
     expect(locks.waited.callsWhileHeld).toBe(0);
     expect(locks.waited.waits).toBeGreaterThan(0);
     expect(locks.waited.afterRelease.failedStep).toBeNull();

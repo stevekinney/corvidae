@@ -359,13 +359,15 @@ describe('ScheduleDetail', () => {
     }, 'history-probe has a completed run');
 
     try {
-      const { getByText } = render(ScheduleDetailHarness, {
+      const { getAllByText } = render(ScheduleDetailHarness, {
         props: { client, id: 'history-probe' },
       });
 
-      const completedBadge = await waitFor(() => getByText('Completed'));
-      expect(completedBadge).not.toBeNull();
-      const runLink = completedBadge.closest('li')?.querySelector('a');
+      // The schedule keeps firing, so a loaded host can finish another run before the page fetches:
+      // every completed run has its own badge, and `getByText` would throw on each retry.
+      const completedBadge = await waitFor(() => getAllByText('Completed')[0]);
+      expect(completedBadge).toBeDefined();
+      const runLink = completedBadge?.closest('li')?.querySelector('a');
       expect(runLink?.getAttribute('href')).toMatch(/^\/runs\//);
     } finally {
       await server.stop();
