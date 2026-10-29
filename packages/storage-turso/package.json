@@ -1,10 +1,11 @@
 {
   "name": "@lostgradient/storage-turso",
   "private": true,
-  "description": "The Turso storage adapter: a durable Storage over a local libSQL file or a remote Turso database through the @libsql/client driver, with the contract and durability tests it runs.",
+  "description": "The Turso storage adapter: a durable Storage over a local libSQL file or a remote Turso database through the @libsql/client driver (native from the main entry, web from ./web), with the contract and durability tests it runs.",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./web": "./src/web.ts"
   },
   "scripts": {
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json --report-unused-disable-directives-severity=error && bun ../../scripts/check-inherited-key-reads.ts && bun ../../scripts/check-documentation-coverage.ts",

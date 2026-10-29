@@ -5,7 +5,6 @@
  */
 
 import { describe, expect, it, spyOn } from 'bun:test';
-import { createRequire } from 'node:module';
 
 import { SQLITE_UPSERT_VALUE_BY_KEY } from '@lostgradient/storage/sql';
 import {
@@ -16,11 +15,9 @@ import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { TursoStorage } from './turso.ts';
 
-// The adapter loads the driver through `createRequire`, which yields the CommonJS build. The probe
-// below must come from that same build to share the transaction class the adapter's own uses.
-const { createClient } = createRequire(import.meta.url)(
-  '@libsql/client',
-) as typeof import('@libsql/client');
+// The adapter imports this same module specifier, so the probe below shares the transaction class
+// the adapter's own client uses.
+const { createClient } = await import('@libsql/client');
 
 function encode(value: string): Uint8Array {
   return new TextEncoder().encode(value);
@@ -33,50 +30,6 @@ describe('TursoStorage client construction', () => {
     expect(await throwingRejectionOf(storage.get('a'))).toThrow('URL_SCHEME_NOT_SUPPORTED');
     expect(await throwingRejectionOf(storage.get('a'))).toThrow('URL_SCHEME_NOT_SUPPORTED');
     storage[Symbol.dispose]();
-  });
-});
-
-describe('TursoStorage on a runtime without node:module', () => {
-  it('builds the web client, which cannot open local files, instead of the Node driver', async () => {
-    const realGetBuiltinModule = process.getBuiltinModule.bind(process);
-    const builtinSpy = spyOn(process, 'getBuiltinModule').mockImplementation((id: string) =>
-      id === 'node:module' ? undefined : realGetBuiltinModule(id),
-    );
-    const storage = new TursoStorage({ url: 'file::memory:' });
-
-    try {
-      // The Node driver opens `file:` URLs; the web client supports only network schemes, and its
-      // refusal names itself, which shows which client the adapter built.
-      const refusal = await throwingRejectionOf(storage.get('a'));
-
-      expect(refusal).toThrow('The client that uses Web standard APIs supports only');
-    } finally {
-      builtinSpy.mockRestore();
-      storage[Symbol.dispose]();
-    }
-  });
-});
-
-describe('TursoStorage with a driver that does not export createClient', () => {
-  it('refuses to build a client from it', async () => {
-    const realGetBuiltinModule = process.getBuiltinModule.bind(process);
-    const builtinSpy = spyOn(process, 'getBuiltinModule').mockImplementation((id: string) =>
-      id === 'node:module'
-        ? ({ createRequire: () => () => ({}) } as unknown as NonNullable<
-            ReturnType<typeof process.getBuiltinModule<'node:module'>>
-          >)
-        : realGetBuiltinModule(id),
-    );
-    const storage = new TursoStorage({ url: 'file::memory:' });
-
-    try {
-      expect(await throwingRejectionOf(storage.get('a'))).toThrow(
-        'The libSQL dependency must export createClient.',
-      );
-    } finally {
-      builtinSpy.mockRestore();
-      storage[Symbol.dispose]();
-    }
   });
 });
 

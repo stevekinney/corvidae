@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
 import * as storage from './index.ts';
-import * as runtime from './runtime.ts';
 import * as sql from './sql/index.ts';
 import * as testing from './testing/index.ts';
 import * as sqliteContention from './testing/sqlite-contention.test-support.ts';
@@ -61,14 +60,6 @@ describe('@lostgradient/storage entries', () => {
       'conditionsHold',
       'writeBatchNetEffect',
       'resolveBatchNetEffect',
-    ]);
-  });
-
-  it('exports its own built-in loader from the runtime entry', () => {
-    expectExports(runtime, [
-      'tryLoadNodeBuiltin',
-      'getProcess',
-      'setStorageRuntimeTestOverridesForTesting',
     ]);
   });
 
