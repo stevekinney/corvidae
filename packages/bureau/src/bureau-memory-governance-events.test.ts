@@ -13,6 +13,11 @@ import {
   type MemoryGovernanceNotification,
 } from '@lostgradient/memory';
 import { MemoryStorage } from '@lostgradient/weft';
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';
@@ -20,6 +25,8 @@ import { projectBureauEvent } from './bureau-event-feed';
 import { forwardMemoryGovernance } from './bureau-event-forwarders';
 import { createBureau } from './create-bureau';
 import { MemoryGovernanceEvent } from './events';
+import { agentFileDirectory } from './sources/agent-file-directory';
+import { startFileBureau } from './testing/agent-file-bureau.test-support';
 import type { BureauDiagnostic } from './types';
 
 const SECRET = 'SECRET-record-content-4417';
@@ -104,6 +111,54 @@ describe('memory.governance on the bureau emitter', () => {
     const afterShutdown = seen.length;
     await base.write(writer, 'Written after shutdown.', note);
     expect(seen).toHaveLength(afterShutdown);
+  });
+
+  it('leaves nothing subscribed on a memory when construction fails after forwarding began', async () => {
+    const base = governedMemory();
+    let active = 0;
+    const memory: GovernedMemory = {
+      ...base,
+      subscribe(listener) {
+        const stop = base.subscribe(listener);
+        active += 1;
+        let stopped = false;
+        return () => {
+          if (stopped) return;
+          stopped = true;
+          active -= 1;
+          stop();
+        };
+      },
+    };
+    const seen: Event[] = [];
+    const directory = await mkdtemp(join(tmpdir(), 'bureau-memory-governance-'));
+    // The source fails when the catalog starts watching, which runs after the memory forwarder is subscribed.
+    const failing = Object.assign(agentFileDirectory(directory), {
+      watch: () => {
+        throw new Error('watch failed');
+      },
+    });
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const failure = await rejectionOf(
+        startFileBureau({
+          directory,
+          overrides: {
+            id: 'bureau',
+            memory,
+            agentSource: failing,
+            onEvent: (event) => void seen.push(event),
+          },
+        }),
+      );
+      expect(failure).toBeInstanceOf(Error);
+      expect(active).toBe(0);
+    }
+
+    const before = seen.length;
+    await base.write(writer, 'Written after the failed builds.', note);
+    expect(seen.filter((event) => event instanceof MemoryGovernanceEvent)).toHaveLength(0);
+    expect(seen).toHaveLength(before);
   });
 
   it('leaves a Bureau without memory alone', async () => {

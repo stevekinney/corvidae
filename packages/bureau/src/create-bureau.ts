@@ -2412,6 +2412,10 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         failures.push(stopError);
       }
     };
+    // First: each forwarder holds a subscription on something the caller or a later Bureau may
+    // keep (the supplied governed memory, the file catalogs), so none outlives a failed build.
+    // Drained, so a second pass has nothing left to stop.
+    for (const stop of stopForwarding.splice(0)) await attempt(stop);
     await attempt(() => fileAgents?.files.close());
     await attempt(() => assetServiceInstance?.shutdown());
     await attempt(() => runtime.durable?.observability?.dispose());

@@ -458,12 +458,14 @@ export interface GovernedMemory {
   /** The governance policy revision currently in force. */
   readonly policyRevision: string;
   /**
-   * Registers `listener` to receive every {@link MemoryGovernanceNotification} that
-   * {@link CreateGovernedMemoryOptions.onEvent} receives for a call made after this
-   * one, each delivered after `onEvent` has run (and even when it threw) and in the
-   * order listeners were added. A notification is delivered once its event is in the
-   * ledger, inside the governed call that produced it. A listener removed while a
-   * notification is being delivered does not receive it.
+   * Registers `listener` to receive the {@link MemoryGovernanceNotification}s that
+   * {@link CreateGovernedMemoryOptions.onEvent} receives, each after `onEvent` has run
+   * (and even when it threw), in the order listeners were added. A notification is
+   * delivered once its event is in the ledger, inside the governed call that produced
+   * it, to the listeners registered at that moment: a listener added while a call is
+   * in flight hears that call's notification if the call has not reached its
+   * delivery yet, and one added during a delivery waits for the next notification. A
+   * listener removed while a notification is being delivered does not receive it.
    *
    * Each listener runs in its own `try`/`catch`: a throw (or, when the listener returns
    * a promise, a rejection) is reported with `console.error` and never rejects the
