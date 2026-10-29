@@ -95,7 +95,7 @@
           // view that has read nothing yet is a fault, not an empty stream.
           fault = faultTreatment(error);
         }
-      } while (readAgain && !disposed);
+      } while (readAgain);
     } finally {
       reading = false;
     }
