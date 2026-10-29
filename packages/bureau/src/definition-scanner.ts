@@ -75,9 +75,30 @@ export interface DefinitionScannerOptions<TEntry extends ScannedEntry> {
   readonly isRejected: (entry: TEntry) => boolean;
 }
 
+/**
+ * What a scanner has recorded about its own scans, for a diagnostics read that cannot wait on the
+ * source (COR-1731). Counts, a time, and an error message only: never an error's stack, a
+ * definition's bytes, or a path the source did not put in the message itself.
+ */
+export interface DefinitionScannerHealth {
+  /**
+   * The runtime clock's reading, in epoch milliseconds, when the last scan finished, whether it
+   * succeeded or failed. `undefined` until the first scan finishes (a scanner nobody has
+   * refreshed has not scanned).
+   */
+  readonly lastScanAt: number | undefined;
+  /**
+   * The message of the error the last scan failed with. `undefined` when the last scan succeeded
+   * and before any scan finished; the next successful scan clears it.
+   */
+  readonly lastScanError: string | undefined;
+}
+
 export interface DefinitionScanner<TEntry extends ScannedEntry> {
   /** Every definition the source holds, by identifier, as of the last scan. */
   readonly entries: () => ReadonlyMap<string, TEntry>;
+  /** When the last scan finished and the message of its error, recorded as scans happen. */
+  readonly health: () => DefinitionScannerHealth;
   /** Rescan the source; resolves once the entries reflect a scan that began after this call. */
   readonly refresh: () => Promise<void>;
   /**
@@ -157,12 +178,17 @@ export function createDefinitionScanner<TEntry extends ScannedEntry>(
       }
     }
     failure = undefined;
+    lastScanAt = options.runtime.clock.now();
+    lastScanError = undefined;
     options.afterScan?.();
   }
 
   let dirty = false;
   /** The error of the last scan when it failed, until a scan succeeds. */
   let failure: { readonly error: unknown } | undefined;
+  /** COR-1731: the finish time and failure message of the last scan, read by `health()`. */
+  let lastScanAt: number | undefined;
+  let lastScanError: string | undefined;
   let repairTimer: unknown;
   /** True while `source.watch` runs: a listener it calls at once only marks the set dirty. */
   let subscribing = false;
@@ -194,6 +220,8 @@ export function createDefinitionScanner<TEntry extends ScannedEntry>(
         await scanOnce();
       } catch (error) {
         failure = { error };
+        lastScanAt = options.runtime.clock.now();
+        lastScanError = error instanceof Error ? error.message : String(error);
         options.diagnose(`The ${options.label} could not be scanned.`, error);
         scheduleRepair();
       }
@@ -218,6 +246,7 @@ export function createDefinitionScanner<TEntry extends ScannedEntry>(
 
   return {
     entries: () => entries,
+    health: () => ({ lastScanAt, lastScanError }),
     refresh() {
       trigger();
       return running ?? Promise.resolve();

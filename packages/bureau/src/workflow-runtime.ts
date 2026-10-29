@@ -39,7 +39,7 @@ import { z } from 'zod';
 
 import { auditTrailWorkflowOwnerId } from './audit-trail';
 import { ownerOrLocal } from './owner-of-record';
-import type { DefinitionChange } from './definition-scanner';
+import type { DefinitionChange, DefinitionScannerHealth } from './definition-scanner';
 import type { WorkflowSource } from './sources/definition-source';
 import type { WorkflowFileDefinition } from './workflow-file';
 import {
@@ -303,6 +303,8 @@ export interface WorkflowRuntime {
   readonly scheduleExists: (scheduleId: string) => Promise<boolean>;
   /** Delete the stored revisions nothing holds and nothing used since `cutoff` (epoch milliseconds). */
   readonly pruneSnapshots: (cutoff: number) => Promise<number>;
+  /** When the workflow directory was last scanned and the message of that scan's error (COR-1731). */
+  readonly health: () => DefinitionScannerHealth;
   /** Stop watching and wait for work in flight. */
   readonly close: () => Promise<void>;
 }
@@ -1034,6 +1036,8 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
 
     isWorkflowType,
     isRegisteredType: (type) => registeredTypes.has(type),
+
+    health: catalog.health,
 
     async scheduleExists(scheduleId) {
       if (parseWorkflowScheduleId(scheduleId) === undefined) return false;
