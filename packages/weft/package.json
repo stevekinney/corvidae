@@ -41,7 +41,6 @@
     "@neondatabase/serverless": "catalog:",
     "@noble/hashes": "catalog:",
     "@valibot/to-json-schema": "catalog:",
-    "better-sqlite3": "catalog:",
     "pg": "catalog:",
     "valibot": "catalog:",
     "zod": "catalog:",

@@ -6,7 +6,7 @@ import {
   canLoadNodeSqliteWith,
   createNodeSqliteSpec,
   loadBetterSqlite3Locally,
-} from './sqlite-adapter-specs.test-support.ts';
+} from './node-sqlite-spec.test-support.ts';
 
 /** A stand-in for the `better-sqlite3` driver, which loads only under Node. */
 function stubDriver(pragmaRow: { busy: number; log: number; checkpointed: number }) {

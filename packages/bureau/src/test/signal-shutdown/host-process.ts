@@ -133,7 +133,7 @@ export function startHost(
   };
 }
 
-/** Locates native Node exactly as `node-sqlite.test.ts` does, skipping Bun's `node` shims. */
+/** Locates native Node exactly as the Node SQLite adapter's `node-sqlite.test.ts` does, skipping Bun's `node` shims. */
 export function resolveNativeNode(searchPath: string): string {
   for (const directory of searchPath.split(delimiter).filter(existsSync)) {
     const candidate = Bun.which('node', { PATH: directory });

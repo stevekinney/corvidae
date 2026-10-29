@@ -5,9 +5,6 @@
  * but uses `better-sqlite3` instead of `bun:sqlite`, enabling the same
  * storage layer to run on Node.js 22+.
  *
- * `better-sqlite3` is a peer dependency — it must be installed separately by
- * consumers who import `@lostgradient/weft`.
- *
  * @module storage/node-sqlite
  */
 
@@ -41,39 +38,29 @@ import {
 type NodeSQLiteStoragePersistence = NonNullable<StorageCapabilities['persistence']>;
 
 /**
- * Runtime-neutral alias for the Node SQLite adapter. Consumers that import
- * from `@lostgradient/weft` get this class under Node.
- */
-
-/**
  * SQLite-backed {@link Storage} using `better-sqlite3` for Node.js 22+
  * environments.
  *
- * Implements the same WAL-mode schema as {@link BunSQLiteStorage}
- * but resolves the `better-sqlite3` peer dependency lazily at construction time,
- * so the module compiles without it installed.  Import from
- * `@lostgradient/weft` to use this adapter.
+ * Implements the same WAL-mode schema as `BunSQLiteStorage` but resolves the
+ * `better-sqlite3` dependency lazily at construction time, so the module
+ * compiles and imports without the native binding.
  *
- * Unlike BunSQLiteStorage, this adapter currently implements only the required
+ * Unlike `BunSQLiteStorage`, this adapter currently implements only the required
  * Storage methods (`get`, `put`, `delete`, `scan`, `batch`, and
  * `conditionalBatch`). The optional `has`, `keys`, `count`, `deletePrefix`, and
  * `scoped` helpers fall back to the generic implementations in
- * `@lostgradient/weft`; `deleteRange` falls back to `storageDeleteRange`
- * (exported from `@lostgradient/weft` / `@lostgradient/weft`). There is no SQL passthrough
+ * `@lostgradient/storage`; `deleteRange` falls back to `storageDeleteRange`
+ * (also exported from `@lostgradient/storage`). There is no SQL passthrough
  * `query()` method.
  *
  * @example
  * ```ts
- * import { NodeSQLiteStorage } from '@lostgradient/weft';
- * import { workflow, Engine } from '@lostgradient/weft';
+ * import { NodeSQLiteStorage } from '@lostgradient/storage-node-sqlite';
  *
- * // Requires: bun add better-sqlite3
- * await using storage = new NodeSQLiteStorage('./weft.db');
- * await using engine = new Engine({ storage });
+ * using storage = new NodeSQLiteStorage('./app.sqlite');
  *
- * engine.register(workflow({ name: 'ping' }).execute(async function* () { return 'pong'; }));
- * const handle = await engine.start('ping', null);
- * console.log(await handle.result()); // 'pong'
+ * await storage.put('app:orders:1', new TextEncoder().encode('open'));
+ * console.log(new TextDecoder().decode((await storage.get('app:orders:1')) ?? undefined)); // 'open'
  * ```
  */
 export class NodeSQLiteStorage implements Storage {

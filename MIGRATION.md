@@ -100,7 +100,7 @@ A root override consolidates SvelteKit and Express on `cookie@0.7.2`. This remov
 | `@lostgradient/operative` | `@anthropic-ai/sdk`, `@google/genai`, `@opentelemetry/api`, `openai`, `zod` |
 | `@lostgradient/skills` | `gray-matter`, `zod` |
 | `@lostgradient/testing` | `@axe-core/playwright`, `@playwright/test`, `@testing-library/svelte`, `happy-dom`, `postcss-value-parser`, `svelte`, `typescript`, `zod` |
-| `@lostgradient/weft` | `@electric-sql/pglite`, `@libsql/client`, `@msgpack/msgpack`, `@neondatabase/serverless`, `@valibot/to-json-schema`, `better-sqlite3`, `pg`, `valibot`, `zod` |
+| `@lostgradient/weft` | `@electric-sql/pglite`, `@libsql/client`, `@msgpack/msgpack`, `@neondatabase/serverless`, `@valibot/to-json-schema`, `pg`, `valibot`, `zod` |
 | `@lostgradient/weft-ui` | `@shikijs/langs`, `@shikijs/themes`, `@tanstack/svelte-query`, `cron-parser`, `lucide-svelte`, `svelte` |
 
 ## Public API and ownership changes

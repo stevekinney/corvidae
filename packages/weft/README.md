@@ -486,7 +486,7 @@ A small `Storage` interface over string keys and `Uint8Array` values: five requi
 
 - **`MemoryStorage`** for development and tests
 - **`BunSQLiteStorage`** (package `@lostgradient/storage-bun-sqlite`) for SQLite persistence under Bun
-- **`NodeSQLiteStorage`** (subpath `@lostgradient/weft/storage/sqlite/node`) for SQLite persistence under Node.js via `better-sqlite3`
+- **`NodeSQLiteStorage`** (package `@lostgradient/storage-node-sqlite`) for SQLite persistence under Node.js via `better-sqlite3`
 - **`LMDBStorage`** (package `@lostgradient/storage-lmdb`) for embedded high-throughput workloads; accepts a `durability: 'relaxed'` option that skips `fsync` on every commit, trading crash durability for write latency—use it for test fixtures, not production storage. `capabilities().persistence` reports `'ephemeral'` for a relaxed-durability instance (instead of `'local'`), so `assertDurableStorageForRecovery()` correctly rejects it
 - **`TursoStorage`** (subpath `@lostgradient/weft/storage/turso`) for distributed libSQL deployments
 - **`NeonStorage`** (subpath `@lostgradient/weft/storage/neon`) for durable remote Neon/Postgres deployments
@@ -822,7 +822,7 @@ The exported `WeftErrorCode` union lists every code that belongs to a public, ex
 bun add @lostgradient/weft
 ```
 
-Storage backends and adapters are exported under subpaths so they only load when imported (the Bun SQLite and LMDB adapters are their own packages, `@lostgradient/storage-bun-sqlite` and `@lostgradient/storage-lmdb`):
+Storage backends and adapters are exported under subpaths so they only load when imported (the Bun SQLite, Node SQLite and LMDB adapters are their own packages, `@lostgradient/storage-bun-sqlite`, `@lostgradient/storage-node-sqlite` and `@lostgradient/storage-lmdb`):
 
 ```typescript
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';

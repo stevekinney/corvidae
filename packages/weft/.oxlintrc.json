@@ -257,12 +257,6 @@
       }
     },
     {
-      "files": ["src/storage/node-sqlite-loader.ts", "src/storage/node-sqlite.test.ts"],
-      "rules": {
-        "typescript/no-unnecessary-type-parameters": "off"
-      }
-    },
-    {
       "files": ["src/core/types/workflow-context.ts", "src/core/context/index.ts"],
       "rules": {
         "typescript/no-unnecessary-type-parameters": "off"
