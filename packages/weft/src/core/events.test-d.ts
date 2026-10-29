@@ -1,6 +1,7 @@
 import {
   Engine,
   LeaseHealthChangedEvent,
+  QueueDepthChangedEvent,
   RealmStateChangedEvent,
   StreamChunkEvent,
   TaskAttemptTransitionEvent,
@@ -109,4 +110,12 @@ engine.addEventListener('stream:chunk', (event) => {
   const sequence: number = narrowed.sequence;
   void key;
   void sequence;
+});
+
+engine.addEventListener('queue:depth-changed', (event) => {
+  const narrowed: QueueDepthChangedEvent = event;
+  const queue: string = narrowed.queue;
+  const depth: number = narrowed.depth;
+  void queue;
+  void depth;
 });

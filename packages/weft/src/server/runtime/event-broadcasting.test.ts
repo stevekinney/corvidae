@@ -11,6 +11,7 @@ import {
   ConstraintViolatedEvent,
   DevelopmentWarningEvent,
   LeaseHealthChangedEvent,
+  QueueDepthChangedEvent,
   RealmStateChangedEvent,
   RemoteActivityCancellationRequestedEvent,
   RemoteActivityQueuedEvent,
@@ -114,6 +115,7 @@ describe('wireEventBroadcasting', () => {
         new WorkerDeploymentChangedEvent('billing', 'b1', 'draining', 4),
       ],
       ['stream:chunk', new StreamChunkEvent('wf-1', 'progress', 7)],
+      ['queue:depth-changed', new QueueDepthChangedEvent('payments', 12)],
     ];
     const allowed = new Set([
       'isTrusted',
@@ -142,6 +144,8 @@ describe('wireEventBroadcasting', () => {
       'routingGeneration',
       'key',
       'sequence',
+      'queue',
+      'depth',
     ]);
 
     for (const [kind, event] of safeEvents) {
@@ -216,7 +220,7 @@ describe('wireEventBroadcasting', () => {
     });
   });
 
-  it('publishes the realm, lease, rejection and deployment events through the fleet feed with identifier-only payloads (COR-1724)', async () => {
+  it('publishes the realm, lease, rejection, deployment and queue-depth events through the fleet feed with identifier-only payloads (COR-1724)', async () => {
     const engine = new Engine({ storage: new MemoryStorage() });
     const fleetEventFeed = createFleetEventFeed(engine.storage);
     const handle = wireEventBroadcasting(engine, { publish() {} } as never, { fleetEventFeed });
@@ -225,15 +229,16 @@ describe('wireEventBroadcasting', () => {
     engine.dispatchEvent(new LeaseHealthChangedEvent('contested'));
     engine.dispatchEvent(new WorkerRegistrationRejectedEvent('worker-1', 'deployment_conflict'));
     engine.dispatchEvent(new WorkerDeploymentChangedEvent('billing', undefined, 'draining', 4));
+    engine.dispatchEvent(new QueueDepthChangedEvent('payments', 12));
 
     const events: FleetEventEnvelope[] = [];
     await waitFor(
       async () => {
         events.length = 0;
         for await (const envelope of fleetEventFeed.replay()) events.push(envelope);
-        return events.length === 4;
+        return events.length === 5;
       },
-      { label: 'four fleet events persisted' },
+      { label: 'five fleet events persisted' },
     );
     handle.dispose();
     engine[Symbol.dispose]();
@@ -249,6 +254,7 @@ describe('wireEventBroadcasting', () => {
         'worker:deployment-changed',
         { deploymentName: 'billing', drainState: 'draining', routingGeneration: 4 },
       ],
+      ['queue:depth-changed', { queue: 'payments', depth: 12 }],
     ]);
   });
 

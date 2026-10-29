@@ -12,6 +12,7 @@
     "./postgres-server": "./src/postgres-server.ts",
     "./promise-outcome": "./src/helpers/promise-outcome.ts",
     "./real-timer-leak-guard": "./src/real-timer-leak-guard.ts",
+    "./s3-server": "./src/s3-server.ts",
     "./temporary-path": "./src/temporary-path.ts",
     "./wait-until": "./src/wait-until.ts"
   },

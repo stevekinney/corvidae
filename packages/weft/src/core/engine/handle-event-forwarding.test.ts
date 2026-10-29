@@ -30,6 +30,7 @@ import {
   ConstraintViolatedEvent,
   DevelopmentWarningEvent,
   LeaseHealthChangedEvent,
+  QueueDepthChangedEvent,
   RealmStateChangedEvent,
   RemoteActivityCancellationRequestedEvent,
   RemoteActivityQueuedEvent,
@@ -183,6 +184,7 @@ const EVENT_FACTORIES: { [K in keyof WeftEventMap]: (workflowId: string) => Weft
   'worker:deployment-changed': () =>
     new WorkerDeploymentChangedEvent('billing', 'b1', 'draining', 3),
   'stream:chunk': (id) => new StreamChunkEvent(id, 'progress', 0),
+  'queue:depth-changed': () => new QueueDepthChangedEvent('payments', 3),
 };
 
 const EVENT_KINDS = Object.keys(EVENT_FACTORIES) as (keyof WeftEventMap)[];
@@ -211,6 +213,7 @@ const ENGINE_SCOPED_KINDS: (keyof WeftEventMap)[] = [
   'lease:health-changed',
   'worker:registration-rejected',
   'worker:deployment-changed',
+  'queue:depth-changed',
 ];
 
 /** Kinds termination forwards to the handle itself, after its supersession check. */
