@@ -22,6 +22,10 @@
  *     observing that marker — the kill is guaranteed mid-transaction.
  *     After reopen via the adapter, the in-transaction row is absent.
  *
+ * The suite runs under Bun or under Node (the Node SQLite adapter's tests register it from
+ * `node --test`, because `better-sqlite3` loads only there), so it starts its children with
+ * `spawnPipedWithHangGuard` in `process.execPath`, the runtime the adapter opens in.
+ *
  * Cleanup invariant: every spawn is wrapped in try/finally. In finally:
  * if the child has not exited, send SIGKILL and race `process.exited`
  * against a 2s timeout. Timeout throws so a leaked subprocess never
@@ -30,9 +34,10 @@
  * open against a temp directory that's about to be removed.
  */
 
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
+import { spawnPipedWithHangGuard, type PipedChildProcess } from '@lostgradient/testing/hang-guard';
 import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import { afterAll, describe, expect, it } from 'bun:test';
 
@@ -65,9 +70,7 @@ function realTimeoutBranch<T>(
   return { promise, clear: () => clearTimeout(timer) };
 }
 
-type RunningChild = ReturnType<typeof Bun.spawn>;
-
-async function killAndWait(child: RunningChild): Promise<void> {
+async function killAndWait(child: PipedChildProcess): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) return;
   child.kill('SIGKILL');
   const timeoutBranch = realTimeoutBranch(2000, 'timeout' as const);
@@ -79,19 +82,6 @@ async function killAndWait(child: RunningChild): Promise<void> {
   if (winner === 'timeout') {
     throw new Error('Subprocess did not exit within 2s after SIGKILL — leak guard fired');
   }
-}
-
-function expectReadableStream(
-  stream: ReadableStream<Uint8Array> | number | undefined,
-  label: 'stdout' | 'stderr',
-): ReadableStream<Uint8Array> {
-  if (stream === undefined || typeof stream === 'number') {
-    throw new Error(
-      `Expected ${label} to be a piped ReadableStream — got ${typeof stream}. ` +
-        `Did the Bun.spawn options forget \`${label}: 'pipe'\`?`,
-    );
-  }
-  return stream;
 }
 
 type DrainResult = { text: string; complete: boolean };
@@ -189,13 +179,12 @@ async function drainStream(
  * its deadline.
  */
 async function readUntilMarkerOrExit(
-  child: RunningChild,
+  child: PipedChildProcess,
   marker: string,
   deadlineMs: number,
 ): Promise<string> {
   const decoder = new TextDecoder();
-  const stdoutStream = expectReadableStream(child.stdout, 'stdout');
-  const reader = stdoutStream.getReader();
+  const reader = child.stdout.getReader();
   let buffer = '';
   const deadline = Date.now() + deadlineMs;
   let earlyExit = false;
@@ -278,7 +267,7 @@ async function readUntilMarkerOrExit(
       buffer += stdoutDrain.text;
       await safeCancelReader(reader);
       if (buffer.includes(marker)) return buffer;
-      const stderrDrain = await drainStream(expectReadableStream(child.stderr, 'stderr'));
+      const stderrDrain = await drainStream(child.stderr);
       const drainStatus =
         stdoutDrain.complete && stderrDrain.complete
           ? ''
@@ -385,12 +374,10 @@ export async function runMidTransactionKillSuite(
       const directory = scope.makeTempDirectory('batch-kill');
       const entrypointPath = join(directory, 'entrypoint.ts');
       const databasePath = join(directory, 'weft.db');
-      await Bun.write(entrypointPath, adapterBatchEntrypointSource(spec));
+      writeFileSync(entrypointPath, adapterBatchEntrypointSource(spec));
 
-      const child = spawnWithHangGuard(['bun', entrypointPath, databasePath], {
-        stdout: 'pipe',
-        stderr: 'pipe',
-      });
+      // The child runs in the runtime running this suite, the one the adapter opens in.
+      const child = spawnPipedWithHangGuard([process.execPath, entrypointPath, databasePath]);
 
       const totalBatchEntries = 50_000;
       let reader: OpenedAdapter | undefined;
@@ -436,12 +423,10 @@ export async function runMidTransactionKillSuite(
       const directory = scope.makeTempDirectory('in-transaction-kill');
       const entrypointPath = join(directory, 'entrypoint.ts');
       const databasePath = join(directory, 'weft.db');
-      await Bun.write(entrypointPath, rawInTransactionEntrypointSource(spec));
+      writeFileSync(entrypointPath, rawInTransactionEntrypointSource(spec));
 
-      const child = spawnWithHangGuard(['bun', entrypointPath, databasePath], {
-        stdout: 'pipe',
-        stderr: 'pipe',
-      });
+      // The child runs in the runtime running this suite, the one the adapter opens in.
+      const child = spawnPipedWithHangGuard([process.execPath, entrypointPath, databasePath]);
 
       let reader: OpenedAdapter | undefined;
       try {

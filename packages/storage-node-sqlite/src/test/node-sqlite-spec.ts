@@ -1,8 +1,8 @@
 /**
  * The durability suites' spec for `NodeSQLiteStorage`: its adapter, the module its child entrypoints
  * import, and the raw `better-sqlite3` handle the suites open beside it. The suites themselves live
- * in `@lostgradient/storage/testing`. `better-sqlite3` loads only under Node, so the spec is offered
- * only where the adapter opens (see {@link availableNodeSqliteSpecs}).
+ * in `@lostgradient/storage/testing`. `better-sqlite3` loads only under Node, so the suites run with
+ * this spec only in `node-sqlite-durability.integration.ts`, under `node --test`.
  */
 
 import { createRequire } from 'node:module';
@@ -44,10 +44,12 @@ export function loadBetterSqlite3Locally(
   return typeof mod.default === 'function' ? mod.default : mod;
 }
 
+// The child entrypoint is written to the system temp directory, where `better-sqlite3` does not
+// resolve, so the raw handle requires it from this module's location in the package.
 const NODE_SQLITE_RAW_HANDLE = {
   childImports: "import { createRequire } from 'node:module';",
   openSource: [
-    'const requireFromHere = createRequire(import.meta.url);',
+    `const requireFromHere = createRequire(${JSON.stringify(import.meta.url)});`,
     "const BetterSqlite3 = requireFromHere('better-sqlite3');",
     'const database = new BetterSqlite3(databasePath);',
     "database.pragma('journal_mode = WAL');",
@@ -64,8 +66,8 @@ type NodeSqliteSpecDependencies = {
 };
 
 /**
- * The spec for `NodeSQLiteStorage`, built over its adapter and `better-sqlite3` driver so a test can
- * stand in for both: they load only under Node, which `bun test` is not.
+ * The spec for `NodeSQLiteStorage`, built over its adapter and `better-sqlite3` driver so a Bun test
+ * can stand in for both: they load only under Node, which `bun test` is not.
  *
  * @param dependencies - the adapter constructor and driver loader the spec uses
  */
@@ -115,49 +117,8 @@ export function createNodeSqliteSpec(
   };
 }
 
-const nodeSqliteSpec = createNodeSqliteSpec({
+/** The spec for the real `NodeSQLiteStorage` and `better-sqlite3`, which open only under Node. */
+export const nodeSqliteSpec: RawHandleAdapterSpec = createNodeSqliteSpec({
   storageConstructor: NodeSQLiteStorage,
   loadDriver: loadBetterSqlite3Locally,
 });
-
-/**
- * Whether `better-sqlite3` is loadable in the current runtime. Bun cannot
- * load better-sqlite3's native bindings (oven-sh/bun#4290), so Node-SQLite
- * integration tests run only when the suite is invoked under Node. Mirrors
- * the gating pattern in `src/node-sqlite.test.ts`.
- */
-const IS_BUN = typeof globalThis.Bun !== 'undefined';
-
-/**
- * Whether the Node SQLite adapter opens in this runtime: never under Bun, which skips the attempt,
- * and under Node when the native binding loads and an in-memory database opens and closes.
- *
- * @param runningUnderBun - whether the suite runs under Bun
- * @param storageConstructor - the adapter to open an in-memory database with
- */
-export function canLoadNodeSqliteWith(
-  runningUnderBun: boolean,
-  storageConstructor: new (databasePath: string) => Storage,
-): boolean {
-  if (runningUnderBun) return false;
-  try {
-    new storageConstructor(':memory:')[Symbol.dispose]();
-  } catch {
-    return false;
-  }
-  return true;
-}
-
-let nodeSqliteAvailable: boolean | undefined;
-function canLoadNodeSqlite(): boolean {
-  nodeSqliteAvailable ??= canLoadNodeSqliteWith(IS_BUN, NodeSQLiteStorage);
-  return nodeSqliteAvailable;
-}
-
-/**
- * The Node SQLite spec when the adapter opens in this runtime, and none under Bun, where the
- * native binding cannot load, so the suites register no cases there.
- */
-export function availableNodeSqliteSpecs(): readonly RawHandleAdapterSpec[] {
-  return canLoadNodeSqlite() ? [nodeSqliteSpec] : [];
-}

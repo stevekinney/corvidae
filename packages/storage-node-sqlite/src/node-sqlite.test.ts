@@ -21,8 +21,8 @@ const REFUSED_BETTER_SQLITE_BINDING_ERROR =
   'NodeSQLiteStorage could not load the "better-sqlite3" native binding in this runtime.';
 
 // better-sqlite3 uses native bindings that aren't supported in Bun.
-// Bun launches the native integration cases in a Node subprocess and checks
-// their terminal result alongside the injected-constructor tests below.
+// Bun launches the native integration cases, and the shared contract and durability suites, in a
+// Node subprocess and checks their terminal result alongside the injected-constructor tests below.
 const IS_BUN = typeof globalThis.Bun !== 'undefined';
 
 type FakeRow = { key: string; value: Uint8Array };
@@ -399,7 +399,7 @@ it('rejects a PATH containing only a filesystem Bun shim', () => rethrow(scenari
 /**
  * Summarize a failed integration child for the assertion message.
  *
- * The raw TAP of 21 identically-failing cases buries the one line that matters
+ * The raw TAP of dozens of identically-failing cases buries the one line that matters
  * under repetition, and the distinct `error:` values are what identify the
  * cause. Surfacing them — deduplicated, with the child's stderr, which carries
  * anything that failed before TAP started — is what turns "0 pass 21 fail" into
@@ -427,12 +427,20 @@ const scenario3 = await outcomeOf(async () => {
   // Verify runtime identity while preserving the inherited runtime managers.
   const environment = nativeNodeEnvironment().env;
   const runtime = await resolveNativeNode(environment['PATH'] ?? '');
+  const path = (relative: string) => new URL(relative, import.meta.url).pathname;
+  // The shim resolves `bun:test`, which the shared suites import, to `node:test` in every file's
+  // process; `node --test` passes `--import` on to them.
   const child = spawnWithHangGuard(
     [
       runtime,
+      '--import',
+      path('./test/register-bun-test-shim.ts'),
       '--test',
       '--test-reporter=tap',
-      new URL('./node-sqlite-native.integration.ts', import.meta.url).pathname,
+      path('./node-sqlite-native.integration.ts'),
+      path('./node-sqlite-contract.integration.ts'),
+      path('./node-sqlite-durability.integration.ts'),
+      path('./test/bun-test-shim.integration.ts'),
     ],
     {
       stdout: 'pipe',
@@ -446,9 +454,25 @@ const scenario3 = await outcomeOf(async () => {
     new Response(child.stderr).text(),
   ]);
   expect(exitCode, describeChildFailure(stdout, stderr)).toBe(0);
-  expect(stdout).toContain('# tests 23');
-  expect(stdout).toContain('# pass 23');
+  // 23 integration cases, 25 contract cases, 7 durability cases, and the shim's own 5.
+  expect(stdout).toContain('# tests 60');
+  expect(stdout).toContain('# pass 60');
   expect(stdout).toContain('# skipped 0');
+  // Each shared suite registered against the adapter, so a count that matches by coincidence
+  // cannot hide one that registered nothing.
+  for (const suite of [
+    'NodeSQLiteStorage capabilities() conformance',
+    'NodeSQLiteStorage basic storage contract',
+    'NodeSQLiteStorage concurrent conditionalBatch conformance',
+    'NodeSQLiteStorage binary and large-scan conformance',
+    'WAL durability — NodeSQLiteStorage',
+    'batch atomicity — NodeSQLiteStorage',
+    'mid-transaction kill (3a, adapter batch) — NodeSQLiteStorage',
+    'mid-transaction kill (3b, deterministic) — NodeSQLiteStorage',
+  ]) {
+    expect(stdout).toContain(`# Subtest: ${suite}\n`);
+  }
 });
 
-it('runs all native SQLite integration cases under Node', () => rethrow(scenario3));
+it('runs the native SQLite integration cases and the shared storage suites under Node', () =>
+  rethrow(scenario3));

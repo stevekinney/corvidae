@@ -27,7 +27,9 @@
  * hash. It therefore imports nothing but Bun and Node built-ins.
  */
 
+import { spawn } from 'node:child_process';
 import { basename } from 'node:path';
+import { Readable } from 'node:stream';
 
 import type { SpawnOptions, Subprocess } from 'bun';
 
@@ -178,7 +180,12 @@ export function withoutAutoInstall(command: readonly string[]): string[] {
   const [executable, ...rest] = command;
   if (
     executable === undefined ||
-    !(executable === process.execPath || basename(executable) === 'bun') ||
+    // `process.execPath` is Bun only when this module runs under Bun; under Node it is `node`, which
+    // rejects `--no-install`.
+    !(
+      (executable === process.execPath && process.versions.bun !== undefined) ||
+      basename(executable) === 'bun'
+    ) ||
     rest.some(
       (argument) =>
         argument === '--no-install' ||
@@ -230,6 +237,66 @@ export function spawnWithHangGuard<
   const cancel = afterAwakeTime(hangGuardMilliseconds, () => child.kill(killSignal));
   void child.exited.finally(cancel);
   return child;
+}
+
+/**
+ * A child started by {@link spawnPipedWithHangGuard}: the fields of Bun's `Subprocess` a test reads,
+ * with both output streams piped.
+ */
+export interface PipedChildProcess {
+  /** The child's standard output, as a web stream. */
+  readonly stdout: ReadableStream<Uint8Array>;
+  /** The child's standard error, as a web stream. */
+  readonly stderr: ReadableStream<Uint8Array>;
+  /** Resolves with the exit code once the child exits (`null` when a signal ended it). */
+  readonly exited: Promise<number | null>;
+  /** The exit code, or `null` while the child runs or when a signal ended it. */
+  readonly exitCode: number | null;
+  /** The signal that ended the child, or `null`. */
+  readonly signalCode: NodeJS.Signals | null;
+  /** Send `signal` (SIGTERM by default) to the child. */
+  kill(signal?: NodeJS.Signals): void;
+}
+
+/**
+ * {@link spawnWithHangGuard} for a test that runs under Node as well as Bun: the child is started
+ * through `node:child_process`, which both runtimes provide, with stdout and stderr piped. A child
+ * still running when the awake-time guard elapses is killed with SIGTERM. A Bun child is kept from
+ * auto-installing (`withoutAutoInstall`) as it is there.
+ *
+ * @param command - the executable and its arguments
+ * @param options - `hangGuardMilliseconds`, the awake time after which the child is killed
+ */
+export function spawnPipedWithHangGuard(
+  command: readonly string[],
+  options: { hangGuardMilliseconds?: number } = {},
+): PipedChildProcess {
+  const { hangGuardMilliseconds = HANG_GUARD_MILLISECONDS } = options;
+  const [executable, ...argumentsList] = withoutAutoInstall(command);
+  if (executable === undefined) throw new Error('spawnPipedWithHangGuard needs a command');
+  const child = spawn(executable, argumentsList, { stdio: ['ignore', 'pipe', 'pipe'] });
+  // Resolve on exit, as Bun's `exited` does, rather than once the streams close: a reader that
+  // never drains a stream must not hold the exit back.
+  const exited = new Promise<number | null>((resolve, reject) => {
+    child.once('error', reject);
+    child.once('exit', (exitCode) => resolve(exitCode));
+  });
+  const cancel = afterAwakeTime(hangGuardMilliseconds, () => child.kill('SIGTERM'));
+  exited.then(cancel, cancel);
+  return {
+    stdout: Readable.toWeb(child.stdout) as unknown as ReadableStream<Uint8Array>,
+    stderr: Readable.toWeb(child.stderr) as unknown as ReadableStream<Uint8Array>,
+    exited,
+    get exitCode() {
+      return child.exitCode;
+    },
+    get signalCode() {
+      return child.signalCode;
+    },
+    kill(signal: NodeJS.Signals = 'SIGTERM') {
+      child.kill(signal);
+    },
+  };
 }
 
 /** What `runWithHangGuard` resolves to: the fields of Bun's `SyncSubprocess` that tests read. */

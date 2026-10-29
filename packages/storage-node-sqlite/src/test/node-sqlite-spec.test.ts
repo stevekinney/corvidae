@@ -2,11 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '@lostgradient/storage';
 import { closeIfOpen, FixtureScope } from '@lostgradient/storage/testing';
-import {
-  canLoadNodeSqliteWith,
-  createNodeSqliteSpec,
-  loadBetterSqlite3Locally,
-} from './node-sqlite-spec.test-support.ts';
+import { createNodeSqliteSpec, loadBetterSqlite3Locally } from './node-sqlite-spec.ts';
 
 /** A stand-in for the `better-sqlite3` driver, which loads only under Node. */
 function stubDriver(pragmaRow: { busy: number; log: number; checkpointed: number }) {
@@ -92,32 +88,5 @@ describe('Node SQLite adapter spec', () => {
       await closeIfOpen(adapter);
       scope.cleanup();
     }
-  });
-});
-
-describe('canLoadNodeSqliteWith', () => {
-  it('never tries to open the adapter under Bun', () => {
-    let opened = false;
-    class Adapter extends MemoryStorage {
-      constructor() {
-        super();
-        opened = true;
-      }
-    }
-
-    expect(canLoadNodeSqliteWith(true, Adapter as never)).toBe(false);
-    expect(opened).toBe(false);
-  });
-
-  it('is available when an in-memory database opens and closes', () => {
-    expect(canLoadNodeSqliteWith(false, MemoryStorage as never)).toBe(true);
-  });
-
-  it('is unavailable when the adapter cannot open', () => {
-    const refusing = function (): never {
-      throw new Error('the native binding is refused');
-    };
-
-    expect(canLoadNodeSqliteWith(false, refusing as never)).toBe(false);
   });
 });
