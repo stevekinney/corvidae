@@ -244,4 +244,23 @@ describe('payloadValidation engine option', () => {
     await engine.signal(handle.id, 'approveAlias', { approved: true });
     expect(await handle.result()).toEqual({ approved: true });
   });
+
+  it('finds no declared schema for a name that is neither declared nor aliased, such as constructor', async () => {
+    const aliased = workflow({ name: 'aliased-inherited' })
+      .updates({ renameAlias: rename })
+      .execute(async function* (ctx: WorkflowContext) {
+        ctx.onUpdate('renameAlias', () => 'renamed');
+        return yield* ctx.waitForSignal('release');
+      });
+    const engine = track(
+      new Engine({ storage: new MemoryStorage(), payloadValidation: 'inbound' }),
+    );
+    engine.register(aliased);
+    const handle = await engine.start('aliased-inherited', null);
+    await engine[ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING](handle.id);
+
+    expect(await rejectionOf(engine.update(handle.id, 'constructor', { name: 1 }))).toBeInstanceOf(
+      UndeclaredWorkflowMessageError,
+    );
+  });
 });
