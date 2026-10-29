@@ -24,14 +24,17 @@ export type ObjectStoreClient = Pick<Bun.S3Client, 'presign' | 'list'>;
 
 /** One object a listing named. */
 export interface ListedObject {
+  /** The object's full key in the bucket, prefix included. */
   readonly key: string;
   /** The ETag as the store returned it, quotes included. */
   readonly etag: string;
+  /** The object's size in bytes, or `0` when the store did not report one. */
   readonly size: number;
 }
 
 /** One page of a listing. */
 export interface ListedPage {
+  /** The objects this page named, in the order the store listed them. */
   readonly objects: readonly ListedObject[];
   /** Present when the listing was truncated; pass it to the next call. */
   readonly nextContinuationToken?: string | undefined;
