@@ -90,6 +90,27 @@ files['members/src/index.ts'] = [
   'export class Child extends Widget {',
   '  childOnly = 1;',
   '}',
+  '/** Documented static, undocumented instance of the same name. */',
+  'export class Twin {',
+  '  /** Documented static. */',
+  '  static same = 1;',
+  '  same = 2;',
+  '  /** Documented instance, undocumented static of the same name. */',
+  '  other = 1;',
+  '  static other = 2;',
+  '}',
+  '/** Parameter properties declare members. */',
+  'export class Parameters {',
+  '  constructor(',
+  '    /** Documented parameter property. */',
+  '    public readonly documented: string,',
+  '    public readonly bare: string,',
+  '    protected guarded: string,',
+  '    readonly frozen: string,',
+  '    private hidden: string,',
+  '    plain: string,',
+  '  ) {}',
+  '}',
   '/** Documented object alias. */',
   'export type Options = {',
   '  /** Documented option. */',
@@ -164,9 +185,24 @@ describe('findUndocumented members', () => {
       '. Shape.stop',
       '. Shape.tagged',
       '. Widget.bare',
-      '. Widget.create',
       '. Widget.method',
       '. Widget.other',
+      '. Widget.static.create',
+    ]);
+  });
+
+  test('judges a static member apart from an instance member of the same name', () => {
+    expect(found.members.filter((key) => key.startsWith('. Twin.'))).toEqual([
+      '. Twin.same',
+      '. Twin.static.other',
+    ]);
+  });
+
+  test('judges constructor parameter properties that are not private', () => {
+    expect(found.members.filter((key) => key.startsWith('. Parameters.'))).toEqual([
+      '. Parameters.bare',
+      '. Parameters.frozen',
+      '. Parameters.guarded',
     ]);
   });
 

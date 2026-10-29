@@ -113,8 +113,11 @@ function undocumentedSignatures(
 
 /** The own members of an exported interface, class, or object literal type alias. */
 function ownMembers(declaration: ts.Declaration): readonly ts.Node[] {
-  if (ts.isInterfaceDeclaration(declaration) || ts.isClassDeclaration(declaration)) {
-    return declaration.members;
+  if (ts.isInterfaceDeclaration(declaration)) return declaration.members;
+  if (ts.isClassDeclaration(declaration)) {
+    return declaration.members.flatMap((member) =>
+      ts.isConstructorDeclaration(member) ? member.parameters : [member],
+    );
   }
   if (ts.isTypeAliasDeclaration(declaration)) {
     let type = declaration.type;
@@ -130,9 +133,18 @@ type JudgedMember =
   | ts.MethodSignature
   | ts.MethodDeclaration
   | ts.GetAccessorDeclaration
-  | ts.SetAccessorDeclaration;
+  | ts.SetAccessorDeclaration
+  | ts.ParameterDeclaration;
 
 function isJudgedMember(node: ts.Node): node is JudgedMember {
+  // A constructor parameter with an accessibility or `readonly` modifier declares a property.
+  if (ts.isParameter(node)) {
+    return (
+      ts.isIdentifier(node.name) &&
+      ts.isParameterPropertyDeclaration(node, node.parent) &&
+      (ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Private) === 0
+    );
+  }
   if (!(
     ts.isPropertySignature(node) ||
     ts.isPropertyDeclaration(node) ||
@@ -153,7 +165,19 @@ function isCallableMember(node: JudgedMember): node is ts.MethodDeclaration | ts
   return isCallable(node);
 }
 
-function memberName(name: ts.PropertyName): string {
+function isStatic(member: JudgedMember): boolean {
+  return (ts.getCombinedModifierFlags(member) & ts.ModifierFlags.Static) !== 0;
+}
+
+/** The symbol whose comment documents the member: a parameter property's property symbol. */
+function memberSymbol(checker: ts.TypeChecker, member: JudgedMember): ts.Symbol | undefined {
+  if (ts.isParameter(member) && ts.isIdentifier(member.name)) {
+    return checker.getSymbolsOfParameterPropertyDeclaration(member, member.name.text)[1];
+  }
+  return checker.getSymbolAtLocation(member.name);
+}
+
+function memberName(name: ts.PropertyName | ts.BindingName): string {
   return ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)
     ? name.text
     : name.getText();
@@ -169,13 +193,14 @@ function undocumentedMembers(
   for (const declaration of declarations) {
     for (const member of ownMembers(declaration)) {
       if (!isJudgedMember(member)) continue;
-      const name = memberName(member.name);
+      // A static member and an instance member of the same name are different properties.
+      const name = `${isStatic(member) ? 'static.' : ''}${memberName(member.name)}`;
       groups.set(name, [...(groups.get(name) ?? []), member]);
     }
   }
   const undocumented: string[] = [];
   for (const [name, members] of groups) {
-    const symbol = checker.getSymbolAtLocation(members[0]!.name);
+    const symbol = memberSymbol(checker, members[0]!);
     const suffixes = members.every(isCallableMember)
       ? undocumentedSignatures(checker, members, symbol)
       : symbol && hasText(symbol.getDocumentationComment(checker))
