@@ -11,10 +11,20 @@ type PIIRule =
  * package independent of conversationalist at runtime. Exported inside the
  * package (not from its root) so the fresh-attempt secret scan (COR-1354)
  * reuses `apiKey` rather than restating it.
+ *
+ * The email and apiKey patterns begin with a lookbehind that forbids a match from
+ * starting inside a run of their leading character class, and apiKey also looks
+ * ahead for the `:` or `=` that must end that run. A match can only begin at the
+ * start of a run, so a long unbroken token is scanned once instead of once per
+ * start position (COR-1753). The email pattern also allows a start right after a
+ * previous email match (`a@b.co_c@d.ef` holds two), recognised by a bounded
+ * lookbehind on a hostname of at most 253 characters. The leftmost match is
+ * otherwise unchanged.
  */
 export const PII_RULES = {
   email: {
-    regex: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
+    regex:
+      /(?:(?<![a-zA-Z0-9._%+-])|(?=[0-9._%+-])(?<=@[a-zA-Z0-9.-]{0,253}\.[a-zA-Z]{2,}))[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
     replace: '[EMAIL_REDACTED]',
   },
   phone: {
@@ -23,7 +33,7 @@ export const PII_RULES = {
   },
   apiKey: {
     regex:
-      /(?:[a-zA-Z0-9_-]*(?:api|key|secret|token|password|auth)[a-zA-Z0-9_-]*[:=]\s*["']?)([a-zA-Z0-9._-]{16,})(?:["']?)/gi,
+      /(?<![a-zA-Z0-9_-])(?=[a-zA-Z0-9_-]*[:=])(?:[a-zA-Z0-9_-]*(?:api|key|secret|token|password|auth)[a-zA-Z0-9_-]*[:=]\s*["']?)([a-zA-Z0-9._-]{16,})(?:["']?)/gi,
     replace: (match: string, key: string) => match.replace(key, '[KEY_REDACTED]'),
   },
 } satisfies Record<string, PIIRule>;
