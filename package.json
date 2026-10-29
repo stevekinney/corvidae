@@ -136,7 +136,7 @@
     "check": "bun scripts/run-exclusively.ts --shared 'bun run format:check && bun run lint:root && bun run typecheck:root && turbo run lint typecheck --affected && bun scripts/affected-tests.ts run'",
     "clean": "turbo run clean",
     "coverage": "bun scripts/run-exclusively.ts 'turbo run test:coverage'",
-    "dev": "turbo run dev",
+    "dev": "turbo run dev --filter=@lostgradient/interborough",
     "format": "prettier --write .",
     "format:check": "prettier --check --cache --cache-strategy content .",
     "lint": "bun scripts/run-exclusively.ts 'bun run lint:root && turbo run lint'",
