@@ -27,7 +27,6 @@ describe('@lostgradient/operative/provider-kit', () => {
       'isStrictCompatible',
       'isToolCallParseError',
       'readBackendDescriptors',
-      'readEnvironmentConfiguration',
       'resolveAnthropicEffort',
       'resolveAnthropicModel',
       'resolveCommonParameters',

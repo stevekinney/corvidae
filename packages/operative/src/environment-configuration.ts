@@ -1,14 +1,12 @@
-import { environmentalist, secret } from '@lostgradient/environmentalist';
+import { environmentalist } from '@lostgradient/environmentalist';
 import type { Source, SourceResult } from '@lostgradient/environmentalist/types';
 import { z } from 'zod';
 
 const environmentSchema = z.object({
-  googleApiKey: secret(z.string().optional()).meta({ env: 'GOOGLE_API_KEY' }),
   openaiBaseUrl: z.string().optional().meta({ env: 'OPENAI_BASE_URL' }),
 });
 
 const environmentVariables = {
-  googleApiKey: 'GOOGLE_API_KEY',
   openaiBaseUrl: 'OPENAI_BASE_URL',
 } as const;
 

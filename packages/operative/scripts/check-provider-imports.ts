@@ -1,9 +1,10 @@
 /**
  * Fails when Operative's source blurs the line between provider-neutral code and provider code.
  *
- * Each model provider (Anthropic, OpenAI, Gemini) is on its way to its own package. That move
- * changes only imports, which is true only while the code already respects the boundary, so this
- * check classifies every file by path and reads every import to prove it does.
+ * Each model provider (Anthropic, OpenAI, Gemini) lives in its own package, and the move of each
+ * changed only imports, which is true only while the code respects the boundary. This check
+ * classifies every file by path and reads every import to prove it does, and it fails when a
+ * provider-owned path reappears in Operative.
  *
  * Ownership is decided by path, under `packages/operative/`, for provider `<p>`:
  *
@@ -19,6 +20,9 @@
  *
  * It exits 1 when:
  *
+ * 0. a provider-owned path exists in the package at all (every provider has moved out, so a file
+ *    at `src/<p>.ts`, `src/providers/<p>-*.ts`, `test/<p>/**`, or any other path above is a copy
+ *    that has drifted back; the rule reads every file under `src/` and `test/`, not only `.ts`);
  * 1. a neutral file that is not a barrel imports a provider file (a re-export is an import too);
  * 2. one provider's file imports another provider's file;
  * 3. a provider file imports a symbol by name from a neutral module that the file could not reach
@@ -111,6 +115,27 @@ export function classifyFile(path: string): Ownership {
     }
   }
   return { kind: 'neutral' };
+}
+
+/**
+ * Lists the provider-owned paths among a package's files. Every provider has moved to its own
+ * package, so any such path in Operative is a copy that has drifted back.
+ *
+ * @param paths - The paths relative to the package directory, with forward slashes.
+ */
+export function findProviderOwnedPaths(paths: Iterable<string>): Violation[] {
+  const violations: Violation[] = [];
+  for (const path of [...paths].toSorted((left, right) => left.localeCompare(right))) {
+    const owner = classifyFile(path);
+    if (owner.kind === 'provider') {
+      violations.push({
+        file: path,
+        line: 1,
+        message: `${owner.provider}-owned path exists in Operative; ${owner.provider} lives in @lostgradient/operative-${owner.provider}`,
+      });
+    }
+  }
+  return violations;
 }
 
 function escapeForPattern(text: string): string {
@@ -593,6 +618,35 @@ export function checkProviderImports(files: SourceFiles): Violation[] {
   return violations;
 }
 
+/**
+ * Lists every file under a package's `src/` and `test/` directories, whatever its extension.
+ *
+ * @param root - The package directory.
+ * @returns The paths relative to `root`, with forward slashes.
+ */
+export function readPackagePaths(root: string): string[] {
+  const paths: string[] = [];
+  const walk = (directory: string): void => {
+    if (!existsSync(directory)) {
+      return;
+    }
+    for (const entry of readdirSync(directory)) {
+      if (entry === 'node_modules' || entry === '.types' || entry === 'coverage') {
+        continue;
+      }
+      const path = join(directory, entry);
+      if (statSync(path).isDirectory()) {
+        walk(path);
+      } else {
+        paths.push(relative(root, path).split(sep).join('/'));
+      }
+    }
+  };
+  walk(join(root, 'src'));
+  walk(join(root, 'test'));
+  return paths;
+}
+
 function readPackageFiles(root: string): Map<string, string> {
   const files = new Map<string, string>();
   const walk = (directory: string): void => {
@@ -620,7 +674,10 @@ if (import.meta.main) {
   const commandArguments = process.argv.slice(2);
   const rootIndex = commandArguments.indexOf('--root');
   const root = resolve(rootIndex >= 0 ? (commandArguments[rootIndex + 1] ?? '.') : '.');
-  const violations = checkProviderImports(readPackageFiles(root));
+  const violations = [
+    ...findProviderOwnedPaths(readPackagePaths(root)),
+    ...checkProviderImports(readPackageFiles(root)),
+  ];
   for (const violation of violations) {
     console.error(`${violation.file}:${violation.line}: ${violation.message}`);
   }

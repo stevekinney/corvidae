@@ -6,22 +6,10 @@
  */
 
 export { readBackendDescriptors, withBackendDescriptors } from './backend-descriptor-attachment.ts';
-export { createGeminiBatchClient } from './batches/index.ts';
-export type { GeminiBatchClientOptions, GeminiBatchOperations } from './batches/index.ts';
 export { getProviderCapabilities } from './capabilities.ts';
 export type { ProviderCapabilities } from './capabilities.ts';
-export {
-  createGeminiEmbedder,
-  createOllamaEmbedder,
-  createVoyageEmbedder,
-} from './embeddings/index.ts';
-export type {
-  GeminiEmbedderOptions,
-  GeminiEmbeddingClient,
-  GeminiEmbeddingModel,
-  OllamaEmbedderOptions,
-  VoyageEmbedderOptions,
-} from './embeddings/index.ts';
+export { createOllamaEmbedder, createVoyageEmbedder } from './embeddings/index.ts';
+export type { OllamaEmbedderOptions, VoyageEmbedderOptions } from './embeddings/index.ts';
 export {
   ProviderContractError,
   ProviderError,
@@ -43,33 +31,6 @@ export type {
   FalloverProvider,
   ProviderHealth,
 } from './fallover/index.ts';
-export { geminiProvider } from './gemini-definition.ts';
-export type { GeminiProviderConfiguration } from './gemini-definition.ts';
-export type {
-  GeminiBatchClient,
-  GeminiBatchJob,
-  GeminiBatchJobReference,
-  GeminiCacheCreatingClient,
-  GeminiCachedContent,
-  GeminiCountTokensRequest,
-  GeminiCreateBatchJobRequest,
-  GeminiCreateCachedContentRequest,
-  GeminiDeleteResourceJob,
-  GeminiGenerateContentRequest,
-  GeminiGenerateContentResult,
-  GeminiGenerativeModel,
-  GeminiListBatchJobsRequest,
-  GeminiProviderOptions,
-  GeminiStreamingModel,
-  GeminiTokenCountingClient,
-  GeminiUsageMetadata,
-} from './gemini-types.ts';
-export {
-  createGeminiProvider,
-  createGeminiProviderStream,
-  createGeminiTokenCounter,
-} from './gemini.ts';
-export type { GeminiTokenCounterOptions, GeminiTokenCountingOperations } from './gemini.ts';
 export {
   GENERAL_PROJECTION_REDACTED_KEYS,
   projectCatalog,
@@ -157,7 +118,6 @@ export {
 } from './shared/model-registry.ts';
 export { REPLAY_DATA_DROPPED_METADATA_KEY, readDroppedReplayData } from './shared/replay-data.ts';
 export type { DroppedReplayData } from './shared/replay-data.ts';
-export { toGeminiResponseFormat, toGeminiToolChoice } from './structured-output/index.ts';
 export type { ResponseFormat, ToolChoice } from './structured-output/index.ts';
 export type {
   BaseProviderOptions,

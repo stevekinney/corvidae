@@ -5,6 +5,8 @@ import {
   SELF_ENTRY_POINTS,
   checkProviderImports,
   classifyFile,
+  findProviderOwnedPaths,
+  readPackagePaths,
   type SourceFiles,
 } from './check-provider-imports.ts';
 
@@ -292,5 +294,49 @@ describe('checkProviderImports', () => {
         ),
       ).toEqual([]);
     });
+  });
+});
+
+describe('findProviderOwnedPaths', () => {
+  it('reports no path of a tree that holds only neutral files, guards, and barrels', () => {
+    expect(
+      findProviderOwnedPaths([
+        'src/index.ts',
+        'src/provider-kit.ts',
+        'src/providers/index.ts',
+        'src/providers/embeddings/ollama.ts',
+        'src/providers/streaming/stream-helpers.ts',
+        'src/gemini-provider-call-id.test.ts',
+        'test/gemini-provider-moved.test.ts',
+        'test/gemini-provider-moved.test-d.ts',
+        'test/provider-batches.test.ts',
+      ]),
+    ).toEqual([]);
+  });
+
+  it.each([
+    ['anthropic', 'src/anthropic.ts'],
+    ['openai', 'src/providers/openai-types.ts'],
+    ['gemini', 'src/providers/gemini.ts'],
+    ['gemini', 'src/providers/batches/gemini.ts'],
+    ['gemini', 'src/providers/embeddings/gemini.ts'],
+    ['openai', 'src/providers/streaming/normalize-openai.ts'],
+    ['gemini', 'src/providers/test/gemini-fixtures.ts'],
+    ['gemini', 'test/gemini/provider.test.ts'],
+    ['anthropic', 'test/anthropic/fixtures/browser-entry.ts'],
+  ] as const)('reports a %s-owned path: %s', (provider, path) => {
+    expect(findProviderOwnedPaths(['src/index.ts', path])).toEqual([
+      {
+        file: path,
+        line: 1,
+        message: `${provider}-owned path exists in Operative; ${provider} lives in @lostgradient/operative-${provider}`,
+      },
+    ]);
+  });
+
+  it('holds for the Operative package itself, which has no provider-owned path left', () => {
+    expect(
+      findProviderOwnedPaths(readPackagePaths(new URL('..', import.meta.url).pathname)),
+    ).toEqual([]);
   });
 });

@@ -388,7 +388,7 @@ export interface AnthropicStreamingClient {
 // `interface`s (no implicit index signature) and some of their members are
 // arrow-function properties. Declaring a request parameter as
 // `Record<string, unknown>` would break that in both directions — the mistake
-// documented on {@link GeminiGenerateContentRequest}. Widen only the
+// documented on `GeminiGenerateContentRequest` in @lostgradient/operative-gemini. Widen only the
 // payload-shaped fields, and name the rest.
 //
 // `anthropic-batch-client-assignability.test-d.ts` locks the Anthropic half of this in against
@@ -583,7 +583,7 @@ export interface AnthropicCountTokensRequest {
  * A required property is still assignable to an optional one of the same
  * type, so a real `MessageTokensCount` satisfies this interface with no cast.
  * The response shape is declared inline rather than naming a package-level
- * type, matching {@link GeminiTokenCountingClient}: `createAnthropicTokenCounter`
+ * type, matching `GeminiTokenCountingClient` in @lostgradient/operative-gemini: `createAnthropicTokenCounter`
  * maps it to {@link TokenCountResult} at its own boundary.
  */
 export interface AnthropicTokenCountingClient {

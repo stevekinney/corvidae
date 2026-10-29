@@ -647,8 +647,6 @@ export type {
   ValidateToolResultHook,
 } from './types';
 
-export * from './providers/test';
-
 export { instrumentRun, type RunInstrumentationOptions } from './instrumentation';
 export {
   instrumentGenerate,

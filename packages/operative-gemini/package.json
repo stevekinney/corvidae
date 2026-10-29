@@ -1,0 +1,35 @@
+{
+  "name": "@lostgradient/operative-gemini",
+  "private": true,
+  "description": "The Gemini model provider for Operative: a lazy-loading generate function for the Gemini API, streaming, batches, token counting, cached content, the embedder, and the test doubles that exercise them.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json && bun ../../scripts/check-inherited-key-reads.ts && bun ../../scripts/check-documentation-coverage.ts",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
+    "types": "tsc -b tsconfig.source.json",
+    "typecheck": "tsc -b tsconfig.json && bun run typecheck:documentation",
+    "typecheck:documentation": "bun ../../scripts/check-documentation-code-blocks.ts",
+    "test": "bun ../../scripts/bun-test-junit.ts"
+  },
+  "dependencies": {
+    "@google/genai": "catalog:",
+    "@lostgradient/cryptography": "workspace:*",
+    "@lostgradient/environmentalist": "catalog:",
+    "@lostgradient/lifecycle": "workspace:*",
+    "@lostgradient/operative": "workspace:*",
+    "armorer": "workspace:*",
+    "conversationalist": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@lostgradient/testing": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
+    "@types/bun": "catalog:",
+    "oxlint": "catalog:",
+    "typescript": "catalog:"
+  }
+}

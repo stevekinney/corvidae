@@ -12,7 +12,6 @@
 export type { TokenBudget } from './context/token-budget.ts';
 export type { ContextAssembler } from './context/types.ts';
 export { defineOwn } from './define-own.ts';
-export { readEnvironmentConfiguration } from './environment-configuration.ts';
 export {
   readBackendDescriptors,
   withBackendDescriptors,

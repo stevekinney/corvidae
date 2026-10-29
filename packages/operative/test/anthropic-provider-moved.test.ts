@@ -60,12 +60,7 @@ const MOVED_ANTHROPIC_EXPORTS = [
 const entryPoints = { root, providerKit, providerTesting };
 
 /** The barrels under `src/providers/`, which re-export provider files by path. */
-const BARRELS = [
-  'src/providers/index.ts',
-  'src/providers/batches/index.ts',
-  'src/providers/structured-output/index.ts',
-  'src/providers/test/index.ts',
-] as const;
+const BARRELS = ['src/providers/index.ts', 'src/providers/structured-output/index.ts'] as const;
 
 describe('the Anthropic provider has left Operative', () => {
   for (const [entryPoint, exports] of Object.entries(entryPoints)) {

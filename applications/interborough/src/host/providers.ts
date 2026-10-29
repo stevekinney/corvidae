@@ -20,11 +20,11 @@
 import type { resolveProviderGenerate } from '@lostgradient/bureau';
 import {
   createModelCatalog,
-  geminiProvider,
   type BackendDescriptor,
   type GenerateFunction,
 } from '@lostgradient/operative';
 import { anthropicProvider } from '@lostgradient/operative-anthropic';
+import { geminiProvider } from '@lostgradient/operative-gemini';
 import { openaiProvider } from '@lostgradient/operative-openai';
 
 /** The provider definitions the host registers with Bureau's `resolveProviderGenerate`. */

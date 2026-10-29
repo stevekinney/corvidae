@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 
-// Bundles Weft's and Operative's source together, so it lives at the root, where the self-test's
+// Bundles Weft's and Operative Gemini's source together, so it lives at the root, where the self-test's
 // cache key covers both packages, rather than in either package or in `@lostgradient/testing`.
 test('portable environment resolvers bundle without server modules and work without runtime globals', async () => {
   const directory = await mkdtemp(join(import.meta.dirname, '.browser-environment-'));
@@ -12,7 +12,7 @@ test('portable environment resolvers bundle without server modules and work with
     await Bun.write(
       entrypoint,
       `import { resolveEngineEnvironment } from '../../packages/weft/src/runtime/environment-configuration.ts';
-import { readEnvironmentConfiguration } from '../../packages/operative/src/environment-configuration.ts';
+import { readEnvironmentConfiguration } from '../../packages/operative-gemini/src/environment-configuration.ts';
 const provider = readEnvironmentConfiguration();
 globalThis.environmentProbe = { engine: resolveEngineEnvironment(), provider: { googleApiKey: provider.googleApiKey }, serializedProvider: JSON.stringify(provider) };`,
     );

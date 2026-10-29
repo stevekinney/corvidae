@@ -22,6 +22,7 @@ export const environmentBoundaries = [
       'applications/terminal-example/src/server/environment-configuration.ts',
       'packages/bungalow/src/environment-configuration.ts',
       'packages/operative/src/environment-configuration.ts',
+      'packages/operative-gemini/src/environment-configuration.ts',
       'packages/bureau/src/skills/environment-configuration.ts',
       'testing/testing/src/environment-configuration.ts',
       'packages/weft/src/runtime/environment-configuration.ts',
