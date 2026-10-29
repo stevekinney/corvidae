@@ -341,7 +341,9 @@ database.exec('BEGIN IMMEDIATE');
 const insert = database.prepare('INSERT INTO kv (key, value) VALUES (?, ?)');
 insert.run('mid:in-transaction', new Uint8Array([42]));
 process.stdout.write('WEFT_DURABILITY_IN_TRANSACTION\\n');
-await new Promise(() => {});
+// Hold the transaction open until the parent's SIGKILL. A referenced timer keeps the event loop
+// alive; an unsettled top-level await does not, and Node exits with code 13 once the loop is empty.
+setInterval(() => {}, 2 ** 30);
 `;
 }
 
