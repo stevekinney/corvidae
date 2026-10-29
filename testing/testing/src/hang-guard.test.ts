@@ -8,6 +8,7 @@ import { quietFor } from '@lostgradient/testing/wait-until';
 import {
   afterAwakeTime,
   runWithHangGuard,
+  spawnPipedWithHangGuard,
   spawnWithHangGuard,
   withoutAutoInstall,
 } from './hang-guard.ts';
@@ -138,6 +139,41 @@ const leavesAFinishedChildAlone = await outcomeOf(async () => {
   expect(result).toMatchObject({ exitCode: 3, signalCode: null, success: false });
   expect(result.stdout.toString()).toBe('out');
   expect(result.stderr.toString()).toBe('err');
+});
+
+const pipesAFinishedChild = await outcomeOf(async () => {
+  const child = spawnPipedWithHangGuard(['sh', '-c', 'printf out; printf err >&2; exit 3']);
+  const [exitCode, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+  expect({ exitCode, signalCode: child.signalCode }).toEqual({ exitCode: 3, signalCode: null });
+  expect(child.exitCode).toBe(3);
+  expect(stdout).toBe('out');
+  expect(stderr).toBe('err');
+});
+
+const killsAHungPipedChild = await outcomeOf(async () => {
+  // hang-guard-self-test: the guard under test is the thing being proven to fire, so its budget is the subject
+  const child = spawnPipedWithHangGuard(['sleep', '30'], { hangGuardMilliseconds: 200 });
+  expect(await child.exited).toBeNull();
+  expect(child.signalCode).toBe('SIGTERM');
+});
+
+const reportsTheSignalItWasKilledWith = await outcomeOf(async () => {
+  const child = spawnPipedWithHangGuard(['sleep', '30']);
+  child.kill('SIGKILL');
+  expect(await child.exited).toBeNull();
+  expect(child.exitCode).toBeNull();
+  expect(child.signalCode).toBe('SIGKILL');
+});
+
+describe('spawnPipedWithHangGuard', () => {
+  it('resolves with the exit status and pipes both streams', () => rethrow(pipesAFinishedChild));
+  it('kills a child that outlives its guard with SIGTERM', () => rethrow(killsAHungPipedChild));
+  it('reports the signal a kill ended the child with', () =>
+    rethrow(reportsTheSignalItWasKilledWith));
 });
 
 describe('spawnWithHangGuard', () => {

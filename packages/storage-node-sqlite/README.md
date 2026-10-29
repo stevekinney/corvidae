@@ -36,4 +36,17 @@ Weft and Bureau take a `Storage` you construct. Pass this one to `new Engine({ s
 
 ## Test it
 
-The package's tests run under Bun, which cannot load `better-sqlite3`. They exercise the adapter through an injected database constructor and the loader's error shaping, and `src/node-sqlite.test.ts` launches `src/node-sqlite-native.integration.ts` in a real Node process (it fails without one) for the native cases, including a two-process write race. The shared contract and durability suites from `@lostgradient/storage/testing` register `bun:test` cases, so they do not run against this adapter: its native coverage is the integration file's `node:test` cases. `bun run test:coverage` fails below full line and function coverage of the package's own files.
+The package's tests run under Bun, which cannot load `better-sqlite3`. They exercise the adapter through an injected database constructor and the loader's error shaping, and `src/node-sqlite.test.ts` launches one real Node process (it fails without one) for everything that needs the driver:
+
+- `src/node-sqlite-native.integration.ts`, the adapter's own native cases, including a two-process write race;
+- `src/node-sqlite-contract.integration.ts`, the shared `Storage` contract from `@lostgradient/storage/testing`;
+- `src/node-sqlite-durability.integration.ts`, the shared WAL, batch-atomicity, and mid-transaction-kill durability suites, over the adapter's spec in `src/test/node-sqlite-spec.ts`; the kill suite's children run under Node too;
+- `src/test/bun-test-shim.integration.ts`, the shim's own cases.
+
+The shared suites import `bun:test`, so the Node process is started with `--import src/test/register-bun-test-shim.ts`, which resolves `bun:test` to `src/test/bun-test-shim.ts`: the `describe`, `it`, hooks, and matchers those suites use, over `node:test` and `node:assert`, and an error for anything else. The launcher asserts the child's case count, that nothing was skipped, and that each shared suite registered. To run the Node cases by hand:
+
+```sh
+node --import ./src/test/register-bun-test-shim.ts --test src/*.integration.ts src/test/*.integration.ts
+```
+
+`bun run test:coverage` fails below full line and function coverage of the package's own files.
