@@ -132,6 +132,12 @@ for (const backend of ['in-memory', 'weft'] as const) {
       expect(reported).toContain('async listener failed');
     });
 
+    it('rejects a listener that is not a function', async () => {
+      const fixture = await createGovernedFixture(backend);
+      const notAFunction = 'listener' as unknown as (n: MemoryGovernanceNotification) => void;
+      expect(() => fixture.memory.subscribe(notAFunction)).toThrow(TypeError);
+    });
+
     it('still notifies subscribers when onEvent throws, and the call rejects as before', async () => {
       const fixture = await createGovernedFixture(backend, {
         governed: {

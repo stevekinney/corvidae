@@ -89,6 +89,9 @@ export function createGovernedMemory(options: CreateGovernedMemoryOptions): Gove
       return policies.current().revision;
     },
     subscribe(listener) {
+      if (typeof listener !== 'function') {
+        throw new TypeError('GovernedMemory.subscribe requires a listener function.');
+      }
       // A function registered twice is two registrations, each with its own unsubscribe.
       const registration = (notification: MemoryGovernanceNotification): unknown =>
         listener(notification);

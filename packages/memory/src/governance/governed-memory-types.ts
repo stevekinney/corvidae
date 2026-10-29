@@ -467,7 +467,7 @@ export interface GovernedMemory {
    *
    * Each listener runs in its own `try`/`catch`: a throw (or, when the listener returns
    * a promise, a rejection) is reported with `console.error` and never rejects the
-   * governed call or skips a later listener. Returns a function that removes the
+   * governed call or skips a later listener. Throws a `TypeError` for a listener that is not a function. Returns a function that removes the
    * listener; calling it again does nothing.
    */
   subscribe(listener: (notification: MemoryGovernanceNotification) => void): () => void;
