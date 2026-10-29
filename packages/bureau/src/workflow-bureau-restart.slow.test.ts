@@ -15,6 +15,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { startWorkflowBureau } from './testing/workflow-bureau.test-support';
 import { workflowFileText } from './testing/workflow-file-fixtures.test-support';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -39,8 +40,13 @@ for (const [label, ownership] of OWNERSHIPS) {
       const root = await mkdtemp(join(tmpdir(), 'bureau-workflow-graceful-'));
       cleanups.push(() => rm(root, { recursive: true, force: true }));
       const workflows = join(root, 'workflows');
+      const database = createSqliteStorageFixture({ path: join(root, 'bureau.sqlite') });
+      cleanups.push(() => database.dispose());
       const overrides = {
-        storage: { type: 'sqlite', path: join(root, 'bureau.sqlite') },
+        // A getter: each Bureau started with these overrides opens its own handle.
+        get storage() {
+          return database.open();
+        },
         ...(ownership === undefined ? {} : { durableOwnership: ownership }),
         onDiagnostic: () => undefined,
       } as const;

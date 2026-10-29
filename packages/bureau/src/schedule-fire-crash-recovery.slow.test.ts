@@ -37,6 +37,7 @@ import { createBureau } from './create-bureau';
 import { unexpectedChildStderr } from './test/child-stderr';
 import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
 import type { AgentDefinitions } from './agent-catalog';
+import { createLmdbStorageFixture, createSqliteStorageFixture } from './test/storage-fixtures';
 
 const CHILD = join(import.meta.dir, 'test', 'schedule-fire-crash-child.ts');
 const INTERVAL_MS = 60_000;
@@ -53,7 +54,15 @@ async function scheduleFireCrashScenario(backend: Backend, scope: ScenarioScope)
   const directory = mkdtempSync(join(tmpdir(), `corvidae-schedule-fire-crash-${backend}-`));
   const storagePath = join(directory, 'bureau');
   const markerPath = join(directory, 'marker.json');
-  scope.onHang(() => rmSync(directory, { recursive: true, force: true }));
+  // The child's store, opened here only once the child is gone.
+  const store =
+    backend === 'lmdb'
+      ? createLmdbStorageFixture({ path: storagePath })
+      : createSqliteStorageFixture({ path: storagePath });
+  scope.onHang(async () => {
+    await store.dispose();
+    rmSync(directory, { recursive: true, force: true });
+  });
 
   try {
     const child = spawnWithHangGuard(['bun', CHILD, backend, storagePath, markerPath], {
@@ -89,7 +98,7 @@ async function scheduleFireCrashScenario(backend: Backend, scope: ScenarioScope)
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: backend, path: storagePath },
+      storage: store.storage,
       durable: true,
       maintenance: 'manual',
       durableOwnership: { ownership: 'none' },
@@ -144,6 +153,7 @@ async function scheduleFireCrashScenario(backend: Backend, scope: ScenarioScope)
       await bureau.shutdown();
     }
   } finally {
+    await store.dispose();
     rmSync(directory, { recursive: true, force: true });
   }
 }

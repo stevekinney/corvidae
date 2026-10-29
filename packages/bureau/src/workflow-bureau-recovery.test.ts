@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import { startWorkflowBureau } from './testing/workflow-bureau.test-support';
 import { workflowFileText } from './testing/workflow-file-fixtures.test-support';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -31,8 +32,13 @@ describe('a Bureau started over a store with an instance it cannot register', ()
     const root = await mkdtemp(join(tmpdir(), 'bureau-workflow-stranded-'));
     cleanups.push(() => rm(root, { recursive: true, force: true }));
     const workflows = join(root, 'workflows');
+    const database = createSqliteStorageFixture({ path: join(root, 'bureau.sqlite') });
+    cleanups.push(() => database.dispose());
     const overrides = {
-      storage: { type: 'sqlite', path: join(root, 'bureau.sqlite') },
+      // A getter: each Bureau started with these overrides opens its own handle.
+      get storage() {
+        return database.open();
+      },
       durableOwnership: { ownership: 'none' },
       onDiagnostic: () => undefined,
     } as const;

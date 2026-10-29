@@ -5,6 +5,7 @@
  */
 import { createDefaultRuntimeServices, createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent, type GenerateFunction } from '@lostgradient/operative';
+import type { Storage } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from '../agent-catalog';
@@ -24,16 +25,13 @@ const parks: GenerateFunction = ({ signal }) =>
     signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
   });
 
-function open(
-  path: ReturnType<typeof createSqliteStorageFixture>['configuration'],
-  extra: Partial<BureauOptions<AgentDefinitions>> = {},
-) {
+function open(storage: Storage, extra: Partial<BureauOptions<AgentDefinitions>> = {}) {
   return createBureau<AgentDefinitions>({
     id: 'surface-bureau',
     agents: {
       worker: createAgent({ generate: parks }),
     },
-    storage: path,
+    storage,
     durable: true,
     ...extra,
   });

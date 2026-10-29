@@ -1,7 +1,3 @@
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-
 import {
   createAgent,
   type GenerateFunction,
@@ -16,6 +12,7 @@ import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { AgentDefinitions } from './agent-catalog';
 import { startTaskFrom } from './test/task-start-request.ts';
 import { MemoryStorage } from '@lostgradient/storage';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 
@@ -127,13 +124,13 @@ describe('the owner of a run and of its session (COR-718)', () => {
   });
 
   it('refuses to read the history of a session another principal owns', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'owner-of-record-history-'));
+    const database = createSqliteStorageFixture();
     const bureau = await createBureau<AgentDefinitions>({
       id: 'owner-history',
       agents: {
         default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
       },
-      storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
+      storage: database.storage,
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
@@ -150,7 +147,7 @@ describe('the owner of a run and of its session (COR-718)', () => {
       }
     } finally {
       await bureau.dispose();
-      await rm(directory, { recursive: true, force: true });
+      await database.dispose();
     }
   });
 
@@ -235,23 +232,23 @@ describe('the owner of a catalog run (COR-718)', () => {
 
 describe('durable history follows the owner of record (COR-718)', () => {
   async function openDurableBureau() {
-    const directory = await mkdtemp(join(tmpdir(), 'owner-of-record-history-owners-'));
+    const database = createSqliteStorageFixture();
     const bureau = await createBureau<AgentDefinitions>({
       id: 'owner-history-owners',
       agents: {
         default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
       },
-      storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
+      storage: database.storage,
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
-    return { bureau, directory };
+    return { bureau, database };
   }
 
   const verdict = (result: object) => ('outcome' in result ? String(result.outcome) : 'page');
 
   it('reads a run created with no principal as owned by anonymous:local, and by no one else', async () => {
-    const { bureau, directory } = await openDurableBureau();
+    const { bureau, database } = await openDurableBureau();
     try {
       const run = await bureau.tasks.start('default', 'no principal');
       await settle(bureau, run.id);
@@ -262,12 +259,12 @@ describe('durable history follows the owner of record (COR-718)', () => {
       expect([verdict(asLocal), verdict(asStranger)]).toEqual(['page', 'not-found']);
     } finally {
       await bureau.dispose();
-      await rm(directory, { recursive: true, force: true });
+      await database.dispose();
     }
   });
 
   it('lets only a schedule’s owner read its history, including after it is cancelled', async () => {
-    const { bureau, directory } = await openDurableBureau();
+    const { bureau, database } = await openDurableBureau();
     try {
       const owned = await bureau.schedules.create({
         agentName: 'default',
@@ -293,14 +290,14 @@ describe('durable history follows the owner of record (COR-718)', () => {
       ]).toEqual(['page', 'not-found', 'not-found', 'page', 'not-found']);
     } finally {
       await bureau.dispose();
-      await rm(directory, { recursive: true, force: true });
+      await database.dispose();
     }
   });
 });
 
 describe('the history of a live catalog run (COR-718)', () => {
   it('reads a durable bureau.run dispatched with no principal as owned by anonymous:local', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'owner-of-record-catalog-history-'));
+    const database = createSqliteStorageFixture();
     const release = Promise.withResolvers<void>();
     const worker = createAgent({
       name: 'worker',
@@ -311,7 +308,7 @@ describe('the history of a live catalog run (COR-718)', () => {
     });
     const bureau = await createBureau({
       agents: { worker },
-      storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
+      storage: database.storage,
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
@@ -330,7 +327,7 @@ describe('the history of a live catalog run (COR-718)', () => {
     } finally {
       release.resolve();
       await bureau.dispose();
-      await rm(directory, { recursive: true, force: true });
+      await database.dispose();
     }
   });
 });

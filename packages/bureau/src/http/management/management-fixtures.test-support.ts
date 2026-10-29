@@ -5,12 +5,7 @@
  */
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
-import {
-  type AuthConfig,
-  type AuthorizationScope,
-  principalFromApiKey,
-  type StorageConfiguration,
-} from '@lostgradient/weft';
+import { type AuthConfig, type AuthorizationScope, principalFromApiKey } from '@lostgradient/weft';
 import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { HANG_GUARD_MILLISECONDS, afterAwakeTime } from '@lostgradient/testing/hang-guard';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
@@ -252,7 +247,7 @@ export async function openBureau(
     humanInput?: BureauHumanInputOption;
     /** Stop a run at a tool call that needs approval, as a real host does. */
     stopAtApproval?: boolean;
-    storage?: StorageConfiguration | Storage;
+    storage?: Storage;
     publish?: readonly string[];
     agents?: Parameters<typeof createBureau>[0]['agents'];
     durableHistory?: boolean;

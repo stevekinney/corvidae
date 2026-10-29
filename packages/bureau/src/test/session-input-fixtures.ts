@@ -22,12 +22,12 @@ import {
   encodeStorageKeyComponent,
   type Storage,
 } from '@lostgradient/storage';
-import { resolveStorage } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 
 import type { AgentDefinitions } from '../agent-catalog';
 import { createBureau } from '../create-bureau';
 import type { Bureau, BureauOptions, BureauInternals } from '../types';
+import type { PersistentBureauStorageFixture } from './storage-fixtures';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 
 export function deferred<T = void>() {
@@ -459,7 +459,7 @@ export async function reviewAuditEntries(
   });
 }
 
-/** One Bureau process over the SQLite file at a path, sharing nothing else with any other. */
+/** One Bureau process over a SQLite file, sharing nothing else with any other. */
 export interface OpenedProcess {
   readonly bureau: Bureau<AgentDefinitions>;
   /** The seam over this process's own connection to the file. */
@@ -469,20 +469,21 @@ export interface OpenedProcess {
 }
 
 /**
- * Opens a Bureau over the SQLite file at `path` through a {@link seamStorage}, as one of several
+ * Opens a Bureau over `database`'s SQLite file through a {@link seamStorage}, as one of several
  * processes sharing that file would: each call opens its own connection and shares nothing else.
+ * The fixture closes that connection when it is disposed, after the Bureau.
  * `options` are spread over the defaults (no agents, an empty toolbox, durable execution, and a
  * run that stops when the model calls no tool); `options.maximumSteps` caps the `default` agent.
  */
 export async function openProcess(
-  path: string,
+  database: PersistentBureauStorageFixture,
   generate: GenerateFunction,
   {
     maximumSteps,
     ...options
   }: Partial<BureauOptions<AgentDefinitions>> & { readonly maximumSteps?: number } = {},
 ): Promise<OpenedProcess> {
-  const real = await resolveStorage({ type: 'sqlite', path });
+  const real = database.open();
   const seam = seamStorage(real);
   const bureau = await createBureau<AgentDefinitions>({
     agents: {

@@ -42,6 +42,7 @@ import {
   SECOND_HUMAN_WAIT_SIGNAL,
 } from './test/process-crash-work-integrity-fixtures';
 import type { Bureau } from './types';
+import { createLmdbStorageFixture, createSqliteStorageFixture } from './test/storage-fixtures';
 
 const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
 const runtime = createDefaultRuntimeServices();
@@ -60,10 +61,16 @@ async function humanWaitScenario(
   const directory = createTemporaryDirectory(`corvidae-process-crash-human-wait-${backend}`);
   const storagePath = join(directory, 'bureau');
   const markerPath = join(directory, 'marker.json');
+  // The child's store, opened here only once the child is gone.
+  const store =
+    backend === 'lmdb'
+      ? createLmdbStorageFixture({ path: storagePath })
+      : createSqliteStorageFixture({ path: storagePath });
   let recoverer: Bureau | undefined;
   // A hung scenario never reaches its `finally`, so what it owns is released from here.
   scope.onHang(async () => {
     await Promise.allSettled(recoverer === undefined ? [] : [recoverer.shutdown()]);
+    await store.dispose();
     removeTemporaryPath(directory);
   });
 
@@ -105,8 +112,7 @@ async function humanWaitScenario(
 
     let generateCalls = 0;
     recoverer = await createHarnessBureau({
-      backend,
-      storagePath,
+      storage: store.storage,
       generate: async () => {
         generateCalls += 1;
         return { content: 'resumed after the crash', toolCalls: [] };
@@ -166,6 +172,7 @@ async function humanWaitScenario(
   } finally {
     // allSettled never rejects, so the directory is always removed after shutdown.
     const reports = await Promise.allSettled(recoverer === undefined ? [] : [recoverer.shutdown()]);
+    await store.dispose();
     removeTemporaryPath(directory);
     for (const report of reports) {
       expect(report.status).toBe('fulfilled');

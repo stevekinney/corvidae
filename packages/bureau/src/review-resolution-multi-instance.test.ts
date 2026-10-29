@@ -35,6 +35,10 @@ import {
   textOf,
   writesDecisionRecord,
 } from './test/session-input-fixtures';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type {
   Bureau,
@@ -55,16 +59,17 @@ const OWNERSHIP = {
 } as const;
 
 let directory: string;
-let path: string;
+let database: PersistentBureauStorageFixture;
 const processes: OpenedProcess[] = [];
 
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), 'corvidae-review-resolution-multi-'));
-  path = join(directory, 'bureau.sqlite');
+  database = createSqliteStorageFixture({ path: join(directory, 'bureau.sqlite') });
 });
 
 afterEach(async () => {
   for (const opened of processes.splice(0).toReversed()) await opened.bureau.dispose();
+  await database.dispose();
   await rm(directory, { recursive: true, force: true });
 });
 
@@ -165,7 +170,7 @@ async function open(
   charges: Charges,
   options: Partial<BureauOptions<AgentDefinitions>> = {},
 ): Promise<OpenedProcess> {
-  const opened = await openProcess(path, generate, {
+  const opened = await openProcess(database, generate, {
     id: 'review-resolution-multi-instance',
     durableOwnership: OWNERSHIP,
     ...options,
@@ -223,7 +228,7 @@ async function sessionParkedInA(
  */
 async function settledApproval(charges: Charges) {
   const generate = charging();
-  const setup = await openProcess(path, generate, {
+  const setup = await openProcess(database, generate, {
     id: 'review-resolution-multi-instance',
     durableOwnership: OWNERSHIP,
     agents: {
@@ -467,9 +472,10 @@ describe('a tool approval two processes hold (COR-1579)', () => {
       expect(codeOf(await rejectionOf(fromB))).toBe('CONFLICT');
       expect(charges.charged).toHaveLength(1);
       for (const opened of processes.splice(0)) await opened.bureau.dispose();
+      await database.dispose();
       await rm(directory, { recursive: true, force: true });
       directory = await mkdtemp(join(tmpdir(), 'corvidae-review-resolution-multi-'));
-      path = join(directory, 'bureau.sqlite');
+      database = createSqliteStorageFixture({ path: join(directory, 'bureau.sqlite') });
     }
     // B first: A is held before its claim commits, and B denies.
     {

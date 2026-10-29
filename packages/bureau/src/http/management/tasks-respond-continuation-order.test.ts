@@ -13,12 +13,11 @@
  */
 
 import { type GenerateFunction } from '@lostgradient/operative';
-import { resolveStorage } from '@lostgradient/weft';
 import { type Storage } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
-import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { waitForCondition } from '../../test';
+import { createSqliteStorageFixture } from '../../test/storage-fixtures';
 import {
   openBureau,
   type OpenedBureau,
@@ -109,16 +108,15 @@ async function withHeldBureau(
   options: Parameters<typeof openBureau>[0],
   body: (opened: OpenedBureau, hold: HeldStorage) => Promise<void>,
 ): Promise<void> {
-  const path = createTemporaryPath('bureau-respond-order', '.sqlite');
-  const hold = holdWrites(await resolveStorage({ type: 'sqlite', path }));
+  const database = createSqliteStorageFixture();
+  const hold = holdWrites(database.storage);
   const opened = await openBureau({ ...options, storage: hold.storage });
   try {
     await body(opened, hold);
   } finally {
     hold.release();
     await opened.dispose();
-    hold.storage[Symbol.dispose]();
-    removeTemporaryPath(path);
+    await database.dispose();
   }
 }
 

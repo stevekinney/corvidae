@@ -5,7 +5,7 @@
  */
 
 import { type GenerateContext, type GenerateFunction, type Toolbox } from '@lostgradient/operative';
-import { resolveStorage, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
@@ -20,6 +20,10 @@ import type { AgentDefinitions } from './agent-catalog';
 import { type DefaultAgentFields, withDefaultAgent } from './testing/default-agent.test-support';
 import { fireReviewFollowerOf } from './fire-review-follower';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 
 export async function pollUntil<T>(
   check: () => T | undefined | Promise<T | undefined>,
@@ -37,7 +41,16 @@ export async function pollUntil<T>(
 export function createScheduleFireHarness() {
   const bureaus: Bureau[] = [];
   const databasePaths: string[] = [];
-  const openedStorages: Storage[] = [];
+  const databases = new Map<string, PersistentBureauStorageFixture>();
+  /** A new handle on the SQLite file at `path`, closed by `dispose` after every Bureau. */
+  const sqliteHandle = (path: string): Storage => {
+    let database = databases.get(path);
+    if (database === undefined) {
+      database = createSqliteStorageFixture({ path });
+      databases.set(path, database);
+    }
+    return database.open();
+  };
   const beforeDispose: Array<() => void> = [];
   return {
     /** Runs `action` ahead of the next `dispose`, ahead of closing any Bureau. */
@@ -47,7 +60,8 @@ export function createScheduleFireHarness() {
     async dispose(): Promise<void> {
       for (const action of beforeDispose.splice(0)) action();
       for (const bureau of bureaus.splice(0)) await bureau.dispose();
-      for (const storage of openedStorages.splice(0)) storage[Symbol.dispose]();
+      for (const database of databases.values()) await database.dispose();
+      databases.clear();
       for (const path of databasePaths.splice(0)) {
         removeTemporaryPath(path);
       }
@@ -66,10 +80,13 @@ export function createScheduleFireHarness() {
       path: string,
       wrap: (storage: Storage) => Storage = (storage) => storage,
     ): Promise<Storage> {
-      const raw = await resolveStorage({ type: 'sqlite', path });
-      openedStorages.push(raw);
-      return wrap(raw);
+      return wrap(sqliteHandle(path));
     },
+    /**
+     * {@link sqliteStorage} without a wrapper, synchronously: for a `storage` getter on options
+     * that several Bureaus are opened from, so each one holds its own handle, as a process would.
+     */
+    sqliteHandle,
     async open(options: Partial<BureauOptions> & DefaultAgentFields = {}): Promise<Bureau> {
       const bureau = await createBureau<AgentDefinitions>({
         id: 'schedule-fire-reviews-bureau',

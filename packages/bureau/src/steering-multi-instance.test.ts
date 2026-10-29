@@ -43,9 +43,13 @@ import {
 import type { AgentDefinitions } from './agent-catalog';
 import { startTaskFrom } from './test/task-start-request.ts';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
-import { createSqliteStorageFixture } from './test/storage-fixtures';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 
-async function openBureau(path: string) {
+/** A Bureau over a new handle on `database`, as another process would open. */
+async function openBureau(database: PersistentBureauStorageFixture) {
   return createBureau<AgentDefinitions>({
     agents: {
       default: createAgent({
@@ -54,7 +58,7 @@ async function openBureau(path: string) {
         toolbox: createToolbox([]),
       }),
     },
-    storage: { type: 'sqlite', path },
+    storage: database.open(),
     durable: true,
   });
 }
@@ -100,9 +104,11 @@ function versionOf(outcome: Awaited<ReturnType<TestBureau['contexts']['steer']>>
 describe('durable steering across two Bureau processes', () => {
   it('lets both admit, in one order, with shared versions, states, and keys', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-two-'));
-    const path = join(directory, 'bureau.sqlite');
-    const bureauA = await openBureau(path);
-    const bureauB = await openBureau(path);
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    const bureauA = await openBureau(pathFixture);
+    const bureauB = await openBureau(pathFixture);
 
     try {
       const sessionId = await startRunningSession(bureauA);
@@ -216,8 +222,10 @@ describe('durable steering across two Bureau processes', () => {
 
   it("gives a recreated session a fresh log and frees the deleted incarnation's keys", async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-recreate-'));
-    const path = join(directory, 'bureau.sqlite');
-    const bureau = await openBureau(path);
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    const bureau = await openBureau(pathFixture);
 
     try {
       const sessionId = await startRunningSession(bureau);
@@ -352,7 +360,6 @@ describe('durable steering across two Bureau processes', () => {
     await using pathFixture = createSqliteStorageFixture({
       path: join(directory, 'bureau.sqlite'),
     });
-    const path = pathFixture.path;
     let releaseTool: (() => void) | undefined;
     const toolGate = new Promise<void>((resolve) => {
       releaseTool = resolve;
@@ -446,7 +453,7 @@ describe('durable steering across two Bureau processes', () => {
       expect(await stateIn(bureauA, 'k2', 'claude-opus-4-8')).toBe('applied');
       expect(await stateIn(bureauA, 'k1', 'claude-sonnet-5')).toBe('superseded');
 
-      bureauB = await openBureau(path);
+      bureauB = await openBureau(pathFixture);
       await bureauB.recovery();
       expect(await stateIn(bureauB, 'k2', 'claude-opus-4-8')).toBe('applied');
       expect(await stateIn(bureauB, 'k1', 'claude-sonnet-5')).toBe('superseded');
@@ -461,9 +468,11 @@ describe('durable steering across two Bureau processes', () => {
 
   it('folds a key reused after another process deleted its session, without stale state', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-deleted-elsewhere-'));
-    const path = join(directory, 'bureau.sqlite');
-    const bureauA = await openBureau(path);
-    const bureauB = await openBureau(path);
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    const bureauA = await openBureau(pathFixture);
+    const bureauB = await openBureau(pathFixture);
 
     try {
       const model = (id: string, override: string) =>
@@ -500,7 +509,6 @@ describe('durable steering across two Bureau processes', () => {
     await using pathFixture = createSqliteStorageFixture({
       path: join(directory, 'bureau.sqlite'),
     });
-    const path = pathFixture.path;
     const withPolicy = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({
@@ -519,7 +527,7 @@ describe('durable steering across two Bureau processes', () => {
         },
       },
     });
-    const withoutPolicy = await openBureau(path);
+    const withoutPolicy = await openBureau(pathFixture);
     const withChangedPolicy = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({
@@ -631,8 +639,10 @@ describe('durable steering across two Bureau processes', () => {
 
   it('fails a run start on a corrupt steering log, leaving the session failed rather than running', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-corrupt-start-'));
-    const path = join(directory, 'bureau.sqlite');
-    const bureau = await openBureau(path);
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    const bureau = await openBureau(pathFixture);
     try {
       const sessionId = await startRunningSession(bureau);
       const session = await bureau.contexts.get(sessionId);
@@ -658,9 +668,11 @@ describe('durable steering across two Bureau processes', () => {
 
   it('binds pause and resume against live runs in every process, not just its own', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-liveness-'));
-    const path = join(directory, 'bureau.sqlite');
-    const bureauA = await openBureau(path);
-    const bureauB = await openBureau(path);
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    const bureauA = await openBureau(pathFixture);
+    const bureauB = await openBureau(pathFixture);
     try {
       const sessionId = await startRunningSession(bureauA);
       const sessionInA = await bureauA.contexts.get(sessionId);
@@ -708,9 +720,11 @@ describe('durable steering across two Bureau processes', () => {
 
   it('counts every run promoted in the log as starting until its workflow exists', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-starting-runs-'));
-    const path = join(directory, 'bureau.sqlite');
-    const bureauA = await openBureau(path);
-    const bureauB = await openBureau(path);
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    const bureauA = await openBureau(pathFixture);
+    const bureauB = await openBureau(pathFixture);
     try {
       const sessionId = await startRunningSession(bureauA);
       const session = await bureauA.contexts.get(sessionId);
@@ -774,8 +788,10 @@ describe('durable steering across two Bureau processes', () => {
     // The engine every Bureau composes: its reads are counted, then failed.
     const engineType = await durableEnginePrototype();
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-starting-terminal-'));
-    const path = join(directory, 'bureau.sqlite');
-    const writer = await openBureau(path);
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    const writer = await openBureau(pathFixture);
     let reader: TestBureau | undefined;
     const engineGet = spyOn(engineType, 'get');
     const engineList = spyOn(engineType, 'list');
@@ -812,7 +828,7 @@ describe('durable steering across two Bureau processes', () => {
       }
 
       // A Bureau with no folded view of the session yet.
-      reader = await openBureau(path);
+      reader = await openBureau(pathFixture);
       const explicit = await reader.contexts.steer(sessionId, {
         principal: 'alice',
         runId: 'starting-3',
@@ -1004,9 +1020,11 @@ describe('durable steering across two Bureau processes', () => {
 
   it("counts only the current session incarnation's runs as live, and handles any session id", async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-incarnation-liveness-'));
-    const path = join(directory, 'bureau.sqlite');
-    const bureauA = await openBureau(path);
-    const bureauB = await openBureau(path);
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    const bureauA = await openBureau(pathFixture);
+    const bureauB = await openBureau(pathFixture);
     try {
       // A's run keeps going after B deletes its session and recreates the
       // id with a run of its own; only B's run belongs to the new session.
@@ -1137,8 +1155,10 @@ describe('durable steering across two Bureau processes', () => {
 
   it('answers a reused key only to a caller still authorized for the command it discloses', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-reauthorize-'));
-    const path = join(directory, 'bureau.sqlite');
-    const bureau = await openBureau(path);
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    const bureau = await openBureau(pathFixture);
     try {
       const kv = bureau.internals.kv;
       if (kv === undefined) throw new Error('expected a durable store');
@@ -1268,8 +1288,10 @@ describe('durable steering across two Bureau processes', () => {
 
   it('fails closed on an applied version no admission before it issued', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-applied-beyond-'));
-    const path = join(directory, 'bureau.sqlite');
-    const writer = await openBureau(path);
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    const writer = await openBureau(pathFixture);
     let reader: TestBureau | undefined;
     try {
       const sessionId = await startRunningSession(writer);
@@ -1289,7 +1311,7 @@ describe('durable steering across two Bureau processes', () => {
           now: new Date().toISOString(),
         },
       );
-      reader = await openBureau(path);
+      reader = await openBureau(pathFixture);
       expect(
         await throwingRejectionOf(
           reader.contexts.steer(sessionId, {
@@ -1307,8 +1329,10 @@ describe('durable steering across two Bureau processes', () => {
 
   it('fails closed on a run ending the log never promoted', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-ghost-ending-'));
-    const path = join(directory, 'bureau.sqlite');
-    const writer = await openBureau(path);
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    const writer = await openBureau(pathFixture);
     let reader: TestBureau | undefined;
     try {
       const sessionId = await startRunningSession(writer);
@@ -1322,7 +1346,7 @@ describe('durable steering across two Bureau processes', () => {
         await readSteeringLogHead(kv, sessionId, session.incarnation),
         { type: 'run-ended', runId: 'never-promoted', now: new Date().toISOString() },
       );
-      reader = await openBureau(path);
+      reader = await openBureau(pathFixture);
       expect(
         await throwingRejectionOf(
           reader.contexts.steer(sessionId, {
@@ -1343,7 +1367,6 @@ describe('durable steering across two Bureau processes', () => {
     await using pathFixture = createSqliteStorageFixture({
       path: join(directory, 'bureau.sqlite'),
     });
-    const path = pathFixture.path;
     const diagnostics: BureauDiagnostic[] = [];
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
@@ -1384,7 +1407,7 @@ describe('durable steering across two Bureau processes', () => {
 
       expect(diagnostics.filter((diagnostic) => diagnostic.scope === 'steering')).toEqual([]);
       // The log, read afresh, records the end once.
-      reader = await openBureau(path);
+      reader = await openBureau(pathFixture);
       const log = reader.internals.kv;
       if (log === undefined) throw new Error('expected a durable store');
       const head = await readSteeringLogHead(log, sessionId, session.incarnation);
@@ -1407,8 +1430,10 @@ describe('durable steering across two Bureau processes', () => {
 
   it('fails closed on an applied event outside its run, and on a key decided twice', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-impossible-history-'));
-    const path = join(directory, 'bureau.sqlite');
-    const writer = await openBureau(path);
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    const writer = await openBureau(pathFixture);
     const readers: TestBureau[] = [];
     try {
       const plant = async (event: Parameters<typeof appendSteeringLogEvent>[4]) => {
@@ -1438,7 +1463,7 @@ describe('durable steering across two Bureau processes', () => {
         configVersion: 0,
         now: new Date().toISOString(),
       });
-      const reader = await openBureau(path);
+      const reader = await openBureau(pathFixture);
       readers.push(reader);
       expect(await throwingRejectionOf(reader.contexts.steer(ghostApplied, model('k-a')))).toThrow(
         /applying a version without a promotion/,
@@ -1473,7 +1498,7 @@ describe('durable steering across two Bureau processes', () => {
         },
         binding.raw,
       );
-      const second = await openBureau(path);
+      const second = await openBureau(pathFixture);
       readers.push(second);
       expect(await throwingRejectionOf(second.contexts.steer(twice, model('k-other')))).toThrow(
         /a second decision for steering key/,
@@ -1487,8 +1512,10 @@ describe('durable steering across two Bureau processes', () => {
 
   it("fails closed on a run applying another run's version, and counts a run saved but not yet promoted", async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-visible-versions-'));
-    const path = join(directory, 'bureau.sqlite');
-    const writer = await openBureau(path);
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    const writer = await openBureau(pathFixture);
     const readers: TestBureau[] = [];
     try {
       const kv = writer.internals.kv;
@@ -1519,7 +1546,7 @@ describe('durable steering across two Bureau processes', () => {
         await readSteeringLogHead(kv, sessionId, session.incarnation),
         { type: 'applied', runId: second, configVersion: 1, now: new Date().toISOString() },
       );
-      const reader = await openBureau(path);
+      const reader = await openBureau(pathFixture);
       readers.push(reader);
       expect(
         await throwingRejectionOf(
@@ -1547,7 +1574,7 @@ describe('durable steering across two Bureau processes', () => {
           },
         }),
       );
-      const gapReader = await openBureau(path);
+      const gapReader = await openBureau(pathFixture);
       readers.push(gapReader);
       const named = await gapReader.contexts.steer(gapSession, {
         principal: 'alice',
@@ -1792,7 +1819,7 @@ describe('durable steering across two Bureau processes', () => {
           now: new Date().toISOString(),
         },
       );
-      const belowReader = await openBureau(path);
+      const belowReader = await openBureau(pathFixture);
       readers.push(belowReader);
       expect(
         await throwingRejectionOf(
@@ -1857,8 +1884,10 @@ describe('durable steering across two Bureau processes', () => {
 
   it('answers a failed log read only to a caller still authorized for the session', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-fold-failure-authority-'));
-    const path = join(directory, 'bureau.sqlite');
-    const writer = await openBureau(path);
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    const writer = await openBureau(pathFixture);
     let reader: TestBureau | undefined;
     try {
       const sessionId = await startRunningSession(writer);
@@ -1887,7 +1916,7 @@ describe('durable steering across two Bureau processes', () => {
       );
       // Her retry of a key bound here skips the up-front checks, so the
       // failed fold is where she must be turned away.
-      reader = await openBureau(path);
+      reader = await openBureau(pathFixture);
       expect(await reader.contexts.steer(sessionId, model)).toEqual({
         outcome: 'not-found',
       });
@@ -1900,6 +1929,9 @@ describe('durable steering across two Bureau processes', () => {
 
   it('records starting entries only where durable steering runs', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-non-durable-start-'));
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
         default: createAgent({
@@ -1908,7 +1940,7 @@ describe('durable steering across two Bureau processes', () => {
           toolbox: createToolbox([]),
         }),
       },
-      storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
+      storage: pathFixture.storage,
       durable: false,
     });
     try {
@@ -1923,8 +1955,10 @@ describe('durable steering across two Bureau processes', () => {
 
   it('keeps failing on a live session whose log lost entries, rather than refolding it', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-shortened-log-'));
-    const path = join(directory, 'bureau.sqlite');
-    const bureau = await openBureau(path);
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    const bureau = await openBureau(pathFixture);
     try {
       const sessionId = await startRunningSession(bureau);
       const model = (id: string, override: string) =>
@@ -1956,8 +1990,10 @@ describe('durable steering across two Bureau processes', () => {
 
   it('fails closed on a key binding that does not name its own admission', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-bad-binding-'));
-    const path = join(directory, 'bureau.sqlite');
-    const bureau = await openBureau(path);
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    const bureau = await openBureau(pathFixture);
     try {
       const first = await startRunningSession(bureau);
       const model = (id: string, override: string) =>

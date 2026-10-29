@@ -1,13 +1,10 @@
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-
 import {
   type GenerateFunction,
   stopWhen,
   SESSION_OWNER_METADATA_KEY,
   createAgent,
 } from '@lostgradient/operative';
+import type { Storage } from '@lostgradient/storage';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
@@ -22,6 +19,7 @@ import {
 } from './testing/goal-fixtures.test-support';
 import { waitForCondition } from './test';
 import type { AgentDefinitions } from './agent-catalog';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const ALICE = 'api-key:alice';
 
@@ -44,7 +42,7 @@ function parkingGenerate(): GenerateFunction {
   };
 }
 
-async function openBureau(path: string) {
+async function openBureau(storage: Storage) {
   return createBureau<AgentDefinitions>({
     id: 'owner-restart',
     agents: {
@@ -56,7 +54,7 @@ async function openBureau(path: string) {
       }),
     },
     validators: [createCheckValidator()],
-    storage: { type: 'sqlite', path },
+    storage,
     durable: true,
     durableOwnership: { ownership: 'none' },
   });
@@ -64,9 +62,8 @@ async function openBureau(path: string) {
 
 describe('every kind of resource keeps its owner across a restart (COR-718)', () => {
   it('reads back the owner of a run, session, child run, goal, schedule, review, and audit entry', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'owner-of-record-restart-'));
-    const path = join(directory, 'bureau.sqlite');
-    const first = await openBureau(path);
+    const database = createSqliteStorageFixture();
+    const first = await openBureau(database.storage);
     let reopened: Awaited<ReturnType<typeof openBureau>> | undefined;
     try {
       const run = await first.tasks.start('default', 'park', { principal: ALICE });
@@ -116,7 +113,7 @@ describe('every kind of resource keeps its owner across a restart (COR-718)', ()
       );
       await first.dispose();
 
-      const second = await openBureau(path);
+      const second = await openBureau(await database.reopen());
       reopened = second;
       const owner = (resource: Parameters<typeof second.ownerOf>[0]) => second.ownerOf(resource);
 
@@ -140,7 +137,7 @@ describe('every kind of resource keeps its owner across a restart (COR-718)', ()
       ).toEqual(['api-key:reviewer']);
     } finally {
       await reopened?.dispose();
-      await rm(directory, { recursive: true, force: true });
+      await database.dispose();
     }
   });
 });

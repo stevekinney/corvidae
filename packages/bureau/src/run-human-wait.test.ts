@@ -14,7 +14,6 @@ import {
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
-import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import type { AgentDefinitions } from './agent-catalog';
 import * as auditTrailModule from './audit-trail';
@@ -24,16 +23,24 @@ import { humanWaitDeliveryId } from './run-human-waits';
 import type { Bureau, BureauOptions, PendingReview } from './types';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { MemoryStorage } from '@lostgradient/storage';
-import { createSqliteStorageFixture } from './test/storage-fixtures';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
-const databasePaths: string[] = [];
+const databases: PersistentBureauStorageFixture[] = [];
+
+/** A SQLite store, disposed by `afterEach` after every Bureau. */
+function nextDatabase(): PersistentBureauStorageFixture {
+  const database = createSqliteStorageFixture();
+  databases.push(database);
+  return database;
+}
 
 afterEach(async () => {
   for (const bureau of bureaus.splice(0)) await bureau.dispose();
-  for (const path of databasePaths.splice(0)) {
-    removeTemporaryPath(path);
-  }
+  for (const database of databases.splice(0)) await database.dispose();
 });
 
 async function pollUntil(check: () => boolean | Promise<boolean>): Promise<void> {
@@ -543,24 +550,19 @@ describe('requestHumanInput on a goal attempt', () => {
 });
 
 describe('a bureau.run() park after a restart', () => {
-  function nextDatabasePath(): string {
-    const path = createTemporaryPath('bureau-run-human-wait', '.sqlite');
-    databasePaths.push(path);
-    return path;
-  }
-
-  async function over(databasePath: string, seen: Seen) {
+  /** A Bureau over a new handle on `database`, as a new process would open. */
+  async function over(database: PersistentBureauStorageFixture, seen: Seen) {
     return start(
       { asker: askingAgent(seen) },
       {
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durableOwnership: { ownership: 'none' },
       },
     );
   }
 
   it('lists the park a recovered run makes next, numbered after the ones before it', async () => {
-    await using database = createSqliteStorageFixture({ path: nextDatabasePath() });
+    const database = nextDatabase();
     const twoParks = (seen: Seen) => {
       const generate: GenerateFunction = async (context: GenerateContext) => {
         seen.tools.push(context.toolbox.tools().map((tool) => tool.name));
@@ -588,7 +590,10 @@ describe('a bureau.run() park after a restart', () => {
     const run = await crashed.tasks.start('asker', 'go');
     const first = await nextReview(crashed, run.id);
 
-    const restarted = await start({ asker: twoParks(newSeen()) }, options);
+    const restarted = await start(
+      { asker: twoParks(newSeen()) },
+      { ...options, storage: database.open() },
+    );
     const restored = await nextReview(restarted, run.id);
     expect(restored.id).toBe(first.id);
     await restarted.reviews.resolve({
@@ -608,16 +613,16 @@ describe('a bureau.run() park after a restart', () => {
   });
 
   it('is listed under the id it had, resolves, and the recovered run continues', async () => {
-    const databasePath = nextDatabasePath();
+    const database = nextDatabase();
     const before = newSeen();
-    const crashed = await over(databasePath, before);
+    const crashed = await over(database, before);
     const run = await crashed.tasks.start('asker', 'deploy', { principal: 'alice' });
     const original = await nextReview(crashed, run.id);
     // The first Bureau is not disposed: a graceful shutdown would cancel the parked run and
     // leave nothing for the restart to recover.
 
     const after = newSeen();
-    const restarted = await over(databasePath, after);
+    const restarted = await over(database, after);
     const restored = await nextReview(restarted, run.id);
 
     expect(restored.id).toBe(original.id);
@@ -781,9 +786,7 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
   });
 
   it('derives the same delivery id after a restart, and resumes the recovered run', async () => {
-    await using database = createSqliteStorageFixture();
-    const databasePath = database.path;
-    databasePaths.push(databasePath);
+    const database = nextDatabase();
     const options = {
       storage: database.storage,
       durableOwnership: { ownership: 'none' as const },
@@ -805,7 +808,10 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
     );
 
     const after = newSeen();
-    const restarted = await start({ asker: askingAgent(after, names.ascii) }, options);
+    const restarted = await start(
+      { asker: askingAgent(after, names.ascii) },
+      { ...options, storage: database.open() },
+    );
     const restored = await nextReview(restarted, run.id);
     const again = spyOn(restarted.durableEngine()!, 'signal');
     await restarted.reviews.resolve({

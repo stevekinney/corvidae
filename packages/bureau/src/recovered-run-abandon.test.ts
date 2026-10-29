@@ -16,7 +16,6 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { stopWhen, createAgent } from '@lostgradient/operative';
-import { resolveStorage } from '@lostgradient/weft';
 import { type Storage } from '@lostgradient/storage';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import {
@@ -31,6 +30,7 @@ import { createBureau } from './create-bureau';
 import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
 import type { Bureau } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const CHILD = join(import.meta.dir, 'test', 'session-input-crash-child.ts');
 /** Matches the child's short workflow claim, so recovery can follow a kill quickly. */
@@ -80,7 +80,12 @@ function losingNextCheckpointSwap(storage: Storage) {
 
 async function recoveredAbandonScenario(scope: ScenarioScope): Promise<void> {
   const directory = createTemporaryDirectory('corvidae-recovered-run-abandon');
-  const remove = (): void => removeTemporaryPath(directory);
+  // The child's store, opened here only once the child is gone.
+  const store = createSqliteStorageFixture({ path: join(directory, 'bureau.sqlite') });
+  const remove = async (): Promise<void> => {
+    await store.dispose();
+    removeTemporaryPath(directory);
+  };
   scope.onHang(remove);
   // Weft reports a lost compare-and-swap to operators as a process warning. It is part of the
   // scenario, so it is captured rather than let reach stderr, and checked.
@@ -91,7 +96,7 @@ async function recoveredAbandonScenario(scope: ScenarioScope): Promise<void> {
   let recovering: Bureau | undefined;
   scope.onHang(() => recovering?.dispose());
   try {
-    const storagePath = join(directory, 'bureau.sqlite');
+    const storagePath = store.path;
     const markerPath = join(directory, 'marker.json');
     const child = spawnWithHangGuard(['bun', CHILD, 'sqlite', storagePath, markerPath, 'running'], {
       stdout: 'pipe',
@@ -111,9 +116,7 @@ async function recoveredAbandonScenario(scope: ScenarioScope): Promise<void> {
     // still going: a wait made after the run ended reads a record that is already gone.
     const generating = Promise.withResolvers<void>();
     const released = Promise.withResolvers<void>();
-    const seam = losingNextCheckpointSwap(
-      await resolveStorage({ type: 'sqlite', path: storagePath }),
-    );
+    const seam = losingNextCheckpointSwap(store.storage);
     recovering = await scope.phase('boot', () =>
       createBureau<AgentDefinitions>({
         agents: {
@@ -159,7 +162,7 @@ async function recoveredAbandonScenario(scope: ScenarioScope): Promise<void> {
   } finally {
     emitWarning.mockRestore();
     await recovering?.dispose();
-    remove();
+    await remove();
   }
 }
 

@@ -31,7 +31,7 @@ const directories: string[] = [];
 
 afterEach(async () => {
   for (const bureau of bureaus.splice(0)) await bureau.shutdown();
-  for (const close of closers.splice(0)) close();
+  for (const close of closers.splice(0)) await close();
   for (const directory of directories.splice(0)) {
     await rm(directory, { recursive: true, force: true });
   }

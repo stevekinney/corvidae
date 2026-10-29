@@ -16,8 +16,6 @@ import {
   GuardrailTripwireError,
   createAgent,
 } from '@lostgradient/operative';
-import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
-import { resolveStorage } from '@lostgradient/weft';
 import { createTool, createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
@@ -29,6 +27,7 @@ import { readAgUiStream, typesOf } from './http/ag-ui-stream.test-support';
 import { createBureauHandler } from './http/create-bureau-handler';
 import { waitForCondition } from './test';
 import { holdFirstTerminalRunCommit } from './test/held-terminal-commit';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 import type { AgentDefinitions } from './agent-catalog';
 
 type Bureau = Awaited<ReturnType<typeof createBureau>>;
@@ -144,7 +143,7 @@ async function withFreshRun<T>(
   inspect: (settled: Settled) => Promise<T>,
   whenRunning?: (bureau: Bureau, runId: string) => Promise<void> | void,
 ): Promise<T> {
-  const databasePath = createTemporaryPath('bureau-recovered-failure-fresh', '.sqlite');
+  const database = createSqliteStorageFixture();
   let open: () => void = () => {};
   const gate = new Promise<void>((resolve) => {
     open = resolve;
@@ -161,7 +160,7 @@ async function withFreshRun<T>(
         toolbox: createToolbox<readonly Tool[]>([noopTool]),
       }),
     },
-    storage: { type: 'sqlite', path: databasePath },
+    storage: database.storage,
     durable: true,
     // The AG-UI handler the stream test mounts serves the asset routes, so it needs the service.
     assets: { storage: createMemoryAssetStorage() },
@@ -174,7 +173,7 @@ async function withFreshRun<T>(
   } finally {
     open();
     await bureau.dispose();
-    removeTemporaryPath(databasePath);
+    await database.dispose();
   }
 }
 
@@ -189,10 +188,8 @@ async function withRecoveredRun<T>(
   /** Runs once Bureau B holds the run, before its replay can settle: where a subscriber attaches. */
   beforeReplaySettles?: (bureau: Bureau, runId: string) => Promise<void> | void,
 ): Promise<T> {
-  const databasePath = createTemporaryPath('bureau-recovered-failure-recovered', '.sqlite');
-  const crashed = holdFirstTerminalRunCommit(
-    await resolveStorage({ type: 'sqlite', path: databasePath }),
-  );
+  const database = createSqliteStorageFixture();
+  const crashed = holdFirstTerminalRunCommit(database.storage);
   let replayed: ReturnType<typeof holdFirstTerminalRunCommit> | undefined;
   let bureauA: Bureau | undefined;
   let bureauB: Bureau | undefined;
@@ -211,9 +208,7 @@ async function withRecoveredRun<T>(
     });
     const run = await bureauA.tasks.start('default', 'Go.');
     await crashed.reached;
-    replayed = holdFirstTerminalRunCommit(
-      await resolveStorage({ type: 'sqlite', path: databasePath }),
-    );
+    replayed = holdFirstTerminalRunCommit(database.open());
     const calls = { generateCallsAfterRestart: 0 };
     bureauB = await createBureau<AgentDefinitions>({
       agents: {
@@ -242,7 +237,7 @@ async function withRecoveredRun<T>(
     await bureauA?.dispose();
     crashed.storage[Symbol.dispose]();
     replayed?.storage[Symbol.dispose]();
-    removeTemporaryPath(databasePath);
+    await database.dispose();
   }
 }
 

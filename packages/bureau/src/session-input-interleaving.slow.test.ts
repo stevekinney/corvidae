@@ -5,6 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { deferred, openProcess, savesSessionAs, userTexts } from './test/session-input-fixtures';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 
 /**
  * COR-1476 — a run whose session another Bureau process deletes and recreates while the run
@@ -15,12 +19,13 @@ import { deferred, openProcess, savesSessionAs, userTexts } from './test/session
  */
 
 let directory: string;
-let path: string;
+let database: PersistentBureauStorageFixture;
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), 'corvidae-session-input-interleaving-'));
-  path = join(directory, 'bureau.sqlite');
+  database = createSqliteStorageFixture({ path: join(directory, 'bureau.sqlite') });
 });
 afterEach(async () => {
+  await database.dispose();
   await rm(directory, { recursive: true, force: true });
 });
 
@@ -31,7 +36,7 @@ describe('a run whose session is recreated while it starts (COR-1476)', () => {
     const SESSION = 'session-recreated';
     const prompts1: string[][] = [];
     const run1Started = deferred();
-    const a = await openProcess(path, async (context: GenerateContext) => {
+    const a = await openProcess(database, async (context: GenerateContext) => {
       prompts1.push(userTexts(context.conversation));
       run1Started.resolve();
       return new Promise<never>(() => {});
@@ -39,7 +44,7 @@ describe('a run whose session is recreated while it starts (COR-1476)', () => {
     const prompts2: string[][] = [];
     const run2Started = deferred();
     const release2 = deferred();
-    const b = await openProcess(path, async (context: GenerateContext) => {
+    const b = await openProcess(database, async (context: GenerateContext) => {
       prompts2.push(userTexts(context.conversation));
       if (prompts2.length === 1) {
         run2Started.resolve();

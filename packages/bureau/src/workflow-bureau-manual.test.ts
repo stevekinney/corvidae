@@ -14,6 +14,7 @@ import { startWorkflowBureau } from './testing/workflow-bureau.test-support';
 import { workflowFileText } from './testing/workflow-file-fixtures.test-support';
 import { workflowStepRunId } from './workflow-agent-step';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -31,7 +32,8 @@ describe('an agent step that a restart runs again', () => {
     const root = await mkdtemp(join(tmpdir(), 'bureau-workflow-manual-'));
     cleanups.push(() => rm(root, { recursive: true, force: true }));
     const workflows = join(root, 'workflows');
-    const storage = { type: 'sqlite', path: join(root, 'bureau.sqlite') } as const;
+    const database = createSqliteStorageFixture({ path: join(root, 'bureau.sqlite') });
+    cleanups.push(() => database.dispose());
     const file = workflowFileText('midstep', {
       trigger: { kind: 'schedule', spec: '1h' },
       steps: [step],
@@ -40,7 +42,7 @@ describe('an agent step that a restart runs again', () => {
     const first = await startWorkflowBureau({
       directory: workflows,
       overrides: {
-        storage,
+        storage: database.storage,
         durableOwnership: { ownership: 'none' },
         onDiagnostic: () => undefined,
       },
@@ -58,7 +60,7 @@ describe('an agent step that a restart runs again', () => {
     const second = await startWorkflowBureau({
       directory: workflows,
       overrides: {
-        storage,
+        storage: await database.reopen(),
         durableOwnership: { ownership: 'none' },
         maintenance: 'manual',
         onDiagnostic: () => undefined,

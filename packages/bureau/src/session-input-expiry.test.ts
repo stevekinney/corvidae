@@ -37,10 +37,7 @@ function userTexts(conversation: Conversation): string[] {
     .map((message) => (typeof message.content === 'string' ? message.content : ''));
 }
 
-async function open(
-  generate: GenerateFunction,
-  storage: Storage | { type: 'memory' } = { type: 'memory' },
-) {
+async function open(generate: GenerateFunction, storage: Storage = new MemoryStorage()) {
   const runtime = createManualRuntimeServices({ origin: ORIGIN });
   const bureau = await createBureau<AgentDefinitions>({
     agents: {

@@ -5,9 +5,6 @@
  * must still close to a principal that later recreates the id, and its deletion
  * must still be audited with the owner the session had.
  */
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 import {
   type DurableEventEnvelope,
@@ -22,6 +19,7 @@ import { waitForCondition } from './test';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { AgentDefinitions } from './agent-catalog';
 import { MemoryStorage } from '@lostgradient/storage';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 const ALICE = 'api-key:alice';
@@ -29,17 +27,17 @@ const BOB = 'api-key:bob';
 const SIDE_RECORD_PREFIX = 'session-deletion-owner:v1:';
 
 async function openBureau() {
-  const directory = await mkdtemp(join(tmpdir(), 'owner-of-record-session-expiry-'));
+  const database = createSqliteStorageFixture();
   const bureau = await createBureau<AgentDefinitions>({
     id: 'session-expiry',
     agents: {
       default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
     },
-    storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
+    storage: database.storage,
     durable: true,
     durableOwnership: { ownership: 'none' },
   });
-  return { bureau, directory };
+  return { bureau, database };
 }
 
 type OpenBureau = Awaited<ReturnType<typeof openBureau>>['bureau'];
@@ -76,7 +74,7 @@ async function expireEverything(bureau: OpenBureau): Promise<number> {
 
 describe('the task history of an expired session (COR-1481)', () => {
   it('erases the originating message of each task of the session, as deleting the context does, and keeps the task', async () => {
-    const { bureau, directory } = await openBureau();
+    const { bureau, database } = await openBureau();
     try {
       const run = await settled(bureau, ALICE, 'expiring-context');
       const before = await bureau.internals.taskRegistry.history(run.id);
@@ -92,14 +90,14 @@ describe('the task history of an expired session (COR-1481)', () => {
       });
     } finally {
       await bureau.dispose();
-      await rm(directory, { recursive: true, force: true });
+      await database.dispose();
     }
   });
 });
 
 describe('the history of an expired session (COR-718)', () => {
   it('shows the next owner of an expired id none of the former owner’s events on a page', async () => {
-    const { bureau, directory } = await openBureau();
+    const { bureau, database } = await openBureau();
     try {
       await settled(bureau, ALICE, 'expired');
       const former = eventsOf(await read(bureau, 'expired'));
@@ -123,12 +121,12 @@ describe('the history of an expired session (COR-718)', () => {
       );
     } finally {
       await bureau.dispose();
-      await rm(directory, { recursive: true, force: true });
+      await database.dispose();
     }
   });
 
   it('delivers the next owner of an expired id none of the former owner’s events on a subscription', async () => {
-    const { bureau, directory } = await openBureau();
+    const { bureau, database } = await openBureau();
     try {
       await settled(bureau, ALICE, 'expired-sub');
       const former = eventsOf(await read(bureau, 'expired-sub'));
@@ -157,12 +155,12 @@ describe('the history of an expired session (COR-718)', () => {
       }
     } finally {
       await bureau.dispose();
-      await rm(directory, { recursive: true, force: true });
+      await database.dispose();
     }
   });
 
   it('records the expiry as a deletion: a trusted read sees the deleted aggregate, and the audit entry carries the owner', async () => {
-    const { bureau, directory } = await openBureau();
+    const { bureau, database } = await openBureau();
     try {
       await settled(bureau, ALICE, 'audited');
       expect(await expireEverything(bureau)).toBe(1);
@@ -192,12 +190,12 @@ describe('the history of an expired session (COR-718)', () => {
       }, 'the side record outlived the audit entry');
     } finally {
       await bureau.dispose();
-      await rm(directory, { recursive: true, force: true });
+      await database.dispose();
     }
   });
 
   it('expires nothing when the owner of an expiring session cannot be recorded', async () => {
-    const { bureau, directory } = await openBureau();
+    const { bureau, database } = await openBureau();
     try {
       await settled(bureau, ALICE, 'kept');
       const kv = bureau.internals.kv!;
@@ -219,12 +217,12 @@ describe('the history of an expired session (COR-718)', () => {
       expect(await bureau.internals.sessionStore!.load('kept')).toBeUndefined();
     } finally {
       await bureau.dispose();
-      await rm(directory, { recursive: true, force: true });
+      await database.dispose();
     }
   });
 
   it('never shows a principal an event that records no incarnation, and shows one that records the live incarnation', async () => {
-    const { bureau, directory } = await openBureau();
+    const { bureau, database } = await openBureau();
     try {
       const run = await settled(bureau, ALICE, 'stamped');
       const live = await bureau.internals.sessionStore!.load('stamped');
@@ -253,7 +251,7 @@ describe('the history of an expired session (COR-718)', () => {
       expect(loaded[0]?.payload).toMatchObject({ incarnation: live!.incarnation });
     } finally {
       await bureau.dispose();
-      await rm(directory, { recursive: true, force: true });
+      await database.dispose();
     }
   });
 });
@@ -342,7 +340,7 @@ describe('a run whose session expired and was recreated while it ran (COR-718)',
   });
 
   it('writes nothing into the new owner’s session on a durable Bureau either', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'owner-of-record-session-expiry-durable-'));
+    const database = createSqliteStorageFixture();
     try {
       await expiryDuringRun((generate) =>
         createBureau<AgentDefinitions>({
@@ -350,13 +348,13 @@ describe('a run whose session expired and was recreated while it ran (COR-718)',
           agents: {
             default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
           },
-          storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
+          storage: database.storage,
           durable: true,
           durableOwnership: { ownership: 'none' },
         }),
       );
     } finally {
-      await rm(directory, { recursive: true, force: true });
+      await database.dispose();
     }
   });
 });

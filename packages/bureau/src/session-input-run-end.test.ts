@@ -9,7 +9,7 @@ import {
   createAgent,
 } from '@lostgradient/operative';
 import { MemoryStorage, type Storage, textValueStore } from '@lostgradient/storage';
-import { resolveStorage, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory, CURRENT_SCHEMA_VERSION } from 'conversationalist';
@@ -1226,12 +1226,12 @@ describe('shutdown releases open input (COR-1476)', () => {
 
   it('releases the claims of an abort-policy shutdown without cancelling, and the next boot, which recovers no run, sweeps them', async () => {
     directory = await mkdtemp(join(tmpdir(), 'corvidae-session-input-shutdown-'));
-    const configuration = { type: 'sqlite', path: join(directory, 'bureau.sqlite') } as const;
+    await using database = createSqliteStorageFixture({ path: join(directory, 'bureau.sqlite') });
     const stepZeroStarted = deferred();
     const releaseStepZero = deferred();
     const stepOneStarted = deferred();
 
-    const first = await openBureau(configuration, async (context: GenerateContext) => {
+    const first = await openBureau(database.storage, async (context: GenerateContext) => {
       if (context.step === 0) {
         stepZeroStarted.resolve();
         await releaseStepZero.promise;
@@ -1251,7 +1251,7 @@ describe('shutdown releases open input (COR-1476)', () => {
     await first.shutdown({ policy: 'abort' });
 
     // Shutdown only released them: both are still open, for the next boot.
-    const afterShutdown = await resolveStorage(configuration);
+    const afterShutdown = database.open();
     try {
       const open = await createSessionInputMailbox(
         afterShutdown,
@@ -1273,7 +1273,7 @@ describe('shutdown releases open input (COR-1476)', () => {
     // The abort cancelled the run's workflow, so nothing recovers it: the boot
     // sweep finds the session with no run and cancels what was left.
     let generations = 0;
-    const second = await openBureau(configuration, async () => {
+    const second = await openBureau(database.open(), async () => {
       generations += 1;
       return { content: 'answer', toolCalls: [] };
     });
@@ -1284,7 +1284,7 @@ describe('shutdown releases open input (COR-1476)', () => {
     } finally {
       await second.dispose();
     }
-    const afterBoot = await resolveStorage(configuration);
+    const afterBoot = database.open();
     try {
       expect(await receiptState(afterBoot, run.contextId, incarnation, 'input-a', 'first')).toBe(
         'canceled',

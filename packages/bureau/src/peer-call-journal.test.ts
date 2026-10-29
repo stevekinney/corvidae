@@ -8,7 +8,6 @@ import { createAgent, createPeerCallTool, stopWhen } from '@lostgradient/operati
 import { createA2APeerClient } from '@lostgradient/weft/a2a';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 import { z } from 'zod';
 
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
@@ -25,9 +24,13 @@ import {
   retireSettledTasksOnRealClock,
 } from './testing/run-retirement.test-support';
 import type { Bureau } from './types';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 
 const ORIGIN = 'https://agents.example.test';
-const databasePaths: string[] = [];
+const databases: PersistentBureauStorageFixture[] = [];
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const peers: OpenedBureau[] = [];
 /** `waitForCondition`, which waits on the hang guard: these waits cross sqlite, HTTP and a restart. */
@@ -40,7 +43,7 @@ afterEach(async () => {
   for (const release of heldWrites.splice(0)) release();
   for (const bureau of bureaus.splice(0)) await bureau.dispose();
   for (const peer of peers.splice(0)) await peer.dispose();
-  for (const path of databasePaths.splice(0)) removeTemporaryPath(path);
+  for (const database of databases.splice(0)) await database.dispose();
 });
 
 /** The remote Bureau: its `asker` agent works until the test lets it answer. */
@@ -107,9 +110,9 @@ function mortalFetch(base: typeof fetch, dead: () => boolean): typeof fetch {
   }) as typeof fetch;
 }
 
-/** A Bureau over `databasePath` whose `caller` agent asks the peer on its first step. */
+/** A Bureau over a new handle on `database` whose `caller` agent asks the peer on its first step. */
 async function callerBureau(
-  databasePath: string,
+  database: PersistentBureauStorageFixture,
   peerFetch: typeof fetch,
   holder: {
     journal?: Bureau<AgentDefinitions>;
@@ -155,7 +158,7 @@ async function callerBureau(
   });
   const bureau = await createBureau<AgentDefinitions>({
     agents: { caller: agent },
-    storage: { type: 'sqlite', path: databasePath },
+    storage: database.open(),
     durable: true,
     durableOwnership: { ownership: 'none' },
   });
@@ -167,13 +170,13 @@ async function callerBureau(
 describe('a durable peer call across a restart', () => {
   it('follows the peer task it already started instead of sending again', async () => {
     const peer = await openPeer();
-    const databasePath = createTemporaryPath('bureau-peer-call', '.sqlite');
-    databasePaths.push(databasePath);
+    const database = createSqliteStorageFixture();
+    databases.push(database);
     let dead = false;
     const firstHolder = { writes: [] as string[] };
 
     const first = await callerBureau(
-      databasePath,
+      database,
       mortalFetch(peer.fetchPeer, () => dead),
       firstHolder,
     );
@@ -188,7 +191,7 @@ describe('a durable peer call across a restart', () => {
     await eventually(() => peer.received.length === 1, 'the peer never started working');
 
     const secondHolder = { writes: [] as string[] };
-    const second = await callerBureau(databasePath, peer.fetchPeer, secondHolder);
+    const second = await callerBureau(database, peer.fetchPeer, secondHolder);
     peer.release();
     await eventually(async () => {
       const session = await second.contexts.get(run.contextId);
@@ -213,8 +216,8 @@ describe('a durable peer call across a restart', () => {
 
   it('resends with the same message id when the process died before the record was written', async () => {
     const peer = await openPeer();
-    const databasePath = createTemporaryPath('bureau-peer-call', '.sqlite');
-    databasePaths.push(databasePath);
+    const database = createSqliteStorageFixture();
+    databases.push(database);
     let dead = false;
     let diedInWrite = false;
     const firstHolder = {
@@ -225,7 +228,7 @@ describe('a durable peer call across a restart', () => {
     };
 
     const first = await callerBureau(
-      databasePath,
+      database,
       mortalFetch(peer.fetchPeer, () => dead),
       firstHolder,
     );
@@ -234,7 +237,7 @@ describe('a durable peer call across a restart', () => {
     await eventually(() => peer.received.length === 1, 'the peer never started working');
     dead = true;
 
-    const second = await callerBureau(databasePath, peer.fetchPeer, { writes: [] });
+    const second = await callerBureau(database, peer.fetchPeer, { writes: [] });
     peer.release();
     await eventually(async () => {
       const session = await second.contexts.get(run.contextId);
@@ -253,13 +256,13 @@ describe('a durable peer call across a restart', () => {
 
 describe('the Bureau peer call journal', () => {
   async function bureauWithRun() {
-    const databasePath = createTemporaryPath('bureau-peer-call-journal', '.sqlite');
-    databasePaths.push(databasePath);
+    const database = createSqliteStorageFixture();
+    databases.push(database);
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
         caller: createAgent({ generate: async () => ({ content: 'done', toolCalls: [] }) }),
       },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.open(),
       ...IMMEDIATE_TASK_RETENTION,
     });
     bureaus.push(bureau);

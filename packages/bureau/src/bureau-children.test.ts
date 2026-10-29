@@ -22,13 +22,13 @@ import {
 import {
   type ConditionalTextValueStore,
   MemoryStorage,
+  type Storage,
   textValueStore,
 } from '@lostgradient/storage';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { BureauError, createBureau } from './create-bureau';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
@@ -58,14 +58,6 @@ afterEach(async () => {
 async function pollUntil(check: () => boolean | Promise<boolean>): Promise<true> {
   await waitUntil(check, { message: 'pollUntil' });
   return true;
-}
-
-function databasePath(label: string): string {
-  return createTemporaryPath(`bureau-children-${label}`, '.sqlite');
-}
-
-async function removeDatabase(path: string): Promise<void> {
-  removeTemporaryPath(path);
 }
 
 const proceedSignals = defineChildSignals({
@@ -504,8 +496,7 @@ describe('bureau.children over a durable bureau', () => {
   }
 
   it('refuses a child identifier that names another principal’s run, and leaves that run as it was', async () => {
-    await using pathFixture = createSqliteStorageFixture({ path: databasePath('foreign-run-id') });
-    const path = pathFixture.path;
+    await using pathFixture = createSqliteStorageFixture();
     const bureau = await createBureau({
       agents: hangingAgents(),
       storage: pathFixture.storage,
@@ -556,7 +547,7 @@ describe('bureau.children over a durable bureau', () => {
       });
     } finally {
       await bureau.dispose();
-      await removeDatabase(path);
+      await pathFixture.dispose();
     }
   });
 
@@ -606,8 +597,7 @@ describe('bureau.children over a durable bureau', () => {
   });
 
   it('records child.aborted in the audit trail for a running child when the bureau is disposed under the default ownership', async () => {
-    await using pathFixture = createSqliteStorageFixture({ path: databasePath('disposed-audit') });
-    const path = pathFixture.path;
+    await using pathFixture = createSqliteStorageFixture();
     try {
       const bureau = await createBureau({
         agents: hangingAgents(),
@@ -656,7 +646,7 @@ describe('bureau.children over a durable bureau', () => {
         await second.dispose();
       }
     } finally {
-      await removeDatabase(path);
+      await pathFixture.dispose();
     }
   });
 
@@ -784,7 +774,7 @@ describe('bureau.children across a process restart', () => {
    * `worker` child dispatched under it that parks at step 1 too. Returns once
    * both have checkpointed step 0 — the moment A "dies".
    */
-  async function crashWithChild(path: string, childRunId: string) {
+  async function crashWithChild(storage: Storage, childRunId: string) {
     let parentAtStep1 = false;
     let childAtStep1 = false;
     const bureauA = await createBureau({
@@ -802,7 +792,7 @@ describe('bureau.children across a process restart', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path },
+      storage,
       durable: true,
       durableOwnership: { ownership: 'none' },
       onDiagnostic,
@@ -833,11 +823,10 @@ describe('bureau.children across a process restart', () => {
   }
 
   it('reattaches a running child without a duplicate workflow, and the parent can signal and await it', async () => {
-    await using pathFixture = createSqliteStorageFixture({ path: databasePath('reattach') });
-    const path = pathFixture.path;
+    await using pathFixture = createSqliteStorageFixture();
     const childRunId = 'child-reattach';
     try {
-      const { bureauA, parentRunId } = await crashWithChild(path, childRunId);
+      const { bureauA, parentRunId } = await crashWithChild(pathFixture.storage, childRunId);
       const reference = { parentRunId, childRunId };
 
       const childSteps: number[] = [];
@@ -861,7 +850,7 @@ describe('bureau.children across a process restart', () => {
             stopWhen: stopWhen.noToolCalls(),
           }),
         },
-        storage: pathFixture.storage,
+        storage: pathFixture.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         onDiagnostic,
@@ -920,16 +909,15 @@ describe('bureau.children across a process restart', () => {
         await bureauC.dispose();
       }
     } finally {
-      await removeDatabase(path);
+      await pathFixture.dispose();
     }
   });
 
   it('records a child that finished while its parent was unavailable with its real outcome', async () => {
-    await using pathFixture = createSqliteStorageFixture({ path: databasePath('finished-alone') });
-    const path = pathFixture.path;
+    await using pathFixture = createSqliteStorageFixture();
     const childRunId = 'child-finished-alone';
     try {
-      const { bureauA, parentRunId } = await crashWithChild(path, childRunId);
+      const { bureauA, parentRunId } = await crashWithChild(pathFixture.storage, childRunId);
       const bureauB = await createBureau({
         agents: {
           planner: createAgent({
@@ -945,7 +933,7 @@ describe('bureau.children across a process restart', () => {
             stopWhen: stopWhen.noToolCalls(),
           }),
         },
-        storage: pathFixture.storage,
+        storage: pathFixture.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         onDiagnostic,
@@ -964,16 +952,15 @@ describe('bureau.children across a process restart', () => {
       }
       await bureauA.dispose();
     } finally {
-      await removeDatabase(path);
+      await pathFixture.dispose();
     }
   });
 
   it('denies and cancels a recovered child whose grant no longer verifies', async () => {
-    await using pathFixture = createSqliteStorageFixture({ path: databasePath('grant-rotated') });
-    const path = pathFixture.path;
+    await using pathFixture = createSqliteStorageFixture();
     const childRunId = 'child-grant-rotated';
     try {
-      const { bureauA, parentRunId } = await crashWithChild(path, childRunId);
+      const { bureauA, parentRunId } = await crashWithChild(pathFixture.storage, childRunId);
       const bureauB = await createBureau({
         agents: {
           planner: createAgent({
@@ -989,7 +976,7 @@ describe('bureau.children across a process restart', () => {
             stopWhen: stopWhen.noToolCalls(),
           }),
         },
-        storage: pathFixture.storage,
+        storage: pathFixture.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         onDiagnostic,
@@ -1015,15 +1002,15 @@ describe('bureau.children across a process restart', () => {
       }
       await bureauA.dispose();
     } finally {
-      await removeDatabase(path);
+      await pathFixture.dispose();
     }
   });
 
   it('cascades a committed tasks.cancel of a durable parent to its cascade children', async () => {
-    const path = databasePath('cancel-durable');
+    await using pathFixture = createSqliteStorageFixture();
     const childRunId = 'child-cancel-durable';
     try {
-      const { bureauA, parentRunId } = await crashWithChild(path, childRunId);
+      const { bureauA, parentRunId } = await crashWithChild(pathFixture.storage, childRunId);
       try {
         expect(await bureauA.tasks.cancel(parentRunId)).toMatchObject({
           receipt: 'cancel-requested',
@@ -1035,7 +1022,7 @@ describe('bureau.children across a process restart', () => {
         await bureauA.dispose();
       }
     } finally {
-      await removeDatabase(path);
+      await pathFixture.dispose();
     }
   });
 });

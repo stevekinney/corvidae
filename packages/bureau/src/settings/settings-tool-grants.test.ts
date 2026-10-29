@@ -10,7 +10,6 @@ import {
   type GenerateFunction,
   stopWhen,
 } from '@lostgradient/operative';
-import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 import { encodeStorageKeyComponent, MemoryStorage } from '@lostgradient/storage';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
@@ -20,6 +19,10 @@ import { createBureau } from '../create-bureau';
 import { TASK_RECORD_KEY_PREFIX } from '../task-registry';
 import { waitForCondition } from '../test';
 import type { Bureau } from '../types';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from '../test/storage-fixtures';
 
 /** The tool names offered at each step, by agent. */
 type Offered = Map<string, string[][]>;
@@ -53,10 +56,14 @@ function agentsFor(offered: Offered): AgentDefinitions {
   return { parker: recordingAgent(offered, 'parker'), plain: recordingAgent(offered, 'plain') };
 }
 
-async function open(databasePath: string, offered: Offered): Promise<Bureau<AgentDefinitions>> {
+/** A Bureau over a new handle on `database`, as a new process would open. */
+async function open(
+  database: PersistentBureauStorageFixture,
+  offered: Offered,
+): Promise<Bureau<AgentDefinitions>> {
   return createBureau<AgentDefinitions>({
     agents: agentsFor(offered),
-    storage: { type: 'sqlite', path: databasePath },
+    storage: database.open(),
     durable: true,
     durableOwnership: { ownership: 'none' },
   });
@@ -106,8 +113,8 @@ describe('tool grants', () => {
   });
 
   it('a parked task resumed by another process keeps the grant it started with', async () => {
-    const databasePath = createTemporaryPath('cor1710-grant-recovery', '.sqlite');
-    const first = await open(databasePath, new Map());
+    const database = createSqliteStorageFixture();
+    const first = await open(database, new Map());
     const offered: Offered = new Map();
     let second: Bureau<AgentDefinitions> | undefined;
     try {
@@ -117,7 +124,7 @@ describe('tool grants', () => {
       await first.settings.update({ 'tools.humanInput': false }, { expectedRevision: revision });
 
       // The first process is abandoned while the task is parked, as a crash would leave it.
-      second = await open(databasePath, offered);
+      second = await open(database, offered);
       const recovered = await second.settings.get();
       expect(recovered.values['tools.humanInput']).toBe(false);
       const reviewId = await parked(second, task.id);
@@ -131,13 +138,13 @@ describe('tool grants', () => {
     } finally {
       await first.dispose();
       await second?.dispose();
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('a task recorded before grants were resumes with the settings at resume, recorded once', async () => {
-    const databasePath = createTemporaryPath('cor1710-grant-legacy', '.sqlite');
-    const first = await open(databasePath, new Map());
+    const database = createSqliteStorageFixture();
+    const first = await open(database, new Map());
     const offered: Offered = new Map();
     let second: Bureau<AgentDefinitions> | undefined;
     try {
@@ -154,7 +161,7 @@ describe('tool grants', () => {
       const { revision } = await first.settings.get();
       await first.settings.update({ 'tools.wakeup': false }, { expectedRevision: revision });
 
-      second = await open(databasePath, offered);
+      second = await open(database, offered);
       const reviewId = await parked(second, task.id);
       const legacy = await second.internals.taskRegistry.record(task.id);
       expect(legacy?.tools).toEqual({
@@ -169,7 +176,7 @@ describe('tool grants', () => {
     } finally {
       await first.dispose();
       await second?.dispose();
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 });

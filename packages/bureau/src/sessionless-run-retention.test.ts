@@ -21,13 +21,11 @@ import { waitForTaskState } from './test';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 import type { MediaContent } from 'conversationalist';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 import { runRowHolderId } from './assets/row-asset-claims';
 import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 import {
   alice,
   aliceAdministrator,
@@ -292,19 +290,16 @@ describe.each([
 
 describe('a task across a restart', () => {
   async function sqliteStorage() {
-    const directory = await mkdtemp(join(tmpdir(), 'bureau-sessionless-retention-'));
-    cleanups.push(async () => {
-      await rm(directory, { recursive: true, force: true });
-    });
-    return { type: 'sqlite' as const, path: join(directory, 'bureau') };
+    const database = createSqliteStorageFixture();
+    cleanups.push(() => database.dispose());
+    return database;
   }
 
   it('keeps the input asset resolvable past the floor when the process died with the run in flight, because the next boot resumes it', async () => {
     const environment = createEnvironment();
-    const storage = await sqliteStorage();
+    const database = await sqliteStorage();
     // Nothing owns the dead process's run any more, so the next boot recovers it at once.
     const durable = {
-      storage,
       durable: true,
       durableOwnership: { ownership: 'none' as const },
     };
@@ -313,7 +308,7 @@ describe('a task across a restart', () => {
     const first = await openBureau(
       environment,
       { viewer: viewer(seen, new Promise<void>(() => {})) },
-      durable,
+      { ...durable, storage: database.storage },
     );
     const image = await suppliedImage(first);
     await first.tasks.start('viewer', [image], { principal: alice.id });
@@ -323,7 +318,7 @@ describe('a task across a restart', () => {
     const second = await openBureau(
       environment,
       { viewer: viewer([], new Promise<void>(() => {})) },
-      durable,
+      { ...durable, storage: database.open() },
     );
     await second.recovery();
     const report = await pastTheFloor(environment, second);

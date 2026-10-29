@@ -14,7 +14,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createSessionInputDeliveryStore, stopWhen, createAgent } from '@lostgradient/operative';
-import { resolveStorage } from '@lostgradient/weft';
 import { textValueStore } from '@lostgradient/storage';
 import { HANG_GUARD_MILLISECONDS, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { createTool, createToolbox } from 'armorer';
@@ -29,6 +28,11 @@ import {
 import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
 import type { AgentDefinitions } from './agent-catalog';
 import { listHeldTasks } from './test';
+import {
+  createLmdbStorageFixture,
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 
 const CHILD = join(import.meta.dir, 'test', 'session-input-crash-child.ts');
 
@@ -76,13 +80,26 @@ async function runCrashingChild(
   return JSON.parse(readFileSync(markerPath, 'utf8')) as Marker;
 }
 
+/** A fixture on the child's store in `directory`, which the test opens after the child is gone. */
+function storeAt(backend: Backend, directory: string): PersistentBureauStorageFixture {
+  const path = join(directory, backend === 'sqlite' ? 'bureau.sqlite' : 'bureau-lmdb');
+  return backend === 'lmdb'
+    ? createLmdbStorageFixture({ path })
+    : createSqliteStorageFixture({ path });
+}
+
 function recoveredScenario(backend: Backend): ReturnType<typeof settleScenario> {
   return settleScenario(async (scope) => {
     const directory = mkdtempSync(join(tmpdir(), `corvidae-session-input-${backend}-`));
-    const remove = (): void => rmSync(directory, { recursive: true, force: true });
+    // The child's store, opened here only once the child is gone.
+    const store = storeAt(backend, directory);
+    const remove = async (): Promise<void> => {
+      await store.dispose();
+      rmSync(directory, { recursive: true, force: true });
+    };
     scope.onHang(remove);
     try {
-      const storagePath = join(directory, backend === 'sqlite' ? 'bureau.sqlite' : 'bureau-lmdb');
+      const storagePath = store.path;
       const { sessionId, incarnation, runId } = await runCrashingChild(
         scope,
         backend,
@@ -111,7 +128,7 @@ function recoveredScenario(backend: Backend): ReturnType<typeof settleScenario> 
             stopWhen: stopWhen.noToolCalls(),
           }),
         },
-        storage: { type: backend, path: storagePath },
+        storage: store.storage,
         durable: true,
         durableOwnership: CLAIM_OPTIONS,
       });
@@ -126,7 +143,7 @@ function recoveredScenario(backend: Backend): ReturnType<typeof settleScenario> 
       }
 
       // Both inputs are promoted, by the transcript write of the step that held them.
-      const storage = await resolveStorage({ type: backend, path: storagePath });
+      const storage = await store.reopen();
       try {
         const records = await createSessionInputDeliveryStore(
           textValueStore(storage, { disposeUnderlyingStorage: false }),
@@ -148,10 +165,10 @@ function recoveredScenario(backend: Backend): ReturnType<typeof settleScenario> 
           ['input-b', 'applied'],
         ]);
       } finally {
-        storage[Symbol.dispose]();
+        await store.dispose();
       }
     } finally {
-      remove();
+      await remove();
     }
   }, HANG_GUARD_MILLISECONDS);
 }
@@ -165,10 +182,15 @@ function recoveredScenario(backend: Backend): ReturnType<typeof settleScenario> 
 function cancelledScenario(backend: Backend): ReturnType<typeof settleScenario> {
   return settleScenario(async (scope) => {
     const directory = mkdtempSync(join(tmpdir(), `corvidae-session-input-ended-${backend}-`));
-    const remove = (): void => rmSync(directory, { recursive: true, force: true });
+    // The child's store, opened here only once the child is gone.
+    const store = storeAt(backend, directory);
+    const remove = async (): Promise<void> => {
+      await store.dispose();
+      rmSync(directory, { recursive: true, force: true });
+    };
     scope.onHang(remove);
     try {
-      const storagePath = join(directory, backend === 'sqlite' ? 'bureau.sqlite' : 'bureau-lmdb');
+      const storagePath = store.path;
       const { sessionId, incarnation } = await runCrashingChild(
         scope,
         backend,
@@ -188,7 +210,7 @@ function cancelledScenario(backend: Backend): ReturnType<typeof settleScenario> 
             stopWhen: stopWhen.noToolCalls(),
           }),
         },
-        storage: { type: backend, path: storagePath },
+        storage: store.storage,
         durable: true,
         durableOwnership: CLAIM_OPTIONS,
       });
@@ -200,7 +222,7 @@ function cancelledScenario(backend: Backend): ReturnType<typeof settleScenario> 
         await recovering.dispose();
       }
 
-      const storage = await resolveStorage({ type: backend, path: storagePath });
+      const storage = await store.reopen();
       try {
         const [receipt] = await createSessionInputMailbox(
           storage,
@@ -213,10 +235,10 @@ function cancelledScenario(backend: Backend): ReturnType<typeof settleScenario> 
         expect(receipt?.idempotencyKey).toBe('input-a');
         expect(receipt?.state).toBe('cancelled');
       } finally {
-        storage[Symbol.dispose]();
+        await store.dispose();
       }
     } finally {
-      remove();
+      await remove();
     }
   }, HANG_GUARD_MILLISECONDS);
 }

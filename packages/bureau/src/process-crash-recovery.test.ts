@@ -21,6 +21,7 @@ import { join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { stopWhen, createAgent } from '@lostgradient/operative';
+import type { Storage } from '@lostgradient/storage';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { createTool, createToolbox } from 'armorer';
 import type { Subprocess } from 'bun';
@@ -36,6 +37,11 @@ import {
 } from './test/hoisted-scenario';
 import type { Bureau } from './types';
 import { unexpectedChildStderr } from './test/child-stderr';
+import {
+  createLmdbStorageFixture,
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 import type { AgentDefinitions } from './agent-catalog';
 
 const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
@@ -74,7 +80,7 @@ interface Racer {
   readonly stepZeroCalls: () => number;
 }
 
-async function startRacer(backend: Backend, storagePath: string): Promise<Racer> {
+async function startRacer(storage: Storage): Promise<Racer> {
   let stepsAtOrAfterOne = 0;
   let stepZeroCalls = 0;
   const bureau = await createBureau<AgentDefinitions>({
@@ -89,7 +95,7 @@ async function startRacer(backend: Backend, storagePath: string): Promise<Racer>
         stopWhen: stopWhen.noToolCalls(),
       }),
     },
-    storage: { type: backend, path: storagePath },
+    storage,
     durable: true,
     durableOwnership: {
       ownership: 'workflow-lease',
@@ -123,9 +129,22 @@ async function recoveryScenario(backend: Backend, scope: ScenarioScope): Promise
   const storagePath = join(directory, 'bureau');
   const markerPath = join(directory, 'marker.json');
   const racers: Racer[] = [];
+  // One fixture per racer on the child's path, each opened only once the child is gone.
+  const storageFixtures: PersistentBureauStorageFixture[] = [];
+  const racerStorage = (): Storage => {
+    const fixture =
+      backend === 'lmdb'
+        ? createLmdbStorageFixture({ path: storagePath })
+        : createSqliteStorageFixture({ path: storagePath });
+    storageFixtures.push(fixture);
+    return fixture.storage;
+  };
+  const disposeStorage = () =>
+    Promise.allSettled(storageFixtures.map((fixture) => fixture.dispose()));
   // A hung scenario never reaches its `finally`, so what it owns is released from here.
   scope.onHang(async () => {
     await Promise.allSettled(racers.map((racer) => racer.bureau.shutdown()));
+    await disposeStorage();
     rmSync(directory, { recursive: true, force: true });
   });
 
@@ -152,8 +171,8 @@ async function recoveryScenario(backend: Backend, scope: ScenarioScope): Promise
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, CLAIM_TTL_MS * 10));
 
     const started = await Promise.allSettled([
-      startRacer(backend, storagePath),
-      startRacer(backend, storagePath),
+      startRacer(racerStorage()),
+      startRacer(racerStorage()),
     ]);
     for (const outcome of started) {
       if (outcome.status === 'fulfilled') racers.push(outcome.value);
@@ -249,6 +268,7 @@ async function recoveryScenario(backend: Backend, scope: ScenarioScope): Promise
   } finally {
     // allSettled never rejects, so the directory is always removed after both shutdowns.
     const reports = await Promise.allSettled(racers.map((racer) => racer.bureau.shutdown()));
+    await disposeStorage();
     rmSync(directory, { recursive: true, force: true });
     for (const report of reports) {
       expect(report.status).toBe('fulfilled');

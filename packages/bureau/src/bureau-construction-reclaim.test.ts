@@ -33,10 +33,24 @@ import { pollUntil } from './testing/goal-fixtures.test-support';
 import type { Bureau, BureauDiagnostic } from './types';
 import { agentFileDirectory } from './sources/agent-file-directory';
 import { workflowFileDirectory } from './sources/workflow-file-directory';
-import { createSqliteStorageFixture } from './test/storage-fixtures';
+import type { Storage } from '@lostgradient/storage';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const fixtures = createConstructionWindowFixtures();
+
+/** Storage fixtures, disposed by `afterEach` once every Bureau using them has shut down. */
+const storageFixtures: PersistentBureauStorageFixture[] = [];
+
+/** A SQLite fixture at `bureau.sqlite` in `root`, disposed by `afterEach`. */
+function sqliteStorageIn(root: string): PersistentBureauStorageFixture {
+  const fixture = createSqliteStorageFixture({ path: join(root, 'bureau.sqlite') });
+  storageFixtures.push(fixture);
+  return fixture;
+}
 
 /**
  * A Bureau under construction, with the hold that is keeping it there. A test that fails before it
@@ -70,6 +84,7 @@ afterEach(async () => {
     if (built !== undefined) bureaus.push(built);
   }
   for (const bureau of bureaus.splice(0)) await bureau.shutdown();
+  for (const fixture of storageFixtures.splice(0)) await fixture.dispose();
   await fixtures.dispose();
 });
 
@@ -103,7 +118,7 @@ function isParkedDiagnostic(entry: BureauDiagnostic, runId: string): boolean {
  * can reclaim the run.
  */
 async function startLapsedCatalogRun(
-  storagePath: string,
+  storage: Storage,
 ): Promise<{ readonly owner: Bureau<AgentDefinitions>; readonly runId: string }> {
   const started = Promise.withResolvers<void>();
   const owner = await createBureau<AgentDefinitions>({
@@ -116,7 +131,7 @@ async function startLapsedCatalogRun(
         },
       }),
     },
-    storage: { type: 'sqlite', path: storagePath },
+    storage,
     durable: true,
     maintenance: 'manual',
     durableOwnership: leaseOptions,
@@ -135,10 +150,9 @@ function writerAnswering(content: string) {
 describe('a catalog agent run reclaimed while the Bureau scans its agent files (COR-1586)', () => {
   it('resumes under its own agent once the resolver is wired, and records no error', async () => {
     const root = await fixtures.scratchDirectory('bureau-reclaim-catalog-');
-    await using storageFixture = createSqliteStorageFixture({ path: join(root, 'bureau.sqlite') });
-    const storagePath = storageFixture.path;
+    const storageFixture = sqliteStorageIn(root);
 
-    const { owner, runId } = await startLapsedCatalogRun(storagePath);
+    const { owner, runId } = await startLapsedCatalogRun(storageFixture.storage);
 
     // The successor builds with the agent file scan held, so its engine reclaims the run before
     // `createBureau` has wired the resolver.
@@ -152,7 +166,7 @@ describe('a catalog agent run reclaimed while the Bureau scans its agent files (
         },
         agentSource: agentFileDirectory(await fixtures.directoryWithOneAgentFile()),
         models: { generate: constructionWindowGenerate },
-        storage: storageFixture.storage,
+        storage: storageFixture.open(),
         durable: true,
         durableOwnership: leaseOptions,
         onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
@@ -183,7 +197,7 @@ describe('a catalog agent run reclaimed while the Bureau scans its agent files (
 describe('a named-agent session run reclaimed while the Bureau scans its agent files (COR-1586)', () => {
   it('resumes under its own agent, not the Bureau-wide one', async () => {
     const root = await fixtures.scratchDirectory('bureau-reclaim-session-');
-    await using storageFixture = createSqliteStorageFixture({ path: join(root, 'bureau.sqlite') });
+    const storageFixture = sqliteStorageIn(root);
 
     const reachedStepOne = Promise.withResolvers<void>();
     const owner = await createBureau<AgentDefinitions>({
@@ -339,7 +353,7 @@ describe('a construction that fails while a run is parked for the resolver (COR-
         agents: {},
         agentSource: agentFileDirectory(await fixtures.directoryWithOneAgentFile()),
         models: { generate: constructionWindowGenerate },
-        storage: { type: 'sqlite', path: join(root, 'bureau.sqlite') },
+        storage: sqliteStorageIn(root).storage,
         durable: true,
         maintenance: 'manual',
         observability: true,
@@ -423,9 +437,8 @@ describe('a construction that fails while a run is parked for the resolver (COR-
 describe('a Bureau whose construction fails leaves a reclaimed run resumable (COR-1586)', () => {
   it('leaves the run running under workflow-lease, and a correctly configured boot completes it', async () => {
     const root = await fixtures.scratchDirectory('bureau-reclaim-survival-');
-    await using storageFixture = createSqliteStorageFixture({ path: join(root, 'bureau.sqlite') });
-    const storagePath = storageFixture.path;
-    const { owner, runId } = await startLapsedCatalogRun(storagePath);
+    const storageFixture = sqliteStorageIn(root);
+    const { owner, runId } = await startLapsedCatalogRun(storageFixture.storage);
 
     // The composition is taken from the export `createBureau` imports, so the observability handle
     // can be wrapped.
@@ -457,7 +470,7 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
         },
         agentSource: agentFileDirectory(await fixtures.directoryWithOneAgentFile()),
         models: { generate: constructionWindowGenerate },
-        storage: storageFixture.storage,
+        storage: storageFixture.open(),
         durable: true,
         durableOwnership: leaseOptions,
         observability: true,
@@ -569,7 +582,7 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
       workflowSource: workflowFileDirectory(
         await fixtures.scratchDirectory('bureau-reclaim-workflows-'),
       ),
-      storage: { type: 'sqlite', path: join(root, 'bureau.sqlite') },
+      storage: sqliteStorageIn(root).storage,
       durable: true,
       maintenance: 'manual',
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),

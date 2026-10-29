@@ -5,7 +5,6 @@
  * binding with its conflict records. Time is the injected runtime clock.
  */
 import { createManualRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
-import { resolveStorage } from '@lostgradient/weft';
 import { textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
@@ -53,9 +52,7 @@ async function withLedger(
 ): Promise<void> {
   const runtime = createManualRuntimeServices({ origin: ORIGIN });
   const fixture = factory(runtime);
-  const storage = await resolveStorage(
-    fixture.storage as Parameters<typeof resolveStorage>[0],
-  );
+  const storage = fixture.storage;
   try {
     const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
     await body({
@@ -68,7 +65,6 @@ async function withLedger(
       setTime: (epochMilliseconds) => runtime.setTime(epochMilliseconds),
     });
   } finally {
-    storage[Symbol.dispose]();
     await fixture.dispose();
   }
 }

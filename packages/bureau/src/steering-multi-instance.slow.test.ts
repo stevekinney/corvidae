@@ -20,9 +20,13 @@ import { createBureau } from './create-bureau';
 import { readSteeringLogHead } from './steering-log';
 import type { AgentDefinitions } from './agent-catalog';
 import { awakeTurns, quietFor } from '@lostgradient/testing/wait-until';
-import { createSqliteStorageFixture } from './test/storage-fixtures';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 
-async function openBureau(path: string) {
+/** A Bureau over a new handle on `database`, as another process would open. */
+async function openBureau(database: PersistentBureauStorageFixture) {
   return createBureau<AgentDefinitions>({
     agents: {
       default: createAgent({
@@ -30,7 +34,7 @@ async function openBureau(path: string) {
         toolbox: createToolbox([]),
       }),
     },
-    storage: { type: 'sqlite', path },
+    storage: database.open(),
     durable: true,
   });
 }
@@ -41,7 +45,6 @@ describe('durable steering across two Bureau processes', () => {
     await using pathFixture = createSqliteStorageFixture({
       path: join(directory, 'bureau.sqlite'),
     });
-    const path = pathFixture.path;
     let releaseTool: (() => void) | undefined;
     const toolGate = new Promise<void>((resolve) => {
       releaseTool = resolve;
@@ -73,7 +76,7 @@ describe('durable steering across two Bureau processes', () => {
       storage: pathFixture.storage,
       durable: true,
     });
-    const bureauB = await openBureau(path);
+    const bureauB = await openBureau(pathFixture);
     try {
       const run = await bureauA.tasks.start('default', 'go', { principal: 'alice' });
       for await (const _turn of awakeTurns()) {
@@ -104,7 +107,6 @@ describe('durable steering across two Bureau processes', () => {
     await using pathFixture = createSqliteStorageFixture({
       path: join(directory, 'bureau.sqlite'),
     });
-    const path = pathFixture.path;
     let releaseTool: (() => void) | undefined;
     const toolGate = new Promise<void>((resolve) => {
       releaseTool = resolve;
@@ -137,7 +139,7 @@ describe('durable steering across two Bureau processes', () => {
       storage: pathFixture.storage,
       durable: true,
     });
-    const bureauB = await openBureau(path);
+    const bureauB = await openBureau(pathFixture);
     try {
       const run = await bureauA.tasks.start('default', 'go', { principal: 'alice' });
       for await (const _turn of awakeTurns()) {
@@ -202,7 +204,6 @@ describe('durable steering across two Bureau processes', () => {
     await using pathFixture = createSqliteStorageFixture({
       path: join(directory, 'bureau.sqlite'),
     });
-    const path = pathFixture.path;
     let releaseTool: (() => void) | undefined;
     const toolGate = new Promise<void>((resolve) => {
       releaseTool = resolve;
@@ -241,7 +242,7 @@ describe('durable steering across two Bureau processes', () => {
       storage: pathFixture.storage,
       durable: true,
     });
-    const bureauB = await openBureau(path);
+    const bureauB = await openBureau(pathFixture);
     try {
       const run = await bureauA.tasks.start('default', 'go', { principal: 'alice' });
       for await (const _turn of awakeTurns()) {

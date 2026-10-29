@@ -8,7 +8,7 @@
  * SQLite file.
  */
 import type { DurableEventEnvelope } from '@lostgradient/operative';
-import { createFleetEventFeed, resolveStorage } from '@lostgradient/weft';
+import { createFleetEventFeed } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { goalTransitionId } from './goal-state';
@@ -218,7 +218,7 @@ describe('who may read a goal history', () => {
   it('hides the retention gap from a stranger too', async () => {
     const bureau = await owned();
     // Advance the feed's retention floor so a cursor before it is genuinely a gap.
-    const storage = await resolveStorage(database.open());
+    const storage = database.open();
     cleanups.push(() => storage[Symbol.dispose]());
     await createFleetEventFeed(storage).retain({ beforeSequence: 2 });
     const options = { since: '0' };

@@ -32,6 +32,10 @@ import {
   readsDecisionRecord,
   reviewAuditEntries,
 } from './test/session-input-fixtures';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau, PendingHumanWaitReview, ResolveReviewInput } from './types';
 import { createMemoryAssetStorage } from './assets/storage';
@@ -58,16 +62,17 @@ const OWNERSHIP = {
 } as const;
 
 let directory: string;
-let path: string;
+let database: PersistentBureauStorageFixture;
 const processes: OpenedProcess[] = [];
 
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), 'corvidae-run-human-wait-multi-'));
-  path = join(directory, 'bureau.sqlite');
+  database = createSqliteStorageFixture({ path: join(directory, 'bureau.sqlite') });
 });
 
 afterEach(async () => {
   for (const opened of processes.splice(0).toReversed()) await opened.bureau.dispose();
+  await database.dispose();
   await rm(directory, { recursive: true, force: true });
 });
 
@@ -106,7 +111,7 @@ const neverGenerates: GenerateFunction = async () => {
 };
 
 async function open(seen: Seen, parks = 1): Promise<OpenedProcess> {
-  const opened = await openProcess(path, neverGenerates, {
+  const opened = await openProcess(database, neverGenerates, {
     id: 'run-human-wait-multi-instance',
     assets: { storage: createMemoryAssetStorage() },
     agents: { asker: askingAgent(seen, parks) },

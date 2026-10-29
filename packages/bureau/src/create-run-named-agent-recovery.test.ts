@@ -9,7 +9,6 @@ import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { getMessages } from 'conversationalist';
 import { z } from 'zod';
-import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
@@ -17,21 +16,23 @@ import { waitForTaskState } from './test';
 import type { Bureau } from './types';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { MemoryStorage } from '@lostgradient/storage';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 
-const databasePaths: string[] = [];
+const databases: PersistentBureauStorageFixture[] = [];
 const bureaus: Bureau<AgentDefinitions>[] = [];
 
-function nextDatabasePath(): string {
-  const path = createTemporaryPath('bureau-named-agent', '.sqlite');
-  databasePaths.push(path);
-  return path;
+function nextDatabase(): PersistentBureauStorageFixture {
+  const database = createSqliteStorageFixture();
+  databases.push(database);
+  return database;
 }
 
 afterEach(async () => {
   for (const bureau of bureaus.splice(0)) await bureau.dispose();
-  for (const path of databasePaths.splice(0)) {
-    removeTemporaryPath(path);
-  }
+  for (const database of databases.splice(0)) await database.dispose();
 });
 
 const next = createTool({
@@ -56,9 +57,9 @@ async function assistantReplies(
     .map((message) => (typeof message.content === 'string' ? message.content : ''));
 }
 
-/** A Bureau over `databasePath` whose one agent, `scribe`, answers from `generate`. */
+/** A Bureau over a new handle on `database` whose one agent, `scribe`, answers from `generate`. */
 async function bureauOver(
-  databasePath: string,
+  database: PersistentBureauStorageFixture,
   options: {
     readonly scribe?: GenerateFunction;
     readonly revision?: number;
@@ -92,7 +93,7 @@ async function bureauOver(
             if (diagnostic.level === 'warn') options.warnings?.push(diagnostic.message);
           },
         }),
-    storage: { type: 'sqlite', path: databasePath },
+    storage: database.open(),
     durable: true,
     durableOwnership: { ownership: 'none' },
   });
@@ -101,9 +102,9 @@ async function bureauOver(
 }
 
 /** Start a `scribe` run on a Bureau whose process then "dies" parked at step 1. */
-async function startRunThatDies(databasePath: string) {
+async function startRunThatDies(database: PersistentBureauStorageFixture) {
   let reachedStep1 = false;
-  const crashed = await bureauOver(databasePath, {
+  const crashed = await bureauOver(database, {
     scribe: async ({ step }) => {
       if (step === 0) {
         return { content: 'scribe step 0', toolCalls: [{ name: 'next', arguments: {} }] };
@@ -121,10 +122,10 @@ async function startRunThatDies(databasePath: string) {
 
 describe('a named session run after a restart', () => {
   it('resumes with the agent’s own script', async () => {
-    const databasePath = nextDatabasePath();
-    const run = await startRunThatDies(databasePath);
+    const database = nextDatabase();
+    const run = await startRunThatDies(database);
 
-    const restarted = await bureauOver(databasePath, {
+    const restarted = await bureauOver(database, {
       scribe: async ({ step }) => ({ content: `scribe resumed at ${step}`, toolCalls: [] }),
     });
     await pollUntil(async () => {
@@ -139,10 +140,10 @@ describe('a named session run after a restart', () => {
   });
 
   it('fails as the catalog path does when its agent has left the catalog', async () => {
-    const databasePath = nextDatabasePath();
-    const run = await startRunThatDies(databasePath);
+    const database = nextDatabase();
+    const run = await startRunThatDies(database);
 
-    const restarted = await bureauOver(databasePath, {});
+    const restarted = await bureauOver(database, {});
     await pollUntil(async () => {
       const session = await restarted.contexts.get(run.contextId);
       return session?.metadata['lastRunStatus'] !== 'running';
@@ -155,11 +156,11 @@ describe('a named session run after a restart', () => {
   });
 
   it('warns and resumes with the current definition when its revision has moved on', async () => {
-    const databasePath = nextDatabasePath();
-    const run = await startRunThatDies(databasePath);
+    const database = nextDatabase();
+    const run = await startRunThatDies(database);
 
     const warnings: string[] = [];
-    const restarted = await bureauOver(databasePath, {
+    const restarted = await bureauOver(database, {
       scribe: async () => ({ content: 'scribe, revised', toolCalls: [] }),
       revision: 2,
       warnings,
