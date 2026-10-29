@@ -37,6 +37,7 @@
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { CHAT_COPY } from '../../app/copy.ts';
+  import { useBureauEventsLive } from '../../app/live-polling.svelte.ts';
   import {
     forkContext,
     forkRefusalReason,
@@ -268,13 +269,15 @@
 
   // A decision made somewhere else (`/reviews`, a run's page, another tab) is written into the
   // conversation by the Bureau, and this page is not told. While the conversation waits on a person,
-  // the Bureau's pending reviews are read every few seconds, and when a review this page has seen
+  // the Bureau's pending reviews are read again when `bureau.events` reports a review (the shell
+  // invalidates them), and every few seconds while that feed is not live. When a review this page has seen
   // pending is no longer pending, the thread is read again. A review is decided only if it was seen
   // pending first: the list is shared with the navigation's count, so a read can predate the review
   // (a chat that has just started the run) and say nothing about a decision. Each set of decided
   // reviews is read once, and the record is cleared when nothing is decided, so the next decision
   // of the same kind is read again.
   const REREAD_POLL_MILLISECONDS = 3_000;
+  const bureauLive = useBureauEventsLive();
   const waitingOnPerson = $derived(
     !choosing &&
       !session.streaming &&
@@ -285,7 +288,7 @@
       queryKey: queryKeys.bureauReviews.list(),
       queryFn: ({ signal }) => listBureauReviews({ signal }),
       enabled: waitingOnPerson,
-      refetchInterval: REREAD_POLL_MILLISECONDS,
+      refetchInterval: bureauLive() ? false : REREAD_POLL_MILLISECONDS,
       retry: false,
     }),
     undefined,

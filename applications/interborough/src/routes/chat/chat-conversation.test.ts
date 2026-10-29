@@ -10,6 +10,12 @@ import { afterEach, beforeEach, describe, expect, jest, spyOn, test } from 'bun:
 import { quietFor } from '@lostgradient/testing/wait-until';
 import { toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import { settle, until } from '../../lib/fake-timers.test-support.ts';
+import { BureauEventSource } from '../../lib/live-source/bureau-event-source.svelte.ts';
+import {
+  envelopeChunk,
+  EventStreamHub,
+  REPLAY_COMPLETE_CHUNK,
+} from '../../lib/live-source/event-stream-hub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import ChatConversation from './chat-conversation.svelte';
 import { AGENT, bureau as bureauOf, CONTEXT, landAt } from './pages.test-support.ts';
@@ -820,6 +826,127 @@ describe('a decision made somewhere else', () => {
     await settle();
     jest.advanceTimersByTime(3_000);
     await until(() => expect(messageReads).toBeGreaterThanOrEqual(3));
+  });
+});
+
+describe('a decision made somewhere else, while the Bureau’s feed is live', () => {
+  const pendingApproval = () =>
+    toolApprovalFixture({
+      sessionId: 'session-1',
+      approval: { ...toolApprovalFixture().approval, callId: 'call-refund' },
+    });
+
+  /** A run that stops on an approval for `call-refund`. */
+  function approvalRun(url: string, init?: RequestInit): Response | undefined {
+    if (url.includes('/threads/')) {
+      return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+    }
+    if (!url.includes('/agents/')) return undefined;
+    const input: { runId: string } = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
+    return sse([
+      { type: 'RUN_STARTED', threadId: 'session-1', runId: input.runId },
+      { type: 'TOOL_CALL_START', toolCallId: 'call-refund', toolCallName: 'issue-refund' },
+      { type: 'TOOL_CALL_ARGS', toolCallId: 'call-refund', delta: '{"cents":4200}' },
+      { type: 'TOOL_CALL_END', toolCallId: 'call-refund' },
+      {
+        type: 'TOOL_CALL_RESULT',
+        messageId: 'result-1',
+        toolCallId: 'call-refund',
+        content: 'requires approval',
+        role: 'tool',
+      },
+      {
+        type: 'RUN_FINISHED',
+        threadId: 'session-1',
+        runId: input.runId,
+        outcome: {
+          type: 'interrupt',
+          interrupts: [
+            {
+              id: 'approval:native-1:call-refund',
+              reason: 'tool-approval',
+              toolCallId: 'call-refund',
+              message: 'Refund order-1001?',
+            },
+          ],
+        },
+      },
+    ]);
+  }
+
+  test('reads the reviews on no timer, and reads them and the thread once per review event', async () => {
+    const hub = new EventStreamHub();
+    let messageReads = 0;
+    let listReads = 0;
+    let decided = false;
+    restore = bureau(
+      {
+        'bureau.contexts.get': () => CONTEXT,
+        'bureau.deployment.get': () => ({ id: 'bureau-1' }),
+        'bureau.reviews.list': () => {
+          listReads += 1;
+          return { reviews: decided ? [] : [pendingApproval()] };
+        },
+      },
+      (url, init) => {
+        const feed = hub.handle(url, init);
+        if (feed !== undefined) return feed;
+        if (url.endsWith('/messages')) {
+          messageReads += 1;
+          return Response.json({ threadId: 'session-1', messages: [] });
+        }
+        return approvalRun(url, init);
+      },
+    ).restore;
+    landAt('/chat/session-1');
+    jest.useFakeTimers();
+    const bureauEvents = new BureauEventSource({ computeReconnectDelayMs: () => 1_000_000 });
+    try {
+      render(QueryPage, {
+        props: {
+          page: ChatConversation,
+          pageProps: { sessionId: 'session-1', title: 'Plan the week', agentName: 'assistant' },
+          bureauEvents,
+        },
+      } as never);
+      await until(() => expect(hub.opened('bureau')).toBe(1));
+      hub.write('bureau', REPLAY_COMPLETE_CHUNK);
+      await until(() => expect(bureauEvents.status).toBe('live'));
+      const container = document.body;
+      const box = container.querySelector('textarea');
+      if (box === null) throw new Error('The composer did not render.');
+      await fireEvent.input(box, { target: { value: 'Refund it' } });
+      await fireEvent.keyDown(box, { key: 'Enter' });
+      await until(() => expect(container.querySelector('.ib-decision')).not.toBeNull());
+      await until(() => expect(listReads).toBe(1));
+      expect(messageReads).toBe(1);
+
+      // No timer reads the reviews while the feed is live.
+      for (let poll = 0; poll < 5; poll += 1) {
+        jest.advanceTimersByTime(3_000);
+        await settle();
+      }
+      expect(listReads).toBe(1);
+      expect(messageReads).toBe(1);
+
+      // Another page decides the review; the feed says so, and the page reads once and re-reads the thread.
+      decided = true;
+      hub.write('bureau', envelopeChunk({ kind: 'review.approved', cursor: 'a:1' }));
+      await until(() => expect(listReads).toBe(2));
+      await until(() => expect(messageReads).toBeGreaterThanOrEqual(2));
+      await settle();
+      // Nothing more is read after that, with no timer to ask.
+      const threadReads = messageReads;
+      for (let poll = 0; poll < 3; poll += 1) {
+        jest.advanceTimersByTime(3_000);
+        await settle();
+      }
+      expect(listReads).toBe(2);
+      expect(messageReads).toBe(threadReads);
+    } finally {
+      bureauEvents.close();
+      hub.endAll();
+    }
   });
 });
 

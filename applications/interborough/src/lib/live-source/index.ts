@@ -13,6 +13,10 @@
  */
 export type { LiveSource, LiveSourceStatus } from './types.ts';
 
+export { BureauEventSource, type BureauEventSourceConfig } from './bureau-event-source.svelte.ts';
+
+export type { BureauEventFrame } from './bureau-event-frame.ts';
+
 export {
   FleetEventSource,
   type FleetEventFilter,

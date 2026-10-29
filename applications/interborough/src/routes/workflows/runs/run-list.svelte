@@ -35,6 +35,9 @@
   // too), so it is narrowed here instead. The rest (what started a run, how recently) the Bureau
   // cannot narrow, and are applied to what the pages hold.
   const serverStatus = $derived(filter.status === 'working' ? undefined : filter.status);
+  // The three queries below are polled until COR-1730 (COR-1725 removes these polls): a catalog
+  // run's settlement is published as `run.settled` but emits no `run.removed`, and its registration
+  // and actions are not published, so `bureau.events` cannot say when this list changes.
   const tasks = createInfiniteQuery(
     () => ({
       queryKey: ['bureau-tasks', 'runs', serverStatus ?? '', filter.agent ?? ''] as const,

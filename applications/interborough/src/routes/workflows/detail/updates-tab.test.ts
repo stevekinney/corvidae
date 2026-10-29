@@ -6,6 +6,14 @@ import { HttpClientError, type WorkflowState } from '@lostgradient/weft';
 import { QueryClient } from '@tanstack/svelte-query';
 
 import { RUN_DETAIL_COPY } from '../../../app/copy.ts';
+import { settle as settleIo, until } from '../../../lib/fake-timers.test-support.ts';
+import {
+  envelopeChunk,
+  EventStreamHub,
+  REPLAY_COMPLETE_CHUNK,
+} from '../../../lib/live-source/event-stream-hub.test-support.ts';
+import { installFetchImplementation } from '../../../lib/live-source/fetch.test-support.ts';
+import { FleetEventSource } from '../../../lib/live-source/fleet-event-source.svelte.ts';
 import UpdatesTabHarness from './updates-tab.test-harness.svelte';
 import type { UpdateHistoryEntry } from './updates/updates-data.ts';
 
@@ -135,6 +143,7 @@ function renderTab(
     canSend?: boolean;
     status?: WorkflowState['status'];
     queryClient?: QueryClient;
+    fleetEvents?: FleetEventSource;
   } = {},
 ) {
   return render(UpdatesTabHarness, {
@@ -143,6 +152,7 @@ function renderTab(
       workflow: workflow({ status: props.status ?? 'running' }),
       canSend: props.canSend ?? true,
       ...(props.queryClient === undefined ? {} : { queryClient: props.queryClient }),
+      ...(props.fleetEvents === undefined ? {} : { fleetEvents: props.fleetEvents }),
     },
   });
 }
@@ -568,6 +578,57 @@ describe('UpdatesTab timed-out submissions', () => {
     jest.advanceTimersByTime(20_000);
     await settle();
     expect(server.calls.list).toHaveLength(settled);
+  });
+
+  test('does not poll while the fleet feed is live, and reads the history once per update frame of the run', async () => {
+    jest.useFakeTimers();
+    const hub = new EventStreamHub();
+    const restoreFetch = installFetchImplementation(async (input, init) => {
+      return hub.handle(input, init) ?? new Response('Not found', { status: 404 });
+    });
+    const fleetEvents = new FleetEventSource({
+      baseUrl: '',
+      computeReconnectDelayMs: () => 1_000_000,
+    });
+    try {
+      const server = fakeServer([pendingEntry({ updateId: 'u-1' })]);
+      renderTab(server, { status: 'running', fleetEvents });
+      await settleIo();
+      expect(server.calls.list).toHaveLength(1);
+
+      // Not live yet: the timer is what keeps the history current.
+      jest.advanceTimersByTime(2_000);
+      await settleIo();
+      expect(server.calls.list).toHaveLength(2);
+
+      hub.write('fleet', REPLAY_COMPLETE_CHUNK);
+      await until(() => expect(fleetEvents.status).toBe('live'));
+      await settleIo();
+      const live = server.calls.list.length;
+      for (let tick = 0; tick < 5; tick += 1) {
+        jest.advanceTimersByTime(2_000);
+        await settleIo();
+      }
+      expect(server.calls.list).toHaveLength(live);
+
+      hub.write(
+        'fleet',
+        envelopeChunk({ kind: 'update:completed', cursor: '1', workflowId: 'wf_other' }),
+      );
+      await settleIo();
+      expect(server.calls.list).toHaveLength(live);
+
+      for (const [index, kind] of ['update:received', 'update:completed'].entries()) {
+        hub.write('fleet', envelopeChunk({ kind, cursor: `${index + 2}`, workflowId: 'wf_1' }));
+        await until(() => expect(server.calls.list).toHaveLength(live + index + 1));
+      }
+      await settleIo();
+      expect(server.calls.list).toHaveLength(live + 2);
+    } finally {
+      fleetEvents.close();
+      hub.endAll();
+      restoreFetch();
+    }
   });
 
   test('does not poll a run that has ended', async () => {

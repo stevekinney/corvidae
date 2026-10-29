@@ -12,8 +12,8 @@ import type { HttpClient } from '@lostgradient/weft';
 
 import { quietFor } from '@lostgradient/testing/wait-until';
 import {
+  applyFleetEventFrame,
   applyScheduleFleetFrame,
-  subscribeScheduleInvalidation,
 } from '../../lib/live-source/cache-integration.ts';
 import type { FleetEventFrame } from '../../lib/live-source/fleet-event-source.svelte.ts';
 import ScheduleLastFireHarness from './schedule-last-fire-test-harness.test-harness.svelte';
@@ -64,27 +64,18 @@ describe('ScheduleLastFire as the schedule fires again', () => {
     expect(container.querySelector('[aria-label="last run succeeded"]')).not.toBeNull();
 
     // The same wiring the shell makes: one subscription, applying each frame to the query cache.
-    let deliver: ((next: FleetEventFrame) => void) | undefined;
-    subscribeScheduleInvalidation(
-      {
-        subscribe(listener) {
-          deliver = listener;
-          return () => undefined;
-        },
-      },
-      queryClient!,
-    );
+    const deliver = (next: FleetEventFrame) => applyFleetEventFrame(queryClient!, next);
 
     // It fires again: the new run is going, so how it ended is not known yet, and the success of
     // the one before it is no longer the answer.
     history.runs = [run('run-2', 'running', 2_000), run('run-1', 'completed', 1_000)];
     await rerender({ lastFireAt: 2_000 });
-    deliver?.(frame('schedule:fired', 'run-2'));
+    deliver(frame('schedule:fired', 'run-2'));
     await waitFor(() => expect(outcome()).toBe('unknown'));
 
     // The run fails: the glyph changes from success to failure.
     history.runs = [run('run-2', 'failed', 2_000), run('run-1', 'completed', 1_000)];
-    deliver?.(frame('workflow:failed', 'run-2'));
+    deliver(frame('workflow:failed', 'run-2'));
     await waitFor(() => expect(outcome()).toBe('failed'));
     expect(container.querySelector('[aria-label="last run did not succeed"]')).not.toBeNull();
   });

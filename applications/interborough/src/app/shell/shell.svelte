@@ -19,12 +19,15 @@
   import { MediaQuery } from 'svelte/reactivity';
 
   import { provideClient } from '../../lib/client.ts';
-  import { subscribeScheduleInvalidation } from '../../lib/live-source/cache-integration.ts';
+  import { BureauEventSource } from '../../lib/live-source/bureau-event-source.svelte.ts';
   import { stepChord } from '../../lib/navigation-shortcuts.ts';
   import { router } from '../../lib/router.svelte.ts';
   import type { Principal } from '../../lib/scopes.svelte.ts';
   import { providePrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
+  import { subscribeBureauInvalidation } from '../bureau-event-queries.ts';
   import { EngineStatusController, provideFleetEventSource } from '../engine-status.svelte.ts';
+  import { connectFleetInvalidation } from '../fleet-invalidation.svelte.ts';
+  import { provideBureauEventSource } from '../live-polling.svelte.ts';
   import { connectNotificationFeed } from '../notification-feed.svelte.ts';
   import { NotificationStore } from '../notifications.svelte.ts';
   import { subscribeTaskEvidenceInvalidation } from '../task-event-queries.ts';
@@ -73,8 +76,16 @@
   // route components instead of each opening its own.
   provideFleetEventSource(engineStatus.fleetSource);
 
+  // The Bureau's own feed (`bureau.events`): the one connection the Bureau's views follow instead of
+  // asking again on a timer. Provided before anything below reads it.
+  const bureauEvents = new BureauEventSource();
+  provideBureauEventSource(bureauEvents);
+
   $effect(() => {
-    return () => engineStatus.dispose();
+    return () => {
+      engineStatus.dispose();
+      bureauEvents.close();
+    };
   });
 
   // A host problem is named in the bell as well as by the status dot: the dot turns red or amber,
@@ -117,9 +128,11 @@
   // Dashboard's alerts without a manual refresh. This rides the one shared fleet subscription.
   const queryClient = useQueryClient();
   $effect(() => subscribeTaskEvidenceInvalidation(engineStatus.fleetSource, queryClient));
-  // A schedule that fires, and the run it launches settling, refresh what every schedule view shows
-  // of its last run, on whichever page is open.
-  $effect(() => subscribeScheduleInvalidation(engineStatus.fleetSource, queryClient));
+  // The engine's feed, applied for every page: a schedule that fires and the run it launches
+  // settling, a review requested or decided, a worker connecting, a run's update answered.
+  connectFleetInvalidation(engineStatus.fleetSource, queryClient);
+  // The Bureau's feed, applied for every page: a review requested or decided, a run settling.
+  $effect(() => subscribeBureauInvalidation(bureauEvents, queryClient));
 
   /**
    * `collapsed` doubles as "drawer closed" once Cinder's `Sidebar` switches
