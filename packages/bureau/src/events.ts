@@ -456,8 +456,8 @@ export class GoalLifecycleEvent extends Event {
     super(kind);
     const payload: Record<string, unknown> = {};
     for (const field of GOAL_EVENT_FIELDS[kind]) {
-      const value =
-        field === 'validatorError' ? validatorErrorFields(recorded[field]) : recorded[field];
+      const held = Object.hasOwn(recorded, field) ? recorded[field] : undefined;
+      const value = field === 'validatorError' ? validatorErrorFields(held) : held;
       if (value !== undefined) payload[field] = value;
     }
     this.goalRunId = String(recorded['goalRunId']);
