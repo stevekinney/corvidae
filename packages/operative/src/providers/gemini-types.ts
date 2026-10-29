@@ -241,7 +241,7 @@ export interface GeminiProviderOptions extends BaseProviderOptions {
    * ## Naming and exclusivity
    *
    * Named after the SDK's own `GenerateContentConfig.cachedContent` field
-   * rather than after anything on {@link AnthropicProviderOptions}, because
+   * rather than after anything on `AnthropicProviderOptions`, because
    * there is no Anthropic analog to rename it to: Anthropic's prompt cache is
    * an unnamed, per-request `cache_control` breakpoint with no handle, while
    * Gemini's is an explicitly-created server resource addressed by its
@@ -280,7 +280,7 @@ export interface GeminiProviderOptions extends BaseProviderOptions {
    * detected from the rejection and rebuilt once for that request.
    *
    * Same name, same type, and the same `assembler && contextBudget`
-   * engagement condition as {@link AnthropicProviderOptions.assembler} — the
+   * engagement condition as `AnthropicProviderOptions.assembler` — the
    * concept genuinely matches, so the name does too. What differs is the
    * lowering: `toGeminiMessages` documents `cacheBoundary` as a wire-level
    * no-op for Gemini, because Gemini has no per-message annotation to lower it
@@ -298,7 +298,7 @@ export interface GeminiProviderOptions extends BaseProviderOptions {
    * `config.ttl`; when omitted, Gemini applies its own server-side default.
    *
    * The deliberate divergence from
-   * {@link AnthropicProviderOptions.extendedCacheTtl}: that option is a
+   * `AnthropicProviderOptions.extendedCacheTtl`: that option is a
    * boolean because Anthropic offers exactly two fixed lifetimes (5 minutes,
    * or 1 hour) for an annotation on a request that is about to be sent
    * anyway. Gemini's TTL is an arbitrary duration on a standalone resource

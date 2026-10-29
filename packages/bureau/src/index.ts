@@ -461,31 +461,17 @@ export {
   selectAuditWriteFaultTarget,
   selectWebhookDeliveryFaultTarget,
 } from './test/fault-plan';
-export type {
-  BureauHarnessCapability,
-  BureauTestHarness,
-  BureauTestHarnessOptions,
-  DurableRunRegistration,
-} from './test/harness';
-export { BureauHarnessUnsupportedError, createBureauTestHarness } from './test/harness';
-// COR-89 — `createBureauTestHarness` takes a `ManualRuntimeServices`, so the
-// factory that builds one is reachable from this package too. The source
-// owner is the private @lostgradient/lifecycle workspace, which is inlined
-// here rather than installed; re-exporting it (as @lostgradient/operative
-// does) spares a consumer any direct dependency on lifecycle.
+// COR-89 — `BureauOptions.runtime` takes a `RuntimeServices`, and a test
+// drives a Bureau by passing a `ManualRuntimeServices`, so the factory that
+// builds one is reachable from this package too. The source owner is the
+// private @lostgradient/lifecycle workspace, which is inlined here rather
+// than installed; re-exporting it (as @lostgradient/operative does) spares a
+// consumer any direct dependency on lifecycle.
 export { createManualRuntimeServices } from '@lostgradient/lifecycle';
 export type {
   CreateManualRuntimeServicesOptions,
   ManualRuntimeServices,
 } from '@lostgradient/lifecycle';
-export type { BureauIncompleteWork, BureauQuiescenceReport } from './test/quiescence';
-export { assertBureauQuiescent, BureauQuiescenceError } from './test/quiescence';
-export type {
-  AssembleReproductionArtifactOptions,
-  ReproductionArtifact,
-  ReproductionArtifactEnvironment,
-} from './test/reproduction-artifact';
-export { assembleReproductionArtifact, locateWorkspaceRoot } from './test/reproduction-artifact';
 export type {
   AbortingRun,
   Bureau,

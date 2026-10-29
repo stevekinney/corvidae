@@ -45,6 +45,8 @@
         "@lostgradient/markdown": "workspace:*",
         "@lostgradient/memory": "workspace:*",
         "@lostgradient/operative": "workspace:*",
+        "@lostgradient/operative-anthropic": "workspace:*",
+        "@lostgradient/operative-openai": "workspace:*",
         "@lostgradient/storage": "workspace:*",
         "@lostgradient/storage-bun-sqlite": "workspace:*",
         "@lostgradient/storage-indexeddb": "workspace:*",
@@ -435,7 +437,6 @@
     "packages/operative": {
       "name": "@lostgradient/operative",
       "dependencies": {
-        "@anthropic-ai/sdk": "catalog:",
         "@google/genai": "catalog:",
         "@lostgradient/cryptography": "workspace:*",
         "@lostgradient/environmentalist": "catalog:",
@@ -447,7 +448,6 @@
         "ajv": "catalog:",
         "armorer": "workspace:*",
         "conversationalist": "workspace:*",
-        "openai": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {
@@ -469,6 +469,42 @@
         "@tanstack/ai",
         "@tanstack/ai-typesafe",
       ],
+    },
+    "packages/operative-anthropic": {
+      "name": "@lostgradient/operative-anthropic",
+      "dependencies": {
+        "@anthropic-ai/sdk": "catalog:",
+        "@lostgradient/operative": "workspace:*",
+        "armorer": "workspace:*",
+        "conversationalist": "workspace:*",
+      },
+      "devDependencies": {
+        "@lostgradient/lifecycle": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+        "zod": "catalog:",
+      },
+    },
+    "packages/operative-openai": {
+      "name": "@lostgradient/operative-openai",
+      "dependencies": {
+        "@lostgradient/operative": "workspace:*",
+        "armorer": "workspace:*",
+        "conversationalist": "workspace:*",
+        "openai": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/lifecycle": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+        "zod": "catalog:",
+      },
     },
     "packages/storage": {
       "name": "@lostgradient/storage",
@@ -1004,6 +1040,10 @@
     "@lostgradient/memory": ["@lostgradient/memory@workspace:packages/memory"],
 
     "@lostgradient/operative": ["@lostgradient/operative@workspace:packages/operative"],
+
+    "@lostgradient/operative-anthropic": ["@lostgradient/operative-anthropic@workspace:packages/operative-anthropic"],
+
+    "@lostgradient/operative-openai": ["@lostgradient/operative-openai@workspace:packages/operative-openai"],
 
     "@lostgradient/playground": ["@lostgradient/playground@workspace:applications/playground"],
 

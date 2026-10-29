@@ -1,0 +1,33 @@
+{
+  "name": "@lostgradient/operative-openai",
+  "private": true,
+  "description": "The OpenAI model provider for Operative: a lazy-loading generate function for the Chat Completions API and any OpenAI-compatible endpoint, streaming, batches, the embedder, and the test doubles that exercise them.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json && bun ../../scripts/check-inherited-key-reads.ts && bun ../../scripts/check-documentation-coverage.ts",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
+    "types": "tsc -b tsconfig.source.json",
+    "typecheck": "tsc -b tsconfig.json && bun run typecheck:documentation",
+    "typecheck:documentation": "bun ../../scripts/check-documentation-code-blocks.ts",
+    "test": "bun ../../scripts/bun-test-junit.ts"
+  },
+  "dependencies": {
+    "openai": "catalog:",
+    "@lostgradient/operative": "workspace:*",
+    "armorer": "workspace:*",
+    "conversationalist": "workspace:*"
+  },
+  "devDependencies": {
+    "@lostgradient/lifecycle": "workspace:*",
+    "@lostgradient/testing": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
+    "@types/bun": "catalog:",
+    "oxlint": "catalog:",
+    "typescript": "catalog:",
+    "zod": "catalog:"
+  }
+}

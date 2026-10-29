@@ -19,6 +19,8 @@ const verificationLibraries = ['testing', 'evaluation'];
 const libraries = [
   'bureau',
   'operative',
+  'operative-anthropic',
+  'operative-openai',
   'armorer',
   'conversationalist',
   'memory',
@@ -57,6 +59,8 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/editor',
   '@lostgradient/markdown',
   '@lostgradient/operative',
+  '@lostgradient/operative-anthropic',
+  '@lostgradient/operative-openai',
   '@lostgradient/cryptography',
   '@lostgradient/evaluation',
   '@lostgradient/lifecycle',

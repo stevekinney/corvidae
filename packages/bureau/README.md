@@ -54,9 +54,6 @@ Declare `"@lostgradient/bureau": "workspace:*"` in the consuming workspace's dep
   - [Workflow files](#workflow-files)
   - [`createSupervisor` and `createAgentDiscoveryTool`](#createsupervisor-and-createagentdiscoverytool)
 - [Test utilities](#test-utilities)
-  - [`createBureauTestHarness(options)`](#createbureautestharnessoptions)
-  - [Quiescence report and `close()`](#quiescence-report-and-close)
-  - [`assembleReproductionArtifact(harness, recorder, options)`](#assemblereproductionartifactharness-recorder-options)
   - [Bureau-scoped fault-plan vocabulary and selectors](#bureau-scoped-fault-plan-vocabulary-and-selectors)
 - [Development](#development)
 
@@ -371,7 +368,7 @@ The Bureau also has four operations of its own, described under [The Bureau's ow
 | `recovery()`, `maintain(now?)`, `ownerOf(resource)`, `frames(listener)` | Wait for boot recovery, run a maintenance pass, look up an owner of record, and subscribe to live frames. |
 | `addEventListener`, `on`, `once`, `subscribe`, `toObservable`, `events` | The typed `BureauEventMap` surface for actions, run registration, committed settlement, and deletion, disposal, schedule lifecycle and missed occurrences, recovery decisions, non-pending review transitions, goal transitions, upload and purge asset events, agent and workflow file changes, task cleanup acknowledgements, governed memory notifications, and diagnostics. |
 | `shutdown(options?)`, `dispose()` | The awaited drain, and its `Promise<void>` wrapper. |
-| `internals` | The seam `createBureauHandler` and the test harness read. Not part of the surface an application builds on. |
+| `internals` | The seam `createBureauHandler` and Bureau's own test harness read. Not part of the surface an application builds on. |
 
 `BureauEventMap` events for schedules carry the fired `runId`, recovery events carry the classification verdict or rejection reason, and review events carry identifiers and status metadata but never approval arguments, signal payloads, or decision reasons.
 
@@ -387,7 +384,7 @@ COR-1721 adds six families and COR-1723 a seventh, each published on `bureau.eve
 
 `shutdown(options?)` is the awaited drain. `{ policy: 'abort' }` (the default) aborts every active run immediately, then awaits every Bureau-owned subsystem's teardown (online evaluations, the webhook notifier, the audit trail, the durable engine). `{ policy: 'drain' }` lets every task reach its own terminal result while Bureau-owned background work stops as it does under `'abort'`. `timeoutMilliseconds` bounds the wait only: on elapse, `shutdown()` resolves (it never rejects) and reports every still-outstanding owner as `'unresolved'`, and the underlying drain carries on. `dispose()` is a thin wrapper over `shutdown({ policy: 'abort' })` that keeps its `Promise<void>` shape. Both are safe to call more than once: the second call returns the same, already-settled promise rather than re-running teardown.
 
-The bounded wait always sleeps on the Bureau's own `RuntimeServices.timers`, never on a real timer. Under a real-globals runtime that is invisible. Under a `ManualRuntimeServices` nothing advances that timer on its own, so the caller advances the clock (`runtime.advance(timeoutMilliseconds)`) far enough for a bounded `shutdown()` to resolve, exactly as it does for any other timer-driven behavior. The one built-in exception is `BureauTestHarness.close(shutdownOptions)`, which advances the clock itself; see [Quiescence report and `close()`](#quiescence-report-and-close).
+The bounded wait always sleeps on the Bureau's own `RuntimeServices.timers`, never on a real timer. Under a real-globals runtime that is invisible. Under a `ManualRuntimeServices` nothing advances that timer on its own, so the caller advances the clock (`runtime.advance(timeoutMilliseconds)`) far enough for a bounded `shutdown()` to resolve, exactly as it does for any other timer-driven behavior.
 
 ### The Bureau's own operations
 
@@ -863,7 +860,7 @@ The ledger keys each entry on `(principal, agentName, commandId, operationVersio
 
 Once the window has passed, `bureau.tasks.receipt({ principal, agentName?, contextId?, commandId })` reports `{ status: 'expired', requestId, expiredAt }`, and the same request id creates a new run as a fresh attempt, whatever its payload. The new claim replaces the expired entry and deletes its conflict records in the same compare-and-swap. Until then, those conflict records are ignored, because the binding they conflicted with no longer holds. Durable maintenance deletes expired bindings and their conflict records: `maintain()` on a `'manual'` host, and the bureau's own maintenance interval under the default `'automatic'` profile. A query for a pruned binding reports `not-found`. A request is keyed under the agent its run is, so a run that omitted `agentName` on a session bound to `alpha` is keyed under `alpha`, and a retry that spells `alpha` is the same command; name the context with `contextId` to look the command up without knowing the agent. Before expiry, the query reports `recorded` with the original receipt, or `pending` for a claim with no started run. Like a retry, a query that finds the claimed run started records its receipt.
 
-`run-creation-fault-points.test.ts` covers the crash-before-claim, after-claim, after-work-start, after-effect-before-ack, and during-cancellation fault points over both SQLite and LMDB. Session-input admission, schedule mutation, review resolution, and cancellation do not use this ledger yet.
+`run-creation-fault-points.slow.test.ts` covers the crash-before-claim, after-claim, after-work-start, after-effect-before-ack, and during-cancellation fault points over both SQLite and LMDB. Session-input admission, schedule mutation, review resolution, and cancellation do not use this ledger yet.
 
 ### The Durable Event History Store
 
@@ -1561,7 +1558,7 @@ A goal's audit events are recorded in the durable event history under a `goal` o
 
 `close` is for a goal that has ended. It sets `closedAt` once and answers with the truthful cleanup acknowledgement for the checkpoint history of the controller workflow and of every attempt's run under the bureau's `retention.checkpoints`, the least favorable of them: `not-required` when the policy keeps everything or the goal never had a workflow, `completed` once pruned, `unresolved` or `failed` when any could not be. Attempt histories are pruned here, not as each attempt ends, because the goal reads an ended attempt's checkpoint until it is terminal. Calling it again retries the cleanup. A `canceled` goal is closed only once the same read-back `cancel` answers from finds its controller, finalizer, and attempt run ended: until then `close` answers `cancellation-pending` with `awaiting` and leaves `closedAt` unset, because a closed goal leaves the boot sweep and nothing would be left to finish it.
 
-Not supported: `retry-now`, pause and resume, goals on an ephemeral bureau (`create` answers `durable-unavailable`), and the Bureau test harness's `startManagedGoal`.
+Not supported: `retry-now`, pause and resume, and goals on an ephemeral bureau (`create` answers `durable-unavailable`).
 
 ### Multimodal content and managed assets
 
@@ -1988,145 +1985,11 @@ const discoveryTool = createAgentDiscoveryTool(bureau.agents);
 ## Test utilities
 
 ```typescript
-import { createBureau, createBureauTestHarness } from '@lostgradient/bureau';
+import { createBureau, createManualRuntimeServices } from '@lostgradient/bureau';
 import { waitForCondition, waitForRunState } from '@lostgradient/operative';
 ```
 
-`createBureau` and the Bureau-specific harnesses come from the package root. `waitForCondition` and `waitForRunState` stay Operative test helpers, because they observe Operative-owned runs and state.
-
-### `createBureauTestHarness(options)`
-
-`createBureauTestHarness` composes a real `Bureau` over an injected `ManualRuntimeServices` (`options.runtime`, which defaults to a fresh one) and an owned storage fixture (`options.storage`, required: a `BureauTestHarnessOptions['storage']`). Bureau's own tests build that fixture from `src/test/storage-fixtures.ts`, which the package entry does not export. The returned promise resolves once boot recovery has completed. Every other `BureauOptions` field passes through unchanged. `createManualRuntimeServices` and the `ManualRuntimeServices` type are re-exported from `@lostgradient/bureau` and `@lostgradient/operative`. Their source owner, `@lostgradient/lifecycle`, is a private workspace inlined into both, so a consumer never imports it directly.
-
-```typescript
-import { createAgent, type GenerateFunction } from '@lostgradient/operative';
-import {
-  createBureauTestHarness,
-  createManualRuntimeServices,
-  type BureauTestHarnessOptions,
-} from '@lostgradient/bureau';
-
-declare const myGenerate: GenerateFunction;
-declare const storage: BureauTestHarnessOptions['storage'];
-
-const runtime = createManualRuntimeServices();
-
-const harness = await createBureauTestHarness({
-  agents: { worker: createAgent({ generate: myGenerate }) },
-  runtime,
-  storage,
-});
-
-const run = await harness.startTask({ agentName: 'worker', input: 'hello' });
-await run.result();
-
-await harness.bureau.dispose();
-await storage.dispose();
-```
-
-The harness exposes `bureau`, `runtime`, `storage`, `scope`, and `childRegistry` directly, plus thin drivers over the public `Bureau` members: `startTask` (`bureau.tasks.start`, and registers the held run onto `scope`), `startChild` (dispatches through `bureau.agents` and operative's public `dispatchChildRun`, correlated to a caller-supplied `parentRunId` and registered into `childRegistry` unless `options.registry` overrides it), `createRecurringSchedule` (`bureau.schedules.create`), `resolveReview` (`bureau.reviews.resolve`), `deliverSignal` (`bureau.contexts.signal`), and `reattachDurable` (`bureau.tasks.workflow`). None of them reach a private map or a raw Weft workflow handle.
-
-`harness.supports(capability)` reports `false` for `'managed-goal'`, a product surface this baseline doesn't have yet. `harness.startManagedGoal()` throws a typed `BureauHarnessUnsupportedError` naming the owning issues instead of silently doing nothing.
-
-Two harnesses built independently in one process, each with its own `runtime` and `storage`, share no state: their clocks, timers, identifier sequences, storage paths, and events are fully isolated.
-
-`harness.registerDurableRun(runId, { detached? })` and `harness.close()` feed the quiescence report described next.
-
-### Quiescence report and `close()`
-
-```typescript
-import { assertBureauQuiescent, BureauQuiescenceError } from '@lostgradient/bureau';
-```
-
-`harness.close(shutdownOptions?): Promise<BureauQuiescenceReport>` calls `bureau.shutdown(shutdownOptions)` through `assertBureauQuiescent(harness, shutdownOptions)`, disposes `harness.storage`, and resolves with the report. It rejects with a `BureauQuiescenceError` (whose `.report` carries the structured detail) when anything Bureau owns was not quiescent. It never substitutes `bureau.dispose()` for `shutdown()`, and it is idempotent: a second call returns the same settled outcome without shutting down twice, and ignores its own `shutdownOptions`, as `bureau.shutdown()` does.
-
-The bounded wait in `shutdown({ timeoutMilliseconds })` sleeps on the Bureau's own `RuntimeServices.timers` and never falls back to a real timer under a `ManualRuntimeServices`, so nothing advances it on its own. A plain `bureau.shutdown({ timeoutMilliseconds })` against a manually driven Bureau leaves the clock to the caller (`runtime.advance(timeoutMilliseconds)`), as for any other timer-driven behavior. `harness.close(shutdownOptions)` is the one exception: when `shutdownOptions.timeoutMilliseconds` is set, the harness advances its own `ManualRuntimeServices` by that many milliseconds once `bureau.shutdown()` has armed the timer. A test calling `harness.close({ policy: 'drain', timeoutMilliseconds })` against a hung owner therefore observes a bounded drain resolve, with the hung work reported under `incomplete`, without a real wall-clock wait.
-
-`BureauQuiescenceReport` extends `@lostgradient/operative`'s `QuiescenceReport` (`scope`, `quiescent`, `leaked`, `detached`) with nine Bureau-owned `readonly LeakedResource[]` rows. `activeRoots` and `activeDescendants` come from `harness.scope` and `harness.childRegistry`, `pendingWebhookDeliveries` from `bureau.internals.webhookNotifier.listDeliveries()` (status `'pending'`), and `durableAttempts` from `bureau.tasks.workflow` for every id registered through `harness.registerDurableRun`, when non-terminal and not detached. `parkedWaits` and `pendingHookEffects` stay empty, because no public per-signal-wait listing or hook-effect tracking surface exists yet.
-
-A tenth row, `abortingRuns`, is a `readonly { runId: string; since: number }[]` sourced from `bureau.internals.abortingTasks()`. It lists the runs a task's cancellation asked to abort and that have not closed, and `since` is the `RuntimeServices.clock.now()` timestamp of the first request. Unlike the nine rows above, a non-empty `abortingRuns` folds into `quiescent` directly (`quiescent = leaked.length === 0 && abortingRuns.length === 0`) rather than through `leaked`: a run whose `ActiveRun.closed()` never settles after its cancellation stays listed for the life of the process, which is exactly the leak this row exists to surface. `BureauQuiescenceError`'s message names each entry under an `abortingRuns:` heading when the report is non-quiescent for this reason.
-
-Of the nine, `activeEvaluations`, `pendingAuditWrites`, and `openStorageResources` read empty on the common path, because nothing survives an unbounded `bureau.shutdown()`, which awaits each owner's real drain. They populate once a fault plan forces a genuine leftover past a bounded `shutdown({ timeoutMilliseconds })`. `activeEvaluations` comes from `bureau.internals.onlineEvalSampler.activeEvaluationSnapshots()`, `pendingAuditWrites` from `harness.runtime.outstandingDeferred()` filtered to the `'audit-write'` label, and `openStorageResources` from the memory storage fixture's own call accounting (`openHandles()`; the sqlite and lmdb fixtures never open a handle of their own, so theirs always reads `[]`). The first two are read after `bureau.shutdown()` returns but are never folded into `leaked`: the owner each names (`online-evals`, `audit-trail`) is already reported under `incomplete` when a bounded `shutdown()` times out on it, and promoting the same fact into `leaked` would report it twice. `openStorageResources` is folded into `leaked`, because nothing in `bureau.shutdown()`'s owner accounting shadows a lingering low-level storage call. `incomplete` carries any owner `shutdown({ timeoutMilliseconds })` classified `'unresolved'`, reported distinctly from `leaked`.
-
-```typescript
-import type { BureauTestHarness } from '@lostgradient/bureau';
-
-declare const harness: BureauTestHarness;
-declare const summary: { id: string };
-
-harness.registerDurableRun(summary.id, { detached: true });
-const report = await harness.close();
-report.detached; // [{ kind: 'durable-owner', id: summary.id }]—not a leak
-```
-
-A durable run registered with `detached: true` is recorded under `detached`, never under a leak row. That is a deliberate, recorded outcome, not a way to hide a leak.
-
-### `assembleReproductionArtifact(harness, recorder, options)`
-
-`assembleReproductionArtifact` builds on a `harness` already constructed with `createBureauTestHarness`:
-
-```typescript
-import { createEventRecorder } from '@lostgradient/operative';
-import { assembleReproductionArtifact, type BureauTestHarness } from '@lostgradient/bureau';
-import type { StandaloneAgent } from '@lostgradient/operative';
-
-declare const harness: BureauTestHarness<{ worker: StandaloneAgent }>;
-
-const recorder = createEventRecorder(harness.runtime);
-const run = await harness.startTask({ agentName: 'worker', input: 'hello' });
-recorder.attachIterable(run, { kind: 'run', id: 'worker-run' });
-
-const terminalResult = await run.result();
-const held = harness.bureau.internals.store.getRun(run.id);
-if (held === undefined) throw new Error('the task is no longer held');
-const cleanupReport = await held.activeRun.closed();
-await harness.runtime.deferred.drain();
-
-const artifact = await assembleReproductionArtifact(harness, recorder, {
-  effectiveModel: { provider: 'anthropic', model: 'claude-sonnet-4.5' },
-  terminalResult,
-  cleanupReport,
-});
-```
-
-The result is `@lostgradient/operative`'s canonical `ReproductionArtifact`, instantiated with Bureau's own `cleanupReport` union (`CleanupAcknowledgement | DeferredDrainReport | BureauShutdownReport`), since Bureau can import that shared shape from Operative but never the reverse. It assembles one harness run into these fields:
-
-- **`sourceRevision`**: `git rev-parse HEAD`, read once.
-- **`packageVersions`**: every workspace package's `name` and `version`, read from its `package.json`.
-- **`effectiveModel`**: named by the caller in `options`, because no Bureau-wide provider holds one; every run belongs to a catalog agent that owns its model.
-- **`clockOrigin`, `identifierSeed`, `randomSeed`**: `harness.runtime`'s own recorded seeds, present even for an unpinned, default-constructed runtime.
-- **`scriptedOutcomes`, `firedFaults`**: always empty until a fault engine executes a plan.
-- **`causalTrace`**: `recorder.normalize()` and nothing else.
-- **`terminalResult`, `cleanupReport`**: the run's result and its cleanup report.
-
-`terminalResult` is redacted through `summarizeToolInput` before embedding, so a privileged key (`password`, `secret`, `token`, `apiKey`, `authorization`, `credential`, `privateKey`) never appears in the serialized artifact. The returned object's keys are always written in a fixed order, so `JSON.stringify` is byte-identical across two runs of the same scripted case with the same seeds.
-
-An optional fourth `environment` argument, `{ sourceRevision?, packageVersions? }`, replaces the function's own discovery for each field you supply. The defaults (`git rev-parse HEAD` and a glob of the `packages/*` manifests) assume a real repository checkout, which a packed and path-installed consumer doesn't have. Omitted fields still discover normally.
-
-```typescript
-import {
-  assembleReproductionArtifact,
-  type AssembleReproductionArtifactOptions,
-  type BureauTestHarness,
-} from '@lostgradient/bureau';
-import type { EventRecorder, StandaloneAgent } from '@lostgradient/operative';
-
-declare const harness: BureauTestHarness<{ worker: StandaloneAgent }>;
-declare const recorder: EventRecorder;
-declare const terminalResult: AssembleReproductionArtifactOptions['terminalResult'];
-declare const cleanupReport: AssembleReproductionArtifactOptions['cleanupReport'];
-declare const effectiveModel: AssembleReproductionArtifactOptions['effectiveModel'];
-
-const sourceRevision = '0123456789abcdef0123456789abcdef01234567';
-const packageVersions = { '@lostgradient/bureau': '0.0.0' };
-
-const artifact = await assembleReproductionArtifact(
-  harness,
-  recorder,
-  { effectiveModel, terminalResult, cleanupReport },
-  { sourceRevision, packageVersions },
-);
-```
+`createBureau` and `createManualRuntimeServices` come from the package root: pass a `ManualRuntimeServices` as `runtime` to drive a Bureau's clock, timers, and identifiers by hand. `waitForCondition` and `waitForRunState` stay Operative test helpers, because they observe Operative-owned runs and state. Bureau's own test harness, its quiescence report, and its reproduction artifact are support for Bureau's own tests, and the package entry does not export them.
 
 ### Bureau-scoped fault-plan vocabulary and selectors
 

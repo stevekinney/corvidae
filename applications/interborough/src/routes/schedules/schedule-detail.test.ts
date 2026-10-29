@@ -341,10 +341,14 @@ describe('ScheduleDetail', () => {
       schedulerPollIntervalMs: FAST_SCHEDULER_POLL_MS,
     });
     // `inventory-sync-sweep` completes near-instantly (one activity call),
-    // so within a couple of the engine's 1s scheduler polls it has both
-    // fired and completed — real, persisted history reachable via
-    // `fetchScheduleRunHistory`'s `scheduleId` filter, independent of
-    // whether this page ever observes the live `schedule:fired` event.
+    // so within a few scheduler polls it has both fired and completed —
+    // real, persisted history reachable via `fetchScheduleRunHistory`'s
+    // `scheduleId` filter, independent of whether this page ever observes
+    // the live `schedule:fired` event. The schedule keeps firing every 50ms,
+    // so by the time the page fetches there are usually several completed
+    // runs, each its own row: the history is keyed by run id, and a slow
+    // host only adds rows (up to the history limit), never a second row for
+    // one run.
     await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
       id: 'history-probe',
@@ -359,16 +363,16 @@ describe('ScheduleDetail', () => {
     }, 'history-probe has a completed run');
 
     try {
-      const { getAllByText } = render(ScheduleDetailHarness, {
+      const { getByTestId } = render(ScheduleDetailHarness, {
         props: { client, id: 'history-probe' },
       });
 
-      // The schedule keeps firing, so a loaded host can finish another run before the page fetches:
-      // every completed run has its own badge, and `getByText` would throw on each retry.
-      const completedBadge = await waitFor(() => getAllByText('Completed')[0]);
-      expect(completedBadge).toBeDefined();
+      const runs = await waitFor(() => getByTestId('schedule-runs'));
+      const completedBadge = await waitFor(() => within(runs).getAllByText('Completed')[0]);
       const runLink = completedBadge?.closest('li')?.querySelector('a');
       expect(runLink?.getAttribute('href')).toMatch(/^\/runs\//);
+      const hrefs = Array.from(runs.querySelectorAll('li a'), (link) => link.getAttribute('href'));
+      expect(new Set(hrefs).size).toBe(hrefs.length);
     } finally {
       await server.stop();
     }

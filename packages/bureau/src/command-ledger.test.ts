@@ -1,7 +1,7 @@
 /**
  * COR-424 — the command ledger's identity, digest, and conflict semantics,
  * over the memory backend. The persistent backends' fault-point coverage
- * lives in `run-creation-fault-points.test.ts`; this file is the unit layer
+ * lives in `run-creation-fault-points.slow.test.ts`; this file is the unit layer
  * those tests build on.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
