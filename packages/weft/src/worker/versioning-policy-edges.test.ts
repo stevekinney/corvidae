@@ -40,6 +40,39 @@ describe('workflow worker versioning edge policies', () => {
     ).toThrow('No accepted routed worker deployment provides workflow');
   });
 
+  it('does not route a workflow type the ready manifest only inherits, such as constructor', async () => {
+    using storage = new MemoryStorage();
+    const catalog = new WorkerDeploymentCatalog(storage);
+    await catalog.registerVersion({
+      deploymentName: 'orders-edge',
+      buildId: 'build-1',
+      artifactDigest: 'sha256:build-1',
+      manifestDigest: 'sha256:manifest-build-1',
+      manifest: manifestWithoutActivities('build-1'),
+      state: 'ready',
+      firstSeenAt: 1,
+    });
+    await catalog.setRouting({
+      deploymentName: 'orders-edge',
+      currentBuildId: 'build-1',
+      rampBasisPoints: 10_000,
+      updatedAt: 1,
+    });
+
+    expect(
+      await throwingRejectionOf(
+        resolveWorkflowWorkerStartBinding(storage, {
+          workflowId: WORKFLOW_ID,
+          workflowType: 'constructor',
+          workflowRevision: WORKFLOW_REVISION,
+          policy: { mode: 'pinned' },
+          checkpointId: WORKFLOW_ID,
+          boundAt: 1,
+        }),
+      ),
+    ).toThrow('No accepted routed worker deployment provides workflow');
+  });
+
   it('uses the workflow contract as the binding activity contract when no activities are declared', async () => {
     using storage = new MemoryStorage();
     const catalog = new WorkerDeploymentCatalog(storage);
