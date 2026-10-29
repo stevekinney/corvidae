@@ -520,7 +520,7 @@ const scenario5 = await outcomeOf(async () => {
   );
   const dependencies = packedManifest['dependencies'] as Record<string, unknown>;
   const workspaceNodeModules = realpathSync(join(REPOSITORY_ROOT, 'node_modules'));
-  expect(Object.keys(dependencies)).toContain('@electric-sql/pglite');
+  expect(Object.keys(dependencies)).toContain('@msgpack/msgpack');
   expect(Object.keys(dependencies)).toContain('@lostgradient/storage');
   // The CLI constructs the Bun SQLite adapter, so it ships with Weft (COR-1771).
   expect(Object.keys(dependencies)).toContain('@lostgradient/storage-bun-sqlite');

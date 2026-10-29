@@ -35,10 +35,8 @@
     "typecheck:fixtures": "tsc --noEmit -p src/cli/__fixtures__/codegen/typecheck/tsconfig.json"
   },
   "dependencies": {
-    "@electric-sql/pglite": "catalog:",
     "@libsql/client": "catalog:",
     "@msgpack/msgpack": "catalog:",
-    "@neondatabase/serverless": "catalog:",
     "@noble/hashes": "catalog:",
     "@valibot/to-json-schema": "catalog:",
     "better-sqlite3": "catalog:",
@@ -63,11 +61,9 @@
     "@lostgradient/typescript": "workspace:*",
     "@modelcontextprotocol/client": "catalog:",
     "@types/bun": "catalog:",
-    "@types/pg": "catalog:",
     "ajv": "catalog:",
     "fake-indexeddb": "catalog:",
     "oxlint": "catalog:",
-    "pg": "catalog:",
     "playwright": "catalog:",
     "prettier": "catalog:",
     "standardwebhooks": "catalog:",
