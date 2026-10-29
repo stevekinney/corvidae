@@ -6,7 +6,10 @@
  * `DefinitionEntry.hash` and every `expectedHash` are the SHA-256 of the bytes, as in every source.
  * An object's ETag is used for nothing but the condition on a write or delete: the source reads
  * the object, checks the hash of what it read, and sends that read's ETag as `If-Match` (or
- * `If-None-Match: *` to create), so the store, not this process, fences the change. A refusal
+ * `If-None-Match: *` to create), so the store, not this process, fences the change. Whether a delete
+ * is fenced depends on the store: the store COR-1759 probed (a Railway bucket) honors `If-Match` on
+ * `DELETE`, but AWS S3 honors it only for directory buckets, so a store that ignores the header
+ * makes a delete unconditional (the hash check just before it still runs). A refusal
  * (`412`, or `404` for a key that vanished) reads the object again, and rejects with a
  * {@link SourceConflictError} carrying the hash of what is there now, or `null` when nothing is.
  *

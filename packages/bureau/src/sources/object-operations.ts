@@ -68,8 +68,46 @@ async function drain(response: Response): Promise<number> {
   return response.status;
 }
 
-function failure(method: string, key: string, status: number): Error {
-  return new Error(`The object store answered ${status} to ${method} ${key}.`);
+/**
+ * What every request of {@link createS3ObjectOperations} throws. It names the operation, the key,
+ * and a status or an error code, and nothing else: no URL, query string, or credential, and no
+ * `cause`. Bun's own errors carry the full presigned URL in `path` (the access key ID and a
+ * signature valid for 300 seconds), and a diagnostics sink that prints an error's properties would
+ * log a usable credential.
+ */
+export class ObjectStoreError extends Error {
+  override readonly name = 'ObjectStoreError';
+}
+
+function failure(method: string, key: string, status: number): ObjectStoreError {
+  return new ObjectStoreError(`The object store answered ${status} to ${method} ${key}.`);
+}
+
+/** The error's `code` (or `name`) when it is a short identifier, so a URL can never ride along. */
+function errorCode(error: unknown): string {
+  const candidates: unknown[] =
+    typeof error === 'object' && error !== null
+      ? [(error as { code?: unknown }).code, (error as { name?: unknown }).name]
+      : [];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && /^[A-Za-z0-9_.-]{1,64}$/.test(candidate)) return candidate;
+  }
+  return 'unknown';
+}
+
+/**
+ * Run one request, and turn anything it throws that is not already an {@link ObjectStoreError}
+ * into one that keeps only the operation, the key, and the error's code.
+ */
+async function guarded<T>(operation: string, key: string, run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (error instanceof ObjectStoreError) throw error;
+    throw new ObjectStoreError(
+      `The object store request ${operation} ${key} failed (${errorCode(error)}).`,
+    );
+  }
 }
 
 /** {@link ObjectStoreOperations} over a caller-supplied `Bun.S3Client`. */
@@ -84,9 +122,11 @@ export function createS3ObjectOperations(
 
   return {
     async list(prefix, continuationToken) {
-      const page = await client.list(
-        { prefix, ...(continuationToken === undefined ? {} : { continuationToken }) },
-        { bucket },
+      const page = await guarded('LIST', prefix, () =>
+        client.list(
+          { prefix, ...(continuationToken === undefined ? {} : { continuationToken }) },
+          { bucket },
+        ),
       );
       const objects: ListedObject[] = [];
       for (const item of page.contents ?? []) {
@@ -95,46 +135,49 @@ export function createS3ObjectOperations(
       return { objects, nextContinuationToken: page.nextContinuationToken };
     },
 
-    async read(key) {
-      const response = await fetch(url(key, 'GET'));
-      if (response.status === 404) {
-        await drain(response);
-        return undefined;
-      }
-      if (!response.ok) throw failure('GET', key, await drain(response));
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      return { bytes, etag: response.headers.get('etag') ?? '' };
-    },
+    read: (key) =>
+      guarded('GET', key, async () => {
+        const response = await fetch(url(key, 'GET'));
+        if (response.status === 404) {
+          await drain(response);
+          return undefined;
+        }
+        if (!response.ok) throw failure('GET', key, await drain(response));
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        return { bytes, etag: response.headers.get('etag') ?? '' };
+      }),
 
-    async put(key, bytes, condition) {
-      const response = await fetch(url(key, 'PUT'), {
-        method: 'PUT',
-        headers: {
-          'content-type': contentType,
-          ...(condition.kind === 'absent'
-            ? { 'if-none-match': '*' }
-            : { 'if-match': condition.etag }),
-        },
-        // A copy typed over a plain ArrayBuffer, which is what `fetch` accepts as a body.
-        body: new Uint8Array(bytes),
-      });
-      const status = await drain(response);
-      if (response.ok) return { outcome: 'written' };
-      if (status === 412 || (status === 404 && condition.kind === 'etag')) {
-        return { outcome: 'refused' };
-      }
-      throw failure('PUT', key, status);
-    },
+    put: (key, bytes, condition) =>
+      guarded('PUT', key, async () => {
+        const response = await fetch(url(key, 'PUT'), {
+          method: 'PUT',
+          headers: {
+            'content-type': contentType,
+            ...(condition.kind === 'absent'
+              ? { 'if-none-match': '*' }
+              : { 'if-match': condition.etag }),
+          },
+          // A copy typed over a plain ArrayBuffer, which is what `fetch` accepts as a body.
+          body: new Uint8Array(bytes),
+        });
+        const status = await drain(response);
+        if (response.ok) return { outcome: 'written' } as const;
+        if (status === 412 || (status === 404 && condition.kind === 'etag')) {
+          return { outcome: 'refused' } as const;
+        }
+        throw failure('PUT', key, status);
+      }),
 
-    async remove(key, etag) {
-      const response = await fetch(url(key, 'DELETE'), {
-        method: 'DELETE',
-        headers: { 'if-match': etag },
-      });
-      const status = await drain(response);
-      if (response.ok) return 'removed';
-      if (status === 412 || status === 404) return 'refused';
-      throw failure('DELETE', key, status);
-    },
+    remove: (key, etag) =>
+      guarded('DELETE', key, async () => {
+        const response = await fetch(url(key, 'DELETE'), {
+          method: 'DELETE',
+          headers: { 'if-match': etag },
+        });
+        const status = await drain(response);
+        if (response.ok) return 'removed' as const;
+        if (status === 412 || status === 404) return 'refused' as const;
+        throw failure('DELETE', key, status);
+      }),
   };
 }
