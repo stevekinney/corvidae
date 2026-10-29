@@ -1,3 +1,4 @@
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import type { MemoryGovernanceNotification } from '../../src/governance/governed-memory-types';
@@ -149,7 +150,7 @@ for (const backend of ['in-memory', 'weft'] as const) {
       const heard: string[] = [];
       fixture.memory.subscribe((notification) => void heard.push(notification.type));
 
-      await expect(fixture.memory.write(principalA, 'One.', note)).rejects.toThrow(
+      expect(await throwingRejectionOf(fixture.memory.write(principalA, 'One.', note))).toThrow(
         'audit sink down',
       );
 
