@@ -23,7 +23,9 @@
  *     hang-guarded spawn, and the others in `WAITING_CALLEES`), and `afterAwakeTime` with a
  *     duration below the hang guard. The same budget passed BY POSITION is read for every wait helper
  *     the scanned files declare: a function named like a wait (`waitForMessage`, `waitForLine`...)
- *     with a parameter named `timeout`, `timeoutMs`, `budget...` or `deadline...` has that argument
+ *     with a parameter named `timeout`, `timeoutMs`, `budget...` or `deadline...`, and a function
+ *     of any name that races (`Promise.race`/`Promise.any`) a `setTimeout`, `sleep` or `Bun.sleep`
+ *     whose delay is one of its parameters (`withTimeout(work, milliseconds)`), has that argument
  *     checked at every call, in any file, from a table merged across the scan. A product's own timeout option (`mailbox.awaitCleanup`,
  *     `outbox.drain`, `server.shutdownWorker`) is not read: tests of those drive an injected clock
  *     or a stalled dependency, which no load can speed up.
@@ -564,23 +566,56 @@ const BUDGET_PARAMETER =
   /^(timeout|timeoutMs|timeoutMilliseconds|timeoutMillis|budget\w*|deadline\w*|maxWait\w*|waitMs|waitMilliseconds)$/i;
 
 /**
- * The wait helpers a file declares (a function or arrow whose name reads as a wait, see
- * `WAITING_CALLEES`) and the positions of their budget parameters. A caller that passes a number
- * there sets a deadline the same as one that spells it `{ timeoutMs }`. The scan merges the tables of
- * every scanned file, so a helper declared in a support module is read at its call sites everywhere.
+ * The names a function's body races against a timer it starts: the delay of a `setTimeout`, a
+ * `sleep`, or a `Bun.sleep` in a body that also calls `Promise.race` or `Promise.any`. A parameter
+ * among them is a window the helper's callers choose (`settled(work, 150)`), whatever it is called.
+ */
+function racedTimerDelays(body: ts.Node): Set<string> {
+  let races = false;
+  const delays = new Set<string>();
+  walk(body, (node) => {
+    if (!ts.isCallExpression(node)) return;
+    const callee = unwrap(node.expression).getText();
+    if (/^Promise\.(race|any)$/.test(callee)) races = true;
+    const delay = /^(globalThis\.)?setTimeout$/.test(callee)
+      ? node.arguments[1]
+      : SLEEP_NAME.test(callee) || callee === 'Bun.sleep'
+        ? node.arguments[0]
+        : undefined;
+    if (delay !== undefined && ts.isIdentifier(unwrap(delay)))
+      delays.add((unwrap(delay) as ts.Identifier).text);
+  });
+  return races ? delays : new Set();
+}
+
+/**
+ * The wait helpers a file declares and the positions of their budget parameters: a function or
+ * arrow whose name reads as a wait (see `WAITING_CALLEES`), by the name of the parameter, and any
+ * function that races a timer whose delay is one of its parameters, by that parameter. A caller that
+ * passes a number there sets a deadline the same as one that spells it `{ timeoutMs }`. The scan
+ * merges the tables of every scanned file, so a helper declared in a support module is read at its
+ * call sites everywhere.
  */
 export function collectPositionalBudgets(sourceFile: ts.SourceFile): Map<string, number[]> {
   const found = new Map<string, number[]>();
-  const record = (name: string, parameters: ts.NodeArray<ts.ParameterDeclaration>): void => {
-    if (!WAITING_CALLEES.test(name)) return;
+  const record = (
+    name: string,
+    parameters: ts.NodeArray<ts.ParameterDeclaration>,
+    body: ts.Node | undefined,
+  ): void => {
+    const named = WAITING_CALLEES.test(name);
+    const raced = body === undefined ? new Set<string>() : racedTimerDelays(body);
     const positions = parameters.flatMap((parameter, index) =>
-      ts.isIdentifier(parameter.name) && BUDGET_PARAMETER.test(parameter.name.text) ? [index] : [],
+      ts.isIdentifier(parameter.name) &&
+      ((named && BUDGET_PARAMETER.test(parameter.name.text)) || raced.has(parameter.name.text))
+        ? [index]
+        : [],
     );
     if (positions.length > 0) found.set(name, [...(found.get(name) ?? []), ...positions]);
   };
   walk(sourceFile, (node) => {
     if (ts.isFunctionDeclaration(node) && node.name !== undefined) {
-      record(node.name.text, node.parameters);
+      record(node.name.text, node.parameters, node.body);
     } else if (
       ts.isVariableDeclaration(node) &&
       ts.isIdentifier(node.name) &&
@@ -588,9 +623,10 @@ export function collectPositionalBudgets(sourceFile: ts.SourceFile): Map<string,
       (ts.isArrowFunction(unwrap(node.initializer)) ||
         ts.isFunctionExpression(unwrap(node.initializer)))
     ) {
-      record(node.name.text, (unwrap(node.initializer) as ts.ArrowFunction).parameters);
+      const helper = unwrap(node.initializer) as ts.ArrowFunction;
+      record(node.name.text, helper.parameters, helper.body);
     } else if (ts.isMethodDeclaration(node) && ts.isIdentifier(node.name)) {
-      record(node.name.text, node.parameters);
+      record(node.name.text, node.parameters, node.body);
     }
   });
   return found;

@@ -1,7 +1,7 @@
 import { describe, expect, it, mock, spyOn } from 'bun:test';
 
 import { MemoryStorage } from '@lostgradient/storage';
-import { waitForCondition, withTimeout } from '@lostgradient/testing/fake-timers';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS } from '../../storage/keys.ts';
 import { nextAsyncPendingToken } from '../../testing/async-activity.test-support.ts';
@@ -56,7 +56,7 @@ describe('async activity completion recovery buffering', () => {
 
     await recoveredEngine.recoverAll();
     const handle = recoveredEngine.getHandle(workflowId);
-    expect(await withTimeout(handle.result(), 500, 'early async completion')).toEqual({
+    expect(await handle.result()).toEqual({
       approval: { decision: 'arrived-before-adoption' },
     });
 
@@ -96,9 +96,7 @@ describe('async activity completion recovery buffering', () => {
 
     await recoveredEngine.recoverAll();
     const handle = recoveredEngine.getHandle(workflowId);
-    expect(await withTimeout(handle.result(), 500, 'early async failure')).toBe(
-      'caught:arrived-before-adoption',
-    );
+    expect(await handle.result()).toBe('caught:arrived-before-adoption');
 
     recoveredEngine[Symbol.dispose]();
   });

@@ -4,7 +4,6 @@ import {
   restoreRealTimers,
   sleepForTesting,
   useFakeTimers,
-  withTimeout,
 } from '@lostgradient/testing/fake-timers';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, it, mock, spyOn } from 'bun:test';
@@ -128,13 +127,7 @@ async function expectSettledHandleObservable(
     },
   });
 
-  const result = await withTimeout(
-    promise.then(() => expectation.settles),
-    500,
-    `workflow observable ${expectation.settles}`,
-  );
-
-  expect(result).toBe(expectation.settles);
+  await promise;
   if (expectation.settles === 'error') {
     // Give any erroneously-queued `complete()` call a chance to fire so the
     // assertion below is meaningful.
@@ -1430,11 +1423,10 @@ describe('Engine', () => {
 
   it('Engine.create forwards schedulerPollIntervalMs to the durable-timer poller', async () => {
     // schedulerPollIntervalMs lets a host (or test) shorten the real-time poll
-    // cycle. We prove the value reaches the Scheduler's setInterval by parking a
-    // run on a short durable ctx.sleep and asserting it completes well within a
-    // window the default 1000ms poll could not meet. The poll loop is a real
-    // setInterval (not a macrotask), so the assertion is event-driven — it awaits
-    // handle.result() bounded by a failure-guard timeout, not a fixed sleep.
+    // cycle. The value is read off the Scheduler's setInterval call, not timed:
+    // a window the default 1000ms poll could not meet is one a loaded host can
+    // overrun too. The run parked on a short durable ctx.sleep then proves the
+    // armed poll fires it; a poll that never fires is ended by the hang guard.
     const sleepingWorkflow = workflow({ name: 'short-sleep' }).execute(async function* (
       ctx: WorkflowContext,
     ) {
@@ -1442,19 +1434,22 @@ describe('Engine', () => {
       return 'awake';
     });
 
+    const setIntervalSpy = spyOn(globalThis, 'setInterval');
+    // Read before the restore, which clears the spy's calls.
+    let intervalDelays: unknown[] = [];
     const engine = await Engine.create({
       recover: false,
       startScheduler: true,
       schedulerPollIntervalMs: 10,
       workflows: { 'short-sleep': sleepingWorkflow },
+    }).finally(() => {
+      intervalDelays = setIntervalSpy.mock.calls.map((call) => call[1]);
+      setIntervalSpy.mockRestore();
     });
     try {
+      expect(intervalDelays).toContain(10);
       const handle = await engine.start('short-sleep', null);
-      const result = await withTimeout(
-        handle.result(),
-        500,
-        'short-sleep run should complete once the fast poller fires its timer',
-      );
+      const result = await handle.result();
       expect(result).toBe('awake');
     } finally {
       await engine[Symbol.asyncDispose]();
@@ -3980,15 +3975,9 @@ describe('Engine', () => {
       }
     })();
 
-    // Watchdog: if the iterator hangs the race returns the sentinel and the
-    // test fails. The sentinel is distinct so we can detect a hang specifically.
-    const result = await withTimeout(
-      iterate.then(() => 'iterated' as const),
-      500,
-      'workflow handle iteration',
-    );
+    // Awaited outright: an iterator that hangs is ended by the hang guard.
+    await iterate;
 
-    expect(result).toBe('iterated');
     expect(collected).toContain('workflow:completed');
     // The terminal event must be yielded exactly once — a regression would
     // surface as a duplicate if `listener` and `terminal` were both
@@ -4030,13 +4019,8 @@ describe('Engine', () => {
     // hit `finishWorkflowHandleIteration` and enqueue a duplicate.
     handle.dispatchEvent(new WorkflowCompletedEvent(handle.id, 'ok', 0));
 
-    const result = await withTimeout(
-      iterate.then(() => 'iterated' as const),
-      500,
-      'workflow handle iteration',
-    );
+    await iterate;
 
-    expect(result).toBe('iterated');
     expect(collected.filter((type) => type === 'workflow:completed')).toHaveLength(1);
     engine[Symbol.dispose]();
   });
@@ -4163,13 +4147,8 @@ describe('Engine', () => {
       }
     })();
 
-    const result = await withTimeout(
-      iterate.then(() => 'iterated' as const),
-      500,
-      'workflow handle iteration',
-    );
+    await iterate;
 
-    expect(result).toBe('iterated');
     const failure = collected.find((event) => event instanceof WorkflowFailedEvent);
     expect(failure).toBeInstanceOf(WorkflowFailedEvent);
     expect((failure as WorkflowFailedEvent).error.message).toBe('boom');
@@ -4199,13 +4178,8 @@ describe('Engine', () => {
       }
     })();
 
-    const result = await withTimeout(
-      iterate.then(() => 'iterated' as const),
-      500,
-      'workflow handle iteration',
-    );
+    await iterate;
 
-    expect(result).toBe('iterated');
     expect(collected.some((event) => event instanceof WorkflowCancelledEvent)).toBe(true);
     engine[Symbol.dispose]();
   });
@@ -4236,13 +4210,8 @@ describe('Engine', () => {
       }
     })();
 
-    const result = await withTimeout(
-      iterate.then(() => 'iterated' as const),
-      500,
-      'workflow handle iteration',
-    );
+    await iterate;
 
-    expect(result).toBe('iterated');
     const timedOut = collected.find((event) => event instanceof WorkflowTimedOutEvent);
     expect(timedOut).toBeInstanceOf(WorkflowTimedOutEvent);
     expect((timedOut as WorkflowTimedOutEvent).workflowId).toBe(handle.id);

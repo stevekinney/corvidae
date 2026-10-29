@@ -26,19 +26,6 @@ const STAND_IN_RUNNER = join(
   'stand-in-test-runner.ts',
 );
 
-/** Resolve `work`, or the string `'hung'` once `milliseconds` pass without it settling. */
-async function watchdog<T>(work: Promise<T>, milliseconds: number): Promise<T | 'hung'> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const expiry = new Promise<'hung'>((resolve) => {
-    timer = setTimeout(() => resolve('hung'), milliseconds);
-  });
-  try {
-    return await Promise.race([work, expiry]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 /** The stand-in runner starts a real process, so the whole body runs at module scope. */
 const standInRunnerEndsAtItsWaitBudget = await outcomeOf(async () => {
   const record = await mkdtemp(join(tmpdir(), 'bounded-wait-record-'));
@@ -91,13 +78,10 @@ describe('bounded waits', () => {
       exited: new Promise<number>(() => {}),
     } as unknown as Bun.Subprocess;
 
-    const outcome = await watchdog(
-      // wait-bound: the stub's exit never settles, so only the grace itself is under test
-      interruptRunner(neverExits, undefined, { graceMilliseconds: 200 }),
-      2_000,
-    );
+    // Awaited outright: a grace that never ends is ended by the hang guard.
+    // wait-bound: the stub's exit never settles, so only the grace itself is under test
+    const outcome = await interruptRunner(neverExits, undefined, { graceMilliseconds: 200 });
 
-    expect(outcome).not.toBe('hung');
     expect(outcome).toEqual({ survivors: [], runnerExited: false });
   });
 
