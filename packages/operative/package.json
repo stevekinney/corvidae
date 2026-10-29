@@ -5,6 +5,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./provider-kit": "./src/provider-kit.ts",
+    "./provider-testing": "./src/provider-testing.ts",
     "./run-engine-workflow-types": "./src/durable/run-engine-workflow-types.ts"
   },
   "scripts": {

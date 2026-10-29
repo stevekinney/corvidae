@@ -253,7 +253,7 @@ describe('withEnhancedStreaming', () => {
  * events through `StreamingHandle.report` while the provider response is still
  * open. Everything here is about the wrapper contract; the Anthropic and OpenAI
  * adapters that drive `report` in production are covered end-to-end in
- * `test/provider-live-tool-call-streaming.test.ts`.
+ * `test/{anthropic,openai}/live-tool-call-streaming.test.ts`.
  */
 describe('withEnhancedStreaming live tool calls', () => {
   function recordEvents(eventTarget: TypedEventTarget<StreamEventMap>): StreamEvent[] {

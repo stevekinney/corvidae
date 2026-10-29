@@ -37,7 +37,7 @@ export interface GeminiBatchClientOptions {
   /**
    * An already-constructed client. A real `GoogleGenAI` instance satisfies
    * {@link GeminiBatchClient} with no cast — see
-   * `providers/batch-client-assignability.test-d.ts`.
+   * `providers/gemini-batch-client-assignability.test-d.ts`.
    */
   client?: GeminiBatchClient | undefined;
   /** Falls back to the `GOOGLE_API_KEY` environment variable when omitted. */
@@ -115,7 +115,7 @@ export function createGeminiBatchClient(
       const apiKey = resolveGeminiApiKey(options.apiKey);
       // No cast: a real `GoogleGenAI` satisfies `GeminiBatchClient` as
       // declared, the same guarantee a consumer passing their own client
-      // relies on. `batch-client-assignability.test-d.ts` locks it in.
+      // relies on. `gemini-batch-client-assignability.test-d.ts` locks it in.
       clientPromise = import('@google/genai').then((module) => {
         const client = new module.GoogleGenAI({
           apiKey,

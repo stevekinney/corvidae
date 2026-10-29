@@ -8,8 +8,6 @@
 
 import { describe, expect, test } from 'bun:test';
 import { z } from 'zod';
-
-import { getModelPricing } from './cost-estimation';
 import { createScratchpad } from './create-scratchpad';
 import {
   createSessionInputDeliveryStore,
@@ -17,23 +15,9 @@ import {
   planSessionInputPromotion,
 } from './durable/session-input-delivery-store';
 import { valueAtFieldPath } from './fresh-attempt/field-path';
-import { anthropicDisabledThinkingRule } from './providers/anthropic-thinking';
 import { requireLimits } from './providers/model-catalog-data';
-import { mergeAssembledField } from './providers/openai-parts';
-import { resolveAnthropicEffort } from './providers/shared/effort';
-import { resolveAnthropicModel } from './providers/shared/model-registry';
-import { anthropicSamplingSupport } from './providers/shared/sampling';
 
 describe('a model named after a name every object inherits', () => {
-  test('has no pricing, effort support, alias, or sampling rule', () => {
-    expect(getModelPricing('constructor')).toBeUndefined();
-    expect(getModelPricing('constructor', { customPricing: {} })).toBeUndefined();
-    expect(resolveAnthropicEffort('high', 'constructor')).toBeUndefined();
-    expect(resolveAnthropicModel('constructor')).toBe('constructor');
-    expect(anthropicSamplingSupport('constructor')).toBe('unsettled');
-    expect(anthropicDisabledThinkingRule('constructor')).toBeUndefined();
-  });
-
   test('has no catalog row, so the completeness check fails loudly', () => {
     expect(() => requireLimits('anthropic', 'constructor')).toThrow(/no MODEL_LIMITS entry/);
   });
@@ -70,16 +54,6 @@ describe('a field path through an object', () => {
 });
 
 describe('a name of __proto__ chosen from outside', () => {
-  test('is stored as an own field of a streamed message', () => {
-    const assembled: Record<string, unknown> = {};
-    mergeAssembledField(assembled, '__proto__', 'a');
-    mergeAssembledField(assembled, '__proto__', 'b');
-    mergeAssembledField(assembled, 'refusal', 'no');
-    expect(Object.getPrototypeOf(assembled)).toBe(Object.prototype);
-    expect(Object.keys(assembled)).toEqual(['__proto__', 'refusal']);
-    expect(Object.getOwnPropertyDescriptor(assembled, '__proto__')?.value).toBe('ab');
-  });
-
   test('is kept as a delivery record when a command claims it and when storage is read back', async () => {
     const data = new Map<string, string>();
     const kv = {

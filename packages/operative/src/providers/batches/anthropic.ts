@@ -32,7 +32,7 @@ export interface AnthropicBatchClientOptions {
   /**
    * An already-constructed client. A real `Anthropic` instance satisfies
    * {@link AnthropicBatchClient} with no cast — see
-   * `providers/batch-client-assignability.test-d.ts`.
+   * `providers/anthropic-batch-client-assignability.test-d.ts`.
    */
   client?: AnthropicBatchClient | undefined;
   /** Falls back to the SDK's own `ANTHROPIC_API_KEY` lookup when omitted. */
@@ -109,7 +109,7 @@ export function createAnthropicBatchClient(
         if (options.baseURL) clientOptions.baseURL = options.baseURL;
         // No cast: a real `Anthropic` satisfies `AnthropicBatchClient` as
         // declared, the same guarantee a consumer passing their own client
-        // relies on. `batch-client-assignability.test-d.ts` locks it in.
+        // relies on. `anthropic-batch-client-assignability.test-d.ts` locks it in.
         const client = createAnthropicSdkClient<AnthropicBatchClient>(
           clientOptions,
           isAnthropicBatchClient,

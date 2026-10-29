@@ -24,7 +24,7 @@
  * `@anthropic-ai/sdk` is an *optional* peer dependency, so referencing its
  * types from a published declaration would break every consumer who does not
  * install it. The dependency belongs here, in a file `tsconfig.build.json`
- * excludes by suffix, exactly as `batch-client-assignability.test-d.ts` does
+ * excludes by suffix, exactly as `anthropic-batch-client-assignability.test-d.ts` does
  * for the SDK client shapes. It declares only types, so it is erased entirely
  * and contributes no coverage.
  */

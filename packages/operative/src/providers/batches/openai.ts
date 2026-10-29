@@ -55,7 +55,7 @@ export interface OpenAIBatchClientOptions {
   /**
    * An already-constructed client. A real `OpenAI` instance satisfies
    * {@link OpenAIBatchClient} with no cast — see
-   * `providers/batch-client-assignability.test-d.ts`. This is also the escape
+   * `providers/openai-batch-client-assignability.test-d.ts`. This is also the escape
    * hatch for a non-default base URL; see the note on this interface.
    */
   client?: OpenAIBatchClient | undefined;
@@ -125,7 +125,7 @@ export function createOpenAIBatchClient(
         if (options.apiKey) clientOptions.apiKey = options.apiKey;
         // No cast: a real `OpenAI` satisfies `OpenAIBatchClient` as declared,
         // the same guarantee a consumer passing their own client relies on.
-        // `batch-client-assignability.test-d.ts` locks it in.
+        // `openai-batch-client-assignability.test-d.ts` locks it in.
         const client = new OpenAI(clientOptions);
         assertBatchSurface(client, OPENAI_BATCH_REQUIREMENT);
         return client;

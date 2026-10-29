@@ -7,7 +7,7 @@
  * parameter): `claude-opus-4-8` rejected `temperature: 0.5`, `top_p: 0.9`, and
  * `top_k: 5` with a 400 naming that one field, and `claude-sonnet-5` rejected
  * `temperature: 0.5` the same way. The full record lives in the header of
- * `test/provider-anthropic-sampling.test.ts`. Fixtures marked `synthetic` are
+ * `test/anthropic/sampling.test.ts`. Fixtures marked `synthetic` are
  * not responses the API returned: positives recombine only the recorded
  * sentences, and negatives are authored text.
  */
