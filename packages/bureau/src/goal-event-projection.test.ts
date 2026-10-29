@@ -642,7 +642,7 @@ describe('live goal events (COR-1721)', () => {
   }
 
   it('dispatches each recorded event as it commits, with the recorded fields', async () => {
-    const { store, dispatched } = await liveSetup();
+    const { store, dispatched, history } = await liveSetup();
     await store.create(newGoal());
     await toEvaluating(store);
     await store.applyTransition(
@@ -675,6 +675,16 @@ describe('live goal events (COR-1721)', () => {
           runId: goalAttemptRunId(GOAL, 0),
         },
       ],
+      // COR-1781: live only, as the attempt's validator starts.
+      [
+        'goal.attempt.evaluating',
+        {
+          goalRunId: GOAL,
+          attemptId: goalAttemptId(GOAL, 0),
+          attemptIndex: 0,
+          runId: goalAttemptRunId(GOAL, 0),
+        },
+      ],
       [
         'goal.attempt.validated',
         {
@@ -695,6 +705,14 @@ describe('live goal events (COR-1721)', () => {
     ]);
     expect(dispatched.every((event) => event.goalRunId === GOAL)).toBe(true);
     expect(JSON.stringify(dispatched.map((event) => event.payload))).not.toContain('MESSAGE-');
+    // The history holds every dispatched event but the live-only one.
+    const recorded = await history.page({ kind: 'goal', id: GOAL });
+    if ('outcome' in recorded) throw new Error('unexpected gap');
+    expect(recorded.events.map((event) => event.kind)).toEqual(
+      dispatched.map((event) => event.type).filter((kind) => kind !== 'goal.attempt.evaluating'),
+    );
+    const stored = await store.get(GOAL);
+    expect(JSON.stringify(stored?.auditLog)).not.toContain('goal.attempt.evaluating');
   });
 
   it('dispatches nothing for the created and replayed observations the boot pass makes', async () => {

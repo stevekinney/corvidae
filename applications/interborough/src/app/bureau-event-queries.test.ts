@@ -92,6 +92,8 @@ describe('invalidateForBureauEvent', () => {
 
   test.each([
     'goal.attempt.started',
+    // COR-1781: the badge says evaluating as soon as the validator starts, not at its verdict.
+    'goal.attempt.evaluating',
     'goal.attempt.validated',
     'goal.succeeded',
     'goal.exhausted',

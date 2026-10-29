@@ -243,6 +243,22 @@ export function projectGoalObservation(observation: GoalObservation): GoalEventD
 }
 
 /**
+ * The live-only event a transition into `evaluating` implies (COR-1781): the attempt's run has
+ * finished and its validator is starting. Nothing records it, so a goal's durable history and the
+ * record's audit log, which the store checks entry by entry, are what they were.
+ */
+function attemptEvaluatingEvent(record: GoalState): GoalLifecycleEvent | undefined {
+  const attempt = record.attempts.at(-1);
+  if (record.currentTransition.to !== 'evaluating' || attempt === undefined) return undefined;
+  return new GoalLifecycleEvent('goal.attempt.evaluating', {
+    goalRunId: record.goalRunId,
+    attemptId: attempt.attemptId,
+    attemptIndex: attempt.attemptIndex,
+    runId: attempt.runId,
+  });
+}
+
+/**
  * The goal store's observer: records every projected event, in order. A failed
  * write is diagnosed and swallowed, because the record is the truth and a lost
  * projection is repaired by `projectGoalHistory` at the next boot; failing the
@@ -250,9 +266,11 @@ export function projectGoalObservation(observation: GoalObservation): GoalEventD
  *
  * With `dispatch` (COR-1721), each projected event is also dispatched live
  * after its history write is attempted, whether or not that write succeeded:
- * the goal store has already committed the transition. Without `history`, it
- * only dispatches. The boot pass builds its recorder with neither dispatch nor
- * a live observation, so a replay writes history and dispatches nothing.
+ * the goal store has already committed the transition. A transition into
+ * `evaluating` dispatches `goal.attempt.evaluating`, which records nothing.
+ * Without `history`, it only dispatches. The boot pass builds its recorder with
+ * neither dispatch nor a live observation, so a replay writes history and
+ * dispatches nothing.
  */
 export function createGoalEventRecorder(
   history: Pick<DurableEventHistory, 'record'> | undefined,
@@ -277,21 +295,30 @@ export function createGoalEventRecorder(
           });
         }
       }
-      if (dispatch !== undefined && isGoalEventKind(draft.kind)) {
-        // A throwing listener must not cost the drafts after this one their history write.
-        try {
-          dispatch(new GoalLifecycleEvent(draft.kind, draft.payload));
-        } catch (error) {
-          diagnose({
-            level: 'error',
-            scope: 'goals',
-            message: `[bureau] Dispatching ${draft.kind} for goal "${owner.id}" threw:`,
-            cause: error,
-          });
-        }
+      if (isGoalEventKind(draft.kind)) {
+        dispatchGuarded(new GoalLifecycleEvent(draft.kind, draft.payload));
       }
     }
+    if (observation.kind === 'transitioned') {
+      const evaluating = attemptEvaluatingEvent(observation.record);
+      if (evaluating !== undefined) dispatchGuarded(evaluating);
+    }
   };
+
+  // A throwing listener must not cost the drafts after this one their history write.
+  function dispatchGuarded(event: GoalLifecycleEvent): void {
+    if (dispatch === undefined) return;
+    try {
+      dispatch(event);
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'goals',
+        message: `[bureau] Dispatching ${event.type} for goal "${event.goalRunId}" threw:`,
+        cause: error,
+      });
+    }
+  }
 }
 
 const GOAL_EVENT_KIND_SET: ReadonlySet<string> = new Set(GOAL_EVENT_KINDS);
