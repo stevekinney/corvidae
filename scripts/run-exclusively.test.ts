@@ -6,6 +6,7 @@ import { join } from 'node:path';
 
 import { spawnWithHangGuard } from '../testing/testing/src/hang-guard.ts';
 import { rejectionOf } from '../testing/testing/src/helpers/promise-outcome.ts';
+import { waitUntil } from '../testing/testing/src/wait-until.ts';
 import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
 import {
   acquireHostLock,
@@ -590,12 +591,20 @@ describe('runExclusively', () => {
 });
 
 /** Resolves once `count` tickets are queued beside the lock, so arrival order is under the test's control. */
+/**
+ * Waits until `count` tickets are filed. A waiter writes `staging-<token>` before renaming it to its
+ * `.json` ticket, and only the renamed ticket is visible to the next waiter's arrival time, so a
+ * staged file must not count: a waiter started then could share the earlier one's millisecond and
+ * lose the tie to a random token.
+ */
 async function waitForTickets(lockDirectory: string, count: number): Promise<void> {
-  for (;;) {
-    const tickets = await readdir(queueDirectoryFor(lockDirectory)).catch(() => []);
-    if (tickets.length >= count) return;
-    await Bun.sleep(2);
-  }
+  await waitUntil(
+    async () => {
+      const names = await readdir(queueDirectoryFor(lockDirectory)).catch(() => []);
+      return names.filter((name) => name.endsWith('.json')).length >= count;
+    },
+    { message: `${count} filed tickets` },
+  );
 }
 
 async function writeTicket(
