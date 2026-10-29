@@ -5,50 +5,49 @@
  *
  * A child process runs a durable Bureau under `workflow-lease` ownership,
  * commits step 0, records what it observed, and SIGKILLs itself. This test
- * then boots two fresh Bureaus (B and C) over the same storage at once.
+ * then boots two fresh Bureaus over the same storage at once: B in its own
+ * process and C in a second child, so no process holds two handles on the
+ * store (COR-1795).
  *
  * The one real-time wait is the claim-lapse wait: Weft's claim clock is not
  * injectable through `createRunEngine`, so it is derived from the claim TTL
  * exactly as `create-run-engine-crash-and-adopt.test.ts` does. Every other
- * wait is `child.exited`, the marker file, or a bounded condition poll. The
- * poll carries a tiny real delay because LMDB's completion callbacks starve
- * under a zero-delay macrotask loop (see
+ * wait is `child.exited`, a marker file, or a condition poll (`waitUntil`,
+ * which falls back to a tiny real delay, because LMDB's completion callbacks
+ * starve under a zero-delay macrotask loop; see
  * `event-history-run-ownership-recovery-lmdb.test.ts`).
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import { stopWhen, createAgent } from '@lostgradient/operative';
-import type { Storage } from '@lostgradient/storage';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
-import { createTool, createToolbox } from 'armorer';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import type { Subprocess } from 'bun';
 import { describe, expect, it } from 'bun:test';
-import { z } from 'zod';
 
-import { createBureau } from './create-bureau';
-import {
-  expectScenarioPassed,
-  type ScenarioScope,
-  settleScenario,
-  waitForBureauState,
-} from './test/hoisted-scenario';
-import type { Bureau } from './types';
+import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
 import { unexpectedChildStderr } from './test/child-stderr';
+import {
+  RACER_GO_FILE,
+  RACER_READY_FILE,
+  RACER_REPORT_FILE,
+  type Racer,
+  type RacerReport,
+  settleRacer,
+  startRacer,
+} from './test/process-crash-racer';
 import {
   createLmdbStorageFixture,
   createSqliteStorageFixture,
   type PersistentBureauStorageFixture,
 } from './test/storage-fixtures';
-import type { AgentDefinitions } from './agent-catalog';
 
 const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
 
-/** Must match the constants in `test/process-crash-child.ts`. */
+/** Must match the constant in `test/process-crash-work-integrity-fixtures.ts`. */
 const CLAIM_TTL_MS = 200;
-const CLAIM_RENEW_MS = 50;
 const runtime = createDefaultRuntimeServices();
 /**
  * A relaunched child still running this long after it started is killed and
@@ -63,51 +62,6 @@ interface CrashMarker {
   readonly maxAuditSequence: number;
   readonly sessionCursor: string;
   readonly sessionLastSequence: number;
-}
-
-function createNextTool() {
-  return createTool({
-    name: 'next',
-    description: 'continue',
-    input: z.object({}),
-    execute: async () => 'ok',
-  });
-}
-
-interface Racer {
-  readonly bureau: Bureau;
-  readonly stepsAtOrAfterOne: () => number;
-  readonly stepZeroCalls: () => number;
-}
-
-async function startRacer(storage: Storage): Promise<Racer> {
-  let stepsAtOrAfterOne = 0;
-  let stepZeroCalls = 0;
-  const bureau = await createBureau<AgentDefinitions>({
-    agents: {
-      default: createAgent({
-        generate: async ({ step }) => {
-          if (step === 0) stepZeroCalls += 1;
-          else stepsAtOrAfterOne += 1;
-          return { content: `recovered step ${step}`, toolCalls: [] };
-        },
-        toolbox: createToolbox([createNextTool()]),
-        stopWhen: stopWhen.noToolCalls(),
-      }),
-    },
-    storage,
-    durable: true,
-    durableOwnership: {
-      ownership: 'workflow-lease',
-      workflowClaimTtlMs: CLAIM_TTL_MS,
-      workflowClaimRenewIntervalMs: CLAIM_RENEW_MS,
-    },
-  });
-  return {
-    bureau,
-    stepsAtOrAfterOne: () => stepsAtOrAfterOne,
-    stepZeroCalls: () => stepZeroCalls,
-  };
 }
 
 function stepIndexOf(detail: unknown): number {
@@ -128,87 +82,86 @@ async function recoveryScenario(backend: Backend, scope: ScenarioScope): Promise
   const directory = mkdtempSync(join(tmpdir(), `corvidae-process-crash-${backend}-`));
   const storagePath = join(directory, 'bureau');
   const markerPath = join(directory, 'marker.json');
-  const racers: Racer[] = [];
-  // One fixture per racer on the child's path, each opened only once the child is gone.
-  const storageFixtures: PersistentBureauStorageFixture[] = [];
-  const racerStorage = (): Storage => {
-    const fixture =
-      backend === 'lmdb'
-        ? createLmdbStorageFixture({ path: storagePath })
-        : createSqliteStorageFixture({ path: storagePath });
-    storageFixtures.push(fixture);
-    return fixture.storage;
+  const children: Subprocess<'ignore', 'ignore', 'pipe'>[] = [];
+  let b: Racer | undefined;
+  // B's fixture on the child's path, opened only once the crashed child is gone. C opens its own
+  // handle in its own process.
+  const storageFixture: PersistentBureauStorageFixture =
+    backend === 'lmdb'
+      ? createLmdbStorageFixture({ path: storagePath })
+      : createSqliteStorageFixture({ path: storagePath });
+  const spawnChild = (scenario: string): Subprocess<'ignore', 'ignore', 'pipe'> => {
+    const child = spawnWithHangGuard(['bun', CHILD, scenario, backend, storagePath, markerPath], {
+      stdin: 'ignore',
+      stdout: 'ignore',
+      stderr: 'pipe',
+    });
+    children.push(child);
+    return child;
   };
-  const disposeStorage = () =>
-    Promise.allSettled(storageFixtures.map((fixture) => fixture.dispose()));
+  const stopChildren = (): void => {
+    for (const child of children) {
+      if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+    }
+  };
   // A hung scenario never reaches its `finally`, so what it owns is released from here.
   scope.onHang(async () => {
-    await Promise.allSettled(racers.map((racer) => racer.bureau.shutdown()));
-    await disposeStorage();
+    stopChildren();
+    await b?.bureau.shutdown();
+    await storageFixture.dispose();
     rmSync(directory, { recursive: true, force: true });
   });
 
   try {
     // Premise: the child died from SIGKILL and left its marker.
-    const child = spawnWithHangGuard(
-      ['bun', CHILD, 'park-after-step-0', backend, storagePath, markerPath],
-      {
-        stdout: 'pipe',
-        stderr: 'pipe',
-      },
-    );
-    scope.onHang(() => child.kill());
-    await child.exited;
+    const crashed = spawnChild('park-after-step-0');
+    await crashed.exited;
     const crashedAt = runtime.clock.now();
-    const stderr = await new Response(child.stderr).text();
-    expect(child.signalCode ?? stderr).toBe('SIGKILL');
+    const stderr = await new Response(crashed.stderr).text();
+    expect(crashed.signalCode ?? stderr).toBe('SIGKILL');
     expect(existsSync(markerPath)).toBe(true);
     const marker = JSON.parse(readFileSync(markerPath, 'utf8')) as CrashMarker;
     expect(typeof marker.maxAuditSequence).toBe('number');
     expect(typeof marker.sessionLastSequence).toBe('number');
 
-    // The dead holder's claim lapses on Weft's own wall clock.
+    // C starts its process while the dead holder's claim lapses on Weft's own wall clock.
+    const c = spawnChild('race-recover');
+    const cStderr = new Response(c.stderr).text();
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, CLAIM_TTL_MS * 10));
+    await waitUntil(() => existsSync(join(directory, RACER_READY_FILE)) || c.exitCode !== null, {
+      message: 'the racing child to open the store',
+    });
+    expect(c.exitCode).toBeNull();
 
-    const started = await Promise.allSettled([
-      startRacer(racerStorage()),
-      startRacer(racerStorage()),
-    ]);
-    for (const outcome of started) {
-      if (outcome.status === 'fulfilled') racers.push(outcome.value);
-    }
-    for (const outcome of started) {
-      if (outcome.status === 'rejected') throw outcome.reason;
-    }
-    const [b, c] = racers as [Racer, Racer];
+    // Both racers boot at once.
+    writeFileSync(join(directory, RACER_GO_FILE), '', 'utf8');
+    b = await startRacer(storageFixture.storage);
+    const bReport = await settleRacer(b, marker.runId);
+    await c.exited;
+    expect({
+      exitCode: c.exitCode,
+      unexpectedStderr: unexpectedChildStderr(await cStderr),
+    }).toEqual({ exitCode: 0, unexpectedStderr: '' });
+    const cReport = JSON.parse(
+      readFileSync(join(directory, RACER_REPORT_FILE), 'utf8'),
+    ) as RacerReport;
 
-    for (const racer of racers) {
-      const report = await racer.bureau.recovery();
-      expect(report.outcome).toBe('clean');
+    for (const report of [bReport, cReport]) {
+      expect(report.recoveryOutcome).toBe('clean');
       expect(report.perRunFailures).toEqual([]);
+      expect(report.durableStatus).toBe('completed');
     }
 
     // Recovery: exactly one racer completes the run locally.
-    const bureaus = racers.map((racer) => racer.bureau);
-    await waitForBureauState(
-      bureaus,
-      () => racers.some((racer) => racer.bureau.tasks.detail(marker.runId)?.status === 'completed'),
-      { runIds: [marker.runId] },
-    );
-    const winners = racers.filter(
-      (racer) => racer.bureau.tasks.detail(marker.runId)?.status === 'completed',
-    );
-    expect(winners).toHaveLength(1);
-    const winner = winners[0] as Racer;
+    expect([bReport, cReport].filter((report) => report.completedLocally)).toHaveLength(1);
 
-    for (const racer of racers) {
-      // Weft's own result waiter: it settles after the durable commit, for the loser too.
-      await racer.bureau.tasks.wait(marker.runId);
-      const durableRun = await racer.bureau.tasks.workflow(marker.runId);
-      expect(durableRun?.status).toBe('completed');
-    }
+    // Fencing: the post-crash step ran once across both racers; step 0 never reran.
+    expect(bReport.stepsAtOrAfterOne + cReport.stepsAtOrAfterOne).toBe(1);
+    expect(bReport.stepZeroCalls + cReport.stepZeroCalls).toBe(0);
 
-    const asOwner = await winner.bureau.tasks.events(marker.runId, { principal: 'alice' });
+    // C has exited, so B reads everything the winner committed from the store.
+    const reader = b;
+    const asOwner = await reader.bureau.tasks.events(marker.runId, { principal: 'alice' });
     if ('outcome' in asOwner) {
       throw new Error(`expected a page for alice, got ${JSON.stringify(asOwner)}`);
     }
@@ -216,15 +169,11 @@ async function recoveryScenario(backend: Backend, scope: ScenarioScope): Promise
     expect(kinds.filter((kind) => kind === 'run.completed')).toHaveLength(1);
     expect(kinds).not.toContain('run.error');
     expect(kinds).not.toContain('run.aborted');
-    expect(await winner.bureau.tasks.events(marker.runId, { principal: 'mallory' })).toEqual({
+    expect(await reader.bureau.tasks.events(marker.runId, { principal: 'mallory' })).toEqual({
       outcome: 'not-found',
     });
 
-    // Fencing: the post-crash step ran once across both racers; step 0 never reran.
-    expect(b.stepsAtOrAfterOne() + c.stepsAtOrAfterOne()).toBe(1);
-    expect(b.stepZeroCalls() + c.stepZeroCalls()).toBe(0);
-
-    const auditTrail = winner.bureau.internals.auditTrail;
+    const auditTrail = reader.bureau.internals.auditTrail;
     if (auditTrail === undefined) throw new Error('the bureau has no audit trail');
 
     // Continuity: audit sequence numbers are never reused.
@@ -253,7 +202,7 @@ async function recoveryScenario(backend: Backend, scope: ScenarioScope): Promise
     expect(indices).toEqual(indices.map((_, position) => position));
 
     // Continuity: the pre-crash cursor still resumes without a gap.
-    const resumed = await winner.bureau.contexts.events(marker.sessionId, {
+    const resumed = await reader.bureau.contexts.events(marker.sessionId, {
       since: marker.sessionCursor,
     });
     if ('outcome' in resumed) {
@@ -266,14 +215,12 @@ async function recoveryScenario(backend: Backend, scope: ScenarioScope): Promise
       previous = event.sequence;
     }
   } finally {
-    // allSettled never rejects, so the directory is always removed after both shutdowns.
-    const reports = await Promise.allSettled(racers.map((racer) => racer.bureau.shutdown()));
-    await disposeStorage();
+    stopChildren();
+    await Promise.all(children.map((child) => child.exited));
+    const shutdown = await b?.bureau.shutdown();
+    await storageFixture.dispose();
     rmSync(directory, { recursive: true, force: true });
-    for (const report of reports) {
-      expect(report.status).toBe('fulfilled');
-      if (report.status === 'fulfilled') expect(report.value.unresolved).toBe(0);
-    }
+    if (shutdown !== undefined) expect(shutdown.unresolved).toBe(0);
   }
 }
 

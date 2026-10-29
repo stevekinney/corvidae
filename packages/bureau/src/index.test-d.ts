@@ -11,42 +11,28 @@
 
 import type {
   AgentRunForName,
-  AssembleReproductionArtifactOptions,
   Bureau,
   BureauOptions,
   BureauFaultOperation,
   BureauFaultPlan,
   BureauFaultPlanEntry,
-  BureauHarnessCapability,
-  BureauIncompleteWork,
-  BureauQuiescenceReport,
   BureauRunOptions,
-  BureauTestHarness,
-  BureauTestHarnessOptions,
   DurableEventHistoryFixture,
   DurableEventHistoryFixtureOptions,
   DurableEventHistoryFixtureRecord,
-  DurableRunRegistration,
-  ReproductionArtifact,
-  ReproductionArtifactEnvironment,
   RunCreationReceipt,
   RunCreationReceiptLocation,
 } from './index';
 import {
-  assembleReproductionArtifact,
-  assertBureauQuiescent,
   BureauFaultSelectorResolutionError,
-  BureauHarnessUnsupportedError,
   BureauLedgerConflictError,
   COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS,
-  createBureauTestHarness,
   createCommandLedger,
   createDurableEventHistoryFixture,
   createRunCreationLedger,
   digestCommandPayload,
   digestRunCreationPayload,
   DURABLE_EVENT_HISTORY_FIXTURE_SEQUENCE,
-  locateWorkspaceRoot,
   RUN_CREATION_OPERATION_VERSION,
   RunCreationReceiptUnrecordedError,
   selectAuditWriteFaultTarget,
@@ -58,47 +44,24 @@ declare const runOptions: BureauRunOptions;
 declare const runResult: AgentRunForName<Record<string, never>, never>;
 void runOptions;
 void runResult;
-void assembleReproductionArtifact;
-void assertBureauQuiescent;
 void BureauFaultSelectorResolutionError;
-void BureauHarnessUnsupportedError;
-void createBureauTestHarness;
 void createDurableEventHistoryFixture;
 void DURABLE_EVENT_HISTORY_FIXTURE_SEQUENCE;
-void locateWorkspaceRoot;
 void selectAuditWriteFaultTarget;
 void selectWebhookDeliveryFaultTarget;
 
-declare const artifactOptions: AssembleReproductionArtifactOptions;
-declare const artifactEnvironment: ReproductionArtifactEnvironment;
-declare const artifact: ReproductionArtifact;
-declare const capability: BureauHarnessCapability;
 declare const faultOperation: BureauFaultOperation;
 declare const faultPlan: BureauFaultPlan;
 declare const faultEntry: BureauFaultPlanEntry;
-declare const incompleteWork: BureauIncompleteWork;
-declare const quiescenceReport: BureauQuiescenceReport;
-declare const harness: BureauTestHarness;
-declare const harnessOptions: BureauTestHarnessOptions;
 declare const historyFixture: DurableEventHistoryFixture;
 declare const historyOptions: DurableEventHistoryFixtureOptions;
 declare const historyRecord: DurableEventHistoryFixtureRecord;
-declare const runRegistration: DurableRunRegistration;
-void artifactOptions;
-void artifactEnvironment;
-void artifact;
-void capability;
 void faultOperation;
 void faultPlan;
 void faultEntry;
-void incompleteWork;
-void quiescenceReport;
-void harness;
-void harnessOptions;
 void historyFixture;
 void historyOptions;
 void historyRecord;
-void runRegistration;
 
 // COR-1695: members and options nothing outside Bureau's own tests used are
 // gone. Each assertion fails to compile if its type declares any removed name.
@@ -186,3 +149,26 @@ export type { CreateMemoryStorageFixtureOptions as RemovedMemoryOptions } from '
 export type { CreatePersistentStorageFixtureOptions as RemovedPersistentOptions } from './index';
 // @ts-expect-error `PersistentBureauStorageFixture` is not exported from the package entry.
 export type { PersistentBureauStorageFixture as RemovedPersistentFixture } from './index';
+
+// COR-1795: the test harness and what reads one (the quiescence report and the
+// reproduction artifact) are Bureau's own test support, because the harness
+// takes a storage fixture the entry does not export. Each name must be absent
+// from the barrel.
+type RemovedHarnessValue =
+  | 'assembleReproductionArtifact'
+  | 'assertBureauQuiescent'
+  | 'BureauHarnessUnsupportedError'
+  | 'BureauQuiescenceError'
+  | 'createBureauTestHarness'
+  | 'locateWorkspaceRoot';
+export const entryExportsNoHarnessValue: [
+  Extract<keyof typeof BureauEntry, RemovedHarnessValue>,
+] extends [never]
+  ? true
+  : never = true;
+// @ts-expect-error `BureauTestHarness` is not exported from the package entry.
+export type { BureauTestHarness as RemovedBureauTestHarness } from './index';
+// @ts-expect-error `BureauQuiescenceReport` is not exported from the package entry.
+export type { BureauQuiescenceReport as RemovedBureauQuiescenceReport } from './index';
+// @ts-expect-error `ReproductionArtifact` is not exported from the package entry.
+export type { ReproductionArtifact as RemovedReproductionArtifact } from './index';
