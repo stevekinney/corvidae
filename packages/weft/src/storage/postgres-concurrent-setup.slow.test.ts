@@ -1,9 +1,9 @@
-import { afterAll, describe, expect, it } from 'bun:test';
-import { Pool } from 'pg';
 import {
   openPostgresTestDatabase,
   requireOpenedPostgresTestDatabase,
-} from './postgres-server.test-support.ts';
+} from '@lostgradient/testing/postgres-server';
+import { afterAll, describe, expect, it } from 'bun:test';
+import { Pool } from 'pg';
 import { PostgresStorage } from './postgres.ts';
 
 const INSTANCES = 4;

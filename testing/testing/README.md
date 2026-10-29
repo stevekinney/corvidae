@@ -27,6 +27,10 @@ try {
 
 `trackTimers()` observes the host's `setTimeout`, `setInterval`, and matching clear calls for the current test process. It does not prove that a promise, event listener, browser animation, or server process has stopped. Pair it with the owning package's `dispose()`, `complete()`, or shutdown report when the fixture starts those resources.
 
+## Live PostgreSQL
+
+`@lostgradient/testing/postgres-server` gives a suite a real PostgreSQL. `postgresTestDatabase` resolves once at import: a `WEFT_TEST_POSTGRES_URL` wins, otherwise `initdb` and `pg_ctl` on `PATH` start a disposable cluster, otherwise it is `null` and the suite gates itself with `describe.skipIf(!postgresTestDatabase)`. A workspace whose Turborepo task is not given `WEFT_TEST_POSTGRES_URL` always uses the disposable cluster.
+
 ## Temporary paths
 
 Name a test's temporary files with `@lostgradient/testing/temporary-path`, never with `process.pid`. The operating system reuses process ids, so a later run builds the path an earlier run used, opens the database that run left behind, and inherits its rows. `createTemporaryPath(label, extension)` returns a path inside a fresh `mkdtemp` directory, so a SQLite file and its `-wal` and `-shm` files share one owner, and `removeTemporaryPath(path)` removes that directory in a `finally` or an `afterEach`. A file that has to stay next to the source it imports, such as a compiled server-render module, takes `uniqueFileName(label, extension)`, which appends a `crypto.randomUUID()`.
