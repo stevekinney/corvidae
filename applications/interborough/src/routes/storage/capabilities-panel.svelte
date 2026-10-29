@@ -8,7 +8,7 @@
    * Only `conditionalBatch` gates a control in this console (the batch
    * panel's conditional section); the other five are displayed because
    * Weft treats them as trusted contracts or operational hints and does not
-   * gate on them (`WEFT/src/storage/capabilities.ts`).
+   * gate on them (`@lostgradient/storage`'s `capabilities.ts`).
    */
   import { Badge, DescriptionList, Skeleton } from '@lostgradient/cinder';
   import type { StorageCapabilities } from '@lostgradient/storage';

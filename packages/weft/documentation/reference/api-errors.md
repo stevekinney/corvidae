@@ -189,17 +189,16 @@ These classes are exported from the package root and extend `WeftError`, but the
 
 ### Root-exported errors outside the WeftError family
 
-These classes are exported from the package root but extend plain `Error`, so `isWeftError`, `isWeftErrorLike`, `isWeftErrorCode`, and `isWeftFault` all reject them, even where the class carries its own `code` property (`StorageBatchOperationLimitExceededError` does). Catch them with `instanceof`. The three `Weft…Warning` classes are reported as process warnings rather than thrown, and the three `Chaos…Error` classes are produced only by the `withChaos` testing combinator.
+These classes are exported from the package root but extend plain `Error`, so `isWeftError`, `isWeftErrorLike`, `isWeftErrorCode`, and `isWeftFault` all reject them. Catch them with `instanceof`. The storage protocol's `StorageBatchOperationLimitExceededError` is exported by `@lostgradient/storage`, not by Weft; it too extends plain `Error`, with its own `code` property. The three `Weft…Warning` classes are reported as process warnings rather than thrown, and the three `Chaos…Error` classes are produced only by the `withChaos` testing combinator.
 
-| Class                                     | Defined in                                 |
-| ----------------------------------------- | ------------------------------------------ |
-| `CatalogClientError`                      | `client/operation-client-runtime.ts`       |
-| `ChaosNonRetryableError`                  | `testing/chaos.ts`                         |
-| `ChaosTimeoutError`                       | `testing/chaos.ts`                         |
-| `ChaosTransientError`                     | `testing/chaos.ts`                         |
-| `ConnectionConfigurationError`            | `connection.ts`                            |
-| `StorageBatchOperationLimitExceededError` | `@lostgradient/storage`                    |
-| `WeftWorkflowCheckpointConflictWarning`   | `core/engine/checkpoint-conflict-error.ts` |
-| `WeftWorkflowClaimLostWarning`            | `core/engine/lease-deposition.ts`          |
-| `WeftWorkflowWakeDiscardedWarning`        | `core/engine/lease-deposition.ts`          |
-| `WorkflowDocumentValidationError`         | `document-workflow/document.ts`            |
+| Class                                   | Defined in                                 |
+| --------------------------------------- | ------------------------------------------ |
+| `CatalogClientError`                    | `client/operation-client-runtime.ts`       |
+| `ChaosNonRetryableError`                | `testing/chaos.ts`                         |
+| `ChaosTimeoutError`                     | `testing/chaos.ts`                         |
+| `ChaosTransientError`                   | `testing/chaos.ts`                         |
+| `ConnectionConfigurationError`          | `connection.ts`                            |
+| `WeftWorkflowCheckpointConflictWarning` | `core/engine/checkpoint-conflict-error.ts` |
+| `WeftWorkflowClaimLostWarning`          | `core/engine/lease-deposition.ts`          |
+| `WeftWorkflowWakeDiscardedWarning`      | `core/engine/lease-deposition.ts`          |
+| `WorkflowDocumentValidationError`       | `document-workflow/document.ts`            |

@@ -20105,7 +20105,7 @@ describe('AB-389 — session commit outbox', () => {
     const gatedStorage = new Proxy(realStorage, {
       get(target, property, receiver) {
         // `FleetEventFeed.append` commits through `storage.conditionalBatch`
-        // (`storageConditionalBatch`, `weft/src/storage/interface.ts`), not
+        // (`storageConditionalBatch`, `storage/src/interface.ts`), not
         // `storage.batch` — gate both so this works regardless of which
         // path a caller's write takes.
         if (property === 'batch' || property === 'conditionalBatch') {

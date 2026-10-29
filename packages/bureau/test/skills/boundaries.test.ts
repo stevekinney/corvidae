@@ -15,6 +15,7 @@ const allowedPackages = new Set([
   'armorer/protocol',
   '@lostgradient/cryptography',
   '@lostgradient/lifecycle',
+  '@lostgradient/storage',
   '@lostgradient/weft',
   'gray-matter',
   'js-yaml',
