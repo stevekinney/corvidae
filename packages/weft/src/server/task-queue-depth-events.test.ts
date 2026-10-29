@@ -225,7 +225,7 @@ describe('TaskQueue depth events', () => {
 
     const parked = queue.poll('q', ['charge'], INTERVAL * 10);
     queue.enqueue('q', task('a'));
-    await expect(parked).resolves.toMatchObject({ operationId: 'a' });
+    expect(await parked).toMatchObject({ operationId: 'a' });
     await advanceTimersByTime(INTERVAL * 2);
 
     expect(seen).toEqual([]);
@@ -264,7 +264,7 @@ describe('TaskQueue depth events', () => {
     const parked = queue.poll('q', ['charge'], INTERVAL * 10);
 
     expect(queue.restorePending(withdrawn)).toBe(true);
-    await expect(parked).resolves.toMatchObject({ operationId: 'a' });
+    expect(await parked).toMatchObject({ operationId: 'a' });
     expect(seen).toEqual([]);
   });
 
