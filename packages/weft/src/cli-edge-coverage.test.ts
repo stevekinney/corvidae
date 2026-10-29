@@ -4,15 +4,9 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { executeSchedule, executeTimeline, parseCliArguments } from './cli/index.ts';
-import {
-  advanceCheckpoint,
-  BunSQLiteStorage,
-  createCheckpoint,
-  encode,
-  KEYS,
-  serializeCheckpoint,
-} from './index.ts';
+import { advanceCheckpoint, createCheckpoint, encode, KEYS, serializeCheckpoint } from './index.ts';
 
 const databasesToDelete = new Set<string>();
 

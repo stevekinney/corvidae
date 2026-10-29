@@ -9,7 +9,8 @@ The **task ledger** is that authoritative record. Queue entries, worker capacity
 Use durable storage and await the server's readiness promise before advertising the task plane as healthy. The server needs atomic `conditionalBatch` storage operations to fence task transitions.
 
 ```typescript
-import { BunSQLiteStorage, Engine, serve } from '@lostgradient/weft';
+import { Engine, serve } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 await using storage = new BunSQLiteStorage('./remote-tasks.db');
 await using engine = await Engine.create({ storage, workflows: {} });

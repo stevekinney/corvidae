@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '@lostgradient/storage';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import {
   createDiskBackedTestFixture,
   sqliteDatabaseSidecarSuffixes,
@@ -11,7 +12,6 @@ import {
   type Checkpoint,
   type WorkflowState,
 } from '../core/types.ts';
-import { BunSQLiteStorage } from '../storage/bun-sql.ts';
 import { KEYS } from '../storage/keys.ts';
 import { collectDiagnostics } from './doctor.ts';
 

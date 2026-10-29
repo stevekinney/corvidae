@@ -1,11 +1,11 @@
 import type { BatchOperation } from '@lostgradient/storage';
 
+import type { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import {
   isConstrainedCodexRunner,
   isGitHubActionsRunner,
 } from '../../scripts/benchmarks/benchmark-environment.ts';
 import { readEnvironmentVariable } from '../runtime/environment-configuration.ts';
-import type { BunSQLiteStorage } from './bun-sql.ts';
 
 /** Generate a realistic ~2KB value (typical checkpoint size). */
 export function generateCheckpointValue(): Uint8Array {

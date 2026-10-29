@@ -35,10 +35,6 @@
           "import": "./dist/storage/compressed-storage.js",
           "default": "./dist/storage/compressed-storage.js"
         },
-        "./storage/sqlite/bun": {
-          "types": "./dist/storage/bun-sql.d.ts",
-          "bun": "./dist/storage/bun-sql.js"
-        },
         "./storage/sqlite/node": {
           "types": "./dist/storage/node-sqlite.d.ts",
           "node": "./dist/storage/node-sqlite.js"

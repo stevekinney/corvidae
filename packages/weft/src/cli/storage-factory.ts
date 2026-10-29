@@ -9,7 +9,7 @@ import type { StorageBackend } from './types.ts';
 export async function createStorage(backend: StorageBackend, database: string): Promise<Storage> {
   switch (backend) {
     case 'sqlite': {
-      const { BunSQLiteStorage } = await import('../index.ts');
+      const { BunSQLiteStorage } = await import('@lostgradient/storage-bun-sqlite');
       return new BunSQLiteStorage(database);
     }
     case 'memory':

@@ -23,6 +23,9 @@
     },
     {
       "path": "../storage/tsconfig.source.json"
+    },
+    {
+      "path": "../storage-bun-sqlite/tsconfig.source.json"
     }
   ]
 }

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { BatchOperation } from '@lostgradient/storage';
 
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import {
   createDiskBackedTestFixture,
   sqliteDatabaseSidecarSuffixes,
@@ -16,7 +17,6 @@ import {
   selectSQLiteBenchmarkWorkload,
   TARGET_WRITES_PER_SECOND,
 } from './bun-sql-workload.test-support.ts';
-import { BunSQLiteStorage } from './bun-sql.ts';
 
 const integrityWorkload = selectSQLiteBenchmarkWorkload(false);
 

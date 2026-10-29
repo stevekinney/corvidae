@@ -9,7 +9,8 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { BunSQLiteStorage, NodeSQLiteStorage } from '@lostgradient/weft';
+import { NodeSQLiteStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { type Storage } from '@lostgradient/storage';
 
 export interface HostArguments {

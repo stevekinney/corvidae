@@ -5,7 +5,7 @@ import { tmpdir, userInfo } from 'node:os';
 import { join, resolve } from 'node:path';
 
 import { textValueStore } from '@lostgradient/storage';
-import { BunSQLiteStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 import { GATE_RECORD_SCHEMA_VERSION, type GateDecisionRecord } from '../src/gate';
 import { createEvaluationHistory, type HistoricalRecord } from '../src/history';

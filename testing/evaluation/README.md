@@ -235,7 +235,7 @@ Every dataset has an `id`, a `version`, and an `owner`, and at least one case. E
 ## History
 
 ```ts
-import { BunSQLiteStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { textValueStore } from '@lostgradient/storage';
 import { createEvaluationHistory, toEvaluationRunRecord } from '@lostgradient/evaluation';
 

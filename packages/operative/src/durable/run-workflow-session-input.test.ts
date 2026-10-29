@@ -4,9 +4,9 @@ import {
   type Storage,
   textValueStore,
 } from '@lostgradient/storage';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import {
   type ApplicationCommandClaim,
-  BunSQLiteStorage,
   Engine,
   LMDBStorage,
   Mailbox,

@@ -180,7 +180,7 @@ describe('integration: full workflow lifecycle', () => {
   });
 
   it('BunSQLiteStorage works as engine backend', async () => {
-    const { BunSQLiteStorage } = await import('./storage/bun-sql.ts');
+    const { BunSQLiteStorage } = await import('@lostgradient/storage-bun-sqlite');
 
     using storage = new BunSQLiteStorage(':memory:');
     await using engine = new Engine({ storage });

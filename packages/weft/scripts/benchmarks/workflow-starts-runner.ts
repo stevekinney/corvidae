@@ -1,10 +1,10 @@
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { Engine } from '../../src/core/engine.ts';
 import {
   registerOnRuntimeEngine,
   runtimeWorkflowEngine,
 } from '../../src/core/runtime-workflow-engine.ts';
 import { workflow, type WorkflowContext } from '../../src/core/types.ts';
-import { BunSQLiteStorage } from '../../src/storage/bun-sql.ts';
 import { startMainThreadCpuClock } from './main-thread-cpu.ts';
 
 export type WorkflowStartAdmissionMeasurement = {

@@ -64,6 +64,7 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/bureau',
   '@lostgradient/memory',
   '@lostgradient/storage',
+  '@lostgradient/storage-bun-sqlite',
   '@lostgradient/testing',
   '@lostgradient/typescript',
   '@lostgradient/interborough',

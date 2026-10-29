@@ -60,8 +60,8 @@ import {
 import { agentFileDirectory, workflowFileDirectory } from '@lostgradient/bureau/sources';
 import { typesafeJev, type GenerateFunction } from '@lostgradient/operative';
 import { type Storage } from '@lostgradient/storage';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import {
-  BunSQLiteStorage,
   serve,
   type RegistryAgnosticEngine,
   type ServeOptions,

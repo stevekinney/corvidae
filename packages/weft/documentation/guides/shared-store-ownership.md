@@ -19,7 +19,8 @@ For a shared database, each process creates its own connection to the same store
 The Bun and Node SQLite adapters wait up to five seconds for another process's write lock. A `conditionalBatch` that loses its race inside that bound returns `false` rather than throwing; a lock held for longer still surfaces SQLite's own `database is locked` error.
 
 ```typescript
-import { BunSQLiteStorage, Engine, workflow } from '@lostgradient/weft';
+import { Engine, workflow } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 const greeting = workflow({ name: 'greeting' }).execute(async function* (_context, name: string) {
   return `Hello, ${name}!`;

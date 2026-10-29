@@ -18,7 +18,7 @@
 import { writeFileSync } from 'node:fs';
 
 import { createAgent } from '@lostgradient/operative';
-import { BunSQLiteStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { type Storage } from '@lostgradient/storage';
 
 import { createBureau } from '../create-bureau';

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { Engine } from '../../src/core/engine.ts';
 import type { WorkflowContext } from '../../src/core/types.ts';
 import { workflow } from '../../src/core/types/workflow-function.ts';
-import { BunSQLiteStorage } from '../../src/storage/bun-sql.ts';
 
 const LIBRARY_TARGET_MS = 100;
 

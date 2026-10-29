@@ -38,6 +38,7 @@
     "@ag-ui/client": "catalog:",
     "@modelcontextprotocol/client": "catalog:",
     "@lostgradient/typescript": "workspace:*",
+    "@lostgradient/storage-bun-sqlite": "workspace:*",
     "@lostgradient/testing": "workspace:*",
     "@types/bun": "catalog:",
     "@types/js-yaml": "catalog:",

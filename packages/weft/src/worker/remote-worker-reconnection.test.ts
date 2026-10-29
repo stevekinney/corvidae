@@ -1135,7 +1135,7 @@ async function recoverInFlightTaskAcrossSigkill(): Promise<void> {
     const repoRoot = new URL('../..', import.meta.url);
     const indexUrl = new URL('src/index.ts', repoRoot).href;
     const serverUrl = new URL('src/server/index.ts', repoRoot).href;
-    const sqliteUrl = new URL('src/storage/bun-sql.ts', repoRoot).href;
+    const sqliteUrl = import.meta.resolve('@lostgradient/storage-bun-sqlite');
     const taskLedgerUrl = new URL('src/core/task-ledger/task-ledger.ts', repoRoot).href;
     return `
 import { Engine, activity } from ${JSON.stringify(indexUrl)};

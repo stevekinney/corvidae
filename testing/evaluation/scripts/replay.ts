@@ -21,7 +21,7 @@ import { existsSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { BunSQLiteStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 import { createEvaluationHistory } from '../src/history';
 import type { GateEvaluatorLoader } from '../src/release-gate';

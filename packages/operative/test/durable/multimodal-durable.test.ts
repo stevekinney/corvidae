@@ -1,6 +1,7 @@
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { BunSQLiteStorage, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTestToolbox, createTool } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation, type MultiModalContent } from 'conversationalist';

@@ -1,5 +1,4 @@
 import type { Database, SQLQueryBindings, Statement } from 'bun:sqlite';
-import { tryLoadNodeBuiltin } from '../runtime/portable.ts';
 
 import {
   assertStorageBatchOperationCount,
@@ -12,6 +11,7 @@ import {
   type Storage,
   type StorageCapabilities,
 } from '@lostgradient/storage';
+import { tryLoadNodeBuiltin } from '@lostgradient/storage/runtime';
 import {
   assertReadOnlyQuery,
   buildSqliteCountKeysByPrefix,
@@ -31,11 +31,6 @@ import {
 type BunSQLiteStoragePersistence = NonNullable<StorageCapabilities['persistence']>;
 
 /**
- * Runtime-neutral alias for the Bun SQLite adapter. Consumers that import
- * from `@lostgradient/weft` get this class under Bun.
- */
-
-/**
  * SQLite-backed {@link Storage} using Bun's built-in `bun:sqlite` module.
  *
  * Opens the database in WAL mode with prepared-statement caching so the hot
@@ -49,21 +44,13 @@ type BunSQLiteStoragePersistence = NonNullable<StorageCapabilities['persistence'
  *
  * @example
  * ```ts
- * import { BunSQLiteStorage } from '@lostgradient/weft';
- * import { workflow, Engine, type WorkflowContext } from '@lostgradient/weft';
+ * import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
  *
  * // Durable on-disk storage
- * await using storage = new BunSQLiteStorage('./weft.db');
- * await using engine = new Engine({ storage });
+ * using storage = new BunSQLiteStorage('./app.db');
  *
- * engine.register(
- *   workflow({ name: 'echo' }).execute(async function* (ctx: WorkflowContext, input: unknown) {
- *     return input;
- *   }),
- * );
- *
- * const handle = await engine.start('echo', { msg: 'hi' });
- * console.log(await handle.result()); // { msg: 'hi' }
+ * await storage.put('greeting', new TextEncoder().encode('hello'));
+ * console.log(new TextDecoder().decode((await storage.get('greeting')) ?? undefined)); // 'hello'
  * ```
  */
 export class BunSQLiteStorage implements Storage {

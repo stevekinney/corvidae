@@ -17,7 +17,7 @@ import { lookupTool } from '../testing/agent-file-fixtures.test-support';
 import { CLAIM_RENEW_MS, CLAIM_TTL_MS } from './process-crash-work-integrity-fixtures';
 import type { AgentDefinitions } from '../agent-catalog';
 import { agentFileDirectory } from '../sources/agent-file-directory';
-import { BunSQLiteStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 const [storagePath, agentsPath, markerPath] = process.argv.slice(2);
 if (storagePath === undefined || agentsPath === undefined || markerPath === undefined) {

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import {
   createDiskBackedTestFixture,
   sqliteDatabaseSidecarSuffixes,
@@ -11,7 +12,6 @@ import {
   runBatchWriteBenchmark,
   TARGET_WRITES_PER_SECOND,
 } from '../../src/storage/bun-sql-workload.test-support.ts';
-import { BunSQLiteStorage } from '../../src/storage/bun-sql.ts';
 
 /**
  * The throughput gate, declared through `skipIf` so `WEFT_SQLITE_ARCHITECTURE_BENCHMARK=1`

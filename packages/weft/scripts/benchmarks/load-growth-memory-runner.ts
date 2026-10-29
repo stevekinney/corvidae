@@ -1,3 +1,4 @@
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { Engine } from '../../src/core/engine.ts';
 import {
   registerOnRuntimeEngine,
@@ -6,7 +7,6 @@ import {
 } from '../../src/core/runtime-workflow-engine.ts';
 import { compileStepWorkflow } from '../../src/core/step-context.ts';
 import { workflow, type StepWorkflowContext } from '../../src/core/types.ts';
-import { BunSQLiteStorage } from '../../src/storage/bun-sql.ts';
 import { readMemoryFootprint, type MemoryMeasure } from './memory-footprint.ts';
 import { summarizeMemoryGrowth } from './memory-growth.ts';
 

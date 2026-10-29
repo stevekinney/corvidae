@@ -358,7 +358,7 @@ import {
 } from '@lostgradient/operative';
 import { createTool } from 'armorer';
 import { z } from 'zod';
-import { BunSQLiteStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 /** Never answers, and stops when its run is aborted, as a real provider call does. */
 const untilAborted: GenerateFunction = ({ signal }) =>

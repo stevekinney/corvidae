@@ -67,7 +67,7 @@ The smallest useful Weft program has four moving pieces: a storage backend, a na
 
 ```typescript file=hello-world.ts
 import { Engine, workflow } from '@lostgradient/weft';
-import { BunSQLiteStorage } from '@lostgradient/weft/storage/sqlite/bun';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 type WelcomeInput = {
   name: string;
@@ -443,7 +443,7 @@ As of June 12, 2026, [Temporal's public human-approval example](https://docs.tem
 
 ```typescript
 import { Engine, workflow } from '@lostgradient/weft';
-import { BunSQLiteStorage } from '@lostgradient/weft/storage/sqlite/bun';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 type PaymentRequest = {
   orderId: string;
@@ -485,7 +485,7 @@ If the process crashes after the approval decision is checkpointed, the reviewer
 A small `Storage` interface over string keys and `Uint8Array` values: five required methods (`get`, `put`, `delete`, `scan`, `batch`) plus optional capabilities (`conditionalBatch`, `has`, `deletePrefix`) that adapters can implement when their backend supports them. Built-in adapters:
 
 - **`MemoryStorage`** for development and tests
-- **`BunSQLiteStorage`** (subpath `@lostgradient/weft/storage/sqlite/bun`) for SQLite persistence under Bun
+- **`BunSQLiteStorage`** (package `@lostgradient/storage-bun-sqlite`) for SQLite persistence under Bun
 - **`NodeSQLiteStorage`** (subpath `@lostgradient/weft/storage/sqlite/node`) for SQLite persistence under Node.js via `better-sqlite3`
 - **`LMDBStorage`** (subpath `@lostgradient/weft/storage/lmdb`) for embedded high-throughput workloads; accepts a `durability: 'relaxed'` option that skips `fsync` on every commit, trading crash durability for write latency—use it for test fixtures, not production storage. `capabilities().persistence` reports `'ephemeral'` for a relaxed-durability instance (instead of `'local'`), so `assertDurableStorageForRecovery()` correctly rejects it
 - **`TursoStorage`** (subpath `@lostgradient/weft/storage/turso`) for distributed libSQL deployments
@@ -510,7 +510,7 @@ For long-running workflows, `history.retentionWindow` can compact old event-log 
 ```typescript
 import { Engine } from '@lostgradient/weft';
 import { serve } from '@lostgradient/weft/server';
-import { BunSQLiteStorage } from '@lostgradient/weft/storage/sqlite/bun';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { checkout } from './checkout.ts';
 
 const engine = new Engine({ storage: new BunSQLiteStorage('./weft.db') });
@@ -825,7 +825,7 @@ bun add @lostgradient/weft
 Storage backends and adapters are exported under subpaths so they only load when imported:
 
 ```typescript
-import { BunSQLiteStorage } from '@lostgradient/weft/storage/sqlite/bun';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { LMDBStorage } from '@lostgradient/weft/storage/lmdb';
 import { TursoStorage } from '@lostgradient/weft/storage/turso';
 import { NeonStorage } from '@lostgradient/weft/storage/neon';

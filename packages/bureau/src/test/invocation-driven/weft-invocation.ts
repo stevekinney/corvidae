@@ -20,7 +20,8 @@
  */
 import { join } from 'node:path';
 
-import { activity, BunSQLiteStorage, Engine, workflow } from '@lostgradient/weft';
+import { activity, Engine, workflow } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 import {
   blockIfRequested,

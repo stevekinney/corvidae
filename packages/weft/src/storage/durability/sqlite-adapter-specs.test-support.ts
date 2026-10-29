@@ -1,13 +1,12 @@
 /**
- * The durability suites' specs for the disk-backed SQLite adapters Weft still holds: Bun SQLite,
- * Node SQLite, and Turso (whose spec lives in `turso-adapter-spec.test-support.ts`). The suites and their adapter-independent support live in
+ * The durability suites' specs for the disk-backed SQLite adapters Weft still holds: Node SQLite and
+ * Turso (whose spec lives in `turso-adapter-spec.test-support.ts`). Bun SQLite's spec lives in
+ * `@lostgradient/storage-bun-sqlite`. The suites and their adapter-independent support live in
  * `@lostgradient/storage/testing`; each spec carries its adapter, the module its child entrypoints
- * import, and, for Bun and Node, the raw-handle hooks.
+ * import, and, for Node, the raw-handle hooks.
  */
 
 import { createRequire } from 'node:module';
-
-import { Database } from 'bun:sqlite';
 
 import type { Storage } from '@lostgradient/storage';
 import {
@@ -18,7 +17,6 @@ import {
   type RawHandleAdapterSpec,
   type WalCheckpointRow,
 } from '@lostgradient/storage/testing';
-import { BunSQLiteStorage } from '../bun-sql.ts';
 import { NodeSQLiteStorage } from '../node-sqlite.ts';
 import { tursoSpec } from './turso-adapter-spec.test-support.ts';
 
@@ -49,45 +47,6 @@ export function loadBetterSqlite3Locally(
   return typeof mod.default === 'function' ? mod.default : mod;
 }
 
-/**
- * Issue `PRAGMA wal_checkpoint(TRUNCATE)` against the given database file.
- *
- * Opens a short-lived sibling `bun:sqlite` connection on the same file
- * because the adapter's own `query()` passthrough rejects parenthesized
- * PRAGMA statements (see `read-only-query.ts`). The sibling is finalized
- * before returning. The primary adapter connection MAY still be open at
- * this point — bun:sqlite with WAL mode supports multiple writers on the
- * same file. TRUNCATE will report `busy !== 0` if the primary is
- * holding a transaction snapshot at the moment of the call, and
- * {@link isFullyCheckpointed} will return false in that case so the
- * caller can detect the partial checkpoint. The WAL durability test
- * runs `checkpoint()` immediately after open and before any other work
- * on the checkpointer handle, so no read snapshot is held in practice.
- */
-function bunSqliteCheckpoint(databasePath: string): CheckpointResult {
-  const database = new Database(databasePath);
-  try {
-    const rows = database
-      .prepare<{ busy: number; log: number; checkpointed: number }, []>(
-        'PRAGMA wal_checkpoint(TRUNCATE)',
-      )
-      .all();
-    const raw = rows[0];
-    return { truncated: isFullyCheckpointed(raw, databasePath), raw };
-  } finally {
-    database.close();
-  }
-}
-
-const BUN_SQLITE_RAW_HANDLE = {
-  childImports: "import { Database } from 'bun:sqlite';",
-  openSource: [
-    'const database = new Database(databasePath);',
-    "database.exec('PRAGMA journal_mode = WAL');",
-    "database.exec('PRAGMA synchronous = NORMAL');",
-  ].join('\n'),
-};
-
 const NODE_SQLITE_RAW_HANDLE = {
   childImports: "import { createRequire } from 'node:module';",
   openSource: [
@@ -97,39 +56,6 @@ const NODE_SQLITE_RAW_HANDLE = {
     "database.pragma('journal_mode = WAL');",
     "database.pragma('synchronous = NORMAL');",
   ].join('\n'),
-};
-
-const bunSqliteSpec: RawHandleAdapterSpec = {
-  name: 'BunSQLiteStorage',
-  exposesStandardSidecars: true,
-  expectedCapabilities: {
-    persistence: 'local',
-    readAfterWrite: 'linearizable',
-    scanConsistency: 'snapshot',
-    atomicBatch: true,
-    conditionalBatch: true,
-    boundedRangeDelete: true,
-  },
-  child: {
-    moduleSpecifier: import.meta.resolve('../bun-sql.ts'),
-    exportName: 'BunSQLiteStorage',
-    constructorArgument: 'path',
-  },
-  rawHandle: BUN_SQLITE_RAW_HANDLE,
-  async open(databasePath: string) {
-    const storage = new BunSQLiteStorage(databasePath);
-    return {
-      storage,
-      databasePath,
-      async checkpoint(): Promise<CheckpointResult> {
-        return bunSqliteCheckpoint(databasePath);
-      },
-      async close(): Promise<void> {
-        storage[Symbol.dispose]();
-      },
-      makeFailingBatch: makeNullValueFailingBatch,
-    };
-  },
 };
 
 /** What {@link createNodeSqliteSpec} needs from the Node SQLite adapter and its raw driver. */
@@ -233,14 +159,14 @@ function canLoadNodeSqlite(): boolean {
 
 /** All adapter specs available in the current runtime. */
 export function availableAdapterSpecs(): readonly AdapterSpec[] {
-  const specs: AdapterSpec[] = [bunSqliteSpec, tursoSpec];
+  const specs: AdapterSpec[] = [tursoSpec];
   if (canLoadNodeSqlite()) specs.push(nodeSqliteSpec);
   return specs;
 }
 
-/** Bun+Node specs only — used by tests that require a raw client path. */
-export function availableBunNodeAdapterSpecs(): readonly RawHandleAdapterSpec[] {
-  const specs: RawHandleAdapterSpec[] = [bunSqliteSpec];
+/** The specs with a raw same-file handle, for tests that need a raw client path; Node SQLite only. */
+export function availableRawHandleAdapterSpecs(): readonly RawHandleAdapterSpec[] {
+  const specs: RawHandleAdapterSpec[] = [];
   if (canLoadNodeSqlite()) specs.push(nodeSqliteSpec);
   return specs;
 }

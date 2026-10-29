@@ -48,12 +48,12 @@ The host registers the source without importing that module. Here, the manifest 
 
 ```typescript
 import {
-  BunSQLiteStorage,
   Engine,
   buildWorkflowContract,
   buildWorkflowRevisionManifest,
   workflowSource,
 } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 const manifest = await buildWorkflowRevisionManifest(
   buildWorkflowContract({ name: 'greeting', version: '1.0.0' }),
