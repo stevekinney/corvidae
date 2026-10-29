@@ -14,10 +14,18 @@ export type ResolveBungalowRootOptions = {
   readonly homeDirectory: string;
 };
 
+/**
+ * The application's environment variable `<NAME>_<suffix>`, where `<NAME>` is the name uppercased
+ * with `-` as `_`: `bungalowVariable('interborough', 'BUCKET')` is `INTERBOROUGH_BUCKET`.
+ */
+export function bungalowVariable(name: string, suffix: string): string {
+  assertBungalowName(name);
+  return `${name.toUpperCase().replaceAll('-', '_')}_${suffix}`;
+}
+
 /** The environment variable that overrides the root: `interborough` reads `INTERBOROUGH_HOME`. */
 export function bungalowHomeVariable(name: string): string {
-  assertBungalowName(name);
-  return `${name.toUpperCase().replaceAll('-', '_')}_HOME`;
+  return bungalowVariable(name, 'HOME');
 }
 
 function requireAbsolute(path: string, description: string): string {

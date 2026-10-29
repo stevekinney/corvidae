@@ -22,6 +22,8 @@ import {
   BungalowStateError,
 } from './errors.ts';
 import { acquireRootLock, type RootLock } from './lock.ts';
+import { remoteConfiguration } from './remote-configuration.ts';
+import { openRemoteBungalow } from './remote.ts';
 import {
   bungalowHomeVariable,
   resolveBungalowRoot,
@@ -49,33 +51,57 @@ export type ContentLocation =
   | { readonly kind: 'directory'; readonly path: string }
   | { readonly kind: 's3'; readonly bucket: string; readonly prefix: string };
 
-/** An open application home. Holding one holds the root's single-instance lock. */
+/**
+ * An open application home. Holding a local one holds the root's single-instance lock; a remote
+ * one holds no lock.
+ */
 export type Bungalow = {
   readonly name: string;
   /** `'local'` when the home is a directory on this machine, `'remote'` when it is served elsewhere. */
   readonly mode: 'local' | 'remote';
-  /** Local mode: `{ kind: 'sqlite', path: '<root>/database.sqlite' }`. Bungalow never creates the file. */
+  /**
+   * Local mode: `{ kind: 'sqlite', path: '<root>/database.sqlite' }`, a file Bungalow never
+   * creates. Remote mode: `{ kind: 'postgres', url }` from `<NAME>_DATABASE_URL`.
+   */
   readonly database: DatabaseLocation;
   /**
    * Where the configuration lives, for messages and for a person editing it by hand: the path of
-   * `<root>/configuration.json` in local mode. Bungalow never creates the file.
+   * `<root>/configuration.json` in local mode, `s3://<bucket>/<prefix>configuration.json` in remote
+   * mode. Bungalow never creates it.
    */
   readonly configurationLocation: string;
-  /** `<root>/logs`. */
-  readonly logs: string;
+  /** `<root>/logs` in local mode; `undefined` in remote mode, which has no local directory. */
+  readonly logs: string | undefined;
   /** A ULID generated when the root was first opened and the same on every reopen. */
   readonly deploymentId: string;
-  /** Create the content named `name` (a mode-0700 `<root>/<name>` directory locally) if absent and return where it is. */
+  /**
+   * Where the content named `name` lives: a mode-0700 `<root>/<name>` directory locally, created if
+   * absent, or `{ kind: 's3', bucket, prefix: '<prefix><name>/' }` remotely, which creates nothing.
+   */
   content(name: string): ContentLocation;
+  /** The `Bun.S3Client` remote mode configured from the environment, or `undefined` locally. */
+  s3Client(): Bun.S3Client | undefined;
   /** The text of the configuration, or `undefined` when none has been written. Absence is valid. */
   readConfiguration(): Promise<string | undefined>;
-  /** Where the secret `key` is stored: its 0600 file path in local mode. The key is validated. */
+  /**
+   * Where the secret `key` is stored: its 0600 file path in local mode, the name of its
+   * `<NAME>_SECRET_<KEY>` variable in remote mode. The key is validated.
+   */
   secretLocation(key: string): string;
-  /** Store `value` in its own 0600 file, replacing any earlier value. */
+  /**
+   * Store `value` in its own 0600 file, replacing any earlier value. Remote mode reads secrets from
+   * the environment, so there it throws `BungalowStateError`.
+   */
   writeSecret(key: string, value: string): void;
-  /** The stored value, or `undefined` when the key has never been written. */
+  /**
+   * The stored value, or `undefined` when the key has never been written (locally) or its
+   * variable is unset or empty (remotely).
+   */
   readSecret(key: string): string | undefined;
-  /** Release the lock. Idempotent once it has succeeded; a failed close can be retried. */
+  /**
+   * End the handle: release the lock locally. Idempotent once it has succeeded; a failed close can
+   * be retried.
+   */
   close(): void;
   [Symbol.dispose](): void;
 };
@@ -243,6 +269,10 @@ export function openAtRoot(
     configurationLocation,
     logs,
     deploymentId,
+    s3Client() {
+      assertOpen();
+      return undefined;
+    },
     content(contentName) {
       assertOpen();
       assertDirectoryName(contentName);
@@ -295,18 +325,38 @@ export function resolveOpenRoot(options: OpenBungalowOptions): string {
 }
 
 /**
- * Open (creating if needed) an application's home and take its single-instance lock. The promise
- * resolves once the home is ready; a failure rejects it. The root is
- * `<NAME>_HOME` or `~/.<name>`; see `resolveBungalowRoot`.
+ * Open (creating if needed) an application's home. The promise resolves once the home is ready; a
+ * failure rejects it.
  *
- * Under `NODE_ENV=test` with no `<NAME>_HOME` in effect this throws rather than touch the real
- * home directory. The process's own environment counts as well as the one passed in, so passing
- * an empty environment cannot opt a test out. A test points `<NAME>_HOME` at a disposable
- * directory or calls `openTemporaryBungalow`.
+ * With both `<NAME>_DATABASE_URL` and `<NAME>_BUCKET` set, the home is remote: Postgres, an S3
+ * bucket configured by `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, and
+ * optionally `S3_SESSION_TOKEN` and `<NAME>_BUCKET_PREFIX`, and secrets in `<NAME>_SECRET_<KEY>`.
+ * `<NAME>_HOME` is then not read and no lock is taken. With exactly one of the two set, or a
+ * required S3 variable missing, this throws `BungalowInputError` naming it, before any request.
+ *
+ * Otherwise the home is local and this takes its single-instance lock. The root is `<NAME>_HOME`
+ * or `~/.<name>`; see `resolveBungalowRoot`. Under `NODE_ENV=test` with no `<NAME>_HOME` in effect
+ * a local open throws rather than touch the real home directory. The process's own environment
+ * counts as well as the one passed in, so passing an empty environment cannot opt a test out. A
+ * test points `<NAME>_HOME` at a disposable directory or calls `openTemporaryBungalow`.
  */
 export async function openBungalow(options: OpenBungalowOptions): Promise<Bungalow> {
+  return openBungalowWithDependencies(options);
+}
+
+/**
+ * `openBungalow` with the local lock injectable, so a test can show that remote mode never asks
+ * for it: an `acquireLock` that throws fails a local open and leaves a remote one untouched. Not
+ * part of the package's public surface.
+ */
+export async function openBungalowWithDependencies(
+  options: OpenBungalowOptions,
+  dependencies: OpenAtRootDependencies = {},
+): Promise<Bungalow> {
   assertBungalowName(options.name);
   const environment = options.environment ?? processEnvironment();
+  const remote = remoteConfiguration(options.name, environment);
+  if (remote !== undefined) return openRemoteBungalow(options.name, remote);
   const variable = bungalowHomeVariable(options.name);
   const underTest =
     environment['NODE_ENV'] === 'test' || processEnvironment()['NODE_ENV'] === 'test';
@@ -317,7 +367,7 @@ export async function openBungalow(options: OpenBungalowOptions): Promise<Bungal
     );
   }
   const root = resolveOpenRoot({ ...options, environment });
-  return openAtRoot(options.name, root);
+  return openAtRoot(options.name, root, dependencies);
 }
 
 /** The temporary directory as an absolute path, since `TMPDIR` is allowed to be relative. */

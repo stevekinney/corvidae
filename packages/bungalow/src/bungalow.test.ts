@@ -64,7 +64,7 @@ describe('openBungalow layout', () => {
     expect(handle.mode).toBe('local');
     expect(modeOf(root)).toBe(0o700);
     expect(modeOf(join(root, 'secrets'))).toBe(0o700);
-    expect(statSync(handle.logs).isDirectory()).toBe(true);
+    expect(statSync(join(root, 'logs')).isDirectory()).toBe(true);
     expect(handle.logs).toBe(join(root, 'logs'));
     expect(handle.database).toEqual({ kind: 'sqlite', path: join(root, 'database.sqlite') });
     expect(handle.configurationLocation).toBe(join(root, 'configuration.json'));
