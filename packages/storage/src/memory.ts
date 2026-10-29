@@ -19,21 +19,14 @@ import { scopedStorage } from './scoped-storage.ts';
  * and ideal for tests, ephemeral runs, and CI. State is lost when the process
  * exits, so don't use it for anything you care about between restarts.
  *
- * @example Run an engine with in-memory storage
+ * @example Write and read a value in memory
  * ```ts
- * import { workflow, Engine } from '@lostgradient/weft';
  * import { MemoryStorage } from '@lostgradient/storage';
  *
  * await using storage = new MemoryStorage();
- * await using engine = new Engine({ storage });
- * engine.register(
- *   workflow({ name: 'noop' }).execute(async function* () {
- *     return 'done';
- *   }),
- * );
- *
- * const handle = await engine.start('noop', null);
- * const result = await handle.result();
+ * await storage.put('greeting', new TextEncoder().encode('hello'));
+ * const value = await storage.get('greeting');
+ * console.log(new TextDecoder().decode(value ?? new Uint8Array())); // 'hello'
  * ```
  */
 export class MemoryStorage implements Storage {

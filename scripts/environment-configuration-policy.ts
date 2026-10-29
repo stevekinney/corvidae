@@ -26,6 +26,7 @@ export const environmentBoundaries = [
       'testing/testing/src/environment-configuration.ts',
       'packages/weft/src/runtime/environment-configuration.ts',
       'packages/weft/src/storage/environment-configuration.ts',
+      'packages/storage/src/environment-configuration.ts',
     ]),
   },
   {

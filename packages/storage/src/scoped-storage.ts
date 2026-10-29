@@ -222,17 +222,14 @@ export class ScopedStorage implements Storage {
  *
  * @example
  * ```ts
- * import { workflow, Engine } from '@lostgradient/weft';
  * import { MemoryStorage, scopedStorage } from '@lostgradient/storage';
  *
  * await using raw = new MemoryStorage();
  *
- * // Give each engine its own key namespace in the same backing store
- * await using engine = new Engine({ storage: scopedStorage(raw, 'eng:v1') });
- * engine.register(workflow({ name: 'ping' }).execute(async function* () { return 'pong'; }));
- *
- * const handle = await engine.start('ping', null);
- * console.log(await handle.result()); // 'pong'
+ * // Give each consumer its own key namespace in the same backing store
+ * const scoped = scopedStorage(raw, 'eng:v1');
+ * await scoped.put('state', new Uint8Array([1]));
+ * console.log(await raw.get('eng:v1:state')); // Uint8Array [ 1 ]
  * ```
  */
 export function scopedStorage(storage: Storage, prefix: string): ScopedStorage {

@@ -846,14 +846,6 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       },
     ],
     [
-      'src/storage/lazy-postgres-pool.ts',
-      {
-        reason:
-          'Driver and runtime-specific behavior cannot be attributed in the default Bun LCOV process; fresh coverage confirms only these residual misses.',
-        functions: 1,
-      },
-    ],
-    [
       'src/core/engine/attributes-tags.ts',
       {
         reason:

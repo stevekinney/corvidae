@@ -2,8 +2,7 @@
  * Encoding helpers for colon-delimited storage key components.
  *
  * Split out of `interface.ts` so the ownership key builders can reuse them
- * without an import cycle: `interface.ts` re-exports everything here, so the
- * public surface (`@lostgradient/weft`) is unchanged.
+ * without an import cycle. `@lostgradient/storage` exports everything here.
  *
  * @module storage/key-encoding
  */

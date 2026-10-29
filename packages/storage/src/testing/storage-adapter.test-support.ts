@@ -6,10 +6,8 @@
  * and tracks disposal. This module is the single source of truth for those
  * fixtures so the two suites stay in lockstep.
  *
- * The storage conformance runners are public through
- * `@lostgradient/weft`; this module keeps the additional
- * adapter fixtures internal. The `.test-support.ts` suffix is excluded by
- * `tsconfig.build.json` so those fixtures never ship in `dist/`.
+ * The storage conformance runners and these fixtures are public through
+ * `@lostgradient/storage/testing`, so every storage package's tests share them.
  */
 
 import type { StorageCapabilities } from '../capabilities.ts';

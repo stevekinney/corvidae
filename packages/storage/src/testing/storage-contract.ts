@@ -1,10 +1,10 @@
 /**
  * Internal storage adapter conformance suites.
  *
- * These helpers register `bun:test` suites for this package's adapter tests.
- * Import them relatively from storage tests. Runtime consumers use the storage
- * interfaces and implementations exported by `@lostgradient/weft`; suite registration
- * is deliberately excluded from that root so it works outside the test runner.
+ * These helpers register `bun:test` suites for every storage adapter's tests, through
+ * `@lostgradient/storage/testing`. Runtime consumers use the storage interfaces and
+ * implementations exported by `@lostgradient/storage`; suite registration is deliberately
+ * excluded from that root so it works outside the test runner.
  */
 
 import { describe, expect, it } from 'bun:test';
@@ -23,7 +23,7 @@ import {
  *
  * @example
  * ```ts
- * import type { CapabilityConformanceOptions } from '@lostgradient/weft/storage/testing';
+ * import type { CapabilityConformanceOptions } from '@lostgradient/storage/testing';
  * import { MemoryStorage, type StorageCapabilities } from '@lostgradient/storage';
  *
  * const expected = {
@@ -53,11 +53,11 @@ export type CapabilityConformanceOptions = {
  *
  * @example
  * ```ts
- * import type { ConcurrentConditionalBatchConformanceOptions } from '@lostgradient/weft/storage/testing';
- * import { BunSQLiteStorage } from '@lostgradient/weft';
+ * import type { ConcurrentConditionalBatchConformanceOptions } from '@lostgradient/storage/testing';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
  * const options: ConcurrentConditionalBatchConformanceOptions = {
- *   create: () => new BunSQLiteStorage(':memory:'),
+ *   create: () => new MemoryStorage(),
  * };
  * ```
  */
@@ -71,7 +71,7 @@ export type ConcurrentConditionalBatchConformanceOptions = {
  *
  * @example
  * ```ts
- * import type { BinaryAndLargeScanConformanceOptions } from '@lostgradient/weft/storage/testing';
+ * import type { BinaryAndLargeScanConformanceOptions } from '@lostgradient/storage/testing';
  * import { MemoryStorage } from '@lostgradient/storage';
  *
  * const options: BinaryAndLargeScanConformanceOptions = {
@@ -91,7 +91,7 @@ export type BinaryAndLargeScanConformanceOptions = {
  *
  * @example
  * ```ts
- * import type { BasicStorageContractOptions } from '@lostgradient/weft/storage/testing';
+ * import type { BasicStorageContractOptions } from '@lostgradient/storage/testing';
  * import { MemoryStorage } from '@lostgradient/storage';
  *
  * const options: BasicStorageContractOptions = {
@@ -110,7 +110,7 @@ export type BasicStorageContractOptions = {
  *
  * @example
  * ```ts
- * import { runBinaryAndLargeScanStorageConformance } from '@lostgradient/weft/storage/testing';
+ * import { runBinaryAndLargeScanStorageConformance } from '@lostgradient/storage/testing';
  * import { MemoryStorage } from '@lostgradient/storage';
  *
  * runBinaryAndLargeScanStorageConformance('MemoryStorage', {
@@ -171,7 +171,7 @@ export function runBinaryAndLargeScanStorageConformance(
  *
  * @example
  * ```ts
- * import { runStorageCapabilityConformance } from '@lostgradient/weft/storage/testing';
+ * import { runStorageCapabilityConformance } from '@lostgradient/storage/testing';
  * import { MemoryStorage, type StorageCapabilities } from '@lostgradient/storage';
  *
  * const expected = {
@@ -269,11 +269,11 @@ export function runStorageCapabilityConformance(
  *
  * @example
  * ```ts
- * import { runConcurrentConditionalBatchConformance } from '@lostgradient/weft/storage/testing';
- * import { BunSQLiteStorage } from '@lostgradient/weft';
+ * import { runConcurrentConditionalBatchConformance } from '@lostgradient/storage/testing';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
- * runConcurrentConditionalBatchConformance('BunSQLiteStorage', {
- *   create: () => new BunSQLiteStorage(':memory:'),
+ * runConcurrentConditionalBatchConformance('MemoryStorage', {
+ *   create: () => new MemoryStorage(),
  * });
  * ```
  */
@@ -312,7 +312,7 @@ export function runConcurrentConditionalBatchConformance(
  *
  * @example
  * ```ts
- * import { runBasicStorageContract } from '@lostgradient/weft/storage/testing';
+ * import { runBasicStorageContract } from '@lostgradient/storage/testing';
  * import { MemoryStorage } from '@lostgradient/storage';
  *
  * runBasicStorageContract('MemoryStorage', {

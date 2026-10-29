@@ -200,11 +200,14 @@ export function requireStorageCapability(
  *
  * @example
  * ```ts
- * import { assertDurableStorageForRecovery } from '@lostgradient/storage';
- * import { SQLiteStorage } from '@lostgradient/weft/storage/sqlite';
+ * import { assertDurableStorageForRecovery, MemoryStorage } from '@lostgradient/storage';
  *
- * await using storage = new SQLiteStorage('./weft.db');
- * assertDurableStorageForRecovery(storage);
+ * await using storage = new MemoryStorage();
+ * try {
+ *   assertDurableStorageForRecovery(storage);
+ * } catch (error) {
+ *   console.log((error as Error).message); // memory storage is not durable across restarts
+ * }
  * ```
  */
 export function assertDurableStorageForRecovery(storage: Storage): void {

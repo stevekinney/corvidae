@@ -139,8 +139,8 @@ export interface ScanOptions {
  * `keys`, `count`, `scoped`, and `query`. Adapters that omit optional methods
  * get generic fallbacks via `storageHas`, `storageKeys`, `storageCount`,
  * `storageDeletePrefix`, and `storageConditionalBatch` (all from this module),
- * plus `storageDeleteRange` (exported from `@lostgradient/weft` / `@lostgradient/weft`, defined in
- * `storage/delete-range.ts`). Callers should use those wrappers rather than
+ * plus `storageDeleteRange` (exported from `@lostgradient/storage`, defined in
+ * `delete-range.ts`). Callers should use those wrappers rather than
  * calling optional methods directly.
  *
  * @example

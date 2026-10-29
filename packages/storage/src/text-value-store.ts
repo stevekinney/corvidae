@@ -4,15 +4,15 @@
  * Adapts Weft's `Uint8Array`-valued {@link Storage} to a generic
  * string-valued key/value interface with an array-returning prefix
  * list — the shape a string `KeyValueStore` consumer expects. It ships
- * in Weft as a first-class integration surface, so adopting Weft
- * storage behind a string KV interface needs no extra dependency.
+ * with the storage protocol as a first-class integration surface, so adopting
+ * Weft storage behind a string KV interface needs no extra dependency.
  *
  * Encoding is UTF-8 with fatal decoding: invalid byte sequences raise
  * `TypeError` rather than silently producing replacement characters,
  * so a string consumer never sees corrupted data masquerading as
  * valid text.
  *
- * @module @lostgradient/weft
+ * @module storage/text-value-store
  */
 import {
   storageConditionalBatch,

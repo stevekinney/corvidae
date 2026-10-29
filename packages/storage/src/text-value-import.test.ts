@@ -10,11 +10,15 @@ function decode(value: Uint8Array | null): string | null {
   return value === null ? null : new TextDecoder().decode(value);
 }
 
+/** The importer refuses target keys under these, as Weft's importer does with its reserved prefixes. */
+const reservedKeyPrefixes = ['wf:'];
+
 describe('copyTextKeyValueRowsToStorage', () => {
   it('copies text rows into storage as UTF-8 bytes under a target prefix', async () => {
     await using storage = new MemoryStorage();
 
     const result = await copyTextKeyValueRowsToStorage({
+      reservedKeyPrefixes,
       storage,
       targetPrefix: 'app:my-service',
       rows: [
@@ -35,6 +39,7 @@ describe('copyTextKeyValueRowsToStorage', () => {
     expect(
       await throwingRejectionOf(
         copyTextKeyValueRowsToStorage({
+          reservedKeyPrefixes,
           storage,
           targetPrefix: 'app:my-service',
           rows: [{ key: 'session:1', value: 'new' }],
@@ -51,6 +56,7 @@ describe('copyTextKeyValueRowsToStorage', () => {
     expect(
       await throwingRejectionOf(
         copyTextKeyValueRowsToStorage({
+          reservedKeyPrefixes,
           storage,
           rows: [
             { key: 'same', value: 'first' },
@@ -67,6 +73,7 @@ describe('copyTextKeyValueRowsToStorage', () => {
     expect(
       await throwingRejectionOf(
         copyTextKeyValueRowsToStorage({
+          reservedKeyPrefixes,
           storage,
           rows: [{ key: 1, value: 'session' } as never],
         }),
@@ -76,6 +83,7 @@ describe('copyTextKeyValueRowsToStorage', () => {
     expect(
       await throwingRejectionOf(
         copyTextKeyValueRowsToStorage({
+          reservedKeyPrefixes,
           storage,
           rows: [{ key: 'session:1', value: 1 } as never],
         }),
@@ -89,6 +97,7 @@ describe('copyTextKeyValueRowsToStorage', () => {
     expect(
       await throwingRejectionOf(
         copyTextKeyValueRowsToStorage({
+          reservedKeyPrefixes,
           storage,
           targetPrefix: 'wf',
           rows: [{ key: 'workflow-id', value: 'reserved' }],
@@ -113,6 +122,7 @@ describe('copyTextKeyValueRowsToStorage', () => {
     expect(
       await throwingRejectionOf(
         copyTextKeyValueRowsToStorage({
+          reservedKeyPrefixes,
           storage,
           rows: [{ key: 'session:1', value: 'new' }],
         }),
@@ -127,6 +137,7 @@ describe('copyTextKeyValueRowsToStorage', () => {
 
     expect(
       await copyTextKeyValueRowsToStorage({
+        reservedKeyPrefixes,
         storage,
         rows: [],
       }),
@@ -152,6 +163,7 @@ describe('copyTextKeyValueRowsToStorage', () => {
     expect(
       await throwingRejectionOf(
         copyTextKeyValueRowsToStorage({
+          reservedKeyPrefixes,
           storage: unavailable,
           rows: [{ key: 'session:1', value: 'new' }],
         }),
