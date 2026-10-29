@@ -281,8 +281,8 @@ function normalizeLanguage(language: string): SupportedLanguage {
     plaintext: PLAINTEXT_LANGUAGE,
   };
 
-  if (aliases[normalized]) {
-    return aliases[normalized];
+  if (Object.hasOwn(aliases, normalized)) {
+    return aliases[normalized]!;
   }
 
   if (isBundledLanguage(normalized)) {

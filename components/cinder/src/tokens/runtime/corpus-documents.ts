@@ -1,3 +1,4 @@
+import { ownEntry } from '../../_internal/own-entry.ts';
 import {
   validateModifierSetExpansionOrder,
   validateModifierTokenPaths,
@@ -64,7 +65,7 @@ export function orderedTokenValidationContexts(
       const sources =
         entry.kind === 'sets'
           ? setSourcesByName.get(entry.name)!
-          : contextSourcesByModifier.get(entry.name)!.get(modifierValues[entry.name]!)!;
+          : contextSourcesByModifier.get(entry.name)!.get(ownEntry(modifierValues, entry.name)!)!;
       return sources.map((source) => documentsByPath.get(normalizeSourcePath(source.$ref))!);
     });
     const uniqueDocuments = [...new Set(orderedDocuments)];
@@ -280,7 +281,7 @@ export function validateCorpus(
       const sources =
         entry.kind === 'sets'
           ? setSourcesByName.get(entry.name)!
-          : contextSourcesByModifier.get(entry.name)!.get(modifierValues[entry.name]!)!;
+          : contextSourcesByModifier.get(entry.name)!.get(ownEntry(modifierValues, entry.name)!)!;
       return sources.map((source) => documentsByPath.get(normalizeSourcePath(source.$ref))!);
     });
     assertResolvedTokensValid(orderedDocuments);

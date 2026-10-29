@@ -14,6 +14,7 @@
  * cannot express is a diagnostic too, never a fallback.
  */
 
+import { ownEntry } from '../../_internal/own-entry.ts';
 import { traceProvenance } from './authoring-provenance.ts';
 import type { AuthoringContext, AuthoringLayer } from './authoring-types.ts';
 import { scopeIndexFromDocuments } from './context-order.ts';
@@ -194,7 +195,7 @@ function evaluateSelected(
         layer,
       }));
       tokens[context.id] = evaluateContextProvenance(
-        layerStacks[context.id]!,
+        ownEntry(layerStacks, context.id)!,
         traceProvenance(stack, { cssPropertyToPath }),
       );
     } catch (error) {

@@ -14,6 +14,7 @@ import type {
 } from './types';
 import { createMessage, isAssistantMessage, toReadonly } from './utilities';
 import { getOrderedMessages, toIdRecord } from './utilities/message-store';
+import { getOwn } from './utilities/type-helpers';
 
 const STREAMING_KEY = '__streaming';
 
@@ -188,7 +189,7 @@ const updateStreamingMessageInternal = (
   environment: Partial<ConversationEnvironment> | undefined,
   validate: boolean,
 ): Conversation => {
-  const original = conversation.messages[messageId];
+  const original = getOwn(conversation.messages, messageId);
   if (!original) {
     return validate ? ensureConversationSafe(conversation) : conversation;
   }
@@ -285,7 +286,7 @@ const finalizeStreamingMessageInternal = (
   const resolvedOptions = isConversationEnvironmentParameter(options) ? undefined : options;
   const now = resolvedEnvironment.now();
 
-  const original = conversation.messages[messageId];
+  const original = getOwn(conversation.messages, messageId);
   if (!original) {
     return validate ? ensureConversationSafe(conversation) : conversation;
   }
@@ -336,7 +337,7 @@ export function cancelStreamingMessage(
   const resolvedEnvironment = resolveConversationEnvironment(environment);
   const now = resolvedEnvironment.now();
 
-  if (!conversation.messages[messageId]) {
+  if (!getOwn(conversation.messages, messageId)) {
     return ensureConversationSafe(conversation);
   }
 

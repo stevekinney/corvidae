@@ -362,7 +362,7 @@ function ownerOf(context: ServerCallContext | undefined): Owner {
 
 function headerOf(context: ServerCallContext | undefined, name: string): string | undefined {
   const headers = context?.state.get(STATE_HEADERS_KEY) as Record<string, string> | undefined;
-  return headers?.[name];
+  return headers !== undefined && Object.hasOwn(headers, name) ? headers[name] : undefined;
 }
 
 /**

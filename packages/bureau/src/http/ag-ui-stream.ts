@@ -23,7 +23,12 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { isFailureFinishReason } from '@lostgradient/operative';
 import { type Event, EventType, type Interrupt, type RunFinishedOutcome } from '@ag-ui/core';
-import { type ConversationHistory, type Message, toAGUIToolMessage } from 'conversationalist';
+import {
+  type ConversationHistory,
+  type Message,
+  toAGUIToolMessage,
+  getOwn,
+} from 'conversationalist';
 
 import type { BureauChildRecord } from '../child-topology-store.ts';
 import type {
@@ -325,7 +330,7 @@ export function replayCall(
   executed?: { readonly arguments: unknown },
 ): Event[] {
   const rows: Message[] =
-    history === undefined ? [] : history.ids.map((id) => history.messages[id]!);
+    history === undefined ? [] : history.ids.map((id) => getOwn(history.messages, id)!);
   const callRow = rows.find((row) => row.toolCall?.id === callId);
   if (callRow?.toolCall === undefined) return [];
   const call = callRow.toolCall;

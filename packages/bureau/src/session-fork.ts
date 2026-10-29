@@ -25,6 +25,7 @@ import { type ConditionalTextValueStore, MemoryStorage, textValueStore } from '@
 import { type CommandLedger, createCommandLedger } from './command-ledger';
 import type { SteeringCommandAdmissionOutcome } from './steering';
 import { belongsToIncarnation, type TaskRecord } from './task-registry';
+import { getOwn } from 'conversationalist';
 
 /** The key prefix of the fork command ledger (COR-424), apart from every other ledger's. */
 export const FORK_LEDGER_KEY_PREFIX = 'command-ledger:fork:v1';
@@ -136,7 +137,10 @@ export async function assertBranchPoint(
     throw new SessionForkRefusedError(reason, message);
   };
   const history = session.conversationHistory;
-  if (history.messages[throughMessageId] === undefined || !history.ids.includes(throughMessageId)) {
+  if (
+    getOwn(history.messages, throughMessageId) === undefined ||
+    !history.ids.includes(throughMessageId)
+  ) {
     return refuse('message-not-found', `The context holds no message "${throughMessageId}".`);
   }
   const through = parseStepRowIdentifier(throughMessageId);
@@ -203,7 +207,7 @@ function stepsOfRun(
   const steps = new Map<number, StepRows>();
   for (const id of history.ids) {
     const parsed = parseStepRowIdentifier(id);
-    const row = history.messages[id];
+    const row = getOwn(history.messages, id);
     if (parsed?.runId !== runId || row === undefined) continue;
     let rows = steps.get(parsed.step);
     if (rows === undefined) {

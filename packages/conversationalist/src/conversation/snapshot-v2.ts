@@ -23,7 +23,7 @@ import type {
   ConversationSnapshotLineage,
   Message,
 } from '../types';
-import { deepFreeze } from '../utilities/type-helpers';
+import { deepFreeze, getOwn, setOwn } from '../utilities/type-helpers';
 import {
   assembleConversationHistory,
   parseConversationMessage,
@@ -111,8 +111,12 @@ function nodeDelta(
   // id but is a different frozen object, and must be stored again.
   const changedMessages: Message[] = [];
   for (const id of conversation.ids) {
-    const message = conversation.messages[id];
-    if (message !== undefined && message !== parent?.messages[id]) changedMessages.push(message);
+    const message = getOwn(conversation.messages, id);
+    if (
+      message !== undefined &&
+      message !== (parent === null ? undefined : getOwn(parent.messages, id))
+    )
+      changedMessages.push(message);
   }
   const delta: NodeDelta = {
     parent,
@@ -326,7 +330,7 @@ export function deserializeNodeConversation(
 ): ConversationHistory {
   const messages: Record<string, Message> = {};
   for (const messageId of fields.ids) {
-    messages[messageId] = readMessage(fields.sources.get(messageId)!);
+    setOwn(messages, messageId, readMessage(fields.sources.get(messageId)!));
   }
   let conversation: ConversationHistory;
   try {

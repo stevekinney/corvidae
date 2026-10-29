@@ -87,6 +87,7 @@ import {
 } from '@lostgradient/weft';
 
 import type { RunSummary } from './types';
+import { getOwn } from 'conversationalist';
 
 /**
  * The version of the task-start command contract the ledger keys on. It is part of the ledger key,
@@ -831,7 +832,7 @@ export function serializeTaskInput(input: unknown): string {
       readonly ids: readonly string[];
       readonly messages: Readonly<Record<string, object>>;
     };
-    const rows = history.ids.map((id) => history.messages[id]!);
+    const rows = history.ids.map((id) => getOwn(history.messages, id)!);
     return canonicalJson({ conversation: serializeAppendedMessages(rows) });
   }
   return canonicalJson({ continue: true });

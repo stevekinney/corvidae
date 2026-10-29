@@ -170,7 +170,7 @@ export function issuesByPath(issues: readonly SchemaFormValidationIssue[]): Reco
   const grouped: Record<string, string> = {};
   for (const issue of issues) {
     const key = pathKey(issue.path);
-    grouped[key] ??= issue.message;
+    if (!Object.hasOwn(grouped, key)) grouped[key] = issue.message;
   }
   return grouped;
 }

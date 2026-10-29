@@ -77,6 +77,7 @@ import {
 } from './ag-ui-stream.ts';
 import { type AgUiErrorCode, BUREAU_METADATA_KEY, stamp } from './ag-ui-vocabulary.ts';
 import type { OwnerAccessPredicate } from './owner-predicate.ts';
+import { getOwn } from 'conversationalist';
 
 /** The version of the resume command's contract the ledger keys on. */
 export const AG_UI_OPERATION_VERSION = 'bureau.ag-ui.v1';
@@ -690,7 +691,7 @@ export function createResume(context: ResumeContext) {
     for (const review of reviews.values()) {
       if (review.kind !== 'tool-approval' || history === undefined) continue;
       const row = history.ids
-        .map((id) => history.messages[id]!)
+        .map((id) => getOwn(history.messages, id)!)
         .find((candidate) => candidate.toolResult?.callId === review.approval.callId);
       if (row?.toolResult?.outcome === 'action_required') throw new OutcomeNotWritten();
     }
@@ -726,7 +727,10 @@ export function createResume(context: ResumeContext) {
     const session = await readSessionOwnedBy(bureau, threadId, owner);
     const history = session?.conversationHistory;
     const last = history?.ids.at(-1);
-    const role = last === undefined ? undefined : history?.messages[last]?.role;
+    const role =
+      last === undefined || history === undefined
+        ? undefined
+        : getOwn(history.messages, last)?.role;
     return role === 'user' || role === 'tool-result';
   }
 

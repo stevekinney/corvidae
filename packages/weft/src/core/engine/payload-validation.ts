@@ -128,6 +128,10 @@ function declaredMessage<TMessage>(
 ): TMessage | undefined {
   if (messages === undefined) return undefined;
   if (Object.hasOwn(messages, name)) return messages[name];
-  const wireName = registration?.messageAliases?.[kind]?.[name];
-  return wireName === undefined ? undefined : messages[wireName];
+  const aliases = registration?.messageAliases?.[kind];
+  const wireName =
+    aliases !== undefined && Object.hasOwn(aliases, name) ? aliases[name] : undefined;
+  return wireName === undefined || !Object.hasOwn(messages, wireName)
+    ? undefined
+    : messages[wireName];
 }

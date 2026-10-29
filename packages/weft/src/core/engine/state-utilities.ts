@@ -516,7 +516,10 @@ function matchesAttributeFilter(
   searchAttributes: Readonly<Record<string, SearchAttributeValue>>,
   filter: AttributeFilter,
 ): boolean {
-  const attributeValue = searchAttributes[searchAttributeName(filter.key)];
+  const attributeName = searchAttributeName(filter.key);
+  const attributeValue = Object.hasOwn(searchAttributes, attributeName)
+    ? searchAttributes[attributeName]
+    : undefined;
   if (attributeValue === undefined) return false;
 
   const exactValues = attributeFilterExactValues(filter);

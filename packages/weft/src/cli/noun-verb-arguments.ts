@@ -160,7 +160,9 @@ export function parseWorkflowArguments(args: string[]): CliCommand {
   }
 
   const action = positionals[0] ?? (values.help ? 'ls' : '');
-  const builder = WORKFLOW_ACTION_BUILDERS[action];
+  const builder = Object.hasOwn(WORKFLOW_ACTION_BUILDERS, action)
+    ? WORKFLOW_ACTION_BUILDERS[action]
+    : undefined;
   if (builder === undefined) {
     throw new Error('workflow: expected a subcommand: ls, get, events, start, cancel, or signal');
   }

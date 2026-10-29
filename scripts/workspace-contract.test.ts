@@ -374,6 +374,10 @@ describe('internal workspace architecture', () => {
       const directory = `${componentLibraries.includes(name) ? 'components' : 'packages'}/${name}`;
       const manifest = await readManifest(directory);
       expect(manifest.scripts?.['lint'], directory).toEndWith(` && ${checker}`);
+      // The inherited-key check runs in the same `lint`, so a new workspace cannot skip it.
+      expect(manifest.scripts?.['lint'], directory).toContain(
+        ' && bun ../../scripts/check-inherited-key-reads.ts',
+      );
     }
     // A package-specific `lint` override replaces the generic task, so each one must restate the
     // checker among its inputs or edits to the checker would replay a stale result.
@@ -388,6 +392,9 @@ describe('internal workspace architecture', () => {
       expect(definition.inputs, task).toContain('$TURBO_DEFAULT$');
       expect(definition.inputs, task).toContain(
         '$TURBO_ROOT$/scripts/check-documentation-coverage.ts',
+      );
+      expect(definition.inputs, task).toContain(
+        '$TURBO_ROOT$/scripts/check-inherited-key-reads.ts',
       );
     }
   });

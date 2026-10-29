@@ -47,7 +47,9 @@ export const ANTHROPIC_DISABLED_THINKING: Readonly<Record<string, DisabledThinki
 export function anthropicDisabledThinkingRule(
   resolvedModel: string,
 ): DisabledThinkingRule | undefined {
-  return ANTHROPIC_DISABLED_THINKING[resolvedModel];
+  return Object.hasOwn(ANTHROPIC_DISABLED_THINKING, resolvedModel)
+    ? ANTHROPIC_DISABLED_THINKING[resolvedModel]
+    : undefined;
 }
 
 export const EFFORTS_THAT_FORBID_DISABLED_THINKING: readonly Effort[] = ['xhigh', 'max'];
@@ -88,5 +90,8 @@ export const ANTHROPIC_MANUAL_THINKING: Readonly<Record<string, 'accepted' | 're
   });
 
 export function anthropicRejectsManualThinking(resolvedModel: string): boolean {
-  return ANTHROPIC_MANUAL_THINKING[resolvedModel] === 'rejected';
+  return (
+    Object.hasOwn(ANTHROPIC_MANUAL_THINKING, resolvedModel) &&
+    ANTHROPIC_MANUAL_THINKING[resolvedModel] === 'rejected'
+  );
 }

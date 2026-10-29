@@ -233,7 +233,7 @@ export function normalizeDateTimeSearchAttributes(
   if (schema === undefined) return attributes;
   const normalized = Object.create(null) as Record<string, unknown>;
   for (const [key, value] of Object.entries(attributes)) {
-    const definition = schema[key];
+    const definition = Object.hasOwn(schema, key) ? schema[key] : undefined;
     normalized[key] =
       definition === undefined
         ? value
@@ -272,7 +272,7 @@ function coerceStartWorkflowSearchAttributeValue(
     return value;
   }
 
-  const definition = schema[key];
+  const definition = Object.hasOwn(schema, key) ? schema[key] : undefined;
   if (definition === undefined) {
     throw new StartWorkflowValidationError(
       `Unknown search attribute "${key}". Registered attributes: ${Object.keys(schema).join(', ')}`,

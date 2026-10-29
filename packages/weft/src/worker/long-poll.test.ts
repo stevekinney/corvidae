@@ -661,6 +661,70 @@ describe('LongPollWorker', () => {
     expect(unknownCompletion.error).toBe('Unknown activity: test.nonExistent');
   });
 
+  it('reports an activity named after an inherited member as unknown', async () => {
+    const completedTasks: any[] = [];
+    const taskCompleted = createDeferred();
+    let pollCount = 0;
+
+    server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url);
+        const sessionLifecycleResponse = handleDefaultSessionLifecycleForTesting(request, url);
+        if (sessionLifecycleResponse !== undefined) return sessionLifecycleResponse;
+
+        if (POLL_PATH_RE.test(url.pathname) && request.method === 'GET') {
+          pollCount++;
+          if (pollCount === 1) {
+            return Response.json({
+              operationId: 'op-inherited',
+              activityName: 'constructor',
+              input: null,
+            });
+          }
+          return new Response(null, { status: 204 });
+        }
+
+        if (RESULT_PATH_RE.test(url.pathname) && request.method === 'POST') {
+          const body = await request.json();
+          completedTasks.push(body);
+          taskCompleted.resolve();
+          return Response.json({ ok: true, disposition: 'applied' });
+        }
+
+        return new Response('not found', { status: 404 });
+      },
+    });
+
+    const worker = createLongPollWorkerForTesting({
+      serverUrl: `http://localhost:${server.port}`,
+      activities: {
+        processOrder: async (input) => input,
+      },
+    });
+
+    worker.start();
+    await withTimeout(
+      taskCompleted.promise,
+      LONG_POLL_TEST_TIMEOUT_MS,
+      'inherited-name activity completion',
+    );
+    // taskCompleted resolves when the server RECEIVES the POST, before it
+    // has even sent a response — wait for the client to actually process
+    // that response and acknowledge (COR-235) before stopping, so stop()
+    // does not race a still-in-flight disposition read and report a
+    // spurious "still unacknowledged" warning for a result the server
+    // already durably applied.
+    await waitForCondition(() => worker.unacknowledgedResultCount === 0);
+    await worker.stop();
+
+    // Should have reported the unknown activity as a failure
+    const unknownCompletion = completedTasks.find((t) => t.operationId === 'op-inherited');
+    expect(unknownCompletion).toBeDefined();
+    expect(unknownCompletion.status).toBe('failed');
+    expect(unknownCompletion.error).toBe('Unknown activity: constructor');
+  });
+
   it('retries a failed-activity result after a transient completion-endpoint failure, instead of dropping it (COR-235)', async () => {
     // Before COR-235 this test asserted the opposite: a failed completion
     // POST was a one-shot best-effort attempt, silently and permanently

@@ -3,6 +3,7 @@ import { MessageSchema } from '@ag-ui/core/schemas';
 import { appendMessages, createConversationHistory } from '../../conversation/index';
 import type { ThinkingContent } from '../../multi-modal';
 import type { ConversationHistory as Conversation, MessageInput } from '../../types';
+import { getOwn } from '../../utilities/type-helpers';
 import { parseJSONValue, toJSONValue } from '../shared';
 import { fromAGUIContent, readTextParts, withoutTextParts } from './content';
 import { AGUIMappingError } from './errors';
@@ -222,7 +223,7 @@ export function mergeAGUIMessages(
   );
   const inputs = toMessageInputs(messages).filter(
     (input) =>
-      conversation.messages[input.id] === undefined &&
+      getOwn(conversation.messages, input.id) === undefined &&
       (input.toolCall === undefined || !heldCalls.has(input.toolCall.id)),
   );
   if (inputs.length === 0) return conversation;

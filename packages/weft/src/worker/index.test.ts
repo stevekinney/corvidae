@@ -712,6 +712,48 @@ describe('RemoteWorker', () => {
     await worker.disconnect();
   });
 
+  it('reports an activity named after an inherited member as unknown', async () => {
+    const messages: any[] = [];
+
+    server = createTestServer({
+      onMessage(ws, message) {
+        const parsed = JSON.parse(message);
+        messages.push(parsed);
+
+        if (parsed.type === 'register') {
+          ws.send(
+            JSON.stringify({
+              type: 'task',
+              operationId: 'op-inherited',
+              attemptToken: 'attempt-token',
+              activityName: 'constructor',
+              input: null,
+            }),
+          );
+        }
+      },
+    });
+
+    const worker = new RemoteWorker({
+      serverUrl: `ws://localhost:${server.port}`,
+      deploymentName: 'test-deployment',
+      buildId: 'test-build',
+      workerId: 'test-worker-inherited',
+      workflows: workflowsOf({
+        processOrder: async (input) => input,
+      }),
+    });
+
+    await worker.connect();
+
+    const taskResult = await waitForTaskResult(messages, 'unknown activity task result');
+    expect(taskResult.operationId).toBe('op-inherited');
+    expect(taskResult.status).toBe('failed');
+    expect(taskResult.error).toBe('Unknown activity: constructor');
+
+    await worker.disconnect();
+  });
+
   it('handles a task that throws and sends failed result', async () => {
     const messages: any[] = [];
 

@@ -1,5 +1,6 @@
 import { createIntegrityError } from '../errors';
 import type { ConversationHistory } from '../types';
+import { getOwn } from '../utilities/type-helpers';
 
 export type IntegrityIssueCode =
   | 'integrity:missing-message'
@@ -36,7 +37,7 @@ export function validateConversationHistoryIntegrity(
       seenIds.add(id);
     }
 
-    if (!conversation.messages[id]) {
+    if (!getOwn(conversation.messages, id)) {
       issues.push({
         code: 'integrity:missing-message',
         message: `missing message for id ${id}`,
@@ -58,7 +59,7 @@ export function validateConversationHistoryIntegrity(
   const toolCalls = new Map<string, { position: number; messageId: string }>();
 
   conversation.ids.forEach((id, index) => {
-    const message = conversation.messages[id];
+    const message = getOwn(conversation.messages, id);
     if (!message) return;
 
     if (message.role === 'tool-call' && message.toolCall) {
@@ -77,7 +78,7 @@ export function validateConversationHistoryIntegrity(
   const toolResultsByCallId = new Map<string, { position: number; messageId: string }>();
 
   conversation.ids.forEach((id, index) => {
-    const message = conversation.messages[id];
+    const message = getOwn(conversation.messages, id);
     if (!message) return;
 
     if (message.role === 'tool-result' && message.toolResult) {

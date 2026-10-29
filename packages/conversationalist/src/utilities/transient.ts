@@ -7,7 +7,7 @@ import type {
 } from '../types';
 import { isAssistantMessage } from './message';
 import { getOrderedMessages, toIdRecord } from './message-store';
-import { toReadonly } from './type-helpers';
+import { setOwn, toReadonly } from './type-helpers';
 
 /**
  * Checks if a metadata key is transient (starts with '_').
@@ -45,7 +45,7 @@ export function stripTransientFromRecord(
   const result: Record<string, JSONValue> = {};
   for (const [key, value] of Object.entries(metadata)) {
     if (!isTransientKey(key)) {
-      result[key] = value;
+      setOwn(result, key, value);
     }
   }
   return result;

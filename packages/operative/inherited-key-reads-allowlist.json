@@ -1,0 +1,23 @@
+{
+  "description": "Dynamic reads allowed to use a key the code does not control, checked by scripts/check-inherited-key-reads.ts. Each entry names the file, the expression as written, how many such sites the file holds, and why no inherited key such as constructor can reach them. The list can only shrink: --shrink drops stale entries and lowers counts.",
+  "entries": [
+    {
+      "file": "src/delegation-grant.ts",
+      "expression": "candidate[field]",
+      "count": 1,
+      "reason": "the keys come from an array literal declared in the same function"
+    },
+    {
+      "file": "src/providers/shared/batch-support.ts",
+      "expression": "batchNamespace[method]",
+      "count": 1,
+      "reason": "the receiver is a provider SDK client whose methods live on its prototype, so inherited members are the point; the segments and methods are literals chosen by the provider adapters"
+    },
+    {
+      "file": "src/providers/shared/batch-support.ts",
+      "expression": "namespace[segment]",
+      "count": 1,
+      "reason": "the receiver is a provider SDK client whose methods live on its prototype, so inherited members are the point; the segments and methods are literals chosen by the provider adapters"
+    }
+  ]
+}

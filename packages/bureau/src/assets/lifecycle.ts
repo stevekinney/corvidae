@@ -414,9 +414,17 @@ export function startDeletion(
   );
 }
 
+/** The configured transport for a provider name, which is none for a name like `constructor`. */
+function providerTransport(internals: AssetInternals, provider: string) {
+  const providers = internals.ports.providers;
+  return providers !== undefined && Object.hasOwn(providers, provider)
+    ? providers[provider]
+    : undefined;
+}
+
 function deletableCopies(internals: AssetInternals, record: AssetRecord): AssetProviderCopy[] {
   return record.providerCopies.filter(
-    (copy) => internals.ports.providers?.[copy.provider]?.delete !== undefined,
+    (copy) => providerTransport(internals, copy.provider)?.delete !== undefined,
   );
 }
 
@@ -436,7 +444,7 @@ async function deleteProviderCopies(
 ): Promise<AssetRecord> {
   let latest = record;
   for (const copy of record.providerCopies) {
-    const transport = internals.ports.providers?.[copy.provider];
+    const transport = providerTransport(internals, copy.provider);
     if (!transport?.delete) continue;
     try {
       await context.track(
@@ -483,7 +491,7 @@ export function startProviderTransfer(
       classify: (error) => classifyFailure(error, 'provider-transfer-failed'),
     },
     async (context) => {
-      const transport = internals.ports.providers?.[provider];
+      const transport = providerTransport(internals, provider);
       if (!transport)
         throw new AssetAdmissionError('unsupported-source', 'The provider is not configured.');
       const loaded = await context.track(loadRecord(internals.storage, assetId));

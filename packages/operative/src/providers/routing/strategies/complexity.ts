@@ -1,3 +1,4 @@
+import { getOwn } from 'conversationalist';
 import type { GenerateContext } from '../../types.ts';
 import type { ComplexitySignals, ModelRoute, RoutingDecision, RoutingStrategy } from '../types.ts';
 
@@ -49,7 +50,7 @@ export function extractComplexitySignals(context: GenerateContext): ComplexitySi
 
   if (ids.length > 0) {
     const lastId = ids[ids.length - 1]!;
-    const lastMessage = messages[lastId];
+    const lastMessage = getOwn(messages, lastId);
     if (lastMessage && typeof lastMessage.content === 'string') {
       lastMessageContent = lastMessage.content;
       lastMessageLength = lastMessageContent.length;
@@ -64,7 +65,7 @@ export function extractComplexitySignals(context: GenerateContext): ComplexitySi
   let pendingToolResults = 0;
   for (let i = ids.length - 1; i >= 0; i--) {
     const id = ids[i]!;
-    const message = messages[id];
+    const message = getOwn(messages, id);
     if (!message) break;
 
     if (message.role === 'tool-result') {

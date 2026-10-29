@@ -7,6 +7,7 @@ import {
 } from '../components/chat/builders.ts';
 import type { ConversationHistory, MessageInput } from '../components/chat/conversation-model.ts';
 import type { ChatAttachment } from '../components/chat/input/chat-attachment.ts';
+import { getOwn } from '../utilities/get-own.ts';
 import type { SessionRunState } from './session-controller-history.ts';
 import type { ChatSessionControllerOptions } from './session-controller-support.ts';
 
@@ -86,7 +87,7 @@ export function createFollowUpQueue({
   const rowIsVisible = (record: FollowUp): boolean =>
     !lifecycle.disposed &&
     options.getConversation().id === record.conversationId &&
-    options.getConversation().messages[record.id] !== undefined;
+    getOwn(options.getConversation().messages, record.id) !== undefined;
   const isRetired = (record: FollowUp): boolean => lifecycle.disposed || record.epoch !== epoch;
   const invalidated = (): Error =>
     new Error('This follow-up was not delivered: the session was invalidated first');

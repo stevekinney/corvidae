@@ -20,6 +20,7 @@
  * @module
  */
 
+import { getOwn } from '../../../utilities/get-own.ts';
 import type { ChatReadReceiptEvent } from '../adapter/chat-adapter.ts';
 import type { ReadReceipt } from '../chat.types.ts';
 
@@ -66,11 +67,11 @@ export function useChatReadReceipts(
     const propReceipts = options.getReadReceipts();
     if (propReceipts !== undefined) return propReceipts.get(messageId);
 
-    return adapterReceipts[messageId];
+    return getOwn(adapterReceipts, messageId);
   }
 
   function handleAdapterReadReceipt(event: ChatReadReceiptEvent): void {
-    const existing = adapterReceipts[event.messageId];
+    const existing = getOwn(adapterReceipts, event.messageId);
 
     // Adapter read-receipt events imply "read" status (the event type carries no
     // lower-rank status). A new message gets a fresh "read" receipt; a repeat push

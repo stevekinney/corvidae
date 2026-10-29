@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src scripts && bun ../../scripts/check-documentation-coverage.ts",
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src scripts && bun ../../scripts/check-inherited-key-reads.ts && bun ../../scripts/check-documentation-coverage.ts",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts",
     "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.browser.json --fail-on-warnings && svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings && bun run typecheck:documentation",
     "typecheck:documentation": "bun ../../scripts/check-documentation-code-blocks.ts",

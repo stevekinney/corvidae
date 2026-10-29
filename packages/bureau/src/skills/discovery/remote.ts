@@ -224,7 +224,11 @@ async function admitOne(
     };
   }
 
-  const pinned = source.integrity?.expectedDigests?.[name];
+  const expectedDigests = source.integrity?.expectedDigests;
+  const pinned =
+    expectedDigests !== undefined && Object.hasOwn(expectedDigests, name)
+      ? expectedDigests[name]
+      : undefined;
   if (pinned !== undefined) {
     const actual = await sha256BytesHex(bytes);
     if (actual !== pinned) {

@@ -1,6 +1,7 @@
 import type { ConversationHistory as Conversation, Message } from '../types';
 import { messageHasImages } from '../utilities';
 import { getOrderedMessages } from '../utilities/message-store';
+import { getOwn } from '../utilities/type-helpers';
 
 /**
  * Returns all messages from a conversation in order.
@@ -24,7 +25,7 @@ export function getMessageAtPosition(
   position: number,
 ): Message | undefined {
   const id = conversation.ids[position];
-  return id ? conversation.messages[id] : undefined;
+  return id ? getOwn(conversation.messages, id) : undefined;
 }
 
 /**
@@ -39,7 +40,7 @@ export function getMessageIds(conversation: Conversation): string[] {
  * Returns undefined if no message with that ID exists.
  */
 export function getMessageById(conversation: Conversation, id: string): Message | undefined {
-  return conversation.messages[id];
+  return getOwn(conversation.messages, id);
 }
 
 /**

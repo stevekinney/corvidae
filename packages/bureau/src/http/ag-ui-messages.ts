@@ -26,6 +26,7 @@ import {
   type MultiModalContent,
   mergeAGUIMessages,
   messageMediaParts,
+  getOwn,
 } from 'conversationalist';
 
 import { assetPartsOf } from './ag-ui-asset-parts.ts';
@@ -57,7 +58,7 @@ export function withoutReasoning(history: ConversationHistory): ConversationHist
 export function withoutMemoryEvidence(history: ConversationHistory): ConversationHistory {
   const recalled = new Set(
     history.ids.filter(
-      (id) => history.messages[id]?.metadata?.[MEMORY_EVIDENCE_METADATA_KEY] !== undefined,
+      (id) => getOwn(history.messages, id)?.metadata?.[MEMORY_EVIDENCE_METADATA_KEY] !== undefined,
     ),
   );
   if (recalled.size === 0) return history;
@@ -215,7 +216,7 @@ export function rowsAddedBy(history: ConversationHistory, messages: ReadonlyArra
   const known = new Set(history.ids);
   return merged.ids
     .filter((id) => !known.has(id))
-    .map((id) => withoutReservedMetadata(withManagedAssetSources(merged.messages[id]!)));
+    .map((id) => withoutReservedMetadata(withManagedAssetSources(getOwn(merged.messages, id)!)));
 }
 
 /**

@@ -385,6 +385,6 @@ function toolMetaOf(
   toolMeta: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
   name: string,
 ): { _meta?: Record<string, unknown> } {
-  const meta = toolMeta[name];
+  const meta = Object.hasOwn(toolMeta, name) ? toolMeta[name] : undefined;
   return meta === undefined ? {} : { _meta: { ...meta } };
 }

@@ -17,6 +17,7 @@ import {
 } from '../types';
 import { createMessage, isAssistantMessage, toReadonly } from '../utilities';
 import { toIdRecord } from '../utilities/message-store';
+import { getOwn, setOwn } from '../utilities/type-helpers';
 import { assertConversationHistoryIntegrity } from './integrity';
 import { assertToolReference, type ToolUseIndex } from './tool-tracking';
 
@@ -236,7 +237,7 @@ export function assembleConversationHistory(
     const unlisted = new Set(Object.keys(messages));
     const toolUses: ToolUseIndex = new Map();
     const orderedMessages = ids.map((id, index) => {
-      const message = messages[id];
+      const message = getOwn(messages, id);
       if (!message) throw createSerializationError(`missing message for id ${id}`);
       if (message.position !== index) throw createInvalidPositionError(index, message.position);
       unlisted.delete(id);
@@ -286,7 +287,7 @@ export function deserializeConversationHistory(json: unknown): ConversationHisto
   const frame = parseConversationFrame(json);
   const messages: Record<string, Message> = {};
   for (const [id, message] of Object.entries(frame.messages)) {
-    messages[id] = parseConversationMessage(message);
+    setOwn(messages, id, parseConversationMessage(message));
   }
   return assembleConversationHistory(frame.header, frame.ids, messages);
 }

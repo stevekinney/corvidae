@@ -155,7 +155,9 @@ export function mapEnum<V extends string>(
   value: unknown,
   report: (message: string) => void,
 ): V {
-  const fallback = mapping.values[mapping.default];
+  const fallback = Object.hasOwn(mapping.values, mapping.default)
+    ? mapping.values[mapping.default]
+    : undefined;
   if (fallback === undefined) throw new Error(`${label} has no mapping for its default`);
   if (typeof value === 'string' && Object.hasOwn(mapping.values, value)) {
     return mapping.values[value] ?? fallback;

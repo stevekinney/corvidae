@@ -1,5 +1,6 @@
 import type { ConversationChangeContext } from './history-events';
 import type { ConversationHistory } from './types';
+import { getOwn } from './utilities/type-helpers';
 
 export function diffConversationMessages(
   previousConversation: ConversationHistory,
@@ -13,8 +14,8 @@ export function diffConversationMessages(
 
   for (const id of nextConversation.ids) {
     if (!previousIds.has(id)) continue;
-    const previousMessage = previousConversation.messages[id];
-    const nextMessage = nextConversation.messages[id];
+    const previousMessage = getOwn(previousConversation.messages, id);
+    const nextMessage = getOwn(nextConversation.messages, id);
     if (!previousMessage || !nextMessage) continue;
     if (JSON.stringify(previousMessage) !== JSON.stringify(nextMessage)) updated.push(id);
   }
@@ -30,7 +31,7 @@ export function collectToolCallIds(
 
   const ids = new Set<string>();
   for (const messageId of messageIds) {
-    const message = conversation.messages[messageId];
+    const message = getOwn(conversation.messages, messageId);
     if (!message) continue;
     if (message.toolCall?.id) ids.add(message.toolCall.id);
     if (message.toolResult?.callId) ids.add(message.toolResult.callId);

@@ -8,6 +8,7 @@
  */
 
 import { converter, parse, type Oklch } from 'culori';
+import { ownEntry } from '../../../_internal/own-entry.ts';
 
 export type CssColorFailureCode =
   'missing-property' | 'unsupported-syntax' | 'gradient-or-image' | 'reference-cycle';
@@ -209,7 +210,7 @@ function evaluate(
     const [name, ...fallback] = splitTopLevel(variable, 'comma');
     if (name === undefined) return fail('unsupported-syntax', `${value} names no property.`);
     if (seen.includes(name)) return fail('reference-cycle', `${name} refers to itself.`);
-    const target = properties[name];
+    const target = ownEntry(properties, name);
     if (target === undefined) {
       if (fallback.length > 0) return evaluate(fallback.join(','), properties, options, seen);
       return fail('missing-property', `${name} has no value in this context.`);

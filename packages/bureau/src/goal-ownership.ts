@@ -296,7 +296,9 @@ export function createOwnedGoalEngine<E extends GoalEngine>(
 
   return new Proxy(engine, {
     get(target, property) {
-      if (typeof property === 'string' && property in overrides) return overrides[property];
+      if (typeof property === 'string' && Object.hasOwn(overrides, property)) {
+        return overrides[property];
+      }
       const value = Reflect.get(target, property, target) as unknown;
       return typeof value === 'function' ? (value.bind(target) as unknown) : value;
     },

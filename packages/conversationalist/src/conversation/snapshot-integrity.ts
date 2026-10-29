@@ -10,7 +10,7 @@ import {
   type ConversationSnapshotLineage,
   CURRENT_SCHEMA_VERSION,
 } from '../types';
-import { deepFreeze } from '../utilities/type-helpers';
+import { deepFreeze, setOwn } from '../utilities/type-helpers';
 
 export const CURRENT_SNAPSHOT_FORMAT_VERSION = 2 as const;
 
@@ -137,7 +137,7 @@ function readStreamSequences(record: Record<string, unknown>): Readonly<Record<s
     if (typeof sequence !== 'number' || !Number.isSafeInteger(sequence) || sequence < 1) {
       throw snapshotError(`invalid stream sequences for ${messageId}`);
     }
-    sequences[messageId] = sequence;
+    setOwn(sequences, messageId, sequence);
   }
   return sequences;
 }

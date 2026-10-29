@@ -5,6 +5,7 @@
  * Cinder's browser runtime free of the full conversation package.
  */
 
+import { getOwn } from '../../../utilities/get-own.ts';
 import type {
   ConversationHistory,
   Message,
@@ -19,7 +20,7 @@ export function getMessages(
   options: { includeHidden?: boolean } = {},
 ): Message[] {
   return conversation.ids
-    .map((id) => conversation.messages[id])
+    .map((id) => getOwn(conversation.messages, id))
     .filter((message): message is Message => message !== undefined)
     .filter((message) => options.includeHidden === true || !message.hidden);
 }

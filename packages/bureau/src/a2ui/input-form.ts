@@ -266,7 +266,7 @@ function normalisedSubmission(fields: readonly FormField[], submitted: unknown):
   if (!isRecord(submitted)) return submitted;
   const value: Record<string, unknown> = { ...submitted };
   for (const { name, property, required } of fields) {
-    const held = value[name];
+    const held = Object.hasOwn(value, name) ? value[name] : undefined;
     // The renderer writes `null` for a control nothing was entered in; for an optional field that
     // is the field left out, and for a required one it stays, so validation refuses it.
     if (held === null && !required) {

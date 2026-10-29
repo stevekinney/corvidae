@@ -280,7 +280,9 @@ export const MODEL_MODALITIES: Readonly<
  * a matching seed row fails loudly instead of emitting a fabricated `0`.
  */
 export function requireLimits(provider: ProviderName, model: string): ModelLimitEntry {
-  const entry = MODEL_LIMITS[provider][model];
+  const entry = Object.hasOwn(MODEL_LIMITS[provider], model)
+    ? MODEL_LIMITS[provider][model]
+    : undefined;
   if (!entry) {
     throw new Error(`model-catalog: no MODEL_LIMITS entry for ${provider}/${model}`);
   }
@@ -294,7 +296,9 @@ export function requireLimits(provider: ProviderName, model: string): ModelLimit
  * {@link requireLimits}.
  */
 export function requireModalities(provider: ProviderName, model: string): ModalityMatrix {
-  const entry = MODEL_MODALITIES[provider][model];
+  const entry = Object.hasOwn(MODEL_MODALITIES[provider], model)
+    ? MODEL_MODALITIES[provider][model]
+    : undefined;
   if (!entry) {
     throw new Error(`model-catalog: no MODEL_MODALITIES entry for ${provider}/${model}`);
   }

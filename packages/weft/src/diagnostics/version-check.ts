@@ -78,7 +78,7 @@ function buildWorkflowTypeReports(
 ): WorkflowTypeReport[] {
   const reports: WorkflowTypeReport[] = [];
   for (const [type, group] of groups) {
-    const registration = registrations[type];
+    const registration = Object.hasOwn(registrations, type) ? registrations[type] : undefined;
     if (!registration) continue;
 
     const storedVersion = findMostCommonVersion(group.versionCounts);

@@ -186,6 +186,22 @@ describe('WebExtensionStorage', () => {
     }
   });
 
+  it('keeps a user key named __proto__ as an entry, not as the keyspace prototype', async () => {
+    const area = new FakeStorageArea();
+    const restore = installStorageNamespace('browser', area);
+    try {
+      const storage = new WebExtensionStorage();
+      await storage.put('__proto__', encode('by put'));
+      expect(decode(await storage.get('__proto__'))).toBe('by put');
+      await storage.batch([{ type: 'put', key: 'constructor', value: encode('by batch') }]);
+      await storage.batch([{ type: 'put', key: '__proto__', value: encode('by batch') }]);
+      expect(decode(await storage.get('__proto__'))).toBe('by batch');
+      expect(decode(await storage.get('constructor'))).toBe('by batch');
+    } finally {
+      restore();
+    }
+  });
+
   it('does not expose conditionalBatch (capabilities reports false)', async () => {
     const area = new FakeStorageArea();
     const restore = installStorageNamespace('browser', area);

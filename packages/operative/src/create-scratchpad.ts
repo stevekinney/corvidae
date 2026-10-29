@@ -100,7 +100,7 @@ export function createScratchpad(options?: CreateScratchpadOptions): Scratchpad 
     if (schema) {
       const shape =
         'shape' in schema ? (schema as { shape: Record<string, ZodType> }).shape : undefined;
-      if (shape && !(key in shape)) {
+      if (shape && !Object.hasOwn(shape, key)) {
         throw new Error(`Key "${key}" is not allowed by the schema`);
       }
     }
@@ -110,7 +110,7 @@ export function createScratchpad(options?: CreateScratchpadOptions): Scratchpad 
     if (schema) {
       const shape =
         'shape' in schema ? (schema as { shape: Record<string, ZodType> }).shape : undefined;
-      if (shape && key in shape) {
+      if (shape && Object.hasOwn(shape, key)) {
         const fieldSchema = shape[key]!;
         fieldSchema.parse(value);
       }
