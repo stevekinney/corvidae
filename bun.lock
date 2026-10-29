@@ -48,6 +48,7 @@
         "@lostgradient/storage": "workspace:*",
         "@lostgradient/storage-bun-sqlite": "workspace:*",
         "@lostgradient/storage-indexeddb": "workspace:*",
+        "@lostgradient/storage-postgres": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/weft": "workspace:*",
         "@lucide/svelte": "catalog:",

@@ -302,7 +302,7 @@
 
   {#if filePath !== ''}
     <p class="weft-agent-editor__path">
-      <span>{copy.fileLabel}</span>
+      <span>{hostPaths.data?.mode === 'remote' ? copy.remote.fileLabel : copy.fileLabel}</span>
       <CodeLocation file={filePath} data-testid="agent-file-path" />
     </p>
   {/if}

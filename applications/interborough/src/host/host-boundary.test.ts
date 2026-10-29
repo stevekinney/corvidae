@@ -106,6 +106,7 @@ describe('/host/paths', () => {
     expect(Object.keys(paths).toSorted()).toEqual([
       'agentDirectory',
       'configurationFile',
+      'mode',
       'providers',
       'workflowDirectory',
     ]);
@@ -118,6 +119,7 @@ describe('/host/paths', () => {
     const host = await start(home);
     const response = await fetch(new URL('/host/paths', host.url));
     expect(await response.json()).toEqual({
+      mode: 'local',
       agentDirectory: join(home, 'agents'),
       workflowDirectory: join(home, 'workflows'),
       configurationFile: join(home, 'configuration.json'),

@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
 import { WORKFLOW_COPY } from '../../app/copy.ts';
-import { StubFault } from '../../lib/bureau-stub.test-support.ts';
+import { STUB_REMOTE_WORKFLOW_DIRECTORY, StubFault } from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import {
@@ -419,5 +419,27 @@ describe('the "not applied yet" banner in the editor', () => {
     expect(await findByText(WORKFLOW_COPY.editor.saveFailed)).not.toBeNull();
     // The first save is still on disk and the engine has still not followed it.
     expect(root.textContent).toContain(WORKFLOW_COPY.applyFailed.title);
+  });
+});
+
+describe.each(['local', 'remote'] as const)('the editor of a workflow on a %s host', (mode) => {
+  test('labels the file with the words of its mode, and shows the host’s location verbatim', async () => {
+    const { container } = open('/workflows/digest/edit', { hostMode: mode });
+    const root = await ready(container);
+
+    const [present, absent] =
+      mode === 'remote'
+        ? [WORKFLOW_COPY.remote.fileLabel, WORKFLOW_COPY.fileLabel]
+        : [WORKFLOW_COPY.fileLabel, WORKFLOW_COPY.remote.fileLabel];
+    const label = root.querySelector('.weft-workflow-editor__path span')?.textContent;
+    expect(label).toBe(present);
+    expect(label).not.toBe(absent);
+    await waitFor(() =>
+      expect(root.querySelector('[data-testid="workflow-file-path"]')?.textContent).toBe(
+        mode === 'remote'
+          ? `${STUB_REMOTE_WORKFLOW_DIRECTORY}digest.json`
+          : `${STUB_WORKFLOW_DIRECTORY}/digest.json`,
+      ),
+    );
   });
 });

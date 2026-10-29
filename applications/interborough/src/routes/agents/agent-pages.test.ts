@@ -2,7 +2,12 @@ import { cleanup, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
-import { StubFault, stubHostPaths } from '../../lib/bureau-stub.test-support.ts';
+import {
+  STUB_REMOTE_AGENT_DIRECTORY,
+  StubFault,
+  stubHostPaths,
+  stubRemoteHostPaths,
+} from '../../lib/bureau-stub.test-support.ts';
 import { createQueryClient, queryKeys } from '../../lib/query.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AGENT, bureau, CONTEXT, landAt } from '../chat/pages.test-support.ts';
@@ -285,6 +290,28 @@ describe('the list of agents, and the agent editor', () => {
     ).toBeNull();
     getByRole('link', { name: 'broken' }).click();
     expect(router.pathname).toBe('/agents/broken/edit');
+  });
+
+  test('shows an invalid agent’s location as a remote host gave it, with no introduction', async () => {
+    const served = bureau(
+      {
+        'bureau.agents.list': () => ({ agents: [AGENT, FILE_AGENT] }),
+        'bureau.agents.definitions.list': () => ({
+          agents: [{ ...READY_LISTING }, INVALID_LISTING],
+          nextOffset: null,
+        }),
+      },
+      (url) => (url.endsWith('/host/paths') ? Response.json(stubRemoteHostPaths()) : undefined),
+    );
+    restore = served.restore;
+    landAt('/agents');
+    const { container, findByText } = mount(AgentList);
+
+    await findByText(AGENT_EDITOR_COPY.invalidBadge);
+    const path = container.querySelector('[data-agent="broken"] [data-testid="agent-file-path"]');
+    expect(path?.textContent).toBe(`${STUB_REMOTE_AGENT_DIRECTORY}broken.md`);
+    expect(path?.textContent).toMatch(/^s3:\/\//);
+    expect(container.textContent).not.toContain(AGENT_EDITOR_COPY.remote.fileLabel);
   });
 
   test('follows the definitions list to its last page, and shows the path relative to the state directory when the host does not say', async () => {

@@ -200,7 +200,7 @@
 <div class="weft-workflow-editor" data-page="workflow-editor" data-condition={condition}>
   <h1 class="weft-workflow-editor__title">{copy.editor.heading(type)}</h1>
   <p class="weft-workflow-editor__path">
-    <span>{copy.fileLabel}</span>
+    <span>{hostPaths.data?.mode === 'remote' ? copy.remote.fileLabel : copy.fileLabel}</span>
     <CodeLocation file={filePath} data-testid="workflow-file-path" />
   </p>
 

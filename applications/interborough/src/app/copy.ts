@@ -108,6 +108,20 @@ export const AGENT_EDITOR_COPY = {
   formLabel: 'Agent definition',
   /** The label before the agent's file path. */
   fileLabel: 'File',
+  /**
+   * The words that differ when the host keeps its state in a bucket (`mode: 'remote'` from
+   * `/host/paths`). An agent is an object there, so it is not "a file". Everything not named here
+   * is the same in both modes.
+   */
+  remote: {
+    fileLabel: 'Stored in',
+    noProvider: {
+      configurationStep:
+        'Put this in configuration.json in the bucket. If it exists, add the provider to its providers.',
+      secretStep:
+        'Set the provider’s API key in the environment variable shown, then restart the host.',
+    },
+  },
   /** The directory under the state directory that holds agent files, when the host does not say where. */
   fallbackDirectory: 'agents',
   /** The titles of the form's four sections. */
@@ -220,6 +234,8 @@ export const WORKFLOW_COPY = {
   /** The directory under the state directory that holds workflow files, when the host does not say where. */
   fallbackDirectory: 'workflows',
   fileLabel: 'File',
+  /** The words that differ when the host keeps its state in a bucket (`mode: 'remote'`). */
+  remote: { fileLabel: 'Stored in' },
   problemLabel: 'Problem',
   issuesLabel: 'Issues',
   stepsLabel: 'Steps',
@@ -577,6 +593,16 @@ export const SETTINGS_COPY = {
     configuration: 'Configuration file',
     providers: 'Provider key files',
     unavailable: 'The host did not say where it keeps its files.',
+  },
+  /** The words that differ when the host keeps its state in a bucket (`mode: 'remote'`). */
+  remote: {
+    hostPaths: {
+      title: 'Where the host keeps its state',
+      agents: 'Agents',
+      workflows: 'Workflows',
+      configuration: 'Configuration',
+      providers: 'Provider key variables',
+    },
   },
 } as const;
 

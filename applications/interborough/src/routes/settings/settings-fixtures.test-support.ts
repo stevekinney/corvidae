@@ -99,6 +99,7 @@ export function installSettingsBureau(
   served: SettingsServed,
   extra: Record<string, (params: Record<string, unknown>) => unknown> = {},
   stream?: SettingsStream,
+  hostMode?: 'local' | 'remote',
 ): BureauStub {
   return installBureauStub(
     {
@@ -127,7 +128,12 @@ export function installSettingsBureau(
       },
       ...extra,
     },
-    stream === undefined ? {} : { subscriptions: { 'bureau.settings.events': stream.handler } },
+    {
+      ...(stream === undefined
+        ? {}
+        : { subscriptions: { 'bureau.settings.events': stream.handler } }),
+      ...(hostMode === undefined ? {} : { hostMode }),
+    },
   );
 }
 

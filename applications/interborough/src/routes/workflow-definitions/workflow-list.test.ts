@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
 import { WORKFLOW_COPY } from '../../app/copy.ts';
+import { STUB_REMOTE_WORKFLOW_DIRECTORY } from '../../lib/bureau-stub.test-support.ts';
 import { queryKeys } from '../../lib/query.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
@@ -392,5 +393,21 @@ describe('a host with no workflow of its own', () => {
     );
     const action = await findByRole('link', { name: 'New workflow' });
     expect(action.getAttribute('href')).toBe('/workflows/new');
+  });
+});
+
+describe('the list of workflows on a remote host', () => {
+  test('shows an invalid file’s location as the host gave it, an s3:// location, with no introduction', async () => {
+    const { container } = open({ hostMode: 'remote' });
+    await waitFor(() => expect(rowCount(container)).toBe(4));
+
+    const broken = row(container, 'broken');
+    await waitFor(() =>
+      expect(testId(broken, 'workflow-file-path')?.textContent).toBe(
+        `${STUB_REMOTE_WORKFLOW_DIRECTORY}broken.json`,
+      ),
+    );
+    expect(testId(broken, 'workflow-file-path')?.textContent).toMatch(/^s3:\/\//);
+    expect(broken.textContent).not.toContain(WORKFLOW_COPY.remote.fileLabel);
   });
 });

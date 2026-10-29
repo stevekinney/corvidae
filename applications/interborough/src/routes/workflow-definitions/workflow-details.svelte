@@ -17,9 +17,11 @@
     filePath?: string | undefined;
     /** The file's document, whose trigger is shown as written. */
     document?: WorkflowDocument | undefined;
+    /** Whether the host keeps the file on this machine or in a bucket, which changes what the label says. */
+    mode?: 'local' | 'remote' | undefined;
   }
 
-  let { details, filePath, document }: Props = $props();
+  let { details, filePath, document, mode = 'local' }: Props = $props();
 
   const copy = WORKFLOW_COPY;
 </script>
@@ -43,7 +45,7 @@
 <div class="ib-workflow__section" data-testid="workflow-definition">
   <dl class="weft-workflow-facts">
     {#if filePath !== undefined}
-      <dt>{copy.fileLabel}</dt>
+      <dt>{mode === 'remote' ? copy.remote.fileLabel : copy.fileLabel}</dt>
       <dd><CodeLocation file={filePath} data-testid="workflow-file-path" /></dd>
     {/if}
     {#if document !== undefined}

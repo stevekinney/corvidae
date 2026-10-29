@@ -2,9 +2,15 @@
  * The Interborough host: one loopback origin that serves the browser application, Weft's engine
  * API for the Engine console, and a Bureau.
  *
- * The state lives in Bungalow's directory (`~/.interborough`, or `INTERBOROUGH_HOME`): the
- * Bureau runs on Bun SQLite at Bungalow's database path with `BureauOptions.id` set to Bungalow's
- * `deploymentId`, so a restart finds its tasks, sessions, schedules, and goals where it left them.
+ * The state lives in Bungalow's home (`~/.interborough`, or `INTERBOROUGH_HOME`): the Bureau runs on
+ * Bun SQLite at Bungalow's database path with `BureauOptions.id` set to Bungalow's `deploymentId`,
+ * so a restart finds its tasks, sessions, schedules, and goals where it left them.
+ *
+ * Setting `INTERBOROUGH_DATABASE_URL` and `INTERBOROUGH_BUCKET` selects remote mode instead
+ * (README, "Running on Postgres and S3"): the Bureau runs on Postgres, the agent and workflow
+ * definitions are objects in the bucket, the approval secret is `INTERBOROUGH_SECRET_APPROVAL_SECRET`,
+ * and Bureau's durable ownership is locked, so any number of hosts, such as the old and new release
+ * of a rolling deploy, can run at once on the same state.
  * The seeded agents are code, so they are rebuilt from {@link createSeededAgents} on every start.
  * Other agents are Markdown files in `agents/` under the home, which the Bureau loads and watches
  * (COR-1524): `researcher.md` is the agent `researcher`, its `model` is `<provider>/<model>` from
@@ -51,12 +57,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { dirname, join, resolve as resolvePath, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import {
-  openBungalow,
-  type Bungalow,
-  type BungalowEnvironment,
-  type DatabaseLocation,
-} from '@lostgradient/bungalow';
+import { openBungalow, type Bungalow, type BungalowEnvironment } from '@lostgradient/bungalow';
 import {
   createBureau,
   createBureauHandler,
@@ -65,10 +66,8 @@ import {
   type Bureau,
   type SettingsOptions,
 } from '@lostgradient/bureau';
-import { agentFileDirectory, workflowFileDirectory } from '@lostgradient/bureau/sources';
 import { typesafeJev, type GenerateFunction } from '@lostgradient/operative';
 import { type Storage } from '@lostgradient/storage';
-import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import {
   serve,
   type RegistryAgnosticEngine,
@@ -98,7 +97,15 @@ import {
   isWebSocketUpgrade,
   type HostSocketData,
 } from './host-websocket.ts';
-import { contentDirectoryPath, sqliteDatabasePath } from './locations.ts';
+import {
+  createAgentSource,
+  createHostStorage,
+  createWorkflowSource,
+  describeContent,
+  disposeHostStorage,
+  redactDatabase,
+  type HostDatabase,
+} from './locations.ts';
 import { mcpAppMounts } from './mcp-app-mounts.ts';
 import { createHostMemory } from './memory.ts';
 import {
@@ -230,8 +237,12 @@ export type Host = {
   readonly server: WeftServer;
   /** The Bureau's identifier, which is Bungalow's `deploymentId`. */
   readonly deploymentId: string;
-  /** Where the Bureau and the engine share their database: the SQLite file, for the one kind the host supports. */
-  readonly database: DatabaseLocation;
+  /**
+   * Where the Bureau and the engine share their database: the SQLite file, or the Postgres server
+   * and database name with no credential. The connection URL carries the password, so the host
+   * never hands it out.
+   */
+  readonly database: HostDatabase;
   /**
    * The generate for an agent assigned a model in the Bureau's catalog, resolved through Bureau's
    * provider path with the API key from Bungalow's secrets. Throws for a model the catalog does
@@ -254,10 +265,20 @@ export type Host = {
   close(): Promise<void>;
 };
 
-/** The installation's approval secret, created on first use and kept in Bungalow's `secrets/`. */
+/**
+ * The installation's approval secret. Locally it is created on first use and kept in Bungalow's
+ * `secrets/`. Remotely it is the variable Bungalow names (`INTERBOROUGH_SECRET_APPROVAL_SECRET`),
+ * the same on every host, and a host without it does not start: a secret one host made up would
+ * not verify an approval another host signed.
+ */
 function approvalSecret(bungalow: Bungalow): string {
   const existing = bungalow.readSecret(APPROVAL_SECRET_KEY);
   if (existing !== undefined) return existing;
+  if (bungalow.mode === 'remote') {
+    throw new Error(
+      `${bungalow.secretLocation(APPROVAL_SECRET_KEY)} is not set. Remote mode needs it: it signs the approvals every host verifies.`,
+    );
+  }
   const created = `${crypto.randomUUID()}${crypto.randomUUID()}`;
   bungalow.writeSecret(APPROVAL_SECRET_KEY, created);
   return created;
@@ -353,10 +374,16 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     }
   }
   const environment = options.environment ?? processEnvironment();
+  // The caller's lock list is read before the first await, so a later change to it cannot reach the Bureau.
+  const callerLocks = [...(options.settings?.locked ?? [])];
   const bungalow: Bungalow = await openBungalow({ name: APPLICATION_NAME, environment });
   const held: Held = { bungalow };
   try {
-    const storage = new BunSQLiteStorage(sqliteDatabasePath(bungalow.database));
+    // Read before the database opens, so a remote host without its approval secret stops before
+    // anything connects to Postgres or listens.
+    const database = redactDatabase(bungalow.database);
+    const approval = approvalSecret(bungalow);
+    const storage = createHostStorage(bungalow.database);
     held.storage = storage;
     // The catalog holds the models of the providers `configuration.json` names that have a key in
     // the secrets, and nothing else. The Bureau is created with exactly these rows, so no boot step
@@ -374,16 +401,26 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         apiKeys: providers.apiKeys,
         resolveProviderGenerate: options.resolveProviderGenerate ?? resolveProviderGenerate,
       });
-    const agentDirectory = contentDirectoryPath(bungalow.content(AGENT_DIRECTORY_NAME));
-    const workflowDirectory = contentDirectoryPath(bungalow.content(WORKFLOW_DIRECTORY_NAME));
+    const agentContent = bungalow.content(AGENT_DIRECTORY_NAME);
+    const workflowContent = bungalow.content(WORKFLOW_DIRECTORY_NAME);
     // The TypeSafe key, when the secrets hold one, gives Bureau a decision model for the kinds Jev
     // serves. It is read here and handed to the model, which keeps it in memory.
     const typesafeKey = bungalow.readSecret(TYPESAFE_SECRET_KEY)?.trim();
+    // Hosts that share a database must agree on who owns a run, so a remote host holds ownership
+    // to Bureau's lease default and the Settings page cannot store `none`: two hosts would then
+    // both run every task. A caller's own locks stay.
+    const settings: SettingsOptions | undefined =
+      bungalow.mode === 'remote'
+        ? {
+            ...options.settings,
+            locked: [...callerLocks, 'durableOwnership.ownership'],
+          }
+        : options.settings;
     const bureau = await createBureau({
       id: bungalow.deploymentId,
       agents: {
         ...options.extraAgents?.agents,
-        ...createSeededAgents(approvalSecret(bungalow), options.generate),
+        ...createSeededAgents(approval, options.generate),
       },
       // A session run of a seeded agent is offered `requestHumanInput`, which `request-human-input`
       // calls to park for an operator's answer.
@@ -411,11 +448,11 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       assets: { storage: createDurableAssetStorage(storage) },
       // Agent files: Markdown files in Bungalow's `agents/` directory are agents (COR-1524). A
       // file's `model` is a row of the `models` catalog.
-      agentSource: agentFileDirectory(agentDirectory, { tools: createAgentFileTools() }),
+      agentSource: createAgentSource(bungalow, agentContent, createAgentFileTools()),
       // Workflow files: JSON files in Bungalow's `workflows/` directory are agent-authored
       // workflows (COR-1527), registered with the Bureau's engine and run on their schedules.
-      workflowSource: workflowFileDirectory(workflowDirectory),
-      ...(options.settings === undefined ? {} : { settings: options.settings }),
+      workflowSource: createWorkflowSource(bungalow, workflowContent),
+      ...(settings === undefined ? {} : { settings }),
     });
     held.bureau = bureau;
     if (options.seed !== false) {
@@ -499,8 +536,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           GET: (request: Request) =>
             refuse(request) ??
             Response.json({
-              agentDirectory,
-              workflowDirectory,
+              mode: bungalow.mode,
+              agentDirectory: describeContent(agentContent),
+              workflowDirectory: describeContent(workflowContent),
               configurationFile: bungalow.configurationLocation,
               providers: PROVIDER_NAMES.map((name) => ({
                 name,
@@ -558,7 +596,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       engine,
       server,
       deploymentId: bungalow.deploymentId,
-      database: bungalow.database,
+      database,
       generateFor,
       diagnostics: () => ({
         bureau: bureau.internals.diagnostics(),
@@ -587,7 +625,7 @@ export function deriveStartOverrideSigningSecret(key: string): string {
 /** What the host holds while it starts and runs, so a failure at any step can release the rest. */
 type Held = {
   readonly bungalow: Bungalow;
-  storage?: BunSQLiteStorage;
+  storage?: Storage;
   bureau?: Bureau<SeededAgents>;
   replacementEngine?: RegistryAgnosticEngine;
   server?: WeftServer;
@@ -612,7 +650,8 @@ async function teardown(held: Held): Promise<void> {
   await step(held.server && (() => held.server?.stop()));
   await step(held.bureau && (() => held.bureau?.shutdown({ policy: 'detach' })));
   await step(held.replacementEngine && (() => held.replacementEngine?.[Symbol.asyncDispose]()));
-  await step(held.storage && (() => held.storage?.[Symbol.dispose]()));
+  const { storage } = held;
+  await step(storage && (() => disposeHostStorage(storage)));
   await step(() => held.bungalow.close());
   if (failures.length > 0) {
     throw new AggregateError(failures, 'The Interborough host did not shut down cleanly.');
