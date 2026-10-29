@@ -328,6 +328,27 @@ describe('a paused session still answers control', () => {
     expect(disposed.stream.cancelCount).toBe(1);
   });
 
+  test('a carried chunk whose room opened in the same turn the session was revoked is counted, not delivered', async () => {
+    const stream = createScriptedStream('pty');
+    const harness = createHarness({
+      sources: [stream.source],
+      budgets: { outputQueueBytes: BUDGET },
+    });
+    const attachment = await startAndAttach(harness);
+    stream.push(pattern(40_000));
+    stream.push(pattern(40_000, 1));
+    await settle();
+    // The second chunk was cut to the room left, and its remainder waits in the pump for room.
+    const delivered = harness.recorder.ofType('output').length;
+    expect(delivered).toBe(2);
+    // Room opens and the session is revoked before the pump's pending room promise continues, so its offer meets a revoked session.
+    attachment.outputParsedThrough(BUDGET);
+    const summary = await harness.session.revokeAuthorization();
+    expect(summary.cause).toBe('authorization-revoked');
+    expect(stream.cancelCount).toBe(1);
+    expect(harness.recorder.ofType('output')).toHaveLength(delivered);
+  });
+
   test('a natural exit while paused waits for the consumer, then drains everything', async () => {
     const { stream, harness, attachment } = await pausedSession();
     harness.session.reportProcessExit(0, null);

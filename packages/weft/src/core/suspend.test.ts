@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'bun:test';
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
+import { describe, expect, it } from 'bun:test';
 
 import { Engine } from './engine.ts';
 import type { WorkflowContext } from './types.ts';

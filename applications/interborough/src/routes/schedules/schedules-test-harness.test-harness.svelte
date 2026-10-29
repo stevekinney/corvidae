@@ -41,12 +41,22 @@
     bureau?: Record<string, BureauHandler> | undefined;
     /** Hands the test the stub, to read what the Bureau was asked. */
     onBureau?: ((stub: BureauStub) => void) | undefined;
+    /** Hands the test the fleet source the tree reads, to wait for its connection before it makes something happen. */
+    onFleetSource?: ((source: FleetEventSource) => void) | undefined;
     /** The test has installed its own stand-in for the Bureau, which answers every request for it. */
     externalBureau?: boolean | undefined;
   }
 
-  let { client, children, scopes, onQueryClient, bureau, onBureau, externalBureau }: Props =
-    $props();
+  let {
+    client,
+    children,
+    scopes,
+    onQueryClient,
+    bureau,
+    onBureau,
+    externalBureau,
+    onFleetSource,
+  }: Props = $props();
 
   if (!untrack(() => externalBureau)) {
     const bureauStub = installBureauStub(
@@ -94,6 +104,7 @@
     () => new FleetEventSource({ baseUrl: client.baseUrl, headers: client.headers }),
   );
   provideFleetEventSource(fleetSource);
+  untrack(() => onFleetSource)?.(fleetSource);
   onDestroy(() => fleetSource.close());
 </script>
 

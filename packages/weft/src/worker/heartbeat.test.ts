@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 import {
   restoreRealTimers,
   sleepForTesting,
   useFakeTimers,
 } from '@lostgradient/testing/fake-timers';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 import { HeartbeatManager } from './heartbeat.ts';
 
 describe('HeartbeatManager', () => {

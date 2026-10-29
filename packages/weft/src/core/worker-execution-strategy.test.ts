@@ -1,5 +1,3 @@
-import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
-import { afterEach, describe, expect, it, mock } from 'bun:test';
 import {
   advanceTimersByTime,
   restoreRealTimers,
@@ -7,6 +5,8 @@ import {
   useFakeTimers,
   waitForCondition as waitForTestingCondition,
 } from '@lostgradient/testing/fake-timers';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
+import { afterEach, describe, expect, it, mock } from 'bun:test';
 
 import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import { buildInternalRealmManifest } from '../worker/manifest/internal-realm.ts';

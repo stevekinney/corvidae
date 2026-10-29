@@ -10,11 +10,13 @@
   import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
 
   import { RETRY_LABEL, TASK_COPY } from '../../../app/copy.ts';
+  import { useBureauEventsLive } from '../../../app/live-polling.svelte.ts';
   import { listAgents, listAllContexts } from '../../../lib/bureau-client.ts';
   import { listAllGoals } from '../../../lib/bureau-goals.ts';
   import { listTasks, loadMoreTasks } from '../../../lib/bureau-tasks.ts';
   import { combinePages } from '../../../lib/combine-pages.ts';
   import { formatDuration, formatRelativeTime } from '../../../lib/format/index.ts';
+  import { queryKeys } from '../../../lib/query.ts';
   import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';
   import { taskStatePresentation, TASK_STATE_ORDER } from '../../../lib/task-status.ts';
   import { REVIEW_POLL_MILLISECONDS } from '../../reviews/reviews-data.ts';
@@ -35,13 +37,15 @@
   // too), so it is narrowed here instead. The rest (what started a run, how recently) the Bureau
   // cannot narrow, and are applied to what the pages hold.
   const serverStatus = $derived(filter.status === 'working' ? undefined : filter.status);
-  // The three queries below are polled until COR-1730 (COR-1725 removes these polls): a catalog
-  // run's settlement is published as `run.settled` but emits no `run.removed`, and its registration
-  // and actions are not published, so `bureau.events` cannot say when this list changes.
-  const tasks = createInfiniteQuery(
-    () => ({
+  // The three queries below follow `bureau.events`: a run by `run.*` and `action`, a goal by `goal.*`,
+  // a chat by `session.*` (`app/bureau-event-queries.ts`). Each asks again on a timer only while the
+  // feed is not live, read in the option getter so the timer returns when the feed is lost.
+  const bureauLive = useBureauEventsLive();
+  const tasks = createInfiniteQuery(() => {
+    const polling = !bureauLive();
+    return {
       queryKey: ['bureau-tasks', 'runs', serverStatus ?? '', filter.agent ?? ''] as const,
-      queryFn: ({ pageParam, signal }) =>
+      queryFn: ({ pageParam, signal }: { pageParam: string; signal: AbortSignal }) =>
         listTasks(
           {
             limit: PAGE_SIZE,
@@ -52,22 +56,26 @@
           { signal },
         ),
       initialPageParam: '',
-      getNextPageParam: (last) => last.nextPageToken ?? undefined,
-      refetchInterval: REVIEW_POLL_MILLISECONDS,
+      getNextPageParam: (last: Awaited<ReturnType<typeof listTasks>>) =>
+        last.nextPageToken ?? undefined,
+      // A catalog run is announced by `run.settled` alone: no event says one has started, and
+      // `run.removed` is not emitted for it (COR-1730), so a run still going shows only on the timer.
+      // poll-reason: fallback
+      refetchInterval: polling ? REVIEW_POLL_MILLISECONDS : false,
       retry: false,
-    }),
-    undefined,
-  );
+    };
+  }, undefined);
   // Every goal, a page at a time: a run past the first hundred is still a run.
-  const goals = createQuery(
-    () => ({
-      queryKey: ['goals', 'runs'] as const,
-      queryFn: ({ signal }) => listAllGoals({ signal }),
-      refetchInterval: REVIEW_POLL_MILLISECONDS,
+  const goals = createQuery(() => {
+    const polling = !bureauLive();
+    return {
+      queryKey: queryKeys.goals.runs(),
+      queryFn: ({ signal }: { signal: AbortSignal }) => listAllGoals({ signal }),
+      // poll-reason: fallback
+      refetchInterval: polling ? REVIEW_POLL_MILLISECONDS : false,
       retry: false,
-    }),
-    undefined,
-  );
+    };
+  }, undefined);
   // The agents to filter by come from the catalog, because the runs on screen are already narrowed
   // to the agent chosen and would leave nothing else to choose.
   const agents = createQuery(
@@ -78,15 +86,16 @@
     }),
     undefined,
   );
-  const chats = createQuery(
-    () => ({
-      queryKey: ['contexts', 'runs'] as const,
-      queryFn: ({ signal }) => listAllContexts({ signal }),
-      refetchInterval: REVIEW_POLL_MILLISECONDS,
+  const chats = createQuery(() => {
+    const polling = !bureauLive();
+    return {
+      queryKey: queryKeys.contexts.runs(),
+      queryFn: ({ signal }: { signal: AbortSignal }) => listAllContexts({ signal }),
+      // poll-reason: fallback
+      refetchInterval: polling ? REVIEW_POLL_MILLISECONDS : false,
       retry: false,
-    }),
-    undefined,
-  );
+    };
+  }, undefined);
 
   const everyRun = $derived(
     buildRunRows({

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitForever } from '@lostgradient/testing/fake-timers';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { flush } from '../testing/storage-backends.test-support.ts';
 import { Engine } from './engine.ts';
 import type { WorkflowContext } from './types.ts';

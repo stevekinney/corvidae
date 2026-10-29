@@ -8,6 +8,7 @@ import { QueryClient } from '@tanstack/svelte-query';
 import { describe, expect, test } from 'bun:test';
 
 import { updateHistoryQueryKey } from '../../routes/workflows/detail/updates/updates-data.ts';
+import { queryKeys } from '../query.ts';
 import {
   applyFleetEventFrame,
   applyScheduleFleetFrame,
@@ -234,6 +235,34 @@ describe('applyFleetEventFrame', () => {
 
     for (const key of keys) expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(WORKFLOWS_LIST_KEY_PREFIX)?.isInvalidated).toBeFalsy();
+  });
+
+  test('a fleet gap and a workflow starting ask again for a view that was empty, and leave one that is not', () => {
+    const empty = queryKeys.view('workflows', 'order-processing');
+    const full = queryKeys.view('runs', null);
+    for (const kind of ['fleet:gap', 'workflow:started']) {
+      const queryClient = new QueryClient();
+      queryClient.setQueryData(empty, () => ({ empty: true }));
+      queryClient.setQueryData(full, () => ({ empty: false }));
+
+      applyFleetEventFrame(queryClient, fleetFrame({ kind, workflowId: 'wf_1' }));
+
+      expect(queryClient.getQueryState(empty)?.isInvalidated).toBe(true);
+      expect(queryClient.getQueryState(full)?.isInvalidated).toBeFalsy();
+    }
+  });
+
+  test('a workflow finishing does not ask again for a view that was empty', () => {
+    const queryClient = new QueryClient();
+    const empty = queryKeys.view('workflows', 'order-processing');
+    queryClient.setQueryData(empty, () => ({ empty: true }));
+
+    applyFleetEventFrame(
+      queryClient,
+      fleetFrame({ kind: 'workflow:completed', workflowId: 'wf_1' }),
+    );
+
+    expect(queryClient.getQueryState(empty)?.isInvalidated).toBeFalsy();
   });
 
   test('worker:connected invalidates the workers list', () => {

@@ -26,8 +26,8 @@
  */
 import { jest } from 'bun:test';
 
-import { afterAwakeTime, HANG_GUARD_MILLISECONDS } from './hang-guard.ts';
 import { restoreRealTimers } from './fake-timers.ts';
+import { afterAwakeTime, HANG_GUARD_MILLISECONDS } from './hang-guard.ts';
 
 /** The outcome {@link outcomeOf} records when a scenario does not settle before its hang guard. */
 export class ScenarioHangError extends Error {

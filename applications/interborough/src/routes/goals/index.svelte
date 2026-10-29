@@ -5,8 +5,9 @@
    * agent, and how many attempts it has used of the most it may make. New goal opens the drawer
    * (`?create=1`), and a goal that has not ended can be cancelled, after a confirmation, with the
    * revision of the goal the page read: a goal that moved since is refused, and the page says it
-   * changed and reads it again. While a goal is running the list reads itself again, so a goal ends on
-   * screen as the Bureau ends it.
+   * changed and reads it again. The list reads itself again when `bureau.events` reports a goal
+   * event, so a goal ends on screen as the Bureau ends it; while that feed is not live and a goal has
+   * not ended, it reads itself again on a timer instead.
    *
    * Owner scoping is the gate, so the view holds no scope. Whether there is nothing to list, or the
    * Bureau is failing or refusing, is the view frame's to say (`app/view-probes.ts`).
@@ -20,6 +21,7 @@
   } from '@tanstack/svelte-query';
 
   import { GOALS_COPY, STALE_COPY, VIEW_COPY } from '../../app/copy.ts';
+  import { useBureauEventsLive } from '../../app/live-polling.svelte.ts';
   import { showFault } from '../../app/toast-host.svelte';
   import { agentFaultOf } from '../../lib/agent-definitions.ts';
   import { agentPath } from '../../lib/agent-paths.ts';
@@ -38,28 +40,32 @@
   import GoalFormDrawer from './goal-form-drawer.svelte';
 
   const PAGE_SIZE = 50;
-  /** How often the list reads itself again while a goal has not ended. */
+  /** How often the list reads itself again while a goal has not ended and the Bureau's feed is not live. */
   const POLL_MS = 1_500;
 
   const queryClient = useQueryClient();
 
-  const goals = createInfiniteQuery(
-    () => ({
+  const bureauLive = useBureauEventsLive();
+  const goals = createInfiniteQuery(() => {
+    // Read here, not in the interval below, which TanStack calls on its own and so is not tracked.
+    const polling = !bureauLive();
+    return {
       queryKey: queryKeys.goals.list(),
-      queryFn: ({ pageParam, signal }) =>
+      queryFn: ({ pageParam, signal }: { pageParam: number; signal: AbortSignal }) =>
         listGoals({ limit: PAGE_SIZE, offset: pageParam }, { signal }),
       initialPageParam: 0,
       getNextPageParam: (last: GoalPage) => last.nextOffset ?? undefined,
       retry: false,
+      // poll-reason: fallback
       refetchInterval: (query: { state: { data: InfiniteData<GoalPage> | undefined } }) =>
+        polling &&
         (query.state.data?.pages ?? []).some((page) =>
           page.goals.some((goal) => !goalHasEnded(goal.status)),
         )
           ? POLL_MS
           : false,
-    }),
-    undefined,
-  );
+    };
+  }, undefined);
   const rows = $derived((goals.data?.pages ?? []).flatMap((page) => page.goals));
 
   const isCreate = $derived(router.current.search.get('create') === '1');

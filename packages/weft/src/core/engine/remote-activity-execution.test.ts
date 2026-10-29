@@ -10,8 +10,8 @@
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test';
 
-import { serve, type WeftServer } from '../../server/index.ts';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
+import { serve, type WeftServer } from '../../server/index.ts';
 import { RemoteWorker } from '../../worker/index.ts';
 import { ActivityCompletedEvent, ActivityStartedEvent } from '../events.ts';
 import type { WorkflowInterceptor } from '../interceptor.ts';
