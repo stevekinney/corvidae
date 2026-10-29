@@ -19,6 +19,7 @@ const verificationLibraries = ['testing', 'evaluation'];
 const libraries = [
   'bureau',
   'operative',
+  'operative-anthropic',
   'armorer',
   'conversationalist',
   'memory',
@@ -57,6 +58,7 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/editor',
   '@lostgradient/markdown',
   '@lostgradient/operative',
+  '@lostgradient/operative-anthropic',
   '@lostgradient/cryptography',
   '@lostgradient/evaluation',
   '@lostgradient/lifecycle',

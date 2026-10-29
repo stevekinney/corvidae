@@ -5,46 +5,9 @@
  * provider loads its SDK dynamically when called, so unused SDKs stay unused.
  */
 
-export { anthropicProvider } from './anthropic-definition.ts';
-export type { AnthropicProviderConfiguration } from './anthropic-definition.ts';
-export type {
-  AnthropicBatchClient,
-  AnthropicBatchCreateRequest,
-  AnthropicBatchCreateRequestItem,
-  AnthropicBatchListQuery,
-  AnthropicClient,
-  AnthropicCountTokensRequest,
-  AnthropicMessageBatch,
-  AnthropicMessageBatchIndividualResponse,
-  AnthropicMessageBatchRequestCounts,
-  AnthropicMessageBatchResult,
-  AnthropicMessageCreateRequest,
-  AnthropicMessageResponse,
-  AnthropicProviderOptions,
-  AnthropicRequestOptions,
-  AnthropicStreamEvent,
-  AnthropicStreamingClient,
-  AnthropicThinkingConfig,
-  AnthropicTokenCountingClient,
-} from './anthropic-types.ts';
-export {
-  createAnthropicProvider,
-  createAnthropicProviderStream,
-  createAnthropicTokenCounter,
-} from './anthropic.ts';
-export type {
-  AnthropicTokenCounterOptions,
-  AnthropicTokenCountingOperations,
-} from './anthropic.ts';
 export { readBackendDescriptors, withBackendDescriptors } from './backend-descriptor-attachment.ts';
-export {
-  createAnthropicBatchClient,
-  createGeminiBatchClient,
-  createOpenAIBatchClient,
-} from './batches/index.ts';
+export { createGeminiBatchClient, createOpenAIBatchClient } from './batches/index.ts';
 export type {
-  AnthropicBatchClientOptions,
-  AnthropicBatchOperations,
   GeminiBatchClientOptions,
   GeminiBatchOperations,
   OpenAIBatchClientOptions,
@@ -219,9 +182,8 @@ export {
 } from './shared/model-registry.ts';
 export { REPLAY_DATA_DROPPED_METADATA_KEY, readDroppedReplayData } from './shared/replay-data.ts';
 export type { DroppedReplayData } from './shared/replay-data.ts';
-export { normalizeAnthropicStream, normalizeOpenAIStream } from './streaming/index.ts';
+export { normalizeOpenAIStream } from './streaming/index.ts';
 export {
-  toAnthropicToolChoice,
   toGeminiResponseFormat,
   toGeminiToolChoice,
   toOpenAIResponseFormat,
