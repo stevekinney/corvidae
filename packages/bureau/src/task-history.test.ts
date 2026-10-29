@@ -12,7 +12,6 @@ import { createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
 import { encodeStorageKeyComponent, type Storage, MemoryStorage } from '@lostgradient/storage';
-import { resolveStorage } from '@lostgradient/weft';
 
 import { createBureau } from './create-bureau';
 import { createAskingAgent } from './test/task-record-crash-agent';
@@ -204,7 +203,7 @@ describe('a task’s own message history', () => {
 
   it('writes a settlement still in flight before dispose closes the storage', async () => {
     const fixture = createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() });
-    const raw = await resolveStorage(fixture.storage);
+    const raw = fixture.open();
     const landed = { value: false };
     // Every write that records a settlement is slow, so it is still in flight when the run ends.
     const slowSettlements = new Proxy(raw, {

@@ -3,7 +3,6 @@
  * (COR-1669), shared by the push and the A2A stream repair tests.
  */
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import { resolveStorage } from '@lostgradient/weft';
 import { type Storage } from '@lostgradient/storage';
 
 import { createSqliteStorageFixture } from '../test/storage-fixtures';
@@ -19,7 +18,7 @@ export async function faultyStorage(cleanups: Array<() => Promise<void> | void>)
   readonly faults: { failCompletions: number; failResyncs: number };
 }> {
   const fixture = createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() });
-  const base = await resolveStorage(fixture.storage);
+  const base = fixture.open();
   const faults = { failCompletions: 0, failResyncs: 0 };
   const isCompletion = (operation: StoredOperation): boolean =>
     operation.key.startsWith('fleet-event:') &&

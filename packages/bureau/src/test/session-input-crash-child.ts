@@ -22,7 +22,7 @@ import { writeFileSync } from 'node:fs';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { stopWhen, createAgent } from '@lostgradient/operative';
-import { resolveStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage, LMDBStorage } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
@@ -98,7 +98,7 @@ if (mode === 'running') {
         toolbox: createToolbox([nextTool]),
       }),
     },
-    storage: { type: backend, path: storagePath },
+    storage: backend === 'lmdb' ? new LMDBStorage(storagePath) : new BunSQLiteStorage(storagePath),
     durable: true,
     durableOwnership,
   });
@@ -131,7 +131,7 @@ if (mode === 'running') {
 // `ended`: the run finishes; its terminal session write is held so the session
 // still reads as running; the input is admitted into that window; the process
 // dies as soon as the admission is durable.
-const seam = seamStorage(await resolveStorage({ type: backend, path: storagePath }));
+const seam = seamStorage(backend === 'lmdb' ? new LMDBStorage(storagePath) : new BunSQLiteStorage(storagePath));
 const bureau = await createBureau<AgentDefinitions>({
   agents: {
     default: createAgent({

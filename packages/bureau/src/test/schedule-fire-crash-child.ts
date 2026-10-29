@@ -24,6 +24,7 @@ import { createToolbox } from 'armorer';
 import { createBureau } from '../create-bureau';
 import { createAgent } from '@lostgradient/operative';
 import type { AgentDefinitions } from '../agent-catalog';
+import { BunSQLiteStorage, LMDBStorage } from '@lostgradient/weft';
 
 const [backend, storagePath, markerPath] = process.argv.slice(2);
 
@@ -68,7 +69,7 @@ const bureau = await createBureau<AgentDefinitions>({
       toolbox: createToolbox([]),
     }),
   },
-  storage: { type: backend, path: storagePath },
+  storage: backend === 'lmdb' ? new LMDBStorage(storagePath) : new BunSQLiteStorage(storagePath),
   durable: true,
   maintenance: 'manual',
   // One process per store: a restart must not wait out a dead holder's claim.

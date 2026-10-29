@@ -35,6 +35,7 @@ import { createBureau } from '../../create-bureau';
 import type { BureauDiagnostic, BureauShutdownReport } from '../../types';
 import { emit, parseInvocationArguments, pollUntil, readClock, WAKEUP_MS } from './protocol';
 import type { AgentDefinitions } from '../../agent-catalog';
+import { BunSQLiteStorage } from '@lostgradient/weft';
 
 const { directory, command, label } = parseInvocationArguments('bureau-invocation');
 const now = readClock(directory);
@@ -68,7 +69,7 @@ const bureau = await createBureau<AgentDefinitions>({
       stopWhen: stopWhen.some(stopWhen.toolCalled('scheduleWakeup'), stopWhen.noToolCalls()),
     }),
   },
-  storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
+  storage: new BunSQLiteStorage(join(directory, 'bureau.sqlite')),
   durable: true,
   maintenance: 'manual',
   durableOwnership: { ownership: 'none' },

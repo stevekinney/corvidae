@@ -920,9 +920,9 @@ import {
   waitForCondition,
   type GenerateFunction,
 } from '@lostgradient/operative';
-import { principalFromApiKey } from '@lostgradient/weft';
+import { BunSQLiteStorage, principalFromApiKey } from '@lostgradient/weft';
 
-const databasePath = './bureau.sqlite';
+const storage = new BunSQLiteStorage('./bureau.sqlite');
 
 // The agent asks which environment to release to, waits for the answer, then thanks the person.
 let calls = 0;
@@ -946,7 +946,7 @@ const releaser = createAgent({
 const bureau = await createBureau({
   id: 'acme', // required once the handler serves persistent storage
   agents: { releaser },
-  storage: { type: 'sqlite', path: databasePath },
+  storage,
   durable: true,
   assets: { storage: createMemoryAssetStorage() }, // the handler serves the asset operations
 });
@@ -1031,6 +1031,7 @@ console.log(frames.at(-1)?.data.artifact.text); // 'Releasing to the environment
 console.log(calls); // 2: the retry did not run the agent a third time
 
 await bureau.dispose();
+storage[Symbol.dispose](); // Bureau never closes a storage it was given
 ```
 
 The handler has no run-starting operation of its own, so the host starts the run above with `bureau.tasks.start`. A client outside the process starts one through the AG-UI mount. A stream that ends without a terminal status is resumed with the `Last-Event-ID` header set to the `id` of the last frame that carried a cursor.

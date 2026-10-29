@@ -23,7 +23,6 @@ import {
   createOperationHandler,
   principalFromApiKey,
   type AuthorizationScope,
-  resolveStorage,
 } from '@lostgradient/weft';
 import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { createToolbox, type Toolbox } from 'armorer';
@@ -167,7 +166,7 @@ async function build(
   let real: Storage | undefined;
   let seam: StorageSeam | undefined;
   if (options.seamStorage === true && fixture !== undefined) {
-    real = await resolveStorage(fixture.storage);
+    real = fixture.open();
     seam = seamStorage(real);
   }
   if (options.backends !== undefined) withBackendDescriptors(generate, options.backends);

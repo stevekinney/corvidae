@@ -9,7 +9,7 @@ import {
   type DurableEventEnvelope,
   SchedulePausedEvent,
 } from '@lostgradient/operative';
-import { encode, Engine, resolveStorage, type ScheduleTransitionOptions } from '@lostgradient/weft';
+import { encode, Engine, type ScheduleTransitionOptions } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -99,7 +99,7 @@ async function commitWithoutRecording(
   kind: ScheduleTransitionKind,
   scheduleId: string,
 ): Promise<string> {
-  const storage = await resolveStorage(fixture.storage);
+  const storage = fixture.open();
   try {
     const engine = new Engine({ storage, backgroundTasks: 'manual' });
     try {
@@ -122,7 +122,7 @@ async function commitWithoutRecording(
 }
 
 async function pendingKeys(fixture: ReturnType<typeof newFixture>): Promise<string[]> {
-  const storage = await resolveStorage(fixture.storage);
+  const storage = fixture.open();
   try {
     const keys: string[] = [];
     for await (const [key] of storage.scan(SCHEDULE_TRANSITION_KEY_PREFIX)) keys.push(key);
@@ -216,7 +216,7 @@ describe('schedule transitions through the outbox (COR-194)', () => {
     const fixture = newFixture();
     await close(await open(fixture));
     const key = `${SCHEDULE_TRANSITION_KEY_PREFIX}unreadable`;
-    const storage = await resolveStorage(fixture.storage);
+    const storage = fixture.open();
     try {
       await storage.put(key, encode({ schemaVersion: 2 }));
     } finally {
@@ -237,7 +237,7 @@ describe('schedule transitions through the outbox (COR-194)', () => {
     const unreadable = `${SCHEDULE_TRANSITION_KEY_PREFIX}${encodeURIComponent(blocked)}:0000000000000001:first`;
     const later = { kind: 'schedule.paused', scheduleId: blocked, committedAtMs: 2 } as const;
     const laterKey = scheduleTransitionKey(later, 'second');
-    const storage = await resolveStorage(fixture.storage);
+    const storage = fixture.open();
     try {
       await storage.put(unreadable, encode({ schemaVersion: 2 }));
       const operation = scheduleTransitionOperation(laterKey, later);

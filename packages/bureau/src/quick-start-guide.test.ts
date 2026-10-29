@@ -12,21 +12,20 @@
 
 import type { GenerateFunction } from '@lostgradient/operative';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { type BureauContexts, createBureau, type TaskHandle } from './index';
 import { createAgent } from '@lostgradient/operative';
 import type { AgentDefinitions } from './agent-catalog';
+import { createSqliteStorageFixture, type PersistentBureauStorageFixture } from './test/storage-fixtures';
 
-let databasePath = '';
+let database: PersistentBureauStorageFixture;
 
 beforeEach(() => {
-  // A fresh directory per test: the process id repeats across runs, so it cannot name the file.
-  databasePath = createTemporaryPath('bureau-quick-start-guide', '.sqlite');
+  database = createSqliteStorageFixture();
 });
 
-afterEach(() => {
-  removeTemporaryPath(databasePath);
+afterEach(async () => {
+  await database.dispose();
 });
 
 /**
@@ -63,7 +62,7 @@ describe('README — Quick Start', () => {
   it('waits for the run to finish through a subscription it closes on the terminal action', async () => {
     const bureau = await createBureau<AgentDefinitions>({
       agents: { summarizer: createAgent({ generate: answerWithoutTools }) },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.storage,
     });
 
     const run = await bureau.tasks.start('summarizer', 'Summarize the Q3 report.');
@@ -96,7 +95,7 @@ describe('README — Quick Start', () => {
       agents: {
         default: createAgent({ generate: answerWithoutTools }),
       },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.storage,
     });
     const everyAction: string[] = [];
     const settled = Promise.withResolvers<void>();

@@ -5,7 +5,7 @@
  */
 import { createManualRuntimeServices, type ManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
-import { createFleetEventFeed, resolveStorage } from '@lostgradient/weft';
+import { createFleetEventFeed } from '@lostgradient/weft';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createToolbox, type Tool } from 'armorer';
 
@@ -61,7 +61,7 @@ export async function withLiveSettingsBureau(
       runtime,
       at: (offsetMs) => runtime.setTime(ORIGIN_MS + offsetMs),
       retentionFloor: async () => {
-        const storage = await resolveStorage(fixture.storage);
+        const storage = fixture.open();
         try {
           const feed = createFleetEventFeed(storage);
           try {

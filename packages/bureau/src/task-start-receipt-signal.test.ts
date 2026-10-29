@@ -11,7 +11,6 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import { type BatchOperation, type Storage } from '@lostgradient/storage';
-import { resolveStorage } from '@lostgradient/weft';
 import { createTool, createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
@@ -143,7 +142,7 @@ async function withScenario(
 ): Promise<void> {
   const runtime = createManualRuntimeServices({ origin: ORIGIN });
   const fixture = createSqliteStorageFixture({ runtime });
-  const storage = await resolveStorage(fixture.storage);
+  const storage = fixture.open();
   const receipt = holdReceiptWrite(storage, outcome);
   const agent = heldToolAgent();
   const diagnostics: BureauDiagnostic[] = [];

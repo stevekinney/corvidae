@@ -12,7 +12,7 @@ import {
   stopWhen,
   type Validator,
 } from '@lostgradient/operative';
-import { decode, encode, KEYS, resolveStorage } from '@lostgradient/weft';
+import { decode, encode, KEYS } from '@lostgradient/weft';
 import { type Storage, textValueStore } from '@lostgradient/storage';
 import { createToolbox } from 'armorer';
 import { Conversation } from 'conversationalist';
@@ -39,7 +39,8 @@ import type { Bureau } from '../types';
 import { createDiagnostics, goalRequest } from './goal-fixtures.test-support';
 
 export interface BootOptions<D extends AgentDefinitions> {
-  readonly path: string;
+  /** A handle on the test's store; the test's database closes it. */
+  readonly storage: Storage;
   readonly agents: D;
   readonly validators?: readonly Validator[];
   readonly resolveFreshAttemptSource?: FreshAttemptSourceResolver;
@@ -47,7 +48,7 @@ export interface BootOptions<D extends AgentDefinitions> {
   readonly checkpointRetention?: { readonly keepLast: number };
 }
 
-/** A bureau over `path` that recovers whatever an earlier process left behind. */
+/** A bureau over `storage` that recovers whatever an earlier process left behind. */
 export async function bootOver<D extends AgentDefinitions>(options: BootOptions<D>) {
   const diagnostics = options.diagnostics ?? createDiagnostics();
   const bureau = await createBureau({
@@ -59,7 +60,7 @@ export async function bootOver<D extends AgentDefinitions>(options: BootOptions<
     ...(options.checkpointRetention === undefined
       ? {}
       : { retention: { checkpoints: options.checkpointRetention } }),
-    storage: { type: 'sqlite', path: options.path },
+    storage: options.storage,
     durable: true,
     durableOwnership: { ownership: 'none' },
     onDiagnostic: diagnostics.onDiagnostic,
@@ -67,9 +68,8 @@ export async function bootOver<D extends AgentDefinitions>(options: BootOptions<
   return { bureau: bureau as unknown as Bureau, diagnostics };
 }
 
-/** A direct view of the SQLite file: the goal store, and the raw keys beside it. */
-export async function inspect(path: string) {
-  const storage: Storage = await resolveStorage({ type: 'sqlite', path });
+/** A direct view of the SQLite file through `storage`: the goal store, and the raw keys beside it. */
+export async function inspect(storage: Storage) {
   const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
   const store: GoalStore = createGoalStore(kv);
   return {
@@ -289,13 +289,13 @@ export async function repairPoisoned(inspection: Inspection, goal = pendingGoal(
  * the store. It stands for a run something other than Bureau's public surface
  * put at a deterministic goal id, which admission itself now refuses to create.
  */
-export async function seedFinishedRun(path: string, runId: string, content = 'done') {
+export async function seedFinishedRun(storage: Storage, runId: string, content = 'done') {
   const generate = () => Promise.resolve({ content, toolCalls: [] });
   const toolbox = createToolbox([]);
   const composition = await createRuntimeComposition({
     generate,
     toolbox,
-    storage: { type: 'sqlite', path },
+    storage,
     durable: true,
   });
   const { engine, checkpointStore } = composition.durable!;

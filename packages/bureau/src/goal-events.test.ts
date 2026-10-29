@@ -47,7 +47,7 @@ const answerDone = () => workerAgent(() => Promise.resolve({ content: 'done', to
 
 async function boot(agent = answerDone()) {
   const { bureau } = await bootOver({
-    path: database.path,
+    storage: database.open(),
     agents: { worker: agent },
     validators: [createCheckValidator()],
     diagnostics: createDiagnostics(),
@@ -115,7 +115,7 @@ describe('a goal in bureau.goals.events', () => {
   it('records a goal that cannot start as started then failed', async () => {
     database = createTestDatabase('events-unsupported');
     const { bureau } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: { worker: answerDone() },
       validators: [createCheckValidator({ determinism: 'stochastic' })],
     });
@@ -218,7 +218,7 @@ describe('who may read a goal history', () => {
   it('hides the retention gap from a stranger too', async () => {
     const bureau = await owned();
     // Advance the feed's retention floor so a cursor before it is genuinely a gap.
-    const storage = await resolveStorage({ type: 'sqlite', path: database.path });
+    const storage = await resolveStorage(database.open());
     cleanups.push(() => storage[Symbol.dispose]());
     await createFleetEventFeed(storage).retain({ beforeSequence: 2 });
     const options = { since: '0' };
@@ -289,7 +289,7 @@ describe('a goal history across a restart', () => {
 
   it('fills in the events of a goal whose projection a crash lost', async () => {
     database = createTestDatabase('events-lost');
-    const view = await inspect(database.path);
+    const view = await inspect(database.open());
     await view.store.create(pendingGoal());
     await view.store.applyTransition({
       goalRunId: 'g1',
@@ -315,7 +315,7 @@ describe('a goal history across a restart', () => {
   it('records goal.recovered for each controller restart', async () => {
     database = createTestDatabase('events-recovered');
     const bureau = await boot();
-    const view = await inspect(database.path);
+    const view = await inspect(database.open());
     cleanups.push(() => view.dispose());
     await seedPoisoned(view);
     await bureau.goals.recover('g1');

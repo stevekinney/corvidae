@@ -34,6 +34,7 @@ import { announce, fail, parseHostArguments, writeMarker } from './host-support'
 import { handleShutdownSignals } from './shutdown-handler';
 import type { AgentDefinitions } from '../../agent-catalog';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
+import { BunSQLiteStorage } from '@lostgradient/weft';
 
 /** Matches `process-crash-child.ts`, so a dead holder's claim lapses quickly. */
 const CLAIM_TTL_MS = 200;
@@ -92,7 +93,7 @@ const bureau = await createBureau<AgentDefinitions>({
       stopWhen: stopWhen.noToolCalls(),
     }),
   },
-  storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
+  storage: new BunSQLiteStorage(join(directory, 'bureau.sqlite')),
   durable: true,
   durableOwnership: {
     ownership: 'workflow-lease',

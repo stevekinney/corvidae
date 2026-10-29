@@ -47,6 +47,7 @@ import {
 } from './process-crash-work-integrity-fixtures';
 import type { AgentDefinitions } from '../agent-catalog';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
+import { BunSQLiteStorage, LMDBStorage } from '@lostgradient/weft';
 /** Durable statuses a run never leaves. */
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
   'completed',
@@ -120,7 +121,7 @@ async function parkAfterStepZero(): Promise<void> {
         stopWhen: stopWhen.noToolCalls(),
       }),
     },
-    storage: { type: backend as 'sqlite' | 'lmdb', path: storagePath as string },
+    storage: backend === 'lmdb' ? new LMDBStorage(storagePath as string) : new BunSQLiteStorage(storagePath as string),
     durable: true,
     durableOwnership: {
       ownership: 'workflow-lease',
@@ -358,7 +359,7 @@ async function relaunchRecover(): Promise<void> {
         stopWhen: stopWhen.noToolCalls(),
       }),
     },
-    storage: { type: backend as 'sqlite' | 'lmdb', path: storagePath as string },
+    storage: backend === 'lmdb' ? new LMDBStorage(storagePath as string) : new BunSQLiteStorage(storagePath as string),
     durable: true,
     durableOwnership: {
       ownership: 'workflow-lease',

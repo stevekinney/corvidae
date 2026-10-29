@@ -15,8 +15,6 @@ import {
 } from '@lostgradient/storage';
 import {
   Engine,
-  resolveStorage,
-  type StorageConfiguration,
   yieldToPortableEventLoop,
 } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
@@ -123,7 +121,7 @@ interface OpenOptions {
 }
 
 async function open(
-  storage: StorageConfiguration | Storage,
+  storage: Storage,
   options: OpenOptions = {},
 ): Promise<Bureau<AgentDefinitions>> {
   const { recovery, diagnostics } = options;
@@ -163,7 +161,7 @@ async function open(
  * Leaves a run prepared and never launched: its start hook holds it, and the Bureau that started
  * it is never disposed (a graceful shutdown would cancel it), as a process that stopped there.
  */
-async function prepareWithoutLaunching(configuration: StorageConfiguration | Storage) {
+async function prepareWithoutLaunching(configuration: Storage) {
   const hook = heldStartHook();
   const crashed = await open(configuration, { hooks: hook.hooks });
   // The held Bureau is let go after its successors, which have taken the run over.
@@ -249,7 +247,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
   it('leaves the session alone when another run has taken it over since recovery classified it', async () => {
     const fixture = newFixture();
     const run = await prepareWithoutLaunching(fixture.storage);
-    const storage = await resolveStorage(await fixture.reopen());
+    const storage = await fixture.reopen();
     cleanups.push(() => storage[Symbol.dispose]());
     const sessions = createSessionStore(
       textValueStore(storage, { disposeUnderlyingStorage: false }),
@@ -361,7 +359,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
   it('still cancels the record when settling its session fails, and reports the failure', async () => {
     const fixture = newFixture();
     const run = await prepareWithoutLaunching(fixture.storage);
-    const storage = await resolveStorage(await fixture.reopen());
+    const storage = await fixture.reopen();
     cleanups.push(() => storage[Symbol.dispose]());
     // Every session body write, which is what settling the session's metadata makes.
     const refusing = refuseWritesUnder(storage, 'agent-session-v2:body:');

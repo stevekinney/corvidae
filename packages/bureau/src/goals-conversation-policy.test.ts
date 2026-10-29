@@ -318,7 +318,7 @@ async function restartDuringRetry(
   database = createTestDatabase('conversation');
   let calls = 0;
   const { bureau: dead } = await bootOver({
-    path: database.path,
+    storage: database.open(),
     agents: {
       worker: workerAgent((input) => {
         calls += 1;
@@ -340,7 +340,7 @@ async function restartDuringRetry(
 
   const seen: string[][] = [];
   const { bureau } = await bootOver({
-    path: database.path,
+    storage: database.open(),
     agents: { worker: workerAgent(scriptedGenerate(['done'], seen)) },
     validators: [createCheckValidator()],
     ...options,

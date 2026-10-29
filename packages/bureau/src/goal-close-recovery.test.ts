@@ -43,7 +43,7 @@ async function cleanedUpAt(bureau: Awaited<ReturnType<typeof boot>>): Promise<st
 
 async function boot() {
   const { bureau } = await bootOver({
-    path: database.path,
+    storage: database.open(),
     agents: agents(),
     validators: [createCheckValidator()],
     checkpointRetention: { keepLast: 1 },
@@ -62,7 +62,7 @@ describe('a goal closed by a process that died before its cleanup finished', () 
       await first.goals.create(goalRequest());
       expect(await pollUntil(() => hasSucceeded(first))).toBe(true);
       // The process committed `closedAt` and died before cleaning up.
-      const view = await inspect(database.path);
+      const view = await inspect(database.open());
       cleanups.push(() => view.dispose());
       const committed = await view.store.close('g1', currentIsoTimestamp());
       expect(committed.status).toBe('updated');
@@ -91,7 +91,7 @@ describe('a goal closed by a process that died before its cleanup finished', () 
       const first = await boot();
       await first.goals.create(goalRequest());
       expect(await pollUntil(() => hasSucceeded(first))).toBe(true);
-      const view = await inspect(database.path);
+      const view = await inspect(database.open());
       cleanups.push(() => view.dispose());
       await view.store.close('g1', currentIsoTimestamp());
       spy.mockImplementation(function (this: unknown, workflowId, options) {
@@ -124,7 +124,7 @@ describe('the record of a closed goal', () => {
     const first = await boot();
     await first.goals.create(goalRequest());
     expect(await pollUntil(() => hasSucceeded(first))).toBe(true);
-    const view = await inspect(database.path);
+    const view = await inspect(database.open());
     cleanups.push(() => view.dispose());
     const stored = JSON.parse((await view.kv.get(goalRecordKey('g1'))) as string) as Record<
       string,

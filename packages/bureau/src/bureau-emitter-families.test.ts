@@ -65,7 +65,7 @@ describe('goal events on the bureau emitter', () => {
       createBureau({
         agents: { worker: workerAgent(answering('done')) },
         validators: [createCheckValidator()],
-        storage: { type: 'sqlite', path: database.path },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         onEvent: (event) => {
@@ -116,7 +116,7 @@ describe('a canceled goal on the bureau emitter', () => {
     const bureau = await createBureau({
       agents: { worker: workerAgent(hangUntilAborted) },
       validators: [createCheckValidator()],
-      storage: { type: 'sqlite', path: database.path },
+      storage: database.open(),
       durable: true,
       durableOwnership: { ownership: 'none' },
       onEvent: (event) => {
@@ -329,7 +329,7 @@ describe('a missed fire found while the Bureau is still being built', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite' as const, path: database.path },
+      storage: database.open(),
       durable: true,
       durableOwnership: { ownership: 'none' as const },
     };

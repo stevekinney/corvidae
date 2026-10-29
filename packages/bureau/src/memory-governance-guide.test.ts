@@ -23,11 +23,11 @@ import { createAgent, createMockGenerate, stopWhen } from '@lostgradient/operati
 import { waitForTaskState } from './test';
 import { MemoryStorage } from '@lostgradient/storage';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { createBureau } from './index';
 import type { AgentDefinitions } from './agent-catalog';
 import { startTaskFrom } from './test/task-start-request.ts';
+import { createSqliteStorageFixture, type PersistentBureauStorageFixture } from './test/storage-fixtures';
 
 /**
  * Where a run's memory lives (COR-1546): the Bureau's identifier is the tenant, the run's owner of
@@ -38,15 +38,14 @@ const BUREAU_ID = 'bureau';
 const LOCAL_OWNER = 'anonymous:local';
 const DEFAULT_AGENT = 'default';
 
-let databasePath = '';
+let database: PersistentBureauStorageFixture;
 
 beforeEach(() => {
-  // A fresh directory per test: the process id repeats across runs, so it cannot name the file.
-  databasePath = createTemporaryPath('bureau-memory-governance-guide', '.sqlite');
+  database = createSqliteStorageFixture();
 });
 
-afterEach(() => {
-  removeTemporaryPath(databasePath);
+afterEach(async () => {
+  await database.dispose();
 });
 
 /**
@@ -387,7 +386,7 @@ describe('documented Bureau memory limits', () => {
         agents: { parent, assistant },
         memory,
         ...(durability === 'durable'
-          ? { storage: { type: 'sqlite' as const, path: databasePath } }
+          ? { storage: database.storage }
           : {}),
       });
       try {
