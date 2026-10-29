@@ -351,11 +351,14 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     }
   }
   const environment = options.environment ?? processEnvironment();
+  // The caller's lock list is read before the first await, so a later change to it cannot reach the Bureau.
+  const callerLocks = [...(options.settings?.locked ?? [])];
   const bungalow: Bungalow = await openBungalow({ name: APPLICATION_NAME, environment });
   const held: Held = { bungalow };
   try {
     // Read before anything opens, so a remote host without its approval secret stops before it
     // connects to the database or the bucket, let alone listens.
+    const database = redactDatabase(bungalow.database);
     const approval = approvalSecret(bungalow);
     const storage = createHostStorage(bungalow.database);
     held.storage = storage;
@@ -387,7 +390,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       bungalow.mode === 'remote'
         ? {
             ...options.settings,
-            locked: [...(options.settings?.locked ?? []), 'durableOwnership.ownership'],
+            locked: [...callerLocks, 'durableOwnership.ownership'],
           }
         : options.settings;
     const bureau = await createBureau({
@@ -554,7 +557,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       engine,
       server,
       deploymentId: bungalow.deploymentId,
-      database: redactDatabase(bungalow.database),
+      database,
       generateFor,
       notifyRebuilt: () => devReload?.notify(),
       close: () => (held.closing ??= teardown(held)),

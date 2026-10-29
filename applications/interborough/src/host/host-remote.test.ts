@@ -129,3 +129,28 @@ describe('the bucket the host is pointed at', () => {
     expect(server.objects().has('probe/object.md')).toBe(false);
   });
 });
+
+describe('a malformed database URL', () => {
+  test('stops the host without quoting the URL, which holds the password', async () => {
+    const server = createS3TestServer();
+    servers.push(server);
+    const environment = {
+      ...remoteVariables(server),
+      INTERBOROUGH_DATABASE_URL: 'not a url with password hunter2-never-shown',
+      INTERBOROUGH_SECRET_APPROVAL_SECRET: 'approval-secret-for-the-test-0123456789',
+    };
+
+    const failure = await startHost({ environment, port: 0 }).then(
+      (host) => {
+        hosts.push(host);
+        return undefined;
+      },
+      (error: unknown) => error,
+    );
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).not.toContain('hunter2');
+    expect(JSON.stringify(failure)).not.toContain('hunter2');
+    expect(JSON.stringify((failure as Error).cause ?? null)).not.toContain('hunter2');
+  });
+});

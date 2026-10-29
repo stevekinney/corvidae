@@ -32,7 +32,13 @@ export type HostDatabase =
 /** The database as the host reports it: a SQLite path, or a Postgres location with no credential. */
 export function redactDatabase(database: DatabaseLocation): HostDatabase {
   if (database.kind === 'sqlite') return { kind: 'sqlite', path: database.path };
-  const url = new URL(database.url);
+  let url: URL;
+  try {
+    url = new URL(database.url);
+  } catch {
+    // The parser's own message quotes the text it could not read, and that text holds the password.
+    throw new Error('The Postgres database URL is not a valid URL.');
+  }
   return { kind: 'postgres', location: `${url.host}${url.pathname}` };
 }
 
