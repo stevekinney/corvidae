@@ -29,6 +29,12 @@ function openIn(root: string) {
   return openBungalow({ name: TEST_NAME, environment: homeEnvironment(root) });
 }
 
+/** Open the root and release it again, so the next open starts from a cleanly closed root. */
+async function openAndClose(root: string): Promise<void> {
+  const handle = await openIn(root);
+  handle.close();
+}
+
 function thrownBy(action: () => unknown): unknown {
   try {
     action();
@@ -36,6 +42,15 @@ function thrownBy(action: () => unknown): unknown {
     return error;
   }
   throw new Error('Expected the action to throw.');
+}
+
+async function rejectedBy(action: Promise<unknown>): Promise<unknown> {
+  try {
+    await action;
+  } catch (error) {
+    return error;
+  }
+  throw new Error('Expected the action to reject.');
 }
 
 /**
@@ -70,7 +85,7 @@ async function runHolderScenario(): Promise<HolderScenario> {
     const held = await child.ask('open');
     let whileHeld: unknown;
     try {
-      openIn(root).close();
+      await openAndClose(root);
     } catch (error) {
       whileHeld = error;
     }
@@ -80,7 +95,7 @@ async function runHolderScenario(): Promise<HolderScenario> {
 
     let afterKill: HolderScenario['afterKill'];
     try {
-      const reopened = openIn(root);
+      const reopened = await openIn(root);
       afterKill = { deploymentId: reopened.deploymentId };
       reopened.close();
     } catch (error) {
@@ -170,53 +185,53 @@ describe('contending processes', () => {
 });
 
 describe('a lock held by this process', () => {
-  test('makes a second open of the same root throw BungalowLockedError naming this process', () => {
+  test('makes a second open of the same root throw BungalowLockedError naming this process', async () => {
     const root = temporaryDirectory();
-    using held = openIn(root);
-    const error = thrownBy(() => openIn(root));
+    using held = await openIn(root);
+    const error = await rejectedBy(openIn(root));
     expect(error).toBeInstanceOf(BungalowLockedError);
     expect((error as BungalowLockedError).holderProcessIdentifier).toBe(process.pid);
     // The refused attempt did not disturb the holder.
     expect(readFileSync(join(root, 'lock'), 'utf8')).toBe(`${process.pid}\n`);
-    expect(thrownBy(() => openIn(root))).toBeInstanceOf(BungalowLockedError);
-    expect(held.root).toBe(root);
+    expect(await rejectedBy(openIn(root))).toBeInstanceOf(BungalowLockedError);
+    expect(held.configurationLocation).toBe(join(root, 'configuration.json'));
   });
 
-  test('reads only the first line of the lock file, so a later version can add more', () => {
+  test('reads only the first line of the lock file, so a later version can add more', async () => {
     const root = temporaryDirectory();
-    using held = openIn(root);
+    using held = await openIn(root);
     appendFileSync(join(root, 'lock'), 'started 2026-10-17\nsome future field\n');
-    const error = thrownBy(() => openIn(root)) as BungalowLockedError;
+    const error = (await rejectedBy(openIn(root))) as BungalowLockedError;
     expect(error.holderProcessIdentifier).toBe(process.pid);
-    expect(held.root).toBe(root);
+    expect(held.configurationLocation).toBe(join(root, 'configuration.json'));
   });
 
-  test('is released by close, so the root opens again, and the file stays in place', () => {
+  test('is released by close, so the root opens again, and the file stays in place', async () => {
     const root = temporaryDirectory();
-    openIn(root).close();
+    await openAndClose(root);
     expect(readFileSync(join(root, 'lock'), 'utf8')).toBe('');
     expect(statSync(join(root, 'lock')).mode & 0o777).toBe(0o600);
-    openIn(root).close();
+    await openAndClose(root);
   });
 });
 
 describe('text left in the lock file by a process that is gone', () => {
   test.each(['2147483646\n', '', 'garbage', '-5\n', '12abc\n', '99999999999999999999\n'])(
     'does not hold the root: %p',
-    (text) => {
+    async (text) => {
       const root = temporaryDirectory();
       writeFileSync(join(root, 'lock'), text);
-      using handle = openIn(root);
-      expect(handle.root).toBe(root);
+      using handle = await openIn(root);
+      expect(handle.configurationLocation).toBe(join(root, 'configuration.json'));
       expect(readFileSync(join(root, 'lock'), 'utf8')).toBe(`${process.pid}\n`);
     },
   );
 
-  test('a live process named in the file does not hold the root either: the kernel does', () => {
+  test('a live process named in the file does not hold the root either: the kernel does', async () => {
     const root = temporaryDirectory();
     writeFileSync(join(root, 'lock'), `${process.ppid}\n`);
-    using handle = openIn(root);
-    expect(handle.root).toBe(root);
+    using handle = await openIn(root);
+    expect(handle.configurationLocation).toBe(join(root, 'configuration.json'));
   });
 });
 
@@ -321,26 +336,26 @@ describe('a holder that is just starting or just finishing', () => {
 });
 
 describe('a lock entry that is not a regular file', () => {
-  test('is refused when it is a symbolic link, and its target is left untouched', () => {
+  test('is refused when it is a symbolic link, and its target is left untouched', async () => {
     const root = temporaryDirectory();
     const target = join(temporaryDirectory(), 'sentinel');
     writeFileSync(target, 'sentinel bytes that must survive');
     symlinkSync(target, join(root, 'lock'));
-    expect(thrownBy(() => openIn(root))).toBeInstanceOf(BungalowStateError);
+    expect(await rejectedBy(openIn(root))).toBeInstanceOf(BungalowStateError);
     expect(readFileSync(target, 'utf8')).toBe('sentinel bytes that must survive');
   });
 
-  test('is refused when it is a dangling symbolic link, which is not created through', () => {
+  test('is refused when it is a dangling symbolic link, which is not created through', async () => {
     const root = temporaryDirectory();
     const target = join(temporaryDirectory(), 'absent');
     symlinkSync(target, join(root, 'lock'));
-    expect(thrownBy(() => openIn(root))).toBeInstanceOf(BungalowStateError);
+    expect(await rejectedBy(openIn(root))).toBeInstanceOf(BungalowStateError);
     expect(existsSync(target)).toBe(false);
   });
 
-  test('is refused when it is a directory', () => {
+  test('is refused when it is a directory', async () => {
     const root = temporaryDirectory();
     mkdirSync(join(root, 'lock'));
-    expect(thrownBy(() => openIn(root))).toBeInstanceOf(BungalowFilesystemError);
+    expect(await rejectedBy(openIn(root))).toBeInstanceOf(BungalowFilesystemError);
   });
 });

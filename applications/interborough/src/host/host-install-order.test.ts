@@ -53,7 +53,10 @@ test('the configured rows are the Bureau’s catalog from its first revision', a
     join(home, 'configuration.json'),
     JSON.stringify({ providers: { gemini: { models: ['pro'] } } }),
   );
-  const bungalow = openBungalow({ name: 'interborough', environment: { INTERBOROUGH_HOME: home } });
+  const bungalow = await openBungalow({
+    name: 'interborough',
+    environment: { INTERBOROUGH_HOME: home },
+  });
   bungalow.writeSecret('gemini-api-key', 'fixture-gemini-key');
   bungalow.close();
 

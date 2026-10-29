@@ -38,15 +38,15 @@ describe('the Interborough host', () => {
     const host = await start(home);
 
     expect(host.url.hostname).toBe('127.0.0.1');
-    expect(host.databasePath).toBe(join(home, 'database.sqlite'));
+    expect(host.database).toEqual({ kind: 'sqlite', path: join(home, 'database.sqlite') });
     await stop(host);
 
     // Bungalow's lock is released on close, so the same root opens again.
-    const bungalow = openBungalow({
+    const bungalow = await openBungalow({
       name: 'interborough',
       environment: { INTERBOROUGH_HOME: home },
     });
-    expect(bungalow.database).toBe(join(home, 'database.sqlite'));
+    expect(bungalow.database).toEqual({ kind: 'sqlite', path: join(home, 'database.sqlite') });
     bungalow.close();
   });
 

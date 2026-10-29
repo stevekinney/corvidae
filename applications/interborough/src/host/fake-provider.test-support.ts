@@ -27,7 +27,10 @@ export async function writeProviderHome(
     join(home, 'configuration.json'),
     JSON.stringify({ providers: { anthropic: { models } } }),
   );
-  const bungalow = openBungalow({ name: 'interborough', environment: { INTERBOROUGH_HOME: home } });
+  const bungalow = await openBungalow({
+    name: 'interborough',
+    environment: { INTERBOROUGH_HOME: home },
+  });
   try {
     bungalow.writeSecret('anthropic-api-key', FIXTURE_PROVIDER_KEY);
   } finally {
