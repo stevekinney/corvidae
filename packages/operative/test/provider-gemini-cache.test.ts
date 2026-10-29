@@ -36,17 +36,17 @@ import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createContextAssembler } from '../src/context/assembly.ts';
 import { createTokenBudget } from '../src/context/token-budget.ts';
 import { ProviderError } from '../src/providers/errors.ts';
-import { createGeminiProvider, createGeminiProviderStream } from '../src/providers/gemini.ts';
-import {
-  createMockGeminiModel,
-  createMockGeminiStreamingModel,
-} from '../src/providers/test/mock-clients.ts';
 import type {
   GeminiCachedContent,
   GeminiCreateCachedContentRequest,
   GeminiGenerateContentRequest,
   GeminiGenerateContentResult,
-} from '../src/providers/types.ts';
+} from '../src/providers/gemini-types.ts';
+import { createGeminiProvider, createGeminiProviderStream } from '../src/providers/gemini.ts';
+import {
+  createMockGeminiModel,
+  createMockGeminiStreamingModel,
+} from '../src/providers/test/gemini-mock-clients.ts';
 import type { GenerateContext, StreamingHandle } from '../src/types.ts';
 
 function makeContext(conversation: Conversation): GenerateContext {
@@ -100,7 +100,7 @@ const runtime = createManualRuntimeServices();
 
 /**
  * A `caches` namespace that records what it was asked to create. Built here
- * rather than in `src/providers/test/mock-clients.ts` to match the fakes the
+ * rather than in `src/providers/test/gemini-mock-clients.ts` to match the fakes the
  * batch-client suite builds in its own file for the same reason: the shape is
  * specific to this suite's assertions.
  *

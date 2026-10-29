@@ -14,18 +14,21 @@ import { createAgentRun } from '../src/agent-run';
 import { noToolCalls } from '../src/conditions/predicates';
 import { createActiveRun } from '../src/create-run';
 import { AbortAgentRunError } from '../src/errors';
-import { createOpenAIProvider, createOpenAIProviderStream } from '../src/providers/openai.ts';
-import { openAIStreamTextChunks, openAITextResponse } from '../src/providers/test/fixtures.ts';
-import {
-  createMockOpenAIClient,
-  createMockOpenAIStreamingClient,
-} from '../src/providers/test/mock-clients.ts';
 import type {
   OpenAIChatCompletionChunk,
   OpenAIChatCompletionCreateRequest,
   OpenAIRequestOptions,
   OpenAIStreamingClient,
-} from '../src/providers/types.ts';
+} from '../src/providers/openai-types.ts';
+import { createOpenAIProvider, createOpenAIProviderStream } from '../src/providers/openai.ts';
+import {
+  openAIStreamTextChunks,
+  openAITextResponse,
+} from '../src/providers/test/openai-fixtures.ts';
+import {
+  createMockOpenAIClient,
+  createMockOpenAIStreamingClient,
+} from '../src/providers/test/openai-mock-clients.ts';
 import { waitForCondition } from '../src/test/index';
 import type { GenerateContext, StreamingHandle } from '../src/types.ts';
 

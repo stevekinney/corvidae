@@ -6,13 +6,13 @@
 import type { OpenAI } from 'openai';
 import type { ChatCompletionCreateParamsBase } from 'openai/resources/chat/completions';
 
-import type { MockOpenAIStreamingClient } from './test/mock-clients.ts';
 import type {
   OpenAIChatCompletionChunk,
   OpenAIChatCompletionCreateRequest,
   OpenAIClient,
   OpenAIStreamingClient,
-} from './types.ts';
+} from './openai-types.ts';
+import type { MockOpenAIStreamingClient } from './test/openai-mock-clients.ts';
 
 /** Fails to compile unless `T` resolves to exactly `true`. */
 type Assert<T extends true> = T;

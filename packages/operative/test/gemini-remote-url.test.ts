@@ -5,8 +5,8 @@ import { Conversation } from 'conversationalist';
 import { createActiveRun } from '../src/create-run';
 import { MediaAdmissionError } from '../src/errors';
 import { createGeminiProvider } from '../src/providers/gemini.ts';
-import { geminiTextResponse } from '../src/providers/test/fixtures.ts';
-import { createMockGeminiModel } from '../src/providers/test/mock-clients.ts';
+import { geminiTextResponse } from '../src/providers/test/gemini-fixtures.ts';
+import { createMockGeminiModel } from '../src/providers/test/gemini-mock-clients.ts';
 
 function runWithRemoteImage(model: string) {
   const client = createMockGeminiModel([geminiTextResponse]);

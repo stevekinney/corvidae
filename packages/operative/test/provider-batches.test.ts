@@ -27,21 +27,22 @@
 import { describe, expect, it } from 'bun:test';
 
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
+import type {
+  AnthropicBatchClient,
+  AnthropicMessageBatch,
+  AnthropicMessageBatchIndividualResponse,
+} from '../src/providers/anthropic-types.ts';
 import { createAnthropicBatchClient } from '../src/providers/batches/anthropic.ts';
 import { createGeminiBatchClient } from '../src/providers/batches/gemini.ts';
 import { createOpenAIBatchClient } from '../src/providers/batches/openai.ts';
 import { getProviderCapabilities } from '../src/providers/capabilities.ts';
 import { ProviderError } from '../src/providers/errors.ts';
 import type {
-  AnthropicBatchClient,
-  AnthropicMessageBatch,
-  AnthropicMessageBatchIndividualResponse,
   GeminiBatchClient,
   GeminiBatchJob,
   GeminiDeleteResourceJob,
-  OpenAIBatch,
-  OpenAIBatchClient,
-} from '../src/providers/types.ts';
+} from '../src/providers/gemini-types.ts';
+import type { OpenAIBatch, OpenAIBatchClient } from '../src/providers/openai-types.ts';
 
 const PLACEHOLDER_TOKEN = 'placeholder-not-a-real-key-0000';
 

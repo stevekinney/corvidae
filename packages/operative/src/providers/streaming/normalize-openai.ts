@@ -1,6 +1,6 @@
 import type { StreamBlock, StreamEvent, StreamState } from '../../streaming/types';
 import { ProviderContractError } from '../errors';
-import type { OpenAIChatCompletionChunk } from '../types';
+import type { OpenAIChatCompletionChunk } from '../openai-types';
 import type { NormalizerState } from './stream-helpers';
 import { buildState, findBlock } from './stream-helpers';
 

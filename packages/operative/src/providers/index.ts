@@ -5,6 +5,28 @@
  * provider loads its SDK dynamically when called, so unused SDKs stay unused.
  */
 
+export { anthropicProvider } from './anthropic-definition.ts';
+export type { AnthropicProviderConfiguration } from './anthropic-definition.ts';
+export type {
+  AnthropicBatchClient,
+  AnthropicBatchCreateRequest,
+  AnthropicBatchCreateRequestItem,
+  AnthropicBatchListQuery,
+  AnthropicClient,
+  AnthropicCountTokensRequest,
+  AnthropicMessageBatch,
+  AnthropicMessageBatchIndividualResponse,
+  AnthropicMessageBatchRequestCounts,
+  AnthropicMessageBatchResult,
+  AnthropicMessageCreateRequest,
+  AnthropicMessageResponse,
+  AnthropicProviderOptions,
+  AnthropicRequestOptions,
+  AnthropicStreamEvent,
+  AnthropicStreamingClient,
+  AnthropicThinkingConfig,
+  AnthropicTokenCountingClient,
+} from './anthropic-types.ts';
 export {
   createAnthropicProvider,
   createAnthropicProviderStream,
@@ -66,6 +88,27 @@ export type {
   FalloverProvider,
   ProviderHealth,
 } from './fallover/index.ts';
+export { geminiProvider } from './gemini-definition.ts';
+export type { GeminiProviderConfiguration } from './gemini-definition.ts';
+export type {
+  GeminiBatchClient,
+  GeminiBatchJob,
+  GeminiBatchJobReference,
+  GeminiCacheCreatingClient,
+  GeminiCachedContent,
+  GeminiCountTokensRequest,
+  GeminiCreateBatchJobRequest,
+  GeminiCreateCachedContentRequest,
+  GeminiDeleteResourceJob,
+  GeminiGenerateContentRequest,
+  GeminiGenerateContentResult,
+  GeminiGenerativeModel,
+  GeminiListBatchJobsRequest,
+  GeminiProviderOptions,
+  GeminiStreamingModel,
+  GeminiTokenCountingClient,
+  GeminiUsageMetadata,
+} from './gemini-types.ts';
 export {
   createGeminiProvider,
   createGeminiProviderStream,
@@ -89,6 +132,22 @@ export type {
   ModelAlias,
   ModelCatalog,
 } from './model-catalog.ts';
+export { openaiProvider } from './openai-definition.ts';
+export type { OpenAIProviderConfiguration } from './openai-definition.ts';
+export type {
+  OpenAIBatch,
+  OpenAIBatchClient,
+  OpenAIBatchCreateRequest,
+  OpenAIBatchListQuery,
+  OpenAIBatchRequestCounts,
+  OpenAIChatCompletion,
+  OpenAIChatCompletionChunk,
+  OpenAIChatCompletionCreateRequest,
+  OpenAIClient,
+  OpenAIProviderOptions,
+  OpenAIRequestOptions,
+  OpenAIStreamingClient,
+} from './openai-types.ts';
 export { createOpenAIProvider, createOpenAIProviderStream } from './openai.ts';
 export { composePolicy } from './policy.ts';
 export type {
@@ -100,6 +159,7 @@ export type {
   SelectionExclusionCode,
   UserModelConfiguration,
 } from './policy.ts';
+export type { ProviderConfigurationBase, ProviderDefinition } from './provider-definition.ts';
 export {
   composeStrategies,
   createComplexityStrategy,
@@ -169,58 +229,11 @@ export {
 } from './structured-output/index.ts';
 export type { ResponseFormat, ToolChoice } from './structured-output/index.ts';
 export type {
-  AnthropicBatchClient,
-  AnthropicBatchCreateRequest,
-  AnthropicBatchCreateRequestItem,
-  AnthropicBatchListQuery,
-  AnthropicClient,
-  AnthropicCountTokensRequest,
-  AnthropicMessageBatch,
-  AnthropicMessageBatchIndividualResponse,
-  AnthropicMessageBatchRequestCounts,
-  AnthropicMessageBatchResult,
-  AnthropicMessageCreateRequest,
-  AnthropicMessageResponse,
-  AnthropicProviderOptions,
-  AnthropicRequestOptions,
-  AnthropicStreamEvent,
-  AnthropicStreamingClient,
-  AnthropicThinkingConfig,
-  AnthropicTokenCountingClient,
   BaseProviderOptions,
   Effort,
-  GeminiBatchClient,
-  GeminiBatchJob,
-  GeminiBatchJobReference,
-  GeminiCacheCreatingClient,
-  GeminiCachedContent,
-  GeminiCountTokensRequest,
-  GeminiCreateBatchJobRequest,
-  GeminiCreateCachedContentRequest,
-  GeminiDeleteResourceJob,
-  GeminiGenerateContentRequest,
-  GeminiGenerateContentResult,
-  GeminiGenerativeModel,
-  GeminiListBatchJobsRequest,
-  GeminiProviderOptions,
-  GeminiStreamingModel,
-  GeminiTokenCountingClient,
-  GeminiUsageMetadata,
   GenerateContext,
   GenerateFunction,
   GenerateResponse,
-  OpenAIBatch,
-  OpenAIBatchClient,
-  OpenAIBatchCreateRequest,
-  OpenAIBatchListQuery,
-  OpenAIBatchRequestCounts,
-  OpenAIChatCompletion,
-  OpenAIChatCompletionChunk,
-  OpenAIChatCompletionCreateRequest,
-  OpenAIClient,
-  OpenAIProviderOptions,
-  OpenAIRequestOptions,
-  OpenAIStreamingClient,
   ProviderName,
   StreamingGenerateFunction,
   StreamingHandle,

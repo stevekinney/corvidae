@@ -9,17 +9,14 @@ import { getOwn, toGeminiMessages } from 'conversationalist';
 import { concatenateTextParts } from '../response-parts.ts';
 import { withBackendDescriptors } from './backend-descriptor-attachment.ts';
 import { isProviderContractError, ProviderError } from './errors.ts';
-import { createGeminiPartMapper, geminiViolationError } from './gemini-parts.ts';
-import { createModelCatalog } from './model-catalog.ts';
-import { createCacheAwareAssembly } from './shared/cache-aware-assembly.ts';
-import { resolveGeminiEffort } from './shared/effort.ts';
-import { resolveGeminiApiKey } from './shared/gemini-api-key.ts';
-import { withInputLineage } from './shared/input-lineage.ts';
-import { resolveGeminiModel } from './shared/model-registry.ts';
-import { droppedReplayDataMetadata } from './shared/replay-data.ts';
-import { resolveCommonParameters } from './shared/resolve-common-parameters.ts';
-import { toGeminiResponseFormat } from './structured-output/response-format-adapters.ts';
-import { toGeminiToolChoice } from './structured-output/tool-choice-adapters.ts';
+import { resolveGeminiApiKey } from './gemini-api-key.ts';
+import {
+  createGeminiPartMapper,
+  droppedReplayDataMetadata,
+  geminiViolationError,
+} from './gemini-parts.ts';
+import { toGeminiResponseFormat } from './gemini-response-format.ts';
+import { toGeminiToolChoice } from './gemini-tool-choice.ts';
 import type {
   GeminiCacheCreatingClient,
   GeminiCachedContent,
@@ -30,6 +27,14 @@ import type {
   GeminiStreamingModel,
   GeminiTokenCountingClient,
   GeminiUsageMetadata,
+} from './gemini-types.ts';
+import { createModelCatalog } from './model-catalog.ts';
+import { createCacheAwareAssembly } from './shared/cache-aware-assembly.ts';
+import { resolveGeminiEffort } from './shared/effort.ts';
+import { withInputLineage } from './shared/input-lineage.ts';
+import { resolveGeminiModel } from './shared/model-registry.ts';
+import { resolveCommonParameters } from './shared/resolve-common-parameters.ts';
+import type {
   GenerateContext,
   GenerateFunction,
   GenerateResponse,

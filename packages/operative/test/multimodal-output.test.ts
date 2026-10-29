@@ -32,11 +32,15 @@ import { normalizeOpenAIStream } from '../src/providers/streaming/normalize-open
 import {
   createMockAnthropicClient,
   createMockAnthropicStreamingClient,
+} from '../src/providers/test/anthropic-mock-clients';
+import {
   createMockGeminiModel,
   createMockGeminiStreamingModel,
+} from '../src/providers/test/gemini-mock-clients';
+import {
   createMockOpenAIClient,
   createMockOpenAIStreamingClient,
-} from '../src/providers/test/mock-clients';
+} from '../src/providers/test/openai-mock-clients';
 import { withStreaming } from '../src/streaming';
 import { withEnhancedStreaming } from '../src/streaming/enhanced-streaming';
 import type { LivePartEvent, StreamEvent, StreamEventMap } from '../src/streaming/types';

@@ -7,21 +7,23 @@ import { withBackendDescriptors } from './backend-descriptor-attachment.ts';
 import { isProviderContractError, ProviderError, ToolCallParseError } from './errors.ts';
 import { createModelCatalog } from './model-catalog.ts';
 import { mapOpenAIMessage, mergeAssembledField } from './openai-parts.ts';
-import { resolveOpenAIEffort } from './shared/effort.ts';
-import { withInputLineage } from './shared/input-lineage.ts';
-import { resolveOpenAIModel } from './shared/model-registry.ts';
-import { resolveCommonParameters } from './shared/resolve-common-parameters.ts';
-import { toOpenAIResponseFormat } from './structured-output/response-format-adapters.ts';
-import { toOpenAIToolChoice } from './structured-output/tool-choice-adapters.ts';
+import { toOpenAIResponseFormat } from './openai-response-format.ts';
+import { toOpenAIToolChoice } from './openai-tool-choice.ts';
 import type {
-  GenerateContext,
-  GenerateFunction,
-  GenerateResponse,
   OpenAIChatCompletion,
   OpenAIChatCompletionCreateRequest,
   OpenAIClient,
   OpenAIProviderOptions,
   OpenAIStreamingClient,
+} from './openai-types.ts';
+import { resolveOpenAIEffort } from './shared/effort.ts';
+import { withInputLineage } from './shared/input-lineage.ts';
+import { resolveOpenAIModel } from './shared/model-registry.ts';
+import { resolveCommonParameters } from './shared/resolve-common-parameters.ts';
+import type {
+  GenerateContext,
+  GenerateFunction,
+  GenerateResponse,
   StreamingGenerateFunction,
   StreamingHandle,
 } from './types.ts';

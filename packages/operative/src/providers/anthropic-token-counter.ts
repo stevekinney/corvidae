@@ -1,10 +1,10 @@
 import { createAnthropicSdkClient, isAnthropicTokenCountingClient } from './anthropic-sdk.ts';
-import { ProviderError } from './errors.ts';
 import type {
   AnthropicCountTokensRequest,
   AnthropicTokenCountingClient,
-  TokenCountResult,
-} from './types.ts';
+} from './anthropic-types.ts';
+import { ProviderError } from './errors.ts';
+import type { TokenCountResult } from './types.ts';
 
 export interface AnthropicTokenCounterOptions {
   client?: AnthropicTokenCountingClient | undefined;

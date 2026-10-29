@@ -1,7 +1,5 @@
 import { ProviderError } from '../errors.ts';
-import type { BatchSurfaceRequirement } from '../shared/batch-support.ts';
-import { assertBatchSurface } from '../shared/batch-support.ts';
-import { resolveGeminiApiKey } from '../shared/gemini-api-key.ts';
+import { resolveGeminiApiKey } from '../gemini-api-key.ts';
 import type {
   GeminiBatchClient,
   GeminiBatchJob,
@@ -9,7 +7,9 @@ import type {
   GeminiCreateBatchJobRequest,
   GeminiDeleteResourceJob,
   GeminiListBatchJobsRequest,
-} from '../types.ts';
+} from '../gemini-types.ts';
+import type { BatchSurfaceRequirement } from '../shared/batch-support.ts';
+import { assertBatchSurface } from '../shared/batch-support.ts';
 
 function wrapGeminiError(error: unknown): ProviderError {
   if (error instanceof ProviderError) return error;

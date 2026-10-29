@@ -4,10 +4,11 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./provider-kit": "./src/provider-kit.ts",
     "./run-engine-workflow-types": "./src/durable/run-engine-workflow-types.ts"
   },
   "scripts": {
-    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json && bun ../../scripts/check-inherited-key-reads.ts && bun ../../scripts/check-documentation-coverage.ts",
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json && bun scripts/check-provider-imports.ts && bun ../../scripts/check-inherited-key-reads.ts && bun ../../scripts/check-documentation-coverage.ts",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
     "types": "tsc -b tsconfig.source.json",
     "typecheck": "tsc -b tsconfig.json && bun run typecheck:documentation",

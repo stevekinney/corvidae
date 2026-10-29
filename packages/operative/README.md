@@ -1396,6 +1396,28 @@ const generate = createAnthropicProvider({
 
 **Extended (1-hour) cache TTL.** Anthropic's cache breakpoints default to a 5-minute TTL. Passing `extendedCacheTtl: true` to `createAnthropicProvider` / `createAnthropicProviderStream` opts every `cache_control` breakpoint lowered from a `cacheBoundary` mark into the extended one-hour TTL instead (`cache_control: { type: 'ephemeral', ttl: '1h' }`), which Anthropic bills at a higher cache-write rate in exchange for a longer-lived cache. It only takes effect on requests that actually have a cache boundary (i.e. `assembler` + `contextBudget`, or an already-marked conversation). OpenAI and Gemini use implicit, non-configurable prompt caching—there's no checkpoint metadata to interpret, so this option doesn't apply to `createOpenAIProvider` / `createGeminiProvider`.
 
+### Provider definitions and `provider-kit`
+
+A host that picks a model provider by name holds a `ProviderDefinition`: a `name` and two methods, `generate(configuration)` and `stream(configuration)`. Operative ships `anthropicProvider`, `openaiProvider`, and `geminiProvider`. Each passes the configuration object, whole, to the matching factory (`createAnthropicProvider` and `createAnthropicProviderStream`, and so on), so a field the shared `ProviderConfigurationBase` does not name, such as an injected `client`, still reaches the factory:
+
+```typescript
+import {
+  anthropicProvider,
+  openaiProvider,
+  type ProviderDefinition,
+} from '@lostgradient/operative';
+
+const definitions: ProviderDefinition[] = [anthropicProvider, openaiProvider];
+
+const generate = definitions
+  .find((definition) => definition.name === 'anthropic')
+  ?.generate({ provider: 'anthropic', model: 'claude-sonnet-4-20250514' });
+```
+
+`stream` returns a streaming generate function, which a host wraps with `withEnhancedStreaming` to get an ordinary one. An injected `client` has to serve both methods, because one configuration feeds both; to inject a client that serves only one, call the factory directly.
+
+`@lostgradient/operative/provider-kit` is the authoring surface for a provider package: the request and response types, the error classes, the parameter and model resolvers every provider shares, and the stream-normalizer helpers. A provider package imports Operative only through `@lostgradient/operative`, `@lostgradient/operative/provider-kit`, and its testing entry points. `scripts/check-provider-imports.ts`, which runs in Operative's `lint`, keeps the line between provider-neutral files and per-provider files (`src/providers/anthropic*.ts`, `openai*.ts`, `gemini*.ts`, and the per-provider batch, embedding, and stream-normalizer files).
+
 ### Providers Behind a Proxy
 
 Every shipped provider (`createAnthropicProvider`, `createOpenAIProvider`, `createGeminiProvider`, and their streaming counterparts) accepts a `baseURL` override and an arbitrary `apiKey` string with no shape validation—both pass straight to the underlying SDK client, so a credential-injecting proxy can sit in front of the real provider and swap in the real key server-side:

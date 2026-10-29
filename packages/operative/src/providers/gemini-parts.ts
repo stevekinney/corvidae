@@ -1,9 +1,24 @@
 import type { Modality, ModalityMatrix, MultiModalContent } from 'conversationalist';
 
 import type { LivePartEvent } from '../streaming/types.ts';
+import type { JSONValue } from '../types.ts';
 import { ProviderContractError, type ProviderContractReason } from './errors.ts';
-import { type DroppedReplayData } from './shared/replay-data.ts';
-import type { GeminiGenerateContentResult } from './types.ts';
+import type { GeminiGenerateContentResult } from './gemini-types.ts';
+import { REPLAY_DATA_DROPPED_METADATA_KEY, type DroppedReplayData } from './shared/replay-data.ts';
+
+/** Builds the metadata entry for a list of dropped replay data; `undefined` when there is none. */
+export function droppedReplayDataMetadata(
+  dropped: readonly DroppedReplayData[],
+): Record<string, JSONValue> | undefined {
+  if (dropped.length === 0) return undefined;
+  return {
+    [REPLAY_DATA_DROPPED_METADATA_KEY]: dropped.map((entry) => ({
+      provider: entry.provider,
+      providerPartIndex: entry.providerPartIndex,
+      field: entry.field,
+    })),
+  };
+}
 
 type GeminiResultPart = NonNullable<
   NonNullable<NonNullable<GeminiGenerateContentResult['candidates']>[number]['content']>['parts']

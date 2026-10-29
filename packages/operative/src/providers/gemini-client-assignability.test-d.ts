@@ -24,7 +24,7 @@ import type {
   GeminiGenerativeModel,
   GeminiStreamingModel,
   GeminiTokenCountingClient,
-} from './types.ts';
+} from './gemini-types.ts';
 
 /** Fails to compile unless `T` resolves to exactly `true`. */
 type Assert<T extends true> = T;

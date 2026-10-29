@@ -1,7 +1,7 @@
 import { createToolbox } from 'armorer';
 import { Conversation } from 'conversationalist';
+import type { AnthropicClient } from '../../src/providers/anthropic-types.ts';
 import { createAnthropicProvider } from '../../src/providers/anthropic.ts';
-import type { AnthropicClient } from '../../src/providers/types.ts';
 
 export async function runInjectedClient(): Promise<string> {
   const client: AnthropicClient = {

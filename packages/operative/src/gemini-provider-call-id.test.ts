@@ -26,7 +26,7 @@ import { createGeminiProvider, createGeminiProviderStream } from './providers/ge
 import {
   createMockGeminiModel,
   createMockGeminiStreamingModel,
-} from './providers/test/mock-clients';
+} from './providers/test/gemini-mock-clients';
 
 import type { OperativeHookMap } from './hooks';
 import { executeLoop } from './loop';

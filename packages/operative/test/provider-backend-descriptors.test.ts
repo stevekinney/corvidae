@@ -21,19 +21,27 @@ import { createOpenAIProvider, createOpenAIProviderStream } from '../src/provide
 import {
   anthropicStreamTextEvents,
   anthropicTextResponse,
-  geminiStreamTextChunks,
-  geminiTextResponse,
-  openAIStreamTextChunks,
-  openAITextResponse,
-} from '../src/providers/test/fixtures.ts';
+} from '../src/providers/test/anthropic-fixtures.ts';
 import {
   createMockAnthropicClient,
   createMockAnthropicStreamingClient,
+} from '../src/providers/test/anthropic-mock-clients.ts';
+import {
+  geminiStreamTextChunks,
+  geminiTextResponse,
+} from '../src/providers/test/gemini-fixtures.ts';
+import {
   createMockGeminiModel,
   createMockGeminiStreamingModel,
+} from '../src/providers/test/gemini-mock-clients.ts';
+import {
+  openAIStreamTextChunks,
+  openAITextResponse,
+} from '../src/providers/test/openai-fixtures.ts';
+import {
   createMockOpenAIClient,
   createMockOpenAIStreamingClient,
-} from '../src/providers/test/mock-clients.ts';
+} from '../src/providers/test/openai-mock-clients.ts';
 import type { GenerateContext } from '../src/types.ts';
 
 function makeContext(): GenerateContext {

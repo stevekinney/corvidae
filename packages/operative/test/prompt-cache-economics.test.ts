@@ -18,7 +18,7 @@ import { createContextAssembler } from '../src/context/assembly.ts';
 import { createTokenBudget } from '../src/context/token-budget.ts';
 import { estimateCacheHitRate, estimateCost } from '../src/cost-estimation.ts';
 import { createAnthropicProvider } from '../src/providers/anthropic.ts';
-import { createMockAnthropicClient } from '../src/providers/test/mock-clients.ts';
+import { createMockAnthropicClient } from '../src/providers/test/anthropic-mock-clients.ts';
 import type { GenerateContext, GenerateResponse } from '../src/types.ts';
 
 const MODEL = 'claude-3-5-sonnet-20241022';

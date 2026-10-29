@@ -1,4 +1,4 @@
-import type { AnthropicStreamEvent } from '../src/providers/types';
+import type { AnthropicStreamEvent } from '../src/providers/anthropic-types';
 
 /** A recorded Anthropic content block: the exact shape the API returns, kept verbatim for replay checks. */
 export type RecordedAnthropicBlock = { type: string } & Record<string, unknown>;

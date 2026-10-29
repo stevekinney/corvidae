@@ -1,6 +1,6 @@
 /**
  * `thinking: { type: 'disabled' }` combinations Anthropic documents as a 400 are refused before
- * any request, from the per-model table in `src/providers/shared/thinking.ts`.
+ * any request, from the per-model table in `src/providers/anthropic-thinking.ts`.
  */
 import { describe, expect, it } from 'bun:test';
 
@@ -9,11 +9,11 @@ import {
   createAnthropicProviderStream,
 } from '../src/providers/anthropic.ts';
 import { ProviderError } from '../src/providers/errors.ts';
-import { anthropicTextResponse } from '../src/providers/test/fixtures.ts';
+import { anthropicTextResponse } from '../src/providers/test/anthropic-fixtures.ts';
 import {
   createMockAnthropicClient,
   createMockAnthropicStreamingClient,
-} from '../src/providers/test/mock-clients.ts';
+} from '../src/providers/test/anthropic-mock-clients.ts';
 import type { Effort } from '../src/providers/types.ts';
 
 const disabled = { type: 'disabled' } as const;

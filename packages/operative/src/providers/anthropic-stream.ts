@@ -23,6 +23,7 @@ import {
   assertToolChoiceSupported,
   buildAnthropicMessageRequest,
 } from './anthropic-shared.ts';
+import type { AnthropicProviderOptions, AnthropicStreamingClient } from './anthropic-types.ts';
 import { withBackendDescriptors } from './backend-descriptor-attachment.ts';
 import { ProviderContractError, ProviderError, ToolCallParseError } from './errors.ts';
 import { createCacheAwareAssembly } from './shared/cache-aware-assembly.ts';
@@ -31,8 +32,6 @@ import { withInputLineage } from './shared/input-lineage.ts';
 import { resolveAnthropicModel } from './shared/model-registry.ts';
 import { resolveCommonParameters } from './shared/resolve-common-parameters.ts';
 import type {
-  AnthropicProviderOptions,
-  AnthropicStreamingClient,
   GenerateContext,
   GenerateResponse,
   StreamingGenerateFunction,
@@ -147,7 +146,7 @@ export function createAnthropicProviderStream(
 }
 
 async function consumeAnthropicStream(
-  stream: AsyncIterable<import('./types.ts').AnthropicStreamEvent>,
+  stream: AsyncIterable<import('./anthropic-types.ts').AnthropicStreamEvent>,
   streaming: StreamingHandle,
   signal: AbortSignal | undefined,
   model: string,
@@ -239,7 +238,7 @@ type StreamState = {
 };
 
 function handleAnthropicStreamEvent(
-  event: import('./types.ts').AnthropicStreamEvent,
+  event: import('./anthropic-types.ts').AnthropicStreamEvent,
   state: StreamState,
   streaming: StreamingHandle,
 ): void {
@@ -260,7 +259,7 @@ function handleAnthropicStreamEvent(
 }
 
 function handleAnthropicMessageStart(
-  event: import('./types.ts').AnthropicStreamEvent,
+  event: import('./anthropic-types.ts').AnthropicStreamEvent,
   state: StreamState,
 ): void {
   state.inputTokens = event.message?.usage?.input_tokens;
@@ -273,7 +272,7 @@ function partKindOf(blockState: BlockAccumulatorState): MultiModalContent['type'
 }
 
 function handleAnthropicBlockStart(
-  event: import('./types.ts').AnthropicStreamEvent,
+  event: import('./anthropic-types.ts').AnthropicStreamEvent,
   state: StreamState,
   streaming: StreamingHandle,
 ): void {
@@ -341,7 +340,7 @@ function reportDelta(
 }
 
 function handleAnthropicBlockDelta(
-  event: import('./types.ts').AnthropicStreamEvent,
+  event: import('./anthropic-types.ts').AnthropicStreamEvent,
   state: StreamState,
   streaming: StreamingHandle,
 ): void {
@@ -402,7 +401,7 @@ function handleAnthropicBlockDelta(
 }
 
 function handleAnthropicBlockStop(
-  event: import('./types.ts').AnthropicStreamEvent,
+  event: import('./anthropic-types.ts').AnthropicStreamEvent,
   state: StreamState,
   streaming: StreamingHandle,
 ): void {
@@ -419,7 +418,7 @@ function handleAnthropicBlockStop(
 }
 
 function handleAnthropicJsonDelta(
-  event: import('./types.ts').AnthropicStreamEvent,
+  event: import('./anthropic-types.ts').AnthropicStreamEvent,
   state: StreamState,
   streaming: StreamingHandle,
 ): void {

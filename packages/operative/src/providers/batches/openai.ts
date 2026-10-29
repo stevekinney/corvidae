@@ -1,12 +1,12 @@
 import { ProviderError } from '../errors.ts';
-import type { BatchSurfaceRequirement } from '../shared/batch-support.ts';
-import { assertBatchSurface } from '../shared/batch-support.ts';
 import type {
   OpenAIBatch,
   OpenAIBatchClient,
   OpenAIBatchCreateRequest,
   OpenAIBatchListQuery,
-} from '../types.ts';
+} from '../openai-types.ts';
+import type { BatchSurfaceRequirement } from '../shared/batch-support.ts';
+import { assertBatchSurface } from '../shared/batch-support.ts';
 
 function wrapOpenAIError(error: unknown): ProviderError {
   if (error instanceof ProviderError) return error;

@@ -1,14 +1,14 @@
 import { createAnthropicSdkClient } from '../anthropic-sdk.ts';
-import { ProviderError } from '../errors.ts';
-import type { BatchSurfaceRequirement } from '../shared/batch-support.ts';
-import { assertBatchSurface } from '../shared/batch-support.ts';
 import type {
   AnthropicBatchClient,
   AnthropicBatchCreateRequest,
   AnthropicBatchListQuery,
   AnthropicMessageBatch,
   AnthropicMessageBatchIndividualResponse,
-} from '../types.ts';
+} from '../anthropic-types.ts';
+import { ProviderError } from '../errors.ts';
+import type { BatchSurfaceRequirement } from '../shared/batch-support.ts';
+import { assertBatchSurface } from '../shared/batch-support.ts';
 
 /**
  * `@anthropic-ai/sdk` 0.33.0 promoted Message Batches out of `client.beta` onto

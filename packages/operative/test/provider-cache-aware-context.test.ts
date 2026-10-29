@@ -18,7 +18,7 @@ import {
   createAnthropicProvider,
   createAnthropicProviderStream,
 } from '../src/providers/anthropic.ts';
-import { createMockAnthropicClient } from '../src/providers/test/mock-clients.ts';
+import { createMockAnthropicClient } from '../src/providers/test/anthropic-mock-clients.ts';
 import type { GenerateContext, StreamingHandle } from '../src/types.ts';
 
 // AB-330: an incidental message timestamp reads through a manual runtime
@@ -225,7 +225,7 @@ describe('Anthropic provider cache-aware context assembly', () => {
     conversation.appendUserMessage('Hello');
 
     const { createMockAnthropicStreamingClient } =
-      await import('../src/providers/test/mock-clients.ts');
+      await import('../src/providers/test/anthropic-mock-clients.ts');
     const client = createMockAnthropicStreamingClient([
       [
         { type: 'message_start', message: { usage: { input_tokens: 1 } } },

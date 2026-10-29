@@ -9,11 +9,11 @@
  * seam type naming the operation, not an SDK provider object. The "Provider"
  * suffix names the role (a provider of generation), not the Vercel AI SDK concept.
  */
-export { createGeminiProvider, createGeminiProviderStream } from './providers/gemini.ts';
 export type {
   GeminiGenerateContentRequest,
   GeminiGenerateContentResult,
   GeminiGenerativeModel,
   GeminiProviderOptions,
   GeminiStreamingModel,
-} from './providers/types.ts';
+} from './providers/gemini-types.ts';
+export { createGeminiProvider, createGeminiProviderStream } from './providers/gemini.ts';
