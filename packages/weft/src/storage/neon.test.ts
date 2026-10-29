@@ -316,17 +316,18 @@ describe('NeonStorage', () => {
     const database = await new PGlite();
     try {
       const failingPool: PostgresPool = {
-        query: (sql, parameters) => {
-          if (sql.includes('CREATE TABLE IF NOT EXISTS')) {
-            createAttempts += 1;
-            if (createAttempts === 1) {
-              return Promise.reject(new Error('connection dropped mid-CREATE'));
-            }
-          }
-          return database.query(sql, parameters as unknown[]);
-        },
+        query: (sql, parameters) => database.query(sql, parameters as unknown[]),
+        // Setup runs its DDL on a pinned connection, so the injected failure lands here.
         connect: async () => ({
-          query: (sql, parameters) => database.query(sql, parameters as unknown[]),
+          query: (sql, parameters) => {
+            if (sql.includes('CREATE TABLE IF NOT EXISTS')) {
+              createAttempts += 1;
+              if (createAttempts === 1) {
+                return Promise.reject(new Error('connection dropped mid-CREATE'));
+              }
+            }
+            return database.query(sql, parameters as unknown[]);
+          },
           release: () => {},
         }),
         end: async () => {},

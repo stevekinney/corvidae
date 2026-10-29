@@ -18,6 +18,7 @@ import {
 import {
   buildPostgresCreateSchema,
   buildPostgresKeyValueQueries,
+  PG_ACQUIRE_SETUP_LOCK,
   PG_BEGIN_READ_COMMITTED,
   PG_BEGIN_READ_ONLY,
   PG_BEGIN_SERIALIZABLE,
@@ -231,13 +232,25 @@ export class PostgresKeyValueStorage implements Storage {
   }
 
   async #initialize(): Promise<void> {
-    // Create the configured schema first so the schema-qualified CREATE TABLE
-    // resolves. Skipped entirely for the default (unqualified) deployment.
-    if (this.#schema !== undefined) {
-      await this.#pool.query(buildPostgresCreateSchema(this.#schema));
-    }
-    await this.#pool.query(this.#queries.createTable);
+    await this.#createSchemaAndTable();
     await this.#assertKeyCollation();
+  }
+
+  /**
+   * Create the schema and table under a transaction-scoped advisory lock:
+   * concurrent `CREATE ... IF NOT EXISTS` on separate connections can fail with a
+   * unique violation on `pg_namespace`/`pg_type` instead of no-op'ing, so waiters
+   * take the lock, then find the committed objects. Released at COMMIT/ROLLBACK.
+   */
+  async #createSchemaAndTable(): Promise<void> {
+    await this.#withTransaction(PG_BEGIN_READ_COMMITTED, async (client) => {
+      await client.query(PG_ACQUIRE_SETUP_LOCK);
+      // Schema first so the schema-qualified CREATE TABLE resolves.
+      if (this.#schema !== undefined) {
+        await client.query(buildPostgresCreateSchema(this.#schema));
+      }
+      await client.query(this.#queries.createTable);
+    });
   }
 
   /**
