@@ -54,8 +54,8 @@ export function readVariable(
 export function normalizeBucketPrefix(raw: string | undefined, variable: string): string {
   if (raw === undefined) return '';
   let prefix = raw.startsWith('/') ? raw.slice(1) : raw;
-  if (prefix.endsWith('/')) prefix = prefix.slice(0, -1);
   if (prefix === '') return '';
+  if (prefix.endsWith('/')) prefix = prefix.slice(0, -1);
   if (prefix.split('/').some((segment) => segment === '' || segment === '..')) {
     throw new BungalowInputError(`${variable} must not contain an empty or ".." segment.`);
   }

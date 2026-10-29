@@ -16,7 +16,7 @@ An override is normalized, so a trailing slash or a dot segment does not change 
 
 ## Errors
 
-Every error extends `BungalowError`. None of them carries a secret value or a secret key: messages name the operation and never an entry, and a `BungalowFilesystemError` keeps only the code, system call, and errno of the underlying failure as its `cause`, never its path, because a path inside `secrets/` ends in the key.
+Every error extends `BungalowError`. None of them carries a secret value or a secret key: messages name the operation and never an entry, and a `BungalowFilesystemError` keeps only the code, system call, and errno of the underlying failure as its `cause`, never its path, because a path inside `secrets/` ends in the key. In remote mode its `cause` is only `{ status }` or `{ code }`; see [Remote mode](#remote-mode).
 
 ## Opening a Bungalow
 

@@ -157,6 +157,21 @@ describe('remote mode: input outcome matrix', () => {
       overrides: { [PREFIX_VARIABLE]: 'prod//' },
       names: PREFIX_VARIABLE,
     },
+    {
+      name: 'a prefix of two slashes',
+      overrides: { [PREFIX_VARIABLE]: '//' },
+      names: PREFIX_VARIABLE,
+    },
+    {
+      name: 'a prefix starting with two slashes',
+      overrides: { [PREFIX_VARIABLE]: '//prod' },
+      names: PREFIX_VARIABLE,
+    },
+    {
+      name: 'an endpoint Bun refuses',
+      overrides: { S3_ENDPOINT: 'http://' },
+      names: 'S3_',
+    },
   ];
 
   for (const { name, overrides, names } of inputCases) {

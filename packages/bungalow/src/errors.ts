@@ -33,7 +33,8 @@ export class BungalowLockedError extends BungalowError {
 
 /**
  * A filesystem operation failed. The message names the operation, never an entry or a value. The
- * `cause` is a sanitized object holding only the code, system call, and errno of the failure.
+ * `cause` is a sanitized object: the code, system call, and errno of a local failure, or for a
+ * remote one only `{ status }` of the HTTP response or `{ code }` of a failure with no response.
  */
 export class BungalowFilesystemError extends BungalowError {}
 

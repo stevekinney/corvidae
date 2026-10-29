@@ -1,5 +1,5 @@
 import type { Bungalow } from './bungalow.ts';
-import { BungalowFilesystemError, BungalowStateError } from './errors.ts';
+import { BungalowFilesystemError, BungalowInputError, BungalowStateError } from './errors.ts';
 import { secretVariable, type RemoteConfiguration } from './remote-configuration.ts';
 import { generateUlid, isUlid } from './ulid.ts';
 import { assertDirectoryName, assertSecretKey } from './validation.ts';
@@ -114,6 +114,20 @@ async function loadDeploymentId(client: Bun.S3Client, key: string): Promise<stri
 }
 
 /**
+ * The client the configuration describes. Bun refuses some endpoints in its constructor with a
+ * message that quotes the endpoint, so that failure keeps only its code.
+ */
+function s3Client(configuration: RemoteConfiguration): Bun.S3Client {
+  try {
+    return new Bun.S3Client(configuration.client);
+  } catch (error) {
+    throw new BungalowInputError('The S3_ variables do not describe a usable S3 client.', {
+      cause: { code: codeOf(error) },
+    });
+  }
+}
+
+/**
  * Open the remote Bungalow that `configuration` describes: Postgres for the database, the bucket
  * for configuration, content, and the deployment ID, and environment variables for secrets. It
  * takes no lock, since there is no root to lock, and makes no request until every input is valid.
@@ -123,7 +137,7 @@ export async function openRemoteBungalow(
   configuration: RemoteConfiguration,
 ): Promise<Bungalow> {
   const { bucket, prefix, secrets } = configuration;
-  const client = new Bun.S3Client(configuration.client);
+  const client = s3Client(configuration);
   const deploymentId = await loadDeploymentId(client, `${prefix}deployment-id`);
   const configurationKey = `${prefix}configuration.json`;
 
