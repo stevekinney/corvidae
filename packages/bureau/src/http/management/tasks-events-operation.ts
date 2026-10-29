@@ -391,13 +391,16 @@ export type BureauTaskEventsOperationHost = BureauOwnershipHost & {
 };
 
 const tasksEventsInput = z.object({
-  taskId: z.string().min(1),
+  taskId: z.string().min(1).describe('The identifier of the task whose lifecycle to follow.'),
   // Checked in the schema, so a malformed cursor is `InvalidParams` on every transport.
   fromCursor: z
     .string()
     .min(1)
     .refine((cursor) => decodeCursor(cursor) !== null, { message: 'Invalid cursor' })
-    .optional(),
+    .optional()
+    .describe(
+      'The `cursor` of the last element already seen; the stream continues after it. Omitting it opens the stream with a `task.snapshot`.',
+    ),
 });
 
 const tasksEventsEnvelope = z.object({ subscriptionId: z.string(), cursor: z.string() });

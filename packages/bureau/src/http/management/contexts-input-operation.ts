@@ -55,14 +55,18 @@ export type BureauContextsInputOperationHost = BureauOwnershipHost & {
 const inputPayloadSchema = z.union([z.string(), z.array(z.record(z.string(), z.unknown()))]);
 
 const contextsInputInput = z.object({
-  contextId: z.string().min(1),
+  contextId: z.string().min(1).describe('The identifier of the context to send the input to.'),
   input: z
     .object({
-      /** The caller's own identifier for the input; an exact retry of it is a replay. */
-      id: z.string().min(1).max(256),
-      payload: inputPayloadSchema,
+      id: z
+        .string()
+        .min(1)
+        .max(256)
+        .describe('The caller’s own identifier for the input; an exact retry of it is a replay.'),
+      payload: inputPayloadSchema.describe('The input itself: text, or an ordered list of parts.'),
     })
-    .strict(),
+    .strict()
+    .describe('The input to admit: an `id` of the caller’s choosing and its `payload`.'),
 });
 
 const inputReceiptSchema = z.object({

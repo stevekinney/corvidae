@@ -46,17 +46,33 @@ const write = {
 } as const;
 
 const decideInput = z.object({
-  /** The caller's own identifier for the call. It is not an idempotency key: a retry re-calls the model. */
-  commandId: z.string().min(1).max(256),
-  kind: z.enum(['boolean', 'choice', 'scale', 'structured']),
-  question: z.string(),
-  context: z.string().optional(),
-  /** For `choice`: at least two options with distinct keys. */
-  options: z.array(z.object({ key: z.string(), label: z.string() }).strict()).optional(),
-  /** For `scale`: at least two distinct level descriptions, lowest first. */
-  levels: z.array(z.string()).optional(),
-  /** For `structured`: JSON Schema 2020-12, at most 16 KiB, without `$id` or `pattern`. */
-  schema: z.record(z.string(), z.unknown()).optional(),
+  commandId: z
+    .string()
+    .min(1)
+    .max(256)
+    .describe(
+      'The caller’s own identifier for the call. It is not an idempotency key: a retry re-calls the model.',
+    ),
+  kind: z
+    .enum(['boolean', 'choice', 'scale', 'structured'])
+    .describe('The kind of answer wanted: a boolean, one of the options, a level, or an object.'),
+  question: z.string().describe('The question to ask the model.'),
+  context: z
+    .string()
+    .optional()
+    .describe('Text the model may use to answer, bounded by the handler’s request body limit.'),
+  options: z
+    .array(z.object({ key: z.string(), label: z.string() }).strict())
+    .optional()
+    .describe('For `choice`: at least two options with distinct keys.'),
+  levels: z
+    .array(z.string())
+    .optional()
+    .describe('For `scale`: at least two distinct level descriptions, lowest first.'),
+  schema: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe('For `structured`: JSON Schema 2020-12, at most 16 KiB, without `$id` or `pattern`.'),
 });
 
 const decideOutput = z.object({

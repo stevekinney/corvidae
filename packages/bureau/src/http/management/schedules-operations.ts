@@ -77,8 +77,15 @@ export type BureauSchedulesOperationHost = BureauOwnershipHost & {
 };
 
 const scheduleStatus = z.enum(['active', 'paused', 'cancelled']);
-const scheduleIdentifier = z.string().min(1).max(256);
-const expectedRevision = z.number().int().min(0).optional();
+const scheduleIdentifier = z.string().min(1).max(256).describe('The identifier of the schedule.');
+const expectedRevision = z
+  .number()
+  .int()
+  .min(0)
+  .optional()
+  .describe(
+    'The schedule’s `revision` the caller read; when it has changed since, the call is a `StaleRevision` fault and nothing is written.',
+  );
 
 const scheduleViewSchema = z.object({
   id: z.string(),
@@ -245,7 +252,10 @@ async function receiptOf(
   return { id: summary.id, status: summary.status, revision: summary.revision };
 }
 
-const listInput = z.object({ status: scheduleStatus.optional(), ...pageFields });
+const listInput = z.object({
+  status: scheduleStatus.optional().describe('Only the schedules in this status.'),
+  ...pageFields,
+});
 const listOutput = z.object({
   schedules: z.array(scheduleViewSchema),
   nextOffset: z.number().int().nullable(),
@@ -347,15 +357,26 @@ export const schedulesGetOperation = defineOperation<
 });
 
 const createInput = z.object({
-  agentName: z.string().min(1).max(256),
-  /** A cron expression, or a duration such as `30s`, `6h`, or `1d`. */
-  spec: z.string().min(1).max(256),
-  /** The text delivered to the agent each fire. */
-  input: z.string().min(1).max(100_000),
-  description: z.string().max(2_000).optional(),
-  /** A session each fire continues; without one, every fire is a fresh session. */
-  sessionId: z.string().min(1).max(256).optional(),
-  overlap: z.enum(['skip', 'allow']).optional(),
+  agentName: z.string().min(1).max(256).describe('The catalog agent each fire runs.'),
+  spec: z
+    .string()
+    .min(1)
+    .max(256)
+    .describe('A cron expression, or a duration such as `30s`, `6h`, or `1d`.'),
+  input: z.string().min(1).max(100_000).describe('The text delivered to the agent each fire.'),
+  description: z.string().max(2_000).optional().describe('A description of the schedule.'),
+  sessionId: z
+    .string()
+    .min(1)
+    .max(256)
+    .optional()
+    .describe('A session each fire continues; without one, every fire is a fresh session.'),
+  overlap: z
+    .enum(['skip', 'allow'])
+    .optional()
+    .describe(
+      'Whether a fire starts while the previous one is still running: `skip` does not, `allow` does (refused with a `sessionId`). Defaults to `skip`.',
+    ),
 });
 
 export const schedulesCreateOperation = defineOperation<
@@ -488,10 +509,24 @@ export const schedulesCancelOperation = defineGuardedWrite(
 
 const updateInput = z.object({
   scheduleId: scheduleIdentifier,
-  /** The schedule's new cadence. Weft replaces the cadence wholesale, so it is always given. */
-  spec: z.string().min(1).max(256),
-  description: z.string().max(2_000).optional(),
-  overlap: z.enum(['skip', 'allow']).optional(),
+  spec: z
+    .string()
+    .min(1)
+    .max(256)
+    .describe(
+      'The schedule’s new cadence, a cron expression or a duration. The cadence is replaced wholesale, so it is always given.',
+    ),
+  description: z
+    .string()
+    .max(2_000)
+    .optional()
+    .describe('The schedule’s new description; left as it was when omitted.'),
+  overlap: z
+    .enum(['skip', 'allow'])
+    .optional()
+    .describe(
+      'The schedule’s new overlap policy: `skip` or `allow` (refused for a schedule with a recurring session); left as it was when omitted.',
+    ),
   expectedRevision,
 });
 

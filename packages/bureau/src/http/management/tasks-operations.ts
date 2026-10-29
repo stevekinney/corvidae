@@ -57,13 +57,33 @@ export async function mayAccessTask(
 }
 
 const tasksListInput = z.object({
-  contextId: z.string().min(1).optional(),
-  agentName: z.string().min(1).optional(),
-  status: taskStateSchema.optional(),
-  /** Only tasks whose status timestamp is strictly after this instant. */
-  statusTimestampAfter: z.iso.datetime({ offset: true }).optional(),
-  limit: z.number().int().min(1).max(100).optional(),
-  pageToken: z.string().min(1).optional(),
+  contextId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('Only the tasks in this context’s current incarnation.'),
+  agentName: z.string().min(1).optional().describe('Only the tasks run by this agent.'),
+  status: taskStateSchema.optional().describe('Only the tasks in this state.'),
+  statusTimestampAfter: z.iso
+    .datetime({ offset: true })
+    .optional()
+    .describe(
+      'Only tasks whose status timestamp is strictly after this instant, as an ISO 8601 date-time with an offset.',
+    ),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .optional()
+    .describe('The most tasks to return in one page, from 1 to 100. Defaults to 50.'),
+  pageToken: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      'The `nextPageToken` of the previous page, to continue that listing. An opaque token, valid for 15 minutes from the first page and only with the filters it was issued for.',
+    ),
 });
 const tasksListOutput = z.object({
   tasks: z.array(taskViewSchema),
@@ -133,7 +153,9 @@ export const tasksListOperation = defineOperation<
   },
 });
 
-const tasksGetInput = z.object({ taskId: z.string().min(1) });
+const tasksGetInput = z.object({
+  taskId: z.string().min(1).describe('The identifier of the task to read.'),
+});
 
 export const tasksGetOperation = defineOperation<
   typeof tasksGetInput,
@@ -176,7 +198,7 @@ export const taskCancelReceiptSchema = z.enum([
 ]);
 
 const tasksCancelInput = z.object({
-  taskId: z.string().min(1),
+  taskId: z.string().min(1).describe('The identifier of the task to cancel.'),
   waitMilliseconds: waitMillisecondsField,
 });
 const tasksCancelOutput = z.object({

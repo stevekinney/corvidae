@@ -69,7 +69,7 @@ function mayAccessLoadedContext(
 }
 
 const contextsDeleteInput = z.object({
-  contextId: z.string().min(1),
+  contextId: z.string().min(1).describe('The identifier of the context to delete.'),
   waitMilliseconds: waitMillisecondsField,
 });
 
@@ -234,13 +234,24 @@ function noSessions(): OperationFault {
 }
 
 const contextsListInput = z.object({
-  agentName: z.string().min(1).optional(),
-  /** Only the contexts with this origin; `chat` includes every context that records none. */
-  origin: contextOriginSchema.optional(),
-  /** List every owner’s contexts; requires `bureau.contexts:read`. */
-  allOwners: z.boolean().optional(),
-  sortBy: z.enum(['updatedAt', 'createdAt']).optional(),
-  sortOrder: z.enum(['asc', 'desc']).optional(),
+  agentName: z.string().min(1).optional().describe('Only the contexts of this agent.'),
+  origin: contextOriginSchema
+    .optional()
+    .describe(
+      'Only the contexts with this origin; `chat` includes every context that records none.',
+    ),
+  allOwners: z
+    .boolean()
+    .optional()
+    .describe('List every owner’s contexts; requires `bureau.contexts:read`.'),
+  sortBy: z
+    .enum(['updatedAt', 'createdAt'])
+    .optional()
+    .describe('The time to order by. Defaults to `updatedAt`.'),
+  sortOrder: z
+    .enum(['asc', 'desc'])
+    .optional()
+    .describe('The direction to order in. Defaults to `desc`, newest first.'),
   ...pageFields,
 });
 const contextsListOutput = z.object({
@@ -302,7 +313,9 @@ export const contextsListOperation = defineOperation<
   },
 });
 
-const contextsGetInput = z.object({ contextId: z.string().min(1) });
+const contextsGetInput = z.object({
+  contextId: z.string().min(1).describe('The identifier of the context to read.'),
+});
 
 export const contextsGetOperation = defineOperation<
   typeof contextsGetInput,
