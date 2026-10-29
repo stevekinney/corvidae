@@ -3,7 +3,7 @@
  * column: the default base64-`TEXT` encoding, and the opt-in raw
  * `ArrayBuffer`/`BLOB` encoding.
  *
- * @module storage/cloudflare-value-codec
+ * @module storage-cloudflare/cloudflare-value-codec
  */
 
 import type { SqlStorageValue } from './cloudflare-durable-object-sql.ts';
@@ -23,7 +23,7 @@ import type { SqlStorageValue } from './cloudflare-durable-object-sql.ts';
  *
  * @example
  * ```ts
- * import type { CloudflareValueEncoding } from '@lostgradient/weft';
+ * import type { CloudflareValueEncoding } from '@lostgradient/storage-cloudflare';
  *
  * const encoding: CloudflareValueEncoding = 'blob';
  * void encoding;

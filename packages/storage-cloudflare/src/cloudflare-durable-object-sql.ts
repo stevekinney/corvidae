@@ -9,7 +9,7 @@
  * Any object satisfying this shape — the real Durable Object binding, or a
  * test double backed by `bun:sqlite` — works as `sql`.
  *
- * @module storage/cloudflare-durable-object-sql
+ * @module storage-cloudflare/cloudflare-durable-object-sql
  */
 
 /**
@@ -17,7 +17,7 @@
  *
  * @example
  * ```ts
- * import type { SqlStorageValue } from '@lostgradient/weft';
+ * import type { SqlStorageValue } from '@lostgradient/storage-cloudflare';
  *
  * const bound: SqlStorageValue = 'a bound query parameter';
  * void bound;
@@ -42,7 +42,7 @@ export type SqlStorageValue = ArrayBuffer | string | number | null;
  *
  * @example
  * ```ts
- * import type { Sql, SqlStorageCursor } from '@lostgradient/weft';
+ * import type { Sql, SqlStorageCursor } from '@lostgradient/storage-cloudflare';
  *
  * declare const sql: Sql;
  * const cursor: SqlStorageCursor<{ key: string }> = sql.exec('SELECT key FROM kv');
@@ -64,7 +64,7 @@ export type SqlStorageCursor<T = Record<string, SqlStorageValue>> = Iterable<T>;
  *
  * @example
  * ```ts
- * import { CloudflareDurableObjectSQLiteStorage, type Sql } from '@lostgradient/weft';
+ * import { CloudflareDurableObjectSQLiteStorage, type Sql } from '@lostgradient/storage-cloudflare';
  *
  * // Injected by the Durable Object runtime: `ctx.storage.sql` inside a
  * // `DurableObject` subclass.

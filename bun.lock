@@ -496,6 +496,19 @@
         "typescript": "catalog:",
       },
     },
+    "packages/storage-cloudflare": {
+      "name": "@lostgradient/storage-cloudflare",
+      "dependencies": {
+        "@lostgradient/storage": "workspace:*",
+      },
+      "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/storage-indexeddb": {
       "name": "@lostgradient/storage-indexeddb",
       "dependencies": {
@@ -968,6 +981,8 @@
     "@lostgradient/storage": ["@lostgradient/storage@workspace:packages/storage"],
 
     "@lostgradient/storage-bun-sqlite": ["@lostgradient/storage-bun-sqlite@workspace:packages/storage-bun-sqlite"],
+
+    "@lostgradient/storage-cloudflare": ["@lostgradient/storage-cloudflare@workspace:packages/storage-cloudflare"],
 
     "@lostgradient/storage-indexeddb": ["@lostgradient/storage-indexeddb@workspace:packages/storage-indexeddb"],
 

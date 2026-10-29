@@ -11,9 +11,9 @@
  * This module has zero runtime-specific imports of its own — the `sql`
  * binding is injected by the caller — so it is bundleable for Bun, Node, and
  * the Cloudflare Workers (`workerd`) runtime alike. Import from
- * `@lostgradient/weft`.
+ * `@lostgradient/storage-cloudflare`.
  *
- * @module storage/cloudflare
+ * @module storage-cloudflare/cloudflare
  */
 
 import {
@@ -57,8 +57,7 @@ type CountRow = { count: number };
  *
  * @example
  * ```ts
- * import type { CloudflareDurableObjectSQLiteStorageOptions } from '@lostgradient/weft';
- * import type { Sql } from '@lostgradient/weft';
+ * import type { CloudflareDurableObjectSQLiteStorageOptions, Sql } from '@lostgradient/storage-cloudflare';
  *
  * declare const sql: Sql;
  * const options: CloudflareDurableObjectSQLiteStorageOptions = { sql, table: 'weft_kv' };
@@ -121,30 +120,17 @@ export type CloudflareDurableObjectSQLiteStorageOptions = {
  *
  * @example
  * ```ts
- * import { CloudflareDurableObjectSQLiteStorage, type Sql } from '@lostgradient/weft';
- * import { Engine, workflow, type WorkflowContext } from '@lostgradient/weft';
+ * import { CloudflareDurableObjectSQLiteStorage, type Sql } from '@lostgradient/storage-cloudflare';
  *
  * // Injected by the Durable Object runtime: `ctx.storage.sql` inside a
  * // `DurableObject` subclass.
  * declare const sql: Sql;
  *
- * const storage = new CloudflareDurableObjectSQLiteStorage({ sql });
+ * await using storage = new CloudflareDurableObjectSQLiteStorage({ sql });
+ * const encoder = new TextEncoder();
  *
- * // Durable Objects drive their own event loop; there is no host process to
- * // own background intervals, so the engine runs in manual maintenance mode
- * // and the Durable Object alarm (or a Worker Cron Trigger) drives
- * // `engine.runMaintenance()` explicitly.
- * const engine = await Engine.create({
- *   storage,
- *   backgroundTasks: 'manual',
- *   startScheduler: false,
- * });
- *
- * engine.register(
- *   workflow({ name: 'echo' }).execute(async function* (ctx: WorkflowContext, input: unknown) {
- *     return input;
- *   }),
- * );
+ * await storage.put('app:greeting', encoder.encode('hello'));
+ * console.log(await storage.get('app:greeting')); // Uint8Array of 'hello'
  * ```
  */
 export class CloudflareDurableObjectSQLiteStorage implements Storage {

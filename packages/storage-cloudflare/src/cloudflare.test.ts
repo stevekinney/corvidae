@@ -8,8 +8,6 @@ import {
   runStorageCapabilityConformance,
 } from '@lostgradient/storage/testing';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { Engine, workflow, type WorkflowContext } from '../index.ts';
-import { flush } from '../testing/storage-backends.test-support.ts';
 import { createCloudflareSqlTestDouble } from './cloudflare-durable-object-sql-test-double.test-support.ts';
 import { CloudflareDurableObjectSQLiteStorage } from './cloudflare.ts';
 
@@ -401,31 +399,6 @@ describe('CloudflareDurableObjectSQLiteStorage', () => {
       ),
     ];
     expect(tables).toHaveLength(1);
-  });
-
-  it('works with Engine.create({ backgroundTasks: "manual", startScheduler: false }) and engine.runMaintenance()', async () => {
-    const storage = new CloudflareDurableObjectSQLiteStorage({
-      sql: createCloudflareSqlTestDouble(),
-    });
-    const sleeper = workflow({ name: 'sleeper' }).execute(async function* (
-      ctx: WorkflowContext,
-    ): AsyncGenerator<unknown, string, unknown> {
-      yield* ctx.sleep('1m');
-      return 'awake';
-    });
-
-    await using engine = await Engine.create({
-      storage,
-      backgroundTasks: 'manual',
-      startScheduler: false,
-      workflows: { sleeper },
-    });
-
-    const handle = await engine.start('sleeper', undefined);
-    await flush();
-    await engine.runMaintenance(Date.now() + 60_000);
-
-    expect(await handle.result()).toBe('awake');
   });
 });
 
