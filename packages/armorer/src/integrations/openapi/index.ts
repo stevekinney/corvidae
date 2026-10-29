@@ -520,10 +520,11 @@ function resolveRef(ref: string, root: OpenAPISpec): unknown {
 
   let current: unknown = root;
   for (const segment of segments) {
-    if (!isRecord(current) || !Object.hasOwn(current, segment)) {
+    const container = current;
+    if (!isRecord(container) || !Object.hasOwn(container, segment)) {
       throw new Error(`createToolboxFromOpenAPI: unresolved $ref "${ref}"`);
     }
-    current = current[segment];
+    current = container[segment];
   }
   return current;
 }

@@ -18,6 +18,20 @@ export function getOwn<T>(record: Readonly<Record<string, T>>, key: string): T |
 }
 
 /**
+ * Stores `value` as an own, ordinary entry of `record`. Plain assignment treats the key
+ * `__proto__` as "set the prototype", so a message id or metadata key that arrives from outside
+ * would silently vanish (or replace the record's prototype) instead of being stored.
+ */
+export function setOwn<T>(record: Record<string, T>, key: string, value: T): void {
+  Object.defineProperty(record, key, {
+    value,
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
+}
+
+/**
  * Objects `deepFreeze` has finished freezing. Every object reachable from one
  * is frozen too, so a member can never change again: it is safe to share and
  * needs no second walk.

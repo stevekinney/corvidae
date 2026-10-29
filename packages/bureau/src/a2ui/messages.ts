@@ -235,10 +235,11 @@ export function changeDataModel(
         else container[segment] = structuredClone(value);
         break;
       }
-      let next: unknown = Object.hasOwn(container, segment) ? container[segment] : undefined;
+      const record = container;
+      let next: unknown = Object.hasOwn(record, segment) ? record[segment] : undefined;
       if (next === undefined || next === null) {
         next = {};
-        container[segment] = next;
+        record[segment] = next;
       }
       if (!isContainer(next))
         return {

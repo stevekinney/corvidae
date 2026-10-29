@@ -17,7 +17,7 @@ import {
 } from '../types';
 import { createMessage, isAssistantMessage, toReadonly } from '../utilities';
 import { toIdRecord } from '../utilities/message-store';
-import { getOwn } from '../utilities/type-helpers';
+import { getOwn, setOwn } from '../utilities/type-helpers';
 import { assertConversationHistoryIntegrity } from './integrity';
 import { assertToolReference, type ToolUseIndex } from './tool-tracking';
 
@@ -287,7 +287,7 @@ export function deserializeConversationHistory(json: unknown): ConversationHisto
   const frame = parseConversationFrame(json);
   const messages: Record<string, Message> = {};
   for (const [id, message] of Object.entries(frame.messages)) {
-    messages[id] = parseConversationMessage(message);
+    setOwn(messages, id, parseConversationMessage(message));
   }
   return assembleConversationHistory(frame.header, frame.ids, messages);
 }

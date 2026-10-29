@@ -2,7 +2,7 @@ import { type ConversationEnvironment, resolveConversationEnvironment } from '..
 import { createInvalidInputError } from '../errors';
 import type { ConversationHistory as Conversation, Message, ToolResult } from '../types';
 import { hasOwnProperty, repositionMessage, toReadonly } from '../utilities';
-import { getOwn } from '../utilities/type-helpers';
+import { getOwn, setOwn } from '../utilities/type-helpers';
 import {
   createUpdatedMessage,
   type InternalMessageUpdate,
@@ -62,7 +62,7 @@ export function removeMessage(
 
   for (const [position, id] of ids.entries()) {
     const message = getOwn(messages, id);
-    if (message) messages[id] = repositionMessage(message, position);
+    if (message) setOwn(messages, id, repositionMessage(message, position));
   }
 
   const next: Conversation = {

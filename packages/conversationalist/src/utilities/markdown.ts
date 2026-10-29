@@ -22,6 +22,7 @@ import { ROLE_LABELS } from './markdown-roles';
 import { prepareConversationForMarkdown, resolveMarkdownOptions } from './markdown-sanitization';
 import { isAssistantMessage, messageParts } from './message';
 import { getOrderedMessages } from './message-store';
+import { setOwn } from './type-helpers';
 
 /**
  * Formats a message's content for markdown output.
@@ -139,7 +140,7 @@ function toMarkdownWithMetadata(conversation: Conversation): string {
   const messagesMetadata: Record<string, MessageFrontmatter> = {};
 
   for (const message of getOrderedMessages(conversation)) {
-    messagesMetadata[message.id] = messageFrontmatter(message);
+    setOwn(messagesMetadata, message.id, messageFrontmatter(message));
   }
 
   const frontmatterData: ConversationFrontmatter = {

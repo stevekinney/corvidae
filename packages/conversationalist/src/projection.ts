@@ -2,7 +2,7 @@ import { createConversationHistory } from './conversation/index';
 import { ensureConversationSafe } from './conversation/validation';
 import { createPIIRedaction } from './plugins/pii-redaction';
 import type { ConversationHistory, Message, MessageInput } from './types';
-import { getOwn } from './utilities/type-helpers';
+import { getOwn, setOwn } from './utilities/type-helpers';
 
 export type ProjectionEventIdentity = string | number;
 
@@ -127,7 +127,7 @@ export function createPublicConversationProjection(
     }
 
     ids.push(id);
-    messages[id] = {
+    setOwn(messages, id, {
       id: message.id,
       role: message.role,
       content: projectPublicContent(message.content, redactText),
@@ -135,7 +135,7 @@ export function createPublicConversationProjection(
       createdAt: message.createdAt,
       metadata: {},
       hidden: false,
-    };
+    });
   }
 
   return ensureConversationSafe({

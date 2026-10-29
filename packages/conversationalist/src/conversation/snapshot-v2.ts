@@ -23,7 +23,7 @@ import type {
   ConversationSnapshotLineage,
   Message,
 } from '../types';
-import { deepFreeze, getOwn } from '../utilities/type-helpers';
+import { deepFreeze, getOwn, setOwn } from '../utilities/type-helpers';
 import {
   assembleConversationHistory,
   parseConversationMessage,
@@ -330,7 +330,7 @@ export function deserializeNodeConversation(
 ): ConversationHistory {
   const messages: Record<string, Message> = {};
   for (const messageId of fields.ids) {
-    messages[messageId] = readMessage(fields.sources.get(messageId)!);
+    setOwn(messages, messageId, readMessage(fields.sources.get(messageId)!));
   }
   let conversation: ConversationHistory;
   try {

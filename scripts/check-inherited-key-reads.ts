@@ -105,6 +105,114 @@ function unwrap(node: ts.Node): ts.Node {
 
 const textOf = (node: ts.Node): string => unwrap(node).getText().replaceAll(/\s+/g, '');
 
+/** Whether `node` is written to: assigned, incremented, or bound by a `for` head or a destructuring assignment. */
+function isWriteTarget(node: ts.Node): boolean {
+  let target: ts.Node = node;
+  let parent = node.parent;
+  while (
+    ts.isParenthesizedExpression(parent) ||
+    ts.isNonNullExpression(parent) ||
+    ts.isAsExpression(parent) ||
+    ts.isSatisfiesExpression(parent)
+  ) {
+    target = parent;
+    parent = parent.parent;
+  }
+  if (ts.isBinaryExpression(parent)) {
+    return (
+      parent.left === target &&
+      parent.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+      parent.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+    );
+  }
+  if (ts.isPrefixUnaryExpression(parent) || ts.isPostfixUnaryExpression(parent)) {
+    return (
+      parent.operator === ts.SyntaxKind.PlusPlusToken ||
+      parent.operator === ts.SyntaxKind.MinusMinusToken
+    );
+  }
+  if (ts.isForInStatement(parent) || ts.isForOfStatement(parent)) {
+    return parent.initializer === target;
+  }
+  // Destructuring assignment: `[k] = pair`, `({ k } = object)`, `[...k] = list`.
+  if (ts.isArrayLiteralExpression(parent)) return isWriteTarget(parent);
+  if (ts.isSpreadElement(parent)) return isWriteTarget(parent.parent);
+  if (ts.isShorthandPropertyAssignment(parent)) return isWriteTarget(parent.parent);
+  if (ts.isPropertyAssignment(parent) && parent.initializer === target) {
+    return isWriteTarget(parent.parent);
+  }
+  return false;
+}
+
+/** Whether anything in `scope` assigns to the expression written `text`, or to a prefix of it. */
+function writesTo(scope: ts.Node, text: string): boolean {
+  let found = false;
+  const visit = (node: ts.Node): void => {
+    if (found) return;
+    if (
+      (ts.isIdentifier(node) ||
+        ts.isPropertyAccessExpression(node) ||
+        ts.isElementAccessExpression(node)) &&
+      isWriteTarget(node)
+    ) {
+      const written = textOf(node);
+      found = [written, `${written}.`, `${written}[`, `${written}?.`].some((prefix, index) =>
+        index === 0 ? text === prefix : text.startsWith(prefix),
+      );
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(scope);
+  return found;
+}
+
+function enclosingFunction(node: ts.Node): ts.Node {
+  for (let current = node.parent; current; current = current.parent) {
+    if (ts.isFunctionLike(current) || ts.isSourceFile(current)) return current;
+  }
+  return node.getSourceFile();
+}
+
+/**
+ * Whether `expression` means the same thing wherever it is evaluated in its scope: a literal,
+ * `this`, a binding that is `const` or never assigned in the function that declares it, or a
+ * property or element path whose root is such a binding and which nothing assigns. A call, or any
+ * other expression whose value can change between the test and the read, is not stable, so a text
+ * match between a test and a read proves nothing about it.
+ */
+function isStableExpression(checker: ts.TypeChecker, expression: ts.Node): boolean {
+  const node = unwrap(expression);
+  if (
+    ts.isStringLiteralLike(node) ||
+    ts.isNumericLiteral(node) ||
+    node.kind === ts.SyntaxKind.ThisKeyword
+  ) {
+    return true;
+  }
+  if (ts.isIdentifier(node)) {
+    const declaration = checker.getSymbolAtLocation(node)?.valueDeclaration;
+    if (!declaration) return false;
+    if (ts.isVariableDeclaration(declaration) || ts.isBindingElement(declaration)) {
+      if (ts.getCombinedNodeFlags(declaration) & ts.NodeFlags.Const) return true;
+    }
+    return !writesTo(enclosingFunction(declaration), textOf(node));
+  }
+  if (ts.isPropertyAccessExpression(node)) {
+    return (
+      isStableExpression(checker, node.expression) &&
+      !writesTo(enclosingFunction(node), textOf(node))
+    );
+  }
+  if (ts.isElementAccessExpression(node)) {
+    return (
+      isStableExpression(checker, node.expression) &&
+      isStableExpression(checker, node.argumentExpression) &&
+      !writesTo(enclosingFunction(node), textOf(node))
+    );
+  }
+  return false;
+}
+
 /** Whether `call` is an own-property test of `receiver` and `key`, in any of the usual spellings. */
 function isOwnPropertyTest(call: ts.CallExpression, receiver: string, key: string): boolean {
   const callee = textOf(call.expression);
@@ -181,6 +289,8 @@ function isGuardedByOwnTest(node: ts.Node, receiver: string, key: string): boole
     parent;
     child = parent, parent = parent.parent
   ) {
+    // A closure runs later, when the receiver and key may no longer be what the test saw.
+    if (ts.isFunctionLike(parent)) return false;
     if (ts.isIfStatement(parent)) {
       if (
         child === parent.thenStatement &&
@@ -226,6 +336,26 @@ function isGuardedByOwnTest(node: ts.Node, receiver: string, key: string): boole
   }
   return false;
 }
+
+/**
+ * The array methods whose callback receives each element, and which parameter holds it. A method
+ * not listed here gets no exemption: `sort` and `toSorted` pass two elements, `map` on a derived
+ * array passes whatever it produced, and anything unknown could pass anything.
+ */
+const CALLBACK_ELEMENT_INDEX: ReadonlyMap<string, number> = new Map([
+  ['forEach', 0],
+  ['map', 0],
+  ['filter', 0],
+  ['some', 0],
+  ['every', 0],
+  ['find', 0],
+  ['findIndex', 0],
+  ['findLast', 0],
+  ['findLastIndex', 0],
+  ['flatMap', 0],
+  ['reduce', 1],
+  ['reduceRight', 1],
+]);
 
 /** How an enumeration lists the object: its keys alone, or `[key, value]` pairs. */
 type ElementShape = 'keys' | 'entries';
@@ -326,15 +456,17 @@ function isOwnKeyIteration(checker: ts.TypeChecker, key: ts.Expression, receiver
     const call = callback.parent;
     if (
       !ts.isFunctionLike(callback) ||
-      callback.parameters[0] !== position ||
       !ts.isCallExpression(call) ||
       !call.arguments.includes(callback as ts.Expression)
     ) {
       return false;
     }
     const method = unwrap(call.expression);
+    if (!ts.isPropertyAccessExpression(method)) return false;
+    const index = CALLBACK_ELEMENT_INDEX.get(method.name.text);
     return (
-      ts.isPropertyAccessExpression(method) &&
+      index !== undefined &&
+      callback.parameters[index] === position &&
       elementShapeOf(checker, method.expression, receiver) === expected
     );
   }
@@ -421,9 +553,12 @@ export function findInheritedKeyReads(program: ts.Program, directory: string): I
       }
       const receiverText = textOf(receiver);
       const keyText = textOf(key);
+      // A text match proves nothing about a receiver or key that can change under it.
       if (
-        isGuardedByOwnTest(node, receiverText, keyText) ||
-        isOwnKeyIteration(checker, key, receiverText)
+        isStableExpression(checker, receiver) &&
+        isStableExpression(checker, key) &&
+        (isGuardedByOwnTest(node, receiverText, keyText) ||
+          isOwnKeyIteration(checker, key, receiverText))
       ) {
         return;
       }

@@ -13,7 +13,7 @@ import type {
 import type { AppendableMessageInput } from '../utilities/message';
 import { buildMessageFromInput, repositionMessage } from '../utilities/message';
 import { getOrderedMessages, toIdRecord } from '../utilities/message-store';
-import { getOwn, toReadonly } from '../utilities/type-helpers';
+import { getOwn, setOwn, toReadonly } from '../utilities/type-helpers';
 import { runMessagePlugins } from './plugin-media-guard';
 import {
   assertToolReference,
@@ -252,7 +252,7 @@ export function prependMessages(
   for (const id of conversation.ids) {
     const message = getOwn(conversation.messages, id);
     if (message) {
-      renumbered[id] = repositionMessage(message, offset + index);
+      setOwn(renumbered, id, repositionMessage(message, offset + index));
       index += 1;
     }
   }

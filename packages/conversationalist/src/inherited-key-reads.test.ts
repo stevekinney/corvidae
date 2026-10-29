@@ -9,8 +9,12 @@
 import { describe, expect, test } from 'bun:test';
 
 import { whenMetadata, whenMetadataPresent } from './composition/conditional-section';
+import { appendMessages, prependMessages, withMessageId } from './conversation/append';
+import { createConversationHistory } from './conversation/create';
 import { validateConversationHistoryIntegrity } from './conversation/integrity';
+import { removeMessage } from './conversation/modify';
 import { getMessageAtPosition, getMessageById } from './conversation/query';
+import { createPublicConversationProjection } from './projection';
 import type { ConversationHistory } from './types';
 import { toIdRecord } from './utilities/message-store';
 
@@ -60,5 +64,23 @@ describe('a message id of __proto__', () => {
     expect(Object.keys(record)).toEqual(['__proto__', 'a']);
     expect(Object.getPrototypeOf(record)).toBe(Object.prototype);
     expect(Object.hasOwn(record, '__proto__')).toBe(true);
+  });
+});
+
+describe('a message id of __proto__ carried through the conversation operations', () => {
+  test('survives projection, removal of another message, and prepending', () => {
+    const conversation = appendMessages(
+      createConversationHistory(),
+      withMessageId({ role: 'user', content: 'hi' }, '__proto__'),
+      withMessageId({ role: 'assistant', content: 'yo' }, 'reply'),
+    );
+
+    expect(Object.keys(conversation.messages)).toEqual(['__proto__', 'reply']);
+    const projected = createPublicConversationProjection(conversation);
+    expect(Object.keys(projected.messages)).toEqual(['__proto__', 'reply']);
+    expect(Object.keys(removeMessage(conversation, 'reply').messages)).toEqual(['__proto__']);
+    const prepended = prependMessages(conversation, { role: 'system', content: 'rules' });
+    expect(Object.keys(prepended.messages)).toContain('__proto__');
+    expect(Object.getPrototypeOf(prepended.messages)).toBe(Object.prototype);
   });
 });

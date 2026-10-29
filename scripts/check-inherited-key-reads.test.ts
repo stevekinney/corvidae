@@ -257,3 +257,109 @@ describe('judgeReads', () => {
     expect(judgeReads([], [empty]).invalid).toEqual([empty]);
   });
 });
+
+/**
+ * Every bypass a reviewer probed, plus the reducer cases. An exemption must match values, not
+ * names: a key or receiver that is reassigned, a closure that runs later, a callback parameter
+ * that is not the element, and a test on a different key or receiver all leave the read flagged.
+ */
+const bypassSource = `interface Table { [key: string]: number }
+interface Names { [key: string]: string }
+declare const Object: { hasOwn(r: object, k: string): boolean; keys(r: object): string[]; entries(r: object): [string, string][]; };
+declare function later(f: () => void): void;
+export function diffKey(t: Table, a: string, b: string) { if (Object.hasOwn(t, a)) return t[b]; return 0; }
+export function diffRecv(t: Table, u: Table, a: string) { if (Object.hasOwn(u, a)) return t[a]; return 0; }
+export function reassignInBranch(t: Table, k: string, x: string) { if (Object.hasOwn(t, k)) { k = x; return t[k]; } return 0; }
+export function reassignAfterEarlyReturn(t: Table, k: string, x: string) { if (!Object.hasOwn(t, k)) return 0; k = x; return t[k]; }
+export function receiverReassigned(t: Table, u: Table, k: string) { if (!Object.hasOwn(t, k)) return 0; t = u; return t[k]; }
+export function closureRead(t: Table, k: string) { if (Object.hasOwn(t, k)) { later(() => { t[k]; }); } }
+export function closureReadEarly(t: Table, k: string) { if (!Object.hasOwn(t, k)) return; later(() => { t[k]; }); }
+export function closureReadLetReassigned(t: Table, k: string, x: string) { if (Object.hasOwn(t, k)) { later(() => { t[k]; }); } k = x; }
+export function closureTest(t: Table, k: string) { later(() => { if (!Object.hasOwn(t, k)) return; }); return t[k]; }
+export function closureTestEarly(t: Table, k: string) { const f = () => { if (!Object.hasOwn(t, k)) return; }; f(); return t[k]; }
+export function inSwitch(t: Table, k: string, m: number) { switch (m) { case 1: if (!Object.hasOwn(t, k)) break; return t[k]; case 2: { if (Object.hasOwn(t, k)) return t[k]; } } return 0; }
+export function inTry(t: Table, k: string) { try { if (Object.hasOwn(t, k)) return t[k]; } finally { if (Object.hasOwn(t, k)) t[k]; } return 0; }
+export function inTryEarly(t: Table, k: string) { try { if (!Object.hasOwn(t, k)) return 0; return t[k]; } catch { return 1; } }
+export function earlyBreakInLoop(t: Table, ks: string[]) { for (const k of ks) { if (!Object.hasOwn(t, k)) continue; t[k]; } }
+export function renamedValue(n: Names) { for (const [, v] of Object.entries(n)) n[v]; }
+export function renamedValueCb(n: Names) { return Object.entries(n).map(([, v]) => n[v]); }
+export function keyValueCbIndex(n: Names) { return Object.keys(n).map((k, i) => n[String(i)]); }
+export function mappedResult(n: Names) { const ks = Object.entries(n).map(([k]) => k); return ks.map((k) => n[k]); }
+export function mappedResultFor(n: Names) { for (const k of Object.entries(n).map(([k]) => k)) n[k]; }
+export function entriesValueFor(n: Names) { for (const [k, v] of Object.entries(n)) n[v]; }
+export function keysLoopLet(n: Names, x: string) { for (let k of Object.keys(n)) { k = x; n[k]; } }
+export function entriesLoopLet(n: Names, x: string) { for (let [k] of Object.entries(n)) { k = x; n[k]; } }
+export function forInLet(n: Names, x: string) { for (let k in n) { k = x; n[k]; } }
+export function cbParamReassigned(n: Names, x: string) { return Object.keys(n).map((k) => { k = x; return n[k]; }); }
+export function reduceAcc(n: Names) { return Object.keys(n).reduce((acc) => n[acc], ''); }
+export function voidTest(t: Table, k: string) { if (void Object.hasOwn(t, k)) {} return t[k]; }
+export function earlyIfNoLeave(t: Table, k: string) { if (!Object.hasOwn(t, k)) { later(() => {}); } return t[k]; }
+export function reduceElementKey(n: Names) { return Object.keys(n).reduce((acc, key) => acc + n[key], ''); }
+export function reduceElementPair(n: Names) { return Object.entries(n).reduce((acc, [key]) => acc + n[key], ''); }
+export function reduceAccumulatorPair(n: Names) { return Object.entries(n).reduce(([acc]) => n[acc], ['']); }
+export function sortComparatorKey(n: Names) { return Object.keys(n).sort((a, b) => n[a].length - n[b].length); }
+export function letKeyNeverAssigned(n: Names) { for (let k of Object.keys(n)) { n[k]; } }
+export function guardedCallKey(t: Table, keyOf: () => string) { if (Object.hasOwn(t, keyOf())) return t[keyOf()]; return 0; }
+`;
+
+const bypassProgramDirectory = join(fixture, 'bypass');
+await Bun.write(join(bypassProgramDirectory, 'src/bypass.ts'), bypassSource);
+const bypassProgram = ts.createProgram([join(bypassProgramDirectory, 'src/bypass.ts')], {
+  ...options,
+  noEmit: true,
+});
+const bypassFlagged = new Set(
+  findInheritedKeyReads(bypassProgram, bypassProgramDirectory).map((read) => {
+    const lines = bypassSource.split('\n');
+    return /^export function (\w+)/.exec(lines[read.line - 1]!)![1]!;
+  }),
+);
+
+describe('exemptions that match values, not names', () => {
+  const flagged = [
+    'diffKey',
+    'diffRecv',
+    'reassignInBranch',
+    'reassignAfterEarlyReturn',
+    'receiverReassigned',
+    'closureRead',
+    'closureReadEarly',
+    'closureReadLetReassigned',
+    'closureTest',
+    'closureTestEarly',
+    'renamedValue',
+    'renamedValueCb',
+    'keyValueCbIndex',
+    'mappedResult',
+    'mappedResultFor',
+    'entriesValueFor',
+    'keysLoopLet',
+    'entriesLoopLet',
+    'forInLet',
+    'cbParamReassigned',
+    'reduceAcc',
+    'voidTest',
+    'earlyIfNoLeave',
+    'reduceAccumulatorPair',
+    'sortComparatorKey',
+    'guardedCallKey',
+  ];
+  const passed = [
+    'inSwitch',
+    'inTry',
+    'inTryEarly',
+    'earlyBreakInLoop',
+    'reduceElementKey',
+    'reduceElementPair',
+    'letKeyNeverAssigned',
+  ];
+
+  test.each(flagged)('flags %s', (name) => {
+    expect(bypassFlagged.has(name)).toBe(true);
+  });
+
+  test.each(passed)('lets %s through', (name) => {
+    expect(bypassSource).toContain(`export function ${name}(`);
+    expect(bypassFlagged.has(name)).toBe(false);
+  });
+});
