@@ -15,7 +15,7 @@ import {
   type MemoryDeletionResult,
   type MemoryWriteReceipt,
 } from '@lostgradient/memory';
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 
 import { createLexicalHashEmbedder } from '../embedder';
 import type { EvidenceSource } from '../scenarios';

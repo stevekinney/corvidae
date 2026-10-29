@@ -7,12 +7,12 @@
 import { describe, expect, it, spyOn } from 'bun:test';
 import { createRequire } from 'node:module';
 
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { SQLITE_UPSERT_VALUE_BY_KEY } from '@lostgradient/storage/sql';
 import {
   createDiskBackedTestFixture,
   sqliteDatabaseSidecarSuffixes,
-} from '../testing/storage-backends.test-support.ts';
-import { SQLITE_UPSERT_VALUE_BY_KEY } from './sqlite-key-value-queries.ts';
+} from '@lostgradient/storage/testing';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { TursoStorage } from './turso.ts';
 
 // The adapter loads the driver through `createRequire`, which yields the CommonJS build. The probe

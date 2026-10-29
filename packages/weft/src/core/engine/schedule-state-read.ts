@@ -6,7 +6,8 @@
  * {@link ScheduleReadConditionLostError}, and the writer reads again.
  */
 
-import { KEYS, type ConditionalBatchCondition } from '../../storage/interface.ts';
+import { type ConditionalBatchCondition } from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import type { ScheduleState } from '../types.ts';
 import type { EngineInternals } from './internals.ts';
 import { decodeScheduleState } from './validation/schedule-decode.ts';

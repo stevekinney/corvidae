@@ -5,12 +5,12 @@
  */
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { z } from 'zod';
 import { WORKFLOW_CATALOG_KEYS } from '../../storage/catalog-keys.ts';
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { OWNERSHIP_CLAIM_KEYS } from '../../storage/ownership-keys.ts';
 
 import { decode, encode } from '../codec.ts';

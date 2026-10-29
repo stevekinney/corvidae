@@ -8,11 +8,11 @@
  * @module service-worker/scheduler
  */
 
+import type { Storage } from '@lostgradient/storage';
 import { decode } from '../core/codec.ts';
 import { buildTimerBatchOperations } from '../core/scheduler.ts';
 import type { TimerEntry } from '../core/types.ts';
-import type { Storage } from '../storage/interface.ts';
-import { KEYS } from '../storage/interface.ts';
+import { KEYS } from '../storage/keys.ts';
 import { resolveNonEmptyPrefixRangeEnd } from '../storage/non-empty-prefix-range-end.ts';
 
 // ---------------------------------------------------------------------------
@@ -37,7 +37,7 @@ interface RegistrationWithPeriodicSync extends ServiceWorkerRegistration {
  * @example
  * ```ts
  * import { ServiceWorkerScheduler, type ServiceWorkerSchedulerOptions } from '@lostgradient/weft';
- * import { MemoryStorage } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
  * const storage = new MemoryStorage();
  *
@@ -78,7 +78,7 @@ const DEFAULT_PERIODIC_SYNC_MIN_INTERVAL = 60_000;
  * @example
  * ```ts
  * import { ServiceWorkerScheduler, createPeriodicSyncHandler } from '@lostgradient/weft';
- * import { MemoryStorage } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
  * const storage = new MemoryStorage();
  *

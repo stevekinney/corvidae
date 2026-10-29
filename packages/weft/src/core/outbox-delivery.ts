@@ -11,7 +11,7 @@
  * @module core/outbox-delivery
  */
 
-import { storageConditionalBatch } from '../storage/interface.ts';
+import { storageConditionalBatch } from '@lostgradient/storage';
 import { computePayloadDigest } from './application-payload-digest.ts';
 import { raceAbort } from './application-primitive-abort.ts';
 import {

@@ -1,5 +1,5 @@
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
-import type { TextValueStore } from '@lostgradient/weft';
+import type { TextValueStore } from '@lostgradient/storage';
 
 import type { IdentityProvider, PersonaDescriptor, SoulHistoryEntry, SoulItem } from './types';
 

@@ -1,4 +1,4 @@
-import { type Storage, storageConditionalBatch, storageKeys } from '@lostgradient/weft';
+import { type Storage, storageConditionalBatch, storageKeys } from '@lostgradient/storage';
 
 import { validateEvidenceProjectionKeyPrefixes } from './create-weft-evidence-projection-storage-helpers';
 import { DEFAULT_MEMORY_KEY_PREFIX } from './create-weft-memory-record-storage';

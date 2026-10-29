@@ -1,6 +1,6 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { createDefaultRuntimeServices, TypedEventTarget } from '@lostgradient/lifecycle';
-import type { ConditionalTextValueStore } from '@lostgradient/weft';
+import type { ConditionalTextValueStore } from '@lostgradient/storage';
 import type { JSONValue } from 'armorer/protocol';
 import type { ConversationHistory, Message } from 'conversationalist';
 import { getOwn, messageText } from 'conversationalist';

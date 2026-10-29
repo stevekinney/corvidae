@@ -13,14 +13,16 @@
 import type { ServerCallContext } from '@a2a-js/sdk/server';
 import { sha256 } from '@noble/hashes/sha2.js';
 
-import { decodeBase64ToBytes, encodeBytesToBase64, isRecord } from '../storage/byte-encoding.ts';
 import {
+  decodeBase64ToBytes,
+  encodeBytesToBase64,
+  encodeStorageKeyComponent,
+  isRecord,
+  storageConditionalBatch,
   type BatchOperation,
   type ConditionalBatchCondition,
   type Storage,
-  storageConditionalBatch,
-} from '../storage/interface.ts';
-import { encodeStorageKeyComponent } from '../storage/key-encoding.ts';
+} from '@lostgradient/storage';
 import {
   A2AStoreConflictError,
   A2AStorePageSizeError,

@@ -13,7 +13,7 @@ import {
   type ScriptedGenerateStep,
   stopWhen,
 } from '@lostgradient/operative';
-import { MemoryStorage, type Storage } from '@lostgradient/weft';
+import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { describe, expect, it, spyOn } from 'bun:test';
 
 import { createBureau } from '../create-bureau.ts';

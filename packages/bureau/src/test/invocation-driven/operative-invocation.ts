@@ -29,7 +29,8 @@ import {
   type ScheduleWakeupInput,
   stopWhen,
 } from '@lostgradient/operative';
-import { BunSQLiteStorage, textValueStore } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/weft';
+import { textValueStore } from '@lostgradient/storage';
 import { createTool, createToolbox } from 'armorer';
 import { createConversationHistory } from 'conversationalist';
 

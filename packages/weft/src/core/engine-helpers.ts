@@ -1,5 +1,5 @@
-import type { Storage as WeftStorage } from '../storage/interface.ts';
-import { KEYS } from '../storage/interface.ts';
+import type { Storage as WeftStorage } from '@lostgradient/storage';
+import { KEYS } from '../storage/keys.ts';
 import { captureFirstRejection, createFirstRejectionCapture } from './engine/parallel-dispatch.ts';
 
 /** Build a cleanup reporter that preserves the workflow identifier for downstream error handling. */

@@ -6,9 +6,9 @@
  */
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { commitFencedEngineWriteWithoutPreconditions } from './fenced-write.ts';
 import type { EngineInternals } from './internals.ts';
 import { EngineDeposedError } from './lease-errors.ts';

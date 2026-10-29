@@ -8,7 +8,7 @@
  * @module core/engine/lifecycle/start-condition-tags
  */
 
-import type { ConditionalBatchCondition } from '../../../storage/interface.ts';
+import type { ConditionalBatchCondition } from '@lostgradient/storage';
 
 export type TaggedStartCondition = {
   source:

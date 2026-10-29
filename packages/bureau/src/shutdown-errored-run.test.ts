@@ -7,7 +7,8 @@
  */
 import { EventType } from '@ag-ui/core';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { type BatchOperation, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { type BatchOperation } from '@lostgradient/storage';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS } from './create-bureau.ts';

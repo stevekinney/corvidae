@@ -3,6 +3,7 @@ import { quietFor } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { waitForParityCondition as waitFor } from '../core/parity/real-timer-wait.test-support.ts';
 
+import { MemoryStorage, type Storage as WeftStorage } from '@lostgradient/storage';
 import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { decode, encode } from '../core/codec.ts';
@@ -30,9 +31,7 @@ import { workflow } from '../core/types.ts';
 import { readJsonRpcResponse } from '../mcp/mcp-client.test-support.ts';
 import { MCP_LEGACY_PROTOCOL_VERSION, MCP_PROTOCOL_VERSION } from '../mcp/protocol.ts';
 import { METRICS } from '../observability/metrics.ts';
-import type { Storage as WeftStorage } from '../storage/interface.ts';
-import { KEYS } from '../storage/interface.ts';
-import { MemoryStorage } from '../storage/memory.ts';
+import { KEYS } from '../storage/keys.ts';
 import type { WorkerManifest } from '../worker/manifest/index.ts';
 import { REMOTE_WORKER_PROTOCOL_VERSION } from '../worker/protocol.ts';
 import {

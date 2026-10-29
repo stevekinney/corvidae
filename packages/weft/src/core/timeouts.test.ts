@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { MemoryStorage } from '../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import { decode } from './codec.ts';
 import {
   checkExpiredDeadlines,

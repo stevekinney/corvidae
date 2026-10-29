@@ -1,9 +1,9 @@
 import { describe, expect, it, mock, spyOn } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { waitForCondition, withTimeout } from '@lostgradient/testing/fake-timers';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { nextAsyncPendingToken } from '../../testing/async-activity.test-support.ts';
 import { encode } from '../codec.ts';
 import { Engine } from '../engine.ts';

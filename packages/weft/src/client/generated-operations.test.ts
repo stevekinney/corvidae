@@ -12,6 +12,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { encode } from '../core/codec.ts';
 import { Engine } from '../core/engine.ts';
@@ -26,8 +27,7 @@ import {
 import type { WorkflowContext } from '../core/types.ts';
 import { workflow } from '../core/types.ts';
 import { serve, type WeftServer } from '../server/index.ts';
-import { KEYS } from '../storage/interface.ts';
-import { MemoryStorage } from '../storage/memory.ts';
+import { KEYS } from '../storage/keys.ts';
 import {
   CATALOG_OPERATION_NAMES,
   CLIENT_OPERATION_NAMES,

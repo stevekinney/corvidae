@@ -21,7 +21,7 @@ import {
 } from '@lostgradient/memory';
 import { createAgent, createMockGenerate, stopWhen } from '@lostgradient/operative';
 import { waitForTaskState } from './test';
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 

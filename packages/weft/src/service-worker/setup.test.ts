@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { quietFor } from '@lostgradient/testing/wait-until';
 import { Engine } from '../core/engine.ts';
@@ -8,7 +9,6 @@ import { workflow } from '../core/types/workflow-function.ts';
 import { principalFromApiKey } from '../server/principal.ts';
 import type { EventEnvelope, WorkflowEventFeed } from '../server/workflow-event-feed.ts';
 import { IndexedDBStorage } from '../storage/indexeddb.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
 import { resetSetupServiceWorkerRegistry, setupServiceWorker } from './setup.ts';
 

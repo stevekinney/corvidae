@@ -39,7 +39,7 @@ import {
   isDelegationGrant,
   validateStoredResponseParts,
 } from '@lostgradient/operative';
-import type { ConditionalTextValueStore } from '@lostgradient/weft';
+import type { ConditionalTextValueStore } from '@lostgradient/storage';
 import type { MultiModalContent } from 'conversationalist';
 
 // ---------------------------------------------------------------------------

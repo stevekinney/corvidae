@@ -11,7 +11,8 @@ import {
   type SchedulerContractContext,
 } from '../testing/scheduler-contract.test-support.ts';
 
-import { KEYS, type BatchOperation, type ScanOptions } from '../storage/interface.ts';
+import { type BatchOperation, type ScanOptions } from '@lostgradient/storage';
+import { KEYS } from '../storage/keys.ts';
 import { decode, encode } from './codec.ts';
 import {
   buildTimerBatchOperations,

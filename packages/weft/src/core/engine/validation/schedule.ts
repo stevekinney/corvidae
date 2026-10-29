@@ -1,4 +1,4 @@
-import type { BatchOperation, ConditionalBatchCondition } from '../../../storage/interface.ts';
+import type { BatchOperation, ConditionalBatchCondition } from '@lostgradient/storage';
 import { WEFT_RESERVED_KEY_PREFIXES } from '../../../storage/key-prefixes.ts';
 import { parseCronExpression } from '../../schedule.ts';
 import { parseDuration } from '../../scheduler.ts';

@@ -14,8 +14,12 @@
  * @module core/application-primitive-commit
  */
 
-import type { BatchOperation, ConditionalBatchCondition, Storage } from '../storage/interface.ts';
-import { storageConditionalBatch } from '../storage/interface.ts';
+import {
+  type BatchOperation,
+  type ConditionalBatchCondition,
+  type Storage,
+  storageConditionalBatch,
+} from '@lostgradient/storage';
 
 /**
  * What a primitive needs from a fleet event feed: append one event atomically

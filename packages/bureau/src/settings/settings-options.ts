@@ -6,7 +6,8 @@
  * @module settings-options
  */
 
-import { type EnginePatch, resolveStorage, type Storage, textValueStore } from '@lostgradient/weft';
+import { type EnginePatch, resolveStorage } from '@lostgradient/weft';
+import { type Storage, textValueStore } from '@lostgradient/storage';
 
 import { isStorageConfiguration } from '../runtime-composition.ts';
 

@@ -28,6 +28,7 @@
  * @module server/runtime/task-result-delivery-recorder
  */
 
+import { storageConditionalBatch, type Storage } from '@lostgradient/storage';
 import { TaskResultDeliveryEvent } from '../../core/events.ts';
 import { tagWorkflowEventGeneration } from '../../core/events/workflow-event-generation.ts';
 import { isBoundedIdentifier } from '../../core/task-ledger/task-ledger-codec.ts';
@@ -43,7 +44,6 @@ import {
   type TaskResultDeliveryRejectionCode,
   type TaskResultDeliveryTransport,
 } from '../../core/task-ledger/task-result-delivery.ts';
-import { storageConditionalBatch, type Storage } from '../../storage/interface.ts';
 import { sha256Hex } from '../../worker/manifest/content-digest.ts';
 import type { ServeOptions } from '../index.ts';
 

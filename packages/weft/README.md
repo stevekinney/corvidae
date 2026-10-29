@@ -233,7 +233,8 @@ If `scheduleShipping` fails, `sendConfirmation`'s result is recorded in the pare
 Sleeps survive process restarts. Signals pause workflows for seconds, days, or weeks at no cost—the checkpoint just sits in storage.
 
 ```typescript file=approval.ts
-import { Engine, MemoryStorage, signal, workflow } from '@lostgradient/weft';
+import { Engine, signal, workflow } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 
 declare const ship: (input: { orderId: string }) => Promise<void>;
 
@@ -335,7 +336,8 @@ When a workflow drains signals with `ctx.race([ctx.waitForSignal(name), ctx.slee
 Signals are workflow control. When the thing receiving a command is an application _resource_ rather than a workflow run — an agent taking steering input, a resource fielding requests from a peer service — `Mailbox` gives it a durable, strictly FIFO command queue with real receipts.
 
 ```typescript
-import { Mailbox, MemoryStorage } from '@lostgradient/weft';
+import { Mailbox } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 
 await using storage = new MemoryStorage();
 using mailbox = new Mailbox({ storage, namespace: 'bureau', resourceId: 'agent-7' });
@@ -367,7 +369,8 @@ Delivery intent, ordering, ownership, and disposition are durable; external side
 The mailbox is for commands coming _in_ to a resource. For work going _out_ — a webhook, a notification, a message to a peer service — `Outbox` is the matching primitive: a durable, at-least-once delivery queue whose enqueue, attempt leases, transport outcomes, retry schedule, cancellation, and dead-letter state are all durable and observable, without ever confusing a transport write with an acknowledgement.
 
 ```typescript
-import { Outbox, MemoryStorage } from '@lostgradient/weft';
+import { Outbox } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 
 await using storage = new MemoryStorage();
 using outbox = new Outbox({
@@ -403,7 +406,8 @@ Every attempt is durably marked `attempting` _before_ the adapter is called, so 
 Attach indexed metadata to a workflow at runtime, then list and filter on it.
 
 ```typescript
-import { Engine, MemoryStorage, workflow } from '@lostgradient/weft';
+import { Engine, workflow } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const order = workflow({ name: 'order' })
   .searchAttributes({
@@ -537,7 +541,8 @@ decodeCursor('garbage'); // null
 `serve({ auth })` accepts API keys, JWTs, and mutual TLS. Every operation except `weft.system.principal` requires an authorization scope, and the scope a caller holds comes from its credential: a JWT's `scope`, `scp`, and `permissions` claims, the `defaultApiKeyScopes` you give static API keys, or the principal your `resolveApiKeyPrincipal` returns.
 
 ```typescript
-import { Engine, MemoryStorage } from '@lostgradient/weft';
+import { Engine } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 import { serve } from '@lostgradient/weft/server';
 
 await using engine = new Engine({ storage: new MemoryStorage() });
@@ -642,7 +647,8 @@ Not supported: sessions (the mount is stateless, as above), MCP tasks, and promp
 `serve()` accepts `routes`, Bun's own route table, for anything else the same origin should serve. Bun matches those routes before Weft's API, so `serve()` throws before binding the port when a route would shadow one of Weft's endpoints: `/api` or `/v1` or anything under them, the root `/mcp` and `/jsonrpc` transports, a root discovery document such as `/openapi.json`, or a pattern such as `/*` that could match one of those.
 
 ```typescript
-import { Engine, MemoryStorage, serve } from '@lostgradient/weft';
+import { Engine, serve } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 
 await using engine = new Engine({ storage: new MemoryStorage() });
 await using server = serve({
@@ -701,7 +707,8 @@ Built-in event system (`EventTarget`-based, so it composes with everything), W3C
 Schedules also emit `schedule:fired` on the live engine each time a schedule actually launches a workflow run. The event carries `scheduleId`, `workflowId`, `firedAt`, and the scheduled `occurrence` when one is retained, so in-process dispatchers can react to cadence without polling schedule state.
 
 ```typescript
-import { Engine, MemoryStorage, createObservabilityInterceptors } from '@lostgradient/weft';
+import { Engine, createObservabilityInterceptors } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 
 await using engine = new Engine({ storage: new MemoryStorage() });
 
@@ -766,7 +773,8 @@ For chaos testing, `withChaos()` wraps activities with configurable transient fa
 Every error Weft throws extends `WeftError`, so a single `instanceof` check catches them all, and each carries a stable string `code` equal to its class name:
 
 ```typescript
-import { Engine, MemoryStorage, isWeftError } from '@lostgradient/weft';
+import { Engine, isWeftError } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 
 await using engine = new Engine({ storage: new MemoryStorage() });
 
@@ -836,11 +844,11 @@ If generator syntax is unfamiliar, the same workflow can be written with `ctx.st
 ```typescript
 import {
   Engine,
-  MemoryStorage,
   compileStepWorkflow,
   workflow,
   type StepWorkflowContext,
 } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 
 declare const greet: (name: string) => Promise<string>;
 declare const notify: (greeting: string) => Promise<void>;

@@ -750,7 +750,7 @@ The raw, unredacted trail is `bureau.internals.auditTrail`:
 
 ```typescript
 import { createAuditTrail, type Bureau } from '@lostgradient/bureau';
-import type { ConditionalTextValueStore } from '@lostgradient/weft';
+import type { ConditionalTextValueStore } from '@lostgradient/storage';
 
 declare const bureau: Bureau;
 declare const kv: ConditionalTextValueStore;
@@ -1798,7 +1798,7 @@ import {
   stopWhen,
   waitForRunState,
 } from '@lostgradient/operative';
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const storage = new MemoryStorage();
 const memory = createGovernedMemory({

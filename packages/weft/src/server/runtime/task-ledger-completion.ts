@@ -72,6 +72,7 @@
  * @module server/runtime/task-ledger-completion
  */
 
+import type { Storage } from '@lostgradient/storage';
 import { TaskResultDeadLetteredEvent } from '../../core/events.ts';
 import { tagWorkflowEventGeneration } from '../../core/events/workflow-event-generation.ts';
 import { isJSONValue } from '../../core/json.ts';
@@ -90,7 +91,6 @@ import {
   type RemoteTaskDeadLettered,
   type RemoteTaskTerminal,
 } from '../../core/task-ledger/task-ledger.ts';
-import type { Storage } from '../../storage/interface.ts';
 import { sha256Hex } from '../../worker/manifest/content-digest.ts';
 import type { ServeOptions } from '../index.ts';
 import { buildTerminalResolutionWrites } from './remote-activity-result-bridge.ts';

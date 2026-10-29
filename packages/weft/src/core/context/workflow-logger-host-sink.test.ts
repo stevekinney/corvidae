@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { sleepForTesting, waitForCondition } from '@lostgradient/testing/fake-timers';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { captureWorkflowLogConsole } from '../../testing/workflow-log-capture.test-support.ts';
 import { Engine } from '../engine.ts';
 import { workflow } from '../types/workflow-function.ts';

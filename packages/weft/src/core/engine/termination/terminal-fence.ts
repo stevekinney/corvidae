@@ -1,9 +1,9 @@
 import {
-  KEYS,
   storageConditionalBatch,
   type BatchOperation,
   type ConditionalBatchCondition,
-} from '../../../storage/interface.ts';
+} from '@lostgradient/storage';
+import { KEYS } from '../../../storage/keys.ts';
 import { currentExecutionAttempt, type RunIdentity } from '../execution-attempts.ts';
 import type { EngineInternals } from '../internals.ts';
 

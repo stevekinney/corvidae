@@ -1,3 +1,4 @@
+import { MemoryStorage } from '@lostgradient/storage';
 import { sleepForTesting, withTimeout } from '@lostgradient/testing/fake-timers';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
@@ -8,7 +9,6 @@ import { query, workflow } from '../core/types.ts';
 import { AUTHORIZATION_SCOPES } from '../server/authorization-scope.ts';
 import { serve, type WeftServer } from '../server/index.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../server/local-user-request.test-support.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import {
   CONTRACT_PAYLOAD_CAP_BYTES,
   nextAsyncPendingToken,

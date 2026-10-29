@@ -47,7 +47,8 @@
     "valibot": "catalog:",
     "zod": "catalog:",
     "@lostgradient/environmentalist": "catalog:",
-    "@modelcontextprotocol/server": "catalog:"
+    "@modelcontextprotocol/server": "catalog:",
+    "@lostgradient/storage": "workspace:*"
   },
   "peerDependencies": {
     "@a2a-js/sdk": "1.3.0"

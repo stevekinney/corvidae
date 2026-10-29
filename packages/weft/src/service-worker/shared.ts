@@ -54,7 +54,8 @@ export const DEFAULT_PERIODIC_SYNC_TAG = 'weft-timers';
  * @example
  * ```ts
  * import { createFetchHandler, type MinimalFetchEvent } from '@lostgradient/weft';
- * import { Engine, MemoryStorage } from '@lostgradient/weft';
+ * import { Engine } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  * const engine = new Engine({ storage: new MemoryStorage() });
  * const handler = createFetchHandler({ engine });
  * declare const event: MinimalFetchEvent;

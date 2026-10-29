@@ -8,10 +8,13 @@
  * suite's actual assertions local.
  */
 
+import {
+  type BatchOperation,
+  type ConditionalBatchCondition,
+  MemoryStorage,
+} from '@lostgradient/storage';
 import { decodeRemoteTaskRecord } from '../../core/task-ledger/task-ledger.ts';
 import { MetricsCollector } from '../../observability/metrics.ts';
-import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { WorkerRegistry } from '../../worker/registry.ts';
 import { DeadlineTracker } from '../deadline-tracker.ts';
 import { TaskQueue } from '../task-queue.ts';

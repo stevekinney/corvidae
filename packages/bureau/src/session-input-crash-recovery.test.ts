@@ -14,7 +14,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createSessionInputDeliveryStore, stopWhen, createAgent } from '@lostgradient/operative';
-import { resolveStorage, textValueStore } from '@lostgradient/weft';
+import { resolveStorage } from '@lostgradient/weft';
+import { textValueStore } from '@lostgradient/storage';
 import { HANG_GUARD_MILLISECONDS, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';

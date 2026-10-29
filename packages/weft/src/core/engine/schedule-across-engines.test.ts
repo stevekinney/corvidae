@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { KEYS } from '../../storage/interface.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { encode } from '../codec.ts';
 import type { Engine } from '../engine.ts';
 import { getInternals } from './internals.ts';

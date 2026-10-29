@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import { settleInlineLaunches } from '../../testing/inline-launch-settle.test-support.ts';
 import type { WorkflowContext } from '../types.ts';
 import { workflow } from '../types.ts';

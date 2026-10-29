@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it, spyOn } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import * as handlerModule from './handler.ts';
 import * as jsonRpcHttpModule from './json-rpc-http.ts';
 import {

@@ -15,14 +15,14 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import {
   createDeferred,
   drainMicrotasks,
   waitForCondition,
   waitForever,
 } from '@lostgradient/testing/fake-timers';
-import { KEYS, type Storage } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { decode, encode } from '../codec/api.ts';
 import { workflow, type Checkpoint } from '../types.ts';
 import { persistCheckpointForDataOperation } from './callback-checkpoint-persistence.ts';

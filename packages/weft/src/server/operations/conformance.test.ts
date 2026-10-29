@@ -17,6 +17,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
@@ -29,7 +30,6 @@ import {
   type ConformanceTargetRunner,
 } from '../../conformance/targets.ts';
 import { Engine } from '../../core/engine.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { createConformanceTargets } from '../../testing/conformance-targets.ts';
 import {
   REMOTE_WORKER_PROTOCOL_VERSION,

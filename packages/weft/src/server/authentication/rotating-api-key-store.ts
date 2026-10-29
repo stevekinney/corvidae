@@ -120,7 +120,8 @@ function isExpired(stored: StoredKey, currentTime: number): boolean {
  * ```ts
  * import { createRotatingApiKeyStore } from '@lostgradient/weft';
  * import { serve } from '@lostgradient/weft';
- * import { Engine, MemoryStorage } from '@lostgradient/weft';
+ * import { Engine } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
  * const store = createRotatingApiKeyStore();
  * store.add('initial-key', { subject: 'svc', scopes: ['workflows:read'] });

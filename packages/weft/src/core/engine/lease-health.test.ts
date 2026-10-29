@@ -1,7 +1,7 @@
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { LeaseHealthChangedEvent } from '../events/fleet-state-events.ts';
 import { Engine } from './index.ts';
 import { getInternals } from './internals.ts';

@@ -5,9 +5,9 @@
  */
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
 import { workflow, type WorkflowContext } from '../core/types.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import { serve, type WeftServer } from './index.ts';
 
 const echoWorkflow = workflow({ name: 'echo' }).execute(async function* (

@@ -3,7 +3,7 @@
  * began to shut down: the shutdown check made before the record was written is
  * repeated immediately before the start.
  */
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import { createGoalStore } from './goal-store';

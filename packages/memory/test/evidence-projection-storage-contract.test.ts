@@ -1,4 +1,4 @@
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 
 import { createInMemoryEvidenceProjectionStorage } from '../src/create-in-memory-evidence-projection-storage';
 import { createWeftEvidenceProjectionStorage } from '../src/create-weft-evidence-projection-storage';

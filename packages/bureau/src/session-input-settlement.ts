@@ -1,5 +1,5 @@
-import type { ConditionalTextValueStore, Mailbox } from '@lostgradient/weft';
-import { encodeStorageKeyComponent } from '@lostgradient/weft';
+import { type ConditionalTextValueStore, encodeStorageKeyComponent } from '@lostgradient/storage';
+import type { Mailbox } from '@lostgradient/weft';
 
 import { walkSessionInputMailbox } from './session-input-durability';
 

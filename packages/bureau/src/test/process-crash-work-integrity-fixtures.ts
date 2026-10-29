@@ -22,7 +22,8 @@ import {
   type GovernedMemory,
 } from '@lostgradient/memory';
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
-import { resolveStorage, type Storage, textValueStore } from '@lostgradient/weft';
+import { resolveStorage } from '@lostgradient/weft';
+import { type Storage, textValueStore } from '@lostgradient/storage';
 import {
   type AnyToolbox,
   createTool,

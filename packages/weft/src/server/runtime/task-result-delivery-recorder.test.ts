@@ -1,5 +1,10 @@
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import {
+  type BatchOperation,
+  type ConditionalBatchCondition,
+  MemoryStorage,
+} from '@lostgradient/storage';
 import { encode } from '../../core/codec.ts';
 import { TaskResultDeliveryEvent } from '../../core/events.ts';
 import { taskLedgerKey } from '../../core/task-ledger/task-ledger.ts';
@@ -7,8 +12,6 @@ import {
   decodeTaskResultDeliveryHistory,
   taskResultDeliveryKey,
 } from '../../core/task-ledger/task-result-delivery.ts';
-import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import type { ServeOptions } from '../index.ts';
 import { leasedFixture, putLedgerRecord } from '../operations/get-task-detail.test-support.ts';
 import { principalFromApiKey } from '../principal.ts';

@@ -2,7 +2,8 @@
  * COR-1527 — the host a workflow file runs on: the exact text an agent step sends, the frozen
  * handler map, and the refusal to register on an engine bound to another host.
  */
-import { Engine, MemoryStorage, type DocumentWorkflowHost } from '@lostgradient/weft';
+import { Engine, type DocumentWorkflowHost } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import {

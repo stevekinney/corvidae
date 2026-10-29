@@ -1,22 +1,22 @@
 import 'fake-indexeddb/auto';
 
-import { rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { isAbsolute, join, relative, resolve } from 'node:path';
-
+import {
+  MemoryStorage,
+  storageHas as storageHasFallback,
+  storageKeys,
+  type Storage,
+} from '@lostgradient/storage';
+import {
+  createDiskBackedTestFixture,
+  sqliteDatabaseSidecarSuffixes,
+} from '@lostgradient/storage/testing';
 import { sleepForTesting, yieldToEventLoop } from '@lostgradient/testing/fake-timers';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import type { Engine } from '../core/engine.ts';
 import type { WorkflowStatus } from '../core/types.ts';
 import { BunSQLiteStorage } from '../storage/bun-sql.ts';
 import { IndexedDBStorage } from '../storage/indexeddb.ts';
-import {
-  storageHas as storageHasFallback,
-  storageKeys,
-  type Storage,
-} from '../storage/interface.ts';
 import { LMDBStorage } from '../storage/lmdb.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import { TursoStorage } from '../storage/turso.ts';
 
 /**
@@ -34,75 +34,6 @@ export type StorageBackendDescriptor = {
   name: string;
   factory: StorageFactory;
 };
-
-export const sqliteDatabaseSidecarSuffixes = ['-wal', '-shm'] as const;
-
-export type DiskBackedTestFixtureOptions = {
-  prefix: string;
-  suffix?: string;
-  recursive?: boolean;
-  sidecarSuffixes?: readonly string[];
-};
-
-export type DiskBackedTestFixture = {
-  path: string;
-  cleanup: () => void;
-};
-
-function removeFixturePathBestEffort(path: string, recursive = false): void {
-  try {
-    rmSync(path, { force: true, recursive });
-  } catch {
-    // Test fixture cleanup is intentionally best-effort so teardown does not
-    // mask the original assertion failure when a backend still holds a file.
-  }
-}
-
-function assertSafeFixturePathPart(value: string, name: string): void {
-  if (value.length === 0 || value.includes('/') || value.includes('\\') || value.includes('..')) {
-    throw new Error(`${name} must be a plain filename fragment`);
-  }
-}
-
-function assertFixturePathInsideTemporaryDirectory(path: string): void {
-  const temporaryDirectory = resolve(tmpdir());
-  const relativePath = relative(temporaryDirectory, path);
-
-  if (relativePath === '' || relativePath.startsWith('..') || isAbsolute(relativePath)) {
-    throw new Error(
-      'Disk-backed test fixture path must stay inside the system temporary directory',
-    );
-  }
-}
-
-export function createDiskBackedTestFixture(
-  options: DiskBackedTestFixtureOptions,
-): DiskBackedTestFixture {
-  assertSafeFixturePathPart(options.prefix, 'Fixture prefix');
-  if (options.suffix !== undefined) {
-    assertSafeFixturePathPart(options.suffix, 'Fixture suffix');
-  }
-  for (const sidecarSuffix of options.sidecarSuffixes ?? []) {
-    assertSafeFixturePathPart(sidecarSuffix, 'Fixture sidecar suffix');
-  }
-
-  const path = resolve(
-    join(tmpdir(), `${options.prefix}-${crypto.randomUUID()}${options.suffix ?? ''}`),
-  );
-  assertFixturePathInsideTemporaryDirectory(path);
-
-  return {
-    path,
-    cleanup: () => {
-      for (const sidecarSuffix of options.sidecarSuffixes ?? []) {
-        const sidecarPath = resolve(`${path}${sidecarSuffix}`);
-        assertFixturePathInsideTemporaryDirectory(sidecarPath);
-        removeFixturePathBestEffort(sidecarPath);
-      }
-      removeFixturePathBestEffort(path, options.recursive ?? false);
-    },
-  };
-}
 
 /**
  * All storage backends available for parametrized integration tests.

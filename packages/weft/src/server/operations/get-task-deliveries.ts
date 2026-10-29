@@ -49,6 +49,7 @@
  * @module server/operations/get-task-deliveries
  */
 
+import type { Storage } from '@lostgradient/storage';
 import type { FaultCode } from '../../core/fault-code.ts';
 import { decodeTaskAttemptRecord, taskAttemptPrefix } from '../../core/task-ledger/task-attempt.ts';
 import {
@@ -63,7 +64,6 @@ import {
   taskResultDeliveryKey,
   type TaskResultDeliveryEntry,
 } from '../../core/task-ledger/task-result-delivery.ts';
-import type { Storage } from '../../storage/interface.ts';
 import { sha256Hex } from '../../worker/manifest/content-digest.ts';
 import { raiseFault } from '../operation-catalog/raise-fault.ts';
 import { defineOperation } from '../operation-registry.ts';

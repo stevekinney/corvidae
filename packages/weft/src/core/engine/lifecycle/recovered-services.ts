@@ -1,4 +1,4 @@
-import { KEYS } from '../../../storage/interface.ts';
+import { KEYS } from '../../../storage/keys.ts';
 import { DevelopmentWarningEvent } from '../../events.ts';
 import type {
   WorkflowServicesResolverInfo,

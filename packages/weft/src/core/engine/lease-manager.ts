@@ -44,7 +44,8 @@
  * @module core/engine/lease-manager
  */
 
-import { KEYS, storageConditionalBatch, type Storage } from '../../storage/interface.ts';
+import { storageConditionalBatch, type Storage } from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import {
   decodeEpoch,
   decodeHolder,

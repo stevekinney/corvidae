@@ -1,10 +1,10 @@
-import type { BatchOperation } from '../../storage/interface.ts';
 import {
-  KEYS,
+  type BatchOperation,
   encodeStorageKeyComponent,
   requireStorageCapability,
   storageConditionalBatch,
-} from '../../storage/interface.ts';
+} from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { decode, encode } from '../codec.ts';
 import { encodePayloadWithinLimit } from '../payload-size.ts';
 import type { EngineInternals } from './internals.ts';

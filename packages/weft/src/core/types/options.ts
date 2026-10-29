@@ -1,5 +1,5 @@
+import type { Storage as WeftStorage } from '@lostgradient/storage';
 import type { AlertingOptions } from '../../alerting/types.ts';
-import type { Storage as WeftStorage } from '../../storage/interface.ts';
 import type { WorkerStartOverridePreview } from '../../worker/start-override-preview.ts';
 import type { CompressionOptions } from '../compression.ts';
 import type { Interceptor } from '../interceptor.ts';

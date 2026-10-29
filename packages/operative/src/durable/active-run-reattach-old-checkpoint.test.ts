@@ -4,7 +4,8 @@
  * session. Both paths rebuild the run's state from the checkpoint to report usage and steps, and
  * the tolerant read they use rethrows an older record rather than reporting a zeroed run.
  */
-import { Engine, MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { Engine } from '@lostgradient/weft';
 import { describe, expect, it, spyOn } from 'bun:test';
 
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';

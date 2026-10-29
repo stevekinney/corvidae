@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
 
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { decode } from '../codec.ts';
 import { Engine } from '../engine.ts';
 import { PayloadSizeExceededError } from '../payload-size.ts';

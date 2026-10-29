@@ -17,7 +17,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../engine.ts';
 import { workflow, type WorkflowContext } from '../types.ts';
 import { isEngineHeldForScheduledInlineFlushForTesting } from './inline-launch-queue.ts';

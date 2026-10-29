@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import type { DefinitionSchema, WorkflowContext } from '../types.ts';
 import { query, signal, update } from '../types/message-handles.ts';
 import { StandardSchemaValidationError } from '../types/standard-schema-validate.ts';

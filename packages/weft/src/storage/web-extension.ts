@@ -1,21 +1,22 @@
-import { decodeBase64ToBytes, encodeBytesToBase64, isRecord } from './byte-encoding.ts';
-import { normalizeDeleteRangeOptions, type DeleteRangeOptions } from './delete-range.ts';
 import {
+  assertStorageBatchOperationCount,
+  decodeBase64ToBytes,
+  encodeBytesToBase64,
+  isRecord,
+  matchesScanOptions,
+  normalizeDeleteRangeOptions,
+  scopedStorage,
   storageCountCore,
   storageDeletePrefixCore,
   storageDeleteRangeCore,
   storageHasCore,
   storageKeysCore,
-} from './derived-operations.ts';
-import {
-  assertStorageBatchOperationCount,
-  matchesScanOptions,
   type BatchOperation,
+  type DeleteRangeOptions,
   type ScanOptions,
   type Storage,
   type StorageCapabilities,
-} from './interface.ts';
-import { scopedStorage } from './scoped-storage.ts';
+} from '@lostgradient/storage';
 
 /** Named WebExtension storage area used by {@link WebExtensionStorage}.
  * @example

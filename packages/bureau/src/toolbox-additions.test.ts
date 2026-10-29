@@ -9,7 +9,7 @@
  * at once.
  */
 import { type ToolPolicy, withActiveSkillToolPolicy } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import {
   type AnyToolbox,
   createTool,

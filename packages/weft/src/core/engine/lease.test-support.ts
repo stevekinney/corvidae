@@ -1,4 +1,5 @@
-import { KEYS, type Storage } from '../../storage/interface.ts';
+import { type Storage } from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 
 type GatePhase = 'beforeCommit' | 'afterCommit';
 

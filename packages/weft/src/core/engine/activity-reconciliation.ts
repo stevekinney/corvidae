@@ -1,9 +1,9 @@
 import {
-  KEYS,
   requireStorageCapability,
   storageConditionalBatch,
   type Storage,
-} from '../../storage/interface.ts';
+} from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { decode, encode } from '../codec.ts';
 import type { ContextOperationRequest } from '../context.ts';
 import { assertPayloadWithinLimit } from '../payload-size.ts';

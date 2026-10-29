@@ -2,15 +2,15 @@ import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { describe, expect, it } from 'bun:test';
 import { flush } from '../testing/storage-backends.test-support.ts';
 
-import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   encodeStorageKeyComponent,
-  KEYS,
+  MemoryStorage,
   type BatchOperation,
   type ConditionalBatchCondition,
   type ScanOptions,
-} from '../storage/interface.ts';
-import { MemoryStorage } from '../storage/memory.ts';
+} from '@lostgradient/storage';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { KEYS } from '../storage/keys.ts';
 import { BULK_WORKFLOW_FILTER_ERROR_MESSAGE } from './bulk-workflow-filter.ts';
 import { decode, encode } from './codec.ts';
 import { BulkDeleteRequiresTerminalWorkflowsError, Engine } from './engine.ts';

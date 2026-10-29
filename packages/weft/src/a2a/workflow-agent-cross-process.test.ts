@@ -11,8 +11,8 @@ import { describe, expect, test } from 'bun:test';
 
 import { type StreamResponse, TaskState } from '@a2a-js/sdk';
 
+import type { Storage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
-import type { Storage } from '../storage/interface.ts';
 import { createA2AHandlerWithScheduler } from './handler.ts';
 import {
   createPushFixture,

@@ -1,3 +1,4 @@
+import { storageKeys } from '@lostgradient/storage';
 import { ActivityFailedEvent } from '../../core/events.ts';
 import { tagWorkflowEventGeneration } from '../../core/events/workflow-event-generation.ts';
 import {
@@ -23,7 +24,6 @@ import {
   type RemoteTaskTerminal,
 } from '../../core/task-ledger/task-ledger.ts';
 import { taskResultDeliveryKey } from '../../core/task-ledger/task-result-delivery.ts';
-import { storageKeys } from '../../storage/interface.ts';
 import type { ServeOptions, TaskDispatch } from '../index.ts';
 import { restoreExtendedDeadlineIfStillActive } from '../runtime-helpers.ts';
 import type { ServerContext } from './context.ts';

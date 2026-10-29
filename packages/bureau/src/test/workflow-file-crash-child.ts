@@ -18,7 +18,8 @@
 import { writeFileSync } from 'node:fs';
 
 import { createAgent } from '@lostgradient/operative';
-import { BunSQLiteStorage, type Storage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/weft';
+import { type Storage } from '@lostgradient/storage';
 
 import { createBureau } from '../create-bureau';
 import { CLAIM_RENEW_MS, CLAIM_TTL_MS } from './process-crash-work-integrity-fixtures';

@@ -4,14 +4,15 @@ import {
 } from '@lostgradient/testing/postgres-server';
 import { afterAll, describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { createPGliteTestFixture } from './pglite.test-support.ts';
-import { PostgresStorage, type PostgresPool } from './postgres.ts';
+import { type PostgresPool } from '@lostgradient/storage/sql';
 import {
   bytes as encode,
   runBasicStorageContract,
   runStorageCapabilityConformance,
-} from './storage-adapter.test-support.ts';
+} from '@lostgradient/storage/testing';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { createPGliteTestFixture } from './pglite.test-support.ts';
+import { PostgresStorage } from './postgres.ts';
 
 const pgliteFixture = createPGliteTestFixture();
 

@@ -1,4 +1,5 @@
-import { KEYS, tryDecodeStorageKeyComponent } from '../../storage/interface.ts';
+import { tryDecodeStorageKeyComponent } from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import type { NormalizedRetentionPolicy, WorkflowState } from '../types.ts';
 import { EngineDisposedError } from './errors.ts';
 import type { EngineInternals } from './internals.ts';

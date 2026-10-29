@@ -3,9 +3,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { HTTPStorage } from './http.ts';
-import { MemoryStorage } from './memory.ts';
 import { resolveStorage, type HTTPStorageConfiguration } from './resolve.ts';
 
 type WebExtensionTestGlobal = typeof globalThis & {

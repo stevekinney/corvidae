@@ -2,7 +2,7 @@
  * COR-1559 — the steering log reads a `model` override that names its provider and the refusal
  * reasons this change adds, and still reads every record written before it.
  */
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import {

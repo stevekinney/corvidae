@@ -8,7 +8,7 @@
  * @module core/engine/lifecycle/fork-build-binding
  */
 
-import type { BatchOperation, ConditionalBatchCondition } from '../../../storage/interface.ts';
+import type { BatchOperation, ConditionalBatchCondition } from '@lostgradient/storage';
 import { workerBuildBinding } from '../../../worker/deployment-records.ts';
 import { throwIfWorkerBuildRemoved } from '../../../worker/inherited-worker-build.ts';
 import type { WorkflowState } from '../../types.ts';

@@ -5,8 +5,8 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { MemoryStorage } from '../storage/memory.ts';
 import { ActivityRegistry } from './activity-registry.ts';
 import { buildWorkflowContract } from './contract/build.ts';
 import { buildWorkflowRevisionManifest } from './contract/manifest.ts';

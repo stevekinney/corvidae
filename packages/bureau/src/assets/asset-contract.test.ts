@@ -14,7 +14,7 @@ import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { waitForTaskState } from '../test';
-import type { BatchOperation, Storage } from '@lostgradient/weft';
+import type { BatchOperation, Storage } from '@lostgradient/storage';
 import { type ContentSource, type Modality } from 'conversationalist';
 
 import type { AssetStorageFixture } from '../test/asset-storage-fixtures';

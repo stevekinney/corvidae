@@ -1,4 +1,5 @@
-import { MemoryStorage, workflow } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
+import { workflow } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { waitUntil } from '@lostgradient/testing/wait-until';

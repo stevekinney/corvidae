@@ -22,7 +22,7 @@ import {
   encodeStorageKeyComponent,
   type Storage,
   textValueStore,
-} from '@lostgradient/weft';
+} from '@lostgradient/storage';
 
 import type { DurableEventHistory } from '../durable-event-history';
 import {

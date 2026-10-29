@@ -7,6 +7,7 @@ import { waitForCondition } from '@lostgradient/testing/fake-timers';
  * (server mode). No agent capability is server-only or library-only.
  */
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import type { StreamReference } from '../core/context.ts';
 import { Engine } from '../core/engine.ts';
@@ -16,7 +17,6 @@ import { workflow } from '../core/types/workflow-function.ts';
 import { AUTHORIZATION_SCOPES } from '../server/authorization-scope.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../server/local-user-request.test-support.ts';
 import { principalFromApiKey } from '../server/principal.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import { HttpClient } from './index.ts';
 import type { WeftClient } from './interface.ts';
 import { LocalClient } from './local.ts';

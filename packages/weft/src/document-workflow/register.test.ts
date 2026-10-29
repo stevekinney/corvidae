@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Engine } from '../core/engine/index.ts';
@@ -10,7 +11,6 @@ import {
   WorkflowRevisionInstalledEvent,
 } from '../core/events/catalog-events.ts';
 import { workflow } from '../core/types.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import { WorkflowDocumentValidationError, type DocumentWorkflowHost } from './document.ts';
 import { registerWorkflowDocuments } from './register.ts';
 

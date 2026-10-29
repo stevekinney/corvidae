@@ -1,5 +1,5 @@
 import { type ManualRuntimeServices, createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 
 import { createWeftMemoryRecordStorage } from '../../src/create-weft-memory-record-storage';
 import {

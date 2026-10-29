@@ -8,7 +8,7 @@
  * share one SQLite file, and the first, held in a step, stands for the process that died there.
  */
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
-import { type Storage } from '@lostgradient/weft';
+import { type Storage } from '@lostgradient/storage';
 import { afterAll, afterEach, describe, expect, it } from 'bun:test';
 import { getMessages } from 'conversationalist';
 

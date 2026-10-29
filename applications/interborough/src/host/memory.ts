@@ -24,7 +24,7 @@ import {
   type GovernedMemory,
   type MemoryDeletionPropagation,
 } from '@lostgradient/memory';
-import type { Storage } from '@lostgradient/weft';
+import type { Storage } from '@lostgradient/storage';
 
 /** The policy revision the installation's memory records on every write, receipt, and event. */
 export const MEMORY_POLICY_REVISION = 'interborough:1';

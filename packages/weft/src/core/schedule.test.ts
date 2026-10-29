@@ -6,10 +6,13 @@ import {
 import { describe, expect, it, mock, spyOn } from 'bun:test';
 import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
 
+import {
+  type BatchOperation,
+  type ConditionalBatchCondition,
+  MemoryStorage,
+} from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { BatchOperation, ConditionalBatchCondition } from '../storage/interface.ts';
-import { KEYS } from '../storage/interface.ts';
-import { MemoryStorage } from '../storage/memory.ts';
+import { KEYS } from '../storage/keys.ts';
 import { decode, encode } from './codec.ts';
 import { Engine } from './engine.ts';
 import { handleScheduledWorkflowTerminalForEngine } from './engine/callback-creators-schedule.ts';

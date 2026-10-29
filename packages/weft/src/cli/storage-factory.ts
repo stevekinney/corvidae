@@ -1,4 +1,4 @@
-import type { Storage } from '../index.ts';
+import type { Storage } from '@lostgradient/storage';
 import type { StorageBackend } from './types.ts';
 
 /**
@@ -26,6 +26,6 @@ export async function createStorage(backend: StorageBackend, database: string): 
 }
 
 async function createMemoryStorage(): Promise<Storage> {
-  const { MemoryStorage } = await import('../index.ts');
+  const { MemoryStorage } = await import('@lostgradient/storage');
   return new MemoryStorage();
 }

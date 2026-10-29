@@ -1,4 +1,4 @@
-import type { BatchOperation, ConditionalBatchCondition, Storage } from '@lostgradient/weft';
+import type { BatchOperation, ConditionalBatchCondition, Storage } from '@lostgradient/storage';
 import { beforeEach, describe, expect, it } from 'bun:test';
 
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';

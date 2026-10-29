@@ -5,9 +5,9 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { WorkerDeploymentChangedEvent } from '../../core/events/fleet-state-events.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import {
   seedBoundRun,
   seedLedgerEntry,

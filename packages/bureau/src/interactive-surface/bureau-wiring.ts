@@ -3,7 +3,7 @@
  * its durable history writes to, reading each task from its task registry and
  * freezing a task's surfaces as the registry records its settlement.
  */
-import type { Storage } from '@lostgradient/weft';
+import type { Storage } from '@lostgradient/storage';
 
 import type { DurableEventHistory } from '../durable-event-history';
 import { serializeUnknownError } from '../serialization';

@@ -14,12 +14,12 @@ import { sleepForTesting, waitForCondition } from '@lostgradient/testing/fake-ti
 
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage, type ScanOptions } from '@lostgradient/storage';
 import { encode } from '../core/codec.ts';
 import { Engine } from '../core/engine.ts';
 import type { WorkflowContext } from '../core/types.ts';
 import { workflow } from '../core/types.ts';
-import { KEYS, type ScanOptions } from '../storage/interface.ts';
-import { MemoryStorage } from '../storage/memory.ts';
+import { KEYS } from '../storage/keys.ts';
 import { createEngineEventFeedBackend } from './engine-event-feed-backend.ts';
 import {
   createWorkflowEventFeed,

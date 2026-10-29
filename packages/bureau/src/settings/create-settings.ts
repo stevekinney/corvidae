@@ -12,7 +12,11 @@
  * @module create-settings
  */
 
-import { type ConditionalTextValueStore, MemoryStorage, textValueStore } from '@lostgradient/weft';
+import {
+  type ConditionalTextValueStore,
+  MemoryStorage,
+  textValueStore,
+} from '@lostgradient/storage';
 import { z } from 'zod';
 
 import {

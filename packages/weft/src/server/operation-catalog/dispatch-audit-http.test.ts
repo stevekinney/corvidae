@@ -94,7 +94,7 @@ describe('operation dispatch audit — HTTP-handler integration', () => {
 async function createHttpTraceFixture() {
   const { handleRequest } = await import('../handler.ts');
   const { Engine } = await import('../../core/engine.ts');
-  const { MemoryStorage } = await import('../../storage/memory.ts');
+  const { MemoryStorage } = await import('@lostgradient/storage');
 
   const registry = createOperationRegistry([createTraceOperation()]);
   const traceBinding = {

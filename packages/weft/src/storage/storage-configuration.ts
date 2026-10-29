@@ -7,12 +7,11 @@
  * @module storage/storage-configuration
  */
 
+import type { MemoryStorage, Storage } from '@lostgradient/storage';
 import type { BunSQLiteStorage } from './bun-sql.ts';
 import type { HTTPStorage } from './http.ts';
 import type { IndexedDBStorage } from './indexeddb.ts';
-import type { Storage } from './interface.ts';
 import type { LMDBStorage } from './lmdb.ts';
-import type { MemoryStorage } from './memory.ts';
 import type { NeonStorage } from './neon.ts';
 import type { NodeSQLiteStorage } from './node-sqlite.ts';
 

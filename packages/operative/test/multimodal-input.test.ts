@@ -5,7 +5,7 @@
  * `generate` equal to what went in, in order, or a typed error names why not.
  */
 import { HookRegistry } from '@lostgradient/lifecycle';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import type {

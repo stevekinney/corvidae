@@ -14,15 +14,15 @@ describe('package root platform boundaries', () => {
 
   it('exposes source storage and workflow APIs through the root', async () => {
     const api = await import('../src/index.ts');
-    for (const name of [
-      'Engine',
-      'MemoryStorage',
-      'BunSQLiteStorage',
-      'textValueStore',
-      'resolveStorage',
-      'HttpClient',
-    ]) {
+    for (const name of ['Engine', 'BunSQLiteStorage', 'resolveStorage', 'HttpClient']) {
       expect(Reflect.get(api, name), name).toBeFunction();
+    }
+  });
+
+  it('leaves the storage protocol to @lostgradient/storage', async () => {
+    const api = await import('../src/index.ts');
+    for (const name of ['MemoryStorage', 'ScopedStorage', 'textValueStore', 'storageBatch']) {
+      expect(Reflect.has(api, name), name).toBe(false);
     }
   });
 });

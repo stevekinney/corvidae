@@ -19,11 +19,11 @@ import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 
 import {
-  BunSQLiteStorage,
   type ConditionalTextValueStore,
   MemoryStorage,
   textValueStore,
-} from '@lostgradient/weft';
+} from '@lostgradient/storage';
+import { BunSQLiteStorage } from '@lostgradient/weft';
 
 import type { EvaluationRunRecord } from '../src/evaluation-run';
 import {

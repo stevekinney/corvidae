@@ -1,9 +1,9 @@
 import { withTimeout } from '@lostgradient/testing/fake-timers';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { encodeStorageKeyComponent, MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { encodeStorageKeyComponent, KEYS } from '../storage/interface.ts';
-import { MemoryStorage } from '../storage/memory.ts';
+import { KEYS } from '../storage/keys.ts';
 import { deserializeCheckpoint } from './checkpoint/serialization.ts';
 import {
   Engine,

@@ -1,6 +1,7 @@
 import { sha256HexSync } from '@lostgradient/cryptography';
 import { createManualRuntimeServices, type ManualRuntimeServices } from '@lostgradient/lifecycle';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';

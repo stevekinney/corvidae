@@ -19,7 +19,8 @@
 import { writeFileSync } from 'node:fs';
 
 import { stopWhen, createAgent } from '@lostgradient/operative';
-import { resolveStorage, type Storage } from '@lostgradient/weft';
+import { resolveStorage } from '@lostgradient/weft';
+import { type Storage } from '@lostgradient/storage';
 import { createToolbox } from 'armorer';
 
 import { createBureau } from '../create-bureau';

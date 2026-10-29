@@ -9,7 +9,8 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { NodeSQLiteStorage, resolveStorage, type Storage } from '@lostgradient/weft';
+import { NodeSQLiteStorage, resolveStorage } from '@lostgradient/weft';
+import { type Storage } from '@lostgradient/storage';
 
 export interface HostArguments {
   readonly mode: string;

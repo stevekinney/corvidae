@@ -1,7 +1,7 @@
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { workflowSource } from '../source/index.ts';
 import { workflow, type WorkflowDefinition } from '../types.ts';
 import { deriveWorkflowDefinitionRevision } from './definition-revision.ts';

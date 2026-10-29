@@ -9,12 +9,8 @@
  * carry the id the original one did, and both durable `ActiveRun` producers must report that id as both
  * `runId` and `snapshot().id`.
  */
-import {
-  MemoryStorage,
-  type RecoverAllOptions,
-  textValueStore,
-  workflow,
-} from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { type RecoverAllOptions, workflow } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';

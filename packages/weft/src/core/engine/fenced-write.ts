@@ -33,8 +33,8 @@
  * This module is allow-listed for import only from `src/core/engine/**`.
  */
 
-import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
-import { KEYS } from '../../storage/interface.ts';
+import type { BatchOperation, ConditionalBatchCondition } from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import type { EngineInternals } from './internals.ts';
 import { decodeEpoch } from './lease-codec.ts';
 import { emitWorkflowClaimLostWarning, handleDeposition } from './lease-deposition.ts';

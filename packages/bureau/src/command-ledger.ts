@@ -83,8 +83,8 @@ import {
   type ConditionalTextValueStore,
   encodeStorageKeyComponent,
   type TextValueStoreBatchOperation,
-  type WorkflowState,
-} from '@lostgradient/weft';
+} from '@lostgradient/storage';
+import { type WorkflowState } from '@lostgradient/weft';
 
 import type { RunSummary } from './types';
 import { getOwn } from 'conversationalist';

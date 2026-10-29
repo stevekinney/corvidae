@@ -10,9 +10,9 @@ import { settleInlineLaunches } from '../testing/inline-launch-settle.test-suppo
 
 import { describe, expect, it } from 'bun:test';
 
+import { encodeStorageKeyComponent, MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { encodeStorageKeyComponent, KEYS as STORAGE_KEYS } from '../storage/interface.ts';
-import { MemoryStorage } from '../storage/memory.ts';
+import { KEYS as STORAGE_KEYS } from '../storage/keys.ts';
 import { encode } from './codec.ts';
 import { Engine, WorkflowTypeNotRegisteredForRecoveryError } from './engine.ts';
 import { WorkflowRecoverySkippedEvent, WorkflowResumedEvent } from './events.ts';
@@ -885,7 +885,7 @@ describe('crash recovery', () => {
   });
 
   it('resolves expired sleep immediately on resume via fast path', async () => {
-    const { MemoryStorage: TestMemoryStorage } = await import('../storage/memory.ts');
+    const { MemoryStorage: TestMemoryStorage } = await import('@lostgradient/storage');
 
     const storage = new TestMemoryStorage();
     let currentTime = 1000;
@@ -927,7 +927,7 @@ describe('crash recovery', () => {
   });
 
   it('post-recovery sleeps use current time, not stale checkpoint time', async () => {
-    const { MemoryStorage: TestMemoryStorage } = await import('../storage/memory.ts');
+    const { MemoryStorage: TestMemoryStorage } = await import('@lostgradient/storage');
 
     const storage = new TestMemoryStorage();
     let currentTime = 1000;
@@ -1097,7 +1097,7 @@ describe('crash recovery', () => {
 
     // The checkpoint should reflect the final state
     const { deserializeCheckpoint } = await import('./checkpoint.ts');
-    const { KEYS } = await import('../storage/interface.ts');
+    const { KEYS } = await import('../storage/keys.ts');
     const bytes = await storage.get(KEYS.checkpoint('wf-step'));
     expect(bytes).not.toBeNull();
 
@@ -1137,7 +1137,7 @@ describe('crash recovery', () => {
     expect(activityCalls).toBe(activityCount);
 
     const { deserializeCheckpoint } = await import('./checkpoint.ts');
-    const { KEYS } = await import('../storage/interface.ts');
+    const { KEYS } = await import('../storage/keys.ts');
     const bytes = await storage.get(KEYS.checkpoint('wf-accum'));
     expect(bytes).not.toBeNull();
 
@@ -1198,7 +1198,7 @@ describe('crash recovery', () => {
     await flush();
 
     const { deserializeCheckpoint } = await import('./checkpoint.ts');
-    const { KEYS } = await import('../storage/interface.ts');
+    const { KEYS } = await import('../storage/keys.ts');
     const historySizes: number[] = [];
 
     for await (const [, checkpointBytes] of storage.scan(
@@ -1222,7 +1222,7 @@ describe('crash recovery', () => {
     await seedStoredWorkflowState(storage, 'wf-old-accum', 'old-accumulating', 'running');
 
     const { createCheckpoint, serializeCheckpoint } = await import('./checkpoint.ts');
-    const { KEYS } = await import('../storage/interface.ts');
+    const { KEYS } = await import('../storage/keys.ts');
     await storage.put(
       KEYS.checkpoint('wf-old-accum'),
       serializeCheckpoint({
@@ -1285,7 +1285,7 @@ describe('crash recovery', () => {
     await flush();
     expect(activityCalls).toBe(activityCount);
 
-    const { KEYS } = await import('../storage/interface.ts');
+    const { KEYS } = await import('../storage/keys.ts');
     expect(await storage.get(KEYS.event('wf-compacted-accum', 0))).toBeNull();
 
     activityCalls = 0;

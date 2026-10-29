@@ -1,4 +1,4 @@
-import type { Storage as WeftStorage } from '../../storage/interface.ts';
+import type { Storage as WeftStorage } from '@lostgradient/storage';
 import type { ConstraintDefinition } from '../constraint.ts';
 import type { ExecutionStrategy } from '../execution-strategy.ts';
 import type { InlineExecutionStrategy } from '../inline-execution-strategy.ts';

@@ -1,9 +1,9 @@
 import { waitForCondition, waitForever } from '@lostgradient/testing/fake-timers';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import type { ScanOptions, Storage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { ScanOptions, Storage } from '../storage/interface.ts';
-import { KEYS } from '../storage/interface.ts';
+import { KEYS } from '../storage/keys.ts';
 import {
   collectKeys,
   flush,

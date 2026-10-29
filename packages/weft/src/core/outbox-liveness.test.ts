@@ -102,7 +102,7 @@ describe('Outbox waitForDue', () => {
   it('looks past a due entry whose record already moved on', async () => {
     const { outbox, storage } = createOutboxFixture();
     await enqueueOne(outbox);
-    const { KEYS } = await import('../storage/interface.ts');
+    const { KEYS } = await import('../storage/keys.ts');
     const { encode } = await import('./codec.ts');
     await storage.put(
       KEYS.applicationDeliveryDue('bureau', 'agent-7', 0, 'ghost'),

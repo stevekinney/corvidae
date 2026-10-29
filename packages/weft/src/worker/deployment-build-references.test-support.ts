@@ -4,6 +4,7 @@
  * entries with an execution requirement. Records are written the way the engine writes them, but
  * directly, so a test does not need a live engine to place work on a build.
  */
+import { type Storage } from '@lostgradient/storage';
 import { encode } from '../core/codec/index.ts';
 import { encodeRemoteTaskRecord } from '../core/task-ledger/task-ledger-codec.ts';
 import { taskLedgerKey } from '../core/task-ledger/task-ledger-keys.ts';
@@ -12,7 +13,7 @@ import type {
   RemoteTaskTerminalResolved,
   WorkerExecutionRequirementInput,
 } from '../core/task-ledger/task-ledger-types.ts';
-import { KEYS, type Storage } from '../storage/interface.ts';
+import { KEYS } from '../storage/keys.ts';
 
 export type SeededRunStatus =
   'pending' | 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' | 'timed-out';

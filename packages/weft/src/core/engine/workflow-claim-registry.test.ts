@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage, type BatchOperation, type Storage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { KEYS, type BatchOperation, type Storage } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { WeftWorkflowClaimLostWarning } from './lease-deposition.ts';
 import {
   decodeEpoch,

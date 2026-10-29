@@ -8,6 +8,7 @@
  * @module testing/test-engine
  */
 
+import { MemoryStorage } from '@lostgradient/storage';
 import type {
   ActivityMetadata,
   ActivityRegistrationOptions,
@@ -19,7 +20,6 @@ import { runtimeWorkflowEngine } from '../core/runtime-workflow-engine.ts';
 import { parseDuration } from '../core/scheduler.ts';
 import type { Duration } from '../core/types.ts';
 import { activity as defineActivity } from '../core/types.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import type { ChaosScenario, FailureCategory } from './chaos.ts';
 import { withChaos } from './chaos.ts';
 import { yieldToPortableEventLoop } from './event-loop.ts';

@@ -9,8 +9,8 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { KEYS, type ScanOptions } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage, type ScanOptions } from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { encode } from '../codec.ts';
 import { workflow, type WorkflowContext } from '../types.ts';
 import { adoptLaunchCheckpoint } from './checkpoint-commit-snapshots.ts';

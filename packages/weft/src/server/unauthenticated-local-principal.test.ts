@@ -10,8 +10,8 @@
 
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import type { AuthConfig } from './authentication.ts';
 import { AUTHORIZATION_SCOPES } from './authorization-scope.ts';
 import { authContextToPrincipal } from './handler/auth-context-principal.ts';

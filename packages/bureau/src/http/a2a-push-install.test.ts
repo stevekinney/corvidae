@@ -5,7 +5,7 @@
  */
 import type { TaskPushNotificationConfig } from '@a2a-js/sdk';
 import type { ServerCallContext } from '@a2a-js/sdk/server';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import { A2APushConfigurationConflictError } from '@lostgradient/weft/a2a';

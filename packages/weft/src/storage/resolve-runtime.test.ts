@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { IndexedDBStorage } from './indexeddb.ts';
-import { MemoryStorage } from './memory.ts';
 import {
   detectStorageRuntime,
   resolveAutoStorage,

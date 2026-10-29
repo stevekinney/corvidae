@@ -5,11 +5,9 @@ import { existsSync, realpathSync, statSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
+import { copyTextKeyValueRowsToStorage, type TextKeyValueRow } from '@lostgradient/storage';
 import { BunSQLiteStorage } from '../src/storage/bun-sql.ts';
-import {
-  copyTextKeyValueRowsToStorage,
-  type TextKeyValueRow,
-} from '../src/storage/text-value-import.ts';
+import { WEFT_RESERVED_KEY_PREFIXES } from '../src/storage/keys.ts';
 
 type CliArgs = {
   sourcePath: string;
@@ -169,6 +167,7 @@ async function importRows(args: CliArgs): Promise<void> {
       const rows = readSourceRows(source, args.sourceTable);
       const result = await copyTextKeyValueRowsToStorage({
         storage: target,
+        reservedKeyPrefixes: WEFT_RESERVED_KEY_PREFIXES,
         rows,
         targetPrefix: args.targetPrefix,
       });

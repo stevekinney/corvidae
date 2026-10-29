@@ -4,6 +4,7 @@
 
 import { afterEach, describe, expect, it, mock } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { ActivityRegistry } from '../../core/activity-registry.ts';
 import { Engine } from '../../core/engine.ts';
 import { getWorkflowRevisionDiagnostics } from '../../core/engine/catalog-removal.ts';
@@ -14,8 +15,7 @@ import { buildWorkflowManifestFromDefinition } from '../../core/registry-workflo
 import { workflowSource } from '../../core/source/index.ts';
 import type { WorkflowDefinition } from '../../core/types.ts';
 import { workflow } from '../../core/types.ts';
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { handleRequest } from '../handler.ts';
 import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
 import { principalFromApiKey } from '../principal.ts';

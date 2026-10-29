@@ -3,11 +3,11 @@ import type { JSONRPCMessage, Transport } from '@modelcontextprotocol/server';
 import { describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { Engine } from '../core/engine.ts';
 import type { WorkflowContext } from '../core/types.ts';
 import { workflow } from '../core/types/workflow-function.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import { runMcpStdioSession } from './stdio.ts';
 
 type ParsedLine = {

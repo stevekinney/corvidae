@@ -8,7 +8,7 @@
  * @module core/engine/lifecycle/resume-body
  */
 
-import { KEYS } from '../../../storage/interface.ts';
+import { KEYS } from '../../../storage/keys.ts';
 import { deserializeCheckpoint, serializeCheckpoint } from '../../checkpoint.ts';
 import { encode } from '../../codec.ts';
 import { Context, setContextWorkflowInterceptor } from '../../context.ts';

@@ -17,7 +17,7 @@ import {
   useFakeTimers,
 } from '@lostgradient/testing/fake-timers';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { KEYS } from '../../../storage/interface.ts';
+import { KEYS } from '../../../storage/keys.ts';
 import { ActivityRegistry } from '../../activity-registry.ts';
 import { decode, encode } from '../../codec.ts';
 import { Engine } from '../../engine.ts';

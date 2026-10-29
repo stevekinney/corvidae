@@ -1,4 +1,5 @@
-import { KEYS, encodeStorageKeyComponent } from '../../storage/interface.ts';
+import { encodeStorageKeyComponent } from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { ReviewCompletedEvent, ReviewRequestedEvent } from '../review/events.ts';
 import {
   ReviewTimeoutError,

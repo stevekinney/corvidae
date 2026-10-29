@@ -28,8 +28,8 @@ import {
 } from '@a2a-js/sdk/errors';
 import type { PushNotificationStore, ServerCallContext } from '@a2a-js/sdk/server';
 
+import { encodeStorageKeyComponent } from '@lostgradient/storage';
 import type { Engine } from '../core/engine.ts';
-import { encodeStorageKeyComponent } from '../storage/key-encoding.ts';
 import { pushConfigurationCreatePlannerOf } from './push-notification-store.ts';
 import { requestSignalOf } from './sse-response.ts';
 import { withStreamEventCursor } from './stream-cursors.ts';

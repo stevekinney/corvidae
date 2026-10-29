@@ -7,8 +7,8 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { z } from 'zod';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { buildWorkflowContract } from '../contract/build.ts';
 import { contractHash } from '../contract/hash.ts';
 import { parseWorkflowRevisionManifest } from '../contract/manifest-parse.ts';

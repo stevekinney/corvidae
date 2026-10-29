@@ -4,7 +4,8 @@ import {
   parseSessionInputDeliveries,
   sessionInputDeliveriesKey,
 } from '@lostgradient/operative';
-import { type Mailbox, MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { type Mailbox } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 import { CURRENT_SCHEMA_VERSION } from 'conversationalist';
 

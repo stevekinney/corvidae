@@ -11,7 +11,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { KEYS } from '../../storage/interface.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { yieldToPortableEventLoop } from '../../testing/event-loop.ts';
 import { decode, encode } from '../codec/api.ts';
 import { WorkflowCompletedEvent } from '../events.ts';

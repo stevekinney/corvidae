@@ -9,9 +9,9 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { type ConditionalBatchCondition, MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { KEYS, type ConditionalBatchCondition } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { workflow, type WorkflowContext } from '../types.ts';
 import { Engine } from './index.ts';
 import { getInternals } from './internals.ts';

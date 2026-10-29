@@ -1,5 +1,6 @@
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { decode, encode } from '../../core/codec.ts';
 import { Engine } from '../../core/engine.ts';
 import {
@@ -41,8 +42,7 @@ import {
 import { waitForParityCondition as waitFor } from '../../core/parity/real-timer-wait.test-support.ts';
 import { ReviewCompletedEvent, ReviewRequestedEvent } from '../../core/review/events.ts';
 import { taskLedgerKey } from '../../core/task-ledger/task-ledger.ts';
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { createFleetEventFeed, type FleetEventEnvelope } from '../fleet-event-feed.ts';
 import {
   CLIENT_VISIBLE_EVENT_TYPES,

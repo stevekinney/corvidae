@@ -17,8 +17,8 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { encode } from '../codec.ts';
 import { bootstrapWorkflowResultResolver, createWorkflowResultWaiter } from './handle-result.ts';
 

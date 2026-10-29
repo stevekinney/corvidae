@@ -4,7 +4,8 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir, userInfo } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import { BunSQLiteStorage, textValueStore } from '@lostgradient/weft';
+import { textValueStore } from '@lostgradient/storage';
+import { BunSQLiteStorage } from '@lostgradient/weft';
 
 import { GATE_RECORD_SCHEMA_VERSION, type GateDecisionRecord } from '../src/gate';
 import { createEvaluationHistory, type HistoricalRecord } from '../src/history';

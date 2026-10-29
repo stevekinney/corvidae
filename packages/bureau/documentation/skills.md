@@ -233,7 +233,7 @@ A skill does not have to live on a filesystem: the self-improvement flow writes 
 
 ```typescript
 import { discoverSkills } from '@lostgradient/bureau/skills';
-import type { TextValueStore } from '@lostgradient/weft';
+import type { TextValueStore } from '@lostgradient/storage';
 
 declare const store: TextValueStore;
 
@@ -292,7 +292,7 @@ import {
   type SkillEventMap,
   type SkillGuardrailOptions,
 } from '@lostgradient/bureau/skills';
-import type { TextValueStore } from '@lostgradient/weft';
+import type { TextValueStore } from '@lostgradient/storage';
 
 declare const catalog: SkillCatalogRevision;
 declare const storage: TextValueStore;

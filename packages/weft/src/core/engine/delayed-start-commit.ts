@@ -7,7 +7,8 @@
  *
  * @module core/engine/delayed-start-commit
  */
-import { KEYS, type BatchOperation } from '../../storage/interface.ts';
+import { type BatchOperation } from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { encode } from '../codec.ts';
 import { buildTimerBatchOperations } from '../scheduler.ts';
 import type { TimerEntry, WorkflowState } from '../types.ts';

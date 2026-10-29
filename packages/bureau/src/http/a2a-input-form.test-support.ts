@@ -10,7 +10,8 @@ import {
   type GenerateFunction,
   type HumanInputSchema,
 } from '@lostgradient/operative';
-import { MemoryStorage, principalFromApiKey, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { principalFromApiKey } from '@lostgradient/weft';
 import { expect } from 'bun:test';
 
 import { A2UI_EXTENSION_URI } from '../a2ui/catalogs.ts';

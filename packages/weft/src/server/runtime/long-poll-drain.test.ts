@@ -9,6 +9,7 @@
  */
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { createDeferred } from '@lostgradient/testing/fake-timers';
 import { Engine } from '../../core/engine.ts';
 import type { RemoteTaskRecord } from '../../core/task-ledger/task-ledger-types.ts';
@@ -17,7 +18,6 @@ import {
   encodeRemoteTaskRecord,
   taskLedgerKey,
 } from '../../core/task-ledger/task-ledger.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import {
   connectFaultInjectingWorker,
   type FaultInjectingWorker,

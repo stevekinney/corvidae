@@ -9,7 +9,7 @@ import {
   textValueStore,
   type TextValueStoreBatchOperation,
   type TextValueStoreCondition,
-} from '@lostgradient/weft';
+} from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import { AGENT_REVISION_KEY_PREFIX, createAgentRevisionStore } from './agent-revision-store';

@@ -11,8 +11,8 @@ import { settleInlineLaunches } from '../../testing/inline-launch-settle.test-su
 
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { Engine } from '../engine.ts';
 import type { WorkflowInterceptor } from '../interceptor.ts';
 import type { ActivityContext, ActivityDefinition, WorkflowContext } from '../types.ts';

@@ -1,5 +1,9 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { type ConditionalTextValueStore, MemoryStorage, textValueStore } from '@lostgradient/weft';
+import {
+  type ConditionalTextValueStore,
+  MemoryStorage,
+  textValueStore,
+} from '@lostgradient/storage';
 import { describe, expect, it, spyOn } from 'bun:test';
 
 import {

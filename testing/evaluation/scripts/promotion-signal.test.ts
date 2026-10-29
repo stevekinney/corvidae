@@ -5,8 +5,9 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir, userInfo } from 'node:os';
 import { join, resolve } from 'node:path';
 
+import { textValueStore } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing';
-import { BunSQLiteStorage, textValueStore } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/weft';
 
 import { fixtureConfiguration } from '../src/fixtures/release-gate/fixture-regression';
 import type { GateDecisionRecord } from '../src/gate';

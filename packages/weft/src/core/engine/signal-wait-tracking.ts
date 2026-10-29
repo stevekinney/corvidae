@@ -23,7 +23,8 @@
  *
  * @module core/engine/signal-wait-tracking
  */
-import { KEYS, type ConditionalBatchCondition } from '../../storage/interface.ts';
+import { type ConditionalBatchCondition } from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { encode } from '../codec.ts';
 import { SignalWaitingEvent } from '../events.ts';
 import type { WorkflowState } from '../types.ts';

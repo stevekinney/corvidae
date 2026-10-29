@@ -16,7 +16,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { stopWhen, createAgent } from '@lostgradient/operative';
-import { resolveStorage, type Storage } from '@lostgradient/weft';
+import { resolveStorage } from '@lostgradient/weft';
+import { type Storage } from '@lostgradient/storage';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import {
   createTemporaryDirectory,

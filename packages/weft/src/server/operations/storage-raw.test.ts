@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
+import { MAX_SCAN_LIMIT, MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Engine } from '../../core/engine.ts';
-import { MAX_SCAN_LIMIT } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { handleRequest } from '../handler.ts';
 import { principalFromApiKey } from '../principal.ts';
 import { createLiveOperationRegistry } from '../rest-bindings.ts';

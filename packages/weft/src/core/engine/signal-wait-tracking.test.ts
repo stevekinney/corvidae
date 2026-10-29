@@ -10,9 +10,9 @@
  */
 import { afterEach, describe, expect, it, jest } from 'bun:test';
 
+import { type BatchOperation, MemoryStorage } from '@lostgradient/storage';
 import { restoreRealTimers, useFakeTimers } from '@lostgradient/testing/fake-timers';
-import { KEYS, type BatchOperation } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { decode, encode } from '../codec.ts';
 import { SignalDeliveredEvent, SignalWaitingEvent } from '../events.ts';
 import { workflow, type WorkflowContext, type WorkflowState } from '../types.ts';

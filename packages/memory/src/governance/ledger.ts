@@ -4,7 +4,7 @@ import {
   type Storage,
   storageConditionalBatch,
   storageDeletePrefix,
-} from '@lostgradient/weft';
+} from '@lostgradient/storage';
 import { z } from 'zod';
 
 import { validateMemoryKeyPrefix } from '../create-weft-memory-record-storage-helpers';

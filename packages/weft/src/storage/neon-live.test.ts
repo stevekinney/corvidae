@@ -6,18 +6,18 @@ import { neonConfig } from '@neondatabase/serverless';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { createNeonTestProxy } from './neon-proxy.test-support.ts';
 
-import { restoreWorkflowCatalog } from '../core/catalog/storage-io.ts';
-import { WorkflowCatalog } from '../core/catalog/workflow-catalog.ts';
-import { buildWorkflowContract } from '../core/contract/build.ts';
-import { buildWorkflowRevisionManifest } from '../core/contract/manifest.ts';
-import { storageConditionalBatch } from './interface.ts';
-import { NeonStorage } from './neon.ts';
+import { storageConditionalBatch } from '@lostgradient/storage';
 import {
   bytes as encode,
   runBasicStorageContract,
   runConcurrentConditionalBatchConformance,
   runStorageCapabilityConformance,
-} from './storage-adapter.test-support.ts';
+} from '@lostgradient/storage/testing';
+import { restoreWorkflowCatalog } from '../core/catalog/storage-io.ts';
+import { WorkflowCatalog } from '../core/catalog/workflow-catalog.ts';
+import { buildWorkflowContract } from '../core/contract/build.ts';
+import { buildWorkflowRevisionManifest } from '../core/contract/manifest.ts';
+import { NeonStorage } from './neon.ts';
 
 // Opened at load, before any hook is timed — see `openPostgresTestDatabase`. `null`
 // only when no database is obtainable: neither a supplied WEFT_TEST_POSTGRES_URL nor

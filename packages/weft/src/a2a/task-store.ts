@@ -16,9 +16,8 @@
 import { type ListTasksRequest, type ListTasksResponse, Task, TaskState } from '@a2a-js/sdk';
 import type { ServerCallContext, TaskStore } from '@a2a-js/sdk/server';
 
+import { type BatchOperation, requireStorageCapability, type Storage } from '@lostgradient/storage';
 import { bytesEqual } from '../core/application-primitive-commit.ts';
-import { requireStorageCapability } from '../storage/capabilities.ts';
-import type { BatchOperation, Storage } from '../storage/interface.ts';
 import {
   type A2APageCursor,
   callerScope,

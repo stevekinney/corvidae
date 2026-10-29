@@ -12,7 +12,7 @@
  * @module server/task-attempt-keys
  */
 
-import { encodeStorageKeyComponent } from '../../storage/interface.ts';
+import { encodeStorageKeyComponent } from '@lostgradient/storage';
 
 const TASK_ATTEMPT_KEY_PREFIX = 'task-attempt:';
 

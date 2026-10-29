@@ -10,11 +10,13 @@ import { createAgent, createSessionStore, type OperativeHookMap } from '@lostgra
 import {
   type BatchOperation,
   type ConditionalBatchCondition,
+  type Storage,
+  textValueStore,
+} from '@lostgradient/storage';
+import {
   Engine,
   resolveStorage,
-  type Storage,
   type StorageConfiguration,
-  textValueStore,
   yieldToPortableEventLoop,
 } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';

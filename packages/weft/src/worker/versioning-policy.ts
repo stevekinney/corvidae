@@ -1,8 +1,9 @@
 /** Durable, per-workflow worker-version binding policy. */
 
+import { type Storage } from '@lostgradient/storage';
 import { decode, encode } from '../core/codec/index.ts';
 import type { WorkflowWorkerVersioningPolicy } from '../core/versioning.ts';
-import { KEYS, type Storage } from '../storage/interface.ts';
+import { KEYS } from '../storage/keys.ts';
 import {
   WorkerDeploymentCatalog,
   selectWorkerDeployment,

@@ -15,9 +15,9 @@ import {
 } from '@a2a-js/sdk';
 import type { ServerCallContext } from '@a2a-js/sdk/server';
 
+import type { Storage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
 import { activity, workflow, type WorkflowContext } from '../core/types.ts';
-import type { Storage } from '../storage/interface.ts';
 import { callContext } from './a2a-store.test-support.ts';
 import { type A2AHandler, createA2AHandler } from './handler.ts';
 import {

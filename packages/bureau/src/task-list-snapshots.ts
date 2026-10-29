@@ -18,7 +18,7 @@
  * @module task-list-snapshots
  */
 
-import { type ConditionalTextValueStore, encodeStorageKeyComponent } from '@lostgradient/weft';
+import { type ConditionalTextValueStore, encodeStorageKeyComponent } from '@lostgradient/storage';
 
 /**
  * The key prefix of a task-listing snapshot. A snapshot stores whole task views, so the version

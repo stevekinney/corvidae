@@ -10,7 +10,8 @@ import {
   type ProjectedValidatorOutcome,
   TERMINAL_STATUS_BY_REASON,
 } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore, WEFT_RESERVED_KEY_PREFIXES } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { WEFT_RESERVED_KEY_PREFIXES } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import {

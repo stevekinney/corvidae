@@ -11,13 +11,10 @@
  */
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { KEYS } from '../storage/interface.ts';
+import { createDiskBackedTestFixture } from '@lostgradient/storage/testing';
+import { KEYS } from '../storage/keys.ts';
 import { LMDBStorage } from '../storage/lmdb.ts';
-import {
-  createDiskBackedTestFixture,
-  teardown,
-  waitForWorkflowStatus,
-} from '../testing/storage-backends.test-support.ts';
+import { teardown, waitForWorkflowStatus } from '../testing/storage-backends.test-support.ts';
 import { decode, encode } from './codec.ts';
 import { Engine } from './engine.ts';
 import { CleanupWarningEvent } from './events.ts';

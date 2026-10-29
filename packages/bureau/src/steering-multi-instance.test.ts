@@ -21,7 +21,7 @@ import {
 } from '@lostgradient/operative';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createConversationHistory } from 'conversationalist';
-import { encodeStorageKeyComponent } from '@lostgradient/weft';
+import { encodeStorageKeyComponent } from '@lostgradient/storage';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it, spyOn } from 'bun:test';
 

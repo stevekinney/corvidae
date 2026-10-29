@@ -19,7 +19,8 @@
     "@lostgradient/weft": "workspace:*",
     "armorer": "workspace:*",
     "@lostgradient/cryptography": "workspace:*",
-    "@lostgradient/lifecycle": "workspace:*"
+    "@lostgradient/lifecycle": "workspace:*",
+    "@lostgradient/storage": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "catalog:",

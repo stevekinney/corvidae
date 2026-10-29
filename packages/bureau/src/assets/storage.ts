@@ -13,8 +13,7 @@
  * `asset:v1:blob:<digest>`; every other key holds JSON metadata. See
  * `records.ts` for the key schema.
  */
-import type { Storage } from '@lostgradient/weft';
-import { textValueStore } from '@lostgradient/weft';
+import { type Storage, textValueStore } from '@lostgradient/storage';
 
 import { AssetStorageCapacityError } from './errors';
 

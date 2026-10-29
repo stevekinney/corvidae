@@ -7,9 +7,9 @@
 
 import { describe, expect, it, mock } from 'bun:test';
 
+import { MemoryStorage, type BatchOperation, type Storage } from '@lostgradient/storage';
 import { hashBytes } from '../../runtime/portable.ts';
-import { KEYS, type BatchOperation, type Storage } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { settleInlineLaunches } from '../../testing/inline-launch-settle.test-support.ts';
 import { decode } from '../codec.ts';
 import { Engine } from '../engine.ts';

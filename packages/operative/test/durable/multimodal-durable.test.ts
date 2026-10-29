@@ -1,10 +1,6 @@
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import {
-  MemoryStorage,
-  resolveStorage,
-  textValueStore,
-  yieldToPortableEventLoop,
-} from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { resolveStorage, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTestToolbox, createTool } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation, type MultiModalContent } from 'conversationalist';

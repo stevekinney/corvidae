@@ -16,7 +16,7 @@
  * `completing`) before it reads a chunk, and an abort deletes the chunks and
  * the record in one `conditionalBatch`. See {@link UploadSessionRecord}.
  */
-import { MAX_BATCH_OPERATIONS } from '@lostgradient/weft';
+import { MAX_BATCH_OPERATIONS } from '@lostgradient/storage';
 
 import { encodeBase64 } from './base64';
 import { AssetAdmissionError, AssetConflictError, AssetNotFoundError } from './errors';

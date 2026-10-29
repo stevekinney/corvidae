@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from 'bun:test';
 
+import { collect } from '@lostgradient/storage/testing';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   createFakeRequest,
@@ -15,7 +16,6 @@ import {
   type FakeRequest,
 } from './indexeddb-fault-harness.test-support.ts';
 import { IndexedDBStorage } from './indexeddb.ts';
-import { collect } from './storage-adapter.test-support.ts';
 
 function encode(value: string): Uint8Array<ArrayBuffer> {
   return new Uint8Array(new TextEncoder().encode(value));

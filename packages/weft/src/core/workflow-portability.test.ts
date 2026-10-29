@@ -13,11 +13,11 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { HttpClient } from '../client/index.ts';
 import type { WeftClient } from '../client/interface.ts';
 import { LocalClient } from '../client/local.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../server/local-user-request.test-support.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import { Engine } from './engine.ts';
 import type { WorkflowContext } from './types.ts';
 import { workflow } from './types.ts';

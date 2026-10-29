@@ -1,5 +1,5 @@
 import { HookRegistry, TypedEventTarget } from '@lostgradient/lifecycle';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { createTestToolbox, createTool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation, type MultiModalContent } from 'conversationalist';

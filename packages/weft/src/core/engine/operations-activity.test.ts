@@ -1,14 +1,14 @@
 import { describe, expect, it, mock } from 'bun:test';
 
-import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
-  KEYS,
+  MemoryStorage,
   storageValuesEqual,
   type BatchOperation,
   type ConditionalBatchCondition,
   type StorageCapabilities,
-} from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+} from '@lostgradient/storage';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { KEYS } from '../../storage/keys.ts';
 import { decode, encode } from '../codec.ts';
 import type { ContextOperationRequest } from '../context.ts';
 import { ActivityStartedEvent } from '../events.ts';

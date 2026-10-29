@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'bun:test';
 
-import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
-  KEYS,
   type BatchOperation,
   type ConditionalBatchCondition,
   type StorageCapabilities,
-} from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+  MemoryStorage,
+} from '@lostgradient/storage';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { KEYS } from '../../storage/keys.ts';
 import { createCheckpoint, serializeCheckpoint } from '../checkpoint.ts';
 import type { ContextOperationRequest } from '../context.ts';
 import { EMPTY_EVENT_HEAD } from '../event-log.ts';

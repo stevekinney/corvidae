@@ -65,7 +65,7 @@ import {
   type Subscription,
   WEBHOOK_DELIVERY_POLICY,
 } from '@lostgradient/operative';
-import type { TextValueStore } from '@lostgradient/weft';
+import type { TextValueStore } from '@lostgradient/storage';
 
 import type { AgentDefinitions } from './agent-catalog';
 import type { AuditTrail } from './audit-trail';

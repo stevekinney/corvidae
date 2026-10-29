@@ -1,9 +1,10 @@
-import type {
-  BatchOperation,
-  ConditionalBatchCondition,
-  Storage,
-} from '../../storage/interface.ts';
-import { KEYS, storageConditionalBatch } from '../../storage/interface.ts';
+import {
+  type BatchOperation,
+  type ConditionalBatchCondition,
+  type Storage,
+  storageConditionalBatch,
+} from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { resolveNonEmptyPrefixRangeEnd } from '../../storage/non-empty-prefix-range-end.ts';
 import { decode } from '../codec.ts';
 import type { TimerEntry } from '../types.ts';
@@ -74,7 +75,7 @@ const EXPIRED_TIMER_SCAN_LIMIT_PER_SOURCE = 1_000;
  * @example
  * ```ts
  * import { Scheduler } from '@lostgradient/weft';
- * import { MemoryStorage } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
  * const storage = new MemoryStorage();
  * const scheduler = new Scheduler({

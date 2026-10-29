@@ -4,7 +4,7 @@
  * read as a closure whose cleanup succeeded, since nothing would retry it.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import { createGoalState } from './goal-state';

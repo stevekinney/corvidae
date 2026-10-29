@@ -12,7 +12,7 @@ import {
   createMockEmbedder,
 } from '@lostgradient/memory';
 import { stopWhen, createAgent } from '@lostgradient/operative';
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';

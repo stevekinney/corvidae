@@ -87,7 +87,8 @@ import type { KnownWorkflowName, UnknownNameWhenRegistryEmpty } from './workflow
  *
  * @example
  * ```ts
- * import { workflow, Engine, MemoryStorage, LocalClient, type WorkflowContext } from '@lostgradient/weft';
+ * import { workflow, Engine, LocalClient, type WorkflowContext } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
  * await using engine = new Engine({ storage: new MemoryStorage() });
  * engine.register(

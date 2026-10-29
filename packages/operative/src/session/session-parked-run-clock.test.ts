@@ -1,4 +1,4 @@
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import {

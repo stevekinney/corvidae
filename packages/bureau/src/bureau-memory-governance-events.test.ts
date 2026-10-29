@@ -12,7 +12,7 @@ import {
   type GovernedMemory,
   type MemoryGovernanceNotification,
 } from '@lostgradient/memory';
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

@@ -10,7 +10,8 @@
  * with `bun --cpu-prof --cpu-prof-dir=<dir> scripts/benchmarks/durable-snapshot-save.ts`
  * from `packages/operative`. Pass a step count as the first argument (default 200).
  */
-import { Engine, MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { Engine } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { createConversationHistory } from 'conversationalist';
 import { z } from 'zod';

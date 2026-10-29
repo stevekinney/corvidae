@@ -1,7 +1,6 @@
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import {
   type AnyWorkflowDefinition,
-  MemoryStorage,
-  textValueStore,
   WorkflowHandle,
   WorkflowStartedEvent,
   type WorkflowStatus,

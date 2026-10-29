@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import type { BatchOperation } from './interface.ts';
+import type { BatchOperation } from '@lostgradient/storage';
 
 import {
   createDiskBackedTestFixture,
   sqliteDatabaseSidecarSuffixes,
-} from '../testing/storage-backends.test-support.ts';
+} from '@lostgradient/storage/testing';
 import {
   ARCHITECTURE_BENCHMARK_WORKLOAD,
   benchmarkWorkload,

@@ -7,7 +7,7 @@
  */
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { createDiskBackedTestFixture } from '../testing/storage-backends.test-support.ts';
+import { createDiskBackedTestFixture } from '@lostgradient/storage/testing';
 import { LMDBStorage } from './lmdb.ts';
 
 /** Encode a string as Uint8Array. */

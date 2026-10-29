@@ -3,9 +3,8 @@ import {
   type ConditionalTextValueStore,
   MemoryStorage,
   textValueStore,
-  WEFT_RESERVED_KEY_PREFIXES,
-  yieldToPortableEventLoop,
-} from '@lostgradient/weft';
+} from '@lostgradient/storage';
+import { WEFT_RESERVED_KEY_PREFIXES, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import {

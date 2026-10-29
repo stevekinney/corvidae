@@ -1,3 +1,4 @@
+import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 import { decode, encode } from '../core/codec/index.ts';
@@ -12,7 +13,6 @@ import {
   workerDeploymentDiagnosticsRestBinding,
   workerDeploymentRoutingRestBinding,
 } from '../server/operations/worker-deployment-routing.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import { WORKER_DEPLOYMENT_VERSION_PREFIX } from './deployment-records.ts';
 import {
   selectWorkerDeployment,

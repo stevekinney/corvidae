@@ -11,9 +11,9 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { createDeferred, waitForRealTimersForTesting } from '@lostgradient/testing/fake-timers';
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { nextAsyncPendingToken } from '../../testing/async-activity.test-support.ts';
 import { encode } from '../codec.ts';
 import { WorkflowTimeoutError } from '../timeouts.ts';

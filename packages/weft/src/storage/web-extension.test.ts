@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
+import { assertDurableStorageForRecovery, type BatchOperation } from '@lostgradient/storage';
+import { assertCapabilitiesShape } from '@lostgradient/storage/testing';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { assertDurableStorageForRecovery, type BatchOperation } from './interface.ts';
-import { assertCapabilitiesShape } from './storage-adapter.test-support.ts';
 import { WebExtensionStorage } from './web-extension.ts';
 
 function encode(value: string): Uint8Array {

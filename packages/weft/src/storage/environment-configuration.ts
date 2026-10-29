@@ -4,11 +4,6 @@ import { z } from 'zod';
 
 const schema = z.object({
   weftDefaultStoragePath: z.string().optional().meta({ env: 'WEFT_DEFAULT_STORAGE_PATH' }),
-  keepDurabilityFixtures: z
-    .string()
-    .optional()
-    .transform((value) => value === '1')
-    .meta({ env: 'WEFT_KEEP_DURABILITY_FIXTURES' }),
 });
 
 function loadEnvironment() {
@@ -16,7 +11,6 @@ function loadEnvironment() {
     typeof Bun !== 'undefined' ? Bun.env : typeof process !== 'undefined' ? process.env : {};
   const mapping = {
     weftDefaultStoragePath: 'WEFT_DEFAULT_STORAGE_PATH',
-    keepDurabilityFixtures: 'WEFT_KEEP_DURABILITY_FIXTURES',
   };
   const values: Record<string, string> = {};
   for (const [key, name] of Object.entries(mapping)) {

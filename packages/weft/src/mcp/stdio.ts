@@ -31,7 +31,8 @@ export type McpStdioAdmission =
  * @example
  * ```ts
  * import { type McpStdioSessionOptions } from '@lostgradient/weft';
- * import { Engine, MemoryStorage } from '@lostgradient/weft';
+ * import { Engine } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
  * await using storage = new MemoryStorage();
  * await using engine = new Engine({ storage });
@@ -88,7 +89,8 @@ const DEFAULT_MAX_FRAME_BYTES = 1_048_576;
  * @example
  * ```ts
  * import { runMcpStdioSession } from '@lostgradient/weft';
- * import { Engine, MemoryStorage } from '@lostgradient/weft';
+ * import { Engine } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
  * await using storage = new MemoryStorage();
  * await using engine = new Engine({ storage });

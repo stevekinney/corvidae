@@ -4,7 +4,8 @@ import {
   createSessionStore,
   type SessionInputPayload,
 } from '@lostgradient/operative';
-import { type ApplicationCommandClaim, resolveStorage, textValueStore } from '@lostgradient/weft';
+import { type ApplicationCommandClaim, resolveStorage } from '@lostgradient/weft';
+import { textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 import { CURRENT_SCHEMA_VERSION, createConversationHistory } from 'conversationalist';
 

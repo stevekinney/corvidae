@@ -12,9 +12,8 @@ import {
   type SchedulerContractContext,
 } from '../testing/scheduler-contract.test-support.ts';
 
+import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import type { TimerEntry } from '../core/types.ts';
-import type { Storage } from '../storage/interface.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import { ServiceWorkerScheduler } from './scheduler.ts';
 
 /**

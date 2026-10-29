@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { principalFromApiKey } from '../server/principal.ts';
 import type { EventEnvelope, WorkflowEventFeed } from '../server/workflow-event-feed.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import {
   buildDelegatedRequest,
   createFetchHandler,

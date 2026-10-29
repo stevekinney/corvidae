@@ -3,9 +3,9 @@
  * engines over one store, each behind a handle that can park one of its writes, and the reads and
  * ticks the tests make around them.
  */
+import type { BatchOperation, Storage } from '@lostgradient/storage';
 import { BunSQLiteStorage } from '../../storage/bun-sql.ts';
-import type { BatchOperation, Storage } from '../../storage/interface.ts';
-import { KEYS } from '../../storage/interface.ts';
+import { KEYS } from '../../storage/keys.ts';
 import type { Engine } from '../engine.ts';
 import type { ScheduleState } from '../types.ts';
 import { createEngine, registerWorkflow, START } from './schedule.test-support.ts';

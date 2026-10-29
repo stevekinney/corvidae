@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'bun:test';
 
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import {
+  MemoryStorage,
+  type BatchOperation,
+  type ConditionalBatchCondition,
+} from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { Engine } from '../engine.ts';
 import { CleanupWarningEvent } from '../events.ts';
 import { workflow } from '../types.ts';
-
-import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
 
 /** A store that fails the commit purging one workflow record once the test arms it. */
 class PurgeFailingStorage extends MemoryStorage {

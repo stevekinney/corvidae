@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import { VERSION } from '../version.ts';
 import { generateAsyncApiDocument } from './asyncapi.ts';
 import { isDiscoverable } from './discovery-filter.ts';

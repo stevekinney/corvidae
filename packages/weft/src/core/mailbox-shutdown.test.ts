@@ -10,6 +10,7 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import {
   advanceTimersByTime,
   flushMicrotasks,
@@ -17,7 +18,6 @@ import {
   useFakeTimers,
 } from '@lostgradient/testing/fake-timers';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { MemoryStorage } from '../storage/memory.ts';
 import {
   admitOne,
   claimOne,
@@ -144,7 +144,7 @@ describe('Mailbox waitForAvailable', () => {
   it('ignores a delivery-index entry whose command vanished while waiting', async () => {
     const { mailbox, storage } = createMailboxFixture();
     const commandId = await admitOne(mailbox);
-    const { KEYS } = await import('../storage/interface.ts');
+    const { KEYS } = await import('../storage/keys.ts');
     await storage.delete(KEYS.applicationCommand('bureau', 'agent-7', commandId));
     expect(await mailbox.waitForAvailable()).toBe(false);
     mailbox.dispose();

@@ -1,4 +1,4 @@
-import type { BatchOperation } from '../../../storage/interface.ts';
+import type { BatchOperation } from '@lostgradient/storage';
 import type { WorkflowWorkerBinding } from '../../../worker/versioning-policy.ts';
 import { serializeCheckpoint } from '../../checkpoint.ts';
 import { assertPayloadWithinLimit } from '../../payload-size.ts';

@@ -5,7 +5,8 @@
  * binding with its conflict records. Time is the injected runtime clock.
  */
 import { createManualRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
-import { resolveStorage, textValueStore } from '@lostgradient/weft';
+import { resolveStorage } from '@lostgradient/weft';
+import { textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import {

@@ -7,7 +7,7 @@
  */
 import { expect, it } from 'bun:test';
 
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import { durableActivity } from '../context/durable-activity.ts';
 import { Engine } from '../engine.ts';
 import { activity, workflow, type WorkflowContext } from '../types.ts';

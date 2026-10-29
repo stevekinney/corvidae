@@ -21,9 +21,9 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage, type BatchOperation } from '@lostgradient/storage';
 import { createDeferred, waitForCondition } from '@lostgradient/testing/fake-timers';
-import { KEYS, type BatchOperation } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { decode } from '../codec/api.ts';
 import {
   workflow,

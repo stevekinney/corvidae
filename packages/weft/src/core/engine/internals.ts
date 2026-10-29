@@ -19,8 +19,8 @@
  * `src/core/engine/**` (see documentation/internal-imports-allowlist.json).
  */
 
+import type { Storage as WeftStorage } from '@lostgradient/storage';
 import type { AlertManager } from '../../alerting/alert-manager.ts';
-import type { Storage as WeftStorage } from '../../storage/interface.ts';
 import type { ActivityWorkerDispatcher } from '../../workers/activity-worker-dispatcher.ts';
 import type { ActivityRegistry } from '../activity-registry.ts';
 import type { ContextOperationRequest } from '../context.ts';

@@ -1,7 +1,6 @@
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import {
-  MemoryStorage,
-  textValueStore,
   workflow,
   WorkflowCheckpointConflictError,
   yieldToPortableEventLoop,

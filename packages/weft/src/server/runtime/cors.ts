@@ -34,7 +34,8 @@
  * @example
  * ```ts
  * import { serve, type CorsOptions } from '@lostgradient/weft';
- * import { Engine, MemoryStorage } from '@lostgradient/weft';
+ * import { Engine } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
  * const cors: CorsOptions = {
  *   allowedOrigins: ['https://dashboard.example.com'],

@@ -2,7 +2,7 @@
  * COR-1482 — `bureau.goals.cancel` takes `expectedRevision`, compared against the goal record's
  * `revision` and, for the write itself, inside the store's compare-and-swap.
  */
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';

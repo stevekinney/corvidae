@@ -4,13 +4,13 @@
  * so a run can start and reach a known point first, and records every write attempt it sees once
  * armed, so a test asserts attempt counts from the storage's side and not from the engine's.
  */
-import {
-  KEYS,
-  type BatchOperation,
-  type ConditionalBatchCondition,
-  type Storage,
-} from '../../storage/interface.ts';
-import type { MemoryStorage } from '../../storage/memory.ts';
+import type {
+  BatchOperation,
+  ConditionalBatchCondition,
+  MemoryStorage,
+  Storage,
+} from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { decode } from '../codec/api.ts';
 import type { WorkflowState } from '../types.ts';
 

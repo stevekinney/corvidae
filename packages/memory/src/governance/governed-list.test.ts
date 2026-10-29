@@ -1,4 +1,4 @@
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import { createInMemoryMemoryRecordStorage, createMockEmbedder } from '../test/index';

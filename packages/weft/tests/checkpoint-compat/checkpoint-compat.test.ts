@@ -26,8 +26,8 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import type { Storage } from '@lostgradient/storage';
 import { Engine } from '../../src/core/engine.ts';
-import type { Storage } from '../../src/storage/interface.ts';
 import {
   registerScenarioHandlers,
   scenarioNames,

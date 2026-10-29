@@ -39,9 +39,9 @@ import {
   createFleetEventFeed,
   type FleetEventFeed,
   resolveStorage,
-  type Storage,
   type StorageConfiguration,
 } from '@lostgradient/weft';
+import { type Storage } from '@lostgradient/storage';
 
 import { createDurableEventHistory, type DurableEventHistory } from '../durable-event-history';
 import type { BureauStorageFixture } from './storage-fixtures';

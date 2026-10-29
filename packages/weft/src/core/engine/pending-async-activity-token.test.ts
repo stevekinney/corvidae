@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../engine.ts';
 import { getInternals } from './internals.ts';
 import { isPendingAsyncActivityToken } from './pending-async-activity-token.ts';

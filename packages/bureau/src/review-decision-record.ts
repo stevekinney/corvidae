@@ -64,7 +64,7 @@
  */
 
 import { sha256HexSync } from '@lostgradient/cryptography';
-import { type ConditionalTextValueStore, encodeStorageKeyComponent } from '@lostgradient/weft';
+import { type ConditionalTextValueStore, encodeStorageKeyComponent } from '@lostgradient/storage';
 
 import { canonicalJson } from './command-ledger';
 import type { ResolveReviewInput } from './types';

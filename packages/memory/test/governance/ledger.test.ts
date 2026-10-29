@@ -1,4 +1,5 @@
-import { MemoryStorage, WEFT_RESERVED_KEY_PREFIXES } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
+import { WEFT_RESERVED_KEY_PREFIXES } from '@lostgradient/weft';
 import { beforeEach, describe, expect, it } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';

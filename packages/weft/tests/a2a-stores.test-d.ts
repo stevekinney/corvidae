@@ -1,5 +1,5 @@
 import type { PushNotificationStore, TaskStore } from '@a2a-js/sdk/server';
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 import {
   createWeftA2ATaskStore,
   createWeftPushNotificationStore,

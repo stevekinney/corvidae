@@ -10,7 +10,7 @@ import {
   type MemoryAuthority,
 } from '@lostgradient/memory';
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 import { createTool, createToolbox, type ToolRequestContext } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';

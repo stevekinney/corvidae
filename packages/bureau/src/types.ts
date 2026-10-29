@@ -49,8 +49,8 @@ import type {
 import type { InteractiveSurfaces } from './interactive-surface/store';
 import type { ToolPolicy } from 'armorer/protocol';
 import type { AgentSource, WorkflowSource } from './sources/definition-source';
+import type { ConditionalTextValueStore, Storage, TextValueStore } from '@lostgradient/storage';
 import type {
-  ConditionalTextValueStore,
   ListFilter,
   ListOptions,
   ObservabilityOptions,
@@ -58,9 +58,7 @@ import type {
   RegistryAgnosticEngine,
   ScheduleFilter,
   ScheduleSummary,
-  Storage,
   StorageConfiguration,
-  TextValueStore,
   WorkflowLogRecord,
   WorkflowState,
   WorkflowSummary,

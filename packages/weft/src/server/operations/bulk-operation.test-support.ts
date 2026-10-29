@@ -12,9 +12,9 @@
  * build) and must never be imported by production server code.
  */
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
 import type { AnyWorkflowDefinition } from '../../core/types.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import type { HandlerOptions } from '../handler/route-dispatch.ts';
 import { principalFromApiKey } from '../principal.ts';
 

@@ -17,7 +17,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { KEYS } from '../../storage/interface.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { decode, encode } from '../codec/api.ts';
 import { WorkflowCompletedEvent, WorkflowFailedEvent } from '../events.ts';
 import type { WorkflowState } from '../types.ts';

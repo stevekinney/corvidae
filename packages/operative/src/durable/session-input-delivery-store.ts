@@ -1,4 +1,4 @@
-import { type ConditionalTextValueStore, encodeStorageKeyComponent } from '@lostgradient/weft';
+import { type ConditionalTextValueStore, encodeStorageKeyComponent } from '@lostgradient/storage';
 
 import { defineOwn } from '../define-own.ts';
 import type { SessionInputDelivery, SessionInputPromotion } from './types';

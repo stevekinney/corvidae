@@ -1,8 +1,7 @@
+import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { HTTPStorage } from './http.ts';
 import { IndexedDBStorage } from './indexeddb.ts';
-import type { Storage } from './interface.ts';
 import { LMDBStorage } from './lmdb.ts';
-import { MemoryStorage } from './memory.ts';
 import { NeonStorage } from './neon.ts';
 import { resolveAutoStorage, resolveSQLiteStorage } from './resolve-runtime.ts';
 import type {

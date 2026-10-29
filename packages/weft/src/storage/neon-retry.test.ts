@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 
+import type { PostgresPool, PostgresPoolClient } from '@lostgradient/storage/sql';
+import { bytes as encode } from '@lostgradient/storage/testing';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { NeonStorage } from './neon.ts';
-import type { PostgresPool, PostgresPoolClient } from './postgres.ts';
-import { bytes as encode } from './storage-adapter.test-support.ts';
 
 /**
  * A {@link PostgresPool} stub that injects a Postgres serialization failure

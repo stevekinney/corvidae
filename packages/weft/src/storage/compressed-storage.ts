@@ -20,7 +20,7 @@ import {
   type ScanOptions,
   type Storage,
   type StorageCapabilities,
-} from './interface.ts';
+} from '@lostgradient/storage';
 
 /**
  * {@link Storage} decorator that transparently compresses payloads above a
@@ -33,7 +33,8 @@ import {
  * @example
  * ```ts
  * import { CompressedStorage } from '@lostgradient/weft';
- * import { workflow, Engine, MemoryStorage } from '@lostgradient/weft';
+ * import { workflow, Engine } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
  * await using inner = new MemoryStorage();
  * await using storage = new CompressedStorage(inner, {

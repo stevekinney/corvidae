@@ -47,7 +47,8 @@ export type McpEndpointOptions = {
  * @example
  * ```ts
  * import { createMcpEndpoint } from '@lostgradient/weft';
- * import { Engine, MemoryStorage } from '@lostgradient/weft';
+ * import { Engine } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
  * await using storage = new MemoryStorage();
  * await using engine = new Engine({ storage });
@@ -131,7 +132,8 @@ export class McpEndpoint implements AsyncDisposable {
  * @example
  * ```ts
  * import { createMcpEndpoint } from '@lostgradient/weft';
- * import { Engine, MemoryStorage } from '@lostgradient/weft';
+ * import { Engine } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
  * await using storage = new MemoryStorage();
  * await using engine = new Engine({ storage });
@@ -153,7 +155,8 @@ export function createMcpEndpoint(
  * @example
  * ```ts
  * import { createMcpEndpoint, type McpHttpRequestOptions } from '@lostgradient/weft';
- * import { Engine, MemoryStorage } from '@lostgradient/weft';
+ * import { Engine } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
  * await using storage = new MemoryStorage();
  * await using engine = new Engine({ storage });
@@ -186,7 +189,8 @@ export type McpHttpRequestOptions = {
  * @example
  * ```ts
  * import { createMcpEndpoint, handleMcpHttpRequest } from '@lostgradient/weft';
- * import { Engine, MemoryStorage } from '@lostgradient/weft';
+ * import { Engine } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
  * await using storage = new MemoryStorage();
  * await using engine = new Engine({ storage });

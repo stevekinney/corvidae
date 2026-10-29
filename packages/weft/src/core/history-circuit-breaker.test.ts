@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 
-import { KEYS, type BatchOperation, type Storage as WeftStorage } from '../storage/interface.ts';
-import { MemoryStorage } from '../storage/memory.ts';
+import {
+  type BatchOperation,
+  type Storage as WeftStorage,
+  MemoryStorage,
+} from '@lostgradient/storage';
+import { KEYS } from '../storage/keys.ts';
 import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
 import { decode, encode } from './codec.ts';
 import { Engine } from './engine.ts';

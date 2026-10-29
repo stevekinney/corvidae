@@ -6,7 +6,7 @@
  * @module core/engine/aggregate
  */
 
-import { KEYS } from '../../storage/interface.ts';
+import { KEYS } from '../../storage/keys.ts';
 import {
   AGGREGATE_DEFAULT_LIMIT,
   AggregateDistinctKeyCapExceededError,

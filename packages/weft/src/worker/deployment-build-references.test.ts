@@ -4,8 +4,8 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { encode } from '../core/codec/index.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import {
   seedBoundRun,
   seedLedgerEntry,

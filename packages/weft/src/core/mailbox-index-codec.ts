@@ -9,7 +9,7 @@
  * @module core/mailbox-index-codec
  */
 
-import { KEYS } from '../storage/interface.ts';
+import { KEYS } from '../storage/keys.ts';
 import {
   fail,
   isRecordObject,

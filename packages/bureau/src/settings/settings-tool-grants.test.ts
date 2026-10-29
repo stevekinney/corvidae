@@ -11,7 +11,7 @@ import {
   stopWhen,
 } from '@lostgradient/operative';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
-import { encodeStorageKeyComponent } from '@lostgradient/weft';
+import { encodeStorageKeyComponent } from '@lostgradient/storage';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 

@@ -1,4 +1,5 @@
-import { KEYS, type Storage } from '../../storage/interface.ts';
+import { type Storage } from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { decode } from '../codec.ts';
 import { isWorkflowLogEntry } from '../event-log-shared.ts';
 import type {

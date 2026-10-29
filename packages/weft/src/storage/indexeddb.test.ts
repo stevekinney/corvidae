@@ -1,5 +1,13 @@
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import type { ScanOptions } from '@lostgradient/storage';
+import {
+  collect,
+  runBasicStorageContract,
+  runBinaryAndLargeScanStorageConformance,
+  runConcurrentConditionalBatchConformance,
+  runStorageCapabilityConformance,
+} from '@lostgradient/storage/testing';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   createFakeRequest,
@@ -9,14 +17,6 @@ import {
 } from './indexeddb-fault-harness.test-support.ts';
 import { SCAN_PAGE_SIZE } from './indexeddb-scan-page-size.ts';
 import { IndexedDBStorage } from './indexeddb.ts';
-import type { ScanOptions } from './interface.ts';
-import {
-  collect,
-  runBasicStorageContract,
-  runBinaryAndLargeScanStorageConformance,
-  runConcurrentConditionalBatchConformance,
-  runStorageCapabilityConformance,
-} from './storage-adapter.test-support.ts';
 
 runStorageCapabilityConformance('IndexedDBStorage', {
   create: () => new IndexedDBStorage(`weft-caps-${String(Math.random()).slice(2)}`),

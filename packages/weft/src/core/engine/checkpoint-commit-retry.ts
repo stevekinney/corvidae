@@ -1,9 +1,9 @@
 import {
-  KEYS,
   storageValuesEqual,
   type BatchOperation,
   type ConditionalBatchCondition,
-} from '../../storage/interface.ts';
+} from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { commitFencedEngineWriteAllowingPreconditionFailure } from './fenced-write.ts';
 import type { EngineInternals } from './internals.ts';
 import { adapterCall, retryRefusedStorageWrite } from './storage-write-retry.ts';

@@ -19,7 +19,8 @@ import {
   createTemporaryDirectory,
   removeTemporaryPath,
 } from '@lostgradient/testing/temporary-path';
-import { resolveStorage, textValueStore } from '@lostgradient/weft';
+import { resolveStorage } from '@lostgradient/weft';
+import { textValueStore } from '@lostgradient/storage';
 import { createConversationHistory } from 'conversationalist';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 

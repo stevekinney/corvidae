@@ -8,8 +8,8 @@
 
 import { describe, expect, it, mock } from 'bun:test';
 
-import { KEYS } from '../../../storage/interface.ts';
-import { MemoryStorage } from '../../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
+import { KEYS } from '../../../storage/keys.ts';
 import { encode } from '../../codec.ts';
 import { DevelopmentWarningEvent } from '../../events.ts';
 import type { ScheduleState, WorkflowServicesResolverInfo, WorkflowState } from '../../types.ts';

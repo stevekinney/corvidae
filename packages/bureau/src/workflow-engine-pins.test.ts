@@ -5,12 +5,12 @@
  */
 import {
   Engine,
-  MemoryStorage,
   registerWorkflowDocuments,
   workflowDocumentVersion,
   type DocumentWorkflowHost,
   type WorkflowDocument,
 } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 

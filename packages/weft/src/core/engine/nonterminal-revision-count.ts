@@ -18,7 +18,7 @@
  * @module core/engine/nonterminal-revision-count
  */
 
-import type { Storage } from '../../storage/interface.ts';
+import type { Storage } from '@lostgradient/storage';
 import { decodeWorkflowState, isTerminalWorkflowStatus } from './validation.ts';
 import { isTopLevelWorkflowStateKey } from './workflow-state-stream.ts';
 

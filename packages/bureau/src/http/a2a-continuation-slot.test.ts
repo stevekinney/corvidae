@@ -8,7 +8,7 @@ import {
   type GenerateFunction,
   withBackendDescriptors,
 } from '@lostgradient/operative';
-import type { ConditionalTextValueStore } from '@lostgradient/weft';
+import type { ConditionalTextValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import { waitForCondition } from '../test';

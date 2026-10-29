@@ -2,7 +2,7 @@ import { createDeferred, waitForever } from '@lostgradient/testing/fake-timers';
 import { describe, expect, it } from 'bun:test';
 import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
 
-import { KEYS } from '../storage/interface.ts';
+import { KEYS } from '../storage/keys.ts';
 import { TestEngine } from '../testing/test-engine.ts';
 import { decode } from './codec.ts';
 import { WorkflowTimedOutEvent } from './events.ts';

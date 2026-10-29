@@ -1,4 +1,5 @@
-import { KEYS, storageHas } from '../../../storage/interface.ts';
+import { storageHas } from '@lostgradient/storage';
+import { KEYS } from '../../../storage/keys.ts';
 import { EventLog } from '../../event-log.ts';
 import type { ComposedWorkflowInterceptor } from '../../interceptor.ts';
 import { coerceStartWorkflowTags } from '../../start-workflow-validation.ts';

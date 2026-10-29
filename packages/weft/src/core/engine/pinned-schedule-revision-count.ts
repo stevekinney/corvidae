@@ -13,7 +13,7 @@
  * @module core/engine/pinned-schedule-revision-count
  */
 
-import type { Storage } from '../../storage/interface.ts';
+import type { Storage } from '@lostgradient/storage';
 import { decodeScheduleState } from './validation/schedule-decode.ts';
 
 /**

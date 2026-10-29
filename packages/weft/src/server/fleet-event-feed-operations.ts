@@ -1,13 +1,13 @@
-import { encode } from '../core/codec.ts';
-import { PersistedDataCorruptError } from '../core/persisted-data-incompatible-error.ts';
 import {
-  KEYS,
   MAX_BATCH_OPERATIONS,
   storageConditionalBatch,
   type BatchOperation,
   type ConditionalBatchCondition,
   type Storage,
-} from '../storage/interface.ts';
+} from '@lostgradient/storage';
+import { encode } from '../core/codec.ts';
+import { PersistedDataCorruptError } from '../core/persisted-data-incompatible-error.ts';
+import { KEYS } from '../storage/keys.ts';
 import {
   collectRetentionRecords,
   createFleetEventEnvelope,

@@ -29,7 +29,7 @@ import { WebExtensionStorage } from './web-extension.ts';
  * @module @lostgradient/weft
  */
 
-import type { Storage as WeftStorage } from './interface.ts';
+import type { Storage as WeftStorage } from '@lostgradient/storage';
 
 type RuntimeGlobalsLike = {
   Bun?: unknown;

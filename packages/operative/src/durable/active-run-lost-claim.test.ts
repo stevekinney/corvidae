@@ -3,7 +3,7 @@ import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
 
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { stopWhen } from '../conditions/index';
 import {
   type CombinedOperativeEventMap,

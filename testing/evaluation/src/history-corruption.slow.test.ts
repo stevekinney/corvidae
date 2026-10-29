@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 
 import type { EvaluationRunRecord } from './evaluation-run';
 import baselineFixture from './fixtures/history/baseline-run.json';

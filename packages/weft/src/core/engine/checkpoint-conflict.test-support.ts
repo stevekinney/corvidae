@@ -6,13 +6,14 @@
  */
 import { afterEach, beforeEach, spyOn } from 'bun:test';
 
+import { type BatchOperation, type Storage } from '@lostgradient/storage';
 import {
   createDeferred,
   waitForCondition,
   yieldToEventLoop,
 } from '@lostgradient/testing/fake-timers';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { KEYS, type BatchOperation, type Storage } from '../../storage/interface.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { decode } from '../codec/api.ts';
 import { workflow, type WorkflowContext, type WorkflowState } from '../types.ts';
 import { abandonWorkflowAfterCheckpointConflict } from './checkpoint-conflict-abandon.ts';

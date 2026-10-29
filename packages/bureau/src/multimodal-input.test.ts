@@ -12,7 +12,8 @@ import {
   stopWhen,
   withBackendDescriptors,
 } from '@lostgradient/operative';
-import { MemoryStorage, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import type { MediaContent } from 'conversationalist';

@@ -16,7 +16,8 @@
  * key derivations, and the in-memory resolution queue that recovery drains.
  */
 
-import { KEYS, encodeStorageKeyComponent, type BatchOperation } from '../../storage/interface.ts';
+import { encodeStorageKeyComponent, type BatchOperation } from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { decode, encode } from '../codec.ts';
 import { ActivityAsyncPendingEvent } from '../events.ts';
 import { tagWorkflowEventGeneration } from '../events/workflow-event-generation.ts';

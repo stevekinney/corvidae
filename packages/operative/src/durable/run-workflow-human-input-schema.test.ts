@@ -3,12 +3,8 @@
  * the model reads leaves it out, while the step record the checkpoint commits keeps it (a restarted
  * run rebuilds the wait from there).
  */
-import {
-  Engine,
-  MemoryStorage,
-  textValueStore,
-  yieldToPortableEventLoop,
-} from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { Engine, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory } from 'conversationalist';

@@ -31,11 +31,11 @@
  * @module server/runtime/remote-activity-result-bridge
  */
 
+import type { BatchOperation } from '@lostgradient/storage';
 import type { RegistryAgnosticEngine } from '../../core/engine.ts';
 import { buildAsyncActivityResolutionWrite } from '../../core/engine/async-activity-records.ts';
 import { isPendingAsyncActivityTokenForWorkflowExecution } from '../../core/engine/pending-async-activity-token.ts';
 import type { OperationOutcome } from '../../core/types.ts';
-import type { BatchOperation } from '../../storage/interface.ts';
 
 export type RemoteActivityResultOutcome =
   Readonly<{ status: 'completed'; value: unknown }> | Readonly<{ status: 'failed'; error: string }>;

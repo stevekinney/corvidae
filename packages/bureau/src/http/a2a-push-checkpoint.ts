@@ -12,7 +12,7 @@
  * @module a2a-push-checkpoint
  */
 
-import type { ConditionalTextValueStore } from '@lostgradient/weft';
+import type { ConditionalTextValueStore } from '@lostgradient/storage';
 
 /** The key prefix of a push checkpoint, disjoint from every other prefix the Bureau stores. */
 export const A2A_PUSH_CHECKPOINT_KEY_PREFIX = 'bureau-a2a-push:v1:';

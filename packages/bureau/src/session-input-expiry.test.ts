@@ -5,7 +5,7 @@ import {
   type GenerateFunction,
   stopWhen,
 } from '@lostgradient/operative';
-import { MemoryStorage, type Storage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, type Storage, textValueStore } from '@lostgradient/storage';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { type Conversation, CURRENT_SCHEMA_VERSION } from 'conversationalist';

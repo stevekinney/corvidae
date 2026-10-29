@@ -2,7 +2,8 @@
  * The workflow types `createRunEngine` registers are the types a host that schedules by type
  * reserves, and the module that lists them is safe for a browser to read.
  */
-import { Engine, MemoryStorage, workflow } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
+import { Engine, workflow } from '@lostgradient/weft';
 import { describe, expect, it, spyOn } from 'bun:test';
 
 import { createRunEngine } from './create-run-engine';

@@ -12,14 +12,14 @@ import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { decode, encode } from '../core/codec.ts';
 import { Engine } from '../core/engine.ts';
 import type { WorkflowContext, WorkflowState } from '../core/types.ts';
 import { workflow } from '../core/types.ts';
-import { KEYS } from '../storage/interface.ts';
-import { MemoryStorage } from '../storage/memory.ts';
+import { KEYS } from '../storage/keys.ts';
 import { serve, type WeftServer } from './index.ts';
 
 const holdWorkflow = workflow({ name: 'hold' }).execute(async function* (

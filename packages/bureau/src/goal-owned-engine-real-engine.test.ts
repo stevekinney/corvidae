@@ -10,7 +10,8 @@ import {
   GOAL_WORKFLOW_TYPE,
   type RegistryAgnosticEngine,
 } from '@lostgradient/operative';
-import { MemoryStorage, workflow } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
+import { workflow } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createOwnedGoalEngine } from './goal-ownership';

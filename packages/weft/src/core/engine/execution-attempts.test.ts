@@ -7,13 +7,13 @@
 import { Glob } from 'bun';
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import {
   createDeferred,
   drainMicrotasks,
   waitForCondition,
 } from '@lostgradient/testing/fake-timers';
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { workflow, type Checkpoint, type WorkflowContext } from '../types.ts';
 import {
   adoptLaunchCheckpoint,

@@ -50,8 +50,8 @@ import {
   type ServerCallContext,
 } from '@a2a-js/sdk/server';
 
+import type { Storage } from '@lostgradient/storage';
 import type { Engine } from '../core/engine.ts';
-import type { Storage } from '../storage/interface.ts';
 import type { OutboxPushNotificationSender } from './push-notification-sender.ts';
 import { type A2AStreamTimerScheduler, scheduleWithTimeout } from './sse-response.ts';
 import {
@@ -300,7 +300,8 @@ class WorkflowAgentRequestHandler extends DefaultRequestHandler {
  *
  * @example
  * ```ts
- * import { Engine, MemoryStorage, Outbox, workflow } from '@lostgradient/weft';
+ * import { Engine, Outbox, workflow } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  * import {
  *   createA2AHandler,
  *   createEgressPolicy,

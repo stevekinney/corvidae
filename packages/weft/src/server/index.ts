@@ -5,11 +5,11 @@
  * @module server
  */
 
+import { requireStorageCapability } from '@lostgradient/storage';
 import type { ConformanceTargetRunner } from '../conformance/targets.ts';
 import type { Engine, RegistryAgnosticEngine } from '../core/engine.ts';
 import type { RetryPolicy } from '../core/types.ts';
 import type { PrometheusExporter } from '../observability/metrics.ts';
-import { requireStorageCapability } from '../storage/interface.ts';
 import type { RoutingPolicy } from '../worker/registry.ts';
 import { WorkerRegistry } from '../worker/registry.ts';
 import type { AuthConfig, RateLimitConfig } from './authentication.ts';
@@ -162,7 +162,8 @@ export type UnauthenticatedAccessPolicy = 'warn' | 'allow' | 'reject';
  * @example
  * ```ts
  * import { serve, type ServeOptions } from '@lostgradient/weft';
- * import { Engine, MemoryStorage } from '@lostgradient/weft';
+ * import { Engine } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
  * await using storage = new MemoryStorage();
  * await using engine = new Engine({ storage });
@@ -246,7 +247,8 @@ export interface ServeOptions {
    *
    * @example
    * ```ts
-   * import { Engine, MemoryStorage, serve } from '@lostgradient/weft';
+   * import { Engine, serve } from '@lostgradient/weft';
+   * import { MemoryStorage } from '@lostgradient/storage';
    * import { createConformanceTargets } from '@lostgradient/weft/testing';
    *
    * const engine = new Engine({ storage: new MemoryStorage() });
@@ -529,7 +531,8 @@ export interface TaskDispatch {
  * @example
  * ```ts
  * import { serve, type WeftServer } from '@lostgradient/weft';
- * import { Engine, MemoryStorage } from '@lostgradient/weft';
+ * import { Engine } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
  * await using storage = new MemoryStorage();
  * await using engine = new Engine({ storage });
@@ -650,7 +653,8 @@ function resolveServeRoutes(routes: ServeRoutes | undefined): ServeRoutes {
  *
  * @example
  * ```ts
- * import { Engine, MemoryStorage, workflow } from '@lostgradient/weft';
+ * import { Engine, workflow } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  * import { serve } from '@lostgradient/weft';
  *
  * await using engine = new Engine({ storage: new MemoryStorage() });

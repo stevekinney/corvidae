@@ -14,6 +14,7 @@
  */
 import { describe, expect, it, mock, spyOn } from 'bun:test';
 
+import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import {
   createDeferred,
   drainMicrotasks,
@@ -21,8 +22,7 @@ import {
   waitForCondition,
 } from '@lostgradient/testing/fake-timers';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { KEYS, type Storage } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { decode, encode } from '../codec/api.ts';
 import { durableActivity, DurableActivityScopeError } from '../context/durable-activity.ts';
 import type { RemoteActivityBroker, RemoteActivityTaskRequest } from '../remote-activity-broker.ts';

@@ -1,5 +1,5 @@
+import type { BatchOperation, ConditionalBatchCondition } from '@lostgradient/storage';
 import type { WeftEventMap } from '../core/events.ts';
-import type { BatchOperation, ConditionalBatchCondition } from '../storage/interface.ts';
 import { createReplayLiveFeed } from './replay-live-feed.ts';
 export { createReplayLiveFeed } from './replay-live-feed.ts';
 
@@ -111,7 +111,8 @@ export type EventEnvelope = {
  *
  * @example
  * ```ts
- * import { Engine, MemoryStorage } from '@lostgradient/weft';
+ * import { Engine } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  * import {
  *   createEngineEventFeedBackend,
  *   type WorkflowEventFeedBackend,
@@ -151,7 +152,8 @@ export type WorkflowEventFeedBackend = {
  *
  * @example
  * ```ts
- * import { Engine, MemoryStorage } from '@lostgradient/weft';
+ * import { Engine } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  * import {
  *   createEngineEventFeedBackend,
  *   createWorkflowEventFeed,
@@ -320,7 +322,8 @@ export type ReplayLiveSubscribeOptions<TEnvelope extends SequencedEventEnvelope>
  *
  * @example
  * ```ts
- * import { Engine, MemoryStorage } from '@lostgradient/weft';
+ * import { Engine } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  * import {
  *   createEngineEventFeedBackend,
  *   createWorkflowEventFeed,

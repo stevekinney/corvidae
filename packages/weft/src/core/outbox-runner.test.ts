@@ -9,6 +9,7 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import {
   advanceTimersByTime,
   createDeferred,
@@ -17,7 +18,6 @@ import {
   useFakeTimers,
 } from '@lostgradient/testing/fake-timers';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { MemoryStorage } from '../storage/memory.ts';
 import { ApplicationDeliveryValidationError } from './outbox-guards.ts';
 import {
   beginOne,

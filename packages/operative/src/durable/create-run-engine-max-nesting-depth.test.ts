@@ -1,4 +1,5 @@
-import { MemoryStorage, workflow, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
+import { workflow, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createRunEngine } from './create-run-engine';

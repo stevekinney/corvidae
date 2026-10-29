@@ -7,8 +7,8 @@
  * @module timeouts
  */
 
-import type { BatchOperation, Storage } from '../storage/interface.ts';
-import { KEYS } from '../storage/interface.ts';
+import type { BatchOperation, Storage } from '@lostgradient/storage';
+import { KEYS } from '../storage/keys.ts';
 import { resolveNonEmptyPrefixRangeEnd } from '../storage/non-empty-prefix-range-end.ts';
 import { decode, encode } from './codec.ts';
 import { normalizeStorageTimestamp, parseDuration } from './scheduler.ts';
@@ -76,7 +76,7 @@ export function cleanupDeadlineOperations(
  * @example
  * ```ts
  * import { checkExpiredDeadlines, createDeadlineOperations } from '@lostgradient/weft';
- * import { MemoryStorage } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
  * const storage = new MemoryStorage();
  * const ops = createDeadlineOperations('wf-abc', Date.now() - 60_000, '30s');

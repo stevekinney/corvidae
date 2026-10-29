@@ -13,7 +13,7 @@
  * @module storage/mailbox-keys
  */
 
-import { encodeStorageKeyComponent, formatSortableStorageTimestamp } from './key-encoding.ts';
+import { encodeStorageKeyComponent, formatSortableStorageTimestamp } from '@lostgradient/storage';
 
 /**
  * Mailbox header, command record, FIFO delivery index, idempotency binding, and

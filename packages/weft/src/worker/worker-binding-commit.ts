@@ -1,5 +1,5 @@
+import { storageConditionalBatch, type Storage } from '@lostgradient/storage';
 import { encode } from '../core/codec/index.ts';
-import { storageConditionalBatch, type Storage } from '../storage/interface.ts';
 import { workerBuildBinding, type WorkerBuildIdentity } from './deployment-records.ts';
 import {
   assertInheritedWorkerBuildNotRemoved,

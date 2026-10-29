@@ -2,9 +2,9 @@ import { restoreRealTimers, useFakeTimers } from '@lostgradient/testing/fake-tim
 import { afterEach, describe, expect, it } from 'bun:test';
 import { settleInlineLaunches } from './inline-launch-settle.test-support.ts';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { activity, type WorkflowContext } from '../core/types.ts';
 import { workflow } from '../core/types/workflow-function.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import { TestEngine } from './test-engine.ts';
 
 // ---------------------------------------------------------------------------

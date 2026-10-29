@@ -1,5 +1,5 @@
+import { MAX_BATCH_OPERATIONS, MAX_SCAN_LIMIT } from '@lostgradient/storage';
 import { z } from 'zod';
-import { MAX_BATCH_OPERATIONS, MAX_SCAN_LIMIT } from '../../storage/interface.ts';
 
 const binaryValueSchema: z.ZodType<Uint8Array, Uint8Array> = z
   .instanceof(Uint8Array)

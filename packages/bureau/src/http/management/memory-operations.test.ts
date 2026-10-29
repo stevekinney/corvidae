@@ -18,12 +18,8 @@ import {
   type MemoryAuthority,
 } from '@lostgradient/memory';
 import { createAgent, type GenerateFunction } from '@lostgradient/operative';
-import {
-  type AuthConfig,
-  type AuthorizationScope,
-  MemoryStorage,
-  principalFromApiKey,
-} from '@lostgradient/weft';
+import { type AuthConfig, type AuthorizationScope, principalFromApiKey } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from '../../agent-catalog.ts';

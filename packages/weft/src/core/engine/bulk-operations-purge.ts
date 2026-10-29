@@ -1,10 +1,11 @@
-import type { BatchOperation, Storage as WeftStorage } from '../../storage/interface.ts';
 import {
-  KEYS,
+  type BatchOperation,
+  type Storage as WeftStorage,
   encodeStorageKeyComponent,
   storageHas,
   storageKeys,
-} from '../../storage/interface.ts';
+} from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { decode } from '../codec.ts';
 import { buildIndexOperations } from '../search-attributes.ts';
 import type { ListFilter, PurgeResult, SearchAttributeValue, WorkflowState } from '../types.ts';

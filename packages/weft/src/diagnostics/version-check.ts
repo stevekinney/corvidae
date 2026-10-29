@@ -8,11 +8,11 @@
  * @module diagnostics/version-check
  */
 
+import type { Storage } from '@lostgradient/storage';
 import { decodeWorkflowState } from '../core/engine/validation.ts';
 import { isTopLevelWorkflowStateKey } from '../core/engine/workflow-state-stream.ts';
 import type { WorkflowDefinition } from '../core/types.ts';
 import { DEFAULT_WORKFLOW_VERSION, checkVersionCompatibility } from '../core/versioning.ts';
-import type { Storage } from '../storage/interface.ts';
 import type { VersionCheckReport, WorkflowTypeReport } from './types.ts';
 
 interface WorkflowTypeGroup {
@@ -118,7 +118,8 @@ function computeOverallVerdict(
  *
  * @example
  * ```ts
- * import { MemoryStorage, runVersionCheck, workflow } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
+ * import { runVersionCheck, workflow } from '@lostgradient/weft';
  *
  * await using storage = new MemoryStorage();
  *

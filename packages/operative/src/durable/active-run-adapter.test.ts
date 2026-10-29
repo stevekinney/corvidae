@@ -3,7 +3,8 @@ import {
   createManualRuntimeServices,
   HookRegistry,
 } from '@lostgradient/lifecycle';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import type { AnyToolbox } from 'armorer';
 import {
   createTestToolbox,

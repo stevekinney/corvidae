@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import {
+  MemoryStorage,
+  type BatchOperation,
+  type ConditionalBatchCondition,
+} from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { ActivityRegistry } from '../activity-registry.ts';
 import { Engine } from '../engine.ts';
 import { CleanupWarningEvent } from '../events.ts';
@@ -11,8 +15,6 @@ import { workflow } from '../types.ts';
 import { copyWorkflowDefinition } from './construction.ts';
 import { getInternals } from './internals.ts';
 import { buildRegistrationEntry } from './registration.ts';
-
-import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
 
 type HeldCall = { kind: 'read' | 'delete' | 'commit'; key: string };
 

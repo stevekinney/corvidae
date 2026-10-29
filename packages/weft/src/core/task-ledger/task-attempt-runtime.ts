@@ -14,7 +14,7 @@
  * @module server/runtime/task-attempt-runtime
  */
 
-import type { BatchOperation, Storage } from '../../storage/interface.ts';
+import type { BatchOperation, Storage } from '@lostgradient/storage';
 import { sha256HexSync } from '../../worker/manifest/content-digest.ts';
 import type { WorkerExecutionIdentity } from '../../worker/manifest/types.ts';
 import { TaskAttemptTransitionEvent } from '../events/activity-events.ts';

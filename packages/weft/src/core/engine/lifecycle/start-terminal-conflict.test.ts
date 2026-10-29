@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'bun:test';
 
-import { flushMicrotasks, waitForCondition } from '@lostgradient/testing/fake-timers';
-import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   type BatchOperation,
   type ConditionalBatchCondition,
-  KEYS,
+  MemoryStorage,
   type Storage,
   storageKeys,
-} from '../../../storage/interface.ts';
-import { MemoryStorage } from '../../../storage/memory.ts';
+} from '@lostgradient/storage';
+import { flushMicrotasks, waitForCondition } from '@lostgradient/testing/fake-timers';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { KEYS } from '../../../storage/keys.ts';
 import { TestEngine } from '../../../testing/test-engine.ts';
 import { ActivityRegistry } from '../../activity-registry.ts';
 import { Engine } from '../../engine.ts';

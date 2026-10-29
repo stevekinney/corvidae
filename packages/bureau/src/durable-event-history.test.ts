@@ -33,8 +33,8 @@ import {
   type FleetEventFeed,
   KEYS,
   resolveStorage,
-  type Storage,
 } from '@lostgradient/weft';
+import { type Storage } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import {

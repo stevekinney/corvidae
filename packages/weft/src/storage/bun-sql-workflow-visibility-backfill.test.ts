@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import {
+  createDiskBackedTestFixture,
+  sqliteDatabaseSidecarSuffixes,
+  type DiskBackedTestFixture,
+} from '@lostgradient/storage/testing';
+import {
   runWorkflowVisibilityBackfill,
   runWorkflowVisibilityDrop,
 } from '../../scripts/lib/workflow-visibility-backfill.ts';
@@ -10,13 +15,8 @@ import {
   workflowVisibilityUpdatedBucket,
 } from '../core/engine/workflow-indexes.ts';
 import type { WorkflowState } from '../core/types.ts';
-import {
-  collectKeys,
-  createDiskBackedTestFixture,
-  sqliteDatabaseSidecarSuffixes,
-  type DiskBackedTestFixture,
-} from '../testing/storage-backends.test-support.ts';
-import { KEYS } from './interface.ts';
+import { collectKeys } from '../testing/storage-backends.test-support.ts';
+import { KEYS } from './keys.ts';
 
 import { BunSQLiteStorage } from './bun-sql.ts';
 

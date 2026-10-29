@@ -43,7 +43,7 @@
  */
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
-import { type ConditionalTextValueStore, encodeStorageKeyComponent } from '@lostgradient/weft';
+import { type ConditionalTextValueStore, encodeStorageKeyComponent } from '@lostgradient/storage';
 
 export const AG_UI_LEASE_KEY_PREFIX = 'ag-ui-lease:v1';
 

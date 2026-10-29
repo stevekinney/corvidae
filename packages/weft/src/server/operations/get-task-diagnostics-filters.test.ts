@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { encode } from '../../core/codec.ts';
 import { encodeTaskAttemptRecord, taskAttemptKey } from '../../core/task-ledger/task-attempt.ts';
 import { taskLedgerKey } from '../../core/task-ledger/task-ledger.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { sha256HexSync } from '../../worker/manifest/content-digest.ts';
 import { WorkerRegistry } from '../../worker/registry.ts';
 import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';

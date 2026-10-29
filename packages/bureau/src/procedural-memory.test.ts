@@ -23,7 +23,7 @@ import {
   retireProcedure,
   retrieveProcedures,
 } from '@lostgradient/memory';
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';

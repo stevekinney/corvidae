@@ -1,10 +1,10 @@
-import type { BatchOperation } from '../../storage/interface.ts';
 import {
-  KEYS,
+  type BatchOperation,
   encodeStorageKeyComponent,
   requireStorageCapability,
   storageConditionalBatch,
-} from '../../storage/interface.ts';
+} from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { decode, encode } from '../codec.ts';
 import { SignalDeliveredEvent, SignalReceivedEvent } from '../events.ts';
 import type { ComposedWorkflowInterceptor } from '../interceptor.ts';

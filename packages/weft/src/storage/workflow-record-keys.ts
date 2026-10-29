@@ -11,7 +11,7 @@
  * @module storage/workflow-record-keys
  */
 
-import { encodeStorageKeyComponent, formatSortableStorageTimestamp } from './key-encoding.ts';
+import { encodeStorageKeyComponent, formatSortableStorageTimestamp } from '@lostgradient/storage';
 
 const formatSortableTimestamp = formatSortableStorageTimestamp;
 

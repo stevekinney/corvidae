@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { ALERT_METRICS } from '../../alerting/types.ts';
 import { Engine } from '../../core/engine.ts';
 import { WorkflowFailedEvent } from '../../core/events.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { handleRequest } from '../handler.ts';
 import { handleJsonRpcHttpRequest } from '../json-rpc-http.ts';
 import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';

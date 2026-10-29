@@ -4,7 +4,7 @@ import {
   createAgent,
   type GenerateFunction,
 } from '@lostgradient/operative';
-import { MemoryStorage, type BatchOperation } from '@lostgradient/weft';
+import { MemoryStorage, type BatchOperation } from '@lostgradient/storage';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';

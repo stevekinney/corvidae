@@ -37,7 +37,7 @@
  * @module core/engine/ownership-bootstrap
  */
 
-import type { Storage } from '../../storage/interface.ts';
+import type { Storage } from '@lostgradient/storage';
 import type { OwnerSideSignalPollTarget, ParkedSignalWait } from './owner-side-signal-poll.ts';
 import type { OwnerSideUpdatePollTarget } from './owner-side-update-poll.ts';
 import { bootstrapOwnershipGates } from './ownership-mode-marker.ts';

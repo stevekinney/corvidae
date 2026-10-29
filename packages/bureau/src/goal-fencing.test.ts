@@ -7,7 +7,7 @@
  * all tombstoned is allowed to be marked cleaned up. The run such a start goes
  * on to create takes no step (`goal-attempt-fence.test.ts`).
  */
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import { cancelGoal, settleCanceledGoal } from './goal-cancellation';

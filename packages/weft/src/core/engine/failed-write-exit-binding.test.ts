@@ -16,10 +16,10 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage, type BatchOperation } from '@lostgradient/storage';
 import { drainMicrotasks } from '@lostgradient/testing/fake-timers';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { KEYS, type BatchOperation } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { flushPortableMicrotasks } from '../../testing/event-loop.ts';
 import { deserializeCheckpoint, serializeCheckpoint } from '../checkpoint.ts';
 import { decode, encode } from '../codec/api.ts';

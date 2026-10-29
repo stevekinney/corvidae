@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { settleInlineLaunches } from '../../testing/inline-launch-settle.test-support.ts';
 import { TestEngine } from '../../testing/test-engine.ts';
 import { normalizeListFilter } from '../list-filter-validation.ts';

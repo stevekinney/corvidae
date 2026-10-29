@@ -3,7 +3,7 @@ import type { ServerWebSocket } from 'bun';
 import { decode } from '../../core/codec.ts';
 import type { Engine } from '../../core/engine.ts';
 import { loadStoredStreamTailSequence } from '../../core/engine/stream-chunk-loading.ts';
-import { KEYS } from '../../storage/interface.ts';
+import { KEYS } from '../../storage/keys.ts';
 import type { WebSocketData } from '../json-rpc-websocket-runtime.ts';
 import type { ServerContext } from './context.ts';
 

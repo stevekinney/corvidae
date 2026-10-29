@@ -15,8 +15,8 @@
  * after the third the answer is `busy`, a retryable outcome. Nothing is held between the steps, so
  * a crash at any point leaves nothing behind to reconcile.
  */
+import { storageConditionalBatch, type Storage } from '@lostgradient/storage';
 import { encode } from '../core/codec/index.ts';
-import { storageConditionalBatch, type Storage } from '../storage/interface.ts';
 import { countBuildReference } from './deployment-build-references.ts';
 import {
   bindingStampKeys,

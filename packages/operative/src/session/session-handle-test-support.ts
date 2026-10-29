@@ -1,12 +1,6 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import {
-  activity,
-  MemoryStorage,
-  textValueStore,
-  workflow,
-  yieldToPortableEventLoop,
-  type Storage,
-} from '@lostgradient/weft';
+import { MemoryStorage, textValueStore, type Storage } from '@lostgradient/storage';
+import { activity, workflow, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import type { ConversationSnapshot } from 'conversationalist';
 import { createConversationHistory } from 'conversationalist';

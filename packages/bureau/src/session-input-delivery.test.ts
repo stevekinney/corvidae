@@ -4,7 +4,7 @@ import {
   stopWhen,
   createAgent,
 } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { type Conversation, CURRENT_SCHEMA_VERSION } from 'conversationalist';

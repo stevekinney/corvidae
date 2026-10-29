@@ -16,6 +16,7 @@ import { mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import {
   sleepForTesting,
   waitForCondition,
@@ -33,7 +34,6 @@ import {
 import { serve, type ServeOptions, type TaskDispatch, type WeftServer } from '../server/index.ts';
 import { useObservableActivityHeartbeatsForTesting } from '../server/runtime/activity-heartbeat-test-hooks.ts';
 import { useManualTaskReconciliationForTesting } from '../server/runtime/task-reconciliation.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import {
   killAndReboot,
   spawnServerSubprocess,

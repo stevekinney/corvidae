@@ -3,7 +3,8 @@
  * is registered, stamped when an instance runs, listed newest first once they have run, and pruned
  * only when nothing holds them.
  */
-import { MemoryStorage, textValueStore, type WorkflowDocument } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { type WorkflowDocument } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import {

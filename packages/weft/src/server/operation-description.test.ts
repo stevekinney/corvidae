@@ -18,7 +18,7 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { MAX_BATCH_OPERATIONS } from '../storage/interface.ts';
+import { MAX_BATCH_OPERATIONS } from '@lostgradient/storage';
 import { generateMcpDiscovery } from './mcp-discovery.ts';
 import { emitBindings, generateOpenApiDocument } from './openapi.ts';
 import { OpenRpcDocumentSchema } from './openrpc-document-schema.ts';

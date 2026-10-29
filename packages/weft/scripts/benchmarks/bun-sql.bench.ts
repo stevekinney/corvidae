@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import {
+  createDiskBackedTestFixture,
+  sqliteDatabaseSidecarSuffixes,
+} from '@lostgradient/storage/testing';
+import {
   benchmarkWorkload,
   generateCheckpointValue,
   runArchitectureBenchmark,
@@ -8,10 +12,6 @@ import {
   TARGET_WRITES_PER_SECOND,
 } from '../../src/storage/bun-sql-workload.test-support.ts';
 import { BunSQLiteStorage } from '../../src/storage/bun-sql.ts';
-import {
-  createDiskBackedTestFixture,
-  sqliteDatabaseSidecarSuffixes,
-} from '../../src/testing/storage-backends.test-support.ts';
 
 /**
  * The throughput gate, declared through `skipIf` so `WEFT_SQLITE_ARCHITECTURE_BENCHMARK=1`

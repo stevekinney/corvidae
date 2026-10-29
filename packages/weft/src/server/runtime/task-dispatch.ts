@@ -1,3 +1,4 @@
+import type { ConditionalBatchCondition } from '@lostgradient/storage';
 import { ActivityStartedEvent } from '../../core/events.ts';
 import { tagWorkflowEventGeneration } from '../../core/events/workflow-event-generation.ts';
 import {
@@ -21,7 +22,6 @@ import {
   type RemoteTaskQueued,
   type RemoteTaskRecord,
 } from '../../core/task-ledger/task-ledger.ts';
-import type { ConditionalBatchCondition } from '../../storage/interface.ts';
 import { buildWorkerExecutionIdentity } from '../../worker/manifest/execution-identity.ts';
 import type { RoutingOptions } from '../../worker/registry.ts';
 import type { ServeOptions, TaskDispatch } from '../index.ts';

@@ -17,13 +17,8 @@
  */
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
-import {
-  type BatchOperation,
-  decode,
-  resolveStorage,
-  type Storage,
-  textValueStore,
-} from '@lostgradient/weft';
+import { type BatchOperation, type Storage, textValueStore } from '@lostgradient/storage';
+import { decode, resolveStorage } from '@lostgradient/weft';
 import { createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 

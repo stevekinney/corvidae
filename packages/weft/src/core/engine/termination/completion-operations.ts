@@ -1,6 +1,6 @@
 /** Builders for the single batch `completeWorkflow` commits. */
-import type { BatchOperation } from '../../../storage/interface.ts';
-import { KEYS } from '../../../storage/interface.ts';
+import type { BatchOperation } from '@lostgradient/storage';
+import { KEYS } from '../../../storage/keys.ts';
 import { encode } from '../../codec.ts';
 import { buildIndexOperations } from '../../search-attributes.ts';
 import type { SearchAttributeValue, WorkflowState } from '../../types.ts';

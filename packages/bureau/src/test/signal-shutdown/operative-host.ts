@@ -16,7 +16,7 @@ import {
   readDurableRunResult,
   stopWhen,
 } from '@lostgradient/operative';
-import { textValueStore } from '@lostgradient/weft';
+import { textValueStore } from '@lostgradient/storage';
 import { createTool, createToolbox } from 'armorer';
 import { createConversationHistory } from 'conversationalist';
 import { z } from 'zod';

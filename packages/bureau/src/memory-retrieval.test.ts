@@ -13,7 +13,7 @@ import {
   type GenerateFunction,
   MEMORY_EVIDENCE_METADATA_KEY,
 } from '@lostgradient/operative';
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 import type { InputDetector, ToolRequestContext } from 'armorer';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 

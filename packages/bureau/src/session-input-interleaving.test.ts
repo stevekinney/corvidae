@@ -1,5 +1,5 @@
 import type { GenerateContext } from '@lostgradient/operative';
-import type { Storage } from '@lostgradient/weft';
+import type { Storage } from '@lostgradient/storage';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

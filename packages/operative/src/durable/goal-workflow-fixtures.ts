@@ -16,7 +16,8 @@
  * leaves open.
  */
 
-import { MemoryStorage, workflow, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
+import { workflow, yieldToPortableEventLoop } from '@lostgradient/weft';
 
 import {
   canTransitionGoalRun,

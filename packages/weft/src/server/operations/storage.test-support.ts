@@ -1,4 +1,4 @@
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import { principalFromApiKey } from '../principal.ts';
 
 export function encode(value: string): Uint8Array<ArrayBuffer> {

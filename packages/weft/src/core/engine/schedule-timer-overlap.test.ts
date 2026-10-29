@@ -7,8 +7,8 @@
  */
 import { describe, expect, it, spyOn } from 'bun:test';
 
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { decode } from '../codec.ts';
 import { Engine } from '../engine.ts';
 import type { WorkflowContext } from '../types.ts';

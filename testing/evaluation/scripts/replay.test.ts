@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { GenerateFunction } from '@lostgradient/operative';
-import { BunSQLiteStorage, textValueStore } from '@lostgradient/weft';
+import { textValueStore } from '@lostgradient/storage';
+import { BunSQLiteStorage } from '@lostgradient/weft';
 
 import type { GateDecisionRecord } from '../src/gate';
 import { createEvaluationHistory, type HistoricalRecord } from '../src/history';

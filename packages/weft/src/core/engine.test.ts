@@ -10,18 +10,19 @@ import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, it, mock, spyOn } from 'bun:test';
 import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
 
+import {
+  encodeStorageKeyComponent,
+  MemoryStorage,
+  type BatchOperation,
+  type ScanOptions,
+  type StorageCapabilities,
+  type Storage as WeftStorage,
+} from '@lostgradient/storage';
 import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { BunSQLiteStorage } from '../storage/bun-sql.ts';
 import { CompressedStorage } from '../storage/compressed-storage.ts';
-import type {
-  BatchOperation,
-  ScanOptions,
-  StorageCapabilities,
-  Storage as WeftStorage,
-} from '../storage/interface.ts';
-import { encodeStorageKeyComponent, KEYS } from '../storage/interface.ts';
-import { MemoryStorage } from '../storage/memory.ts';
+import { KEYS } from '../storage/keys.ts';
 import { ActivityRegistry } from './activity-registry.ts';
 import { AtomicStateConflictEvent } from './atomic-state.ts';
 import { deserializeCheckpoint } from './checkpoint.ts';
@@ -309,7 +310,7 @@ const scenario1 = await outcomeOf(async () => {
   const script = String.raw`
     import { Engine } from './src/core/engine.ts';
     import { workflow } from './src/core/types.ts';
-    import { MemoryStorage } from './src/storage/memory.ts';
+    import { MemoryStorage } from '@lostgradient/storage';
 
     const storage = new MemoryStorage();
     const originalBatch = storage.batch.bind(storage);
@@ -403,8 +404,8 @@ const scenario2 = await outcomeOf(async () => {
   const script = String.raw`
     import { Engine } from './src/core/engine.ts';
     import { workflow } from './src/core/types.ts';
-    import { KEYS } from './src/storage/interface.ts';
-    import { MemoryStorage } from './src/storage/memory.ts';
+    import { KEYS } from './src/storage/keys.ts';
+    import { MemoryStorage } from '@lostgradient/storage';
 
     const workflowId = 'wf-fail-atomic';
     const storage = new MemoryStorage();
@@ -494,8 +495,8 @@ const scenario3 = await outcomeOf(async () => {
   const script = String.raw`
     import { Engine } from './src/core/engine.ts';
     import { workflow } from './src/core/types.ts';
-    import { KEYS } from './src/storage/interface.ts';
-    import { MemoryStorage } from './src/storage/memory.ts';
+    import { KEYS } from './src/storage/keys.ts';
+    import { MemoryStorage } from '@lostgradient/storage';
 
     const workflowId = 'wf-cancel-atomic';
     const storage = new MemoryStorage();
@@ -5799,7 +5800,7 @@ describe('Engine', () => {
     const storage = new MemoryStorage();
     const engine = new Engine({ storage });
     const { EventLog } = await import('./event-log.ts');
-    const { KEYS: EventKeys } = await import('../storage/interface.ts');
+    const { KEYS: EventKeys } = await import('../storage/keys.ts');
 
     const workflowId = 'ev-head-filter';
     const log = new EventLog(storage, workflowId);

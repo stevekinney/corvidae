@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 
+import { type StorageCapabilities } from '@lostgradient/storage';
 import type {
   CatalogOperationTypes,
   ClientOperationTypes,
 } from '../src/client/generated/operation-client.generated.ts';
 import { createCatalogSnapshot } from '../src/server/operation-catalog-snapshot.ts';
-import { type StorageCapabilities } from '../src/storage/interface.ts';
 
 import { generatedSourcesText, snapshotOperation } from './operation-client-test-support.ts';
 describe('schedule update operation generation', () => {

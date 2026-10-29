@@ -16,13 +16,13 @@ import type { JSONValue } from '../core/json.ts';
 import type { JSONValue as JSONValueFromRoot } from '../index.ts';
 import type { JSONValue as JSONValueFromStorageBarrel } from './index.ts';
 
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { MemoryStorage } from './memory.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 import {
   collect,
   createCoreStorageAdapter,
   createFullStorageAdapter,
-} from './storage-adapter.test-support.ts';
+} from '@lostgradient/storage/testing';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   type ConditionalTypedStorage,
   type MessagePackValue,

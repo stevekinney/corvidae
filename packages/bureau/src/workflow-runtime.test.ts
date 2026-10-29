@@ -9,13 +9,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import {
-  Engine,
-  MemoryStorage,
-  textValueStore,
-  type TextValueStore,
-  workflow,
-} from '@lostgradient/weft';
+import { Engine, workflow } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore, type TextValueStore } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import {

@@ -12,7 +12,8 @@
  * the difference between a file that type-checks from source and one that needs
  * `dist/` to exist first.
  */
-import { Engine, MemoryStorage, activity, workflow } from './index.ts';
+import { MemoryStorage } from '@lostgradient/storage';
+import { Engine, activity, workflow } from './index.ts';
 
 // --- hello-world -----------------------------------------------------------
 

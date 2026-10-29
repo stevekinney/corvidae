@@ -1,5 +1,4 @@
-import type { Storage } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { settleInlineLaunches } from '../../testing/inline-launch-settle.test-support.ts';
 import { Engine } from '../engine.ts';
 import {

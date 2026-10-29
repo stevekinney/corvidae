@@ -1,7 +1,7 @@
 /** Durable deployment versions and deterministic, revision-aware selection. */
+import { storageConditionalBatch, type Storage } from '@lostgradient/storage';
 import { encode } from '../core/codec/index.ts';
 import { hashString } from '../runtime/portable.ts';
-import { storageConditionalBatch, type Storage } from '../storage/interface.ts';
 import { countBuildReferences } from './deployment-build-references.ts';
 import {
   decodeRouting,

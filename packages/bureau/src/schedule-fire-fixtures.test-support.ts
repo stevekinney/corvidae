@@ -5,7 +5,8 @@
  */
 
 import { type GenerateContext, type GenerateFunction, type Toolbox } from '@lostgradient/operative';
-import { resolveStorage, type Storage, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { resolveStorage, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { type Storage } from '@lostgradient/storage';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';

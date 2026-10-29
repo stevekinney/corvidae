@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
+import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { CompressedStorage } from './compressed-storage.ts';
-import type { Storage } from './interface.ts';
-import { MemoryStorage } from './memory.ts';
 
 // ---------------------------------------------------------------------------
 // Helpers

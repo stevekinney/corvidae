@@ -5,7 +5,7 @@
  *
  * Nothing here waits on a wall clock (see `schedule-fire-stream.test-support.ts`).
  */
-import type { Storage } from '@lostgradient/weft';
+import type { Storage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it, jest } from 'bun:test';
 
 import { OWNER } from './http/management/management-fixtures.test-support.ts';

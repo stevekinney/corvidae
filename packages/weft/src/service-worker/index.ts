@@ -47,7 +47,8 @@ export type {
  * @example
  * ```ts
  * import { createFetchHandler, type ServiceWorkerOptions } from '@lostgradient/weft';
- * import { Engine, MemoryStorage } from '@lostgradient/weft';
+ * import { Engine } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
  * const storage = new MemoryStorage();
  * const engine = new Engine({ storage });
@@ -103,7 +104,8 @@ export interface ServiceWorkerOptions {
  *
  * @example
  * ```ts
- * import { Engine, MemoryStorage } from '@lostgradient/weft';
+ * import { Engine } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  * import { createFetchHandler } from '@lostgradient/weft';
  *
  * const engine = new Engine({ storage: new MemoryStorage() });
@@ -150,7 +152,7 @@ export function createFetchHandler(
  * @example
  * ```ts
  * import { ServiceWorkerScheduler, createPeriodicSyncHandler } from '@lostgradient/weft';
- * import { MemoryStorage } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
  * const storage = new MemoryStorage();
  *

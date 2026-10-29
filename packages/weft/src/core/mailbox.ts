@@ -15,7 +15,7 @@
  * @module core/mailbox
  */
 
-import type { Storage } from '../storage/interface.ts';
+import type { Storage } from '@lostgradient/storage';
 import {
   attemptControllerRegistry,
   releaseAttemptControllerRegistry,
@@ -74,7 +74,8 @@ import { waitForAvailableWork, waitForCleanup } from './mailbox-waits.ts';
  *
  * @example
  * ```ts
- * import { Mailbox, MemoryStorage } from '@lostgradient/weft';
+ * import { Mailbox } from '@lostgradient/weft';
+ * import { MemoryStorage } from '@lostgradient/storage';
  *
  * await using storage = new MemoryStorage();
  * using mailbox = new Mailbox({ storage, namespace: 'bureau', resourceId: 'agent-7' });

@@ -11,12 +11,11 @@
  */
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { type Storage, type StorageCapabilities, MemoryStorage } from '@lostgradient/storage';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { BunSQLiteStorage } from '../../storage/bun-sql.ts';
-import type { Storage, StorageCapabilities } from '../../storage/interface.ts';
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { workflow } from '../types.ts';
 import {
   Engine,

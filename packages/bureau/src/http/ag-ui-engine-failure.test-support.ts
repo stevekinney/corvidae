@@ -10,7 +10,7 @@ import {
   type ScriptedGenerateStep,
   stopWhen,
 } from '@lostgradient/operative';
-import { MemoryStorage, type Storage } from '@lostgradient/weft';
+import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { createToolbox, type Tool } from 'armorer';
 
 import { createMemoryAssetStorage } from '../assets/storage';

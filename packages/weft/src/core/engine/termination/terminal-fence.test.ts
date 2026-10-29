@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
-import { KEYS, type BatchOperation } from '../../../storage/interface.ts';
-import { MemoryStorage } from '../../../storage/memory.ts';
+import { MemoryStorage, type BatchOperation } from '@lostgradient/storage';
+import { KEYS } from '../../../storage/keys.ts';
 import {
   beginExecutionAttempt,
   captureExecutionAttemptIdentity,

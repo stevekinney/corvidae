@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../core/engine.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import { generateAsyncApiDocument } from './asyncapi.ts';
 import type { DiscoveryInfo } from './discovery-info.ts';
 import { serve, type WeftServer } from './index.ts';

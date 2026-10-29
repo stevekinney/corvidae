@@ -1,8 +1,8 @@
 import { describe, expect, it, mock } from 'bun:test';
 
+import { MAX_BATCH_OPERATIONS, MemoryStorage, type BatchOperation } from '@lostgradient/storage';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { KEYS, MAX_BATCH_OPERATIONS, type BatchOperation } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { serializeCheckpoint } from '../checkpoint/serialization.ts';
 import { encode } from '../codec.ts';
 import type { WorkflowStartInterception } from '../interceptor/interception-contexts.ts';

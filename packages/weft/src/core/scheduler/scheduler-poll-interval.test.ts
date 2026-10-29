@@ -1,7 +1,7 @@
 import { describe, expect, it, jest, spyOn } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { advanceTimersByTime, useFakeTimers } from '@lostgradient/testing/fake-timers';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { Scheduler } from './scheduler-class.ts';
 
 function createScheduler(pollIntervalMs: number): Scheduler {

@@ -1,4 +1,5 @@
-import { CompressedStorage, MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
+import { CompressedStorage } from '@lostgradient/weft';
 
 // @ts-expect-error Agent-specific compression options are intentionally not public API.
 declare const _removedAgentCompressionOptions: import('@lostgradient/weft').AgentCompressionOptions;

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 
 import {
   createSettings,

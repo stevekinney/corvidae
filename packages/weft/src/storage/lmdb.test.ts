@@ -1,15 +1,15 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import * as lmdb from 'lmdb';
 
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { createDiskBackedTestFixture } from '../testing/storage-backends.test-support.ts';
-import { assertDurableStorageForRecovery } from './capabilities.ts';
-import { LMDBStorage } from './lmdb.ts';
+import { assertDurableStorageForRecovery } from '@lostgradient/storage';
 import {
+  createDiskBackedTestFixture,
   runBasicStorageContract,
   runBinaryAndLargeScanStorageConformance,
   runStorageCapabilityConformance,
-} from './storage-adapter.test-support.ts';
+} from '@lostgradient/storage/testing';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { LMDBStorage } from './lmdb.ts';
 
 /**
  * Wraps the real `lmdb.open` so a test can assert what options a

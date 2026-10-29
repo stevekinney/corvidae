@@ -5,7 +5,7 @@ import {
   createScriptedGenerate,
   type RunResultBase,
 } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 
 import { EvaluatorConfigurationError } from './configuration';
 import type { CriterionScorers } from './criteria';

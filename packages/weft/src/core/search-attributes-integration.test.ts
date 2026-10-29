@@ -1,7 +1,7 @@
 import { sleepForTesting, waitForCondition } from '@lostgradient/testing/fake-timers';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { KEYS } from '../storage/interface.ts';
+import { KEYS } from '../storage/keys.ts';
 import {
   collectKeys,
   flush,

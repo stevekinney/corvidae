@@ -1,5 +1,5 @@
-import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
-import { KEYS } from '../../storage/interface.ts';
+import type { BatchOperation, ConditionalBatchCondition } from '@lostgradient/storage';
+import { KEYS } from '../../storage/keys.ts';
 import { evaluateAndRecordWorkflowWorkerUpgradeAfterCheckpoint } from '../../worker/versioning-policy.ts';
 import { bytesEqual } from '../application-primitive-commit.ts';
 import {

@@ -5,7 +5,7 @@
  * to cost against and refuse every part as `no-estimator`. The provider
  * factories themselves are covered by `provider-backend-descriptors.test.ts`.
  */
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import { withCacheMetrics } from '../src/cache/cache-metrics';

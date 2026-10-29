@@ -13,7 +13,7 @@ import {
   type BatchOperation,
   type ConditionalBatchCondition,
   type Storage,
-} from '../../storage/interface.ts';
+} from '@lostgradient/storage';
 import {
   CheckpointCommitFailedError,
   type RefusedStorageWrite,

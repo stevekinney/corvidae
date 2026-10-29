@@ -1,7 +1,6 @@
+import { MemoryStorage, type Storage as WeftStorage } from '@lostgradient/storage';
 import { resolveEngineEnvironment } from '../../runtime/environment-configuration.ts';
 import { CompressedStorage } from '../../storage/compressed-storage.ts';
-import type { Storage as WeftStorage } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { ActivityWorkerDispatcher } from '../../workers/activity-worker-dispatcher.ts';
 import { WorkerPool } from '../../workers/pool.ts';
 import { optionalInlineDependencies } from '../inline-execution-strategy.context-options.ts';

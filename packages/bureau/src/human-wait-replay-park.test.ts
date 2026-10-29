@@ -15,7 +15,8 @@ import {
   stopWhen,
   createAgent,
 } from '@lostgradient/operative';
-import { resolveStorage, type Storage } from '@lostgradient/weft';
+import { resolveStorage } from '@lostgradient/weft';
+import { type Storage } from '@lostgradient/storage';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';

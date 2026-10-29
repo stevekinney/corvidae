@@ -7,6 +7,7 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import {
   advanceTimersByTime,
   flushMicrotasks,
@@ -14,7 +15,6 @@ import {
   useFakeTimers,
 } from '@lostgradient/testing/fake-timers';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { MemoryStorage } from '../storage/memory.ts';
 import {
   beginOne,
   claimOne,

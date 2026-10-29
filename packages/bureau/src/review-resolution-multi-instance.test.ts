@@ -15,7 +15,7 @@ import {
   stopWhen,
   type Toolbox,
 } from '@lostgradient/operative';
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';

@@ -27,7 +27,7 @@
 
 import { StreamResponse, Task } from '@a2a-js/sdk';
 
-import type { BatchOperation, ConditionalBatchCondition, Storage } from '../storage/interface.ts';
+import type { BatchOperation, ConditionalBatchCondition, Storage } from '@lostgradient/storage';
 import type { A2AStreamTimerScheduler } from './sse-response.ts';
 import {
   type A2ACallerScope,

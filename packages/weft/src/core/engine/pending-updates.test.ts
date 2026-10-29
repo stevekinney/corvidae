@@ -1,8 +1,8 @@
 import { describe, expect, it, mock } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { sleepForTesting, waitForCondition } from '@lostgradient/testing/fake-timers';
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
+import { KEYS } from '../../storage/keys.ts';
 import { decode } from '../codec.ts';
 import { UpdateCompletedEvent, UpdateReceivedEvent } from '../events.ts';
 import { UpdateCoordinator } from '../updates.ts';

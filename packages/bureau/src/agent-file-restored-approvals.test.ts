@@ -12,7 +12,8 @@ import {
   createModelCatalog,
   createSessionStore,
 } from '@lostgradient/operative';
-import { resolveStorage, textValueStore } from '@lostgradient/weft';
+import { resolveStorage } from '@lostgradient/weft';
+import { textValueStore } from '@lostgradient/storage';
 import { createConversationHistory } from 'conversationalist';
 import { afterEach, describe, expect, it } from 'bun:test';
 

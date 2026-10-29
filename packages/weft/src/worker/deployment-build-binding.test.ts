@@ -12,11 +12,11 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { encode } from '../core/codec/index.ts';
 import { Engine } from '../core/engine.ts';
 import { workflow } from '../core/types.ts';
-import { MemoryStorage } from '../storage/memory.ts';
 import {
   assertNoRunOnRemovedBuild,
   buildManifest,

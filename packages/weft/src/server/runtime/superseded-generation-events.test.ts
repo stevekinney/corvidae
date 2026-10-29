@@ -14,13 +14,13 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import { Engine } from '../../core/engine.ts';
 import type { WorkflowHandle } from '../../core/engine/handles.ts';
 import { nextSignalWaiting } from '../../core/engine/signal-wait-tracking.test-support.ts';
 import { TaskResultDeliveryEvent } from '../../core/events.ts';
 import { waitForParityCondition as waitFor } from '../../core/parity/real-timer-wait.test-support.ts';
 import { workflow, type WorkflowContext } from '../../core/types.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import { leasedFixture, putLedgerRecord } from '../operations/get-task-detail.test-support.ts';
 import { wireEventBroadcasting } from './event-broadcasting.ts';
 import { recordTaskResultDelivery } from './task-result-delivery-recorder.ts';

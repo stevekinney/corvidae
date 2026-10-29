@@ -11,7 +11,8 @@ import {
   type GovernedMemory,
 } from '@lostgradient/memory';
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
-import { MemoryStorage, ScheduleMissedFireEvent } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
+import { ScheduleMissedFireEvent } from '@lostgradient/weft';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it, jest, setSystemTime, spyOn } from 'bun:test';
