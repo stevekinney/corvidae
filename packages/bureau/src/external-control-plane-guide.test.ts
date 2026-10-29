@@ -17,29 +17,32 @@ import {
   waitForCondition,
   type GenerateFunction,
 } from '@lostgradient/operative';
-import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 import { principalFromApiKey } from '@lostgradient/weft';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
 import { createBureau, createBureauHandler, createMemoryAssetStorage } from './index';
 import type { AgentDefinitions } from './agent-catalog';
+import { MemoryStorage, type Storage } from '@lostgradient/storage';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 
-let databasePath = '';
+let database: PersistentBureauStorageFixture;
 
 beforeEach(() => {
-  // A fresh directory per test: the process id repeats across runs, so it cannot name the file.
-  databasePath = createTemporaryPath('bureau-external-control-plane-guide', '.sqlite');
+  database = createSqliteStorageFixture();
 });
 
-afterEach(() => {
-  removeTemporaryPath(databasePath);
+afterEach(async () => {
+  await database.dispose();
 });
 
 /** What the example's `console` records, in order. */
 type Recorder = { log(...values: unknown[]): void };
 
-// The README's example, from its `const databasePath` line down.
-async function example(console: Recorder, databasePath: string): Promise<void> {
+// The README's example, from its `const storage` line down.
+async function example(console: Recorder, storage: Storage): Promise<void> {
   // The agent asks which environment to release to, waits for the answer, then thanks the person.
   let calls = 0;
   const generate: GenerateFunction = async () => {
@@ -62,7 +65,7 @@ async function example(console: Recorder, databasePath: string): Promise<void> {
   const bureau = await createBureau({
     id: 'acme', // required once the handler serves persistent storage
     agents: { releaser },
-    storage: { type: 'sqlite', path: databasePath },
+    storage,
     durable: true,
     assets: { storage: createMemoryAssetStorage() }, // the handler serves the asset operations
   });
@@ -147,6 +150,7 @@ async function example(console: Recorder, databasePath: string): Promise<void> {
   console.log(calls); // 2: the retry did not run the agent a third time
 
   await bureau.dispose();
+  storage[Symbol.dispose](); // Bureau never closes a storage it was given
 }
 // End of the README's example.
 
@@ -182,7 +186,7 @@ function normalized(code: string): string {
 describe('the external consumer example', () => {
   it('authenticates, discovers, observes, answers, and awaits the result', async () => {
     const logged: unknown[][] = [];
-    await example({ log: (...values) => void logged.push(values) }, databasePath);
+    await example({ log: (...values) => void logged.push(values) }, database.storage);
 
     expect(logged).toEqual([
       [401],
@@ -203,7 +207,7 @@ describe('the external consumer example', () => {
   it('is the code block the README shows', async () => {
     const block = await readmeExample();
     const lines = block.split('\n');
-    const start = lines.findIndex((line) => line.startsWith('const databasePath'));
+    const start = lines.findIndex((line) => line.startsWith('const storage'));
     expect(start).toBeGreaterThan(-1);
     const source = await readFile(import.meta.path, 'utf8');
     const first = source.indexOf('async function example(');
@@ -250,7 +254,7 @@ async function servedBureau(generate: GenerateFunction, durable = false) {
       writer: createAgent({ name: 'writer', generate }),
       default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
     },
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     ...(durable ? { durable: true } : {}),
     assets: { storage: createMemoryAssetStorage() },
   });

@@ -6,7 +6,6 @@
  */
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { GenerateFunction } from '@lostgradient/operative';
-import { resolveStorage } from '@lostgradient/weft';
 import { type Storage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -53,7 +52,7 @@ function isRunAppend(operation: StoredOperation): boolean {
 /** A SQLite store that survives Bureaus, and fails the next `faults.failAppends` history appends. */
 async function faultyStorage(): Promise<Faulty> {
   const fixture = createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() });
-  const base = await resolveStorage(fixture.configuration);
+  const base = fixture.open();
   const faults: Faults = { failAppends: 0 };
   const storage = new Proxy(base, {
     get(target, property) {
@@ -91,7 +90,7 @@ async function faultyStorage(): Promise<Faulty> {
       }
       return typeof value === 'function' ? (value as () => unknown).bind(target) : value;
     },
-  }) as Storage;
+  });
   cleanups.push(async () => {
     await (base as unknown as { dispose?: () => Promise<void> | void }).dispose?.();
     await fixture.dispose();

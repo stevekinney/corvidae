@@ -41,14 +41,6 @@ import {
 type NodeSQLiteStoragePersistence = NonNullable<StorageCapabilities['persistence']>;
 
 /**
- * Runtime-neutral alias for the Node SQLite adapter. Consumers importing
- * `@lostgradient/weft/storage/sqlite` resolve here under Node, and `storage/sqlite.ts` is a
- * declaration-only `types` entry, so this alias is the only thing that exists at runtime.
- * Without it the subpath type-checks for a consumer and throws on import.
- */
-export { NodeSQLiteStorage as SQLiteStorage };
-
-/**
  * Runtime-neutral alias for the Node SQLite adapter. Consumers that import
  * from `@lostgradient/weft` get this class under Node.
  */

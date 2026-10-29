@@ -278,9 +278,6 @@ describe('publishedModuleMap', () => {
     const modules = publishedModuleMap(surface, '@lostgradient/weft', weftRoot);
 
     expect(modules?.get('@lostgradient/weft')).toBe(join(weftRoot, 'src/index.ts'));
-    expect(modules?.get('@lostgradient/weft/storage/sqlite')).toBe(
-      join(weftRoot, 'src/storage/sqlite.ts'),
-    );
     expect(modules?.get('@lostgradient/weft/testing')).toBe(join(weftRoot, 'src/testing/index.ts'));
   });
 

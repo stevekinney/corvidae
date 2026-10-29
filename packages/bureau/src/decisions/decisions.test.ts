@@ -18,6 +18,7 @@ import { z } from 'zod';
 import { canonicalJson } from '../command-ledger.ts';
 import { BureauError, createBureau } from '../create-bureau.ts';
 import type { Bureau, BureauOptions } from '../types.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const bureaus: Bureau[] = [];
 afterEach(async () => {
@@ -72,7 +73,7 @@ async function open(
     (options.replies ?? ['{"answer":true}']).map((content) => ({ content, toolCalls: [] })),
   );
   const bureau = await createBureau({
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
     models: {
       ...(options.catalog === undefined ? {} : { catalog: options.catalog }),
@@ -308,11 +309,11 @@ describe('a request or an answer that is not valid', () => {
       { fallbackModel: 'no-slash' },
       { model: {} },
     ] as never[]) {
-      const error = await rejection(createBureau({ storage: { type: 'memory' }, decisions }));
+      const error = await rejection(createBureau({ storage: new MemoryStorage(), decisions }));
       expect((error as BureauError).code).toBe('BAD_REQUEST');
     }
     const error = await rejection(
-      createBureau({ storage: { type: 'memory' }, decide: true as never }),
+      createBureau({ storage: new MemoryStorage(), decide: true as never }),
     );
     expect((error as BureauError).code).toBe('BAD_REQUEST');
   });

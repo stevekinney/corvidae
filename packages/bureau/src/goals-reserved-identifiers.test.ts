@@ -25,6 +25,7 @@ import {
 } from './testing/goal-fixtures.test-support';
 import type { Bureau } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const open: Bureau[] = [];
 
@@ -44,7 +45,7 @@ async function boot() {
       }),
     },
     validators: [createCheckValidator()],
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
     onDiagnostic: createDiagnostics().onDiagnostic,
   });

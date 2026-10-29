@@ -37,6 +37,7 @@ import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { spyOnPrune } from './testing/prune-spy.test-support';
 import type { Bureau } from './types';
 import { quietFor } from '@lostgradient/testing/wait-until';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const open: Bureau[] = [];
 
@@ -49,7 +50,7 @@ async function boot(
   diagnostics = createDiagnostics(),
 ) {
   const bureau = await createBureau({
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
     onDiagnostic: diagnostics.onDiagnostic,
     ...options,
@@ -194,7 +195,7 @@ describe('bureau.goals', () => {
       createBureau({
         agents: { worker: workerAgent(hangUntilAborted) },
         validators: [createCheckValidator(), createCheckValidator()],
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       }),
     );

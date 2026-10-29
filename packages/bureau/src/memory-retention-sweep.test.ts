@@ -151,7 +151,7 @@ async function start(
         stopWhen: stopWhen.noToolCalls(),
       }),
     },
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: false,
     ...(options.withoutMemory ? {} : { memory: built.served }),
     ...(options.manual === false ? {} : { maintenance: 'manual' as const }),

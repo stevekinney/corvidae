@@ -36,6 +36,8 @@ import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, aliceAdministrator, pngBytes } from './testing/asset-fixtures.test-support';
 import type { Bureau } from './types';
+import { MemoryStorage } from '@lostgradient/storage';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -75,8 +77,11 @@ describe('a run that ended in a process that died before it released', () => {
     });
     const fixture = createMemoryAssetStorageFixture({});
     cleanups.push(() => fixture.dispose());
+    // Each Bureau on this store opens its own handle; the fixture closes them after the Bureaus.
+    const database = createSqliteStorageFixture({ path: join(directory, 'bureau') });
+    cleanups.push(() => database.dispose());
     return {
-      storage: { type: 'sqlite' as const, path: join(directory, 'bureau') },
+      database,
       fixture,
       runtime: createManualRuntimeServices({ origin: '2026-10-23T00:00:00.000Z' }),
     };
@@ -100,7 +105,7 @@ describe('a run that ended in a process that died before it released', () => {
       agents: { viewer: agent },
       runtime: store.runtime,
       assets: { storage: assetStorage, policy: { defaultRetentionMilliseconds: 1_000 } },
-      storage: store.storage,
+      storage: store.database.open(),
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
@@ -213,7 +218,7 @@ describe('a session deleted while its claims are being taken', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: false,
       runtime,
       assets: { storage: fixture.storage, policy: { defaultRetentionMilliseconds: 1_000 } },

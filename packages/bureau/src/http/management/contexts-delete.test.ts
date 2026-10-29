@@ -404,7 +404,7 @@ describe('the fence around a context being deleted', () => {
       (verb, args) => verb === 'get' && String(args[0]).startsWith('agent-session'),
     );
     const fixture = createMemoryStorageFixture({ wrapStorage: (raw) => gate.wrap(raw) });
-    const opened = await openBureau({ storage: fixture.configuration });
+    const opened = await openBureau({ storage: fixture.storage });
     try {
       const run = await startRun(opened);
       gate.arm();
@@ -458,7 +458,7 @@ describe('the fence around a context being deleted', () => {
     const fixture = createMemoryStorageFixture({
       wrapStorage: (raw) => admission.wrap(deleting.wrap(raw)),
     });
-    const opened = await openBureau({ storage: fixture.configuration });
+    const opened = await openBureau({ storage: fixture.storage });
     try {
       admission.arm();
       const creating = rejectionOf(
@@ -506,7 +506,7 @@ describe('erasing the originating messages of a deleted context', () => {
           },
         }),
     });
-    const opened = await openBureau({ storage: fixture.configuration, generate: answering() });
+    const opened = await openBureau({ storage: fixture.storage, generate: answering() });
     try {
       const run = await opened.bureau.tasks.start('default', 'ERASE-ME', {
         principal: OWNER.alice,
@@ -569,7 +569,7 @@ describe('a context id that is reused while a request for it is in flight', () =
       },
     );
     const fixture = createMemoryStorageFixture({ wrapStorage: (raw) => interleaver.wrap(raw) });
-    const opened = await openBureau({ storage: fixture.configuration, generate });
+    const opened = await openBureau({ storage: fixture.storage, generate });
     bureau = opened.bureau;
     try {
       await opened.bureau.tasks.start('default', 'alice opening', {

@@ -53,6 +53,7 @@ export type {
   CreateLmdbStorageFixtureOptions,
   CreateMemoryStorageFixtureOptions,
   CreatePersistentStorageFixtureOptions,
+  PersistentBureauStorageFixture,
 } from './storage-fixtures';
 export {
   createLmdbStorageFixture,

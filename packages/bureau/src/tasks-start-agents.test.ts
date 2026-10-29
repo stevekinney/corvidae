@@ -31,6 +31,7 @@ import { listHeldTasks, runTask } from './test';
 import type { StartTaskOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const runtime = createDefaultRuntimeServices();
 
@@ -240,7 +241,7 @@ describe('bureau.tasks.start of a catalog agent', () => {
       // No bureau-level generate/provider needed — `run()` dispatches through
       // the catalog agent's own generate; only the durable engine + storage
       // matter here.
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     try {
@@ -274,7 +275,7 @@ describe('bureau.tasks.start of a catalog agent', () => {
           },
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     try {
@@ -354,7 +355,7 @@ describe('bureau.tasks.start of a catalog agent', () => {
           },
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
     });
     try {
       const controller = new AbortController();
@@ -382,7 +383,7 @@ describe('bureau.tasks.start of a catalog agent', () => {
     };
     const bureau = await createBureau({
       agents: { plain: nonResolvingAgent },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     try {
@@ -487,7 +488,7 @@ describe('bureau.tasks.start of a catalog agent', () => {
     it('validates and attributes the SAME captured principal value even when options.principal is a getter whose result changes on a later read (AB-241 review finding)', async () => {
       const bureau = await createBureau({
         agents: { echo: createAgent({ generate: mockGenerate('durable hello') }) },
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       });
       try {
@@ -515,7 +516,7 @@ describe('bureau.tasks.start of a catalog agent', () => {
     it("records options.principal as the durable ActiveRun's LivenessSnapshot.owner, as the session run records the principal that started it", async () => {
       const bureau = await createBureau({
         agents: { echo: createAgent({ generate: mockGenerate('durable hello') }) },
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       });
       try {
@@ -530,7 +531,7 @@ describe('bureau.tasks.start of a catalog agent', () => {
     it("records the anonymous owner as the durable ActiveRun's LivenessSnapshot.owner when options omits principal", async () => {
       const bureau = await createBureau({
         agents: { echo: createAgent({ generate: mockGenerate('durable hello') }) },
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       });
       try {
@@ -627,7 +628,7 @@ describe('Bureau invariants on catalog-agent dispatch (COR-1265, COR-1277)', () 
         }),
       },
       identity: { resolve: async () => 'You are the house agent.' },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -646,7 +647,7 @@ describe('Bureau invariants on catalog-agent dispatch (COR-1265, COR-1277)', () 
     const bureau = await createBureau({
       agents: { echo: createAgent({ name: 'echo', generate: captureSystemMessages(seen) }) },
       identity: { resolve: async () => 'You are the house agent.' },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
     });
 
     try {
@@ -673,7 +674,7 @@ describe('Bureau invariants on catalog-agent dispatch (COR-1265, COR-1277)', () 
           guardrails: alwaysTrip,
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
     });
 
     try {
@@ -699,7 +700,7 @@ describe('Bureau invariants on catalog-agent dispatch (COR-1265, COR-1277)', () 
         }),
       },
       identity: { resolve: async () => 'You are the house agent.' },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
     });
 
     try {
@@ -719,7 +720,7 @@ describe('Bureau invariants on catalog-agent dispatch (COR-1265, COR-1277)', () 
     const bureau = await createBureau({
       agents: { echo: createAgent({ name: 'echo', generate: mockGenerate('ok') }) },
       identity: { resolve: async () => 'You are the house agent.' },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
     });
 
     try {
@@ -744,7 +745,7 @@ describe('Bureau invariants on catalog-agent dispatch (COR-1265, COR-1277)', () 
     };
     const bureau = await createBureau({
       agents: { broken: agent },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
     });
 
     try {
@@ -782,7 +783,7 @@ describe('Bureau invariants on catalog-agent dispatch (COR-1265, COR-1277)', () 
     const bureau = await createBureau({
       agents: { bare: agent },
       identity: { resolve: async () => 'You are the house agent.' },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
     });
 
     try {
@@ -831,7 +832,7 @@ describe('every Bureau hook hand-off is a merge (COR-1265 criterion 3)', () => {
         }),
       },
       identity: { resolve: async () => 'BUREAU-TIER-REACHED' },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
     });
 
     try {
@@ -892,7 +893,7 @@ describe('a child run is outside Bureau’s hook authority (COR-1269)', () => {
         }),
       },
       identity: { resolve: async () => 'BUREAU-IDENTITY' },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 

@@ -22,6 +22,7 @@ import type { AgentDefinitions } from '../agent-catalog.ts';
 import { createBureau } from '../create-bureau.ts';
 import { runTask } from '../test/index.ts';
 import type { Bureau, BureauOptions } from '../types.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const ORIGIN = '2026-10-13T00:00:00.000Z';
 
@@ -42,7 +43,7 @@ async function open(
       }),
     },
     runtime: createManualRuntimeServices({ origin: ORIGIN }),
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
     ...options,
   });

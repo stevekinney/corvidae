@@ -30,6 +30,7 @@ import { startWorkflowBureau } from './testing/workflow-bureau.test-support';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau, BureauOptions } from './types';
 import { waitUntil } from '@lostgradient/testing/wait-until';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const harness = createScheduleFireHarness();
@@ -92,7 +93,7 @@ async function start(
   const { durable = true, ...toolOptions } = options;
   const bureau = await createBureau<AgentDefinitions>({
     agents: { ...agents },
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: durable,
     ...toolOptions,
   });
@@ -282,7 +283,7 @@ describe('a durable Bureau offers the tools by default', () => {
     const offered: Offered = [];
     const withValidator = await createBureau<AgentDefinitions>({
       agents: { asker: recordingAgent(offered) },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       validators: [
         {
@@ -337,10 +338,10 @@ describe('humanInput and wakeup accept only their documented forms', () => {
     const error = await rejectionOf(
       createBureau<AgentDefinitions>({
         agents: { default: recordingAgent([]) },
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
         [name]: value,
-      } as unknown as BureauOptions<AgentDefinitions>),
+      }),
     );
     expect(error).toBeInstanceOf(BureauError);
     expect((error as BureauError).code).toBe('BAD_REQUEST');

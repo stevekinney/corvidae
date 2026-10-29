@@ -5,8 +5,7 @@ import {
   stopWhen,
   createAgent,
 } from '@lostgradient/operative';
-import { resolveStorage } from '@lostgradient/weft';
-import { textValueStore } from '@lostgradient/storage';
+import { textValueStore, MemoryStorage } from '@lostgradient/storage';
 import { createToolbox } from 'armorer';
 import { describe, expect, it, spyOn } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
@@ -29,7 +28,7 @@ const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [
 
 describe('a run Bureau recovers after the engine failed it', () => {
   it('settles the run record and the session as error', async () => {
-    const storage = await resolveStorage({ type: 'memory' });
+    const storage = new MemoryStorage();
     const runId = 'cor-1587-recovered-run';
     const sessionId = 'cor-1587-recovered-session';
     const sessionStore = createSessionStore(textValueStore(storage));
@@ -47,7 +46,7 @@ describe('a run Bureau recovers after the engine failed it', () => {
     const probe = await createRuntimeComposition({
       generate,
       toolbox: createToolbox([]),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       stopWhen: stopWhen.noToolCalls(),
     });
@@ -56,7 +55,6 @@ describe('a run Bureau recovers after the engine failed it', () => {
       get: (id: string) => Promise<unknown>;
     };
     probe.durable!.engine[Symbol.dispose]?.();
-    probe.disposeStorage?.();
 
     const input = { runId, sessionId, agentName: 'default' };
     const handle = {

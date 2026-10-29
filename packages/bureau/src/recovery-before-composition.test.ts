@@ -23,6 +23,7 @@ import { waitForCondition } from './test';
 import { openGovernedMemory } from './test/process-crash-work-integrity-fixtures';
 import type { Bureau } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const bureaus: Bureau[] = [];
 const closers: Array<() => unknown> = [];
@@ -30,7 +31,7 @@ const directories: string[] = [];
 
 afterEach(async () => {
   for (const bureau of bureaus.splice(0)) await bureau.shutdown();
-  for (const close of closers.splice(0)) close();
+  for (const close of closers.splice(0)) await close();
   for (const directory of directories.splice(0)) {
     await rm(directory, { recursive: true, force: true });
   }
@@ -47,7 +48,9 @@ describe('a run reclaimed while the bureau is still being composed (COR-1509)', 
   it('is held for the composition and then resumed, not durably failed', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'recovery-before-composition-'));
     directories.push(directory);
-    const storagePath = join(directory, 'bureau');
+    const storageFixture = createSqliteStorageFixture({ path: join(directory, 'bureau') });
+    // Closed after the Bureaus: the cleanups dispose those first.
+    closers.push(() => storageFixture.dispose());
 
     // The owner reaches step 1, then stops: its claim is never renewed, so it lapses.
     const reachedStepOne = Promise.withResolvers<void>();
@@ -64,7 +67,7 @@ describe('a run reclaimed while the bureau is still being composed (COR-1509)', 
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path: storagePath },
+      storage: storageFixture.storage,
       durable: true,
       maintenance: 'manual',
       durableOwnership: {
@@ -104,7 +107,7 @@ describe('a run reclaimed while the bureau is still being composed (COR-1509)', 
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path: storagePath },
+      storage: storageFixture.open(),
       id: 'recovery-before-composition',
       memory,
       durable: true,

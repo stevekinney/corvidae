@@ -12,6 +12,7 @@ import { as, attachRunRequest, authentication } from './ag-ui-fixtures.test-supp
 import { createBureauHandler } from './create-bureau-handler.ts';
 import { FrameReader, readAgUiStream } from './ag-ui-stream.test-support.ts';
 import { createMemoryAssetStorage } from '../assets/storage';
+import { MemoryStorage } from '@lostgradient/storage';
 
 describe('attaching by run to a task', () => {
   it('streams it to its owner, and answers another owner as a missing run', async () => {
@@ -27,7 +28,7 @@ describe('attaching by run to a task', () => {
       assets: { storage: createMemoryAssetStorage() },
       id: 'ag-ui-run-owner',
       agents: { plain: createAgent({ generate }) },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     try {

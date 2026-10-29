@@ -40,7 +40,7 @@ describe('a scheduled fire’s memory (COR-1546)', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       memory,
     });

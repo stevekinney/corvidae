@@ -4,9 +4,6 @@
  * a deleted session reads as not found, and a recreated id shows only the events
  * recorded for the live session's own incarnation.
  */
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 import {
   type DurableEventEnvelope,
@@ -14,29 +11,30 @@ import {
   stopWhen,
   createAgent,
 } from '@lostgradient/operative';
-import { createFleetEventFeed, resolveStorage } from '@lostgradient/weft';
+import { createFleetEventFeed } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import type { AgentDefinitions } from './agent-catalog';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 const ALICE = 'api-key:alice';
 const BOB = 'api-key:bob';
 
 async function openBureau() {
-  const directory = await mkdtemp(join(tmpdir(), 'owner-of-record-session-history-'));
+  const database = createSqliteStorageFixture();
   const bureau = await createBureau<AgentDefinitions>({
     id: 'session-history',
     agents: {
       default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
     },
-    storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
+    storage: database.storage,
     durable: true,
     durableOwnership: { ownership: 'none' },
   });
-  return { bureau, directory };
+  return { bureau, database };
 }
 
 type OpenBureau = Awaited<ReturnType<typeof openBureau>>['bureau'];
@@ -68,7 +66,7 @@ const sequences = (events: readonly DurableEventEnvelope[]) =>
 
 describe('the history of a deleted session (COR-718)', () => {
   it('reads as not found to any caller that states a principal, and stays whole for a trusted caller', async () => {
-    const { bureau, directory } = await openBureau();
+    const { bureau, database } = await openBureau();
     try {
       await settled(bureau, ALICE, 'deleted');
       await bureau.contexts.delete('deleted');
@@ -83,12 +81,12 @@ describe('the history of a deleted session (COR-718)', () => {
       expect(eventsOf(trusted).length).toBeGreaterThan(0);
     } finally {
       await bureau.dispose();
-      await rm(directory, { recursive: true, force: true });
+      await database.dispose();
     }
   });
 
   it('shows a recreated id only the events of its live incarnation', async () => {
-    const { bureau, directory } = await openBureau();
+    const { bureau, database } = await openBureau();
     try {
       await settled(bureau, ALICE, 'reused');
       await bureau.contexts.delete('reused');
@@ -112,12 +110,12 @@ describe('the history of a deleted session (COR-718)', () => {
       expect(await read(bureau, 'reused', { principal: ALICE })).toEqual({ outcome: 'not-found' });
     } finally {
       await bureau.dispose();
-      await rm(directory, { recursive: true, force: true });
+      await database.dispose();
     }
   });
 
   it('pages a recreated id’s live incarnation even when the page limit is small', async () => {
-    const { bureau, directory } = await openBureau();
+    const { bureau, database } = await openBureau();
     try {
       await settled(bureau, ALICE, 'paged');
       await bureau.contexts.delete('paged');
@@ -143,12 +141,12 @@ describe('the history of a deleted session (COR-718)', () => {
       expect(sequences(collected)).toEqual(sequences(wanted));
     } finally {
       await bureau.dispose();
-      await rm(directory, { recursive: true, force: true });
+      await database.dispose();
     }
   });
 
   it('never delivers the former incarnation’s events to a subscription on the recreated id', async () => {
-    const { bureau, directory } = await openBureau();
+    const { bureau, database } = await openBureau();
     try {
       await settled(bureau, ALICE, 'followed');
       await bureau.contexts.delete('followed');
@@ -180,12 +178,12 @@ describe('the history of a deleted session (COR-718)', () => {
       }
     } finally {
       await bureau.dispose();
-      await rm(directory, { recursive: true, force: true });
+      await database.dispose();
     }
   });
 
   it('delivers nothing to a subscription on a session that does not exist, once its chain has drained', async () => {
-    const { bureau, directory } = await openBureau();
+    const { bureau, database } = await openBureau();
     try {
       await settled(bureau, ALICE, 'gone');
       await bureau.contexts.delete('gone');
@@ -222,20 +220,17 @@ describe('the history of a deleted session (COR-718)', () => {
       }
     } finally {
       await bureau.dispose();
-      await rm(directory, { recursive: true, force: true });
+      await database.dispose();
     }
   });
 
   it('refuses a principal-stated read whose cursor is below the retention floor as not found, never as a gap', async () => {
-    const { bureau, directory } = await openBureau();
+    const { bureau, database } = await openBureau();
     try {
       await settled(bureau, ALICE, 'retained');
       await bureau.contexts.delete('retained');
       const former = eventsOf(await read(bureau, 'retained'));
-      const adminStorage = await resolveStorage({
-        type: 'sqlite',
-        path: join(directory, 'bureau.sqlite'),
-      });
+      const adminStorage = database.open();
       const adminFeed = createFleetEventFeed(adminStorage);
       try {
         await adminFeed.retain({ beforeSequence: Math.max(...sequences(former)) + 1 });
@@ -251,19 +246,16 @@ describe('the history of a deleted session (COR-718)', () => {
       expect(asTrusted).toMatchObject({ outcome: 'gap' });
     } finally {
       await bureau.dispose();
-      await rm(directory, { recursive: true, force: true });
+      await database.dispose();
     }
   });
 
   it('delivers the gap event to the owner of a live session whose cursor fell below the retention floor, and nothing to a stranger', async () => {
-    const { bureau, directory } = await openBureau();
+    const { bureau, database } = await openBureau();
     try {
       await settled(bureau, ALICE, 'retained-live');
       const own = eventsOf(await read(bureau, 'retained-live', { principal: ALICE }));
-      const adminStorage = await resolveStorage({
-        type: 'sqlite',
-        path: join(directory, 'bureau.sqlite'),
-      });
+      const adminStorage = database.open();
       const adminFeed = createFleetEventFeed(adminStorage);
       try {
         // Retire the first of Alice's events, so a replay from the start opens with a gap
@@ -304,12 +296,12 @@ describe('the history of a deleted session (COR-718)', () => {
       }
     } finally {
       await bureau.dispose();
-      await rm(directory, { recursive: true, force: true });
+      await database.dispose();
     }
   });
 
   it('never delivers a backlog queued under the former owner when the id is deleted and recreated mid-authorization', async () => {
-    const { bureau, directory } = await openBureau();
+    const { bureau, database } = await openBureau();
     try {
       await settled(bureau, ALICE, 'raced');
       const lastFormerSequence = Math.max(...sequences(eventsOf(await read(bureau, 'raced'))));
@@ -357,12 +349,12 @@ describe('the history of a deleted session (COR-718)', () => {
       }
     } finally {
       await bureau.dispose();
-      await rm(directory, { recursive: true, force: true });
+      await database.dispose();
     }
   });
 
   it('shows the next owner only its own incarnation while the former incarnation’s deletion is still pending in the outbox', async () => {
-    const { bureau, directory } = await openBureau();
+    const { bureau, database } = await openBureau();
     try {
       await settled(bureau, ALICE, 'pending');
       const former = eventsOf(await read(bureau, 'pending'));
@@ -446,12 +438,12 @@ describe('the history of a deleted session (COR-718)', () => {
       }
     } finally {
       await bureau.dispose();
-      await rm(directory, { recursive: true, force: true });
+      await database.dispose();
     }
   });
 
   it('refuses a page read whose session was deleted and recreated while the page was read', async () => {
-    const { bureau, directory } = await openBureau();
+    const { bureau, database } = await openBureau();
     try {
       await settled(bureau, BOB, 'swapped');
       const store = bureau.internals.sessionStore!;
@@ -480,12 +472,12 @@ describe('the history of a deleted session (COR-718)', () => {
       expect(await pending).toEqual({ outcome: 'not-found' });
     } finally {
       await bureau.dispose();
-      await rm(directory, { recursive: true, force: true });
+      await database.dispose();
     }
   });
 
   it('delivers nothing to a stranger subscribed to a live session, and everything to its owner', async () => {
-    const { bureau, directory } = await openBureau();
+    const { bureau, database } = await openBureau();
     try {
       await settled(bureau, ALICE, 'live');
       const wanted = eventsOf(await read(bureau, 'live', { principal: ALICE }));
@@ -523,7 +515,7 @@ describe('the history of a deleted session (COR-718)', () => {
       }
     } finally {
       await bureau.dispose();
-      await rm(directory, { recursive: true, force: true });
+      await database.dispose();
     }
   });
 });

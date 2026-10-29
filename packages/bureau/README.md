@@ -106,12 +106,13 @@ Give `agents` a catalog entry built with `createAgent`, then start a task of it 
 ```typescript
 import { createBureau } from '@lostgradient/bureau';
 import { createAgent, type GenerateFunction } from '@lostgradient/operative';
+import { BunSQLiteStorage } from '@lostgradient/weft';
 
 declare const generate: GenerateFunction;
 
 const bureau = await createBureau({
   agents: { summarizer: createAgent({ generate }) },
-  storage: { type: 'sqlite', path: 'bureau.sqlite' },
+  storage: new BunSQLiteStorage('bureau.sqlite'),
 });
 
 const run = await bureau.tasks.start('summarizer', 'Summarize the Q3 report.');
@@ -136,7 +137,7 @@ console.log(detail?.finishReason); // "stop-condition" | "maximum-steps" | …
 await bureau.dispose();
 ```
 
-Without `storage`, runs are ephemeral: nothing is persisted, and a crash loses in-flight work. Pass a `sqlite` or `lmdb` `storage` configuration to get session persistence and, by default, durable crash-and-resume execution.
+Without `storage`, runs are ephemeral: nothing is persisted, and a crash loses in-flight work. Pass a persistent `Storage` you construct, such as `new BunSQLiteStorage(path)` or `new LMDBStorage(path)` from `@lostgradient/weft`, to get session persistence and, by default, durable crash-and-resume execution. Bureau never closes a storage it was given: close it after the Bureau shuts down.
 
 From here, [Tasks](#tasks-bureautasks) covers what a started task offers, [Contexts](#contexts-bureaucontexts) the conversations tasks run in, and [`BureauOptions`](#bureauoptions) everything `createBureau` accepts.
 
@@ -178,7 +179,7 @@ The identity and storage fields name the Bureau and say where it keeps state.
 | Field | Type | Purpose |
 | --- | --- | --- |
 | `id` | `string` | This Bureau's identity (`bureau.id`) and the tenant every run's memory is written under. Defaults to a generated identifier. |
-| `storage` | `StorageConfiguration \| Storage` | Persistence for contexts, key-value data, and the durable engine: a Weft `StorageConfiguration`, or a `Storage` you built, whose lifecycle stays yours. |
+| `storage` | `Storage` | Persistence for contexts, key-value data, and the durable engine: a storage adapter you construct (`new BunSQLiteStorage(path)`, `new LMDBStorage(path)`, a Durable Object SQLite adapter). Its lifecycle stays yours: Bureau never closes it. |
 | `durable` | `boolean` | Overrides the default for Weft-backed crash-and-resume execution, which is on for persistent `storage` and off for `memory`. |
 | `maintenance` | `'automatic' \| 'manual'` | Who drives the durable engine's periodic maintenance: in-process intervals (`'automatic'`, the default) or the host (`'manual'`). |
 | `store` | `Store` | An `@lostgradient/operative` run `Store` to use instead of the one Bureau creates. The resolved store is `bureau.internals.store`. |
@@ -649,6 +650,7 @@ import {
   decisionValidator,
   type Bureau,
 } from '@lostgradient/bureau';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const judge = decisionValidator({
   name: 'reply-judge',
@@ -665,7 +667,7 @@ const judge = decisionValidator({
 });
 
 const bureau: Bureau = await createBureau({
-  storage: { type: 'memory' },
+  storage: new MemoryStorage(),
   durable: true,
   validators: [judge],
 });
@@ -685,9 +687,10 @@ A key is one of two kinds. A _live_ key takes effect at its next point of use: t
 
 ```ts
 import { createBureau } from '@lostgradient/bureau';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const bureau = await createBureau({
-  storage: { type: 'memory' },
+  storage: new MemoryStorage(),
   settings: { locked: ['tools.humanInput'] },
 });
 
@@ -808,10 +811,11 @@ A pass that actually prunes at least one record writes exactly one `audit.pruned
 
 ```typescript
 import { createBureau } from '@lostgradient/bureau';
+import { BunSQLiteStorage } from '@lostgradient/weft';
 
 const bureau = await createBureau({
   agents: {},
-  storage: { type: 'sqlite', path: './bureau.sqlite' },
+  storage: new BunSQLiteStorage('./bureau.sqlite'),
   retention: { checkpoints: { keepLast: 5 } },
 });
 ```
@@ -920,9 +924,9 @@ import {
   waitForCondition,
   type GenerateFunction,
 } from '@lostgradient/operative';
-import { principalFromApiKey } from '@lostgradient/weft';
+import { BunSQLiteStorage, principalFromApiKey } from '@lostgradient/weft';
 
-const databasePath = './bureau.sqlite';
+const storage = new BunSQLiteStorage('./bureau.sqlite');
 
 // The agent asks which environment to release to, waits for the answer, then thanks the person.
 let calls = 0;
@@ -946,7 +950,7 @@ const releaser = createAgent({
 const bureau = await createBureau({
   id: 'acme', // required once the handler serves persistent storage
   agents: { releaser },
-  storage: { type: 'sqlite', path: databasePath },
+  storage,
   durable: true,
   assets: { storage: createMemoryAssetStorage() }, // the handler serves the asset operations
 });
@@ -1031,6 +1035,7 @@ console.log(frames.at(-1)?.data.artifact.text); // 'Releasing to the environment
 console.log(calls); // 2: the retry did not run the agent a third time
 
 await bureau.dispose();
+storage[Symbol.dispose](); // Bureau never closes a storage it was given
 ```
 
 The handler has no run-starting operation of its own, so the host starts the run above with `bureau.tasks.start`. A client outside the process starts one through the AG-UI mount. A stream that ends without a terminal status is resumed with the `Last-Event-ID` header set to the `id` of the last frame that carried a cursor.
@@ -1093,6 +1098,7 @@ import {
 import { createBureau, createBureauHandler, createMemoryAssetStorage } from '@lostgradient/bureau';
 import { createAgent, waitForCondition, type GenerateFunction } from '@lostgradient/operative';
 import { principalFromApiKey } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const publicUrl = 'https://agents.example.com';
 
@@ -1113,7 +1119,7 @@ const bureau = await createBureau({
     watcher: createAgent({ name: 'watcher', description: 'Watches a feed.', generate: watch }),
     private: createAgent({ name: 'private', generate: summarize }),
   },
-  storage: { type: 'memory' },
+  storage: new MemoryStorage(),
   durable: true, // A2A needs a durable engine: every send creates its task through it
   assets: { storage: createMemoryAssetStorage() },
 });
@@ -1395,6 +1401,7 @@ A grant's summary carries `grantId`, `policyVersion`, `depth`, `expiresAt`, and 
 ```typescript
 import { createBureau, type Bureau } from '@lostgradient/bureau';
 import type { StandaloneAgent } from '@lostgradient/operative';
+import { BunSQLiteStorage } from '@lostgradient/weft';
 
 declare const planner: StandaloneAgent;
 declare const delegationSecret: string;
@@ -1410,7 +1417,7 @@ declare function durableRunId(
 // multi-agent guide's durable example).
 const bureau = await createBureau({
   agents: { planner },
-  storage: { type: 'sqlite', path: 'bureau.sqlite' },
+  storage: new BunSQLiteStorage('bureau.sqlite'),
   children: { delegation: { secret: delegationSecret } },
 });
 
@@ -1476,6 +1483,7 @@ Not supported: observing a child's signal `events` (Bureau only sends signals; a
 ```ts
 import { createBureau } from '@lostgradient/bureau';
 import type { StandaloneAgent, Validator } from '@lostgradient/operative';
+import { BunSQLiteStorage } from '@lostgradient/weft';
 
 declare const worker: StandaloneAgent;
 declare const testsPass: Validator;
@@ -1483,7 +1491,7 @@ declare const testsPass: Validator;
 const bureau = await createBureau({
   agents: { worker },
   validators: [testsPass], // identity: { name: 'tests-pass', version: '1' }
-  storage: { type: 'sqlite', path: './bureau.sqlite' },
+  storage: new BunSQLiteStorage('./bureau.sqlite'),
   durable: true,
 });
 
@@ -2134,11 +2142,13 @@ import {
 } from '@lostgradient/bureau';
 ```
 
-Each factory returns a `BureauStorageFixture`: `{ configuration, path?, owned, dispose(), openHandles() }`. `configuration` passes straight to `BureauOptions.storage`. `createSqliteStorageFixture` takes `{ runtime, path? }`, and `createLmdbStorageFixture` also accepts `durability?: 'full' | 'relaxed'` and defaults to production-equivalent `full`.
+Each factory returns a `BureauStorageFixture`: `{ kind, path?, owned, storage, open(), reopen(), openHandles(), dispose(), [Symbol.asyncDispose] }`. Pass `storage` to `BureauOptions.storage`. Bureau never closes a storage it was given, so the fixture does: `dispose()` (or `await using`) closes every handle it opened and removes the files it allocated. `createSqliteStorageFixture` takes `{ runtime?, path? }`, and `createLmdbStorageFixture` also accepts `durability?: 'full' | 'relaxed'` and defaults to production-equivalent `full`.
 
-Omit `path` for a fresh, unique path inside a new `mkdtemp` directory under the operating system's temporary directory, named after `runtime.identifiers.next('storage-fixture')` (`owned: true`). The directory exists as soon as the fixture is created, so call `dispose()`, which removes it with everything in it. Supply your own `path` for a fixture that never allocates or deletes anything (`owned: false`). These two fixtures never open a live storage handle, because whatever composes `configuration` (typically `Bureau`) owns and closes the real connection. `dispose()` therefore governs only the filesystem lifecycle of a path the fixture allocated, and `openHandles()` always returns `[]`.
+Creating a fixture opens nothing. `storage` opens the handle on first access and returns the same one until `reopen()`, so a crash test can pass the fixture's `path` to a child process that writes and is killed, and open its own handle only afterwards. `reopen()` closes the current handle and opens a new one on the same store, for a Bureau started after the previous one shut down. `open()` adds a handle for a test that runs two Bureaus at once; the LMDB fixture refuses it, because LMDB's single writer must not be shared within one process.
 
-`createMemoryStorageFixture(options?: { wrapStorage?: (storage: Storage) => Storage })` is the one exception. It constructs its own `MemoryStorage` instance directly, which is safe only for memory because there is no real file handle or single-writer lock to race, and hands `Bureau` that instance as `configuration`, wrapped with call accounting. `openHandles(): readonly string[]` names every call (`get`, `put`, `delete`, `scan`, `batch`, and so on) the fixture has seen start but not finish. It is empty on the happy path and a real diagnostic once something blocks a call deterministically, such as `createFaultEngine(...).wrapStorage` passed through `options.wrapStorage` before the fixture's own accounting wraps the result. `dispose()` disposes that instance directly, because `bureau.shutdown()` never closes a caller-supplied `Storage` instance, only one it resolved itself from a `StorageConfiguration`.
+Omit `path` for a fresh, unique path inside a new `mkdtemp` directory under the operating system's temporary directory, labeled with `runtime.identifiers.next('storage-fixture')` when a `runtime` is given (`owned: true`). Supply your own `path` for a fixture that never allocates or deletes anything (`owned: false`); `dispose()` then only closes its handles. Every fixture is registered on `globalThis` until it is disposed, and Bureau's test preload fails the run, naming the file that created it, when one is left undisposed.
+
+`createMemoryStorageFixture(options?: { wrapStorage?: (storage: Storage) => Storage })` wraps one `MemoryStorage` instance with call accounting; `storage`, `open()`, and `reopen()` all return it. `openHandles(): readonly string[]` names every call (`get`, `put`, `delete`, `scan`, `batch`, and so on) the fixture has seen start but not finish. It is empty on the happy path and a real diagnostic once something blocks a call deterministically, such as `createFaultEngine(...).wrapStorage` passed through `options.wrapStorage` before the fixture's own accounting wraps the result. The SQLite and LMDB fixtures return `[]`.
 
 ## Development
 

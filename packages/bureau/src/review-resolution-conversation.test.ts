@@ -31,6 +31,7 @@ import {
 } from './create-bureau';
 import type { Bureau } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const APPROVAL_SECRET = 'review-resolution-secret';
 
@@ -108,7 +109,7 @@ async function parkedBureau(toolbox: Toolbox, diagnostics: string[] = []) {
         stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
       }),
     },
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: false,
     onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
   });
@@ -406,7 +407,7 @@ describe('an approval resolved while its run is still going', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       onDiagnostic: () => undefined,
     });
@@ -462,7 +463,7 @@ describe('tasks.start with { continue: true }', () => {
       agents: {
         default: createAgent({ generate: async () => ({ content: 'Hello.', toolCalls: [] }) }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: false,
     });
     try {

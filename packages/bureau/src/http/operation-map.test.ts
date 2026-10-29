@@ -38,7 +38,7 @@ async function openFullBureau(): Promise<{ bureau: Bureau; dispose: () => Promis
   const bureau = await createBureau<AgentDefinitions>({
     id: 'operation-map-bureau',
     agents: { default: createAgent({ generate: async () => ({ content: 'ok', toolCalls: [] }) }) },
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
     assets: { storage: createMemoryAssetStorage() },
     workflowSource: workflowFileDirectory(directory),

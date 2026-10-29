@@ -33,6 +33,7 @@ import {
 import type { Bureau } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 import { agentFileDirectory } from './sources/agent-file-directory';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const CHILD = join(import.meta.dir, 'test', 'agent-file-crash-child.ts');
 const runtime = createDefaultRuntimeServices();
@@ -53,9 +54,12 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
   mkdirSync(agents);
   const markerPath = join(directory, 'marker.json');
   const storagePath = join(directory, 'bureau');
+  // The child writes this store and is killed; the fixture opens its own handle only afterwards.
+  const store = createSqliteStorageFixture({ path: storagePath });
   let bureau: Bureau | undefined;
   scope.onHang(async () => {
     await bureau?.shutdown();
+    await store.dispose();
     rmSync(directory, { recursive: true, force: true });
   });
 
@@ -113,7 +117,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
               return { content: 'resumed', toolCalls: [] };
             },
         },
-        storage: { type: 'sqlite', path: storagePath },
+        storage: store.storage,
         durable: true,
         // The recovered task keeps the grant it started with, whatever this option says (COR-1710).
         wakeup: false,
@@ -212,7 +216,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
         agents: {},
         agentSource: agentFileDirectory(agents, { tools: { 'lookup-order': lookupTool } }),
         models: { generate: () => async () => ({ content: 'unused', toolCalls: [] }) },
-        storage: { type: 'sqlite', path: storagePath },
+        storage: await store.reopen(),
         durable: true,
         // The recovered task keeps the grant it started with, whatever this option says (COR-1710).
         wakeup: false,
@@ -234,6 +238,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
     });
   } finally {
     const shutdown = await bureau?.shutdown();
+    await store.dispose();
     rmSync(directory, { recursive: true, force: true });
     if (shutdown !== undefined) expect(shutdown.unresolved).toBe(0);
   }

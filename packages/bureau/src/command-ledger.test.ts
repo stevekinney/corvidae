@@ -59,7 +59,7 @@ function identity(overrides: Partial<CommandLedgerIdentity> = {}): CommandLedger
 
 function memoryLedger() {
   const fixture = createMemoryStorageFixture();
-  const kv = textValueStore(fixture.configuration, { disposeUnderlyingStorage: false });
+  const kv = textValueStore(fixture.storage, { disposeUnderlyingStorage: false });
   const runtime = createManualRuntimeServices({ origin: ORIGIN });
   const ledger = createCommandLedger<TestClaim, TestResult>({
     kv,
@@ -488,7 +488,7 @@ const CLAIM: RunCreationClaim = { runId: 'run-1', sessionId: 'session-1' };
 
 function runCreationLedger(observe: (claim: RunCreationClaim) => Promise<RunCreationObservation>) {
   const fixture = createMemoryStorageFixture();
-  const kv = textValueStore(fixture.configuration, { disposeUnderlyingStorage: false });
+  const kv = textValueStore(fixture.storage, { disposeUnderlyingStorage: false });
   const runtime = createManualRuntimeServices({ origin: ORIGIN });
   const ledger = createRunCreationLedger({
     kv,
@@ -680,7 +680,7 @@ describe('createRunCreationLedger', () => {
     // same store has no in-flight attempt to wait for, and the run never
     // reached the durable engine.
     const fixture = createMemoryStorageFixture();
-    const kv = textValueStore(fixture.configuration, { disposeUnderlyingStorage: false });
+    const kv = textValueStore(fixture.storage, { disposeUnderlyingStorage: false });
     const runtime = createManualRuntimeServices({ origin: ORIGIN });
     try {
       const before = createRunCreationLedger({
@@ -784,7 +784,7 @@ describe('createRunCreationLedger', () => {
 
   it('attaches no receipt to a conflict when the binding it conflicted with was replaced', async () => {
     const fixture = createMemoryStorageFixture();
-    const kv = textValueStore(fixture.configuration, { disposeUnderlyingStorage: false });
+    const kv = textValueStore(fixture.storage, { disposeUnderlyingStorage: false });
     const runtime = createManualRuntimeServices({ origin: ORIGIN });
     try {
       const options = {
@@ -857,7 +857,7 @@ describe('createRunCreationLedger', () => {
 
   it('makes a concurrent retry in this process wait for the attempt that claimed first', async () => {
     const fixture = createMemoryStorageFixture();
-    const kv = textValueStore(fixture.configuration, { disposeUnderlyingStorage: false });
+    const kv = textValueStore(fixture.storage, { disposeUnderlyingStorage: false });
     const runtime = createManualRuntimeServices({ origin: ORIGIN });
     // The first attempt's claim lands, but its acknowledgement is held, so
     // the retry reads the pending entry before the claimant has registered.
@@ -910,7 +910,7 @@ describe('createRunCreationLedger', () => {
     // The after-work-start and after-effect-before-ack fault points: the run
     // started, but the process died before the ledger recorded it.
     const fixture = createMemoryStorageFixture();
-    const kv = textValueStore(fixture.configuration, { disposeUnderlyingStorage: false });
+    const kv = textValueStore(fixture.storage, { disposeUnderlyingStorage: false });
     const runtime = createManualRuntimeServices({ origin: ORIGIN });
     try {
       const before = createRunCreationLedger({
@@ -959,7 +959,7 @@ describe('createRunCreationLedger', () => {
 
   it('names the created run when its receipt cannot be recorded, and a retry records it', async () => {
     const fixture = createMemoryStorageFixture();
-    const kv = textValueStore(fixture.configuration, { disposeUnderlyingStorage: false });
+    const kv = textValueStore(fixture.storage, { disposeUnderlyingStorage: false });
     const runtime = createManualRuntimeServices({ origin: ORIGIN });
     const writeFailure = new Error('storage unavailable');
     let failNextCompletion = true;
@@ -1018,7 +1018,7 @@ describe('createRunCreationLedger', () => {
 
 describe('two ledgers over one store', () => {
   it('keep their entries, claims, and pruning apart when they use different key prefixes', async () => {
-    const { kv, runtime, ledger } = memoryLedger();
+    const { fixture, kv, runtime, ledger } = memoryLedger();
     const other = createCommandLedger<{ readonly threadId: string }, TestResult>({
       kv,
       keyPrefix: 'command-ledger:other:v1',
@@ -1036,5 +1036,6 @@ describe('two ledgers over one store', () => {
     await runtime.advance(COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS + 1);
     expect(await ledger.prune()).toEqual({ entries: 1, conflicts: 0 });
     expect(await other.listClaims()).toEqual([{ threadId: 'thread-1' }]);
+    await fixture.dispose();
   });
 });

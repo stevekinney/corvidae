@@ -35,6 +35,7 @@ import type { SteeringCommandRequest } from '../steering';
 import { createAgent } from '@lostgradient/operative';
 import type { AgentDefinitions } from '../agent-catalog';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
+import { BunSQLiteStorage } from '@lostgradient/weft';
 
 const COMMANDS = {
   pause: { id: 'crash-cmd-1', principal: 'alice', requestedValue: { target: 'pause' } },
@@ -81,7 +82,7 @@ const bureau = await createBureau<AgentDefinitions>({
       toolbox: createToolbox([]),
     }),
   },
-  storage: { type: 'sqlite', path: storagePath },
+  storage: new BunSQLiteStorage(storagePath),
   durable: true,
   // A short workflow claim, so a later process can recover this one's run
   // soon after it is killed (the parent waits out the TTL first).

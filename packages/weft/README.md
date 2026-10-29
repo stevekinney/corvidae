@@ -67,7 +67,7 @@ The smallest useful Weft program has four moving pieces: a storage backend, a na
 
 ```typescript file=hello-world.ts
 import { Engine, workflow } from '@lostgradient/weft';
-import { SQLiteStorage } from '@lostgradient/weft/storage/sqlite';
+import { BunSQLiteStorage } from '@lostgradient/weft/storage/sqlite/bun';
 
 type WelcomeInput = {
   name: string;
@@ -84,7 +84,7 @@ const welcome = workflow({ name: 'welcome' })
   });
 
 export const engine = await Engine.create({
-  storage: new SQLiteStorage('./weft.db'),
+  storage: new BunSQLiteStorage('./weft.db'),
   workflows: { welcome },
 });
 
@@ -158,7 +158,7 @@ const engine = await createEngine({ workflows: { welcome, farewell } });
 - Declared signals, updates, and queries are closed sets, so the factory's declarations close each set for every workflow it builds: a message under a name that neither the factory nor the workflow declares is rejected with `UndeclaredWorkflowMessageError`.
 - `createEngine` accepts everything `Engine.create` does. Before it creates the engine, it checks that every activity any of its workflows declares with `.uses()` is provided, and throws `ActivityResolutionError` if one is not. An engine created another way, such as `Engine.create({ workflows })` without the shared activities, fails each run that reaches a missing activity with `No activity registered with name …`. If you create the engine yourself, pass `activities: factory.activities`.
 
-> [!NOTE] `MemoryStorage` (also exported from `@lostgradient/weft`) is fine for tests and ephemeral scripts, but it lives in process memory—a crash takes the checkpoints with it. Use a persistent backend like `SQLiteStorage` whenever durability actually matters.
+> [!NOTE] `MemoryStorage` (also exported from `@lostgradient/weft`) is fine for tests and ephemeral scripts, but it lives in process memory—a crash takes the checkpoints with it. Use a persistent backend like `BunSQLiteStorage` whenever durability actually matters.
 
 ## How It Works
 
@@ -443,7 +443,7 @@ As of June 12, 2026, [Temporal's public human-approval example](https://docs.tem
 
 ```typescript
 import { Engine, workflow } from '@lostgradient/weft';
-import { SQLiteStorage } from '@lostgradient/weft/storage/sqlite';
+import { BunSQLiteStorage } from '@lostgradient/weft/storage/sqlite/bun';
 
 type PaymentRequest = {
   orderId: string;
@@ -485,9 +485,8 @@ If the process crashes after the approval decision is checkpointed, the reviewer
 A small `Storage` interface over string keys and `Uint8Array` values: five required methods (`get`, `put`, `delete`, `scan`, `batch`) plus optional capabilities (`conditionalBatch`, `has`, `deletePrefix`) that adapters can implement when their backend supports them. Built-in adapters:
 
 - **`MemoryStorage`** for development and tests
-- **`SQLiteStorage`** (subpath `@lostgradient/weft/storage/sqlite`) for SQLite persistence; Bun resolves to `BunSQLiteStorage`, Node resolves to `NodeSQLiteStorage`
-- **`BunSQLiteStorage`** (subpath `@lostgradient/weft/storage/sqlite/bun`) for an explicit Bun SQLite override
-- **`NodeSQLiteStorage`** (subpath `@lostgradient/weft/storage/sqlite/node`) for an explicit Node.js SQLite override via `better-sqlite3`
+- **`BunSQLiteStorage`** (subpath `@lostgradient/weft/storage/sqlite/bun`) for SQLite persistence under Bun
+- **`NodeSQLiteStorage`** (subpath `@lostgradient/weft/storage/sqlite/node`) for SQLite persistence under Node.js via `better-sqlite3`
 - **`LMDBStorage`** (subpath `@lostgradient/weft/storage/lmdb`) for embedded high-throughput workloads; accepts a `durability: 'relaxed'` option that skips `fsync` on every commit, trading crash durability for write latency—use it for test fixtures, not production storage. `capabilities().persistence` reports `'ephemeral'` for a relaxed-durability instance (instead of `'local'`), so `assertDurableStorageForRecovery()` correctly rejects it
 - **`TursoStorage`** (subpath `@lostgradient/weft/storage/turso`) for distributed libSQL deployments
 - **`NeonStorage`** (subpath `@lostgradient/weft/storage/neon`) for durable remote Neon/Postgres deployments
@@ -498,9 +497,9 @@ A small `Storage` interface over string keys and `Uint8Array` values: five requi
 
 Bring your own backend by implementing the interface—five methods is enough.
 
-For demos and local-first prototypes, `resolveDefaultStorage()` from `@lostgradient/weft/storage/auto` picks a durable default for the current runtime: SQLite under Bun or Node, `WebExtensionStorage` in extension contexts, and `IndexedDBStorage` in browsers and Service Workers. It deliberately throws instead of falling back to `MemoryStorage`, so a "default" engine does not silently lose checkpoints after a restart. Use `resolveStorage({ type: 'auto' })` only when an ephemeral fallback is acceptable.
+Weft has no storage resolver: construct the adapter for your runtime and pass it to the engine. Pick a durable adapter (`BunSQLiteStorage` under Bun, `NodeSQLiteStorage` under Node, `WebExtensionStorage` in extension contexts, `IndexedDBStorage` in browsers and Service Workers) unless losing checkpoints on restart is acceptable, in which case `MemoryStorage` will do.
 
-Production recovery needs one engine process per durable store. Use a local durable adapter (`SQLiteStorage` or `LMDBStorage`) when the service owns its disk, or `NeonStorage` when the deployment wants managed Postgres durability and point-in-time restore. In either case, validate the store at boot with `assertDurableStorageForRecovery()` and enforce the singleton topology in infrastructure; the [singleton service deployment guide](documentation/guides/singleton-service-deployment.md) covers the checklist and the optional warn-only second-instance detector.
+Production recovery needs one engine process per durable store. Use a local durable adapter (`BunSQLiteStorage`, `NodeSQLiteStorage`, or `LMDBStorage`) when the service owns its disk, or `NeonStorage` when the deployment wants managed Postgres durability and point-in-time restore. In either case, validate the store at boot with `assertDurableStorageForRecovery()` and enforce the singleton topology in infrastructure; the [singleton service deployment guide](documentation/guides/singleton-service-deployment.md) covers the checklist and the optional warn-only second-instance detector.
 
 For long-running workflows, `history.retentionWindow` can compact old event-log records behind the latest checkpoint while preserving verification through a durable watermark. `history.maxEvents` remains a lifetime circuit breaker even after compaction. Use `payloadSize.maxBytes` when operators need an admission-time cap on workflow inputs, signal payloads, and activity results before those values reach storage.
 
@@ -511,10 +510,10 @@ For long-running workflows, `history.retentionWindow` can compact old event-log 
 ```typescript
 import { Engine } from '@lostgradient/weft';
 import { serve } from '@lostgradient/weft/server';
-import { SQLiteStorage } from '@lostgradient/weft/storage/sqlite';
+import { BunSQLiteStorage } from '@lostgradient/weft/storage/sqlite/bun';
 import { checkout } from './checkout.ts';
 
-const engine = new Engine({ storage: new SQLiteStorage('./weft.db') });
+const engine = new Engine({ storage: new BunSQLiteStorage('./weft.db') });
 engine.register(checkout);
 
 await using server = serve({ engine, port: 7233 });
@@ -696,7 +695,7 @@ Workflow worker selection is pinned by default. Persist the binding returned by 
 
 ### Browser Support
 
-The core engine runs inside a Web Worker, with a Service Worker acting as the durable persistence layer over `IndexedDB`. Browser-compatible workflow logic ships across server and browser without modification—useful for offline-first apps that need durable client-side workflows. Activities, storage adapters, and other environment-bound pieces still need browser-safe implementations: use `IndexedDBStorage`, `WebExtensionStorage`, or `resolveDefaultStorage()` instead of SQLite storage, swap server-only activities for `fetch`-based equivalents, and so on.
+The core engine runs inside a Web Worker, with a Service Worker acting as the durable persistence layer over `IndexedDB`. Browser-compatible workflow logic ships across server and browser without modification—useful for offline-first apps that need durable client-side workflows. Activities, storage adapters, and other environment-bound pieces still need browser-safe implementations: use `IndexedDBStorage` or `WebExtensionStorage` instead of SQLite storage, swap server-only activities for `fetch`-based equivalents, and so on.
 
 Service Worker deployments can import `ServiceWorkerScheduler` from `@lostgradient/weft/service-worker` and wire timer wakeups through `onTimerFired: (entry) => engine.fireTimer(entry)`. See the [Service Worker guide](documentation/guides/service-worker.md) for the browser runtime wiring and Periodic Background Sync fallback pattern.
 
@@ -826,7 +825,7 @@ bun add @lostgradient/weft
 Storage backends and adapters are exported under subpaths so they only load when imported:
 
 ```typescript
-import { SQLiteStorage } from '@lostgradient/weft/storage/sqlite';
+import { BunSQLiteStorage } from '@lostgradient/weft/storage/sqlite/bun';
 import { LMDBStorage } from '@lostgradient/weft/storage/lmdb';
 import { TursoStorage } from '@lostgradient/weft/storage/turso';
 import { NeonStorage } from '@lostgradient/weft/storage/neon';

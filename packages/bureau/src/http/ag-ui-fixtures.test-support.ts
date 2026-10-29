@@ -23,9 +23,8 @@ import {
   createOperationHandler,
   principalFromApiKey,
   type AuthorizationScope,
-  resolveStorage,
 } from '@lostgradient/weft';
-import { type Storage } from '@lostgradient/storage';
+import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { createToolbox, type Toolbox } from 'armorer';
 import type { RunAgentInput } from '@ag-ui/core';
 
@@ -167,7 +166,7 @@ async function build(
   let real: Storage | undefined;
   let seam: StorageSeam | undefined;
   if (options.seamStorage === true && fixture !== undefined) {
-    real = await resolveStorage(fixture.configuration);
+    real = fixture.open();
     seam = seamStorage(real);
   }
   if (options.backends !== undefined) withBackendDescriptors(generate, options.backends);
@@ -205,7 +204,7 @@ async function build(
           options.stopWhen ?? stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
       }),
     },
-    storage: seam?.storage ?? fixture?.configuration ?? { type: 'memory' },
+    storage: seam?.storage ?? fixture?.storage ?? new MemoryStorage(),
     durable: true,
     // The handler serves the asset operations and the content route, so it needs the service.
     assets: { storage: createMemoryAssetStorage() },

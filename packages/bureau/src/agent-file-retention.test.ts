@@ -34,7 +34,7 @@ async function start(overrides: Partial<BureauOptions<AgentDefinitions>> = {}) {
   const harness = await startFileBureau({
     overrides: {
       runtime,
-      storage: fixture.configuration,
+      storage: fixture.storage,
       durable: true,
       durableOwnership: { ownership: 'none' },
       maintenance: 'manual',
@@ -167,7 +167,7 @@ async function startGated(answer: Promise<string>) {
     },
     overrides: {
       runtime,
-      storage: fixture.configuration,
+      storage: fixture.storage,
       durable: true,
       durableOwnership: { ownership: 'none' },
       maintenance: 'manual',

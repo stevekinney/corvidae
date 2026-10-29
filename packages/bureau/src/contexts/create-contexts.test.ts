@@ -13,6 +13,7 @@ import { createBureau } from '../create-bureau.ts';
 import { createSqliteStorageFixture } from '../test/storage-fixtures.ts';
 import { finishes } from '../test/task-record-crash-agent.ts';
 import type { Bureau } from '../types.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const fixtures: Array<{ dispose(): Promise<void> }> = [];
@@ -27,7 +28,7 @@ async function open(durable: boolean): Promise<Bureau<AgentDefinitions>> {
   fixtures.push(fixture);
   const bureau = await createBureau<AgentDefinitions>({
     agents: { default: createAgent({ generate: finishes, toolbox: createToolbox([]) }) },
-    storage: durable ? fixture.configuration : { type: 'memory' },
+    storage: durable ? fixture.storage : new MemoryStorage(),
     durable,
     ...(durable ? { durableOwnership: { ownership: 'none' as const } } : {}),
   });

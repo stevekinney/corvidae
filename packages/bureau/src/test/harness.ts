@@ -293,7 +293,7 @@ export async function createBureauTestHarness<D extends AgentDefinitions = Agent
     bureau = await createBureau<D>({
       ...(rest as BureauOptions<D>),
       runtime,
-      storage: storage.configuration,
+      storage: storage.storage,
     });
   } catch (error) {
     await disposeQuietly(bureau);

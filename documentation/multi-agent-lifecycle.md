@@ -291,7 +291,7 @@ An unusable fork point rejects with `ForkThroughRunError` before anything is per
 | Setting | Required for | Notes |
 | --- | --- | --- |
 | `BureauOptions.agents` | Every child | The child's `agentName` must be a key. |
-| Persistent `storage` (for example `{ type: 'sqlite', path }`) with durable execution, the default for persistent storage | Durable children, recovery, and the audit trail | Without a durable engine, children are process-local. `durable: true` over `memory` storage runs children durably, but nothing survives a restart. Without any storage, the topology lives in memory and there is no audit trail. |
+| Persistent `storage` (for example `new BunSQLiteStorage(path)`) with durable execution, the default for persistent storage | Durable children, recovery, and the audit trail | Without a durable engine, children are process-local. `durable: true` over `memory` storage runs children durably, but nothing survives a restart. Without any storage, the topology lives in memory and there is no audit trail. |
 | `BureauOptions.children.signals` | `children.signal` | A contract keyed by child agent name. Contracts are code, so they are configured, not persisted. |
 | `BureauOptions.children.delegation.secret` | Delegation grants, and any effect of `authority` | A non-empty string; an empty one is a `BAD_REQUEST` at construction. Without `delegation`, `authority` is ignored. |
 | `BureauOptions.children.delegation.policyVersion` | Optional | Stamped on every grant. Defaults to `'bureau-delegation/1'`. |
@@ -358,6 +358,7 @@ import {
 } from '@lostgradient/operative';
 import { createTool } from 'armorer';
 import { z } from 'zod';
+import { BunSQLiteStorage } from '@lostgradient/weft';
 
 /** Never answers, and stops when its run is aborted, as a real provider call does. */
 const untilAborted: GenerateFunction = ({ signal }) =>
@@ -410,7 +411,7 @@ const planner = createAgent({ name: 'planner', generate: untilAborted });
 
 const bureau = await createBureau({
   agents: { planner, researcher },
-  storage: { type: 'sqlite', path: 'bureau.sqlite' },
+  storage: new BunSQLiteStorage('bureau.sqlite'),
   children: { signals: { researcher: researchSignals } },
 });
 

@@ -107,7 +107,7 @@ async function createWorld(
     overrides: {
       id: 'restart-push-bureau',
       models: { generate: () => parksOnRequest },
-      storage: fixture.configuration,
+      storage: fixture.storage,
     },
   });
   await first.put(
@@ -217,7 +217,7 @@ async function createWorld(
         overrides: {
           id: 'restart-push-bureau',
           models: { generate: () => parksOnRequest },
-          storage: fixture.configuration,
+          storage: fixture.storage,
         },
       });
       await harness.bureau.agents.refresh();

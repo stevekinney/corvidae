@@ -24,6 +24,7 @@ import {
 import { createAskingAgent } from '../test/task-record-crash-agent.ts';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau } from '../types.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const ORIGIN = '2026-10-26T00:00:00.000Z';
 
@@ -70,9 +71,9 @@ async function open(
     agents: { default: agent(), researcher: agent(), asker: createAskingAgent() },
     runtime,
     ...(fixture === undefined
-      ? { storage: { type: 'memory' as const } }
+      ? { storage: new MemoryStorage() }
       : {
-          storage: fixture.configuration,
+          storage: fixture.storage,
           durable: true,
           durableOwnership: { ownership: 'none' as const },
         }),

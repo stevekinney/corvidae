@@ -11,6 +11,7 @@ import { createConversationHistory } from 'conversationalist';
 
 import { createRuntimeComposition } from './runtime-composition';
 import type { BureauDiagnostic } from './types';
+import { MemoryStorage } from '@lostgradient/storage';
 
 function fakeRunOptions(): RunOptions {
   return {
@@ -26,7 +27,7 @@ async function compositionWith(
 ): ReturnType<typeof createRuntimeComposition> {
   const runtime = await createRuntimeComposition(
     {
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
     },

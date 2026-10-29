@@ -712,7 +712,7 @@ describe('the fence over the real tombstone', () => {
   /** The goal is live throughout: only the claim decides whether the run may work. */
   async function composed() {
     const runtime = await createRuntimeComposition({
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     disposers.push(() => runtime.durable?.engine[Symbol.dispose]?.());

@@ -1,7 +1,3 @@
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-
 import { stopWhen, createAgent } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
@@ -11,6 +7,7 @@ import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import type { AgentDefinitions } from './agent-catalog';
 import { startTaskFrom } from './test/task-start-request.ts';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 function nextTool() {
   return createTool({
@@ -22,8 +19,7 @@ function nextTool() {
 }
 
 async function crashAndRecover(principal: string | undefined) {
-  const directory = await mkdtemp(join(tmpdir(), 'owner-of-record-recovery-'));
-  const path = join(directory, 'bureau.sqlite');
+  const database = createSqliteStorageFixture();
   let reachedStepOne = false;
   const crashed = await createBureau<AgentDefinitions>({
     agents: {
@@ -38,7 +34,7 @@ async function crashAndRecover(principal: string | undefined) {
         stopWhen: stopWhen.noToolCalls(),
       }),
     },
-    storage: { type: 'sqlite', path },
+    storage: database.storage,
     durable: true,
     durableOwnership: { ownership: 'none' },
   });
@@ -57,7 +53,7 @@ async function crashAndRecover(principal: string | undefined) {
         stopWhen: stopWhen.noToolCalls(),
       }),
     },
-    storage: { type: 'sqlite', path },
+    storage: database.open(),
     durable: true,
     durableOwnership: { ownership: 'none' },
   });
@@ -71,7 +67,7 @@ async function crashAndRecover(principal: string | undefined) {
     cleanup: async () => {
       await recovered.dispose();
       await crashed.dispose();
-      await rm(directory, { recursive: true, force: true });
+      await database.dispose();
     },
   };
 }

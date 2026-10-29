@@ -82,7 +82,7 @@ describe('a session run of an agent with skills, reattached after its process di
       });
 
     const first = await harness.open({
-      storage: { type: 'sqlite', path },
+      storage: harness.sqliteHandle(path),
       agents: { default: await agentFor([], []) },
     });
     const run = await first.tasks.start('default', 'lock, then charge', { principal: OWNER.alice });
@@ -96,7 +96,7 @@ describe('a session run of an agent with skills, reattached after its process di
     const charges: number[] = [];
     const offered: string[] = [];
     const restarted = await harness.open({
-      storage: { type: 'sqlite', path },
+      storage: harness.sqliteHandle(path),
       agents: { default: await agentFor(charges, offered) },
     });
     await pollUntil(

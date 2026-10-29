@@ -47,6 +47,7 @@ import {
 import { mayAccessOwnedResource, type OwnerAccessPredicate } from './owner-predicate.ts';
 import { createMemoryAssetStorage } from '../assets/storage';
 import { startTaskFrom } from '../test/task-start-request.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 
 type Handler = (request: Request) => Promise<Response>;
 type Credential = { subject: string; scopes: readonly AuthorizationScope[] };
@@ -291,7 +292,7 @@ async function openBureau(id = 'authorization-bureau') {
       }),
     },
     validators: [createCheckValidator()],
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
   });
 }

@@ -111,13 +111,19 @@ function faultedAuditStorageFixture(
   engine: ReturnType<typeof createFaultEngine>,
 ): BureauStorageFixture & { readonly rawStorage: MemoryStorage } {
   const rawStorage = new MemoryStorage();
-  return {
-    configuration: routeAuditWritesThroughFaultEngine(rawStorage, engine),
+  const storage = routeAuditWritesThroughFaultEngine(rawStorage, engine);
+  const fixture: BureauStorageFixture & { readonly rawStorage: MemoryStorage } = {
+    kind: 'memory',
+    storage,
     owned: false,
+    open: () => storage,
+    reopen: async () => storage,
     openHandles: () => [],
     dispose: async () => {},
+    [Symbol.asyncDispose]: () => fixture.dispose(),
     rawStorage,
   };
+  return fixture;
 }
 
 /**

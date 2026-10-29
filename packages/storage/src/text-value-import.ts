@@ -40,6 +40,8 @@ export type TextKeyValueRow = {
  * const options: CopyTextKeyValueRowsToStorageOptions = {
  *   storage,
  *   targetPrefix: 'app:my-service',
+ *   // Prefixes the import must never write under; Weft passes `WEFT_RESERVED_KEY_PREFIXES`.
+ *   reservedKeyPrefixes: ['a2a:'],
  *   rows: [{ key: 'session:1', value: 'active' }],
  * };
  * console.log(options.targetPrefix); // 'app:my-service'
@@ -143,6 +145,8 @@ async function collectRows(
  * const result = await copyTextKeyValueRowsToStorage({
  *   storage,
  *   targetPrefix: 'app:my-service',
+ *   // Prefixes the import must never write under; Weft passes `WEFT_RESERVED_KEY_PREFIXES`.
+ *   reservedKeyPrefixes: ['a2a:'],
  *   rows: [{ key: 'session:1', value: 'active' }],
  * });
  * console.log(result.copied); // 1

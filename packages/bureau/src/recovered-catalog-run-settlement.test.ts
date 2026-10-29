@@ -23,6 +23,10 @@ import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-s
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
 import type { Bureau, BureauInternals } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 
 const PRINCIPAL = 'api-key:alice';
 const FILE = agentFileText({ model: KNOWN_MODEL }, 'Instructions.\n');
@@ -66,7 +70,11 @@ async function durableStatusOf(bureau: Pick<Bureau, 'tasks'>, runId: string) {
 
 describe('a recovered file-agent run', () => {
   /** The model's answer, held until `release` resolves; `undefined` holds it for ever. */
-  async function open(directory: string, storagePath: string, release?: Promise<void>) {
+  async function open(
+    directory: string,
+    database: PersistentBureauStorageFixture,
+    release?: Promise<void>,
+  ) {
     const harness: FileBureauHarness = await startFileBureau({
       directory,
       scripts: {
@@ -76,7 +84,7 @@ describe('a recovered file-agent run', () => {
         },
       },
       overrides: {
-        storage: { type: 'sqlite', path: storagePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         // No maintenance pass runs: only the hook can settle the reference.
@@ -90,8 +98,9 @@ describe('a recovered file-agent run', () => {
 
   async function startRun() {
     const directory = await temporaryDirectory();
-    const storagePath = join(directory, 'bureau.sqlite');
-    const first = await open(directory, storagePath);
+    const database = createSqliteStorageFixture();
+    cleanups.push(() => database.dispose());
+    const first = await open(directory, database);
     await first.put('researcher.md', FILE);
     await first.bureau.agents.refresh();
     const run = await first.bureau.tasks.start('researcher', 'long question', {
@@ -105,13 +114,13 @@ describe('a recovered file-agent run', () => {
       async () => (await referenceOf(first.bureau, run.id)) !== undefined,
       'the run holds a snapshot reference',
     );
-    return { directory, storagePath, runId: run.id };
+    return { directory, database, runId: run.id };
   }
 
   it('settles its snapshot reference as soon as the run ends, with no maintenance pass', async () => {
-    const { directory, storagePath, runId } = await startRun();
+    const { directory, database, runId } = await startRun();
     const release = Promise.withResolvers<void>();
-    const second = await open(directory, storagePath, release.promise);
+    const second = await open(directory, database, release.promise);
     await second.bureau.recovery();
     const held = await referenceOf(second.bureau, runId);
     expect(held).toBeDefined();
@@ -130,8 +139,8 @@ describe('a recovered file-agent run', () => {
   });
 
   it('keeps its snapshot reference through maintenance while this process runs it, whatever the engine reports', async () => {
-    const { directory, storagePath, runId } = await startRun();
-    const second = await open(directory, storagePath);
+    const { directory, database, runId } = await startRun();
+    const second = await open(directory, database);
     await second.bureau.recovery();
     const engine = second.bureau.durableEngine();
     if (engine === undefined) throw new Error('Expected a durable engine.');
@@ -158,15 +167,15 @@ describe('a recovered file-agent run', () => {
   });
 
   it('is not settled by a graceful shutdown that interrupts it: its task, its snapshot reference, and its cancel survive for the next boot', async () => {
-    const { directory, storagePath, runId } = await startRun();
-    const second = await open(directory, storagePath);
+    const { directory, database, runId } = await startRun();
+    const second = await open(directory, database);
     await second.bureau.recovery();
     expect(await taskStatusOf(second.bureau, runId)).toBe('working');
 
     // A graceful shutdown leaves a task this process recovered, not started, for the next boot.
     await second.bureau.dispose();
 
-    const third = await open(directory, storagePath);
+    const third = await open(directory, database);
     await third.bureau.recovery();
     expect(await durableStatusOf(third.bureau, runId)).toBe('running');
     expect(await taskStatusOf(third.bureau, runId)).toBe('working');
@@ -186,7 +195,10 @@ describe('a recovered file-agent run', () => {
 describe('a recovered child run', () => {
   it('is not a task: it gets no record and is absent from the task list', async () => {
     const directory = await temporaryDirectory();
-    const path = join(directory, 'bureau.sqlite');
+    const pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    cleanups.push(() => pathFixture.dispose());
     const release = Promise.withResolvers<void>();
     // Each process's child waits on its own gate: the first never opens, so only the second
     // process advances the child's checkpoint.
@@ -230,7 +242,7 @@ describe('a recovered child run', () => {
             ),
           }),
         },
-        storage: { type: 'sqlite', path },
+        storage: pathFixture.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         onDiagnostic: () => undefined,

@@ -11,6 +11,7 @@ import {
   type WorkflowBureauHarness,
 } from './testing/workflow-bureau.test-support.ts';
 import { createAgent } from '@lostgradient/operative';
+import { MemoryStorage } from '@lostgradient/storage';
 
 async function withBureau<T>(body: (harness: WorkflowBureauHarness) => Promise<T>): Promise<T> {
   const harness = await startWorkflowBureau({
@@ -129,7 +130,7 @@ describe('bureau.schedules.update', () => {
   });
 
   it('does nothing without a durable engine', async () => {
-    const bureau = await createBureau({ agents: {}, storage: { type: 'memory' } });
+    const bureau = await createBureau({ agents: {}, storage: new MemoryStorage() });
     try {
       expect(await bureau.schedules.update('any', { spec: '1h' })).toBeUndefined();
     } finally {

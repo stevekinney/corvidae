@@ -16,6 +16,10 @@ import {
   readsSteeringHead,
   userTexts,
 } from './test/session-input-fixtures';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 import type { Bureau } from './types';
 import { startTaskFrom } from './test/task-start-request.ts';
 import { listHeldTasks } from './test';
@@ -28,12 +32,13 @@ import { listHeldTasks } from './test';
  */
 
 let directory: string;
-let path: string;
+let database: PersistentBureauStorageFixture;
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), 'corvidae-session-input-interleaving-'));
-  path = join(directory, 'bureau.sqlite');
+  database = createSqliteStorageFixture({ path: join(directory, 'bureau.sqlite') });
 });
 afterEach(async () => {
+  await database.dispose();
   await rm(directory, { recursive: true, force: true });
 });
 
@@ -53,7 +58,7 @@ describe('admission against a run ending, across two processes (COR-1476)', () =
     const stepZeroStarted = deferred();
     const releaseStepZero = deferred();
     const a = await openProcess(
-      path,
+      database,
       async () => {
         stepZeroStarted.resolve();
         await releaseStepZero.promise;
@@ -61,7 +66,7 @@ describe('admission against a run ending, across two processes (COR-1476)', () =
       },
       { maximumSteps: 1 },
     );
-    const b = await openProcess(path, async () => {
+    const b = await openProcess(database, async () => {
       throw new Error('process B never generates');
     });
     const holds: Array<{ release: () => void }> = [];
@@ -115,7 +120,7 @@ describe("a run's end against a session recreated while it ran (COR-1476)", () =
     const run1Started = deferred();
     const release1 = deferred();
     const a = await openProcess(
-      path,
+      database,
       async () => {
         run1Started.resolve();
         await release1.promise;
@@ -123,7 +128,7 @@ describe("a run's end against a session recreated while it ran (COR-1476)", () =
       },
       { maximumSteps: 1 },
     );
-    const b = await openProcess(path, async () => ({ content: 'done', toolCalls: [] }));
+    const b = await openProcess(database, async () => ({ content: 'done', toolCalls: [] }));
     try {
       const first = await startTaskFrom(a.bureau, {
         agentName: 'default',
@@ -187,7 +192,7 @@ describe('input admitted to a recreated session while an old run still drains (C
     const stepZeroStarted = deferred();
     const releaseStepZero = deferred();
     const a = await openProcess(
-      path,
+      database,
       async () => {
         stepZeroStarted.resolve();
         await releaseStepZero.promise;
@@ -198,7 +203,7 @@ describe('input admitted to a recreated session while an old run still drains (C
     const prompts2: string[][] = [];
     const run2Started = deferred();
     const release2 = deferred();
-    const b = await openProcess(path, async (context: GenerateContext) => {
+    const b = await openProcess(database, async (context: GenerateContext) => {
       prompts2.push(userTexts(context.conversation));
       if (prompts2.length === 1) {
         run2Started.resolve();

@@ -87,7 +87,7 @@ async function start(
     ...(onEvent === undefined ? {} : { onEvent }),
     agents: { ...agents },
     memory,
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: false,
   });
   bureaus.push(bureau);

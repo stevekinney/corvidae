@@ -21,15 +21,23 @@ import {
   type ValidatorOutcome,
 } from '@lostgradient/operative';
 import { expect } from 'bun:test';
+import type { Storage } from '@lostgradient/storage';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
+
+import { createSqliteStorageFixture } from '../test/storage-fixtures';
 
 import type { GoalState } from '../goal-state';
 import type { BureauGoalRequest } from '../goal-types';
 import type { Bureau, BureauDiagnostic } from '../types';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 
+/**
+ * A goal test's SQLite store, over a storage fixture: `open()` gives each Bureau or inspection its
+ * own handle, and `remove()` closes every handle and deletes the file.
+ */
 export interface TestDatabase {
   readonly path: string;
+  open(): Storage;
   remove(): Promise<void>;
 }
 
@@ -56,15 +64,25 @@ export function currentEpochMilliseconds(): number {
  * names no path and makes no directory, so nothing is left behind when no test replaces it.
  */
 export function createUnsetTestDatabase(): TestDatabase {
-  return { path: '', async remove() {} };
+  return {
+    path: '',
+    open() {
+      throw new Error('No test has created this database yet.');
+    },
+    async remove() {},
+  };
 }
 
 export function createTestDatabase(label: string): TestDatabase {
-  const path = createTemporaryPath(`bureau-goals-${label}`, '.sqlite');
+  const fixture = createSqliteStorageFixture({
+    path: createTemporaryPath(`bureau-goals-${label}`, '.sqlite'),
+  });
   return {
-    path,
+    path: fixture.path,
+    open: () => fixture.open(),
     async remove() {
-      removeTemporaryPath(path);
+      await fixture.dispose();
+      removeTemporaryPath(fixture.path);
     },
   };
 }

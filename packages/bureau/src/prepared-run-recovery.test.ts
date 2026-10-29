@@ -13,12 +13,7 @@ import {
   type Storage,
   textValueStore,
 } from '@lostgradient/storage';
-import {
-  Engine,
-  resolveStorage,
-  type StorageConfiguration,
-  yieldToPortableEventLoop,
-} from '@lostgradient/weft';
+import { Engine, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
@@ -123,7 +118,7 @@ interface OpenOptions {
 }
 
 async function open(
-  storage: StorageConfiguration | Storage,
+  storage: Storage,
   options: OpenOptions = {},
 ): Promise<Bureau<AgentDefinitions>> {
   const { recovery, diagnostics } = options;
@@ -163,7 +158,7 @@ async function open(
  * Leaves a run prepared and never launched: its start hook holds it, and the Bureau that started
  * it is never disposed (a graceful shutdown would cancel it), as a process that stopped there.
  */
-async function prepareWithoutLaunching(configuration: StorageConfiguration | Storage) {
+async function prepareWithoutLaunching(configuration: Storage) {
   const hook = heldStartHook();
   const crashed = await open(configuration, { hooks: hook.hooks });
   // The held Bureau is let go after its successors, which have taken the run over.
@@ -196,9 +191,9 @@ function newFixture() {
 describe('a run prepared and never launched, recovered at the next boot (COR-297)', () => {
   it('is cancelled, not reattached, and its session is settled so it accepts a new run', async () => {
     const fixture = newFixture();
-    const run = await prepareWithoutLaunching(fixture.configuration);
+    const run = await prepareWithoutLaunching(fixture.storage);
 
-    const restarted = await open(fixture.configuration);
+    const restarted = await open(fixture.open());
     const report: BureauRecoveryReport = await restarted.recovery();
 
     expect(report.perRunFailures).toContainEqual({
@@ -224,7 +219,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
 
   it('settles the run’s task at the same boot, even when its cancel lands late', async () => {
     const fixture = newFixture();
-    const run = await prepareWithoutLaunching(fixture.configuration);
+    const run = await prepareWithoutLaunching(fixture.storage);
     const realCancel = Engine.prototype.cancel;
     const cancel = spyOn(Engine.prototype, 'cancel').mockImplementation(async function (
       this: Engine,
@@ -238,7 +233,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
     });
     cleanups.push(() => cancel.mockRestore());
 
-    const restarted = await open(fixture.configuration);
+    const restarted = await open(fixture.open());
     await restarted.recovery();
     cancel.mockRestore();
 
@@ -248,8 +243,8 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
 
   it('leaves the session alone when another run has taken it over since recovery classified it', async () => {
     const fixture = newFixture();
-    const run = await prepareWithoutLaunching(fixture.configuration);
-    const storage = await resolveStorage(fixture.configuration);
+    const run = await prepareWithoutLaunching(fixture.storage);
+    const storage = fixture.open();
     cleanups.push(() => storage[Symbol.dispose]());
     const sessions = createSessionStore(
       textValueStore(storage, { disposeUnderlyingStorage: false }),
@@ -269,7 +264,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
     });
     cleanups.push(() => get.mockRestore());
 
-    const restarted = await open(fixture.configuration);
+    const restarted = await open(fixture.open());
     await restarted.recovery();
     get.mockRestore();
 
@@ -280,7 +275,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
 
   it('leaves a pending run to the live process still preparing it', async () => {
     const fixture = newFixture();
-    const run = await prepareWithoutLaunching(fixture.configuration);
+    const run = await prepareWithoutLaunching(fixture.storage);
     const realClaimHolder = Engine.prototype.claimHolder;
     const claimHolder = spyOn(Engine.prototype, 'claimHolder').mockImplementation(function (
       this: Engine,
@@ -298,7 +293,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
       rejected: [] as Array<[string, string]>,
     };
 
-    const restarted = await open(fixture.configuration, { recovery });
+    const restarted = await open(fixture.open(), { recovery });
     await restarted.recovery();
     claimHolder.mockRestore();
 
@@ -319,7 +314,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
   it('cancels a catalog run prepared and never launched, and settles its task', async () => {
     const fixture = newFixture();
     const hook = heldStartHook();
-    const crashed = await open(fixture.configuration, { hooks: hook.hooks });
+    const crashed = await open(fixture.storage, { hooks: hook.hooks });
     bureaus.splice(bureaus.indexOf(crashed), 1);
     cleanups.push(async () => {
       hook.release();
@@ -332,7 +327,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
       'the catalog run was never prepared',
     );
 
-    const restarted = await open(fixture.configuration);
+    const restarted = await open(fixture.open());
     const report = await restarted.recovery();
 
     expect(report.perRunFailures).toContainEqual({ runId, reason: 'prepared-not-launched' });
@@ -343,13 +338,13 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
 
   it('dispatches a cancel verdict with the prepared-not-launched rejection, never a reattach', async () => {
     const fixture = newFixture();
-    const run = await prepareWithoutLaunching(fixture.configuration);
+    const run = await prepareWithoutLaunching(fixture.storage);
     const recovery = {
       attempted: [] as Array<[string, string]>,
       rejected: [] as Array<[string, string]>,
     };
 
-    const restarted = await open(fixture.configuration, { recovery });
+    const restarted = await open(fixture.open(), { recovery });
     await restarted.recovery();
 
     const verdicts = recovery.attempted.filter(([runId]) => runId === run.id).map(([, v]) => v);
@@ -360,8 +355,8 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
 
   it('still cancels the record when settling its session fails, and reports the failure', async () => {
     const fixture = newFixture();
-    const run = await prepareWithoutLaunching(fixture.configuration);
-    const storage = await resolveStorage(fixture.configuration);
+    const run = await prepareWithoutLaunching(fixture.storage);
+    const storage = fixture.open();
     cleanups.push(() => storage[Symbol.dispose]());
     // Every session body write, which is what settling the session's metadata makes.
     const refusing = refuseWritesUnder(storage, 'agent-session-v2:body:');
@@ -386,7 +381,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
 
   it('reattaches as before, and cancels nothing, when the record status cannot be read', async () => {
     const fixture = newFixture();
-    const run = await prepareWithoutLaunching(fixture.configuration);
+    const run = await prepareWithoutLaunching(fixture.storage);
     const realGet = Engine.prototype.get;
     let reads = 0;
     const get = spyOn(Engine.prototype, 'get').mockImplementation(function (
@@ -406,7 +401,7 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
       rejected: [] as Array<[string, string]>,
     };
 
-    const restarted = await open(fixture.configuration, { diagnostics, recovery });
+    const restarted = await open(fixture.open(), { diagnostics, recovery });
     await restarted.recovery();
     get.mockRestore();
 

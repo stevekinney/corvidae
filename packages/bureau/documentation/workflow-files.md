@@ -66,6 +66,7 @@ A file that cannot be used is listed by `bureau.workflows.list()` with `state: '
 import { createBureau } from '@lostgradient/bureau';
 import { agentFileDirectory, workflowFileDirectory } from '@lostgradient/bureau/sources';
 import type { BackendDescriptor, GenerateFunction, StandaloneAgent } from '@lostgradient/operative';
+import { BunSQLiteStorage } from '@lostgradient/weft';
 
 declare const writer: StandaloneAgent;
 declare function generateFor(descriptor: BackendDescriptor): GenerateFunction;
@@ -74,7 +75,7 @@ const bureau = await createBureau({
   agents: { writer },
   agentSource: agentFileDirectory('/home/me/.interborough/agents'),
   workflowSource: workflowFileDirectory('/home/me/.interborough/workflows'),
-  storage: { type: 'sqlite', path: '/home/me/.interborough/bureau.sqlite' },
+  storage: new BunSQLiteStorage('/home/me/.interborough/bureau.sqlite'),
   durable: true,
   models: { generate: generateFor },
 });

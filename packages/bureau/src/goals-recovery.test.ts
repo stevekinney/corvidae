@@ -69,7 +69,7 @@ async function track<T extends Bureau>(bureau: T): Promise<T> {
 }
 
 async function inspection() {
-  const view = await inspect(database.path);
+  const view = await inspect(database.open());
   cleanups.push(() => view.dispose());
   return view;
 }
@@ -95,7 +95,7 @@ async function crashWhileRunning(
 ) {
   const diagnostics = createDiagnostics();
   const { bureau } = await bootOver({
-    path: database.path,
+    storage: database.open(),
     agents: { worker: workerAgent(hangForever) },
     validators: [createCheckValidator()],
     diagnostics,
@@ -116,7 +116,7 @@ describe('a goal across a process restart', () => {
 
     let steps = 0;
     const { bureau, diagnostics } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: {
         worker: workerAgent(() => {
           steps += 1;
@@ -161,7 +161,7 @@ describe('a goal across a process restart', () => {
     );
     const release = createLatch();
     const { bureau } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: {
         worker: workerAgent(async () => {
           await release.promise;
@@ -194,7 +194,7 @@ describe('a goal across a process restart', () => {
     database = createTestDatabase('evaluating');
     const stuck = createLatch();
     const { bureau: dead } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: { worker: workerAgent(() => Promise.resolve({ content: 'done', toolCalls: [] })) },
       validators: [createCheckValidator({ before: () => stuck.promise })],
     });
@@ -205,7 +205,7 @@ describe('a goal across a process restart', () => {
     const validatorCalls: Parameters<ReturnType<typeof createCheckValidator>['validate']>[0][] = [];
     let steps = 0;
     const { bureau } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: {
         worker: workerAgent(() => {
           steps += 1;
@@ -236,7 +236,7 @@ describe('a goal across a process restart', () => {
     database = createTestDatabase('retrying');
     const prompts: string[] = [];
     const { bureau } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: {
         worker: workerAgent(({ conversation }) => {
           prompts.push(lastPromptOf(conversation));
@@ -269,7 +269,7 @@ describe('a goal across a process restart', () => {
     database = createTestDatabase('terminal');
     let firstSteps = 0;
     const { bureau: first } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: {
         worker: workerAgent(() => {
           firstSteps += 1;
@@ -290,7 +290,7 @@ describe('a goal across a process restart', () => {
 
     let secondSteps = 0;
     const { bureau } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: {
         worker: workerAgent(() => {
           secondSteps += 1;
@@ -329,7 +329,7 @@ describe('a goal across a process restart', () => {
   it('leaves a goal interrupted by shutdown unfinished for the next process, never failed or canceled', async () => {
     database = createTestDatabase('shutdown');
     const { bureau: first } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: { worker: workerAgent(hangUntilAborted) },
       validators: [createCheckValidator()],
     });
@@ -345,7 +345,7 @@ describe('a goal across a process restart', () => {
     expect(left?.cancellation).toBeUndefined();
 
     const { bureau } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: {
         worker: workerAgent(() => Promise.resolve({ content: 'done', toolCalls: [] })),
       },
@@ -402,7 +402,7 @@ describe('a goal that ended while its next attempt was still starting', () => {
 
       let steps = 0;
       const { bureau } = await bootOver({
-        path: database.path,
+        storage: database.open(),
         agents: {
           worker: workerAgent((context) => {
             steps += 1;
@@ -444,7 +444,7 @@ describe('a goal that ended while its next attempt was still starting', () => {
       });
 
       const { bureau } = await bootOver({
-        path: database.path,
+        storage: database.open(),
         agents: { worker: workerAgent(hangUntilAborted) },
         validators: [createCheckValidator()],
       });
@@ -469,7 +469,7 @@ describe('a goal that ended while its next attempt was still starting', () => {
     database = createTestDatabase('late-start-close');
     await crashWhileRunning();
     const { bureau } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: { worker: workerAgent(hangUntilAborted) },
       validators: [createCheckValidator()],
     });
@@ -503,7 +503,7 @@ describe('a run that existed before its controller opened the attempt', () => {
 
     let steps = 0;
     const { bureau } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: {
         worker: workerAgent(() => {
           steps += 1;
@@ -538,7 +538,7 @@ describe('a goal when the validator it names is no longer registered', () => {
       database = createTestDatabase('validator');
       const stuck = createLatch();
       const { bureau: dead } = await bootOver({
-        path: database.path,
+        storage: database.open(),
         agents: { worker: workerAgent(() => Promise.resolve({ content: 'done', toolCalls: [] })) },
         validators: [createCheckValidator({ before: () => stuck.promise })],
       });
@@ -547,7 +547,7 @@ describe('a goal when the validator it names is no longer registered', () => {
       await status(dead, 'evaluating');
 
       const { bureau } = await bootOver({
-        path: database.path,
+        storage: database.open(),
         agents: { worker: workerAgent(() => Promise.resolve({ content: 'done', toolCalls: [] })) },
         validators,
       });
@@ -579,7 +579,7 @@ describe('a cancellation that a process died in the middle of', () => {
 
     let steps = 0;
     const { bureau } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: {
         worker: workerAgent((context) => {
           steps += 1;
@@ -611,7 +611,7 @@ describe('a cancellation that a process died in the middle of', () => {
   it('is completed when the controller workflow was cancelled out from under its goal', async () => {
     database = createTestDatabase('outside');
     const { bureau } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: { worker: workerAgent(hangUntilAborted) },
       validators: [createCheckValidator()],
     });
@@ -663,7 +663,7 @@ describe('a controller left running in a superseded process', () => {
     const supersededVerdict = createLatch();
     const verdictDelivered = createLatch();
     const { bureau: superseded } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: { worker: workerAgent(() => Promise.resolve({ content: 'done', toolCalls: [] })) },
       validators: [
         createCheckValidator({
@@ -679,7 +679,7 @@ describe('a controller left running in a superseded process', () => {
     await status(superseded, 'evaluating');
 
     const { bureau } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: { worker: workerAgent(() => Promise.resolve({ content: 'done', toolCalls: [] })) },
       validators: [createCheckValidator({ before: () => new Promise(() => {}) })],
     });
@@ -708,7 +708,7 @@ describe('the attempt behind a running goal', () => {
     // start that created it, and the goal's record says it was running. Ordinary
     // callers cannot choose an id in the goal's namespace, so the run is written
     // the way the goal's own start would have left it.
-    await seedFinishedRun(database.path, 'goal-g1-a0');
+    await seedFinishedRun(database.open(), 'goal-g1-a0');
     const view = await inspection();
     await view.claimRun('goal-g1-a0', {
       agentName: 'worker',
@@ -718,7 +718,7 @@ describe('the attempt behind a running goal', () => {
       goalAttempt: { goalRunId: 'g1', attemptIndex: 0 },
     });
     const { bureau } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: { worker, planner: workerAgent(hangUntilAborted, 'planner') },
       validators: [createCheckValidator()],
     });
@@ -762,7 +762,7 @@ describe('the attempt behind a running goal', () => {
 
     /** A finished attempt run whose recovery record persists `costEstimation` and names `definitionRevision`. */
     async function finishedAttempt(definitionRevision: number, costEstimation: unknown) {
-      await seedFinishedRun(database.path, 'goal-g1-a0');
+      await seedFinishedRun(database.open(), 'goal-g1-a0');
       const view = await inspection();
       await view.claimRun('goal-g1-a0', {
         agentName: 'worker',
@@ -780,7 +780,7 @@ describe('the attempt behind a running goal', () => {
       agents: Parameters<typeof bootOver>[0]['agents'],
     ) {
       const { bureau } = await bootOver({
-        path: database.path,
+        storage: database.open(),
         agents,
         validators: [createCheckValidator()],
       });
@@ -869,7 +869,7 @@ describe('the attempt behind a running goal', () => {
         },
       }) as typeof base;
       const { bureau } = await bootOver({
-        path: database.path,
+        storage: database.open(),
         agents: { worker },
         validators: [createCheckValidator()],
       });
@@ -889,7 +889,7 @@ describe('the attempt behind a running goal', () => {
     database = createTestDatabase('never-created');
     let steps = 0;
     const { bureau } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: {
         worker: workerAgent(() => {
           steps += 1;
@@ -920,7 +920,7 @@ describe('the attempt behind a running goal', () => {
     database = createTestDatabase('corrupt-record');
     let steps = 0;
     const { bureau } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: {
         worker: workerAgent(() => {
           steps += 1;
@@ -948,9 +948,9 @@ describe('the attempt behind a running goal', () => {
     database = createTestDatabase('active-corrupt-record');
     // A run that exists, whose ownership record is then damaged: the engine
     // cannot say whether it is the goal's, so reading it fails.
-    await seedFinishedRun(database.path, 'goal-g1-a0');
+    await seedFinishedRun(database.open(), 'goal-g1-a0');
     const { bureau } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: { worker: workerAgent(hangForever) },
       validators: [createCheckValidator()],
     });
@@ -976,7 +976,7 @@ describe('the attempt behind a running goal', () => {
     });
     // Admission refuses a caller-chosen id in the goal's namespace, so this is a
     // run another writer left in the store: a catalog run with no goal marker.
-    await seedFinishedRun(database.path, 'goal-g1-a0');
+    await seedFinishedRun(database.open(), 'goal-g1-a0');
     const view = await inspection();
     await view.claimRun('goal-g1-a0', {
       agentName: 'worker',
@@ -985,7 +985,7 @@ describe('the attempt behind a running goal', () => {
       input: 'work',
     });
     const { bureau } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: { worker, planner: workerAgent(hangUntilAborted, 'planner') },
       validators: [createCheckValidator()],
     });
@@ -1011,7 +1011,7 @@ describe('the attempt behind a running goal', () => {
       return Promise.resolve({ content: 'done', toolCalls: [] });
     });
     const { bureau } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: { worker },
       validators: [createCheckValidator()],
     });
@@ -1050,12 +1050,12 @@ describe('two bureaus recovering the same goal', () => {
       }),
     };
     const first = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents,
       validators: [createCheckValidator()],
     });
     const second = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents,
       validators: [createCheckValidator()],
     });
@@ -1085,7 +1085,7 @@ describe('a create that died between recording the goal and starting its control
   it('is healed by repeating it, which starts the controller and finishes the goal', async () => {
     database = createTestDatabase('repeat-create');
     const { bureau } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: { worker: workerAgent(() => Promise.resolve({ content: 'done', toolCalls: [] })) },
       validators: [createCheckValidator()],
     });
@@ -1111,7 +1111,7 @@ describe('a controller that ends abnormally while its goal is unfinished', () =>
   async function bootForPoison() {
     database = createTestDatabase('poison');
     const { bureau, diagnostics } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: { worker: workerAgent(() => Promise.resolve({ content: 'done', toolCalls: [] })) },
       validators: [createCheckValidator()],
     });
@@ -1188,7 +1188,7 @@ describe('a controller that ends abnormally while its goal is unfinished', () =>
 
     const diagnostics = createDiagnostics();
     const next = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: { worker: workerAgent(() => Promise.resolve({ content: 'done', toolCalls: [] })) },
       validators: [createCheckValidator()],
       diagnostics,
@@ -1243,7 +1243,7 @@ describe('a goal record that contradicts itself', () => {
     delete stored['active'];
     await view.kv.set(goalRecordKey('g1'), JSON.stringify(stored));
     const { bureau, diagnostics } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: { worker: workerAgent(hangForever) },
       validators: [createCheckValidator()],
     });
@@ -1276,7 +1276,7 @@ describe('a recorded cancellation whose controller is stuck in a validator that 
     database = createTestDatabase('stuck-validator');
     const stuck = createLatch();
     const { bureau } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: { worker: workerAgent(() => Promise.resolve({ content: 'done', toolCalls: [] })) },
       validators: [createCheckValidator({ before: () => stuck.promise })],
     });
@@ -1333,7 +1333,7 @@ describe('a canceled goal whose workflow this bureau cannot read', () => {
     const bureau = await createBureau({
       agents: { worker: workerAgent(hangForever) },
       validators: [createCheckValidator()],
-      storage: { type: 'sqlite', path: database.path },
+      storage: database.open(),
       durable: false,
       onDiagnostic: createDiagnostics().onDiagnostic,
     });
@@ -1390,7 +1390,7 @@ describe('a canceled goal whose workflow this bureau cannot read', () => {
     await idle.dispose();
 
     const { bureau } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: { worker: workerAgent(hangForever) },
       validators: [createCheckValidator()],
     });
@@ -1413,7 +1413,7 @@ describe('a goal whose stored record cannot be read', () => {
     await seedRunning(view);
     await view.kv.set(goalRecordKey('g1'), 'not json');
     const { bureau } = await bootOver({
-      path: database.path,
+      storage: database.open(),
       agents: { worker: workerAgent(hangForever) },
       validators: [createCheckValidator()],
     });
@@ -1476,7 +1476,7 @@ describe('a goal read by a bureau with no durable engine', () => {
     const bureau = await createBureau({
       agents: { worker: workerAgent(hangForever) },
       validators: [createCheckValidator()],
-      storage: { type: 'sqlite', path: database.path },
+      storage: database.open(),
       durable: false,
       onDiagnostic: createDiagnostics().onDiagnostic,
     });
@@ -1593,7 +1593,7 @@ describe('a goal read by a bureau with no durable engine', () => {
       database = createTestDatabase('repeat-catalog-gone');
       await seedRunning(await inspection());
       const { bureau } = await bootOver({
-        path: database.path,
+        storage: database.open(),
         agents: { other: workerAgent(hangForever) },
         validators: [],
       });

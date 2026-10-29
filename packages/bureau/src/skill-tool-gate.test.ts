@@ -249,7 +249,7 @@ describe('a durable run that refused a call and recovered (COR-1628)', () => {
     const executions: string[] = [];
     let reachedLaterStep = false;
     const first = await harness.open({
-      storage: { type: 'sqlite', path },
+      storage: harness.sqliteHandle(path),
       agents: {
         default: createAgent({
           generate: activateThenPing(
@@ -279,7 +279,7 @@ describe('a durable run that refused a call and recovered (COR-1628)', () => {
     // The process "crashes": a second Bureau recovers the run from the same store.
     const replayed: Array<{ outcome: string; code?: string; content: unknown } | undefined> = [];
     const recovered = await harness.open({
-      storage: { type: 'sqlite', path },
+      storage: harness.sqliteHandle(path),
       agents: {
         default: createAgent({
           generate: activateThenPing(async (context) => {

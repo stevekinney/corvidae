@@ -9,7 +9,6 @@ import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
-import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { z } from 'zod';
 
@@ -17,9 +16,14 @@ import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { createRuntimeComposition } from './runtime-composition';
 import type { Bureau } from './types';
+import { MemoryStorage } from '@lostgradient/storage';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
-const databasePaths: string[] = [];
+const databasePaths: PersistentBureauStorageFixture[] = [];
 
 async function waitForReview(bureau: Bureau<AgentDefinitions>, runId: string): Promise<void> {
   for await (const _turn of awakeTurns()) {
@@ -31,13 +35,13 @@ async function waitForReview(bureau: Bureau<AgentDefinitions>, runId: string): P
 
 afterEach(async () => {
   for (const bureau of bureaus.splice(0)) await bureau.dispose();
-  for (const path of databasePaths.splice(0)) removeTemporaryPath(path);
+  for (const fixture of databasePaths.splice(0)) await fixture.dispose();
 });
 
 describe('COR-1716 shutdown readiness baseline', () => {
   test('default shutdown aborts a durable parked run instead of leaving it recoverable', async () => {
-    const databasePath = createTemporaryPath('cor-1716-shutdown-baseline', '.sqlite');
-    databasePaths.push(databasePath);
+    const database = createSqliteStorageFixture();
+    databasePaths.push(database);
     const bureau = await createBureau<AgentDefinitions>({
       agents: {
         asker: createAgent({
@@ -55,7 +59,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
           stopWhen: stopWhen.toolCalled('requestHumanInput'),
         }),
       },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.storage,
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
@@ -72,7 +76,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
 
     const restarted = await createBureau<AgentDefinitions>({
       agents: {},
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.open(),
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
@@ -110,8 +114,8 @@ describe('COR-1716 shutdown readiness baseline', () => {
   });
 
   test('detach leaves a durable parked run recoverable and reports it separately', async () => {
-    const databasePath = createTemporaryPath('cor-1716-shutdown-detach', '.sqlite');
-    databasePaths.push(databasePath);
+    const database = createSqliteStorageFixture();
+    databasePaths.push(database);
     const createAsker = () =>
       createAgent({
         generate: async () => ({
@@ -129,7 +133,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
       });
     const bureau = await createBureau<AgentDefinitions>({
       agents: { asker: createAsker() },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.storage,
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
@@ -144,7 +148,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
 
     const restarted = await createBureau<AgentDefinitions>({
       agents: { asker: createAsker() },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.open(),
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
@@ -169,14 +173,13 @@ describe('COR-1716 shutdown readiness baseline', () => {
     const probe = await createRuntimeComposition({
       generate: async () => ({ content: 'probe', toolCalls: [] }),
       toolbox: createToolbox([]),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
       [Symbol.asyncDispose]: () => Promise<void>;
     };
     probe.durable!.engine[Symbol.dispose]?.();
-    probe.disposeStorage?.();
     const originalAsyncDispose = enginePrototype[Symbol.asyncDispose];
     const asyncDisposeSpy = spyOn(enginePrototype, Symbol.asyncDispose).mockImplementation(
       async function (this: unknown) {
@@ -199,7 +202,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       runtime,
     });
@@ -284,7 +287,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
@@ -333,7 +336,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
           stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     bureaus.push(bureau);
@@ -380,7 +383,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     bureaus.push(bureau);
@@ -404,14 +407,13 @@ describe('COR-1716 shutdown readiness baseline', () => {
     const probe = await createRuntimeComposition({
       generate: async () => ({ content: 'probe', toolCalls: [] }),
       toolbox: createToolbox([]),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
       [Symbol.asyncDispose]: () => Promise<void>;
     };
     probe.durable!.engine[Symbol.dispose]?.();
-    probe.disposeStorage?.();
     const originalAsyncDispose = enginePrototype[Symbol.asyncDispose];
     let engineDisposed = false;
     const asyncDisposeSpy = spyOn(enginePrototype, Symbol.asyncDispose).mockImplementation(
@@ -425,7 +427,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
       agents: {
         default: createAgent({ generate: async () => ({ content: 'done', toolCalls: [] }) }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       runtime,
     });

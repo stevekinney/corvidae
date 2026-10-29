@@ -9,7 +9,6 @@ import {
   createRoutingGenerate,
   withBackendDescriptors,
 } from '@lostgradient/operative';
-import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';
@@ -32,6 +31,8 @@ import {
 } from './testing/model-override.test-support';
 import type { Bureau, BureauContexts } from './types';
 import { startTaskFrom } from './test/task-start-request.ts';
+import { MemoryStorage, type Storage } from '@lostgradient/storage';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -51,7 +52,7 @@ function pickerAgent(generate: Parameters<typeof createAgent>[0]['generate']) {
 async function openBureau(
   options: {
     generate?: Parameters<typeof createAgent>[0]['generate'];
-    path?: string;
+    storage?: Storage;
     durable?: boolean;
     catalog?: ReturnType<typeof twinModels>;
     allowed?: Parameters<typeof createAgent>[0]['allowedCandidates'];
@@ -69,8 +70,7 @@ async function openBureau(
         });
   const bureau = await createBureau<AgentDefinitions>({
     agents: { picker },
-    storage:
-      options.path === undefined ? { type: 'memory' } : { type: 'sqlite', path: options.path },
+    storage: options.storage ?? new MemoryStorage(),
     ...(options.durable === false ? {} : { durable: true }),
     ...(options.catalog === undefined ? {} : { models: options.catalog }),
   });
@@ -158,10 +158,10 @@ describe('admission checks the model against the agent', () => {
   });
 
   it('keeps a refusal decided: a retry gets the same outcome, and the log holds the refusal', async () => {
-    const path = createTemporaryPath('model-not-allowed', '.sqlite');
-    cleanups.push(() => removeTemporaryPath(path));
+    const database = createSqliteStorageFixture();
+    cleanups.push(() => database.dispose());
     const stepped = createSteppedGenerate();
-    const bureau = await openBureau({ generate: stepped.generate, path });
+    const bureau = await openBureau({ generate: stepped.generate, storage: database.storage });
     const run = await startRun(bureau);
     await stepped.firstStepEntered;
 
@@ -289,10 +289,10 @@ describe('a switched model reaches the provider call', () => {
   });
 
   it('is used by a run that starts after a restart', async () => {
-    const path = createTemporaryPath('model-restart', '.sqlite');
-    cleanups.push(() => removeTemporaryPath(path));
+    const database = createSqliteStorageFixture();
+    cleanups.push(() => database.dispose());
     const first = createSteppedGenerate();
-    const bureau = await openBureau({ generate: first.generate, path });
+    const bureau = await openBureau({ generate: first.generate, storage: database.storage });
     const run = await startRun(bureau);
     await first.firstStepEntered;
     await steer(bureau, run.contextId, 'switch', OPUS_5.model, OPUS_5.provider);
@@ -302,7 +302,10 @@ describe('a switched model reaches the provider call', () => {
 
     const second = createSteppedGenerate();
     second.releaseFirstStep();
-    const restarted = await openBureau({ generate: second.generate, path });
+    const restarted = await openBureau({
+      generate: second.generate,
+      storage: await database.reopen(),
+    });
     const resumed = await startRun(restarted, run.contextId);
     await waitForTaskState(restarted, resumed.id);
 
@@ -316,9 +319,9 @@ describe('a switched model reaches the provider call', () => {
 
 describe('a Bureau that is shutting down', () => {
   it('throws for an in-process caller and logs nothing, so a retry after a restart is admitted normally', async () => {
-    const path = createTemporaryPath('model-shutdown', '.sqlite');
-    cleanups.push(() => removeTemporaryPath(path));
-    const bureau = await openBureau({ path });
+    const database = createSqliteStorageFixture();
+    cleanups.push(() => database.dispose());
+    const bureau = await openBureau({ storage: database.storage });
     const run = await startRun(bureau);
     await waitForTaskState(bureau, run.id);
     const closing = bureau.dispose();
@@ -330,7 +333,7 @@ describe('a Bureau that is shutting down', () => {
     await closing;
 
     expect(attempt).toMatchObject({ code: 'CONFLICT' });
-    const restarted = await openBureau({ path });
+    const restarted = await openBureau({ storage: await database.reopen() });
     const retry = await steer(restarted, run.contextId, 'during-shutdown', OPUS_5.model);
     expect(retry.outcome).toBe('accepted');
   });
@@ -338,9 +341,9 @@ describe('a Bureau that is shutting down', () => {
 
 describe('a steering log written before the provider field existed', () => {
   it('still folds: a bare model override is desired state with an unspecified provider', async () => {
-    const path = createTemporaryPath('model-legacy-log', '.sqlite');
-    cleanups.push(() => removeTemporaryPath(path));
-    const bureau = await openBureau({ path });
+    const database = createSqliteStorageFixture();
+    cleanups.push(() => database.dispose());
+    const bureau = await openBureau({ storage: database.storage });
     const run = await startRun(bureau);
     await waitForTaskState(bureau, run.id);
     const session = await bureau.contexts.get(run.contextId);
@@ -406,7 +409,7 @@ describe('a routed or opaque agent lists no models', () => {
   async function open(agent: ReturnType<typeof createAgent>, name: string, withPolicy = false) {
     const bureau = await createBureau<AgentDefinitions>({
       agents: { [name]: agent },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       ...(withPolicy
         ? {
             modelPolicy: {

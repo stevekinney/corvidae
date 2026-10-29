@@ -6,10 +6,8 @@
  * @module settings-options
  */
 
-import { type EnginePatch, resolveStorage } from '@lostgradient/weft';
+import type { EnginePatch } from '@lostgradient/weft';
 import { type Storage, textValueStore } from '@lostgradient/storage';
-
-import { isStorageConfiguration } from '../runtime-composition.ts';
 
 import type { AgentDefinitions } from '../agent-catalog.ts';
 import type { TaskToolGrant } from '../task-registry.ts';
@@ -174,10 +172,8 @@ export function toolGrantOf(values: SettingsValues): TaskToolGrant {
 
 /** What {@link bootSettings} read and resolved before the engine exists. */
 export interface BootSettings<O> {
-  /** `options` with a storage configuration resolved and the stored `restart` keys in place. */
+  /** `options` with the stored `restart` keys in place. */
   readonly options: O;
-  /** Whether the storage was resolved here, so the runtime composition owns and disposes it. */
-  readonly ownsStorage: boolean;
   /** Whether the record survives the process. */
   readonly persisted: boolean;
   /** The record as read. */
@@ -187,8 +183,7 @@ export interface BootSettings<O> {
 /**
  * Reads the settings record before anything is built from `options`, so a stored `restart` key
  * (`durable`, `maintenance`, the engine's construction options) is in force for everything built
- * after. A storage configuration is resolved here, once, and handed on with its ownership, because
- * resolving it twice would open a second store.
+ * after.
  */
 export async function bootSettings<D extends AgentDefinitions, O extends BureauOptions<D>>(
   options: O,
@@ -196,9 +191,7 @@ export async function bootSettings<D extends AgentDefinitions, O extends BureauO
   locked: ReadonlySet<SettingKey>,
   diagnose: (message: string) => void,
 ): Promise<BootSettings<O>> {
-  const configured = options.storage;
-  const ownsStorage = configured !== undefined && isStorageConfiguration(configured);
-  const storage: Storage | undefined = ownsStorage ? await resolveStorage(configured) : configured;
+  const storage: Storage | undefined = options.storage;
   const stored =
     storage === undefined
       ? { record: undefined, storedValues: {}, raw: null }
@@ -209,10 +202,9 @@ export async function bootSettings<D extends AgentDefinitions, O extends BureauO
         );
   return {
     options: withRestartSettings(
-      { ...options, ...(storage === undefined ? {} : { storage }) },
+      options,
       effectiveSettings(defaults, stored.record?.values, locked),
     ),
-    ownsStorage,
     persisted:
       storage !== undefined && ['local', 'remote'].includes(storage.capabilities().persistence),
     stored,

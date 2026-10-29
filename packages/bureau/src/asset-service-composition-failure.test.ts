@@ -1,6 +1,5 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { MemoryStorage } from '@lostgradient/storage';
 
 import { describe, expect, it } from 'bun:test';
 
@@ -9,6 +8,13 @@ import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { createAgent } from '@lostgradient/operative';
 import type { AgentDefinitions } from './agent-catalog';
+
+/** A storage backend that fails on first use, as one that cannot reach its store does. */
+class UnavailableStorage extends MemoryStorage {
+  override async get(): Promise<Uint8Array | null> {
+    throw new Error('storage unavailable');
+  }
+}
 
 async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
   try {
@@ -33,11 +39,9 @@ describe('composition failure after the asset service started', () => {
         agents: {
           default: createAgent({ generate: async () => ({ content: 'ok', toolCalls: [] }) }),
         },
-        // A storage backend that cannot open: the composition fails after the asset service started.
-        storage: {
-          type: 'sqlite',
-          path: join(tmpdir(), 'cor-1695-no-such-directory', 'bureau.sqlite'),
-        },
+        // A storage backend that fails on first use: the composition fails after the asset service
+        // started.
+        storage: new UnavailableStorage(),
         runtime,
         assets: { storage: fixture.storage, garbageCollectionIntervalMilliseconds: 1_000 },
       }),

@@ -9,7 +9,7 @@ import {
   createAgent,
 } from '@lostgradient/operative';
 import { MemoryStorage, type Storage, textValueStore } from '@lostgradient/storage';
-import { resolveStorage, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory, CURRENT_SCHEMA_VERSION } from 'conversationalist';
@@ -39,6 +39,7 @@ import type { Bureau, BureauDiagnostic, BureauOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 import { startTaskFrom } from './test/task-start-request.ts';
 import { listHeldTasks } from './test';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 /**
  * COR-1476 — a run that ends cancels the input it never delivered, whatever
@@ -1021,8 +1022,10 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
 
   it("never reads the mailbox without an acknowledged write, and leaves the input to the next boot's sweep", async () => {
     const directory = await mkdtemp(join(tmpdir(), 'corvidae-session-input-run-end-'));
-    const path = join(directory, 'bureau.sqlite');
-    const real = await resolveStorage({ type: 'sqlite', path });
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    const real = pathFixture.storage;
     const seam = seamStorage(real);
     const failing = seam.failWrites(logsRunEnded, new Error('the log is unavailable'));
     const stepZeroStarted = deferred();
@@ -1073,13 +1076,13 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
       real[Symbol.dispose]();
     }
 
-    const second = await openBureau({ type: 'sqlite', path }, async () => {
+    const second = await openBureau(pathFixture.open(), async () => {
       throw new Error('no run should generate');
     });
     try {
       await second.recovery();
       // The run's workflow is terminal, so nothing is live: the boot sweep cancels.
-      const storage = await resolveStorage({ type: 'sqlite', path });
+      const storage = pathFixture.open();
       try {
         expect(await receiptState(storage, sessionId, incarnation, 'input-x', 'late')).toBe(
           'canceled',
@@ -1223,12 +1226,12 @@ describe('shutdown releases open input (COR-1476)', () => {
 
   it('releases the claims of an abort-policy shutdown without cancelling, and the next boot, which recovers no run, sweeps them', async () => {
     directory = await mkdtemp(join(tmpdir(), 'corvidae-session-input-shutdown-'));
-    const configuration = { type: 'sqlite', path: join(directory, 'bureau.sqlite') } as const;
+    await using database = createSqliteStorageFixture({ path: join(directory, 'bureau.sqlite') });
     const stepZeroStarted = deferred();
     const releaseStepZero = deferred();
     const stepOneStarted = deferred();
 
-    const first = await openBureau(configuration, async (context: GenerateContext) => {
+    const first = await openBureau(database.storage, async (context: GenerateContext) => {
       if (context.step === 0) {
         stepZeroStarted.resolve();
         await releaseStepZero.promise;
@@ -1248,7 +1251,7 @@ describe('shutdown releases open input (COR-1476)', () => {
     await first.shutdown({ policy: 'abort' });
 
     // Shutdown only released them: both are still open, for the next boot.
-    const afterShutdown = await resolveStorage(configuration);
+    const afterShutdown = database.open();
     try {
       const open = await createSessionInputMailbox(
         afterShutdown,
@@ -1270,7 +1273,7 @@ describe('shutdown releases open input (COR-1476)', () => {
     // The abort cancelled the run's workflow, so nothing recovers it: the boot
     // sweep finds the session with no run and cancels what was left.
     let generations = 0;
-    const second = await openBureau(configuration, async () => {
+    const second = await openBureau(database.open(), async () => {
       generations += 1;
       return { content: 'answer', toolCalls: [] };
     });
@@ -1281,7 +1284,7 @@ describe('shutdown releases open input (COR-1476)', () => {
     } finally {
       await second.dispose();
     }
-    const afterBoot = await resolveStorage(configuration);
+    const afterBoot = database.open();
     try {
       expect(await receiptState(afterBoot, run.contextId, incarnation, 'input-a', 'first')).toBe(
         'canceled',

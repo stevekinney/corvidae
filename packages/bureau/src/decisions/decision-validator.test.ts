@@ -17,6 +17,7 @@ import {
 } from '../testing/goal-fixtures.test-support.ts';
 import type { Bureau } from '../types.ts';
 import { decisionValidator } from './decision-validator.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const bureaus: Bureau[] = [];
 afterEach(async () => {
@@ -47,7 +48,7 @@ function judge() {
 async function openGoalBureau(replies: readonly string[], validator = judge().validator) {
   const generate = createMockGenerate(replies.map((content) => ({ content, toolCalls: [] })));
   const bureau = await createBureau<AgentDefinitions>({
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
     agents: { worker: workerAgent(answering('an answer')) },
     models: { generate: () => generate },

@@ -84,6 +84,7 @@ import { createBureau } from '@lostgradient/bureau';
 import { createTool, createToolbox } from 'armorer';
 import { createAgent, stopWhen } from '@lostgradient/operative';
 import { z } from 'zod';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const toolStarted = Promise.withResolvers<void>();
 const releaseTool = Promise.withResolvers<void>();
@@ -113,7 +114,7 @@ const bureau = await createBureau({
       stopWhen: stopWhen.noToolCalls(),
     }),
   },
-  storage: { type: 'memory' },
+  storage: new MemoryStorage(),
 });
 
 try {

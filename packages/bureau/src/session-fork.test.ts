@@ -5,7 +5,6 @@
  * between its steps never forks twice.
  */
 import { createAgent, createAgentSession, stopWhen } from '@lostgradient/operative';
-import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 import { createConversationHistory, Conversation } from 'conversationalist';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -26,6 +25,8 @@ import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-s
 import { startFileBureau } from './testing/agent-file-bureau.test-support';
 import type { Bureau, BureauContexts } from './types';
 import { startTaskFrom } from './test/task-start-request.ts';
+import { MemoryStorage, type Storage } from '@lostgradient/storage';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -64,14 +65,13 @@ function twoStepAgent(behavior: Behavior = 'complete', onSecondStep?: () => void
 }
 
 async function openBureau(
-  options: { agent?: ReturnType<typeof twoStepAgent>; path?: string } = {},
+  options: { agent?: ReturnType<typeof twoStepAgent>; storage?: Storage } = {},
 ) {
   const bureau = await createBureau<AgentDefinitions>({
     agents: {
       agent: options.agent ?? twoStepAgent(),
     },
-    storage:
-      options.path === undefined ? { type: 'memory' } : { type: 'sqlite', path: options.path },
+    storage: options.storage ?? new MemoryStorage(),
     durable: true,
   });
   cleanups.push(() => bureau.dispose());
@@ -243,14 +243,14 @@ describe('the command identifier', () => {
   });
 
   it('answers an exact retry after a restart with the original result, forking once', async () => {
-    const path = createTemporaryPath('fork-restart', '.sqlite');
-    cleanups.push(() => removeTemporaryPath(path));
-    const bureau = await openBureau({ path });
+    const database = createSqliteStorageFixture();
+    cleanups.push(() => database.dispose());
+    const bureau = await openBureau({ storage: database.storage });
     const run = await completedSession(bureau);
     const first = await fork(bureau, run.contextId, finalAssistantOf(run.id));
     await bureau.dispose();
 
-    const restarted = await openBureau({ path });
+    const restarted = await openBureau({ storage: await database.reopen() });
     const retry = await fork(restarted, run.contextId, finalAssistantOf(run.id));
 
     expect(retry).toEqual(first);
@@ -392,7 +392,7 @@ describe('a message that is not a branch point', () => {
           stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     cleanups.push(() => bureau.dispose());
@@ -667,7 +667,7 @@ describe('a parent whose model a policy profile chose', () => {
           },
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       modelPolicy: POLICY,
       ...(durable ? { durable: true } : {}),
     });
@@ -746,7 +746,7 @@ describe('a parent whose model a policy profile chose', () => {
           allowedCandidates: [OPUS_5_5, OPUS_5],
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       modelPolicy: POLICY,
     });
     cleanups.push(() => bureau.dispose());

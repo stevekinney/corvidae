@@ -9,7 +9,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { NodeSQLiteStorage, resolveStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage, NodeSQLiteStorage } from '@lostgradient/weft';
 import { type Storage } from '@lostgradient/storage';
 
 export interface HostArguments {
@@ -41,13 +41,13 @@ export function writeMarker(directory: string, name: string, value: unknown): vo
 
 /**
  * The file-backed store: `NodeSQLiteStorage` (better-sqlite3) under native
- * Node, and Weft's own SQLite resolution (bun:sqlite) under Bun, which cannot
- * load better-sqlite3's native binding.
+ * Node, and `BunSQLiteStorage` (bun:sqlite) under Bun, which cannot load
+ * better-sqlite3's native binding.
  */
 export async function openFileStorage(directory: string): Promise<Storage> {
   const path = join(directory, 'store.sqlite');
   if (process.versions.bun === undefined) return new NodeSQLiteStorage(path);
-  return resolveStorage({ type: 'sqlite', path });
+  return new BunSQLiteStorage(path);
 }
 
 /** Fails the host loudly instead of letting an unexpected state pass silently. */

@@ -18,7 +18,7 @@
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import { type BatchOperation, type Storage, textValueStore } from '@lostgradient/storage';
-import { decode, resolveStorage } from '@lostgradient/weft';
+import { decode } from '@lostgradient/weft';
 import { createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
@@ -32,9 +32,9 @@ import {
 } from './command-ledger';
 import { createBureau } from './create-bureau';
 import {
-  type BureauStorageFixture,
   createLmdbStorageFixture,
   createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
 } from './test/storage-fixtures';
 import type { Bureau, BureauDiagnostic } from './types';
 import type { AgentDefinitions } from './agent-catalog';
@@ -58,11 +58,20 @@ const IDENTITY: CommandLedgerIdentity = {
 
 const LEDGER_ENTRY_PREFIX = 'command-ledger:v1:entry:';
 
-type FixtureFactory = (runtime: RuntimeServices) => BureauStorageFixture;
+/** A fixture on a new store, or, given `path`, a second fixture with its own handle on that store. */
+type FixtureFactory = (runtime: RuntimeServices, path?: string) => PersistentBureauStorageFixture;
 
 const BACKENDS: readonly (readonly [string, FixtureFactory])[] = [
-  ['sqlite', (runtime) => createSqliteStorageFixture({ runtime })],
-  ['lmdb', (runtime) => createLmdbStorageFixture({ runtime })],
+  [
+    'sqlite',
+    (runtime, path) =>
+      createSqliteStorageFixture({ runtime, ...(path === undefined ? {} : { path }) }),
+  ],
+  [
+    'lmdb',
+    (runtime, path) =>
+      createLmdbStorageFixture({ runtime, ...(path === undefined ? {} : { path }) }),
+  ],
 ];
 
 /** A bounded poll with a small real delay between checks; never a blind sleep. */
@@ -267,12 +276,10 @@ async function withScenario(
 ): Promise<void> {
   const runtime = createDefaultRuntimeServices();
   const fixture = factory(runtime);
-  const storageA = await resolveStorage(
-    fixture.configuration as Parameters<typeof resolveStorage>[0],
-  );
-  const storageB = await resolveStorage(
-    fixture.configuration as Parameters<typeof resolveStorage>[0],
-  );
+  // Each process holds its own handle on the store: LMDB opens one per fixture.
+  const recovering = factory(runtime, fixture.path);
+  const storageA = fixture.storage;
+  const storageB = recovering.storage;
   const bureaus: Bureau[] = [];
   const crashes: CrashingStorage[] = [];
   // A dead process reports the writes its crash failed; anything else it
@@ -317,8 +324,7 @@ async function withScenario(
     for (const bureau of survivors.toReversed()) await bureau.dispose();
     for (const crash of crashes) crash.discard();
     await failed?.dispose();
-    storageB[Symbol.dispose]();
-    storageA[Symbol.dispose]();
+    await recovering.dispose();
     await fixture.dispose();
   }
   const unexpected = deadProcessDiagnostics.filter(

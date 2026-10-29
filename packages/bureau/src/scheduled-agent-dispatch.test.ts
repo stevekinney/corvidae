@@ -5,12 +5,10 @@
  */
 import { createAgent, createAgentSession, type GenerateFunction } from '@lostgradient/operative';
 import { decode, encode } from '@lostgradient/weft';
-import { encodeStorageKeyComponent } from '@lostgradient/storage';
+import { encodeStorageKeyComponent, MemoryStorage } from '@lostgradient/storage';
 import { Database } from 'bun:sqlite';
 import { createConversationHistory } from 'conversationalist';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
-
 import type { AgentDefinitions } from './agent-catalog';
 import { OWNER } from './http/management/management-fixtures.test-support.ts';
 import { BureauError, createBureau } from './create-bureau';
@@ -22,6 +20,7 @@ import {
 } from './schedule-fire-fixtures.test-support';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau, BureauOptions } from './types';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const harness = createScheduleFireHarness();
 const bureaus: Bureau[] = [];
@@ -64,12 +63,12 @@ describe('a schedule’s fire', () => {
   it('stored under an agent the catalog later lost fails with a diagnostic and runs nothing (COR-1667)', async () => {
     // Creation refuses a name the catalog lacks, so the schedule is made under a catalog agent and
     // the agent leaves the catalog between restarts: the fire still fails, exactly as before.
-    const databasePath = createTemporaryPath('bureau-schedule-agent-removed', '.sqlite');
+    const database = createSqliteStorageFixture();
     const worker = answering('never');
     try {
       const first = await createBureau<AgentDefinitions>({
         agents: { worker: createAgent({ generate: worker.generate }) },
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -83,7 +82,7 @@ describe('a schedule’s fire', () => {
 
       const second = await createBureau<AgentDefinitions>({
         agents: {},
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -98,18 +97,19 @@ describe('a schedule’s fire', () => {
       expect(status).toBe('failed');
       expect(worker.calls()).toBe(0);
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('stored under the legacy "bureau" agent name fails its fire and runs nothing', async () => {
     // Persisted before creation refused unknown names, and a catalog cannot hold the reserved
     // name, so the stored schedule is rewritten in place. The fire-time check still refuses it.
-    const databasePath = createTemporaryPath('bureau-schedule-legacy-agent', '.sqlite');
+    const databaseFixture = createSqliteStorageFixture();
+    const databasePath = databaseFixture.path;
     const worker = answering('never');
     const options = {
       agents: { worker: createAgent({ generate: worker.generate }) },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: databaseFixture.storage,
       durable: true,
       durableOwnership: { ownership: 'none' },
     } satisfies BureauOptions<AgentDefinitions>;
@@ -146,7 +146,7 @@ describe('a schedule’s fire', () => {
       expect(status).toBe('failed');
       expect(worker.calls()).toBe(0);
     } finally {
-      removeTemporaryPath(databasePath);
+      await databaseFixture.dispose();
     }
   });
 });
@@ -257,7 +257,7 @@ describe('a session or recovered run stored under the implicit "bureau" agent', 
     const worker = answering('never');
     const bureau = await createBureau<AgentDefinitions>({
       agents: { worker: createAgent({ generate: worker.generate }) },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
     });
     bureaus.push(bureau);
     await bureau.internals.sessionStore!.save(
@@ -280,7 +280,7 @@ describe('a session or recovered run stored under the implicit "bureau" agent', 
   it('fails cleanly on recovery: the run is unavailable and its session is reconciled to error', async () => {
     const diagnostics: string[] = [];
     const runtime = await createRuntimeComposition({
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       onDiagnostic: (event) => diagnostics.push(event.message),
     });

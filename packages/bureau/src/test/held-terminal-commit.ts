@@ -1,6 +1,6 @@
-import { resolveStorage } from '@lostgradient/weft';
+import type { Storage } from '@lostgradient/storage';
 
-type WeftStorage = Awaited<ReturnType<typeof resolveStorage>>;
+type WeftStorage = Storage;
 
 /**
  * Holds the first commit that marks a run's workflow terminal until `release` is called. Every

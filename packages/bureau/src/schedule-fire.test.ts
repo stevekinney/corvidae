@@ -11,6 +11,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
 import type { AgentDefinitions } from './agent-catalog';
+import { MemoryStorage } from '@lostgradient/storage';
 
 interface RecordedCall {
   conversationId: string;
@@ -55,7 +56,7 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
           toolbox: createEmptyToolbox(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -94,7 +95,7 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
           toolbox: createEmptyToolbox(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 

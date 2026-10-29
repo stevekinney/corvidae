@@ -1,74 +1,83 @@
 /**
- * Isolated storage fixtures for the Bureau test harness (AB-261).
+ * Isolated storage fixtures for the Bureau test harness (AB-261, COR-1767).
  *
- * Each fixture wraps a {@link StorageConfiguration} bureau can accept
- * directly via `BureauOptions.storage`, together with enough bookkeeping to
- * clean up afterward WITHOUT ever deleting a path the caller supplied
- * itself. The fixture never opens its own `Storage` handle against the
- * path it allocates — bureau's own `dispose()`/`shutdown()` owns and
- * closes the real backend handle (sqlite/lmdb) it composes from the
- * `configuration` passed through. Opening a second handle here, ahead of
- * bureau's, would race bureau's own open (and, for LMDB's single-writer
- * lock, could deadlock outright) — so this fixture's `dispose()` governs
- * only the filesystem lifecycle of a path IT allocated, never a live
- * database connection.
+ * Bureau never disposes a storage it was given (`BureauOptions.storage` accepts only a `Storage`
+ * instance), so a test that hands Bureau a store also owns closing it. A fixture is that owner:
+ * it opens the handles a test passes to `createBureau`, closes every one of them on `dispose()`,
+ * and removes the files it allocated.
  *
- * A caller-supplied path is never touched by `dispose()`: `owned` is
- * `false` for it, and `dispose()` is then a pure no-op — "closes the
- * handle without deleting anything" reduces to "there is nothing this
- * fixture itself opened to close, and it deletes nothing" precisely
- * because ownership of the real connection lives with bureau, not here.
+ * Creating a fixture opens nothing. `storage` opens the handle on first access, so a crash test
+ * can create a fixture, pass its `path` to a child process that writes and is killed, and open
+ * its own handle only after the child is gone. `reopen()` closes that handle and opens a new one
+ * on the same store, for a second Bureau after the first has shut down. `open()` adds a further
+ * handle for a test that runs two Bureaus at once; LMDB refuses it, because its single writer must
+ * not be shared within one process.
  *
- * `openHandles()` (AB-322) is the one exception to that "bureau owns the
- * real handle" rule, and only for `createMemoryStorageFixture`: rather
- * than a `{ type: 'memory' }` `StorageConfiguration` (which lets bureau
- * mint its own, unobservable `MemoryStorage`), the memory fixture
- * constructs and hands bureau a `Storage` INSTANCE it built itself
- * (`BureauOptions.storage`/`persistence.store` both accept one — see
- * `runtime-composition.ts`'s `isStorageConfiguration` discriminator) so it
- * can wrap that exact instance with public call accounting. This is safe
- * for memory specifically because there is no real file handle or
- * single-writer lock to race — the concern the module doc above raises
- * for sqlite/lmdb does not apply. `bureau.shutdown()` never disposes a
- * caller-supplied `Storage` INSTANCE (`ownsDurableStorage` in
- * `runtime-composition.ts` is `false` for it — only a `StorageConfiguration`
- * bureau resolves itself sets that flag), so `openHandles()` reporting a
- * call as still in flight is never a race against bureau's own teardown:
- * nothing but this fixture (or a test's own release of an injected block)
- * ever finishes that call. The sqlite/lmdb fixtures stay
- * `StorageConfiguration`-only and their `openHandles()` always returns
- * `[]` — they have nothing of their own to account for.
+ * A caller-supplied path is never deleted: `owned` is `false` for it, and `dispose()` then only
+ * closes the handles the fixture opened.
+ *
+ * Every fixture is registered on `globalThis` under
+ * `Symbol.for('@lostgradient/bureau/storage-fixtures')` when it is created and unregistered when
+ * it is disposed. Bureau's test preload (`storage-fixture-preload.ts`) fails the run, naming the
+ * creating test file, if any fixture is still registered once the tests finish.
+ *
+ * `openHandles()` (AB-322) is public call accounting for the memory fixture: the labels of every
+ * storage call it has seen start and not finish. The SQLite and LMDB fixtures return `[]`.
  */
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { type Storage, MemoryStorage } from '@lostgradient/storage';
-import type { StorageConfiguration } from '@lostgradient/weft';
+import { BunSQLiteStorage, LMDBStorage } from '@lostgradient/weft';
 import { createTemporaryPath, removeTemporaryPath } from './temporary-path';
 
+/** The backend a {@link BureauStorageFixture} opens. */
+type BureauStorageFixtureKind = 'memory' | 'sqlite' | 'lmdb';
+
 /**
- * One isolated storage backend for a single test. `configuration` is ready
- * to pass straight to `BureauOptions.storage`. `path` is present only for
- * the persistent (sqlite/lmdb) backends. `owned: true` means this fixture
- * allocated `path` itself and `dispose()` removes it; `owned: false` means
- * the caller supplied `path` and `dispose()` leaves it alone.
+ * One isolated storage backend for a single test. Pass `storage` to `BureauOptions.storage`.
+ * `path` is present only for the persistent (SQLite and LMDB) backends. `owned: true` means this
+ * fixture allocated `path` itself and `dispose()` removes it; `owned: false` means the caller
+ * supplied `path` and `dispose()` leaves it alone.
  */
-export interface BureauStorageFixture<
-  TConfiguration extends StorageConfiguration | Storage = StorageConfiguration | Storage,
-> {
-  readonly configuration: TConfiguration;
+export interface BureauStorageFixture {
+  /** The backend this fixture opens. */
+  readonly kind: BureauStorageFixtureKind;
   readonly path?: string;
   readonly owned: boolean;
-  dispose(): Promise<void>;
   /**
-   * Labels of every storage call this fixture's own accounting has seen
-   * START but not yet FINISH (AB-322) — public handle accounting a test
-   * (or `assertBureauQuiescent`'s `openStorageResources` row) can read
-   * directly, with no private counter reached into from outside this
-   * module. Always `[]` for `createSqliteStorageFixture`/
-   * `createLmdbStorageFixture` — see the module doc for why only the
-   * memory fixture can account for a real handle.
+   * The fixture's current handle, opened on first access and returned unchanged until
+   * {@link reopen}. Creating the fixture opens nothing.
+   */
+  readonly storage: Storage;
+  /**
+   * An additional handle on the same store, for a test that runs two Bureaus on it at once. The
+   * fixture closes it on `dispose()`. Memory returns the same instance; LMDB throws, because its
+   * single writer must not be shared within one process.
+   */
+  open(): Storage;
+  /**
+   * Closes the current handle and opens a new one on the same store (a new adapter on the same
+   * `path` for SQLite and LMDB, the same instance for memory), and returns it. Call it only after
+   * the Bureau using the current handle has shut down.
+   */
+  reopen(): Promise<Storage>;
+  /**
+   * Labels of every storage call this fixture's own accounting has seen START but not yet FINISH
+   * (AB-322) — public handle accounting a test (or `assertBureauQuiescent`'s
+   * `openStorageResources` row) can read directly. Always `[]` for `createSqliteStorageFixture`
+   * and `createLmdbStorageFixture`.
    */
   openHandles(): readonly string[];
+  /** Closes every handle this fixture opened, then removes its files when it is `owned`. */
+  dispose(): Promise<void>;
+  /** The same as {@link dispose}, for `await using`. */
+  [Symbol.asyncDispose](): Promise<void>;
+}
+
+/** A SQLite or LMDB {@link BureauStorageFixture}, whose store always has a `path`. */
+export interface PersistentBureauStorageFixture extends BureauStorageFixture {
+  readonly kind: 'sqlite' | 'lmdb';
+  readonly path: string;
 }
 
 /** The verbs {@link wrapStorageWithHandleAccounting} tracks — every async `Storage` method. `capabilities()`/`scoped()` are synchronous and excluded: nothing awaits them, so there is no "in flight" window to account for. */
@@ -224,21 +233,72 @@ function wrapStorageWithHandleAccounting(storage: Storage): {
   };
 }
 
+/** The `globalThis` key of the registry of fixtures created and not yet disposed. */
+const REGISTRY_KEY = Symbol.for('@lostgradient/bureau/storage-fixtures');
+
+/** One fixture in the registry, with the place that created it. */
+interface StorageFixtureRegistration {
+  readonly fixture: BureauStorageFixture;
+  /** The creating test file's frame, or the nearest frame outside this module. */
+  readonly createdBy: string;
+}
+
+/**
+ * The registry lives on `globalThis` rather than in this module, so the preload and every test
+ * file in a worker share one `Set` even when the runner evaluates this module once per file.
+ */
+function registry(): Set<StorageFixtureRegistration> {
+  const holder = globalThis as typeof globalThis & {
+    [REGISTRY_KEY]?: Set<StorageFixtureRegistration>;
+  };
+  holder[REGISTRY_KEY] ??= new Set();
+  return holder[REGISTRY_KEY];
+}
+
+/** Picks the creating test file's frame out of a stack, skipping this module's own frames. */
+function creatingFrame(stack: string): string {
+  const frames = stack
+    .split('\n')
+    .slice(1)
+    .map((line) => line.trim().replace(/^at /, ''))
+    .filter((frame) => !frame.includes('storage-fixtures.ts'));
+  return (
+    frames.find((frame) => /\.test\.tsx?(:|\)|$)/.test(frame)) ?? frames[0] ?? 'an unknown caller'
+  );
+}
+
+function register(fixture: BureauStorageFixture): () => void {
+  const registration: StorageFixtureRegistration = {
+    fixture,
+    createdBy: creatingFrame(new Error('storage fixture created').stack ?? ''),
+  };
+  registry().add(registration);
+  return () => registry().delete(registration);
+}
+
+/**
+ * Where each storage fixture still registered was created: the fixtures some test created and
+ * never disposed. Bureau's test preload fails the run when this is not empty once the tests in a
+ * worker have finished.
+ */
+export function undisposedStorageFixtures(): readonly string[] {
+  return [...registry()].map(
+    ({ fixture, createdBy }) => `${fixture.kind} fixture created at ${createdBy}`,
+  );
+}
+
 /** Options shared by the two persistent-backend fixture factories. */
 export interface CreatePersistentStorageFixtureOptions {
   /**
-   * The runtime whose `identifiers.next('storage-fixture')` sequence names
-   * the allocated path when `path` is omitted. Required rather than
-   * defaulted so two independently-constructed fixtures (each with its own
-   * `ManualRuntimeServices`, per the harness's own isolation guarantee)
-   * never coincidentally mint the same identifier suffix.
+   * The runtime whose `identifiers.next('storage-fixture')` sequence labels the allocated path
+   * when `path` is omitted. Optional: the path lives in a fresh `mkdtemp` directory, so the label
+   * only helps a reader find it.
    */
-  readonly runtime: RuntimeServices;
+  readonly runtime?: RuntimeServices;
   /**
-   * A caller-supplied path. When present, this fixture never allocates or
-   * deletes anything — `owned` is `false` and `dispose()` is a no-op. When
-   * omitted, a fresh path is allocated under the OS temp directory and
-   * `owned` is `true`.
+   * A caller-supplied path. When present, this fixture never allocates or deletes anything —
+   * `owned` is `false` and `dispose()` only closes the handles it opened. When omitted, a fresh
+   * path is allocated under the OS temp directory and `owned` is `true`.
    */
   readonly path?: string;
 }
@@ -249,14 +309,87 @@ export interface CreateLmdbStorageFixtureOptions extends CreatePersistentStorage
   readonly durability?: 'full' | 'relaxed';
 }
 
-function allocateFixturePath(kind: 'sqlite' | 'lmdb', runtime: RuntimeServices): string {
-  const identifier = runtime.identifiers.next('storage-fixture');
+function allocateFixturePath(
+  kind: 'sqlite' | 'lmdb',
+  runtime: RuntimeServices | undefined,
+): string {
+  const label =
+    runtime === undefined
+      ? `bureau-${kind}-fixture`
+      : `bureau-${kind}-fixture-${runtime.identifiers.next('storage-fixture')}`;
   // A fresh `mkdtemp` directory per fixture: the runtime's identifier sequence restarts at 1 for
   // every `ManualRuntimeServices`, and a process id repeats across runs, so neither can name a path.
-  return createTemporaryPath(
-    `bureau-${kind}-fixture-${identifier}`,
-    kind === 'sqlite' ? '.sqlite' : '',
-  );
+  return createTemporaryPath(label, kind === 'sqlite' ? '.sqlite' : '');
+}
+
+/** A handle a persistent fixture opened, with the way to close it. */
+interface OpenedHandle {
+  readonly storage: Storage;
+  close(): Promise<void>;
+}
+
+function createPersistentStorageFixture(
+  kind: 'sqlite' | 'lmdb',
+  options: CreatePersistentStorageFixtureOptions,
+  openAdapter: (path: string) => OpenedHandle,
+): PersistentBureauStorageFixture {
+  const owned = options.path === undefined;
+  const path = options.path ?? allocateFixturePath(kind, options.runtime);
+  const handles: OpenedHandle[] = [];
+  let current: OpenedHandle | undefined;
+  let disposed = false;
+
+  const openHandle = (): OpenedHandle => {
+    if (disposed) throw new Error(`The ${kind} storage fixture at ${path} is disposed.`);
+    const handle = openAdapter(path);
+    handles.push(handle);
+    return handle;
+  };
+
+  const fixture: PersistentBureauStorageFixture = {
+    kind,
+    path,
+    owned,
+    get storage() {
+      current ??= openHandle();
+      return current.storage;
+    },
+    open() {
+      if (kind === 'lmdb') {
+        throw new Error(
+          'An LMDB storage fixture opens one handle at a time: its single writer must not be shared within one process. Use reopen() after the Bureau on the current handle has shut down.',
+        );
+      }
+      return openHandle().storage;
+    },
+    async reopen() {
+      const previous = current;
+      current = undefined;
+      if (previous !== undefined) {
+        handles.splice(handles.indexOf(previous), 1);
+        await previous.close();
+      }
+      current = openHandle();
+      return current.storage;
+    },
+    openHandles: () => [],
+    async dispose() {
+      if (disposed) return;
+      disposed = true;
+      try {
+        for (const handle of handles.splice(0).toReversed()) await handle.close();
+      } finally {
+        current = undefined;
+        if (owned) removeTemporaryPath(path);
+        unregister();
+      }
+    },
+    [Symbol.asyncDispose]() {
+      return fixture.dispose();
+    },
+  };
+  const unregister = register(fixture);
+  return fixture;
 }
 
 /** Options for {@link createMemoryStorageFixture}. */
@@ -274,86 +407,78 @@ export interface CreateMemoryStorageFixtureOptions {
 }
 
 /**
- * An in-memory `BureauStorageFixture`. Always `owned: true`. Unlike the
- * sqlite/lmdb fixtures below, this one constructs its own `MemoryStorage`
- * instance (see the module doc's `openHandles()` section for why that is
- * safe here specifically) and hands bureau that INSTANCE — not a `{ type:
- * 'memory' }` config — wrapped with public call accounting `openHandles()`
- * reads. `dispose()` disposes that instance (`MemoryStorage` holds no
- * filesystem or external resource, so this is a no-op in practice, but
- * bureau itself never disposes a caller-supplied `Storage` instance — see
- * the module doc — so this fixture must be the one that does, rather than
- * assuming a no-op the way the pre-AB-322 `{ type: 'memory' }` form could).
+ * An in-memory `BureauStorageFixture`. Always `owned: true`. Its one `MemoryStorage` instance is
+ * the store, so `storage`, `open()`, and `reopen()` all return it, wrapped with the public call
+ * accounting `openHandles()` reads. `dispose()` disposes that instance.
  */
 export function createMemoryStorageFixture(
   options: CreateMemoryStorageFixtureOptions = {},
-): BureauStorageFixture<Storage> {
+): BureauStorageFixture {
   const rawStorage = new MemoryStorage();
   const wrapped = options.wrapStorage?.(rawStorage) ?? rawStorage;
   const { storage: accounted, openHandles } = wrapStorageWithHandleAccounting(wrapped);
+  let disposed = false;
 
-  return {
-    configuration: accounted,
+  const fixture: BureauStorageFixture = {
+    kind: 'memory',
     owned: true,
-    async dispose() {
-      rawStorage[Symbol.dispose]();
-    },
+    storage: accounted,
+    open: () => accounted,
+    reopen: async () => accounted,
     openHandles,
+    async dispose() {
+      if (disposed) return;
+      disposed = true;
+      try {
+        rawStorage[Symbol.dispose]();
+      } finally {
+        unregister();
+      }
+    },
+    [Symbol.asyncDispose]() {
+      return fixture.dispose();
+    },
   };
+  const unregister = register(fixture);
+  return fixture;
 }
 
 /**
- * A SQLite-backed `BureauStorageFixture`. When `options.path` is omitted, a
- * fresh, unique path under the OS temp directory is allocated (the file
- * itself is created lazily, by whatever later opens `configuration` —
- * bureau, or a test asserting fixture behavior in isolation). `dispose()`
- * removes the database file plus its `-wal`/`-shm` sidecar files — if they
- * exist — when, and only when, this fixture allocated the path itself;
- * `rm(..., { force: true })` makes this safe to call whether or not
- * anything was ever written there, and idempotent on repeat calls.
+ * A SQLite-backed `BureauStorageFixture` over `BunSQLiteStorage`. When `options.path` is omitted,
+ * a fresh, unique path under the OS temp directory is allocated (the file itself is created by the
+ * first handle that opens it). `dispose()` closes every handle the fixture opened, then removes
+ * the database file and its `-wal`/`-shm` sidecars when, and only when, this fixture allocated the
+ * path itself.
  */
 export function createSqliteStorageFixture(
-  options: CreatePersistentStorageFixtureOptions,
-): BureauStorageFixture<StorageConfiguration> {
-  const owned = options.path === undefined;
-  const path = options.path ?? allocateFixturePath('sqlite', options.runtime);
-
-  return {
-    configuration: { type: 'sqlite', path },
-    path,
-    owned,
-    async dispose() {
-      if (!owned) return;
-      removeTemporaryPath(path);
-    },
-    openHandles: () => [],
-  };
+  options: CreatePersistentStorageFixtureOptions = {},
+): PersistentBureauStorageFixture {
+  return createPersistentStorageFixture('sqlite', options, (path) => {
+    const storage = new BunSQLiteStorage(path);
+    return {
+      storage,
+      async close() {
+        storage[Symbol.dispose]();
+      },
+    };
+  });
 }
 
 /**
- * A LMDB-backed `BureauStorageFixture`. LMDB's configuration names a
- * directory, not a file — when `options.path` is omitted, a fresh, unique
- * directory path under the OS temp directory is allocated (created lazily
- * by whatever later opens `configuration`). The fixture uses Weft's production
- * `full` durability unless a timing-independent test explicitly selects `relaxed`.
- * `dispose()` removes the
- * directory (recursively, if it exists) when, and only when, this fixture
- * allocated the path itself.
+ * A LMDB-backed `BureauStorageFixture`. LMDB's store is a directory, not a file — when
+ * `options.path` is omitted, a fresh, unique directory path under the OS temp directory is
+ * allocated (created by the first handle that opens it). The fixture uses Weft's production
+ * `full` durability unless a timing-independent test explicitly selects `relaxed`. It holds one
+ * handle at a time: `open()` throws, and `reopen()` closes the current handle before it opens the
+ * next. `dispose()` closes the handle, then removes the directory when, and only when, this
+ * fixture allocated the path itself.
  */
 export function createLmdbStorageFixture(
-  options: CreateLmdbStorageFixtureOptions,
-): BureauStorageFixture<StorageConfiguration> {
-  const owned = options.path === undefined;
-  const path = options.path ?? allocateFixturePath('lmdb', options.runtime);
-
-  return {
-    configuration: { type: 'lmdb', path, durability: options.durability ?? 'full' },
-    path,
-    owned,
-    async dispose() {
-      if (!owned) return;
-      removeTemporaryPath(path);
-    },
-    openHandles: () => [],
-  };
+  options: CreateLmdbStorageFixtureOptions = {},
+): PersistentBureauStorageFixture {
+  const durability = options.durability ?? 'full';
+  return createPersistentStorageFixture('lmdb', options, (path) => {
+    const storage = new LMDBStorage(path, { durability });
+    return { storage, close: () => storage.close() };
+  });
 }

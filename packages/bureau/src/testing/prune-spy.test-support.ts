@@ -3,6 +3,7 @@ import { createToolbox } from 'armorer';
 import { spyOn } from 'bun:test';
 
 import { createRuntimeComposition } from '../runtime-composition';
+import { MemoryStorage } from '@lostgradient/storage';
 
 type Prune = (
   workflowId: string,
@@ -14,7 +15,7 @@ export async function spyOnPrune() {
   const probe = await createRuntimeComposition({
     generate: () => Promise.resolve({ content: 'x', toolCalls: [] }),
     toolbox: createToolbox([]),
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
     stopWhen: stopWhen.noToolCalls(),
   });
@@ -22,7 +23,6 @@ export async function spyOnPrune() {
     pruneCheckpoints: Prune;
   };
   probe.durable!.engine[Symbol.dispose]?.();
-  probe.disposeStorage?.();
   const original = prototype.pruneCheckpoints;
   return {
     spy: spyOn(prototype, 'pruneCheckpoints'),

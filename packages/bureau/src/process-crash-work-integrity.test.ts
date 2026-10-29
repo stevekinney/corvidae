@@ -24,6 +24,7 @@ import { join } from 'node:path';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import type { GenerateFunction } from '@lostgradient/operative';
+import type { Storage } from '@lostgradient/storage';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
@@ -52,6 +53,7 @@ import {
 } from './test/hoisted-scenario';
 import type { Bureau } from './types';
 import { unexpectedChildStderr } from './test/child-stderr';
+import { createLmdbStorageFixture, createSqliteStorageFixture } from './test/storage-fixtures';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 
 const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
@@ -146,6 +148,19 @@ async function spawnChild(
   return { signalCode: child.signalCode, exitCode: child.exitCode, stderr };
 }
 
+/**
+ * The scenario's store, opened once the child is gone, and closed by the scenario's cleanup after
+ * the Bureau that a later `onCleanup` registers has shut down.
+ */
+function scenarioStorage(backend: Backend, scenario: Scenario): Storage {
+  const store =
+    backend === 'lmdb'
+      ? createLmdbStorageFixture({ path: scenario.storagePath })
+      : createSqliteStorageFixture({ path: scenario.storagePath });
+  scenario.onCleanup(() => store.dispose());
+  return store.storage;
+}
+
 function readMarker<T>(scenario: Scenario): T {
   expect(existsSync(scenario.markerPath)).toBe(true);
   return JSON.parse(readFileSync(scenario.markerPath, 'utf8')) as T;
@@ -216,8 +231,7 @@ async function recoverCharge(backend: Backend, scenario: Scenario, wrap: boolean
     return { content: 'charging', toolCalls: chargeToolCalls };
   };
   const bureau = await createHarnessBureau({
-    backend,
-    storagePath: scenario.storagePath,
+    storage: scenarioStorage(backend, scenario),
     generate,
     toolbox: createChargeToolbox(scenario.directory, async () => 'ok', {
       cache: idempotency.cache,
@@ -291,8 +305,7 @@ async function governedMemoryScenario(backend: Backend, scope: ScenarioScope): P
     const closeGoverned = scenario.onCleanup(() => governed.close());
     const stepZeroCalls: number[] = [];
     const bureau = await createHarnessBureau({
-      backend,
-      storagePath: scenario.storagePath,
+      storage: scenarioStorage(backend, scenario),
       generate: async ({ step }) => {
         if (step === 0) stepZeroCalls.push(step);
         return { content: REMEMBERED_ANSWER, toolCalls: [] };
@@ -339,8 +352,7 @@ async function abortSiblingScenario(backend: Backend, scope: ScenarioScope): Pro
       return deferred.promise;
     };
     const bureau = await createHarnessBureau({
-      backend,
-      storagePath: scenario.storagePath,
+      storage: scenarioStorage(backend, scenario),
       generate,
       toolbox: createToolbox([createNextTool()]),
     });

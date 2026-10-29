@@ -1,0 +1,4 @@
+[test]
+# Fails the run when a test leaves a storage fixture undisposed, naming the file that created it
+# (COR-1767). Bureau never disposes a storage it was given, so its tests own every handle they open.
+preload = ["./src/test/storage-fixture-preload.ts"]

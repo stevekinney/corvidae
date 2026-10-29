@@ -31,6 +31,7 @@ import {
 } from './testing/goal-fixtures.test-support';
 import { bootOver } from './testing/goal-recovery-fixtures.test-support';
 import type { Bureau } from './types';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 let database: TestDatabase = createUnsetTestDatabase();
@@ -42,7 +43,7 @@ afterEach(async () => {
 
 async function boot(options: Parameters<typeof createBureau>[0]) {
   const bureau = await createBureau({
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
     onDiagnostic: createDiagnostics().onDiagnostic,
     ...options,
@@ -317,7 +318,7 @@ async function restartDuringRetry(
   database = createTestDatabase('conversation');
   let calls = 0;
   const { bureau: dead } = await bootOver({
-    path: database.path,
+    storage: database.open(),
     agents: {
       worker: workerAgent((input) => {
         calls += 1;
@@ -339,7 +340,7 @@ async function restartDuringRetry(
 
   const seen: string[][] = [];
   const { bureau } = await bootOver({
-    path: database.path,
+    storage: database.open(),
     agents: { worker: workerAgent(scriptedGenerate(['done'], seen)) },
     validators: [createCheckValidator()],
     ...options,

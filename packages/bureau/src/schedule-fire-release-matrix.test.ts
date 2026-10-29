@@ -43,7 +43,7 @@ const keysOf = (value: unknown): string[] =>
 
 /** A fire that leaves one tool approval; `continuing` takes another step with it pending. */
 async function fireWithApproval(kind: 'stopped' | 'continuing') {
-  const storage = { type: 'sqlite' as const, path: harness.nextDatabasePath() };
+  const path = harness.nextDatabasePath();
   const charges: number[] = [];
   const generate: GenerateFunction = async (context) => {
     if (context.step === 0) {
@@ -64,7 +64,10 @@ async function fireWithApproval(kind: 'stopped' | 'continuing') {
       kind === 'stopped'
         ? stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls())
         : stopWhen.noToolCalls(),
-    storage,
+    // A getter: each Bureau opened from these options holds its own handle, as a process would.
+    get storage() {
+      return harness.sqliteHandle(path);
+    },
     retention: { tasks: { olderThan: 1 } },
   };
   const bureau = await harness.open(options);
@@ -216,7 +219,7 @@ describe('every ending of a fire’s approval leaves nothing of it behind', () =
 
 describe('a fire with several approvals', () => {
   async function fireWithTwoApprovals() {
-    const storage = { type: 'sqlite' as const, path: harness.nextDatabasePath() };
+    const path = harness.nextDatabasePath();
     const charges: number[] = [];
     const generate: GenerateFunction = async (context) =>
       context.step === 0
@@ -232,7 +235,10 @@ describe('a fire with several approvals', () => {
       generate,
       toolbox: approvalToolbox(charges),
       stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
-      storage,
+      // A getter: each Bureau opened from these options holds its own handle, as a process would.
+      get storage() {
+        return harness.sqliteHandle(path);
+      },
     };
     const bureau = await harness.open(options);
     const { fireId } = await fireOnce(bureau, OWNER.alice, SESSION);
@@ -279,7 +285,7 @@ describe('a fire with several approvals', () => {
   });
 
   it('lists each approval of a fire that continues at its own request time', async () => {
-    const storage = { type: 'sqlite' as const, path: harness.nextDatabasePath() };
+    const path = harness.nextDatabasePath();
     const generate: GenerateFunction = async (context) => {
       if (context.step === 0) {
         return {
@@ -297,7 +303,7 @@ describe('a fire with several approvals', () => {
       return { content: 'done', toolCalls: [] };
     };
     const bureau = await harness.open({
-      storage,
+      storage: harness.sqliteHandle(path),
       agents: {
         default: createAgent({
           generate,
@@ -440,7 +446,7 @@ describe('a crash between a fire’s cancel and the release of its approval', ()
 
 describe('a cancel by a peer, with the holder alive', () => {
   it('canceled by a peer while this process holds it', async () => {
-    const storage = { type: 'sqlite' as const, path: harness.nextDatabasePath() };
+    const path = harness.nextDatabasePath();
     const holderCharges: number[] = [];
     const generate: GenerateFunction = async (context) => {
       if (context.step === 0) {
@@ -458,7 +464,10 @@ describe('a cancel by a peer, with the holder alive', () => {
     const options = {
       generate,
       stopWhen: stopWhen.noToolCalls(),
-      storage,
+      // A getter: each Bureau opened from these options holds its own handle, as a process would.
+      get storage() {
+        return harness.sqliteHandle(path);
+      },
       durableOwnership: { ownership: 'workflow-lease' as const },
     };
     const holder = await harness.open({
@@ -516,7 +525,7 @@ describe('a restart keeps what the engine did not cancel', () => {
   });
 
   it('boot keeps a failed fire’s committed approval', async () => {
-    const storage = { type: 'sqlite' as const, path: harness.nextDatabasePath() };
+    const path = harness.nextDatabasePath();
     const generate: GenerateFunction = async (context) => {
       if (context.step === 0) {
         return {
@@ -530,7 +539,10 @@ describe('a restart keeps what the engine did not cancel', () => {
     const options = {
       generate,
       stopWhen: stopWhen.noToolCalls(),
-      storage,
+      // A getter: each Bureau opened from these options holds its own handle, as a process would.
+      get storage() {
+        return harness.sqliteHandle(path);
+      },
       onDiagnostic: (diagnostic: { message: string }) => diagnostics.push(diagnostic.message),
     };
     const bureau = await harness.open({

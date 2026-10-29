@@ -25,6 +25,8 @@ import { createAssetGeneratedMediaAdmitter } from './assets/generated-media-admi
 import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, base64Of, bob, pngBytes } from './testing/asset-fixtures.test-support';
+import { MemoryStorage } from '@lostgradient/storage';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -83,7 +85,7 @@ async function openBureau(
       ...(options.policy === undefined ? {} : { policy: options.policy }),
       ...(options.ports === undefined ? {} : { ports: options.ports }),
     },
-    ...(options.durable ? { storage: { type: 'memory' as const }, durable: true } : {}),
+    ...(options.durable ? { storage: new MemoryStorage(), durable: true } : {}),
   });
   cleanups.push(async () => {
     await bureau.dispose();
@@ -198,7 +200,9 @@ describe('cancelling a run while its generated image is being admitted', () => {
 describe('a durable run restarted over SQLite (COR-713)', () => {
   it('keeps the run-wide parts, the committed row id and the asset after a new Bureau opens the same store', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'bureau-generated-media-'));
-    const storagePath = join(directory, 'bureau');
+    const storageFixture = createSqliteStorageFixture({ path: join(directory, 'bureau') });
+    // Closed after the Bureaus: the cleanups dispose those first.
+    cleanups.push(() => storageFixture.dispose());
     cleanups.push(async () => {
       await rm(directory, { recursive: true, force: true });
     });
@@ -206,7 +210,7 @@ describe('a durable run restarted over SQLite (COR-713)', () => {
       const bureau = await createBureau({
         agents: { painter: paintingAgent() },
         assets: { storage: createMemoryAssetStorageFixture({}).storage },
-        storage: { type: 'sqlite', path: storagePath },
+        storage: storageFixture.storage,
         durable: true,
       });
       cleanups.push(async () => {

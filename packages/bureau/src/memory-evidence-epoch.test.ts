@@ -411,7 +411,7 @@ describe('a durable run recovered by a restarted Bureau (COR-771)', () => {
           scout: createAgent({ generate, createContextEpoch, toolbox: createToolbox([]) }),
         },
         memory,
-        storage: fixture.configuration,
+        storage: fixture.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
         requestAuthorityValidator: () => true,

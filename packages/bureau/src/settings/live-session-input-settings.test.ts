@@ -13,6 +13,7 @@ import { describe, expect, it } from 'bun:test';
 import type { AgentDefinitions } from '../agent-catalog.ts';
 import { createBureau } from '../create-bureau.ts';
 import type { Bureau } from '../types.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 
 async function open(): Promise<Bureau<AgentDefinitions>> {
   return createBureau<AgentDefinitions>({
@@ -23,7 +24,7 @@ async function open(): Promise<Bureau<AgentDefinitions>> {
       }),
     },
     runtime: createManualRuntimeServices({ origin: '2026-10-13T00:00:00.000Z' }),
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
   });
 }

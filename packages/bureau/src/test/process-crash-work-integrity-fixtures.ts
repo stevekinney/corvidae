@@ -22,7 +22,6 @@ import {
   type GovernedMemory,
 } from '@lostgradient/memory';
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
-import { resolveStorage } from '@lostgradient/weft';
 import { type Storage, textValueStore } from '@lostgradient/storage';
 import {
   type AnyToolbox,
@@ -38,6 +37,7 @@ import { z } from 'zod';
 import { createBureau } from '../create-bureau';
 import type { Bureau } from '../types';
 import type { AgentDefinitions } from '../agent-catalog';
+import { createSqliteStorageFixture } from './storage-fixtures';
 
 /** The claim TTL the parent derives its single claim-lapse wait from. */
 export const CLAIM_TTL_MS = 200;
@@ -99,12 +99,11 @@ export function readEffects(directory: string): string[] {
     .filter((line) => line !== '');
 }
 
-/** Opens the idempotency cache over its own sidecar SQLite file. */
+/** Opens the idempotency cache over its own sidecar SQLite file; `close` closes the file. */
 export async function openIdempotencyCache(directory: string) {
-  const store = textValueStore(
-    await resolveStorage({ type: 'sqlite', path: join(directory, 'idempotency.sqlite') }),
-  );
-  return { cache: createToolResultCache({ store }), store, close: () => store.close() };
+  const database = createSqliteStorageFixture({ path: join(directory, 'idempotency.sqlite') });
+  const store = textValueStore(database.storage, { disposeUnderlyingStorage: false });
+  return { cache: createToolResultCache({ store }), store, close: () => database.dispose() };
 }
 
 type KeyLister = { list(prefix: string): Promise<string[]> };
@@ -165,7 +164,7 @@ export const chargeToolCalls = [
 
 export interface GovernedMemoryFixture {
   readonly memory: GovernedMemory;
-  readonly close: () => void;
+  readonly close: () => Promise<void>;
 }
 
 /** Governed memory over two sidecar SQLite files; `wrapMemoryStorage` intercepts record writes. */
@@ -173,14 +172,10 @@ export async function openGovernedMemory(
   directory: string,
   wrapMemoryStorage: (storage: Storage) => Storage = (storage) => storage,
 ): Promise<GovernedMemoryFixture> {
-  const memoryStorage = await resolveStorage({
-    type: 'sqlite',
-    path: join(directory, 'memory.sqlite'),
-  });
-  const ledgerStorage = await resolveStorage({
-    type: 'sqlite',
-    path: join(directory, 'ledger.sqlite'),
-  });
+  const memoryDatabase = createSqliteStorageFixture({ path: join(directory, 'memory.sqlite') });
+  const ledgerDatabase = createSqliteStorageFixture({ path: join(directory, 'ledger.sqlite') });
+  const memoryStorage = memoryDatabase.storage;
+  const ledgerStorage = ledgerDatabase.storage;
   const memory = createGovernedMemory({
     storage: createWeftMemoryRecordStorage(wrapMemoryStorage(memoryStorage)),
     ledger: createMemoryGovernanceLedger(ledgerStorage),
@@ -189,9 +184,9 @@ export async function openGovernedMemory(
   });
   return {
     memory,
-    close: () => {
-      memoryStorage[Symbol.dispose]();
-      ledgerStorage[Symbol.dispose]();
+    close: async () => {
+      await memoryDatabase.dispose();
+      await ledgerDatabase.dispose();
     },
   };
 }
@@ -202,8 +197,8 @@ export function firstUserMessage(context: Parameters<GenerateFunction>[0]): stri
 }
 
 export interface HarnessBureauOptions {
-  readonly backend: Backend;
-  readonly storagePath: string;
+  /** The scenario's store; the caller closes it after the Bureau has shut down. */
+  readonly storage: Storage;
   readonly generate: GenerateFunction;
   readonly toolbox: AnyToolbox;
   readonly memory?: GovernedMemory;
@@ -222,7 +217,7 @@ export function createHarnessBureau(options: HarnessBureauOptions): Promise<Bure
         stopWhen: stopWhen.noToolCalls(),
       }),
     },
-    storage: { type: options.backend, path: options.storagePath },
+    storage: options.storage,
     durable: true,
     requestAuthorityValidator: () => true,
     ...(options.memory === undefined ? {} : { memory: options.memory }),

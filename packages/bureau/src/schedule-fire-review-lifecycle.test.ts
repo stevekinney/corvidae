@@ -561,10 +561,10 @@ describe('a crash between a fire step’s session write and its commit', () => {
 
 describe('a fire’s approval is fenced across Bureau processes by the durable decision record (COR-1579)', () => {
   it('refuses a peer’s stale denial after the first decision’s session fence has retired with the task', async () => {
-    const storage = { type: 'sqlite' as const, path: harness.nextDatabasePath() };
+    const path = harness.nextDatabasePath();
     const firstCharges: number[] = [];
     const first = await open({
-      storage,
+      storage: harness.sqliteHandle(path),
       retention: { tasks: { olderThan: 1 } },
       agents: {
         default: createAgent({
@@ -583,7 +583,7 @@ describe('a fire’s approval is fenced across Bureau processes by the durable d
     // A peer that lists the same approval, from the session the fire recorded it in.
     const peerCharges: number[] = [];
     const peer = await open({
-      storage,
+      storage: harness.sqliteHandle(path),
       agents: {
         default: createAgent({
           generate: chargesOnce,
@@ -633,7 +633,7 @@ describe('a fire’s task stream ends when its last review closes', () => {
       };
     };
     const bureau = await open({
-      storage: { type: 'sqlite', path: harness.nextDatabasePath() },
+      storage: harness.sqliteHandle(harness.nextDatabasePath()),
       agents: {
         default: createAgent({
           generate,
@@ -727,7 +727,7 @@ describe('a fire’s task stream ends when its last review closes', () => {
       return askingGenerate()(context);
     };
     const bureau = await open({
-      storage: { type: 'sqlite', path: harness.nextDatabasePath() },
+      storage: harness.sqliteHandle(harness.nextDatabasePath()),
       agents: {
         default: createAgent({
           generate,
@@ -773,8 +773,7 @@ describe('a fire’s task stream ends when its last review closes', () => {
 
 describe('a fire still going when its process restarts', () => {
   it('resolves an approval it committed and one it makes after, each under its own binding', async () => {
-    const databasePath = harness.nextDatabasePath();
-    const storage = { type: 'sqlite' as const, path: databasePath };
+    const path = harness.nextDatabasePath();
     let dead = true;
     const generate: GenerateFunction = async (context) => {
       if (context.step === 0) {
@@ -794,7 +793,7 @@ describe('a fire still going when its process restarts', () => {
       return { content: 'done', toolCalls: [] };
     };
     const first = await open({
-      storage,
+      storage: harness.sqliteHandle(path),
       agents: {
         default: createAgent({
           generate,
@@ -816,7 +815,7 @@ describe('a fire still going when its process restarts', () => {
     dead = false;
     const charges: number[] = [];
     const restarted = await open({
-      storage,
+      storage: harness.sqliteHandle(path),
       agents: {
         default: createAgent({
           generate,
@@ -844,7 +843,7 @@ describe('a fire still going when its process restarts', () => {
 describe('a fire’s review is announced', () => {
   it('reaches the run’s history as review.requested, and the task reads input-required on its stream', async () => {
     const approval = await open({
-      storage: { type: 'sqlite', path: harness.nextDatabasePath() },
+      storage: harness.sqliteHandle(harness.nextDatabasePath()),
       agents: {
         default: createAgent({
           generate: chargesOnce,
@@ -881,7 +880,7 @@ describe('a fire’s review is announced', () => {
 
   it('announces a human wait once, as review.requested, with the signal it waits on', async () => {
     const bureau = await open({
-      storage: { type: 'sqlite', path: harness.nextDatabasePath() },
+      storage: harness.sqliteHandle(harness.nextDatabasePath()),
       agents: {
         default: createAgent({
           generate: askingGenerate(),

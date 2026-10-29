@@ -35,16 +35,11 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import type { DurableEventEnvelope, DurableEventOwner } from '@lostgradient/operative';
-import {
-  createFleetEventFeed,
-  type FleetEventFeed,
-  resolveStorage,
-  type StorageConfiguration,
-} from '@lostgradient/weft';
-import { type Storage } from '@lostgradient/storage';
+import type { Storage } from '@lostgradient/storage';
+import { createFleetEventFeed, type FleetEventFeed } from '@lostgradient/weft';
 
 import { createDurableEventHistory, type DurableEventHistory } from '../durable-event-history';
-import type { BureauStorageFixture } from './storage-fixtures';
+import type { PersistentBureauStorageFixture } from './storage-fixtures';
 import { createLmdbStorageFixture, createSqliteStorageFixture } from './storage-fixtures';
 
 /** One record in {@link DURABLE_EVENT_HISTORY_FIXTURE_SEQUENCE}. */
@@ -140,17 +135,16 @@ export interface DurableEventHistoryFixtureOptions {
 
 /**
  * The seeded fixture {@link createDurableEventHistoryFixture} returns. The
- * writing `DurableEventHistory` instance and its `Storage` handle are
- * ALREADY disposed by the time this resolves (mirroring
+ * writing `DurableEventHistory` instance is ALREADY disposed by the time this
+ * resolves, and its handle is the storage fixture's current one (mirroring
  * `durable-event-history.test.ts`'s own "restart durability" tests' own
  * write-then-close-then-reopen pattern) — a consumer proving restart
- * durability reopens `storage.configuration` itself via a fresh
- * `resolveStorage`/`createDurableEventHistory` pair, rather than reusing a
- * handle this fixture already closed.
+ * durability calls `storage.reopen()`, which closes the writing handle and
+ * opens a fresh one, and builds its own `createDurableEventHistory` on it.
  */
 export interface DurableEventHistoryFixture {
   /** The owned storage fixture backing the seeded backend. */
-  readonly storage: BureauStorageFixture<StorageConfiguration>;
+  readonly storage: PersistentBureauStorageFixture;
   /** The runtime the seed was recorded under — reuse it to reopen with the same clock. */
   readonly runtime: RuntimeServices;
   /**
@@ -161,8 +155,9 @@ export interface DurableEventHistoryFixture {
    */
   readonly envelopes: readonly DurableEventEnvelope[];
   /**
-   * Removes the backend's allocated path (a no-op when the caller supplied
-   * `options.path` — see {@link DurableEventHistoryFixtureOptions.path}).
+   * Closes the backend's handles and removes its allocated path (the path is
+   * kept when the caller supplied `options.path` — see
+   * {@link DurableEventHistoryFixtureOptions.path}).
    */
   dispose(): Promise<void>;
 }
@@ -172,10 +167,9 @@ export interface DurableEventHistoryFixture {
  * `options.sequence`) into a fresh SQLite or LMDB backend, in order,
  * through a real `createDurableEventHistory` instance — the same
  * production write path `createDurableEventProducer` uses, never a direct
- * `FleetEventFeed.append`. The writing instance and its `Storage` handle
- * are disposed before this resolves, so the returned `storage` fixture's
- * `configuration` is immediately safe to reopen for a restart-durability
- * assertion.
+ * `FleetEventFeed.append`. The writing instance is disposed before this
+ * resolves, so the returned `storage` fixture is immediately safe to
+ * `reopen()` for a restart-durability assertion.
  */
 export async function createDurableEventHistoryFixture(
   options: DurableEventHistoryFixtureOptions,
@@ -194,10 +188,8 @@ export async function createDurableEventHistoryFixture(
           ...(options.path === undefined ? {} : { path: options.path }),
         });
 
-  let storage: Storage | undefined;
   try {
-    storage = await resolveStorage(storageFixture.configuration);
-    const history: DurableEventHistory = createDurableEventHistory(storage, runtime);
+    const history: DurableEventHistory = createDurableEventHistory(storageFixture.storage, runtime);
     const envelopes: DurableEventEnvelope[] = [];
     try {
       for (const record of sequence) {
@@ -224,8 +216,6 @@ export async function createDurableEventHistoryFixture(
       // Swallowed deliberately — see the comment above.
     }
     throw error;
-  } finally {
-    storage?.[Symbol.dispose]();
   }
 }
 

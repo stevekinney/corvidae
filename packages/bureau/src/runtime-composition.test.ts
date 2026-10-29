@@ -56,8 +56,6 @@ import { createTool, createToolbox, type ToolRequestContext } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory, getMessages } from 'conversationalist';
 import { z } from 'zod';
-import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
-
 import {
   activeSkillsFromStepMetadata,
   applyCache,
@@ -79,6 +77,7 @@ import {
 import type { GenerateProviderName, ProviderConfiguration } from './types';
 import { storageOverTextStore } from './testing/text-store-storage.test-support';
 import { waitUntil } from '@lostgradient/testing/wait-until';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 // Drain Weft's deferred inline-launch queue between tests — a pending setTimeout(0)
 // inline-launch left by one durable run can starve a later one under full
@@ -270,7 +269,6 @@ describe('createRuntimeComposition', () => {
     expect(executionError).toBeInstanceOf(Error);
     expect((executionError as Error).message).toContain('no longer current');
     expect(executions).toBe(1);
-    runtime.disposeStorage?.();
   });
 
   it('cancels a stalled transport authority revalidation before tool dispatch', async () => {
@@ -320,7 +318,6 @@ describe('createRuntimeComposition', () => {
     expect(executionError).toBeInstanceOf(Error);
     expect((executionError as Error).message).toBe('authority check cancelled');
     expect(executions).toBe(0);
-    runtime.disposeStorage?.();
   });
 
   it('rejects pre-aborted and deadline-expired transport authority checks', async () => {
@@ -394,7 +391,6 @@ describe('createRuntimeComposition', () => {
       (error: unknown) => error,
     );
     expect((deadlineError as Error).message).toBe('Execution deadline exceeded');
-    runtime.disposeStorage?.();
   });
 
   it('chunks long transport authority deadlines without expiring them early', async () => {
@@ -465,7 +461,6 @@ describe('createRuntimeComposition', () => {
     const result = await execution;
     expect(result.result).toBe('authorized');
     expect(cleared).toContain(scheduled[1]);
-    runtime.disposeStorage?.();
   });
 
   it('propagates transport authority validator failures', async () => {
@@ -500,7 +495,6 @@ describe('createRuntimeComposition', () => {
       (error: unknown) => error,
     );
     expect((executionError as Error).message).toBe('validator unavailable');
-    runtime.disposeStorage?.();
   });
 
   it('validates and restores persisted request authority for durable recovery', () => {
@@ -1194,7 +1188,7 @@ describe('Bureau hook tier composition (COR-1265)', () => {
       generate: async () => ({ content: 'ok', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
       identity: { resolve: async () => 'researcher' },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -1232,7 +1226,7 @@ describe('Bureau hook tier composition (COR-1265)', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'ok', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -1273,7 +1267,7 @@ describe('Bureau hook tier composition (COR-1265)', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'ok', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -1328,7 +1322,7 @@ describe('Bureau hook tier composition (COR-1265)', () => {
         // Deliberately no bureau-level generate/toolbox — proves nothing here
         // reaches `buildRunDepsFromSession`.
         identity: { resolve: async () => 'the house agent' },
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       });
       runtime.setCatalogAgentRunOptionsResolver(async () => ({
@@ -1632,7 +1626,7 @@ describe('effectful hook idempotency under crash replay (COR-1267)', () => {
       generate: async () => ({ content: 'ok', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
       skills: { catalog },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: false,
     });
     await runtime.sessionStore!.save(
@@ -1703,7 +1697,7 @@ describe('effectful hook idempotency under crash replay (COR-1267)', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'ok', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -1757,7 +1751,7 @@ describe('effectful hook idempotency under crash replay (COR-1267)', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'ok', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -1943,7 +1937,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
     });
     // Off by default: no durable flag → no engine.
     expect(runtime.durable).toBeUndefined();
@@ -1965,7 +1959,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       observability: true,
     });
@@ -1983,7 +1977,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     try {
@@ -2001,7 +1995,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       durableGuardrails: {
         history: { maxEvents: 10_000 },
@@ -2029,7 +2023,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       durableOwnership: {
         ownership: 'workflow-lease',
@@ -2051,34 +2045,34 @@ describe('createRuntimeComposition durable execution', () => {
     // `durable` flag resolves to durable-on, because that is the only
     // place a crash can actually resume. This is the headline behavior — a
     // normal bureau with sqlite storage gets durable runs without opting in.
-    const databasePath = createTemporaryPath('default-on', '.sqlite');
+    const database = createSqliteStorageFixture();
     try {
       const runtime = await createRuntimeComposition({
         generate: async () => ({ content: 'x', toolCalls: [] }),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
       });
       expect(runtime.durable).toBeDefined();
       runtime.durable?.engine[Symbol.dispose]?.();
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('stays OFF when durable is explicitly false even for a persistent backend', async () => {
     // The explicit `false` override: a persistent backend would default to
     // durable-on, but a caller can force the in-memory loop back.
-    const databasePath = createTemporaryPath('explicit-off', '.sqlite');
+    const database = createSqliteStorageFixture();
     try {
       const runtime = await createRuntimeComposition({
         generate: async () => ({ content: 'x', toolCalls: [] }),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: false,
       });
       expect(runtime.durable).toBeUndefined();
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
@@ -2093,8 +2087,19 @@ describe('createRuntimeComposition durable execution', () => {
     });
 
     try {
-      expect(runtime.durable?.engine.storage).toBe(storage);
-      expect(runtime.disposeStorage).toBeUndefined();
+      // The engine persists to the caller's storage, through Bureau's fence (COR-1767).
+      const engineStorage = runtime.durable?.engine.storage;
+      await engineStorage?.put('probe', new Uint8Array([5]));
+      expect(await storage.get('probe')).toEqual(new Uint8Array([5]));
+      runtime.stopUsingStorage();
+      // A refused write is a rejected promise, as every adapter reports a failed write, never a
+      // synchronous throw.
+      const refused = engineStorage?.put('probe', new Uint8Array([6]));
+      expect(refused).toBeInstanceOf(Promise);
+      await expect(refused).rejects.toThrow(/stopped writing to its storage/);
+      expect(await engineStorage?.get('probe')).toEqual(new Uint8Array([5]));
+      await storage.put('probe', new Uint8Array([7]));
+      expect(await storage.get('probe')).toEqual(new Uint8Array([7]));
     } finally {
       runtime.durable?.engine[Symbol.dispose]?.();
       storage[Symbol.dispose]();
@@ -2122,7 +2127,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -2170,7 +2175,7 @@ describe('createRuntimeComposition durable execution', () => {
       const runtime = await createRuntimeComposition({
         generate: async () => ({ content: 'x', toolCalls: [] }),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       });
       return runtime;
@@ -2263,13 +2268,13 @@ describe('createRuntimeComposition durable execution', () => {
     const compositionA = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       runtime: runtimeA,
     });
     const compositionB = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       runtime: runtimeB,
     });
 
@@ -2316,7 +2321,7 @@ describe('createRuntimeComposition durable execution', () => {
           },
         }),
       ]),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -2374,7 +2379,7 @@ describe('createRuntimeComposition durable execution', () => {
     it('dispatches ScheduleCompletedEvent when a correlated fire finishes with a non-failure finishReason', async () => {
       const runtime = await createRuntimeComposition({
         generate: async () => ({ content: 'ok', toolCalls: [] }),
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       });
 
@@ -2432,7 +2437,7 @@ describe('createRuntimeComposition durable execution', () => {
       async (finishReason) => {
         const runtime = await createRuntimeComposition({
           generate: async () => ({ content: 'ok', toolCalls: [] }),
-          storage: { type: 'memory' },
+          storage: new MemoryStorage(),
           durable: true,
         });
 
@@ -2481,7 +2486,7 @@ describe('createRuntimeComposition durable execution', () => {
     it('dispatches ScheduleFailedEvent when a correlated fire terminates with an unhandled workflow error', async () => {
       const runtime = await createRuntimeComposition({
         generate: async () => ({ content: 'ok', toolCalls: [] }),
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       });
 
@@ -2521,7 +2526,7 @@ describe('createRuntimeComposition durable execution', () => {
     it('ignores a terminal event for a workflow with no correlated scheduleId (an ordinary, non-scheduled run)', async () => {
       const runtime = await createRuntimeComposition({
         generate: async () => ({ content: 'ok', toolCalls: [] }),
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       });
 
@@ -2552,7 +2557,7 @@ describe('createRuntimeComposition durable execution', () => {
     it('drops the scheduleId correlation entry when the fire is cancelled, without dispatching a schedule event', async () => {
       const runtime = await createRuntimeComposition({
         generate: async () => ({ content: 'ok', toolCalls: [] }),
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       });
 
@@ -2673,7 +2678,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -2727,7 +2732,7 @@ describe('createRuntimeComposition durable execution', () => {
       {
         generate: async () => ({ content: 'x', toolCalls: [] }),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
         onDiagnostic(event) {
           diagnostics.push(event.message);
@@ -2769,7 +2774,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -2794,7 +2799,7 @@ describe('createRuntimeComposition durable execution', () => {
       {
         generate: async () => ({ content: 'x', toolCalls: [] }),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       },
       {
@@ -2855,7 +2860,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition(
       {
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
         onDiagnostic(event) {
           diagnostics.push(event.message);
@@ -2905,7 +2910,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -2956,7 +2961,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -3008,7 +3013,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       requestAuthorityValidator(context) {
         validatedContexts.push(context);
@@ -3069,7 +3074,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       requestAuthorityValidator() {
         validatorCalls += 1;
@@ -3105,7 +3110,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       onLog(record) {
         logs.push(record.message);
@@ -3152,7 +3157,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     const runId = 'scheduled-run-with-accumulated-results';
@@ -3233,7 +3238,6 @@ describe('createRuntimeComposition durable execution', () => {
 
     try {
       expect(runtime.durable).toBeUndefined();
-      expect(runtime.disposeStorage).toBeUndefined();
     } finally {
       storage[Symbol.dispose]();
     }
@@ -3243,7 +3247,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'composed', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -3299,7 +3303,7 @@ describe('createRuntimeComposition durable execution', () => {
   //   3. The session is updated to 'running' before recovery (the recoverable state
   //      is present) — so any failure here is in the recovery deps, not setup.
   it('threads agentName and runId from the durable input into rebuilt RunOptions during recovery (regression PRRT_kwDORvupsc6MXoT3)', async () => {
-    const databasePath = createTemporaryPath('recovery-agentname', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'recovery-agentname-run';
     let recoveredGenerateCalls = 0;
 
@@ -3309,7 +3313,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -3347,7 +3351,6 @@ describe('createRuntimeComposition durable execution', () => {
         // Dispose = simulated crash. The Weft storage persists the workflow input
         // (including agentName) so the second engine can recover it.
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       // Phase 2: boot a fresh engine and recover. resolveRunServices is called
@@ -3360,7 +3363,7 @@ describe('createRuntimeComposition durable execution', () => {
           return { content: 'recovered', toolCalls: [] };
         },
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -3389,15 +3392,14 @@ describe('createRuntimeComposition durable execution', () => {
         expect(recoveredGenerateCalls).toBeGreaterThan(0);
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('uses Weft launch tags instead of scheduler id heuristics during service resolution', async () => {
-    const databasePath = createTemporaryPath('resolver-launch-tags', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'tagged-scheduler-origin-without-prefix';
     let recoveredGenerateCalls = 0;
 
@@ -3405,7 +3407,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
       });
 
@@ -3433,7 +3435,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(running).toBe(true);
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -3442,7 +3443,7 @@ describe('createRuntimeComposition durable execution', () => {
           return { content: 'should not recover scheduler-origin runs', toolCalls: [] };
         },
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
       });
 
@@ -3457,15 +3458,14 @@ describe('createRuntimeComposition durable execution', () => {
         expect(recoveredGenerateCalls).toBe(0);
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('does not recover shape-only scheduled inputs without a persisted schedule marker', async () => {
-    const databasePath = createTemporaryPath('shape-only-scheduled-input', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'shape-only-scheduled-input-run';
     let recoveredGenerateCalls = 0;
 
@@ -3473,7 +3473,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
       });
 
@@ -3504,7 +3504,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(running).toBe(true);
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -3513,7 +3512,7 @@ describe('createRuntimeComposition durable execution', () => {
           return { content: 'must not run as scheduled fire', toolCalls: [] };
         },
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
       });
 
@@ -3541,15 +3540,14 @@ describe('createRuntimeComposition durable execution', () => {
         expect(sessions.some((session) => session.id.startsWith('sched-'))).toBe(false);
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('recovers markerless scheduled fires when Weft has a schedule-run marker and replaces replayed transcript suffixes', async () => {
-    const databasePath = createTemporaryPath('legacy-scheduled-input', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'legacy-scheduled-fire-run';
     const scheduleId = 'legacy-digest-schedule';
     const sessionId = 'legacy-digest-session';
@@ -3567,7 +3565,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -3614,7 +3612,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(running).toBe(true);
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -3630,7 +3627,7 @@ describe('createRuntimeComposition durable execution', () => {
           return { content: recoveredAssistantContent, toolCalls: [] };
         },
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
@@ -3670,10 +3667,9 @@ describe('createRuntimeComposition durable execution', () => {
         );
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
@@ -3693,7 +3689,7 @@ describe('createRuntimeComposition durable execution', () => {
     // finds no way to classify this as scheduled, `isAgentRunWorkflowInput`
     // rejects the `ScheduledAgentRunInput` shape too, and the run fails
     // `unavailable` ("no recoverable session") instead of completing.
-    const databasePath = createTemporaryPath('object-marker-stateless-input', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'object-marker-stateless-fire-run';
     const scheduleId = 'object-marker-stateless-schedule';
     const sessionId = `sched-${scheduleId}-${runId}`;
@@ -3704,7 +3700,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -3744,13 +3740,12 @@ describe('createRuntimeComposition durable execution', () => {
         expect(running).toBe(true);
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
         generate: async () => ({ content: recoveredAssistantContent, toolCalls: [] }),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
@@ -3775,10 +3770,9 @@ describe('createRuntimeComposition durable execution', () => {
         );
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
@@ -3804,7 +3798,7 @@ describe('createRuntimeComposition durable execution', () => {
     // run's `generate` hangs on its very FIRST call — no step is committed, so
     // there is no weft checkpoint replay to reconstruct the recovering
     // generate's conversation; it sees exactly what the resolver seeded.
-    const databasePath = createTemporaryPath('schedule-metadata-recovery', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'schedule-metadata-recovery-run';
     const scheduleId = 'schedule-metadata-recovery-schedule';
     const sessionId = 'schedule-metadata-recovery-session';
@@ -3818,7 +3812,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -3881,7 +3875,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(running).toBe(true);
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -3896,7 +3889,7 @@ describe('createRuntimeComposition durable execution', () => {
           return { content: recoveredAssistantContent, toolCalls: [] };
         },
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
@@ -3930,15 +3923,14 @@ describe('createRuntimeComposition durable execution', () => {
         );
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('recovers markerless scheduled fires when the session proves the scheduled fire', async () => {
-    const databasePath = createTemporaryPath('scheduled-session-proof', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'scheduled-session-proof-run';
     const sessionId = `sched-session-proof-${runId}`;
     const scheduledPrompt = 'session proof scheduled prompt';
@@ -3948,7 +3940,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
       });
 
@@ -3990,13 +3982,12 @@ describe('createRuntimeComposition durable execution', () => {
         expect(running).toBe(true);
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
         generate: async () => ({ content: recoveredAssistantContent, toolCalls: [] }),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         stopWhen: stopWhen.noToolCalls(),
       });
@@ -4023,15 +4014,14 @@ describe('createRuntimeComposition durable execution', () => {
         expect(unknownSession).toBeUndefined();
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('replaces replayed transcript suffixes for stateless scheduled-fire sessions', async () => {
-    const databasePath = createTemporaryPath('stateless-scheduled-replay', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'stateless-scheduled-fire-run';
     const scheduleId = 'stateless-digest-schedule';
     const sessionId = `sched-${scheduleId}-${runId}`;
@@ -4044,7 +4034,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -4089,7 +4079,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(running).toBe(true);
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -4101,7 +4090,7 @@ describe('createRuntimeComposition durable execution', () => {
           return { content: recoveredAssistantContent, toolCalls: [] };
         },
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
@@ -4129,15 +4118,14 @@ describe('createRuntimeComposition durable execution', () => {
         );
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('recovers markerless scheduled fires when the schedule marker read fails transiently', async () => {
-    const databasePath = createTemporaryPath('scheduled-marker-read-error', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'scheduled-marker-read-error-run';
     const scheduleId = 'unreadable-digest-schedule';
     const recoveredSessionId = `sched-${scheduleId}-${runId}`;
@@ -4151,7 +4139,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -4198,7 +4186,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(running).toBe(true);
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -4207,7 +4194,7 @@ describe('createRuntimeComposition durable execution', () => {
           return { content: recoveredAssistantContent, toolCalls: [] };
         },
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
@@ -4250,15 +4237,14 @@ describe('createRuntimeComposition durable execution', () => {
         expect(unknownSession).toBeUndefined();
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('preserves an interactive run skill snapshot when a scheduled fire shares its session', async () => {
-    const databasePath = createTemporaryPath('scheduled-shared-session-skill', '.sqlite');
+    const database = createSqliteStorageFixture();
     const scheduledRunId = 'scheduled-shared-session-fire-run';
     const interactiveRunId = 'interactive-shared-session-run';
     const scheduleId = 'scheduled-shared-session-schedule';
@@ -4272,7 +4258,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -4323,13 +4309,12 @@ describe('createRuntimeComposition durable execution', () => {
         expect(running).toBe(true);
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
         generate: async () => ({ content: 'scheduled fire completed', toolCalls: [] }),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
@@ -4355,15 +4340,14 @@ describe('createRuntimeComposition durable execution', () => {
         expect(session?.metadata['lastScheduledFireRunId']).toBe(scheduledRunId);
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('rehydrates active skills for recovered scheduled fires', async () => {
-    const databasePath = createTemporaryPath('scheduled-skill-recovery', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'scheduled-skill-fire-run';
     const scheduleId = 'scheduled-skill-schedule';
     const sessionId = 'scheduled-skill-session';
@@ -4383,7 +4367,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -4441,7 +4425,6 @@ describe('createRuntimeComposition durable execution', () => {
         });
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -4456,7 +4439,7 @@ describe('createRuntimeComposition durable execution', () => {
         },
         toolbox: createToolbox([], { context: {} }),
         skills: { catalog: skillCatalog },
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
@@ -4486,15 +4469,14 @@ describe('createRuntimeComposition durable execution', () => {
         expect(snapshot.entries[0]!.artifactDigest).toMatch(/^[0-9a-f]{64}$/u);
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('falls back to the latest committed scheduled skill snapshot when later metadata is uncommitted', async () => {
-    const databasePath = createTemporaryPath('scheduled-committed-skill-fallback', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'scheduled-committed-skill-fallback-run';
     const scheduleId = 'scheduled-committed-skill-fallback-schedule';
     const sessionId = 'scheduled-committed-skill-fallback-session';
@@ -4513,7 +4495,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -4578,7 +4560,6 @@ describe('createRuntimeComposition durable execution', () => {
         });
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -4593,7 +4574,7 @@ describe('createRuntimeComposition durable execution', () => {
         },
         toolbox: createToolbox([], { context: {} }),
         skills: { catalog: skillCatalog },
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
@@ -4613,15 +4594,14 @@ describe('createRuntimeComposition durable execution', () => {
         expect(loadedSkillResource).toBe('print("Hello")');
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('recovers committed scheduled skill snapshots when session activeSkillRecords is malformed', async () => {
-    const databasePath = createTemporaryPath('scheduled-malformed-session-skill', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'scheduled-malformed-session-skill-run';
     const scheduleId = 'scheduled-malformed-session-skill-schedule';
     const sessionId = 'scheduled-malformed-session-skill-session';
@@ -4640,7 +4620,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -4705,7 +4685,6 @@ describe('createRuntimeComposition durable execution', () => {
         });
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -4720,7 +4699,7 @@ describe('createRuntimeComposition durable execution', () => {
         },
         toolbox: createToolbox([], { context: {} }),
         skills: { catalog: skillCatalog },
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
@@ -4740,15 +4719,14 @@ describe('createRuntimeComposition durable execution', () => {
         expect(loadedSkillResource).toBe('print("Hello")');
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('ignores unmarked step metadata that looks like an internal scheduled skill snapshot', async () => {
-    const databasePath = createTemporaryPath('scheduled-spoofed-step-skill', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'scheduled-spoofed-step-skill-run';
     const scheduleId = 'scheduled-spoofed-step-skill-schedule';
     const sessionId = 'scheduled-spoofed-step-skill-session';
@@ -4767,7 +4745,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -4836,7 +4814,6 @@ describe('createRuntimeComposition durable execution', () => {
         });
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -4851,7 +4828,7 @@ describe('createRuntimeComposition durable execution', () => {
         },
         toolbox: createToolbox([], { context: {} }),
         skills: { catalog: skillCatalog },
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
@@ -4871,15 +4848,14 @@ describe('createRuntimeComposition durable execution', () => {
         expect(loadedSkillResource).toBe('print("Hello")');
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('does not rehydrate skills from an uncommitted recovered scheduled fire attempt', async () => {
-    const databasePath = createTemporaryPath('scheduled-uncommitted-skill', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'scheduled-uncommitted-skill-fire-run';
     const scheduleId = 'scheduled-uncommitted-skill-schedule';
     const sessionId = 'scheduled-uncommitted-skill-session';
@@ -4897,7 +4873,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -4946,7 +4922,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(running).toBe(true);
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -4960,7 +4935,7 @@ describe('createRuntimeComposition durable execution', () => {
         },
         toolbox: createToolbox([], { context: {} }),
         skills: { catalog: skillCatalog },
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
@@ -4979,15 +4954,14 @@ describe('createRuntimeComposition durable execution', () => {
         expect(skillResourceError).toBe('Resource not found, or the skill is not active');
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('does not rehydrate stale skills from prior scheduled fires', async () => {
-    const databasePath = createTemporaryPath('scheduled-stale-skill', '.sqlite');
+    const database = createSqliteStorageFixture();
     const runId = 'scheduled-stale-skill-fire-run';
     const scheduleId = 'scheduled-stale-skill-schedule';
     const sessionId = 'scheduled-stale-skill-session';
@@ -5005,7 +4979,7 @@ describe('createRuntimeComposition durable execution', () => {
       const firstRuntime = await createRuntimeComposition({
         generate: async () => new Promise<never>(() => {}),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -5051,7 +5025,6 @@ describe('createRuntimeComposition durable execution', () => {
         expect(running).toBe(true);
       } finally {
         firstRuntime.durable?.engine[Symbol.dispose]?.();
-        firstRuntime.disposeStorage?.();
       }
 
       const secondRuntime = await createRuntimeComposition({
@@ -5065,7 +5038,7 @@ describe('createRuntimeComposition durable execution', () => {
         },
         toolbox: createToolbox([], { context: {} }),
         skills: { catalog: skillCatalog },
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
@@ -5084,10 +5057,9 @@ describe('createRuntimeComposition durable execution', () => {
         expect(skillResourceError).toBe('Resource not found, or the skill is not active');
       } finally {
         secondRuntime.durable?.engine[Symbol.dispose]?.();
-        secondRuntime.disposeStorage?.();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 });
@@ -5106,7 +5078,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
       // Deliberately no bureau-level `generate`/`toolbox` — proves the
       // catalog branch never touches `buildRunDepsFromSession`/the default
       // runtime composition (which would 404 with nothing configured here).
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -5160,7 +5132,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
     'registers Bureau guardrails on a recovered catalog run only when the agent does not resolve its own (agentResolvesGuardrails: %p)',
     async (agentResolvesGuardrails, expected) => {
       const runtime = await createRuntimeComposition({
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       });
 
@@ -5203,7 +5175,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
   describe('classifyCatalogRecoveredRun (AB-241 review finding)', () => {
     it('consumes the cache resolveRunServices already populated, without a second storage read', async () => {
       const runtime = await createRuntimeComposition({
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       });
 
@@ -5271,7 +5243,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
 
     it('falls back to a fresh storage read when called without a cache entry (no principal recorded)', async () => {
       const runtime = await createRuntimeComposition({
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       });
 
@@ -5299,7 +5271,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
 
     it('classifies a genuinely unrecognized run id as not-catalog, with no attribution', async () => {
       const runtime = await createRuntimeComposition({
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       });
 
@@ -5314,7 +5286,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
 
   it('round-trips a conversation-shaped (not plain-string) AgentInput through the recovery record', async () => {
     const runtime = await createRuntimeComposition({
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -5354,7 +5326,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
 
   it('reports a missing catalog agent through the existing unavailable+reason path, never a bare unavailable (AB-29 precedent)', async () => {
     const runtime = await createRuntimeComposition({
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -5386,7 +5358,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
 
   it('reports a catalog resolver failure with the underlying error surfaced in the reason', async () => {
     const runtime = await createRuntimeComposition({
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -5423,7 +5395,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
   it('reattaches with a pin-and-warn diagnostic when the catalog agent definition revision drifted since checkpoint (AB-10 precedent)', async () => {
     const diagnostics: string[] = [];
     const runtime = await createRuntimeComposition({
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       onDiagnostic(event) {
         diagnostics.push(event.message);
@@ -5465,7 +5437,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
 
   it('reports "no catalog agent recovery resolver configured" when a record exists but nothing ever registered a resolver', async () => {
     const runtime = await createRuntimeComposition({
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -5497,7 +5469,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
 
   it('treats an unreadable catalog recovery record (a genuine decode failure, not merely absent) as unavailable', async () => {
     const runtime = await createRuntimeComposition({
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -5551,7 +5523,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
     ['an infinity', Number.POSITIVE_INFINITY],
   ])('reads a goal attempt marker with %s as its index as corrupt', async (_name, attemptIndex) => {
     const runtime = await createRuntimeComposition({
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -5578,7 +5550,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
 
   it('reads a decodable record of the wrong shape as corrupt for ownership, and as missing for every other consumer', async () => {
     const runtime = await createRuntimeComposition({
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -5606,7 +5578,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
 
   it('reports a distinct reason (never "no longer in the catalog") when the catalog agent exists but no longer supports durable definition resolution', async () => {
     const runtime = await createRuntimeComposition({
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -5642,7 +5614,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -5667,7 +5639,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
 
   it('claimCatalogRunRecoveryRecord writes a record only where none exists (COR-772)', async () => {
     const runtime = await createRuntimeComposition({
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -5726,7 +5698,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
     } as const;
 
     async function compose() {
-      return createRuntimeComposition({ storage: { type: 'memory' }, durable: true });
+      return createRuntimeComposition({ storage: new MemoryStorage(), durable: true });
     }
 
     it('tombstones the goal’s own claim in place, keeping everything else it recorded', async () => {
@@ -5926,10 +5898,10 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
 });
 
 describe('createRuntimeComposition storage and durable engine options', () => {
-  it('builds a durable engine over a memory storage configuration when durable is on', async () => {
+  it('builds a durable engine over a memory storage when durable is on', async () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       // Memory storage defaults durable to OFF (checkpoints are lost with the
       // process), so explicitly enable.
       durable: true,
@@ -5944,7 +5916,7 @@ describe('createRuntimeComposition storage and durable engine options', () => {
   it('threads durableGuardrails.history into the durable engine', async () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durableGuardrails: { history: { maxEvents: 10_000 } },
       durable: true,
     });
@@ -5958,7 +5930,7 @@ describe('createRuntimeComposition storage and durable engine options', () => {
   it('threads observability into the durable engine', async () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       observability: true,
       durable: true,
     });
@@ -5976,7 +5948,7 @@ describe('createRuntimeComposition storage and durable engine options', () => {
     const logRecords: unknown[] = [];
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       onLog: (record) => logRecords.push(record),
       durable: true,
     });
@@ -5993,7 +5965,7 @@ describe('createRuntimeComposition storage and durable engine options', () => {
     // A conditional text-store KV layer is built over the raw Storage, enabling session persistence.
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     try {
@@ -6979,7 +6951,7 @@ describe('content source resolver on a scheduled fire and a recovered run (COR-7
       {
         generate: async () => ({ content: 'ok', toolCalls: [] }),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       },
       { contentSourceResolverFor },
@@ -7023,7 +6995,7 @@ describe('content source resolver on a scheduled fire and a recovered run (COR-7
       {
         generate: async () => ({ content: 'ok', toolCalls: [] }),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       },
       { contentSourceResolverFor },
@@ -7057,7 +7029,7 @@ describe('content source resolver on a scheduled fire and a recovered run (COR-7
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'ok', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     try {
@@ -7072,7 +7044,7 @@ describe('content source resolver on a scheduled fire and a recovered run (COR-7
       generate: async () => ({ content: 'ok', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
       guardrails: { input: { detectors: [], assetSafety: { unknown: 'block' } } },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     try {

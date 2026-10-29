@@ -58,7 +58,6 @@ import type {
   RegistryAgnosticEngine,
   ScheduleFilter,
   ScheduleSummary,
-  StorageConfiguration,
   WorkflowLogRecord,
   WorkflowState,
   WorkflowSummary,
@@ -495,11 +494,12 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   modelPolicy?: BureauModelPolicyOptions;
   store?: Store;
   /**
-   * Storage configuration or an already-constructed Weft storage adapter. Raw
-   * adapters let platform packages such as `cloudflare` supply a Durable Object
-   * SQLite backend; their lifecycle remains owned by the caller.
+   * The storage adapter for contexts, key-value data, and the durable engine. The caller
+   * constructs it (`new BunSQLiteStorage(path)`, `new LMDBStorage(path)`, a Cloudflare Durable
+   * Object SQLite adapter) and keeps its lifecycle: Bureau never disposes a storage it was given,
+   * so close it after the Bureau has shut down.
    */
-  storage?: StorageConfiguration | Storage;
+  storage?: Storage;
   /**
    * Override for Weft-backed durable execution. Durable execution is **on by
    * default whenever a persistent `storage` backend (`sqlite`/`lmdb`) is

@@ -22,6 +22,7 @@ import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { agentFileDirectory } from '../sources/agent-file-directory';
 import { workflowFileDirectory } from '../sources/workflow-file-directory';
 import { startTaskFrom } from '../test/task-start-request.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 
 /** Wait, by the clock and not by a count of turns, until a session run is no longer running. */
 async function settledRun(bureau: Bureau<AgentDefinitions>, runId: string): Promise<void> {
@@ -105,7 +106,7 @@ export async function startWorkflowToolsBureau(
     agentSource: agentFileDirectory(agentsPath),
     workflowSource: workflowFileDirectory(workflowsPath),
     models: { generate: (_descriptor: BackendDescriptor) => generate },
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
     ...options.overrides,
   });

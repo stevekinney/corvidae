@@ -43,7 +43,7 @@ describe('memory over storage needs an explicit id', () => {
     const fixture = createSqliteStorageFixture({ runtime });
     try {
       const failure = await rejectionOf(
-        createBureau({ storage: fixture.configuration, memory: governedMemory() }),
+        createBureau({ storage: fixture.storage, memory: governedMemory() }),
       );
       expect(failure).toBeInstanceOf(BureauError);
       expect((failure as BureauError).code).toBe('BAD_REQUEST');
@@ -58,7 +58,7 @@ describe('memory over storage needs an explicit id', () => {
     try {
       const bureau = await createBureau({
         id: 'option-grouping-bureau',
-        storage: fixture.configuration,
+        storage: fixture.storage,
         memory: governedMemory(),
       });
       bureaus.push(bureau);
@@ -70,7 +70,7 @@ describe('memory over storage needs an explicit id', () => {
 
   it('refuses memory over in-memory storage without an id, as the handler does for any storage', async () => {
     const failure = await rejectionOf(
-      createBureau({ storage: { type: 'memory' }, memory: governedMemory() }),
+      createBureau({ storage: new MemoryStorage(), memory: governedMemory() }),
     );
     expect((failure as BureauError).code).toBe('BAD_REQUEST');
   });

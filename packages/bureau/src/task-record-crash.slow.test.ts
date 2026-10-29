@@ -22,6 +22,7 @@ import { join } from 'node:path';
 
 import { HANG_GUARD_MILLISECONDS, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { stopWhen, createAgent } from '@lostgradient/operative';
+import type { Storage } from '@lostgradient/storage';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
@@ -31,12 +32,13 @@ import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test
 import { createAskingAgent, finishes } from './test/task-record-crash-agent';
 import type { Bureau, BureauReviews, BureauInternals, BureauOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { awakeTurns, waitUntil } from '@lostgradient/testing/wait-until';
 
 const CHILD = join(import.meta.dir, 'test', 'task-record-crash-child.ts');
 
 /** The Bureau every scenario boots over the dead process's storage. */
-function openBureau(storagePath: string, onEvent?: BureauOptions<AgentDefinitions>['onEvent']) {
+function openBureau(storage: Storage, onEvent?: BureauOptions<AgentDefinitions>['onEvent']) {
   return createBureau<AgentDefinitions>({
     id: 'task-record-crash',
     agents: {
@@ -47,7 +49,7 @@ function openBureau(storagePath: string, onEvent?: BureauOptions<AgentDefinition
         stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
       }),
     },
-    storage: { type: 'sqlite', path: storagePath },
+    storage,
     durable: true,
     durableOwnership: { ownership: 'none' },
     // Shutting down while the recovered parked run is still in flight reports it as cut short.
@@ -70,7 +72,12 @@ async function crashScenario(
   const directory = mkdtempSync(join(tmpdir(), `corvidae-task-record-crash-${mode}-`));
   const storagePath = join(directory, 'bureau.sqlite');
   const markerPath = join(directory, 'marker.json');
-  scope.onHang(() => rmSync(directory, { recursive: true, force: true }));
+  // The child's store, opened here only once the child is gone.
+  const store = createSqliteStorageFixture({ path: storagePath });
+  scope.onHang(async () => {
+    await store.dispose();
+    rmSync(directory, { recursive: true, force: true });
+  });
   try {
     const child = spawnWithHangGuard(['bun', CHILD, mode, storagePath, markerPath], {
       stdout: 'pipe',
@@ -83,7 +90,7 @@ async function crashScenario(
     expect(unexpectedChildStderr(stderr)).toBe('');
     const { runId } = JSON.parse(readFileSync(markerPath, 'utf8')) as { runId: string };
 
-    const bureau = await openBureau(storagePath, onEvent);
+    const bureau = await openBureau(store.storage, onEvent);
     scope.onHang(() => bureau.shutdown());
     try {
       await bureau.recovery();
@@ -92,6 +99,7 @@ async function crashScenario(
       await bureau.shutdown();
     }
   } finally {
+    await store.dispose();
     rmSync(directory, { recursive: true, force: true });
   }
 }
@@ -112,7 +120,12 @@ async function disposedScenario(scope: ScenarioScope): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), 'corvidae-task-record-crash-disposed-'));
   const storagePath = join(directory, 'bureau.sqlite');
   const markerPath = join(directory, 'marker.json');
-  scope.onHang(() => rmSync(directory, { recursive: true, force: true }));
+  // The child's store, opened here only once the child is gone.
+  const store = createSqliteStorageFixture({ path: storagePath });
+  scope.onHang(async () => {
+    await store.dispose();
+    rmSync(directory, { recursive: true, force: true });
+  });
   try {
     const child = spawnWithHangGuard(['bun', CHILD, 'parked', storagePath, markerPath], {
       stdout: 'pipe',
@@ -125,13 +138,13 @@ async function disposedScenario(scope: ScenarioScope): Promise<void> {
     expect(unexpectedChildStderr(stderr)).toBe('');
     const { runId } = JSON.parse(readFileSync(markerPath, 'utf8')) as { runId: string };
 
-    const second = await openBureau(storagePath);
+    const second = await openBureau(store.storage);
     await second.recovery();
     expect(OPEN_STATES.has(await taskStatusOf(second, runId))).toBe(true);
     // A graceful shutdown leaves a task this process recovered, not started, for the next boot.
     await second.dispose();
 
-    const third = await openBureau(storagePath);
+    const third = await openBureau(await store.reopen());
     scope.onHang(() => third.shutdown());
     try {
       await third.recovery();
@@ -147,6 +160,7 @@ async function disposedScenario(scope: ScenarioScope): Promise<void> {
       await third.shutdown();
     }
   } finally {
+    await store.dispose();
     rmSync(directory, { recursive: true, force: true });
   }
 }

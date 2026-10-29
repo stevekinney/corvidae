@@ -18,6 +18,7 @@ import type { AgentDefinitions } from './agent-catalog';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { agentFileDirectory } from './sources/agent-file-directory';
 import { workflowFileDirectory } from './sources/workflow-file-directory';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -38,7 +39,8 @@ it('writes the file as the agent after a restart, for a session run that was in 
       tools: `[${WORKFLOW_TOOL_NAMES.join(', ')}]`,
     }),
   );
-  const storage = { type: 'sqlite', path: join(root, 'bureau.sqlite') } as const;
+  const database = createSqliteStorageFixture({ path: join(root, 'bureau.sqlite') });
+  cleanups.push(() => database.dispose());
   const results: unknown[] = [];
 
   async function open(generate: GenerateFunction): Promise<Bureau> {
@@ -47,7 +49,7 @@ it('writes the file as the agent after a restart, for a session run that was in 
       agentSource: agentFileDirectory(agents),
       workflowSource: workflowFileDirectory(workflows),
       models: { generate: () => generate },
-      storage,
+      storage: database.open(),
       durable: true,
       durableOwnership: { ownership: 'none' },
       onDiagnostic: () => undefined,

@@ -17,6 +17,8 @@ import {
   type WorkflowBureauHarness,
 } from './testing/workflow-bureau.test-support';
 import { createAgent } from '@lostgradient/operative';
+import { MemoryStorage } from '@lostgradient/storage';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -133,10 +135,12 @@ describe('restarting a Bureau over workflow files', () => {
   it('leaves exactly one live schedule after two restarts in a row', async () => {
     const root = await mkdtemp(join(tmpdir(), 'bureau-workflow-restart-'));
     cleanups.push(() => rm(root, { recursive: true, force: true }));
-    const storagePath = join(root, 'bureau.sqlite');
+    const storageFixture = createSqliteStorageFixture({ path: join(root, 'bureau.sqlite') });
+    // Closed after the Bureaus: the cleanups dispose those first.
+    cleanups.push(() => storageFixture.dispose());
     const workflows = join(root, 'workflows');
     const overrides = {
-      storage: { type: 'sqlite', path: storagePath },
+      storage: storageFixture.storage,
       durableOwnership: { ownership: 'none' },
     } as const;
     const first = await startWorkflowBureau({ directory: workflows, overrides });
@@ -202,7 +206,7 @@ describe('the engine’s scheduler', () => {
     try {
       const bureau = await createBureau({
         agents: {},
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       });
       cleanups.push(() => bureau.dispose());

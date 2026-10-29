@@ -8,6 +8,8 @@
 //   AB-44/AB-45's `stepResult.pendingHumanWait` check forces the step loop
 //   to break regardless of `stopWhen`, and the workflow's own
 //   `yield* ctx.waitForSignal(signalName)` genuinely parks. What was
+import { createSqliteStorageFixture } from './test/storage-fixtures';
+
 //   actually broken was the run's OBSERVABLE liveness:
 //   `LivenessSnapshot.status` never left `'running'` for a human-wait park
 //   — `deriveAssessment`'s `'waiting'` branch was unreachable.
@@ -44,11 +46,10 @@ import {
 } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
-
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import type { AgentDefinitions } from './agent-catalog';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const runtime = createDefaultRuntimeServices();
 
@@ -104,7 +105,7 @@ describe('requestHumanInput park is observable on a fresh dispatch (AB-336)', ()
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       // Deliberately NOT `stopWhen.toolCalled('requestHumanInput')` — every
       // pre-existing test in create-bureau.test.ts uses that condition,
@@ -189,7 +190,7 @@ describe('requestHumanInput park is observable on a fresh dispatch (AB-336)', ()
           stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       // `toolCalled` stops the FIRST step right on the park request (so the
       // post-loop park check sees `pendingHumanWait`); `noToolCalls` stops
@@ -247,7 +248,7 @@ describe('requestHumanInput park survives a process restart while still parked (
     // disposed — simulating a crash while genuinely parked, the exact
     // scenario the crash fixture's `signal-parked` marker now drives through
     // the real tool instead of a bespoke stand-in.
-    const databasePath = createTemporaryPath('ab336-human-wait-recovery', '.sqlite');
+    const database = createSqliteStorageFixture();
 
     let aCalls = 0;
     const bureauA = await createBureau<AgentDefinitions>({
@@ -270,7 +271,7 @@ describe('requestHumanInput park survives a process restart while still parked (
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.storage,
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
@@ -297,7 +298,7 @@ describe('requestHumanInput park survives a process restart while still parked (
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.open(),
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
@@ -344,7 +345,7 @@ describe('requestHumanInput park survives a process restart while still parked (
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 });
@@ -355,7 +356,7 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
     // process died before the run committed a step past the park. On recovery
     // the last checkpointed step is still the park, so it is re-synthesized;
     // its id must equal the persisted one or it would show as pending again.
-    const databasePath = createTemporaryPath('cor106-human-wait-resolved', '.sqlite');
+    const database = createSqliteStorageFixture();
 
     let aCalls = 0;
     const bureauA = await createBureau<AgentDefinitions>({
@@ -379,7 +380,7 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.storage,
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
@@ -408,7 +409,7 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.open(),
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
@@ -433,12 +434,12 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
   it('numbers a re-park after several resolved parks and a mid-step crash past all of them', async () => {
-    const databasePath = createTemporaryPath('cor106-human-wait-multi-park', '.sqlite');
+    const database = createSqliteStorageFixture();
 
     let aCalls = 0;
     const bureauA = await createBureau<AgentDefinitions>({
@@ -465,7 +466,7 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.storage,
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
@@ -514,7 +515,7 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.open(),
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
@@ -538,14 +539,14 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 });
 
 describe('a re-park after a resolved park and a crash before the next commit (COR-106)', () => {
   it('surfaces the re-park on the same signal instead of hiding it behind the resolved id', async () => {
-    const databasePath = createTemporaryPath('cor106-human-wait-resume-crash', '.sqlite');
+    const database = createSqliteStorageFixture();
 
     let aCalls = 0;
     const bureauA = await createBureau<AgentDefinitions>({
@@ -571,7 +572,7 @@ describe('a re-park after a resolved park and a crash before the next commit (CO
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.storage,
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
@@ -611,7 +612,7 @@ describe('a re-park after a resolved park and a crash before the next commit (CO
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.open(),
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
@@ -635,14 +636,14 @@ describe('a re-park after a resolved park and a crash before the next commit (CO
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 });
 
 describe('resolving a recovered run re-park leaves no phantom review (COR-106)', () => {
   it('keeps listPendingReviews empty while the resumed run is still running its next step', async () => {
-    const databasePath = createTemporaryPath('cor106-human-wait-phantom', '.sqlite');
+    const database = createSqliteStorageFixture();
     const park = (id: string) => ({
       content: '',
       toolCalls: [{ id, name: 'requestHumanInput', arguments: { signalName: 'human-response' } }],
@@ -655,7 +656,7 @@ describe('resolving a recovered run re-park leaves no phantom review (COR-106)',
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite' as const, path: databasePath },
+      storage: database.storage,
       durable: true as const,
       durableOwnership: { ownership: 'none' as const },
     });
@@ -714,14 +715,14 @@ describe('resolving a recovered run re-park leaves no phantom review (COR-106)',
       );
       await bureauA.dispose();
       await bureauB.dispose();
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 });
 
 describe('parallel same-signal parks keep review ids stable across a restart (COR-106)', () => {
   it('reconstructs no phantom review after two parallel same-signal calls, a re-park, and a crash', async () => {
-    const databasePath = createTemporaryPath('cor106-parallel-park', '.sqlite');
+    const database = createSqliteStorageFixture();
     const call = (id: string) => ({
       id,
       name: 'requestHumanInput',
@@ -741,7 +742,7 @@ describe('parallel same-signal parks keep review ids stable across a restart (CO
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.storage,
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
@@ -782,7 +783,7 @@ describe('parallel same-signal parks keep review ids stable across a restart (CO
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.open(),
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
@@ -802,7 +803,7 @@ describe('parallel same-signal parks keep review ids stable across a restart (CO
       );
       await bureauA.dispose();
       await bureauB.dispose();
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 });
@@ -818,7 +819,7 @@ describe('a run recovered mid-step whose replay reaches requestHumanInput actual
     // never included `requestHumanInput`: the call would settle as a
     // tool-not-found error, `pendingHumanWait` would never be set, and the
     // step loop would continue straight past the park.
-    const databasePath = createTemporaryPath('ab336-toolbox-recovery', '.sqlite');
+    const database = createSqliteStorageFixture();
 
     let bureauAReachedStep1 = false;
     const bureauA = await createBureau<AgentDefinitions>({
@@ -837,7 +838,7 @@ describe('a run recovered mid-step whose replay reaches requestHumanInput actual
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.storage,
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
@@ -875,7 +876,7 @@ describe('a run recovered mid-step whose replay reaches requestHumanInput actual
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.open(),
       durable: true,
       durableOwnership: { ownership: 'none' },
     });
@@ -921,7 +922,7 @@ describe('a run recovered mid-step whose replay reaches requestHumanInput actual
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 });
@@ -995,7 +996,7 @@ describe("combineToolboxes forwards the base toolbox's approval gating to a huma
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -1051,7 +1052,7 @@ describe("combineToolboxes forwards the base toolbox's approval gating to a huma
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -1147,7 +1148,7 @@ describe('the first park request in a step is honored and the rest are refused (
           ),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       maintenance: 'manual',
     });

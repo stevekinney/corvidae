@@ -50,7 +50,7 @@ describe('a restored approval keeps the skill policy it was requested under', ()
     };
     const first = await harness.open({
       ...options,
-      storage: { type: 'sqlite', path },
+      storage: harness.sqliteHandle(path),
       toolbox: approvalToolbox([]),
     });
     const { fireId } = await fireOnce(first, OWNER.alice, 'skill-fire-session');
@@ -65,7 +65,7 @@ describe('a restored approval keeps the skill policy it was requested under', ()
     const charges: number[] = [];
     const restarted = await harness.open({
       ...options,
-      storage: { type: 'sqlite', path },
+      storage: harness.sqliteHandle(path),
       toolbox: approvalToolbox(charges),
     });
     const restored = await reviewOf(restarted, fireId);
@@ -87,7 +87,7 @@ describe('a restored approval keeps the skill policy it was requested under', ()
     };
     const first = await harness.open({
       ...options,
-      storage: { type: 'sqlite', path },
+      storage: harness.sqliteHandle(path),
       toolbox: approvalToolbox([]),
     });
     const run = await first.tasks.start('default', 'charge, then lock', { principal: OWNER.alice });
@@ -104,7 +104,7 @@ describe('a restored approval keeps the skill policy it was requested under', ()
     const charges: number[] = [];
     const restarted = await harness.open({
       ...options,
-      storage: { type: 'sqlite', path },
+      storage: harness.sqliteHandle(path),
       toolbox: approvalToolbox(charges),
     });
     const restored = await pollUntil(
@@ -132,7 +132,7 @@ describe('the control: without the skill, the same restored approval runs', () =
     const options = { generate, stopWhen: stopWhen.noToolCalls() };
     const first = await harness.open({
       ...options,
-      storage: { type: 'sqlite', path },
+      storage: harness.sqliteHandle(path),
       toolbox: approvalToolbox([]),
     });
     const run = await first.tasks.start('default', 'charge', { principal: OWNER.alice });
@@ -143,7 +143,7 @@ describe('the control: without the skill, the same restored approval runs', () =
     const charges: number[] = [];
     const restarted = await harness.open({
       ...options,
-      storage: { type: 'sqlite', path },
+      storage: harness.sqliteHandle(path),
       toolbox: approvalToolbox(charges),
     });
     await pollUntil(

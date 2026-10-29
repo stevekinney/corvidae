@@ -28,6 +28,7 @@ import { createBureauHandler } from './create-bureau-handler.ts';
 import { mayAccessOwnedResource, ownerOfPrincipal } from './owner-predicate.ts';
 import { createMemoryAssetStorage } from '../assets/storage';
 import type { AgentDefinitions } from '../agent-catalog';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const silent = () => undefined;
 const API_KEY = 'reviews-test-key';
@@ -705,7 +706,7 @@ describe('the reviews operations against a real Bureau', () => {
           stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     const run = await bureau.tasks.start('default', 'park-me', { principal: 'api-key:tester' });
@@ -822,7 +823,7 @@ describe('the reviews operations against a real Bureau', () => {
           stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     try {
@@ -907,7 +908,7 @@ describe('the reviews operations against a real Bureau', () => {
           stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     try {
@@ -1033,7 +1034,7 @@ describe('who reaches the human wait of a bureau.run() run, through a real Burea
           stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     const run = await bureau.tasks.start(

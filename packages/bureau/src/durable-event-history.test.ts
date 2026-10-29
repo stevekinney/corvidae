@@ -1,7 +1,7 @@
 /**
  * Tests for `createDurableEventHistory` (AB-91's `ab91-01` slice, AB-310).
  *
- * Uses `resolveStorage({ type: 'memory' })` directly for the ordering/gap/
+ * Uses `new MemoryStorage()` directly for the ordering/gap/
  * validation tests — `MemoryStorage` implements the same `Storage` contract
  * `FleetEventFeed` requires (`conditionalBatch`), so no real backend is
  * needed to prove owner-filtering, cursor, and retention-floor logic. The
@@ -28,13 +28,8 @@ import {
   SessionDeletedEvent,
   SessionSavedEvent,
 } from '@lostgradient/operative';
-import {
-  createFleetEventFeed,
-  type FleetEventFeed,
-  KEYS,
-  resolveStorage,
-} from '@lostgradient/weft';
-import { type Storage } from '@lostgradient/storage';
+import { createFleetEventFeed, type FleetEventFeed, KEYS } from '@lostgradient/weft';
+import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import {
@@ -64,7 +59,7 @@ import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-
 import type { Bureau, BureauDiagnostic } from './types';
 
 async function createMemoryStorage(): Promise<Storage> {
-  return resolveStorage({ type: 'memory' });
+  return new MemoryStorage();
 }
 
 /**
@@ -1569,14 +1564,13 @@ describe('createDurableEventHistory', () => {
       const owner = { kind: 'run' as const, id: 'run-1' };
 
       try {
-        const storage1 = await resolveStorage(fixture.configuration);
+        const storage1 = fixture.storage;
         const history1 = createDurableEventHistory(storage1, runtime);
         await history1.record(owner, 'run.started', { attempt: 1 });
         await history1.record(owner, 'step.completed', { attempt: 1 });
         await history1.dispose();
-        storage1[Symbol.dispose]();
 
-        const storage2 = await resolveStorage(fixture.configuration);
+        const storage2 = await fixture.reopen();
         const history2 = createDurableEventHistory(storage2, runtime);
         const page = await history2.page(owner);
         if ('outcome' in page) throw new Error('expected a page, got a gap');
@@ -1585,7 +1579,6 @@ describe('createDurableEventHistory', () => {
         expect(page.events.map((event) => event.sequence)).toEqual([0, 1]);
 
         await history2.dispose();
-        storage2[Symbol.dispose]();
       } finally {
         await fixture.dispose();
       }
@@ -1597,14 +1590,13 @@ describe('createDurableEventHistory', () => {
       const owner = { kind: 'schedule' as const, id: 'sched-1' };
 
       try {
-        const storage1 = await resolveStorage(fixture.configuration);
+        const storage1 = fixture.storage;
         const history1 = createDurableEventHistory(storage1, runtime);
         await history1.record(owner, 'schedule.created', { scheduleId: 'sched-1' });
         await history1.record(owner, 'schedule.paused', { scheduleId: 'sched-1' });
         await history1.dispose();
-        storage1[Symbol.dispose]();
 
-        const storage2 = await resolveStorage(fixture.configuration);
+        const storage2 = await fixture.reopen();
         const history2 = createDurableEventHistory(storage2, runtime);
         const page = await history2.page(owner);
         if ('outcome' in page) throw new Error('expected a page, got a gap');
@@ -1616,7 +1608,6 @@ describe('createDurableEventHistory', () => {
         expect(page.events.map((event) => event.sequence)).toEqual([0, 1]);
 
         await history2.dispose();
-        storage2[Symbol.dispose]();
       } finally {
         await fixture.dispose();
       }
@@ -1628,17 +1619,15 @@ describe('createDurableEventHistory', () => {
       const owner = { kind: 'session' as const, id: 'session-1' };
 
       try {
-        const storage1 = await resolveStorage(fixture.configuration);
+        const storage1 = fixture.storage;
         const history1 = createDurableEventHistory(storage1, runtime);
         await history1.record(owner, 'session.created', { attempt: 1 });
         await history1.record(owner, 'session.deleted', { attempt: 1 });
         await history1.dispose();
-        // LMDB's single-writer lock: the first handle must be fully closed
-        // before a second handle opens the same directory, or the second
-        // open deadlocks (per the fixture's own doc comment).
-        storage1[Symbol.dispose]();
+        // LMDB's single-writer lock: `reopen()` closes the first handle before
+        // the second opens the same directory.
 
-        const storage2 = await resolveStorage(fixture.configuration);
+        const storage2 = await fixture.reopen();
         const history2 = createDurableEventHistory(storage2, runtime);
         const page = await history2.page(owner);
         if ('outcome' in page) throw new Error('expected a page, got a gap');
@@ -1650,7 +1639,6 @@ describe('createDurableEventHistory', () => {
         expect(page.events.map((event) => event.sequence)).toEqual([0, 1]);
 
         await history2.dispose();
-        storage2[Symbol.dispose]();
       } finally {
         await fixture.dispose();
       }

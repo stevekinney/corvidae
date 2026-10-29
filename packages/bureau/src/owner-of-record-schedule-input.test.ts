@@ -15,19 +15,20 @@ import { describe, expect, it } from 'bun:test';
 import { createBureau } from './create-bureau';
 import { createRuntimeComposition } from './runtime-composition';
 import type { AgentDefinitions } from './agent-catalog';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 
 describe('the owner of a schedule that is not an agent schedule (COR-718)', () => {
   it('reports no owner, and shows its history to no principal', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'owner-of-record-schedule-input-'));
-    const databasePath = join(directory, 'bureau.sqlite');
+    await using database = createSqliteStorageFixture({ path: join(directory, 'bureau.sqlite') });
     try {
       // Registered straight on the engine, far enough out that it never fires.
       const runtime = await createRuntimeComposition({
         generate,
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -40,7 +41,6 @@ describe('the owner of a schedule that is not an agent schedule (COR-718)', () =
         );
       } finally {
         runtime.durable?.engine[Symbol.dispose]?.();
-        runtime.disposeStorage?.();
       }
 
       const bureau = await createBureau<AgentDefinitions>({
@@ -51,7 +51,7 @@ describe('the owner of a schedule that is not an agent schedule (COR-718)', () =
             stopWhen: stopWhen.noToolCalls(),
           }),
         },
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -81,7 +81,7 @@ describe('the owner of a schedule that is not an agent schedule (COR-718)', () =
 
 describe('the start of the text a schedule sends (COR-1654)', () => {
   it('is the whole text when it is short, the text parts joined when it is a list, and cut when it is long', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'schedule-input-preview-'));
+    const database = createSqliteStorageFixture();
     try {
       const bureau = await createBureau<AgentDefinitions>({
         agents: {
@@ -91,7 +91,7 @@ describe('the start of the text a schedule sends (COR-1654)', () => {
             stopWhen: stopWhen.noToolCalls(),
           }),
         },
-        storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -129,7 +129,7 @@ describe('the start of the text a schedule sends (COR-1654)', () => {
         await bureau.dispose();
       }
     } finally {
-      await rm(directory, { recursive: true, force: true });
+      await database.dispose();
     }
   });
 });

@@ -24,6 +24,7 @@ import {
 } from './workflow-tools';
 import { agentFileDirectory } from './sources/agent-file-directory';
 import { workflowFileDirectory } from './sources/workflow-file-directory';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const harnesses: WorkflowToolsHarness[] = [];
 afterEach(async () => {
@@ -96,7 +97,7 @@ describe('which agents are offered the tools', () => {
         agentSource: agentFileDirectory('/nonexistent', { tools: { [name]: lookupTool } }),
         workflowSource: workflowFileDirectory('/nonexistent-workflows'),
         models: { generate: () => async () => ({ content: '', toolCalls: [] }) },
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       }).then(
         (bureau) => (bureau.dispose(), undefined),
@@ -113,7 +114,7 @@ describe('which agents are offered the tools', () => {
       agents: {},
       agentSource: agentFileDirectory('/nonexistent', { tools: { 'workflows-list': lookupTool } }),
       models: { generate: () => async () => ({ content: '', toolCalls: [] }) },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     await bureau.dispose();

@@ -21,10 +21,6 @@
  * `catalog-run-asset-release.test.ts`, `goal-forwarder.test.ts`, `bureau-catalog-dispatch.test.ts`
  * and `assets/row-asset-claims.test.ts`.
  */
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-
 import { createManualRuntimeServices, type ManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createAgent,
@@ -60,6 +56,11 @@ import {
 } from './testing/goal-fixtures.test-support';
 import { inspect } from './testing/goal-recovery-fixtures.test-support';
 import type { Bureau, BureauDiagnostic } from './types';
+import { MemoryStorage, type Storage } from '@lostgradient/storage';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -205,16 +206,12 @@ async function releasedHolders(bureau: Bureau, assetId: string, runId: string): 
   }, `run "${runId}" never released its claim on asset "${assetId}"`);
 }
 
-const durableEngine = { storage: { type: 'memory' as const }, durable: true };
+const durableEngine = { storage: new MemoryStorage(), durable: true };
 
-async function storageDirectory(): Promise<{
-  readonly storage: { type: 'sqlite'; path: string };
-}> {
-  const directory = await mkdtemp(join(tmpdir(), 'bureau-run-asset-claims-'));
-  cleanups.push(async () => {
-    await rm(directory, { recursive: true, force: true });
-  });
-  return { storage: { type: 'sqlite', path: join(directory, 'bureau') } };
+async function storageDirectory(): Promise<PersistentBureauStorageFixture> {
+  const store = createSqliteStorageFixture();
+  cleanups.push(() => store.dispose());
+  return store;
 }
 
 async function goalStatusOf(bureau: Bureau, goalRunId = 'g1'): Promise<string | undefined> {
@@ -357,7 +354,7 @@ describe.each([
     const options: Parameters<typeof createBureau>[0] = {
       agents: { worker },
       validators: [validator],
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       assets: { storage: fixture.storage, policy: { defaultRetentionMilliseconds: 0 } },
       onDiagnostic: () => undefined,
@@ -461,7 +458,7 @@ describe('a goal whose session is deleted before the hand-over claims for it', (
     const bureau = await createBureau<AgentDefinitions>({
       agents: { worker },
       validators: [validator],
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       assets: { storage: fixture.storage, policy: { defaultRetentionMilliseconds: 0 } },
       onDiagnostic: () => undefined,
@@ -546,17 +543,17 @@ describe('a goal attempt across a restart', () => {
 
   const hangForever = () => new Promise<never>(() => {});
 
-  /** A bureau over `location` whose goals run on the real clock and recover whatever was left. */
+  /** A bureau over `storage` whose goals run on the real clock and recover whatever was left. */
   async function openGoalBureau(
     fixture: ReturnType<typeof createMemoryAssetStorageFixture>,
-    location: Awaited<ReturnType<typeof storageDirectory>>,
+    storage: Storage,
     worker: ReturnType<typeof generating>,
     onDiagnostic: (diagnostic: BureauDiagnostic) => void,
   ): Promise<Bureau> {
     const bureau = await createBureau({
       agents: { worker },
       validators: [createCheckValidator()],
-      ...location,
+      storage,
       durable: true,
       durableOwnership: { ownership: 'none' },
       assets: { storage: fixture.storage, policy: { defaultRetentionMilliseconds: 0 } },
@@ -590,7 +587,7 @@ describe('a goal attempt across a restart', () => {
 
     const first = await openGoalBureau(
       fixture,
-      location,
+      location.storage,
       generating(hangForever),
       diagnostics.onDiagnostic,
     );
@@ -603,7 +600,7 @@ describe('a goal attempt across a restart', () => {
     const resume = gate();
     const second = await openGoalBureau(
       fixture,
-      location,
+      await location.reopen(),
       generating(async () => {
         await resume.promise;
         return { content: 'done', toolCalls: [] };
@@ -630,7 +627,7 @@ describe('a goal attempt across a restart', () => {
 
     const dead = await openGoalBureau(
       fixture,
-      location,
+      location.storage,
       generating(hangForever),
       diagnostics.onDiagnostic,
     );
@@ -639,7 +636,7 @@ describe('a goal attempt across a restart', () => {
     const assetId = await generatedAssetOf(claims, 'goal-g1-a0');
     expect(heldByRun(await holdersOf(dead, assetId), 'goal-g1-a0').length).toBeGreaterThan(0);
     // The control plane wrote the cancellation marker and the process died before anything else.
-    const view = await inspect(location.storage.path);
+    const view = await inspect(location.open());
     await view.store.requestCancellation(
       'g1',
       { requestedAt: '2026-10-02T12:00:00.000Z', reason: 'operator' },
@@ -649,7 +646,7 @@ describe('a goal attempt across a restart', () => {
 
     const second = await openGoalBureau(
       fixture,
-      location,
+      location.open(),
       generating(async () => ({ content: 'done', toolCalls: [] })),
       diagnostics.onDiagnostic,
     );

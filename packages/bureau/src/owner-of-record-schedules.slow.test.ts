@@ -17,6 +17,8 @@ import { describe, expect, it } from 'bun:test';
 import { createBureau } from './create-bureau';
 import type { AgentDefinitions } from './agent-catalog';
 import { waitUntil } from '@lostgradient/testing/wait-until';
+import { MemoryStorage } from '@lostgradient/storage';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 // A schedule fire is driven by Weft's poller on real elapsed time, which is why
 // this file is a slow lane: nothing here can run faster than the schedule's
@@ -38,7 +40,7 @@ async function openBureau() {
         stopWhen: stopWhen.noToolCalls(),
       }),
     },
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
   });
 }
@@ -171,7 +173,9 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
 
   it('keeps the owner of a fire’s run and session across a restart', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'owner-of-record-fire-restart-'));
-    const path = join(directory, 'bureau.sqlite');
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
     const open = () =>
       createBureau<AgentDefinitions>({
         id: 'owner-fire-restart',
@@ -182,7 +186,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
             stopWhen: stopWhen.noToolCalls(),
           }),
         },
-        storage: { type: 'sqlite', path },
+        storage: pathFixture.storage,
         durable: true,
       });
     const first = await open();
@@ -231,7 +235,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     try {

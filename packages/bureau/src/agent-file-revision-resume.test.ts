@@ -19,8 +19,7 @@ import {
   createTemporaryDirectory,
   removeTemporaryPath,
 } from '@lostgradient/testing/temporary-path';
-import { resolveStorage } from '@lostgradient/weft';
-import { textValueStore } from '@lostgradient/storage';
+import { textValueStore, MemoryStorage } from '@lostgradient/storage';
 import { createConversationHistory } from 'conversationalist';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
@@ -32,6 +31,7 @@ import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bu
 import type { Bureau } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 import { agentFileDirectory } from './sources/agent-file-directory';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -100,7 +100,7 @@ describe('a pending approval restored after a restart', () => {
       join(directory, 'alpha-file.md'),
       agentFileText({ model: KNOWN_MODEL }, 'Now.\n'),
     );
-    const storage = await resolveStorage({ type: 'memory' });
+    const storage = new MemoryStorage();
     const kv = textValueStore(storage);
     const snapshots = createAgentSnapshotStore({
       store: kv,
@@ -195,13 +195,20 @@ describe('a session run the durable engine resumes after a restart', () => {
     cleanups.push(() => removeTemporaryPath(directory));
     const agents = createTemporaryDirectory('bureau-revision-resume-agents');
     cleanups.push(() => removeTemporaryPath(agents));
-    const storagePath = join(directory, 'bureau.sqlite');
+    const storageFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    // Closed after the Bureaus, which the cleanups dispose first.
+    cleanups.push(() => storageFixture.dispose());
     const hold = new Promise<never>(() => undefined);
     const overrides = {
       durable: true,
       durableOwnership: { ownership: 'none' as const },
       maintenance: 'manual' as const,
-      storage: { type: 'sqlite' as const, path: storagePath },
+      // Each Bureau these options open gets its own handle on the store.
+      get storage() {
+        return storageFixture.open();
+      },
     };
 
     const first = await open({

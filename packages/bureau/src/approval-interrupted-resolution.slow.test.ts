@@ -26,6 +26,7 @@ import {
 } from './test/process-crash-work-integrity-fixtures';
 import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
 import type { Bureau } from './types';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
 const runtime = createDefaultRuntimeServices();
@@ -40,9 +41,12 @@ async function interruptedApprovalScenario(scope: ScenarioScope): Promise<void> 
     const storagePath = join(directory, 'bureau');
     const markerPath = join(directory, 'marker.json');
     const toolFile = join(directory, INTERRUPTED_APPROVAL_FILE);
+    // The child's store, opened here only once the child is gone.
+    const store = createSqliteStorageFixture({ path: storagePath });
     let recoverer: Bureau | undefined;
     scope.onHang(async () => {
       await Promise.allSettled(recoverer === undefined ? [] : [recoverer.shutdown()]);
+      await store.dispose();
       removeTemporaryPath(directory);
     });
     try {
@@ -61,8 +65,7 @@ async function interruptedApprovalScenario(scope: ScenarioScope): Promise<void> 
       await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, CLAIM_TTL_MS * 10));
 
       recoverer = await createHarnessBureau({
-        backend: 'sqlite',
-        storagePath,
+        storage: store.storage,
         generate: async () => ({ content: 'recovered', toolCalls: [] }),
         toolbox: createInterruptedApprovalToolbox(directory),
       });
@@ -78,6 +81,7 @@ async function interruptedApprovalScenario(scope: ScenarioScope): Promise<void> 
       expect(lineCount(toolFile)).toBe(linesBeforeRestart);
     } finally {
       if (recoverer !== undefined) await Promise.allSettled([recoverer.shutdown()]);
+      await store.dispose();
       removeTemporaryPath(directory);
     }
   }

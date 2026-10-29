@@ -12,16 +12,16 @@ import {
   type RunFrame,
   createAgent,
 } from '@lostgradient/operative';
-import { resolveStorage } from '@lostgradient/weft';
 import { createToolbox, type Tool } from 'armorer';
 import { describe, expect, it, spyOn } from 'bun:test';
 
 import { createBureau } from './create-bureau';
 import type { AgentDefinitions } from './agent-catalog';
+import { MemoryStorage, type Storage } from '@lostgradient/storage';
 
 const ORIGIN = '2026-10-04T00:00:00.000Z';
 
-type WeftStorage = Awaited<ReturnType<typeof resolveStorage>>;
+type WeftStorage = Storage;
 
 /** The slice of a Weft storage the injected loss touches, which not every storage backend has. */
 interface ConditionalCommitStorage {
@@ -106,7 +106,7 @@ describe('a durable run that fails and then loses its checkpoint compare-and-swa
       generateRejected = true;
       throw new Error('provider unavailable');
     };
-    const base = await resolveStorage({ type: 'memory' });
+    const base = new MemoryStorage();
     const race = loseFirstCheckpointCommitAfter(base, () => generateRejected);
     const bureau = await createBureau<AgentDefinitions>({
       agents: {

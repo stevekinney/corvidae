@@ -7,8 +7,8 @@
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { type DurableEventOwner, type Subscription } from '@lostgradient/operative';
-import { createFleetEventFeed, resolveStorage } from '@lostgradient/weft';
-import { type Storage } from '@lostgradient/storage';
+import { createFleetEventFeed } from '@lostgradient/weft';
+import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import {
@@ -51,7 +51,7 @@ const closing = (reviewId: string) => ({ reviewId, runId: 'ignored', principal: 
 async function openHistory(
   diagnostics?: BureauDiagnostic[],
 ): Promise<{ history: DurableEventHistory; storage: Storage }> {
-  const storage = await resolveStorage({ type: 'memory' });
+  const storage = new MemoryStorage();
   const history = createDurableEventHistory(
     storage,
     createManualRuntimeServices(),

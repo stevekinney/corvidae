@@ -14,6 +14,7 @@ import { createBureau } from '../create-bureau.ts';
 import type { Bureau, BureauOptions } from '../types.ts';
 import { workflowFileText } from './workflow-file-fixtures.test-support.ts';
 import { workflowFileDirectory } from '../sources/workflow-file-directory';
+import { MemoryStorage } from '@lostgradient/storage';
 
 /** What a scripted agent was sent, and by which agent. */
 export interface AgentCall {
@@ -81,7 +82,7 @@ export async function startWorkflowBureau(
       ...scriptedAgents(options.agentNames ?? ['writer', 'editor'], options.replies ?? {}, calls),
     },
     workflowSource: workflowFileDirectory(directory),
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
     ...options.overrides,
   });

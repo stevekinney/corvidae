@@ -5,13 +5,8 @@
  */
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
-import {
-  type AuthConfig,
-  type AuthorizationScope,
-  principalFromApiKey,
-  type StorageConfiguration,
-} from '@lostgradient/weft';
-import { type Storage } from '@lostgradient/storage';
+import { type AuthConfig, type AuthorizationScope, principalFromApiKey } from '@lostgradient/weft';
+import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { HANG_GUARD_MILLISECONDS, afterAwakeTime } from '@lostgradient/testing/hang-guard';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { z } from 'zod';
@@ -252,7 +247,7 @@ export async function openBureau(
     humanInput?: BureauHumanInputOption;
     /** Stop a run at a tool call that needs approval, as a real host does. */
     stopAtApproval?: boolean;
-    storage?: StorageConfiguration | Storage;
+    storage?: Storage;
     publish?: readonly string[];
     agents?: Parameters<typeof createBureau>[0]['agents'];
     durableHistory?: boolean;
@@ -277,6 +272,12 @@ export async function openBureau(
     options.durableHistory === true
       ? createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() })
       : undefined;
+  // A Bureau or handler that refuses its options still leaves nothing open behind it.
+  const refused = async (error: unknown, bureau?: { dispose(): Promise<void> }): Promise<never> => {
+    await bureau?.dispose();
+    await fixture?.dispose();
+    throw error;
+  };
   const bureau = await createBureau<AgentDefinitions>({
     id: options.id ?? 'management-bureau',
     agents: {
@@ -292,7 +293,7 @@ export async function openBureau(
               : stopWhen.noToolCalls(),
       }),
     },
-    storage: options.storage ?? fixture?.configuration ?? { type: 'memory' },
+    storage: options.storage ?? fixture?.storage ?? new MemoryStorage(),
     durable: true,
     assets: {
       storage: options.assetStorage ?? createMemoryAssetStorage(),
@@ -304,12 +305,17 @@ export async function openBureau(
       ? {}
       : { humanInput: options.humanInput }),
     ...options.bureauOptions,
-  });
-  const handler = createBureauHandler(bureau, {
-    authentication,
-    ...(options.publish === undefined ? {} : { publish: options.publish }),
-    ...options.handlerOptions,
-  });
+  }).catch((error: unknown) => refused(error));
+  let handler: ReturnType<typeof createBureauHandler>;
+  try {
+    handler = createBureauHandler(bureau, {
+      authentication,
+      ...(options.publish === undefined ? {} : { publish: options.publish }),
+      ...options.handlerOptions,
+    });
+  } catch (error) {
+    return refused(error, bureau);
+  }
   return {
     bureau,
     handler,

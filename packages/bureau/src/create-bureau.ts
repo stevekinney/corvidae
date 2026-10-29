@@ -2281,7 +2281,6 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     // event; the user's `onDiagnostic` is still called once, inside `diagnose`.
     { ...options, id: bureauId, runtime: runtimeServices, onDiagnostic: diagnose },
     {
-      ownsStorage: booted.ownsStorage,
       decideToolFor: (owner, offered) => lateDecisions.toolWiringFor(true, owner, offered),
       toolGrantFor: async (taskId) =>
         (await taskRegistryHolder.current?.recordToolGrant(taskId, toolGrantNow())) ??
@@ -2379,7 +2378,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       ),
       async () => {
         await assetServiceInstance?.shutdown();
-        runtime.disposeStorage?.();
+        runtime.stopUsingStorage();
       },
     );
   }
@@ -2422,7 +2421,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     await attempt(() => assetServiceInstance?.shutdown());
     await attempt(() => runtime.durable?.observability?.dispose());
     await attempt(() => runtime.durable?.engine.shutdown());
-    await attempt(() => runtime.disposeStorage?.());
+    // The store is fenced off before the waiters settle (see above): Bureau never closes a storage
+    // it was given, so this is what keeps a settled waiter from committing to it (COR-1767).
+    runtime.stopUsingStorage();
     runtime.abandonCatalogAgentRunOptionsResolver(
       `the bureau failed while it was being constructed: ${serializeUnknownError(error)}`,
     );
@@ -17611,17 +17612,11 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         // released when the engine is disposed below — there is no module-global
         // reconstructor to clear here anymore.
         //
-        // Dispose the durable run engine, then the raw Storage, then the store —
-        // each guarded so a throw in one stage does not skip the next (engine
-        // dispose is synchronous and can throw in a degraded environment; the
-        // SQLite/LMDB handle must still be released).
-        //
-        // Durable execution is ON BY DEFAULT for a persistent storage backend, so
-        // most sqlite/lmdb bureaus now own an engine. The engine dispose does NOT
-        // close the raw Storage, and the KV/checkpoint views were created with
-        // `disposeUnderlyingStorage: false` — so the explicit `disposeStorage` is
-        // what actually releases the file handle (even when no engine was built,
-        // e.g. `durable: false` with sqlite).
+        // Dispose the durable run engine, then fence off the raw Storage, then the
+        // store — each guarded so a throw in one stage does not skip the next (engine
+        // dispose is synchronous and can throw in a degraded environment). The raw
+        // Storage is the caller's: Bureau stops using it but never closes it, so the
+        // caller closes it after this shutdown returns.
         try {
           // Observability dispose runs BEFORE engine dispose: it ends still-open
           // spans and unsubscribes the engine lifecycle listeners. If the engine
@@ -17692,7 +17687,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
               await fileAgents?.files.close();
             } finally {
               try {
-                runtime.disposeStorage?.();
+                // Bureau stops using the caller's storage, which the caller closes (COR-1767).
+                runtime.stopUsingStorage();
               } finally {
                 if (ownsStore) {
                   store.dispose();
@@ -19150,7 +19146,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       // background-shutdown signal so `shutdown()` can tell an in-flight
       // delivery's `fetchImpl` to abort — the mechanism `dispose()`'s prior
       // detached call gave up entirely, which is what let a delivery's
-      // write race `disposeStorage()` (AB-206 review finding, PR #402).
+      // write race storage teardown (AB-206 review finding, PR #402).
       { ...options.webhooks, signal: withBackgroundShutdownSignal(options.webhooks.signal) },
       diagnose,
       runtimeServices,

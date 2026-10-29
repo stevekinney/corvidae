@@ -17,6 +17,7 @@ import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, base64Of, pngBytes } from './testing/asset-fixtures.test-support';
 import type { AgentDefinitions } from './agent-catalog';
 import { waitUntil } from '@lostgradient/testing/wait-until';
+import { MemoryStorage } from '@lostgradient/storage';
 
 async function waitForReal(condition: () => boolean): Promise<true> {
   await waitUntil(condition, { message: 'waitForReal' });
@@ -43,7 +44,7 @@ describe('a scheduled fire with a media input (COR-716)', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       assets: { storage: fixture.storage },
     });
@@ -97,7 +98,7 @@ describe('a scheduled fire with a media input (COR-716)', () => {
           toolbox: createToolbox([]),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     try {

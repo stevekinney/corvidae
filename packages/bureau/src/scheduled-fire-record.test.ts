@@ -10,6 +10,7 @@ import {
   releaseScheduledFire,
 } from './scheduled-fire-record';
 import type { AgentDefinitions } from './agent-catalog';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 
@@ -58,7 +59,7 @@ describe('the schedule.fired entry (COR-718)', () => {
       agents: {
         default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: false,
     });
     try {

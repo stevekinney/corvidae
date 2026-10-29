@@ -6,9 +6,10 @@ import {
 } from '@lostgradient/storage';
 import {
   type ApplicationCommandClaim,
+  BunSQLiteStorage,
   Engine,
+  LMDBStorage,
   Mailbox,
-  resolveStorage,
   yieldToPortableEventLoop,
 } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
@@ -1909,14 +1910,16 @@ describe.each<StorageKind>(['sqlite', 'lmdb'])(
 
     it('delivers inputs admitted before a crash in order, exactly once, after recovery', async () => {
       directory = await mkdtemp(join(tmpdir(), `corvidae-session-input-${kind}-`));
-      const configuration =
+      const storagePath = directory;
+      const openStorage = (): Storage =>
         kind === 'sqlite'
-          ? ({ type: 'sqlite', path: join(directory, 'weft.sqlite') } as const)
-          : ({ type: 'lmdb', path: join(directory, 'weft-lmdb') } as const);
+          ? new BunSQLiteStorage(join(storagePath, 'weft.sqlite'))
+          : new LMDBStorage(join(storagePath, 'weft-lmdb'));
 
       // Engine A: step 0 commits, step 1 starts and hangs. While it hangs, two
       // inputs are admitted, then the process "crashes".
-      const storageA = await resolveStorage(configuration);
+      // Closed explicitly before engine B opens the store; `using` covers a failure before that.
+      using storageA = openStorage();
       const mailboxA = newMailbox(storageA);
       const stepOneStarted = deferred();
       const a = await buildEngine(storageA);
@@ -1942,7 +1945,7 @@ describe.each<StorageKind>(['sqlite', 'lmdb'])(
       storageA[Symbol.dispose]();
 
       // Engine B: a fresh process on the same backend recovers the run.
-      const storageB = await resolveStorage(configuration);
+      using storageB = openStorage();
       const mailboxB = newMailbox(storageB);
       const store = deliveryStoreOver(storageB);
       const generatedPrompts: { step: number; conversation: Conversation }[] = [];
@@ -1978,7 +1981,6 @@ describe.each<StorageKind>(['sqlite', 'lmdb'])(
       } finally {
         b.engine[Symbol.dispose]();
         mailboxB.dispose();
-        storageB[Symbol.dispose]();
       }
     });
   },

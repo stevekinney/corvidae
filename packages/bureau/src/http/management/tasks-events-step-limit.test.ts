@@ -52,7 +52,7 @@ describe.each([
       },
       ...(answer === undefined ? {} : { onMaximumSteps: answer }),
       runtime,
-      storage: fixture.configuration,
+      storage: fixture.storage,
       durable: true,
       durableOwnership: { ownership: 'none' },
       maintenance: 'manual',

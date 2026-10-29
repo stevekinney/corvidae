@@ -20,6 +20,7 @@ import { workflowFileText } from './testing/workflow-file-fixtures.test-support'
 import type { AgentDefinitions } from './agent-catalog';
 import type { BureauDiagnostic } from './types';
 import { workflowFileDirectory } from './sources/workflow-file-directory';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -48,8 +49,13 @@ describe('a Bureau over a store with a run of a workflow type it has no trace of
     const root = await temporaryRoot();
     const workflows = join(root, 'workflows');
     const diagnostics: BureauDiagnostic[] = [];
+    const database = createSqliteStorageFixture({ path: join(root, 'bureau.sqlite') });
+    cleanups.push(() => database.dispose());
     const overrides = {
-      storage: { type: 'sqlite', path: join(root, 'bureau.sqlite') },
+      // A getter: each Bureau started with these overrides opens its own handle.
+      get storage() {
+        return database.open();
+      },
       durableOwnership: { ownership: 'none' },
       onDiagnostic: (diagnostic: BureauDiagnostic) => diagnostics.push(diagnostic),
     } as const;
@@ -115,7 +121,8 @@ describe('a Bureau over a store with a run of a workflow type it has no trace of
 describe('a Bureau started without workflowSource over a store with workflow instances in flight', () => {
   it('boots, recovers every other run, and reports the workflow instances it left behind', async () => {
     const root = await temporaryRoot();
-    const databasePath = join(root, 'bureau.sqlite');
+    const database = createSqliteStorageFixture({ path: join(root, 'bureau.sqlite') });
+    cleanups.push(() => database.dispose());
     const diagnostics: BureauDiagnostic[] = [];
     const nextTool = createTool({
       name: 'next',
@@ -148,7 +155,7 @@ describe('a Bureau started without workflowSource over a store with workflow ins
         }),
       },
       workflowSource: workflowFileDirectory(workflowsPath),
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.storage,
       durable: true,
       durableOwnership: { ownership: 'none' },
       onDiagnostic: () => undefined,
@@ -170,7 +177,7 @@ describe('a Bureau started without workflowSource over a store with workflow ins
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.open(),
       durable: true,
       durableOwnership: { ownership: 'none' },
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),

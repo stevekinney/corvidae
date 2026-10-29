@@ -153,7 +153,7 @@ describe('a run’s approval after a later run starts in its session', () => {
   async function restoredRunWithSkill(catalog: SkillCatalogOnDisk) {
     const path = harness.nextDatabasePath();
     const first = await harness.open({
-      storage: { type: 'sqlite', path },
+      storage: await harness.sqliteStorage(path),
       agents: {
         default: createAgent({
           generate: lockedAfterCharging('stop'),
@@ -175,7 +175,7 @@ describe('a run’s approval after a later run starts in its session', () => {
     await letStepsCommit();
     const charges: number[] = [];
     const restarted = await harness.open({
-      storage: { type: 'sqlite', path },
+      storage: await harness.sqliteStorage(path),
       agents: {
         default: createAgent({
           generate: hanging,
@@ -215,7 +215,7 @@ describe('a run’s approval after a later run starts in its session', () => {
     const catalog = await skillCatalogOnDisk();
     const path = harness.nextDatabasePath();
     const first = await harness.open({
-      storage: { type: 'sqlite', path },
+      storage: await harness.sqliteStorage(path),
       agents: {
         default: createAgent({
           generate: lockedAfterCharging('wait'),
@@ -234,7 +234,7 @@ describe('a run’s approval after a later run starts in its session', () => {
     await letStepsCommit();
     const charges: number[] = [];
     const restarted = await harness.open({
-      storage: { type: 'sqlite', path },
+      storage: await harness.sqliteStorage(path),
       agents: {
         default: createAgent({
           generate: hanging,
@@ -269,7 +269,7 @@ describe('a run’s approval after a later run starts in its session', () => {
           }
         : { content: 'done', toolCalls: [] };
     const first = await harness.open({
-      storage: { type: 'sqlite', path },
+      storage: await harness.sqliteStorage(path),
       agents: {
         default: createAgent({
           generate: chargesOnce,
@@ -285,7 +285,7 @@ describe('a run’s approval after a later run starts in its session', () => {
     );
     const charges: number[] = [];
     const restarted = await harness.open({
-      storage: { type: 'sqlite', path },
+      storage: await harness.sqliteStorage(path),
       agents: {
         default: createAgent({
           generate: hanging,
@@ -314,7 +314,7 @@ describe('a fire replayed after its process died in a step', () => {
     const path = harness.nextDatabasePath();
     const life = { current: 'first' as 'first' | 'second' };
     const first = await harness.open({
-      storage: { type: 'sqlite', path },
+      storage: await harness.sqliteStorage(path),
       agents: {
         default: createAgent({
           generate: dyingInStepOne(life),
@@ -347,8 +347,7 @@ describe('a fire replayed after its process died in a step', () => {
       ? { skills: createAgentSkills({ catalog: await catalog.discover() }) }
       : {};
     return harness.open({
-      storage:
-        wrap === undefined ? { type: 'sqlite', path } : await harness.sqliteStorage(path, wrap),
+      storage: await harness.sqliteStorage(path, wrap),
       agents: {
         default: createAgent({
           generate: dyingInStepOne(life, offered),
@@ -466,7 +465,7 @@ describe('a session run reattached after its process died in a step', () => {
     const path = harness.nextDatabasePath();
     const life = { current: 'first' as 'first' | 'second' };
     const first = await harness.open({
-      storage: { type: 'sqlite', path },
+      storage: await harness.sqliteStorage(path),
       agents: {
         default: createAgent({
           generate: dyingInStepOne(life),
@@ -496,7 +495,7 @@ describe('a session run reattached after its process died in a step', () => {
     life.current = 'second';
     return harness.open({
       ...(onLog === undefined ? {} : { onLog }),
-      storage: { type: 'sqlite', path },
+      storage: await harness.sqliteStorage(path),
       agents: {
         default: createAgent({
           generate: dyingInStepOne(life, offered),
@@ -618,7 +617,7 @@ describe('a fire replayed after its process died before committing the step that
     life.current = 'second';
     const charges: number[] = [];
     const restarted = await harness.open({
-      storage: { type: 'sqlite', path },
+      storage: await harness.sqliteStorage(path),
       agents: {
         default: createAgent({
           generate,

@@ -23,19 +23,21 @@ import {
 import { createTool } from 'armorer';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { type Bureau, createBureau, type TaskHandle } from './index';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 
-let databasePath = '';
+let database: PersistentBureauStorageFixture;
 
 beforeEach(() => {
-  // A fresh directory per test: the process id repeats across runs, so it cannot name the file.
-  databasePath = createTemporaryPath('bureau-children-guide', '.sqlite');
+  database = createSqliteStorageFixture();
 });
 
-afterEach(() => {
-  removeTemporaryPath(databasePath);
+afterEach(async () => {
+  await database.dispose();
 });
 
 /** Never answers, and stops when its run is aborted, as a real provider call does. */
@@ -92,7 +94,7 @@ describe('documentation/multi-agent-lifecycle.md — durable children in Bureau'
 
     const bureau = await createBureau({
       agents: { planner, researcher },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.storage,
       children: { signals: { researcher: researchSignals } },
     });
 
@@ -185,7 +187,7 @@ describe('documentation/multi-agent-lifecycle.md — a durable task parent’s i
     const planner = createAgent({ name: 'planner', generate: untilAborted });
     const bureau = await createBureau({
       agents: { planner },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.storage,
     });
 
     const first = await bureau.tasks.start('planner', 'First plan');
@@ -261,7 +263,7 @@ describe('documentation/multi-agent-lifecycle.md — which principal owns a Bure
     const planner = createAgent({ name: 'planner', generate: untilAborted });
     const bureau = await createBureau({
       agents: { planner },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.storage,
     });
 
     const shared = await bureau.tasks.start('planner', 'A plan with no principal');
@@ -343,7 +345,7 @@ describe('packages/bureau/README.md — delegation grants for children', () => {
 
     const bureau = await createBureau({
       agents: { planner },
-      storage: { type: 'sqlite', path: databasePath },
+      storage: database.storage,
       children: { delegation: { secret: delegationSecret } },
     });
 

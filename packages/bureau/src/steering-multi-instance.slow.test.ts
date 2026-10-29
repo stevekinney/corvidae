@@ -20,8 +20,13 @@ import { createBureau } from './create-bureau';
 import { readSteeringLogHead } from './steering-log';
 import type { AgentDefinitions } from './agent-catalog';
 import { awakeTurns, quietFor } from '@lostgradient/testing/wait-until';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 
-async function openBureau(path: string) {
+/** A Bureau over a new handle on `database`, as another process would open. */
+async function openBureau(database: PersistentBureauStorageFixture) {
   return createBureau<AgentDefinitions>({
     agents: {
       default: createAgent({
@@ -29,7 +34,7 @@ async function openBureau(path: string) {
         toolbox: createToolbox([]),
       }),
     },
-    storage: { type: 'sqlite', path },
+    storage: database.open(),
     durable: true,
   });
 }
@@ -37,7 +42,9 @@ async function openBureau(path: string) {
 describe('durable steering across two Bureau processes', () => {
   it('aborts a run that is not paused when another process deletes its session', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-remote-delete-running-'));
-    const path = join(directory, 'bureau.sqlite');
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
     let releaseTool: (() => void) | undefined;
     const toolGate = new Promise<void>((resolve) => {
       releaseTool = resolve;
@@ -66,10 +73,10 @@ describe('durable steering across two Bureau processes', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.storage,
       durable: true,
     });
-    const bureauB = await openBureau(path);
+    const bureauB = await openBureau(pathFixture);
     try {
       const run = await bureauA.tasks.start('default', 'go', { principal: 'alice' });
       for await (const _turn of awakeTurns()) {
@@ -97,7 +104,9 @@ describe('durable steering across two Bureau processes', () => {
 
   it('delivers a pause and a resume admitted in another process to the run', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-remote-delivery-'));
-    const path = join(directory, 'bureau.sqlite');
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
     let releaseTool: (() => void) | undefined;
     const toolGate = new Promise<void>((resolve) => {
       releaseTool = resolve;
@@ -127,10 +136,10 @@ describe('durable steering across two Bureau processes', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.storage,
       durable: true,
     });
-    const bureauB = await openBureau(path);
+    const bureauB = await openBureau(pathFixture);
     try {
       const run = await bureauA.tasks.start('default', 'go', { principal: 'alice' });
       for await (const _turn of awakeTurns()) {
@@ -192,7 +201,9 @@ describe('durable steering across two Bureau processes', () => {
 
   it('releases a paused run when another process deletes its session, without recreating it', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-remote-delete-'));
-    const path = join(directory, 'bureau.sqlite');
+    await using pathFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
     let releaseTool: (() => void) | undefined;
     const toolGate = new Promise<void>((resolve) => {
       releaseTool = resolve;
@@ -228,10 +239,10 @@ describe('durable steering across two Bureau processes', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path },
+      storage: pathFixture.storage,
       durable: true,
     });
-    const bureauB = await openBureau(path);
+    const bureauB = await openBureau(pathFixture);
     try {
       const run = await bureauA.tasks.start('default', 'go', { principal: 'alice' });
       for await (const _turn of awakeTurns()) {

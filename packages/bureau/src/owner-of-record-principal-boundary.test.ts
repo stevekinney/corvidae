@@ -16,6 +16,7 @@ import {
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { AgentDefinitions } from './agent-catalog';
 import { listHeldTasks } from './test';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 const NOT_TEXT = [
@@ -33,7 +34,7 @@ async function openDurableBureau() {
       default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
     },
     validators: [createCheckValidator()],
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
   });
 }

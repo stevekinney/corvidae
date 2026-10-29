@@ -15,9 +15,8 @@
  */
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
-import { resolveStorage } from '@lostgradient/weft';
 import { textValueStore } from '@lostgradient/storage';
 import { stopWhen, createAgent } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
@@ -33,6 +32,10 @@ import {
   readSteeringLogHead,
 } from './steering-log';
 import type { AgentDefinitions } from './agent-catalog';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
 
 const CHILD = join(import.meta.dir, 'test', 'steering-crash-child.ts');
 
@@ -57,12 +60,12 @@ interface Marker {
 /** Runs the crash child to its own SIGKILL and returns the marker it wrote. */
 async function runCrashingChild(
   scope: ScenarioScope,
-  directory: string,
+  database: PersistentBureauStorageFixture,
   name: string,
   args: readonly string[],
 ): Promise<Marker> {
-  const storagePath = join(directory, 'bureau.sqlite');
-  const markerPath = join(directory, `${name}.json`);
+  const storagePath = database.path;
+  const markerPath = join(dirname(database.path), `${name}.json`);
   const child = spawnWithHangGuard(['bun', CHILD, storagePath, markerPath, ...args], {
     stdout: 'pipe',
     stderr: 'pipe',
@@ -77,7 +80,8 @@ async function runCrashingChild(
   return JSON.parse(readFileSync(markerPath, 'utf8')) as Marker;
 }
 
-async function openBureau(directory: string) {
+/** A Bureau over a new handle on `database`, as a new process would open. */
+async function openBureau(database: PersistentBureauStorageFixture) {
   return createBureau<AgentDefinitions>({
     agents: {
       default: createAgent({
@@ -86,42 +90,46 @@ async function openBureau(directory: string) {
         toolbox: createToolbox([]),
       }),
     },
-    storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
+    storage: database.open(),
     durable: true,
     durableOwnership: CLAIM_OPTIONS,
   });
 }
 
-/** One scenario in its own directory, removed afterwards or when the hang guard fires. */
+/**
+ * One scenario over a store in its own directory, removed afterwards or when the hang guard fires.
+ * Each handle on the store is opened only once the child before it is gone.
+ */
 function scenario(
   prefix: string,
-  body: (scope: ScenarioScope, directory: string) => Promise<void>,
+  body: (scope: ScenarioScope, database: PersistentBureauStorageFixture) => Promise<void>,
 ): ReturnType<typeof settleScenario> {
   return settleScenario(async (scope) => {
     const directory = mkdtempSync(join(tmpdir(), prefix));
-    const remove = (): void => rmSync(directory, { recursive: true, force: true });
+    const database = createSqliteStorageFixture({ path: join(directory, 'bureau.sqlite') });
+    const remove = async (): Promise<void> => {
+      await database.dispose();
+      rmSync(directory, { recursive: true, force: true });
+    };
     scope.onHang(remove);
     try {
-      await body(scope, directory);
+      await body(scope, database);
     } finally {
-      remove();
+      await remove();
     }
   }, HANG_GUARD_MILLISECONDS);
 }
 
 const outcomes = {
-  logged: await scenario('corvidae-steering-crash-', async (scope, directory) => {
-    const { sessionId, incarnation } = await runCrashingChild(scope, directory, 'admitted', [
+  logged: await scenario('corvidae-steering-crash-', async (scope, database) => {
+    const { sessionId, incarnation } = await runCrashingChild(scope, database, 'admitted', [
       'admit',
       'pause',
     ]);
 
     // A fresh handle on the same file, in this process: nothing is shared
     // with the dead one but the bytes it left on disk.
-    const storage = await resolveStorage({
-      type: 'sqlite',
-      path: join(directory, 'bureau.sqlite'),
-    });
+    const storage = database.open();
     const kv = textValueStore(storage);
     const head = await readSteeringLogHead(kv, sessionId, incarnation);
     const events = await readSteeringLogEntries(kv, sessionId, incarnation, 0, head.sequence);
@@ -133,22 +141,22 @@ const outcomes = {
     });
     await kv.close();
   }),
-  idempotent: await scenario('corvidae-steering-crash-twice-', async (scope, directory) => {
-    const { sessionId } = await runCrashingChild(scope, directory, 'admitted', ['admit', 'model']);
-    const retried = await runCrashingChild(scope, directory, 'retried', [
+  idempotent: await scenario('corvidae-steering-crash-twice-', async (scope, database) => {
+    const { sessionId } = await runCrashingChild(scope, database, 'admitted', ['admit', 'model']);
+    const retried = await runCrashingChild(scope, database, 'retried', [
       'retry',
       'model',
       sessionId,
     ]);
     expect(retried.outcomes.map(({ outcome }) => outcome)).toEqual(['replayed']);
-    const again = await runCrashingChild(scope, directory, 'retried-again', [
+    const again = await runCrashingChild(scope, database, 'retried-again', [
       'retry',
       'model',
       sessionId,
     ]);
     expect(again.outcomes.map(({ outcome }) => outcome)).toEqual(['replayed']);
 
-    const bureau = await openBureau(directory);
+    const bureau = await openBureau(database);
     try {
       await bureau.recovery();
       const differentTarget = await bureau.contexts.steer(sessionId, {
@@ -179,16 +187,16 @@ const outcomes = {
       await bureau.dispose();
     }
   }),
-  desiredState: await scenario('corvidae-steering-desired-', async (scope, directory) => {
+  desiredState: await scenario('corvidae-steering-desired-', async (scope, database) => {
     // The first process steers the model twice (configVersion 1, then 2)
     // and dies. A fresh id re-requesting the desired value is accepted
     // without advancing configVersion, which is how these assertions
     // observe both the folded value and the folded version: a fold that
     // lost the history would report 1, and one that double-applied it, 4.
-    const first = await runCrashingChild(scope, directory, 'admitted', ['admit', 'opus,model']);
+    const first = await runCrashingChild(scope, database, 'admitted', ['admit', 'opus,model']);
     expect(first.outcomes.map(({ command }) => command?.configVersion)).toEqual([1, 2]);
 
-    const probe = await runCrashingChild(scope, directory, 'probed', [
+    const probe = await runCrashingChild(scope, database, 'probed', [
       'retry',
       'probe',
       first.sessionId,
@@ -196,7 +204,7 @@ const outcomes = {
     expect(probe.outcomes[0]?.outcome).toBe('accepted');
     expect(probe.outcomes[0]?.command?.configVersion).toBe(2);
 
-    const bureau = await openBureau(directory);
+    const bureau = await openBureau(database);
     try {
       await bureau.recovery();
       const again = await bureau.contexts.steer(first.sessionId, {
@@ -229,12 +237,12 @@ const outcomes = {
       await bureau.dispose();
     }
   }),
-  recoveredRun: await scenario('corvidae-steering-recovered-run-', async (scope, directory) => {
+  recoveredRun: await scenario('corvidae-steering-recovered-run-', async (scope, database) => {
     // The child's run is mid-step when the model is steered and the
     // process dies. Once the child's workflow claim lapses, the recovering
     // process resumes that run; with the steering folded in, the run's
     // next boundary marks the command applied in the log.
-    const { sessionId, runId } = await runCrashingChild(scope, directory, 'admitted', [
+    const { sessionId, runId } = await runCrashingChild(scope, database, 'admitted', [
       'admit',
       'model',
     ]);
@@ -256,7 +264,7 @@ const outcomes = {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
+      storage: database.open(),
       durable: true,
       durableOwnership: CLAIM_OPTIONS,
     });
@@ -269,7 +277,7 @@ const outcomes = {
     }
 
     // A process that only folds the log sees the command applied.
-    const reader = await openBureau(directory);
+    const reader = await openBureau(database);
     try {
       await reader.recovery();
       await reader.tasks.start('default', 'again', { contextId: sessionId, principal: 'alice' });
@@ -287,18 +295,15 @@ const outcomes = {
   }),
   recoveredCorrupt: await scenario(
     'corvidae-steering-recovered-corrupt-',
-    async (scope, directory) => {
+    async (scope, database) => {
       const { sessionId, incarnation, runId } = await runCrashingChild(
         scope,
-        directory,
+        database,
         'admitted',
         ['admit', 'model'],
       );
       if (runId === undefined) throw new Error('the child recorded no run');
-      const storage = await resolveStorage({
-        type: 'sqlite',
-        path: join(directory, 'bureau.sqlite'),
-      });
+      const storage = database.open();
       const kv = textValueStore(storage);
       const logKeys = await kv.list('steering-log:v1:');
       const [entryKey] = logKeys.filter((key) => key.includes(':entry:'));
@@ -323,7 +328,7 @@ const outcomes = {
             stopWhen: stopWhen.noToolCalls(),
           }),
         },
-        storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
+        storage: database.open(),
         durable: true,
         durableOwnership: CLAIM_OPTIONS,
       });
@@ -340,15 +345,12 @@ const outcomes = {
   ),
   recoveredMissingLog: await scenario(
     'corvidae-steering-recovered-missing-log-',
-    async (scope, directory) => {
-      const { runId } = await runCrashingChild(scope, directory, 'admitted', ['admit', 'model']);
+    async (scope, database) => {
+      const { runId } = await runCrashingChild(scope, database, 'admitted', ['admit', 'model']);
       if (runId === undefined) throw new Error('the child recorded no run');
       // The session and its unfinished workflow survive; its whole steering
       // log does not.
-      const storage = await resolveStorage({
-        type: 'sqlite',
-        path: join(directory, 'bureau.sqlite'),
-      });
+      const storage = database.open();
       const kv = textValueStore(storage);
       const logKeys = await kv.list('steering-log:v1:');
       expect(logKeys.length).toBeGreaterThan(0);
@@ -370,7 +372,7 @@ const outcomes = {
             stopWhen: stopWhen.noToolCalls(),
           }),
         },
-        storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
+        storage: database.open(),
         durable: true,
         durableOwnership: CLAIM_OPTIONS,
       });
@@ -385,11 +387,10 @@ const outcomes = {
       }
     },
   ),
-  orphanSweep: await scenario('corvidae-steering-orphan-', async (_scope, directory) => {
-    const path = join(directory, 'bureau.sqlite');
+  orphanSweep: await scenario('corvidae-steering-orphan-', async (_scope, database) => {
     // An orphan: a log for a session the store never had, as a crash after
     // a deletion committed (but before its log was removed) leaves behind.
-    const storage = await resolveStorage({ type: 'sqlite', path });
+    const storage = database.open();
     const kv = textValueStore(storage);
     await appendSteeringLogEvent(
       kv,
@@ -400,11 +401,11 @@ const outcomes = {
     );
     await kv.close();
 
-    const bureau = await openBureau(directory);
+    const bureau = await openBureau(database);
     await bureau.recovery();
     await bureau.dispose();
 
-    const after = await resolveStorage({ type: 'sqlite', path });
+    const after = database.open();
     const afterKv = textValueStore(after);
     try {
       expect(await readSteeringLogHead(afterKv, 'ghost-session', 'ghost-incarnation')).toEqual({

@@ -5,7 +5,6 @@
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import type { DurableEventOwner } from '@lostgradient/operative';
-import { resolveStorage } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createDurableEventHistory, type DurableEventHistory } from './durable-event-history';
@@ -14,6 +13,7 @@ import {
   scheduleFireSettledDedupeKey,
   type ScheduleFireSettledPayload,
 } from './schedule-fire-settled-event';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -23,7 +23,7 @@ afterEach(() => {
 const fire: DurableEventOwner = { kind: 'run', id: 'fire-1' };
 
 async function openHistory(): Promise<DurableEventHistory> {
-  const storage = await resolveStorage({ type: 'memory' });
+  const storage = new MemoryStorage();
   const history = createDurableEventHistory(storage, createManualRuntimeServices());
   cleanups.push(() => history.dispose());
   return history;

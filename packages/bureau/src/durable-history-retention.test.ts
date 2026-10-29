@@ -14,7 +14,7 @@ import {
   createAgent,
 } from '@lostgradient/operative';
 import { createToolbox, type Tool } from 'armorer';
-import { createFleetEventFeed, resolveStorage } from '@lostgradient/weft';
+import { createFleetEventFeed } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { BureauError, createBureau } from './create-bureau';
@@ -70,7 +70,7 @@ async function withBureau(
       }),
     },
     runtime,
-    storage: fixture.configuration,
+    storage: fixture.storage,
     durable: true,
     durableOwnership: { ownership: 'none' },
     maintenance: 'manual',
@@ -82,7 +82,7 @@ async function withBureau(
       runtime,
       at: (offsetMs) => runtime.setTime(ORIGIN_MS + offsetMs),
       retentionFloor: async () => {
-        const storage = await resolveStorage(fixture.configuration);
+        const storage = fixture.open();
         try {
           const feed = createFleetEventFeed(storage);
           try {

@@ -11,8 +11,7 @@ import {
   createTemporaryDirectory,
   removeTemporaryPath,
 } from '@lostgradient/testing/temporary-path';
-import { resolveStorage } from '@lostgradient/weft';
-import { type Storage } from '@lostgradient/storage';
+import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { SESSION_AGENT_REVISION_METADATA_KEY } from './runtime-composition';
@@ -20,6 +19,7 @@ import { waitForCondition, waitForTaskState } from './test';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
 import type { Bureau } from './types';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -74,7 +74,7 @@ async function openDurable(
 
 describe('a run of a file agent', () => {
   it('records the revision it started with on its context, run after run', async () => {
-    const storage = await resolveStorage({ type: 'memory' });
+    const storage = new MemoryStorage();
     const harness = await openDurable(storage);
     await edit(harness, 'One.\n');
     await edit(harness, 'Two.\n');
@@ -106,7 +106,7 @@ describe('a run of a file agent', () => {
 
 describe('a run of a code-defined agent', () => {
   it('records the revision the agent was created with, and the catalog lists it', async () => {
-    const storage = await resolveStorage({ type: 'memory' });
+    const storage = new MemoryStorage();
     const harness = await openDurable(storage, {
       agents: {
         alpha: createAgent({
@@ -133,14 +133,18 @@ describe('a run resumed after a restart', () => {
     cleanups.push(() => removeTemporaryPath(directory));
     const agents = createTemporaryDirectory('bureau-revision-agents');
     cleanups.push(() => removeTemporaryPath(agents));
-    const storagePath = join(directory, 'bureau.sqlite');
+    const storageFixture = createSqliteStorageFixture({
+      path: join(directory, 'bureau.sqlite'),
+    });
+    // Closed after the Bureaus, which the cleanups dispose first.
+    cleanups.push(() => storageFixture.dispose());
     const hold = new Promise<never>(() => undefined);
     const overrides = {
       durableOwnership: { ownership: 'none' as const },
       maintenance: 'manual' as const,
     };
 
-    const firstStorage = await resolveStorage({ type: 'sqlite', path: storagePath });
+    const firstStorage = storageFixture.storage;
     const first = await openDurable(firstStorage, {
       directory: agents,
       scripts: { 'claude-opus-5-5': () => hold },
@@ -158,7 +162,7 @@ describe('a run resumed after a restart', () => {
     expect(revisionOf(first.bureau, 'researcher')).toBe(3);
 
     const built = spyOn(operative, 'createAgent');
-    const secondStorage = await resolveStorage({ type: 'sqlite', path: storagePath });
+    const secondStorage = storageFixture.open();
     const second = await openDurable(secondStorage, {
       directory: agents,
       scripts: { 'claude-opus-5-5': () => 'resumed' },

@@ -47,6 +47,7 @@ import {
 } from './process-crash-work-integrity-fixtures';
 import type { AgentDefinitions } from '../agent-catalog';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
+import { BunSQLiteStorage, LMDBStorage } from '@lostgradient/weft';
 /** Durable statuses a run never leaves. */
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
   'completed',
@@ -120,7 +121,10 @@ async function parkAfterStepZero(): Promise<void> {
         stopWhen: stopWhen.noToolCalls(),
       }),
     },
-    storage: { type: backend as 'sqlite' | 'lmdb', path: storagePath as string },
+    storage:
+      backend === 'lmdb'
+        ? new LMDBStorage(storagePath as string)
+        : new BunSQLiteStorage(storagePath),
     durable: true,
     durableOwnership: {
       ownership: 'workflow-lease',
@@ -203,8 +207,10 @@ async function chargeThenCrash(): Promise<void> {
     { cache, wrap: variant !== 'unwrapped' },
   );
   const bureau = await createHarnessBureau({
-    backend: backend as 'sqlite' | 'lmdb',
-    storagePath: storagePath as string,
+    storage:
+      backend === 'lmdb'
+        ? new LMDBStorage(storagePath as string)
+        : new BunSQLiteStorage(storagePath),
     generate: async () => ({ content: 'charging', toolCalls: chargeToolCalls }),
     toolbox,
   });
@@ -243,8 +249,10 @@ async function memoryWriteThenCrash(): Promise<void> {
     });
   });
   const bureau = await createHarnessBureau({
-    backend: backend as 'sqlite' | 'lmdb',
-    storagePath: storagePath as string,
+    storage:
+      backend === 'lmdb'
+        ? new LMDBStorage(storagePath as string)
+        : new BunSQLiteStorage(storagePath),
     generate: async () => ({ content: REMEMBERED_ANSWER, toolCalls: [] }),
     toolbox: createToolbox([createNextTool()]),
     memory,
@@ -262,8 +270,10 @@ async function memoryWriteThenCrash(): Promise<void> {
 async function twoParkedRuns(): Promise<void> {
   const reachedStepOne = new Set<string>();
   const bureau = await createHarnessBureau({
-    backend: backend as 'sqlite' | 'lmdb',
-    storagePath: storagePath as string,
+    storage:
+      backend === 'lmdb'
+        ? new LMDBStorage(storagePath as string)
+        : new BunSQLiteStorage(storagePath),
     generate: async (context) => {
       if (context.step === 0) {
         return { content: 'step 0', toolCalls: [{ name: 'next', arguments: {} }] };
@@ -304,8 +314,10 @@ async function humanWaitParked(twoCalls = false): Promise<void> {
     arguments: { signalName: SECOND_HUMAN_WAIT_SIGNAL, prompt: SECOND_HUMAN_WAIT_PROMPT },
   };
   const bureau = await createHarnessBureau({
-    backend: backend as 'sqlite' | 'lmdb',
-    storagePath: storagePath as string,
+    storage:
+      backend === 'lmdb'
+        ? new LMDBStorage(storagePath as string)
+        : new BunSQLiteStorage(storagePath),
     generate: async () => ({ content: '', toolCalls: twoCalls ? [park, secondPark] : [park] }),
     toolbox: createToolbox([]),
   });
@@ -358,7 +370,10 @@ async function relaunchRecover(): Promise<void> {
         stopWhen: stopWhen.noToolCalls(),
       }),
     },
-    storage: { type: backend as 'sqlite' | 'lmdb', path: storagePath as string },
+    storage:
+      backend === 'lmdb'
+        ? new LMDBStorage(storagePath as string)
+        : new BunSQLiteStorage(storagePath),
     durable: true,
     durableOwnership: {
       ownership: 'workflow-lease',
@@ -406,8 +421,10 @@ async function verify(): Promise<void> {
   const { cache, close } = await openIdempotencyCache(directory);
   const governed = await openGovernedMemory(directory);
   const bureau = await createHarnessBureau({
-    backend: backend as 'sqlite' | 'lmdb',
-    storagePath: storagePath as string,
+    storage:
+      backend === 'lmdb'
+        ? new LMDBStorage(storagePath as string)
+        : new BunSQLiteStorage(storagePath),
     generate: async () => ({ content: 'verify', toolCalls: [] }),
     toolbox: createChargeToolbox(directory, async () => 'ok', { cache, wrap: true }),
     memory: governed.memory,
@@ -417,7 +434,7 @@ async function verify(): Promise<void> {
   const running = runningRuns?.items.length;
   writeMarker({ recoveryOutcome: report?.outcome, running });
   await bureau.shutdown();
-  governed.close();
+  await governed.close();
   await close();
   process.exit(0);
 }
@@ -431,8 +448,10 @@ async function approveThenCrash(): Promise<void> {
   const directory = dirname(markerPath as string);
   let calls = 0;
   const bureau = await createHarnessBureau({
-    backend: backend as 'sqlite' | 'lmdb',
-    storagePath: storagePath as string,
+    storage:
+      backend === 'lmdb'
+        ? new LMDBStorage(storagePath as string)
+        : new BunSQLiteStorage(storagePath),
     generate: async () => {
       calls += 1;
       return {

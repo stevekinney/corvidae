@@ -35,6 +35,7 @@ import {
 import { createBureauHandler } from './create-bureau-handler.ts';
 import { createMemoryAssetStorage } from '../assets/storage';
 import type { AgentDefinitions } from '../agent-catalog';
+import { MemoryStorage } from '@lostgradient/storage';
 
 type Handler = ReturnType<typeof createBureauHandler>;
 
@@ -76,7 +77,7 @@ async function withParentAndChild<T>(
         stopWhen: stopWhen.noToolCalls(),
       }),
     },
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
     children: {},
   });

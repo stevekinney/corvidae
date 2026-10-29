@@ -19,7 +19,7 @@
 import { writeFileSync } from 'node:fs';
 
 import { stopWhen, createAgent } from '@lostgradient/operative';
-import { resolveStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/weft';
 import { type Storage } from '@lostgradient/storage';
 import { createToolbox } from 'armorer';
 
@@ -55,7 +55,7 @@ const holdsThisWrite = (args: readonly unknown[]): boolean => {
   return mode === 'settlement' ? text.includes('\\"settled\\"') : text.includes('\\"history\\"');
 };
 
-const raw = await resolveStorage({ type: 'sqlite', path: storagePath });
+const raw = new BunSQLiteStorage(storagePath);
 const storage = new Proxy(raw, {
   get(target, property) {
     const member = Reflect.get(target, property, target) as unknown;

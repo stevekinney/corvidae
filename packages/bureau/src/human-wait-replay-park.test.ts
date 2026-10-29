@@ -15,8 +15,8 @@ import {
   stopWhen,
   createAgent,
 } from '@lostgradient/operative';
-import { resolveStorage } from '@lostgradient/weft';
-import { type Storage } from '@lostgradient/storage';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
+import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
@@ -145,8 +145,9 @@ function humanInputCall(callId: string) {
 
 describe('a reattached run whose first park happens after boot-time reconstruction (COR-121)', () => {
   it('surfaces the park to listPendingReviews and liveness even though the step row never landed', async () => {
-    const databasePath = databasePathFor('crash-shape');
-    const wrapped = await resolveStorage({ type: 'sqlite', path: databasePath });
+    await using database = createSqliteStorageFixture({ path: databasePathFor('crash-shape') });
+    const databasePath = database.path;
+    const wrapped = database.storage;
     const intercept = interceptHumanInputStepWrite(wrapped, 'drop');
 
     let bureauA: Bureau | undefined;
@@ -175,7 +176,7 @@ describe('a reattached run whose first park happens after boot-time reconstructi
 
       // Preconditions: the crash shape actually holds.
       expect(intercept.matched()).toBe(1);
-      const inspector = await resolveStorage({ type: 'sqlite', path: databasePath });
+      const inspector = database.open();
       verificationStorage = new Proxy(inspector, {
         get(target, property) {
           if (property === Symbol.dispose) {
@@ -203,7 +204,7 @@ describe('a reattached run whose first park happens after boot-time reconstructi
             stopWhen: stopWhen.noToolCalls(),
           }),
         },
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -264,7 +265,8 @@ describe('a reattached run whose first park happens after boot-time reconstructi
   });
 
   it('stays silent for a replayed park whose signal was already delivered', async () => {
-    const databasePath = databasePathFor('historical');
+    await using database = createSqliteStorageFixture({ path: databasePathFor('historical') });
+    const databasePath = database.path;
     let bureauA: Bureau | undefined;
     let bureauB: Bureau | undefined;
     try {
@@ -284,7 +286,7 @@ describe('a reattached run whose first park happens after boot-time reconstructi
             stopWhen: stopWhen.noToolCalls(),
           }),
         },
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -314,7 +316,7 @@ describe('a reattached run whose first park happens after boot-time reconstructi
             stopWhen: stopWhen.noToolCalls(),
           }),
         },
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -348,7 +350,7 @@ describe('bounded duplicate park events (COR-121)', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     try {
@@ -369,7 +371,8 @@ describe('bounded duplicate park events (COR-121)', () => {
   });
 
   it('a boot-found park adds a bounded number of markers on top of the boot record', async () => {
-    const databasePath = databasePathFor('boot-found');
+    await using database = createSqliteStorageFixture({ path: databasePathFor('boot-found') });
+    const databasePath = database.path;
     let bureauA: Bureau | undefined;
     let bureauB: Bureau | undefined;
     try {
@@ -381,7 +384,7 @@ describe('bounded duplicate park events (COR-121)', () => {
             stopWhen: stopWhen.noToolCalls(),
           }),
         },
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -403,7 +406,7 @@ describe('bounded duplicate park events (COR-121)', () => {
             stopWhen: stopWhen.noToolCalls(),
           }),
         },
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
         durableOwnership: { ownership: 'none' },
       });
@@ -432,8 +435,9 @@ describe('bounded duplicate park events (COR-121)', () => {
 
 describe('flow-control slot accounting under dual dispatch (COR-121 guard)', () => {
   it('a signal delivered while the step write is held does not release the resumed run’s slot', async () => {
-    const databasePath = databasePathFor('flow-control');
-    const wrapped = await resolveStorage({ type: 'sqlite', path: databasePath });
+    await using database = createSqliteStorageFixture({ path: databasePathFor('flow-control') });
+    const databasePath = database.path;
+    const wrapped = database.storage;
     const intercept = interceptHumanInputStepWrite(wrapped, 'hold');
 
     let calls = 0;

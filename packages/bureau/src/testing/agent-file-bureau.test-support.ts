@@ -19,6 +19,7 @@ import type { Bureau, BureauOptions } from '../types.ts';
 import { lookupTool } from './agent-file-fixtures.test-support.ts';
 import { createMemoryAssetStorage } from '../assets/storage';
 import { agentFileDirectory } from '../sources/agent-file-directory';
+import { MemoryStorage } from '@lostgradient/storage';
 
 /** What a scripted generate saw on one call. */
 export interface Observation {
@@ -83,7 +84,7 @@ export async function startFileBureau(options: FileBureauOptions = {}): Promise<
       }),
     },
     agentSource: agentFileDirectory(directory, { tools: { 'lookup-order': lookupTool } }),
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
     // A handler over this Bureau serves the asset operations, so the Bureau has the service.
     assets: { storage: createMemoryAssetStorage() },

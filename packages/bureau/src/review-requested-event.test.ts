@@ -51,7 +51,7 @@ describe('review.requested', () => {
           stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
         }),
       },
-      storage: fixture.configuration,
+      storage: fixture.storage,
       durable: true,
     });
     try {
@@ -122,7 +122,7 @@ describe('review.requested', () => {
       agents: {
         default: createAgent({ generate, toolbox, stopWhen: stopWhen.noToolCalls() }),
       },
-      storage: fixture.configuration,
+      storage: fixture.storage,
       durable: true,
     });
     try {

@@ -2,7 +2,8 @@
  * Fixture for the "Turso's driver import is deferred, not just moved"
  * subprocess gate.
  *
- * Run under `bun --preload block-optional-storage-drivers.test-support.ts`.
+ * Run by `turso-driver-deferred.test.ts` inside the sandbox
+ * `turso-driver-sandbox.test-support.ts` builds, where `@libsql/client` is not installed.
  * Constructing `TursoStorage` must not need `@libsql/client`; only its first
  * real operation may. That distinguishes "the import moved to first use"
  * from "the import was removed" — a `TursoStorage` that never threw at all

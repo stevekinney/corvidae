@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { createBureau } from './create-bureau';
 import type { Bureau } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const bureaus: Bureau[] = [];
 
@@ -25,7 +26,7 @@ async function bureauWith(options: { readonly durable: boolean }): Promise<Burea
         stopWhen: stopWhen.noToolCalls(),
       }),
     },
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: options.durable,
   });
   bureaus.push(bureau);

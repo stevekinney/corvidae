@@ -29,7 +29,7 @@ describe('the A2A record’s lifetime', () => {
         }),
       },
       runtime,
-      storage: fixture.configuration,
+      storage: fixture.storage,
       durable: true,
       durableOwnership: { ownership: 'none' },
       maintenance: 'manual',

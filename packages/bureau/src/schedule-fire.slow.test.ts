@@ -31,11 +31,11 @@ import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { getMessages } from 'conversationalist';
 import { z } from 'zod';
-import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
-
 import { createBureau } from './create-bureau';
 import type { AgentDefinitions } from './agent-catalog';
 import { waitUntil } from '@lostgradient/testing/wait-until';
+import { MemoryStorage } from '@lostgradient/storage';
+import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 /** Real-wall-clock poll — `engine.schedule` ticks fire on actual elapsed time. */
 async function waitForReal(condition: () => boolean | Promise<boolean>): Promise<true> {
@@ -89,7 +89,7 @@ describe('D6 scheduled-fire path (#109)', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -135,7 +135,7 @@ describe('D6 scheduled-fire path (#109)', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -176,7 +176,7 @@ describe('D6 scheduled-fire path (#109)', () => {
   });
 
   it('recovers an in-flight scheduled fire across a bureau restart without cancelling it', async () => {
-    const databasePath = createTemporaryPath('bureau-scheduled-fire-recovery', '.sqlite');
+    const database = createSqliteStorageFixture();
 
     try {
       let bureauACall: RecordedCall | undefined;
@@ -207,7 +207,7 @@ describe('D6 scheduled-fire path (#109)', () => {
             stopWhen: stopWhen.noToolCalls(),
           }),
         },
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.storage,
         durable: true,
       });
 
@@ -257,7 +257,7 @@ describe('D6 scheduled-fire path (#109)', () => {
             stopWhen: stopWhen.noToolCalls(),
           }),
         },
-        storage: { type: 'sqlite', path: databasePath },
+        storage: database.open(),
         durable: true,
       });
 
@@ -296,7 +296,7 @@ describe('D6 scheduled-fire path (#109)', () => {
         await bureauB.dispose();
       }
     } finally {
-      removeTemporaryPath(databasePath);
+      await database.dispose();
     }
   });
 
@@ -330,7 +330,7 @@ describe('D6 scheduled-fire path (#109)', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -375,7 +375,7 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -418,7 +418,7 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 

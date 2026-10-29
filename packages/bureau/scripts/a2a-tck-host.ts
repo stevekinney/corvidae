@@ -36,7 +36,7 @@ import {
   withBackendDescriptors,
 } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
-import { Outbox } from '@lostgradient/weft';
+import { BunSQLiteStorage, Outbox } from '@lostgradient/weft';
 import {
   createEgressPolicy,
   createHttpDeliveryAdapter,
@@ -214,6 +214,8 @@ export type TckHost = {
 /** Starts the host on `port` (any free port by default). */
 export async function startTckHost(port = 0): Promise<TckHost> {
   const directory = await mkdtemp(join(tmpdir(), 'bureau-a2a-tck-'));
+  // Bureau never closes the storage it is given, so `stop()` closes it after the Bureau shuts down.
+  const bureauStorage = new BunSQLiteStorage(join(directory, 'bureau.sqlite'));
   const bureau = await createBureau({
     id: 'a2a-tck-bureau',
     agents: {
@@ -223,7 +225,7 @@ export async function startTckHost(port = 0): Promise<TckHost> {
         stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
       }),
     },
-    storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
+    storage: bureauStorage,
     durable: true,
     assets: { storage: createMemoryAssetStorage() },
   });
@@ -274,6 +276,7 @@ export async function startTckHost(port = 0): Promise<TckHost> {
       outbox.dispose();
       pushStorage[Symbol.dispose]();
       await bureau.shutdown({ policy: 'abort' });
+      bureauStorage[Symbol.dispose]();
       await rm(directory, { recursive: true, force: true });
     },
   };

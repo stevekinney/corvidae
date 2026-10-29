@@ -11,8 +11,7 @@ import {
 import { createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
-import { encodeStorageKeyComponent, type Storage } from '@lostgradient/storage';
-import { resolveStorage } from '@lostgradient/weft';
+import { encodeStorageKeyComponent, type Storage, MemoryStorage } from '@lostgradient/storage';
 
 import { createBureau } from './create-bureau';
 import { createAskingAgent } from './test/task-record-crash-agent';
@@ -34,7 +33,7 @@ describe('a task’s own message history', () => {
         worker,
         default: createAgent({ generate: finishes, toolbox, stopWhen: stopWhen.noToolCalls() }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     try {
@@ -74,7 +73,7 @@ describe('a task’s own message history', () => {
         agents: {
           default: createAgent({ generate: finishes, toolbox, stopWhen: stopWhen.noToolCalls() }),
         },
-        storage: fixture.configuration,
+        storage: fixture.storage,
         durable: true,
       });
     try {
@@ -113,7 +112,7 @@ describe('a task’s own message history', () => {
       agents: {
         default: createAgent({ generate: finishes, toolbox, stopWhen: stopWhen.noToolCalls() }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       runtime,
       ...SHORT_TASK_RETENTION,
@@ -141,7 +140,7 @@ describe('a task’s own message history', () => {
       agents: {
         default: createAgent({ generate: finishes, toolbox, stopWhen: stopWhen.noToolCalls() }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       runtime,
       ...SHORT_TASK_RETENTION,
@@ -178,7 +177,7 @@ describe('a task’s own message history', () => {
         agents: {
           default: createAgent({ generate: parks, toolbox, stopWhen: stopWhen.noToolCalls() }),
         },
-        storage: fixture.configuration,
+        storage: fixture.storage,
         durable: true,
       });
     try {
@@ -204,7 +203,7 @@ describe('a task’s own message history', () => {
 
   it('writes a settlement still in flight before dispose closes the storage', async () => {
     const fixture = createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() });
-    const raw = await resolveStorage(fixture.configuration);
+    const raw = fixture.open();
     const landed = { value: false };
     // Every write that records a settlement is slow, so it is still in flight when the run ends.
     const slowSettlements = new Proxy(raw, {
@@ -224,8 +223,8 @@ describe('a task’s own message history', () => {
           });
         };
       },
-    }) as Storage;
-    const open = (storage: Storage | typeof fixture.configuration) =>
+    });
+    const open = (storage: Storage) =>
       createBureau<AgentDefinitions>({
         id: 'history-flush',
         agents: {
@@ -245,7 +244,7 @@ describe('a task’s own message history', () => {
       // A caller-supplied storage is not closed by dispose, so what shows the write was awaited
       // is that it had landed by the time dispose resolved.
       expect(landed.value).toBe(true);
-      const second = await open(fixture.configuration);
+      const second = await open(await fixture.reopen());
       try {
         const task = await second.internals.taskRegistry.get(run.id);
         expect(task?.status).toBe('completed');
@@ -274,7 +273,7 @@ describe('a task’s own message history', () => {
             ),
           }),
         },
-        storage: fixture.configuration,
+        storage: fixture.storage,
         durable: true,
         durableOwnership: { ownership: 'none' },
         ...(collect
