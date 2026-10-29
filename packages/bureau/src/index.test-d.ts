@@ -21,12 +21,8 @@ import type {
   BureauIncompleteWork,
   BureauQuiescenceReport,
   BureauRunOptions,
-  BureauStorageFixture,
   BureauTestHarness,
   BureauTestHarnessOptions,
-  CreateLmdbStorageFixtureOptions,
-  CreateMemoryStorageFixtureOptions,
-  CreatePersistentStorageFixtureOptions,
   DurableEventHistoryFixture,
   DurableEventHistoryFixtureOptions,
   DurableEventHistoryFixtureRecord,
@@ -46,10 +42,7 @@ import {
   createBureauTestHarness,
   createCommandLedger,
   createDurableEventHistoryFixture,
-  createLmdbStorageFixture,
-  createMemoryStorageFixture,
   createRunCreationLedger,
-  createSqliteStorageFixture,
   digestCommandPayload,
   digestRunCreationPayload,
   DURABLE_EVENT_HISTORY_FIXTURE_SEQUENCE,
@@ -59,6 +52,7 @@ import {
   selectAuditWriteFaultTarget,
   selectWebhookDeliveryFaultTarget,
 } from './index';
+import type * as BureauEntry from './index';
 
 declare const runOptions: BureauRunOptions;
 declare const runResult: AgentRunForName<Record<string, never>, never>;
@@ -70,9 +64,6 @@ void BureauFaultSelectorResolutionError;
 void BureauHarnessUnsupportedError;
 void createBureauTestHarness;
 void createDurableEventHistoryFixture;
-void createLmdbStorageFixture;
-void createMemoryStorageFixture;
-void createSqliteStorageFixture;
 void DURABLE_EVENT_HISTORY_FIXTURE_SEQUENCE;
 void locateWorkspaceRoot;
 void selectAuditWriteFaultTarget;
@@ -87,12 +78,8 @@ declare const faultPlan: BureauFaultPlan;
 declare const faultEntry: BureauFaultPlanEntry;
 declare const incompleteWork: BureauIncompleteWork;
 declare const quiescenceReport: BureauQuiescenceReport;
-declare const storageFixture: BureauStorageFixture;
 declare const harness: BureauTestHarness;
 declare const harnessOptions: BureauTestHarnessOptions;
-declare const persistentOptions: CreatePersistentStorageFixtureOptions;
-declare const lmdbOptions: CreateLmdbStorageFixtureOptions;
-declare const memoryOptions: CreateMemoryStorageFixtureOptions;
 declare const historyFixture: DurableEventHistoryFixture;
 declare const historyOptions: DurableEventHistoryFixtureOptions;
 declare const historyRecord: DurableEventHistoryFixtureRecord;
@@ -106,12 +93,8 @@ void faultPlan;
 void faultEntry;
 void incompleteWork;
 void quiescenceReport;
-void storageFixture;
 void harness;
 void harnessOptions;
-void persistentOptions;
-void lmdbOptions;
-void memoryOptions;
 void historyFixture;
 void historyOptions;
 void historyRecord;
@@ -182,3 +165,24 @@ export const retentionOption: NonNullable<BureauOptions['retention']> = {
 type LocateReturn424 = Awaited<ReturnType<Bureau['tasks']['receipt']>>;
 declare const locatedReceipt: LocateReturn424;
 export const receiptLocation: RunCreationReceiptLocation = locatedReceipt;
+
+// COR-1769: Bureau's storage fixtures are test support for Bureau's own tests
+// (`./test/storage-fixtures`), not part of the package entry. Each name must
+// be absent from the barrel, as a value and as a type.
+type RemovedStorageFixtureValue =
+  'createLmdbStorageFixture' | 'createMemoryStorageFixture' | 'createSqliteStorageFixture';
+export const entryExportsNoStorageFixtureValue: [
+  Extract<keyof typeof BureauEntry, RemovedStorageFixtureValue>,
+] extends [never]
+  ? true
+  : never = true;
+// @ts-expect-error `BureauStorageFixture` is not exported from the package entry.
+export type { BureauStorageFixture as RemovedBureauStorageFixture } from './index';
+// @ts-expect-error `CreateLmdbStorageFixtureOptions` is not exported from the package entry.
+export type { CreateLmdbStorageFixtureOptions as RemovedLmdbOptions } from './index';
+// @ts-expect-error `CreateMemoryStorageFixtureOptions` is not exported from the package entry.
+export type { CreateMemoryStorageFixtureOptions as RemovedMemoryOptions } from './index';
+// @ts-expect-error `CreatePersistentStorageFixtureOptions` is not exported from the package entry.
+export type { CreatePersistentStorageFixtureOptions as RemovedPersistentOptions } from './index';
+// @ts-expect-error `PersistentBureauStorageFixture` is not exported from the package entry.
+export type { PersistentBureauStorageFixture as RemovedPersistentFixture } from './index';
