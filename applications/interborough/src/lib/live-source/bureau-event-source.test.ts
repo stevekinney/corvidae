@@ -187,6 +187,7 @@ describe('BureauEventSource', () => {
     connect();
     await waitUntil(() => hub.requests.bureau.length === 2);
     expect(source?.status).not.toBe('live');
+    expect(source?.reconnectAttempt).toBeGreaterThan(0);
   });
 
   test('closes its connection when the last subscriber leaves', async () => {
@@ -195,6 +196,90 @@ describe('BureauEventSource', () => {
     const unsubscribe = source.subscribe(() => undefined);
     await waitUntil(() => hub.opened('bureau') === 1);
     unsubscribe();
+    unsubscribe();
     expect(source.status).toBe('closed');
+  });
+
+  test('ignores an error frame and data that is not an envelope, and carries on', async () => {
+    install();
+    const frames = connect();
+    await waitUntil(() => hub.opened('bureau') === 1);
+    hub.write('bureau', REPLAY_COMPLETE_CHUNK);
+    await waitUntil(() => source?.caughtUp === true);
+    hub.write(
+      'bureau',
+      'event: error\ndata: {"message":"boom"}\n\n',
+      'event: x\ndata: not json\n\n',
+      envelopeChunk({ kind: 'run.settled', cursor: 'a:1' }),
+    );
+    await waitUntil(() => frames.length === 1);
+    expect(kinds(frames)).toEqual(['run.settled']);
+  });
+
+  test('retries when the answer is not an event stream', async () => {
+    install();
+    const inner = hub;
+    restoreFetch?.();
+    let calls = 0;
+    restoreFetch = installFetchImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes('bureau.events')) {
+        calls += 1;
+        return calls === 1
+          ? new Response('hi')
+          : (inner.handle(input, init) ?? new Response('', { status: 404 }));
+      }
+      return Response.json({ jsonrpc: '2.0', id: 'x', result: { id: 'bureau-1' } });
+    });
+    connect();
+    await waitUntil(() => inner.opened('bureau') === 1);
+    expect(calls).toBe(2);
+  });
+
+  test('says when it is first connected, and when it is closed without ever connecting', async () => {
+    install();
+    connect();
+    await waitUntil(() => hub.opened('bureau') === 1);
+    hub.write('bureau', REPLAY_COMPLETE_CHUNK);
+    await source?.whenConnected();
+    expect(source?.status).toBe('live');
+    const idle = new BureauEventSource({ computeReconnectDelayMs: () => 0 });
+    idle.close();
+    idle.close();
+    await idle.whenConnected();
+    expect(idle.status).toBe('closed');
+  });
+
+  test('cancels a pending reconnect when the last subscriber leaves, and ignores a late close', async () => {
+    install();
+    hub.refusals.bureau = 503;
+    source = new BureauEventSource({ computeReconnectDelayMs: () => 60_000 });
+    const unsubscribe = source.subscribe(() => undefined);
+    await waitUntil(() => source?.status === 'reconnecting');
+    source.subscribe(() => undefined);
+    unsubscribe();
+    expect(source.status).toBe('reconnecting');
+    source.close();
+    expect(source.status).toBe('closed');
+    expect(hub.requests.bureau).toHaveLength(1);
+  });
+
+  test('reconnects when the request itself fails', async () => {
+    install();
+    const inner = hub;
+    restoreFetch?.();
+    let calls = 0;
+    restoreFetch = installFetchImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (!url.includes('bureau.events')) {
+        return Response.json({ jsonrpc: '2.0', id: 'x', result: { id: 'bureau-1' } });
+      }
+      calls += 1;
+      if (calls === 1) throw new TypeError('network down');
+      return inner.handle(input, init) ?? new Response('', { status: 404 });
+    });
+    connect();
+    await waitUntil(() => inner.opened('bureau') === 1);
+    expect(calls).toBe(2);
   });
 });
