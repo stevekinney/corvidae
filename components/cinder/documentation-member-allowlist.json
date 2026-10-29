@@ -490,6 +490,8 @@
     "./tokens/runtime TokenGroup.$type",
     "./tokens/runtime TokenLocation.document",
     "./tokens/runtime TokenLocation.path",
+    "./tokens/runtime TokenValidationError.issues",
+    "./tokens/runtime TokenValidationError.sourceOwned",
     "./tokens/runtime ValidationIssue.path",
     "./tokens/runtime ValidationIssue.reason"
   ]

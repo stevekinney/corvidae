@@ -115,7 +115,7 @@ function undocumentedSignatures(
 function ownMembers(declaration: ts.Declaration): readonly ts.Node[] {
   if (ts.isInterfaceDeclaration(declaration)) return declaration.members;
   if (ts.isClassDeclaration(declaration)) {
-    return declaration.members.flatMap((member) =>
+    return declaration.members.flatMap((member): readonly ts.Node[] =>
       ts.isConstructorDeclaration(member) ? member.parameters : [member],
     );
   }
