@@ -5,6 +5,7 @@ import type {
   BarChartSeries,
   ChartAxisConfiguration,
 } from '../../components/chart.types.ts';
+import { ownEntry } from '../own-entry.ts';
 import { HORIZONTAL_CATEGORY_LABEL_GAP } from './chart-layout.ts';
 import {
   chartPaletteColor,
@@ -53,7 +54,7 @@ export function renderBarSeries(options: BarRenderingOptions) {
     const offsets = { positive: 0, negative: 0 };
     const rowValues: BarChartModel['tableRows'][number]['values'] = [];
     visibleSeries.forEach((item) => {
-      const value = datum[item.valueKey];
+      const value = ownEntry(datum, item.valueKey);
       if (typeof value !== 'number') return;
       const bar = createBar(item, value, category, categoryIndex, offsets, options, scales);
       rowValues.push({ seriesId: item.id, seriesLabel: item.label, valueLabel: bar.valueLabel });

@@ -566,6 +566,9 @@ type Authorization =
 export function createChildTopology(dependencies: ChildTopologyDependencies): ChildTopology {
   const { store, runtime, diagnose } = dependencies;
   const contracts = dependencies.signalContracts ?? {};
+  /** An agent's signal contract, if it declares one itself, so an agent named `constructor` has none. */
+  const contractFor = (agentName: string) =>
+    Object.hasOwn(contracts, agentName) ? contracts[agentName] : undefined;
   const delegation = dependencies.delegation;
   const policyVersion = delegation?.policyVersion ?? DEFAULT_POLICY_VERSION;
   // COR-1710: read for every dispatch, so a lifetime set while the Bureau runs applies to the
@@ -1398,7 +1401,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     });
 
     const entry = ensureTracked(childRunId);
-    const contract = contracts[request.agentName];
+    const contract = contractFor(request.agentName);
     if (contract) {
       entry.channel = createChildSignalChannel(contract, {
         parentRunId: request.parentRunId,
@@ -1478,7 +1481,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     if (!channel) {
       return {
         outcome: 'unsupported',
-        reason: contracts[record.childAgentName] ? 'child-not-live' : 'no-signal-contract',
+        reason: contractFor(record.childAgentName) ? 'child-not-live' : 'no-signal-contract',
       };
     }
     const outcome = await channel.parent.send(request.name, request.payload);
@@ -1651,7 +1654,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
       pendingRecovery.set(record.childRunId, record);
       if (record.workflow.kind !== 'durable') continue;
       const entry = ensureTracked(record.childRunId);
-      const contract = contracts[record.childAgentName];
+      const contract = contractFor(record.childAgentName);
       if (contract && !entry.channel) {
         entry.channel = createChildSignalChannel(contract, {
           parentRunId: record.parentRunId,

@@ -93,6 +93,10 @@ describe('workflowEventsSseUrl', () => {
 });
 
 describe('parseServerSentEventChunk', () => {
+  it('yields no frame for a block of only comments', () => {
+    expect(parseServerSentEventChunk(': keep-alive\n\n')).toEqual({ frames: [], remainder: '' });
+  });
+
   it('parses multiline data, comments, ids, and named events', () => {
     const parsed = parseServerSentEventChunk(
       ': ignored\nid: 7\nevent: workflow:started\ndata: first\ndata: second\n\n',
@@ -628,5 +632,53 @@ describe('SseWorkflowEventSubscription', () => {
         true,
       ),
     ).toThrow('unexpected constructor bug');
+  });
+});
+
+describe('SseWorkflowEventSubscription network failures', () => {
+  it('retries a fetch that fails and gives up after the reconnect budget', async () => {
+    let callCount = 0;
+    globalThis.fetch = (async () => {
+      callCount += 1;
+      throw new TypeError('network down');
+    }) as unknown as typeof fetch;
+
+    const subscription = new SseWorkflowEventSubscription(
+      'http://localhost:7233/v1/workflows/wf-sse/events/sse',
+      {},
+      'wf-sse',
+      () => {},
+      { maxReconnectAttempts: 2, reconnectBackoffMs: 0 },
+    );
+
+    await waitForCondition(() => subscription.closeReason === 'reconnect-exhausted', {
+      label: 'failing SSE fetch exhausted its reconnects',
+    });
+
+    expect(callCount).toBe(3);
+  });
+
+  it('cancels a pending reconnect when closed during the backoff', async () => {
+    let callCount = 0;
+    globalThis.fetch = (async () => {
+      callCount += 1;
+      throw new TypeError('network down');
+    }) as unknown as typeof fetch;
+
+    const subscription = new SseWorkflowEventSubscription(
+      'http://localhost:7233/v1/workflows/wf-sse/events/sse',
+      {},
+      'wf-sse',
+      () => {},
+      { reconnectBackoffMs: 60_000 },
+    );
+    await waitForCondition(() => callCount === 1, { label: 'first SSE fetch attempt' });
+    // The failed fetch schedules its reconnect on the next microtask turn.
+    await Promise.resolve();
+
+    subscription.close();
+
+    expect(subscription.closeReason).toBe('client-closed');
+    expect(callCount).toBe(1);
   });
 });

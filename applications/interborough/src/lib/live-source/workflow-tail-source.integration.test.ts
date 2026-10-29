@@ -8,31 +8,25 @@
  * `engine.signal(id, 'advance')` — rather than racing real wall-clock
  * timing against a fast-completing workflow.
  *
- * **Scope.** `client.tail()`'s own reconnect/catch-up mechanics are weft's
- * to test (and are — `weft/src/client/event-stream.test.ts`); this source's
- * OWN added value — the outer capped-exponential reconnect layer, positional
- * dedup across reconnects, the pre-attach buffer, terminal-event detection —
- * is exhaustively covered against a scripted fake tail in
- * `workflow-tail-source.test.ts` (deterministic, no server, no real
- * timers). What genuinely needs a real server is proving the WIRE
- * INTEGRATION holds: a real `HttpClient`, real SSE framing, real engine
- * execution driving real committed events, catch-up-then-live delivery
- * through `WorkflowTailSource` end to end. A literal mid-stream network
- * drop has no test-side hook here (Bun's `fetch`/`ReadableStream` gives no
- * way to sever an in-flight SSE response without either killing the whole
- * server or reaching into the operation's own internal `AbortController`,
- * which weft's server does not expose) — "reconnect resume without
- * dup/skip" is proven instead by opening a second, independent tail after
- * more events have committed and confirming its OWN catch-up (the same
- * mechanism a reconnect's fresh `client.tail()` call relies on) delivers
- * everything exactly once, in order.
+ * **Scope.** The reconnect, cursor-resume, buffer, and terminal-event
+ * mechanics are exhaustively covered against a scripted `fetch` in
+ * `workflow-tail-source.test.ts` (deterministic, no server, no real timers).
+ * What genuinely needs a real server is proving the WIRE INTEGRATION holds:
+ * real SSE framing, real engine execution driving real committed events,
+ * catch-up-then-live delivery, and — the point of the cursor — that a
+ * connection severed mid-stream resumes through the server's own
+ * `Last-Event-ID` replay with nothing delivered twice and nothing skipped.
+ * Bun gives no way to sever an in-flight SSE response from the client side,
+ * so the severing test wraps `fetch` to relay the real response through a
+ * stream the test can cut.
  */
 import type { WorkflowEvent } from '@lostgradient/weft';
 import { flushPortableMicrotasks, HttpClient } from '@lostgradient/weft';
 import { waitFor } from '@testing-library/svelte';
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
 
 import { quietFor } from '@lostgradient/testing/wait-until';
+import { installFetchImplementation } from './fetch.test-support.ts';
 import {
   startLiveSourceTestServer,
   type LiveSourceTestServer,
@@ -45,14 +39,9 @@ import { WorkflowTailSource } from './workflow-tail-source.svelte.ts';
  */
 const MICROTASK_TURNS = 100;
 
-/**
- * `client.tail()` defaults to `eventTransport: 'auto'` (WebSocket first, real
- * `serve()` supports both) — this suite forces SSE deliberately so the SSE
- * transport keeps dedicated coverage rather than being shadowed by the
- * default WS path every run.
- */
+/** The caller connection a `WorkflowTailSource` reads: the real client's base URL and authorization headers. */
 function sseClient(server: LiveSourceTestServer): HttpClient {
-  return new HttpClient({ baseUrl: server.baseUrl, token: server.token, eventTransport: 'sse' });
+  return new HttpClient({ baseUrl: server.baseUrl, token: server.token });
 }
 
 async function startSignalStepped(
@@ -62,6 +51,49 @@ async function startSignalStepped(
 ): Promise<void> {
   await server.engine.start('signal-stepped', { steps }, { id: workflowId });
 }
+
+/**
+ * Relays each per-workflow SSE request to the real server through a stream the test can cut,
+ * which is the closest a client-side test gets to a network drop mid-stream.
+ */
+function installSeverableFetch(): { sever(): void; requests: Request[]; restore(): void } {
+  const original = globalThis.fetch;
+  const requests: Request[] = [];
+  const cuts: (() => void)[] = [];
+  const restore = installFetchImplementation(async (input, init) => {
+    const request = new Request(input, init);
+    requests.push(request);
+    const upstream = await original(request.clone());
+    if (upstream.body === null || !request.url.includes('/events/sse')) return upstream;
+    const reader = upstream.body.getReader();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        cuts.push(() => {
+          void reader.cancel();
+          controller.close();
+        });
+      },
+      async pull(controller) {
+        const chunk = await reader.read();
+        if (chunk.done) controller.close();
+        else controller.enqueue(chunk.value);
+      },
+    });
+    return new Response(body, { status: upstream.status, headers: upstream.headers });
+  });
+  return { sever: () => cuts.pop()?.(), requests, restore };
+}
+
+function identities(events: readonly WorkflowEvent[]): string[] {
+  return events.map((event) => `${event.type}:${String(event.data['step'])}`);
+}
+
+let restoreFetch: (() => void) | undefined;
+
+afterEach(() => {
+  restoreFetch?.();
+  restoreFetch = undefined;
+});
 
 describe('WorkflowTailSource (integration, real server)', () => {
   test('whenConnected resolves after catch-up, then delivers live frames driven by real engine activity', async () => {
@@ -175,6 +207,52 @@ describe('WorkflowTailSource (integration, real server)', () => {
       await server.engine.signal(workflowId, 'advance');
       await quietFor(100);
       expect(received.length).toBe(countAtClose);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test('a connection severed mid-stream resumes from its cursor: nothing delivered twice, nothing skipped', async () => {
+    const server = await startLiveSourceTestServer();
+    try {
+      const workflowId = 'wts-integration-sever-resume';
+      await startSignalStepped(server, workflowId, 5);
+      await server.engine.signal(workflowId, 'advance');
+
+      const relay = installSeverableFetch();
+      restoreFetch = relay.restore;
+      const source = new WorkflowTailSource(sseClient(server), workflowId, {
+        computeReconnectDelayMs: () => 1,
+      });
+      const received: WorkflowEvent[] = [];
+      source.subscribe((frame) => received.push(frame));
+      await source.whenConnected();
+      await waitFor(() => expect(received.length).toBeGreaterThan(0));
+      const deliveredBeforeSever = received.length;
+
+      relay.sever();
+      await waitFor(() => expect(relay.requests.length).toBe(2));
+      expect(relay.requests[0]?.headers.get('Last-Event-ID')).toBeNull();
+      expect(relay.requests[1]?.headers.get('Last-Event-ID')).not.toBeNull();
+
+      // Events committed after the sever arrive on the resumed connection only.
+      await server.engine.signal(workflowId, 'advance');
+      await server.engine.signal(workflowId, 'advance');
+      await waitFor(() => expect(received.length).toBeGreaterThan(deliveredBeforeSever));
+
+      // A control tail that never severs sees the whole history once; the resumed tail must match
+      // it exactly, which rules out both a replayed prefix and a gap.
+      const control = new WorkflowTailSource(sseClient(server), workflowId);
+      const controlReceived: WorkflowEvent[] = [];
+      control.subscribe((frame) => controlReceived.push(frame));
+      await control.whenConnected();
+      // Compared by event identity (type and step): the server's replayed history also carries a
+      // `__weftCheckpointReplay` payload that its live frames omit, which says nothing about delivery.
+      await waitFor(() => expect(identities(received)).toEqual(identities(controlReceived)));
+      expect(new Set(identities(received)).size).toBe(received.length);
+
+      control.close();
+      source.close();
     } finally {
       await server.stop();
     }

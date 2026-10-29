@@ -12,7 +12,11 @@
     "lint": {
       "outputs": [],
       "dependsOn": ["transit"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/check-documentation-coverage.ts"]
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/check-documentation-coverage.ts",
+        "$TURBO_ROOT$/scripts/check-inherited-key-reads.ts"
+      ]
     },
     "lint:fix": {
       "cache": false
@@ -288,6 +292,7 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/check-documentation-coverage.ts",
+        "$TURBO_ROOT$/scripts/check-inherited-key-reads.ts",
         "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
         "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",
         "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts"

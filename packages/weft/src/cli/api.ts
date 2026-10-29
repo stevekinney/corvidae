@@ -1,6 +1,7 @@
 import { sendJsonRpcRequest } from '../client/json-rpc-request.ts';
 import type { CatalogAccessSnapshot, CatalogOperationSnapshot } from '../index.ts';
 import { createCatalogSnapshot, createLiveOperationRegistry } from '../index.ts';
+import type { ErasedOperation } from '../server/operation-catalog/types.ts';
 import { findNearestCandidate } from './command-suggestions.ts';
 import { loadJsonInput } from './json-input.ts';
 import type { CliCommand, CommandOutput } from './types.ts';
@@ -22,7 +23,7 @@ export async function executeApi(command: ApiCommand): Promise<CommandOutput> {
   const inputResult = await readInput(command);
   if (!inputResult.ok) return inputResult.output;
 
-  const validation = validateInput(operation.name, inputResult.value);
+  const validation = validateInput(operationResult.liveOperation, inputResult.value);
   if (!validation.ok) return validation.output;
 
   return callOperation(command, operation.name, validation.value);
@@ -30,7 +31,9 @@ export async function executeApi(command: ApiCommand): Promise<CommandOutput> {
 
 function resolveInvokableOperation(
   command: ApiCommand,
-): { ok: true; operation: CatalogOperationSnapshot } | { ok: false; output: CommandOutput } {
+):
+  | { ok: true; operation: CatalogOperationSnapshot; liveOperation: ErasedOperation }
+  | { ok: false; output: CommandOutput } {
   if (command.operationName === undefined) {
     return {
       ok: false,
@@ -38,10 +41,15 @@ function resolveInvokableOperation(
     };
   }
 
+  // The catalog snapshot and the live registry describe the same operations (a test pins that),
+  // so a name found in the snapshot is found in the registry too. Resolving both here makes
+  // either lookup missing the same "unknown operation" usage error.
   const operation = operationByName.get(command.operationName);
-  if (operation === undefined)
+  const liveOperation = createLiveOperationRegistry().get(command.operationName);
+  if (operation === undefined || liveOperation === undefined)
     return { ok: false, output: usageError(formatUnknownOperation(command.operationName)) };
-  return assertInvokableOperation(operation, command.yes);
+  const invokable = assertInvokableOperation(operation, command.yes);
+  return invokable.ok ? { ...invokable, liveOperation } : invokable;
 }
 
 function assertInvokableOperation(
@@ -147,12 +155,10 @@ async function readInput(
 }
 
 function validateInput(
-  operationName: string,
+  operation: ErasedOperation,
   input: unknown,
 ): { ok: true; value: Record<string, unknown> } | { ok: false; output: CommandOutput } {
-  const operation = createLiveOperationRegistry().get(operationName);
-  if (operation === undefined)
-    return { ok: false, output: usageError(formatUnknownOperation(operationName)) };
+  const operationName = operation.name;
   const parsed = operation.inputSchema.safeParse(input);
   if (!parsed.success) {
     return {

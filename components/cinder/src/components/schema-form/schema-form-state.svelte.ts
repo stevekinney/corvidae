@@ -1,3 +1,4 @@
+import { ownEntry } from '../../_internal/own-entry.ts';
 import {
   arrayValueAtPath,
   decodeEnumValue,
@@ -89,24 +90,24 @@ export class SchemaFormState {
     const key = pathKey(path);
     this.#touchedValidationSequences = {
       ...this.#touchedValidationSequences,
-      [key]: (this.#touchedValidationSequences[key] ?? 0) + 1,
+      [key]: (ownEntry(this.#touchedValidationSequences, key) ?? 0) + 1,
     };
   }
 
   #currentDraft(): SchemaFormOutput {
     let nextValue = this.formValue;
     for (const field of this.#currentNumericFields(this.#model.field, this.formValue)) {
-      const draft = this.#numericDrafts[pathKey(field.path)];
+      const draft = ownEntry(this.#numericDrafts, pathKey(field.path));
       if (draft !== undefined) nextValue = setValueAtPath(nextValue, field.path, draft);
     }
     for (const field of this.#currentJsonFields(this.#model.field, this.formValue)) {
       const key = pathKey(field.path);
-      const parsed = this.#parsedRawDrafts[key];
+      const parsed = ownEntry(this.#parsedRawDrafts, key);
       if (parsed === undefined) continue;
       nextValue = setValueAtPath(
         nextValue,
         field.path,
-        parsed.ok ? parsed.value : this.#rawDrafts[key],
+        parsed.ok ? parsed.value : ownEntry(this.#rawDrafts, key),
       );
     }
     return pruneUndefined(nextValue);
@@ -120,12 +121,12 @@ export class SchemaFormState {
     if (this.#options.getSubmitting()) return;
     this.formValue = setValueAtPath(this.formValue, path, next);
     const key = pathKey(path);
-    if (this.#numericDrafts[key] !== undefined) {
+    if (ownEntry(this.#numericDrafts, key) !== undefined) {
       const { [key]: _removedDraft, ...remainingDrafts } = this.#numericDrafts;
       this.#numericDrafts = remainingDrafts;
     }
     this.#bumpTouchedValidationSequence(path);
-    if (this.#errors[key]) {
+    if (ownEntry(this.#errors, key)) {
       const { [key]: _removed, ...remaining } = this.#errors;
       this.#errors = remaining;
     }
@@ -134,7 +135,7 @@ export class SchemaFormState {
   }
 
   updateNumberValue(field: SchemaFormField, next: number | null): void {
-    const draft = this.#numericDrafts[pathKey(field.path)];
+    const draft = ownEntry(this.#numericDrafts, pathKey(field.path));
     if (next === null && draft !== undefined && draft.trim() !== '') return;
     this.updateValue(field.path, next ?? undefined);
   }
@@ -142,7 +143,7 @@ export class SchemaFormState {
   async validateTouchedField(field: SchemaFormField): Promise<void> {
     if (this.#options.getSubmitting()) return;
     const fieldKey = pathKey(field.path);
-    const sequence = (this.#touchedValidationSequences[fieldKey] ?? 0) + 1;
+    const sequence = (ownEntry(this.#touchedValidationSequences, fieldKey) ?? 0) + 1;
     this.#touchedValidationSequences = {
       ...this.#touchedValidationSequences,
       [fieldKey]: sequence,
@@ -158,7 +159,7 @@ export class SchemaFormState {
     }
     const candidate = pruneUndefined(raw.value);
     const result = await validateSchemaValue(this.#model.sourceSchema, candidate);
-    if (this.#touchedValidationSequences[fieldKey] !== sequence) return;
+    if (ownEntry(this.#touchedValidationSequences, fieldKey) !== sequence) return;
     const issue = (result.valid ? [] : result.issues).find((candidateIssue) => {
       const candidateKey = pathKey(candidateIssue.path);
       return candidateKey === fieldKey || candidateKey.startsWith(`${fieldKey}/`);
@@ -169,7 +170,7 @@ export class SchemaFormState {
       return;
     }
 
-    if (this.#errors[fieldKey]) {
+    if (ownEntry(this.#errors, fieldKey)) {
       const { [fieldKey]: _removed, ...remaining } = this.#errors;
       this.#errors = remaining;
     }
@@ -197,7 +198,7 @@ export class SchemaFormState {
       [key]: parsed.ok ? parsed : { ok: false, message: parsed.issue.message },
     };
     this.#bumpTouchedValidationSequence(field.path);
-    if (this.#errors[key]) {
+    if (ownEntry(this.#errors, key)) {
       const { [key]: _removed, ...remaining } = this.#errors;
       this.#errors = remaining;
     }
@@ -217,7 +218,7 @@ export class SchemaFormState {
 
   arrayRows(field: SchemaFormField): Array<{ key: string; index: number }> {
     const values = arrayValueAtPath(this.formValue, field.path);
-    const keys = this.#arrayKeys[pathKey(field.path)] ?? [];
+    const keys = ownEntry(this.#arrayKeys, pathKey(field.path)) ?? [];
     return values.map((_, index) => ({
       key: keys[index] ?? `${pathKey(field.path)}-${index}`,
       index,
@@ -232,7 +233,7 @@ export class SchemaFormState {
     const key = pathKey(field.path);
     this.#arrayKeys = {
       ...this.#arrayKeys,
-      [key]: [...(this.#arrayKeys[key] ?? []), `${key}-${this.#arrayKeyCounter++}`],
+      [key]: [...(ownEntry(this.#arrayKeys, key) ?? []), `${key}-${this.#arrayKeyCounter++}`],
     };
   }
 
@@ -255,7 +256,9 @@ export class SchemaFormState {
     const key = pathKey(field.path);
     this.#arrayKeys = {
       ...this.#arrayKeys,
-      [key]: (this.#arrayKeys[key] ?? []).filter((_, candidateIndex) => candidateIndex !== index),
+      [key]: (ownEntry(this.#arrayKeys, key) ?? []).filter(
+        (_, candidateIndex) => candidateIndex !== index,
+      ),
     };
     this.#reportDraftChange();
   }
@@ -385,7 +388,7 @@ export class SchemaFormState {
     let nextValue = this.formValue;
     const issues: SchemaFormValidationIssue[] = [];
     for (const field of this.#currentJsonFields(this.#model.field, this.formValue)) {
-      const parsed = this.#parsedRawDrafts[pathKey(field.path)];
+      const parsed = ownEntry(this.#parsedRawDrafts, pathKey(field.path));
       if (parsed === undefined) continue;
       if (parsed.ok) {
         nextValue = setValueAtPath(nextValue, field.path, parsed.value);
@@ -408,7 +411,7 @@ export class SchemaFormState {
 
     let candidate = raw.value;
     for (const field of this.#currentNumericFields(this.#model.field, this.formValue)) {
-      const draft = this.#numericDrafts[pathKey(field.path)];
+      const draft = ownEntry(this.#numericDrafts, pathKey(field.path));
       if (draft !== undefined) candidate = setValueAtPath(candidate, field.path, draft);
     }
     return { ok: true, value: pruneUndefined(candidate) };

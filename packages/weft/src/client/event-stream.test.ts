@@ -3,7 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import type { WorkflowEvent } from '../core/types.ts';
 import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
 import { defaultWebSocketFactory, workflowWatchWebSocketUrl } from './event-stream-transport.ts';
-import { FakeWebSocketServer } from './event-stream.test-support.ts';
+import { FakeWebSocket, FakeWebSocketServer } from './event-stream.test-support.ts';
 import { WorkflowEventSubscription, type EventHistoryFetcher } from './event-stream.ts';
 import {
   openClientEventSubscription,
@@ -962,5 +962,75 @@ describe('WorkflowEventSubscription first-connect failure', () => {
           reconnectBackoffMs: 1,
         }),
     ).toThrow('no websocket');
+  });
+});
+
+describe('WorkflowEventSubscription reconnect and close edges', () => {
+  it('retries when the socket factory fails after a socket has already opened', async () => {
+    const server = new FakeWebSocketServer();
+    let calls = 0;
+    const subscription = new WorkflowEventSubscription(
+      'ws://test/watch',
+      {},
+      'wf-factory-retry',
+      noHistory,
+      () => {},
+      {
+        webSocketFactory: (url, headers) => {
+          calls += 1;
+          if (calls === 2) throw new Error('transient factory failure');
+          return server.factory(url, headers);
+        },
+        maxReconnectAttempts: 3,
+        reconnectBackoffMs: 1,
+      },
+    );
+    await waitFor(() => server.sockets.length === 1 && server.latest().opened);
+
+    server.sockets[0]!.drop();
+    await waitFor(() => server.sockets.length === 2);
+
+    expect(calls).toBe(3);
+    expect(subscription.closeReason).toBeNull();
+    subscription.close();
+  });
+
+  it('cancels a pending reconnect when closed during the backoff', async () => {
+    const server = new FakeWebSocketServer();
+    const subscription = new WorkflowEventSubscription(
+      'ws://test/watch',
+      {},
+      'wf-close-in-backoff',
+      noHistory,
+      () => {},
+      { webSocketFactory: server.factory, reconnectBackoffMs: 60_000 },
+    );
+    await waitFor(() => server.sockets.length === 1 && server.latest().opened);
+
+    server.sockets[0]!.drop();
+    subscription.close();
+
+    expect(subscription.closeReason).toBe('client-closed');
+    expect(server.sockets).toHaveLength(1);
+  });
+
+  it('closes quietly when the socket throws on close', async () => {
+    class DeadSocket extends FakeWebSocket {
+      override close(): void {
+        throw new Error('already dead');
+      }
+    }
+    const subscription = new WorkflowEventSubscription(
+      'ws://test/watch',
+      {},
+      'wf-dead-socket',
+      noHistory,
+      () => {},
+      { webSocketFactory: (url) => new DeadSocket(url) },
+    );
+
+    subscription.close();
+
+    expect(subscription.closeReason).toBe('client-closed');
   });
 });

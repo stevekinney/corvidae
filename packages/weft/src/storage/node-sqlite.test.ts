@@ -105,19 +105,27 @@ function createFakeDatabaseConstructor() {
           all(...parameters: unknown[]): FakeRow[] {
             let index = 0;
             const prefix = parameters[index++] as string;
-            const prefixEnd = parameters[index++] as string;
-            const gt = source.includes('key > ?') ? (parameters[index++] as string) : undefined;
-            const gte = source.includes('key >= ? AND key < ? AND key >= ?')
+            // An empty prefix has no upper bound, so its statement carries no `key < ?` clause.
+            const bounded = source.includes('WHERE key >= ? AND key < ?');
+            const prefixEnd = bounded ? (parameters[index++] as string) : undefined;
+            const additionalBounds = source.replace(
+              bounded ? 'key >= ? AND key < ?' : 'key >= ?',
+              '',
+            );
+            const gt = additionalBounds.includes('key > ?')
               ? (parameters[index++] as string)
               : undefined;
-            const lt = source.includes('key < ? AND key < ? ORDER')
+            const gte = additionalBounds.includes('key >= ?')
+              ? (parameters[index++] as string)
+              : undefined;
+            const lt = additionalBounds.includes('key < ?')
               ? (parameters[index++] as string)
               : undefined;
             const lte = source.includes('key <= ?') ? (parameters[index++] as string) : undefined;
             const limit = source.includes('LIMIT ?') ? (parameters[index++] as number) : undefined;
 
             let rows = [...values.entries()]
-              .filter(([key]) => key >= prefix && key < prefixEnd)
+              .filter(([key]) => key >= prefix && (prefixEnd === undefined || key < prefixEnd))
               .filter(([key]) => (gt === undefined ? true : key > gt))
               .filter(([key]) => (gte === undefined ? true : key >= gte))
               .filter(([key]) => (lt === undefined ? true : key < lt))

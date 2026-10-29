@@ -15,17 +15,16 @@ import {
 import { assertReadOnlyQuery } from './read-only-query.ts';
 import { scopedStorage } from './scoped-storage.ts';
 import {
-  SQLITE_COUNT_KEYS_BY_PREFIX,
   SQLITE_CREATE_KEY_VALUE_TABLE,
-  SQLITE_DELETE_KEYS_BY_PREFIX,
   SQLITE_DELETE_VALUE_BY_KEY,
   SQLITE_SELECT_KEY_PRESENCE,
   SQLITE_SELECT_VALUE_BY_KEY,
   SQLITE_UPSERT_VALUE_BY_KEY,
+  buildSqliteCountKeysByPrefix,
+  buildSqliteDeleteKeysByPrefix,
   buildSqliteKeyRangeDelete,
   buildSqliteKeyRangeSelect,
   buildSqliteKeyValueRangeSelect,
-  buildSqlitePrefixRangeParameters,
 } from './sqlite-key-value-queries.ts';
 
 const LIBSQL_CREATE_KEY_VALUE_TABLE_STATEMENT = `${SQLITE_CREATE_KEY_VALUE_TABLE};`;
@@ -317,11 +316,8 @@ export class TursoStorage implements Storage {
   async deletePrefix(prefix: string): Promise<number> {
     const client = await this.#ensureTable();
 
-    const [rangeStart, rangeEnd] = buildSqlitePrefixRangeParameters(prefix);
-    const result = await client.execute({
-      sql: SQLITE_DELETE_KEYS_BY_PREFIX,
-      args: [rangeStart, rangeEnd],
-    });
+    const { parameters, sql } = buildSqliteDeleteKeysByPrefix(prefix);
+    const result = await client.execute({ sql, args: parameters });
 
     return result.rowsAffected;
   }
@@ -373,11 +369,8 @@ export class TursoStorage implements Storage {
   async count(prefix: string): Promise<number> {
     const client = await this.#ensureTable();
 
-    const [rangeStart, rangeEnd] = buildSqlitePrefixRangeParameters(prefix);
-    const result = await client.execute({
-      sql: SQLITE_COUNT_KEYS_BY_PREFIX,
-      args: [rangeStart, rangeEnd],
-    });
+    const { parameters, sql } = buildSqliteCountKeysByPrefix(prefix);
+    const result = await client.execute({ sql, args: parameters });
 
     return Number(result.rows[0]?.['count'] ?? 0);
   }

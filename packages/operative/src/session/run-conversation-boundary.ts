@@ -1,5 +1,6 @@
 import type { ConversationHistory, Message } from 'conversationalist';
 
+import { getOwn } from 'conversationalist';
 import type { AgentSession, RunConversationBoundary, RunRef } from '../agent-session';
 import { ForkThroughRunError, type ForkThroughRunErrorReason } from './session-handle-types';
 
@@ -106,7 +107,7 @@ function unknownBodies(
 ): Record<string, Message> {
   const bodies: Record<string, Message> = {};
   for (const id of ids) {
-    const message = messages[id];
+    const message = getOwn(messages, id);
     if (message !== undefined && !sameMessage(known.get(id), message)) bodies[id] = message;
   }
   return bodies;

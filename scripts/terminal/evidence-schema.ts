@@ -579,7 +579,7 @@ export function validateEvidence(
     expectedKind === 'runtime' &&
     cells.some(
       (cell) =>
-        !isRecord(cell) || !isRecord(cell['versions']) || cell['versions']['bun'] !== '1.4.2',
+        !isRecord(cell) || !isRecord(cell['versions']) || cell['versions']['bun'] !== '1.4.4',
     )
   )
     errors.push('runtime bun version');

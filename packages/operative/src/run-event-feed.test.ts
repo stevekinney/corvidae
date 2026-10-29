@@ -40,6 +40,22 @@ async function drain(
 }
 
 describe('the agent run event feed', () => {
+  it('opens a gap when reconnecting with a previous incarnation cursor', async () => {
+    const previous = createAgentRunEventFeed({ runId: 'run-1' });
+    const old = previous.publish(new RunStartedEvent(conversation()))!;
+    const current = createAgentRunEventFeed({ runId: 'run-1' });
+    current.publish(new RunStartedEvent(conversation()));
+    const replay: AgentRunEventEnvelope[] = [];
+    for await (const event of current.feed.replay({ fromCursor: old.cursor })) replay.push(event);
+    expect(replay[0]).toMatchObject({
+      kind: 'run.gap',
+      payload: { requestedCursor: old.cursor, firstRetainedSequence: 0 },
+    });
+    expect(replay[1]?.kind).toBe('run.started');
+    previous.dispose();
+    current.dispose();
+  });
+
   it('numbers envelopes from zero with matching cursors', () => {
     const feed = createAgentRunEventFeed({ runId: 'run-1', now: () => 1000 });
 

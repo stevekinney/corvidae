@@ -7,7 +7,7 @@ import { conversationSchema } from '../schemas';
 import { type ConversationHistory, type Message, CURRENT_SCHEMA_VERSION } from '../types';
 import { getRoleFromLabel } from './markdown-roles';
 import { toIdRecord } from './message-store';
-import { toReadonly } from './type-helpers';
+import { getOwn, toReadonly } from './type-helpers';
 
 /** A malformed Markdown conversation or its YAML metadata. */
 export class MarkdownParseError extends Error {
@@ -124,7 +124,7 @@ function readMetadataMessage(
   const role = getRoleFromLabel(roleDisplay);
   if (!role) throw new MarkdownParseError(`Unknown role: ${roleDisplay}`);
   const allMetadata = metadata['messages'];
-  const messageMetadata = isRecord(allMetadata) ? allMetadata[messageId] : undefined;
+  const messageMetadata = isRecord(allMetadata) ? getOwn(allMetadata, messageId) : undefined;
   if (!isRecord(messageMetadata)) {
     throw new MarkdownParseError(`Missing metadata for message: ${messageId}`);
   }

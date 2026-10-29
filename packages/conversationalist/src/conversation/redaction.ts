@@ -8,6 +8,7 @@ import { copyContent, type MultiModalContent } from '../multi-modal';
 import type { ConversationHistory as Conversation, Message } from '../types';
 import { createMessage, toReadonly } from '../utilities';
 import { redactToolResult } from '../utilities/tool-results';
+import { getOwn } from '../utilities/type-helpers';
 import { ensureConversationSafe } from './validation';
 
 export interface RedactMessageOptions {
@@ -103,7 +104,7 @@ export function redactMessageAtPosition(
   }
 
   const id = conversation.ids[position];
-  const original = id !== undefined ? conversation.messages[id] : undefined;
+  const original = id !== undefined ? getOwn(conversation.messages, id) : undefined;
   if (!original) {
     throw createInvalidPositionError(conversation.ids.length - 1, position);
   }

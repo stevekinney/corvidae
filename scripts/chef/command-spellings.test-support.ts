@@ -125,7 +125,7 @@ export function scriptsMentioned(text: string): string[] {
 }
 
 /**
- * Flag-only code spans (`--fixes-main`, `--waive-load-flake <reason> --control-head <sha>`) name
+ * Flag-only code spans (`--fixes-main`, `--head <sha>`) name
  * options without naming the script, so each must be accepted by some script that `unit` (a rule or
  * a paragraph) mentions. Returns one problem per option no mentioned script accepts.
  */

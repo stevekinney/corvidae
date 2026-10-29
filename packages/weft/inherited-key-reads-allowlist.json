@@ -1,0 +1,209 @@
+{
+  "description": "Dynamic reads allowed to use a key the code does not control, checked by scripts/check-inherited-key-reads.ts. Each entry names the file, the expression as written, how many such sites the file holds, and why no inherited key such as constructor can reach them. The list can only shrink: --shrink drops stale entries and lowers counts.",
+  "entries": [
+    {
+      "file": "src/cli/parse-arguments.ts",
+      "expression": "SUBCOMMAND_PARSERS[subcommand ?? '']",
+      "count": 1,
+      "reason": "the subcommand is a member of KNOWN_SUBCOMMANDS (findSubcommand throws otherwise), or empty"
+    },
+    {
+      "file": "src/core/application-primitive-codec.ts",
+      "expression": "source[field]",
+      "count": 4,
+      "reason": "every caller passes a string literal for the field name"
+    },
+    {
+      "file": "src/core/checkpoint/serialization.ts",
+      "expression": "record[field]",
+      "count": 4,
+      "reason": "every caller passes a string literal for the field name"
+    },
+    {
+      "file": "src/core/context/durable-operations.ts",
+      "expression": "internals.checkpointLocals[localKey]",
+      "count": 1,
+      "reason": "the key is a fixed prefix (`__weft...:` or `version:`) followed by an id, and no inherited name begins with either"
+    },
+    {
+      "file": "src/core/context/parallel-operations.ts",
+      "expression": "record[name]",
+      "count": 1,
+      "reason": "the names are Object.keys of the same run-all `branches` record, so each is an own key"
+    },
+    {
+      "file": "src/core/context/run-operation.ts",
+      "expression": "internals.checkpointLocals[localKey]",
+      "count": 1,
+      "reason": "the key is a fixed prefix (`__weft...:` or `version:`) followed by an id, and no inherited name begins with either"
+    },
+    {
+      "file": "src/core/context/session-state.ts",
+      "expression": "candidate[key]",
+      "count": 1,
+      "reason": "the store is built by createSessionStateStore (a null-prototype object), and the read in the first branch follows hasSessionStateKey"
+    },
+    {
+      "file": "src/core/context/session-state.ts",
+      "expression": "internals.stateSession[key]",
+      "count": 1,
+      "reason": "the store is built by createSessionStateStore (a null-prototype object), and the read in the first branch follows hasSessionStateKey"
+    },
+    {
+      "file": "src/core/context/sleep-deadline.ts",
+      "expression": "internals.checkpointLocals[localKey]",
+      "count": 1,
+      "reason": "the key is a fixed prefix (`__weft...:` or `version:`) followed by an id, and no inherited name begins with either"
+    },
+    {
+      "file": "src/core/context/version-patching.ts",
+      "expression": "checkpointLocals[localKey]",
+      "count": 1,
+      "reason": "the key is a fixed prefix (`__weft...:` or `version:`) followed by an id, and no inherited name begins with either"
+    },
+    {
+      "file": "src/core/contract/normalize.ts",
+      "expression": "record[key]",
+      "count": 2,
+      "reason": "the keys come from sortedKeys(record), which is Object.keys of the same record"
+    },
+    {
+      "file": "src/core/engine/activity-reconciliation.ts",
+      "expression": "record[field]",
+      "count": 2,
+      "reason": "the keys come from two array literals declared in the same function"
+    },
+    {
+      "file": "src/core/engine/operations-coordination.ts",
+      "expression": "branches[name]",
+      "count": 1,
+      "reason": "the names are Object.keys of the same run-all `branches` record, so each is an own key"
+    },
+    {
+      "file": "src/core/engine/registration.ts",
+      "expression": "(value as { [k: string]: unknown })[key]",
+      "count": 1,
+      "reason": "hasNonNullObjectField is called only with the literals activities, signals, updates, queries and searchAttributes"
+    },
+    {
+      "file": "src/core/engine/timeline-coordinator-detail.ts",
+      "expression": "branches[key]",
+      "count": 1,
+      "reason": "the names are Object.keys of the same run-all `branches` record, so each is an own key"
+    },
+    {
+      "file": "src/core/interceptor/split.ts",
+      "expression": "(interceptor as Record<string, unknown>)[hook]",
+      "count": 1,
+      "reason": "the hook names come from WORKFLOW_INTERCEPTOR_HOOKS and the literal `execute`"
+    },
+    {
+      "file": "src/core/mailbox-codec.ts",
+      "expression": "source[field]",
+      "count": 1,
+      "reason": "every caller passes a string literal for the field name"
+    },
+    {
+      "file": "src/core/outbox-codec.ts",
+      "expression": "source[field]",
+      "count": 4,
+      "reason": "every caller passes a string literal for the field name"
+    },
+    {
+      "file": "src/core/scheduler/duration.ts",
+      "expression": "UNIT_TO_MILLISECONDS[unit]",
+      "count": 1,
+      "reason": "the unit is captured by DURATION_PATTERN, which admits only the unit words the table names"
+    },
+    {
+      "file": "src/core/scheduler/timer-batch.ts",
+      "expression": "value[property]",
+      "count": 2,
+      "reason": "every caller passes a string literal for the field name"
+    },
+    {
+      "file": "src/core/worker-protocol.ts",
+      "expression": "record[field]",
+      "count": 2,
+      "reason": "every caller passes a string literal for the field name"
+    },
+    {
+      "file": "src/diagnostics/doctor.ts",
+      "expression": "rows[0][column]",
+      "count": 2,
+      "reason": "every caller passes a string literal for the field name"
+    },
+    {
+      "file": "src/document-workflow/interpreter.ts",
+      "expression": "host.activities[name]",
+      "count": 1,
+      "reason": "buildDocumentWorkflowDefinition runs after document validation, which tests every handler with Object.hasOwn(host.activities, handler)"
+    },
+    {
+      "file": "src/json-schema/codegen-emit.ts",
+      "expression": "properties[key]",
+      "count": 1,
+      "reason": "the read is behind declaredKeySet.has(key), and the set holds Object.keys(properties)"
+    },
+    {
+      "file": "src/observability/metrics.ts",
+      "expression": "snapshot[metric.name]",
+      "count": 1,
+      "reason": "metric names come from the METRICS table, which is declared in this package"
+    },
+    {
+      "file": "src/server/openapi.ts",
+      "expression": "paths[openApiPath]",
+      "count": 4,
+      "reason": "the key is an OpenAPI path, which always begins with `/`; no inherited name does"
+    },
+    {
+      "file": "src/server/operation-catalog/pipeline-stages.ts",
+      "expression": "key in parsed",
+      "count": 1,
+      "reason": "the keys are Object.keys(rawRecord), and `parsed` is given a null prototype by Object.setPrototypeOf(parsed, null) before the membership test"
+    },
+    {
+      "file": "src/server/operation-catalog/pipeline-stages.ts",
+      "expression": "rawInput[key]",
+      "count": 1,
+      "reason": "the keys are Object.keys(rawRecord), and `parsed` is given a null prototype by Object.setPrototypeOf(parsed, null) before the membership test"
+    },
+    {
+      "file": "src/server/operation-fault.ts",
+      "expression": "(fault.data as Record<string, unknown>)[field]",
+      "count": 1,
+      "reason": "the field is a key from Object.entries(fault.data), so it is an own key of the same object"
+    },
+    {
+      "file": "src/storage/environment-configuration.ts",
+      "expression": "environment[name]",
+      "count": 1,
+      "reason": "the names are the values of a literal mapping declared in the same function"
+    },
+    {
+      "file": "src/storage/resolve.ts",
+      "expression": "configuration[field]",
+      "count": 3,
+      "reason": "every caller passes a string literal for the field name"
+    },
+    {
+      "file": "src/storage/web-extension.ts",
+      "expression": "keyspace[key]",
+      "count": 2,
+      "reason": "decodeEnvelope returns null for anything that is not a storage envelope, so an inherited member reads as a missing key"
+    },
+    {
+      "file": "src/worker/manifest/json-scan.ts",
+      "expression": "simple[escaped]",
+      "count": 1,
+      "reason": "the key is the one character after a backslash, and no inherited name is one character long"
+    },
+    {
+      "file": "src/worker/protocol-internals.ts",
+      "expression": "record[sourceKey]",
+      "count": 1,
+      "reason": "the keys come from the FieldSpec tables the protocol parsers declare as literals in worker/protocol.ts"
+    }
+  ]
+}

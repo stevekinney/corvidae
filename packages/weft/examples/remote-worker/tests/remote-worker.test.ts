@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { outcomeOf, rethrow } from '../../../src/testing/module-scope-scenario.test-support.ts';
-import { runRemoteWorkerExample } from '../src/index';
+import { formatGreetingRemotely, runRemoteWorkerExample } from '../src/index';
 
 // This scenario spawns the example entry point as a real process, which takes seconds on a loaded host, so each scenario runs here at
 // module scope, off Bun's five-second per-test clock; its test rethrows the outcome.
@@ -31,6 +32,14 @@ describe('remote-worker example', () => {
     const result = await runRemoteWorkerExample('Ada');
 
     expect(result.greeting).toBe(`Hello, Ada! (via ${result.workerId})`);
+  });
+
+  it('refuses to run the local stand-in for the remote activity', async () => {
+    expect(
+      await throwingRejectionOf(
+        Promise.resolve().then(() => formatGreetingRemotely({ name: 'Ada' })),
+      ),
+    ).toThrow('formatGreetingRemotely must never run locally');
   });
 
   it('runs the CLI entry point (import.meta.main) when spawned directly, printing the remote result', () =>

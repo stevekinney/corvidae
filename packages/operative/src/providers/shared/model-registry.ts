@@ -54,7 +54,7 @@ export const GEMINI_MODEL_ALIASES: Readonly<Record<string, string>> = Object.fre
 
 function resolveModelAlias(model: string, aliases: Readonly<Record<string, string>>): string {
   if (model === 'inherit') return model;
-  return aliases[model] ?? model;
+  return (Object.hasOwn(aliases, model) ? aliases[model] : undefined) ?? model;
 }
 
 /** Resolves an Anthropic shorthand alias (or full model ID) to a concrete model ID. */

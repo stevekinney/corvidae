@@ -491,6 +491,26 @@ describe('setupServiceWorker', () => {
     });
   });
 
+  it('activates without claiming when the scope has no clients', async () => {
+    const scope = createFakeServiceWorkerScope();
+    Reflect.deleteProperty(scope, 'clients');
+    await withFakeSelf(scope, async () => {
+      const setup = await setupServiceWorker({ storage: new MemoryStorage() });
+      let activatePromise: Promise<unknown> | undefined;
+      listenerFor(
+        scope,
+        'activate',
+      )({
+        waitUntil(promise) {
+          activatePromise = promise;
+        },
+      });
+      await activatePromise;
+      expect(scope.claimCalls).toBe(0);
+      setup.engine[Symbol.dispose]();
+    });
+  });
+
   it('holds fetches dispatched mid-registration until ready resolves', async () => {
     const scope = createFakeServiceWorkerScope();
     await withFakeSelf(scope, async () => {

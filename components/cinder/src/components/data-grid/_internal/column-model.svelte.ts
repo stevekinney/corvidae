@@ -1,4 +1,5 @@
 import type { Snippet } from 'svelte';
+import { ownEntry } from '../../../_internal/own-entry.ts';
 import type {
   DataGridCellContext,
   DataGridColumnDef,
@@ -132,7 +133,7 @@ function resolveColumn<TRow>(
     finiteNumberOrFallback(column.minWidth, DEFAULT_DATA_GRID_COLUMN_MIN_WIDTH),
   );
   const baseWidth = finiteNumberOrFallback(
-    columnSizing?.[column.key] ?? column.width,
+    (columnSizing === undefined ? undefined : ownEntry(columnSizing, column.key)) ?? column.width,
     DEFAULT_DATA_GRID_COLUMN_WIDTH,
   );
   const maxWidth = Math.max(

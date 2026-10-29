@@ -46,6 +46,20 @@ describe('createRotatingApiKeyStore', () => {
     expect(store.has('expiring')).toBe(false);
   });
 
+  it('reports a registered, unexpired key as present', () => {
+    let clock = 0;
+    const store = createRotatingApiKeyStore(() => clock);
+    store.add('live', { subject: 'svc', expiresAt: 1_000 });
+    store.add('forever', { subject: 'svc' });
+
+    expect(store.has('live')).toBe(true);
+    expect(store.has('forever')).toBe(true);
+    expect(store.has('unregistered')).toBe(false);
+    clock = 999;
+    expect(store.has('live')).toBe(true);
+    expect(store.size).toBe(2);
+  });
+
   it('rejects empty keys', () => {
     const store = createRotatingApiKeyStore();
     expect(() => store.add('', { subject: 'svc' })).toThrow();

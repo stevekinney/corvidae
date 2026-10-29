@@ -86,6 +86,17 @@ export type FieldDiff =
 /** Shape descriptor: maps field names to their type names (e.g., `"string"`, `"object"`). */
 export type ShapeDescriptor = Record<string, string>;
 
+function diffField(
+  field: string,
+  oldType: string | undefined,
+  newType: string | undefined,
+): FieldDiff | undefined {
+  if (oldType === undefined)
+    return newType === undefined ? undefined : { field, change: 'added', newType };
+  if (newType === undefined) return { field, change: 'removed', oldType };
+  return oldType === newType ? undefined : { field, change: 'type-changed', oldType, newType };
+}
+
 /**
  * Compare two checkpoint shape descriptors and return the field-level diffs.
  *
@@ -112,21 +123,11 @@ export function diffCheckpointShapes(
   const allKeys = new Set([...Object.keys(oldShape), ...Object.keys(newShape)]);
 
   for (const key of allKeys) {
-    const inOld = Object.hasOwn(oldShape, key);
-    const inNew = Object.hasOwn(newShape, key);
+    const oldType = Object.hasOwn(oldShape, key) ? oldShape[key] : undefined;
+    const newType = Object.hasOwn(newShape, key) ? newShape[key] : undefined;
 
-    if (inOld && !inNew) {
-      diffs.push({ field: key, change: 'removed', oldType: oldShape[key]! });
-    } else if (!inOld && inNew) {
-      diffs.push({ field: key, change: 'added', newType: newShape[key]! });
-    } else if (inOld && inNew && oldShape[key] !== newShape[key]) {
-      diffs.push({
-        field: key,
-        change: 'type-changed',
-        oldType: oldShape[key]!,
-        newType: newShape[key]!,
-      });
-    }
+    const diff = diffField(key, oldType, newType);
+    if (diff !== undefined) diffs.push(diff);
   }
 
   return diffs;

@@ -34,8 +34,8 @@ const API_PREFIX = '/api';
  * `exposed` row's `Location` file must contain.
  */
 const NON_CATALOG_SURFACES: Readonly<Record<string, string>> = {
-  'feed:workflow-events:sse': 'client.tail(',
-  'feed:workflow-events:websocket': 'client.tail(',
+  'feed:workflow-events:sse': '/events/sse',
+  'feed:workflow-events:websocket': '/watch',
   'feed:fleet-events:sse': '/v1/events/sse',
   'feed:fleet-events:websocket': "'weft.events.subscribe'",
   'metrics:prometheus': "'/v1/metrics'",

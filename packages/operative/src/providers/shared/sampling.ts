@@ -73,5 +73,9 @@ export const ANTHROPIC_SAMPLING_SUPPORT: Readonly<Record<string, 'accepted' | 'd
   });
 
 export function anthropicSamplingSupport(resolvedModel: string): SamplingSupport {
-  return ANTHROPIC_SAMPLING_SUPPORT[resolvedModel] ?? 'unsettled';
+  return (
+    (Object.hasOwn(ANTHROPIC_SAMPLING_SUPPORT, resolvedModel)
+      ? ANTHROPIC_SAMPLING_SUPPORT[resolvedModel]
+      : undefined) ?? 'unsettled'
+  );
 }

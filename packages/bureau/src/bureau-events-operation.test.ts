@@ -1,9 +1,11 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createOperationHandler, principalFromApiKey } from '@lostgradient/weft';
+import Ajv2020 from 'ajv/dist/2020.js';
 import {
   createAgentRunEventFeed,
   createAgentRunEventRegistry,
   RunStartedEvent,
+  runEventEnvelopeSchema,
   runEventsSubscriptionOperation,
   StepStartedEvent,
 } from '@lostgradient/operative';
@@ -130,6 +132,30 @@ describe('the bureau.events subscription', () => {
 
     expect(bureauEventEnvelopeSchema.safeParse(envelope).success).toBe(true);
     bureauFeed.dispose();
+  });
+
+  it('rejects malformed gap envelopes without narrowing ordinary event kinds', () => {
+    for (const [schema, gapKind, resourceId] of [
+      [bureauEventEnvelopeSchema, 'feed.gap', 'bureauId'],
+      [runEventEnvelopeSchema, 'run.gap', 'runId'],
+    ] as const) {
+      const envelope = {
+        sequence: -1,
+        cursor: 'continuation:-1',
+        [resourceId]: 'resource-1',
+        kind: gapKind,
+        emittedAtMs: 0,
+        payload: {},
+      };
+      expect(schema.safeParse(envelope).success).toBe(false);
+      expect(
+        schema.safeParse({
+          ...envelope,
+          payload: { requestedCursor: 'previous:0', firstRetainedSequence: 0 },
+        }).success,
+      ).toBe(true);
+      expect(schema.safeParse({ ...envelope, kind: 'ordinary.kind' }).success).toBe(true);
+    }
   });
 
   it('mints the subscription id through the injected runtime', async () => {
@@ -345,6 +371,70 @@ describe('bureau.events through createOperationHandler with no Engine', () => {
     expect(statuses).toEqual([400, 400, 400, 400]);
   });
 
+  it('reconnects both feeds after restart with an unfiltered gap and a usable cursor', async () => {
+    const previousBureau = createBureauEventFeed({ bureauId: 'bureau-1' });
+    const previousRun = createAgentRunEventFeed({ runId: 'run-1' });
+    const conversation = new Conversation(createConversationHistory());
+    const bureauCursor = previousBureau.publish(new RunRegisteredEvent('old'))!.cursor;
+    const runCursor = previousRun.publish(new RunStartedEvent(conversation))!.cursor;
+    previousBureau.dispose();
+    previousRun.dispose();
+
+    const bureauFeeds = createBureauEventRegistry();
+    const bureauFeed = createBureauEventFeed({ bureauId: 'bureau-1' });
+    bureauFeed.publish(new RunRegisteredEvent('new'));
+    bureauFeeds.set('bureau-1', bureauFeed);
+    const runFeeds = createAgentRunEventRegistry();
+    const runFeed = createAgentRunEventFeed({ runId: 'run-1' });
+    runFeed.publish(new RunStartedEvent(conversation));
+    runFeeds.set('run-1', runFeed);
+    const handler = serve(bureauFeeds, runFeeds);
+
+    for (const [path, cursor, gapKind, eventKind] of [
+      [
+        '/v1/subscriptions/bureau.events?bureauId=bureau-1&kinds=run.registered',
+        bureauCursor,
+        'feed.gap',
+        'run.registered',
+      ],
+      [
+        '/v1/subscriptions/operative.runs.events?runId=run-1&kinds=run.started',
+        runCursor,
+        'run.gap',
+        'run.started',
+      ],
+      [
+        '/v1/subscriptions/bureau.events?bureauId=bureau-1&kinds=run.registered',
+        '0',
+        'feed.gap',
+        'run.registered',
+      ],
+      [
+        '/v1/subscriptions/operative.runs.events?runId=run-1&kinds=run.started',
+        '0',
+        'run.gap',
+        'run.started',
+      ],
+    ] as const) {
+      const response = await handler(request(path, { 'Last-Event-ID': cursor }));
+      expect(response.status).toBe(200);
+      const reader = response.body!.getReader();
+      const [gap, event] = await readEventFrames(reader, 2);
+      await reader.cancel();
+      expect(frameField(gap ?? '', 'event')).toBe(gapKind);
+      expect(frameField(event ?? '', 'event')).toBe(eventKind);
+      const envelope = JSON.parse(frameField(gap ?? '', 'data') ?? '{}') as {
+        cursor?: string;
+        payload?: { requestedCursor?: string; firstRetainedSequence?: number };
+      };
+      expect(envelope.payload).toMatchObject({ requestedCursor: cursor, firstRetainedSequence: 0 });
+      expect(frameField(gap ?? '', 'id')).toBe(envelope.cursor);
+      expect(envelope.cursor).toMatch(/^[0-9a-f-]+:-1$/);
+    }
+    bureauFeed.dispose();
+    runFeed.dispose();
+  });
+
   it('lists both operations in the AsyncAPI, OpenRPC, and OpenAPI documents it serves', async () => {
     const handler = createOperationHandler({
       operations: [bureauEventsSubscriptionOperation, runEventsSubscriptionOperation],
@@ -364,6 +454,49 @@ describe('bureau.events through createOperationHandler with no Engine', () => {
       '/v1/subscriptions/bureau.events',
       '/v1/subscriptions/operative.runs.events',
     ]);
+    const messages = (
+      asyncApi['components'] as {
+        messages: Record<string, { payload: { anyOf?: Array<Record<string, unknown>> } }>;
+      }
+    ).messages;
+    for (const [messageName, gapKind, resourceId] of [
+      ['bureau_events_eventEnvelopeEvent', 'feed.gap', 'bureauId'],
+      ['operative_runs_events_eventEnvelopeEvent', 'run.gap', 'runId'],
+    ] as const) {
+      const variants = messages[messageName]?.payload.anyOf;
+      const gap = variants?.find(
+        (variant) =>
+          ((variant['properties'] as Record<string, { const?: string }> | undefined)?.['kind']
+            ?.const ?? '') === gapKind,
+      );
+      const validate = new Ajv2020({ strict: false, validateFormats: false }).compile(
+        messages[messageName]!.payload,
+      );
+      expect(gap?.['required']).toEqual(expect.arrayContaining(['cursor', resourceId, 'payload']));
+      expect((gap?.['properties'] as Record<string, unknown>)?.['payload']).toMatchObject({
+        required: expect.arrayContaining(['requestedCursor', 'firstRetainedSequence']),
+        properties: {
+          requestedCursor: { type: 'string' },
+          firstRetainedSequence: { type: 'number' },
+        },
+      });
+      const envelope = {
+        sequence: -1,
+        cursor: 'continuation:-1',
+        [resourceId]: 'resource-1',
+        kind: gapKind,
+        emittedAtMs: 0,
+        payload: {},
+      };
+      expect(validate(envelope)).toBe(false);
+      expect(
+        validate({
+          ...envelope,
+          payload: { requestedCursor: 'previous:0', firstRetainedSequence: 0 },
+        }),
+      ).toBe(true);
+      expect(validate({ ...envelope, kind: 'ordinary.kind' })).toBe(true);
+    }
     expect((openRpc['methods'] as { name: string }[]).map((method) => method.name)).toEqual([
       'bureau.events',
       'operative.runs.events',

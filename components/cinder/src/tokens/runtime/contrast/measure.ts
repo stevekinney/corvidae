@@ -10,6 +10,7 @@
 
 import { converter, type Oklch } from 'culori';
 
+import { ownEntry } from '../../../_internal/own-entry.ts';
 import { contrastRatio, decodeSrgb, relativeLuminance, type Rgb } from './color-math.ts';
 import {
   evaluateCssColor,
@@ -67,7 +68,7 @@ function resolveLayer(
   properties: Readonly<Record<string, string>>,
   options: CssColorOptions,
 ): Resolved {
-  const value = properties[property];
+  const value = ownEntry(properties, property);
   if (value === undefined) {
     return { ok: false, code: 'missing-property', reason: `${property} has no value here.` };
   }
@@ -159,7 +160,7 @@ export function measurePairing(
 
   let ink = foreground.layer.rgb;
   if (pairing.opacity !== undefined) {
-    const raw = properties[pairing.opacity];
+    const raw = ownEntry(properties, pairing.opacity);
     if (raw === undefined) {
       return review(pairing.opacity, 'unknown-opacity', `${pairing.opacity} has no value here.`);
     }

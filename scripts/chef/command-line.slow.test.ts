@@ -233,7 +233,6 @@ scenarios.describe('a non-zero result with --json goes to standard output', () =
   });
 
   scenarios.scenario('merge-gate.ts', async () => {
-    writeFileSync(join(sandbox, 'gate.log'), 'HEAD abc LOAD 1\nGATE_RC=0\n');
     writeFileSync(join(sandbox, 'comment.md'), 'comment\n');
     const result = await expectJsonFailure(
       invoke('merge-gate.ts', [
@@ -241,8 +240,6 @@ scenarios.describe('a non-zero result with --json goes to standard output', () =
         '1',
         '--worktree',
         sandbox,
-        '--gate-log',
-        join(sandbox, 'gate.log'),
         '--comment-file',
         join(sandbox, 'comment.md'),
         '--dry-run',

@@ -5,6 +5,7 @@ import {
   defaultWebSocketFactory,
   dropOverlappingLiveFrames,
   eventsEqual,
+  parseWatchFrame,
 } from './event-stream-transport.ts';
 
 function event(type: string, data: Record<string, unknown> = {}): WorkflowEvent {
@@ -130,5 +131,27 @@ describe('defaultWebSocketFactory runtime behavior', () => {
         Object.defineProperty(globalThis, 'WebSocket', descriptor);
       }
     }
+  });
+});
+
+describe('parseWatchFrame', () => {
+  it.each([
+    ['text that is not JSON', '{ not json'],
+    ['a frame that is not a string', 42],
+    ['JSON that is not an object', '[1, 2]'],
+    ['an object without a string type', '{"type":7}'],
+  ])('returns null for %s', (_label, raw) => {
+    expect(parseWatchFrame(raw)).toBeNull();
+  });
+
+  it('reads the type, timestamp and data, defaulting what is missing', () => {
+    expect(parseWatchFrame('{"type":"activity:started","timestamp":5,"data":{"a":1}}')).toEqual({
+      type: 'activity:started',
+      timestamp: 5,
+      data: { a: 1 },
+    });
+    const bare = parseWatchFrame('{"type":"workflow:started","data":"nope"}');
+    expect(bare).toMatchObject({ type: 'workflow:started', data: {} });
+    expect(typeof bare?.timestamp).toBe('number');
   });
 });

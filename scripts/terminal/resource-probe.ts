@@ -11,7 +11,7 @@ import {
 
 const root = join(import.meta.dir, '../..');
 const reportPath = join(root, 'tmp/terminal-probes/resources.json');
-const pinnedBunVersion = '1.4.2';
+const pinnedBunVersion = '1.4.4';
 const expectedCellIds = [
   'throughput-and-queues',
   'input-latency',

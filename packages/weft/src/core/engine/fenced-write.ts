@@ -279,6 +279,37 @@ export async function commitFencedEngineWrite(
 }
 
 /**
+ * Commit an engine-generated durable write that carries no preconditions of its own, fenced on the
+ * applicable epoch exactly as {@link commitFencedEngineWrite} fences it. With no base condition the
+ * epoch is the only thing a commit can lose, and losing it is a deposition, which halts and throws
+ * {@link EngineDeposedError}. A commit that fails with the epoch still held is therefore a storage
+ * adapter reporting a lost compare-and-swap it should not have, and it throws a plain `Error`
+ * naming `description`, so a caller's retry semantics apply as they do for any lost race.
+ *
+ * @param internals - the engine internals
+ * @param workflowId - see {@link commitFencedEngineWrite}
+ * @param operations - the durable operations to commit atomically
+ * @param description - what the write does, which starts the lost-race error's message
+ * @param trackWrite - see {@link commitFencedEngineWrite}
+ */
+export async function commitFencedEngineWriteWithoutPreconditions(
+  internals: EngineInternals,
+  workflowId: string | null,
+  operations: BatchOperation[],
+  description: string,
+  trackWrite?: FencedWriteTracker,
+): Promise<void> {
+  await commitFencedEngineWrite(
+    internals,
+    workflowId,
+    operations,
+    [],
+    () => new Error(`${description} lost its CAS race.`),
+    trackWrite,
+  );
+}
+
+/**
  * Like {@link commitFencedEngineWrite}, but the caller treats a base-precondition
  * failure as a legitimate outcome rather than an error — used by the idempotent
  * start path, where a `false` means a concurrent same-key caller already wrote the

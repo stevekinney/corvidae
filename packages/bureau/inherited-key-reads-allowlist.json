@@ -1,0 +1,107 @@
+{
+  "description": "Dynamic reads allowed to use a key the code does not control, checked by scripts/check-inherited-key-reads.ts. Each entry names the file, the expression as written, how many such sites the file holds, and why no inherited key such as constructor can reach them. The list can only shrink: --shrink drops stale entries and lowers counts.",
+  "entries": [
+    {
+      "file": "src/agent-catalog.ts",
+      "expression": "(descriptor.modalities as Record<string, { input: boolean; output: boolean }>)[modality]",
+      "count": 1,
+      "reason": "the modality names come from Object.keys of the first descriptor, and modalities use one closed vocabulary (text, image, audio, video, document, file)"
+    },
+    {
+      "file": "src/agent-file-frontmatter.ts",
+      "expression": "block.key in known",
+      "count": 1,
+      "reason": "the keys are members of the fixed knownKeys list, or own keys of `known`, which is built in this function from that list; sameKeys checks that the key sets are equal first"
+    },
+    {
+      "file": "src/agent-file-frontmatter.ts",
+      "expression": "existing.raw[block.key]",
+      "count": 1,
+      "reason": "the keys are members of the fixed knownKeys list, or own keys of `known`, which is built in this function from that list; sameKeys checks that the key sets are equal first"
+    },
+    {
+      "file": "src/agent-file-frontmatter.ts",
+      "expression": "key in known",
+      "count": 1,
+      "reason": "the keys are members of the fixed knownKeys list, or own keys of `known`, which is built in this function from that list; sameKeys checks that the key sets are equal first"
+    },
+    {
+      "file": "src/agent-file-frontmatter.ts",
+      "expression": "key in mapping",
+      "count": 1,
+      "reason": "the keys are members of the fixed knownKeys list, or own keys of `known`, which is built in this function from that list; sameKeys checks that the key sets are equal first"
+    },
+    {
+      "file": "src/agent-file-frontmatter.ts",
+      "expression": "known[block.key]",
+      "count": 2,
+      "reason": "the keys are members of the fixed knownKeys list, or own keys of `known`, which is built in this function from that list; sameKeys checks that the key sets are equal first"
+    },
+    {
+      "file": "src/agent-file-frontmatter.ts",
+      "expression": "known[key]",
+      "count": 1,
+      "reason": "the keys are members of the fixed knownKeys list, or own keys of `known`, which is built in this function from that list; sameKeys checks that the key sets are equal first"
+    },
+    {
+      "file": "src/agent-file-frontmatter.ts",
+      "expression": "right[key]",
+      "count": 1,
+      "reason": "the keys are members of the fixed knownKeys list, or own keys of `known`, which is built in this function from that list; sameKeys checks that the key sets are equal first"
+    },
+    {
+      "file": "src/assets/media-inspection.ts",
+      "expression": "FTYP_BRANDS[brand]",
+      "count": 1,
+      "reason": "the brand is four bytes decoded to four characters, and no inherited name is four characters long"
+    },
+    {
+      "file": "src/audit/create-audit.ts",
+      "expression": "(detail as Record<string, unknown>)[key]",
+      "count": 1,
+      "reason": "the keys come from the DETAIL_ALLOWLIST literal list"
+    },
+    {
+      "file": "src/child-topology-store.ts",
+      "expression": "value[field]",
+      "count": 1,
+      "reason": "the keys come from an array literal declared in the same function"
+    },
+    {
+      "file": "src/goal-cost-estimation.ts",
+      "expression": "value[key]",
+      "count": 2,
+      "reason": "the keys come from an array literal declared in the same function"
+    },
+    {
+      "file": "src/http/ag-ui-peer-stream.ts",
+      "expression": "HISTORY_TERMINAL[event.kind]",
+      "count": 2,
+      "reason": "event kinds are the RECORDED constants Bureau writes, never caller-supplied names"
+    },
+    {
+      "file": "src/http/ag-ui-stream.ts",
+      "expression": "TERMINAL_OUTCOME[event.kind]",
+      "count": 1,
+      "reason": "event kinds are the RECORDED constants Bureau writes, never caller-supplied names"
+    },
+    {
+      "file": "src/http/management/tasks-events-operation.ts",
+      "expression": "(payload as Record<string, unknown>)[name]",
+      "count": 1,
+      "reason": "textField is called only with string literals"
+    },
+    {
+      "file": "src/runtime-composition.ts",
+      "expression": "candidate[field]",
+      "count": 1,
+      "reason": "the keys come from an array literal declared in the same function"
+    },
+    {
+      "file": "src/skills/xml.ts",
+      "expression": "entities[character]",
+      "count": 1,
+      "reason": "the key is one character matched by /[&<>\"']/"
+    }
+  ]
+}

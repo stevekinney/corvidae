@@ -129,7 +129,7 @@ import type {
   MultiModalContent,
   ResolvedMediaSources,
 } from 'conversationalist';
-import { isMediaContent, messageMediaParts } from 'conversationalist';
+import { getOwn, isMediaContent, messageMediaParts } from 'conversationalist';
 
 import { mimeFamilyOf, sourceByteLength } from '../context/media-cost.ts';
 
@@ -224,7 +224,7 @@ export function locateInputMedia(
   const located: LocatedInputMedia[] = [];
   const { ids, messages } = conversation.current;
   for (const id of ids) {
-    const message = messages[id];
+    const message = getOwn(messages, id);
     if (message === undefined || message.hidden) continue;
     for (const { part, partIndex, inToolResult } of messageMediaParts(message)) {
       const resolved = resolvedSources?.get(`${message.id}:${partIndex}`);

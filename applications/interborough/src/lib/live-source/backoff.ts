@@ -1,7 +1,7 @@
 /**
  * Shared exponential reconnect backoff (plan §5.1, T1.4): "exponential
  * backoff capped at 30s". Used by both `WorkflowTailSource` (reconnecting a
- * dropped `client.tail()`) and `FleetEventSource` (reconnecting a dropped
+ * dropped per-workflow SSE read) and `FleetEventSource` (reconnecting a dropped
  * fleet SSE fetch) so the two sources agree on one retry curve instead of
  * each inventing its own.
  */

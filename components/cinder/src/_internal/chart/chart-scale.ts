@@ -3,6 +3,7 @@ import type {
   BarChartSeries,
   ChartNumericValue,
 } from '../../components/chart.types.ts';
+import { ownEntry } from '../own-entry.ts';
 import type { NormalizedXValue } from './chart-model-utilities.ts';
 
 export function normalizeNumericValue(
@@ -143,7 +144,7 @@ export function createStackedBarDomainValues(
     let positiveTotal = 0;
     let negativeTotal = 0;
     for (const item of series) {
-      const value = datum[item.valueKey];
+      const value = ownEntry(datum, item.valueKey);
       if (typeof value !== 'number') continue;
       if (value >= 0) positiveTotal += value;
       else negativeTotal += value;

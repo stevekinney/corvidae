@@ -113,7 +113,7 @@ const ALIASES: Readonly<Record<string, string>> = {
 
 function canonical(mediaType: string): string {
   const normalized = normalizeMediaType(mediaType);
-  return ALIASES[normalized] ?? normalized;
+  return (Object.hasOwn(ALIASES, normalized) ? ALIASES[normalized] : undefined) ?? normalized;
 }
 
 /** Text formats sniffing can only report as `text/plain`. */

@@ -47,6 +47,22 @@ import {
 const CANARY = 'CallerSuppliedDetailCanary';
 
 describe('the bureau event feed', () => {
+  it('opens a gap when reconnecting with a previous incarnation cursor', async () => {
+    const previous = createBureauEventFeed({ bureauId: 'bureau-1' });
+    const old = previous.publish(new RunRegisteredEvent('old'))!;
+    const current = createBureauEventFeed({ bureauId: 'bureau-1' });
+    current.publish(new RunRegisteredEvent('current'));
+    const replay: BureauEventEnvelope[] = [];
+    for await (const event of current.feed.replay({ fromCursor: old.cursor })) replay.push(event);
+    expect(replay[0]).toMatchObject({
+      kind: 'feed.gap',
+      payload: { requestedCursor: old.cursor, firstRetainedSequence: 0 },
+    });
+    expect(replay[1]?.kind).toBe('run.registered');
+    previous.dispose();
+    current.dispose();
+  });
+
   it('numbers envelopes from zero and stamps the bureau', () => {
     const feed = createBureauEventFeed({ bureauId: 'bureau-1', now: () => 500 });
 

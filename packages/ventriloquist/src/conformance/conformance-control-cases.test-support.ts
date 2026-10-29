@@ -98,13 +98,13 @@ const oversizedFrame: CaseDefinition = {
   },
 };
 
-/** Past the socket's ceiling: on a socket Bun drops the connection before the session sees a byte. */
+/** Past the socket's ceiling: on a socket Bun closes the connection before the session sees a byte. */
 const overCeilingFrame: CaseDefinition = {
   id: 'control-over-ceiling-frame',
   modes: ['pipe', 'pty'],
   comparable: false,
   scope:
-    'the paths differ by design: the in-memory path has no socket ceiling and refuses with 1009, a socket is dropped by the runtime and the client sees 1006',
+    'the paths differ by design: the in-memory path has no socket ceiling and refuses with 1009, a socket is dropped by the runtime, which sends a 1009 Close frame first (Bun 1.4.4 and later; 1.4.2 sent none and the client saw 1006), and the session sees a disconnect',
   launch: () => ({ profile: shellProfile(CAT_WITH_PID), acceptsInput: true }),
   async run({ rig, path }) {
     const capabilities = await rig.client.handshake();
@@ -118,10 +118,10 @@ const overCeilingFrame: CaseDefinition = {
     return [
       check(
         path === 'websocket'
-          ? 'the dropped socket is seen as an abnormal close (1006) and ends the attachment as a disconnect'
+          ? 'the runtime refuses the frame with a 1009 Close frame, drops the socket, and the session ends the attachment as a disconnect'
           : 'the frame was refused as too large (1009) and ends the attachment as a protocol failure',
         path === 'websocket'
-          ? closeCode === 1006 && summary.cause === 'disconnect'
+          ? closeCode === 1009 && summary.cause === 'disconnect'
           : closeCode === 1009 && summary.cause === 'protocol-failure',
       ),
       check('cleanup was complete', summary.cleanup === 'complete'),

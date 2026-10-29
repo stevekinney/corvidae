@@ -89,7 +89,7 @@ function validateAttributeDimension(internals: EngineInternals, attributeName: s
   for (const registration of internals.registrations.values()) {
     if (registration.searchAttributes !== undefined) {
       anySchemaDeclared = true;
-      if (attributeName in registration.searchAttributes) {
+      if (Object.hasOwn(registration.searchAttributes, attributeName)) {
         attributeFound = true;
         break;
       }

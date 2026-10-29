@@ -31,8 +31,10 @@ export function renderTemplate(
 
   return source.replace(TEMPLATE_VARIABLE_REGEX, (original, rawKey: string) => {
     const key = rawKey.trim();
-    const value = variables[key];
-    if (Object.hasOwn(variables, key) && value !== undefined) return value;
+    if (Object.hasOwn(variables, key)) {
+      const value = variables[key];
+      if (value !== undefined) return value;
+    }
     if (strategy === 'preserve') return original;
     if (strategy === 'empty') return '';
     throw new Error(`Missing template variable: "${key}"`);

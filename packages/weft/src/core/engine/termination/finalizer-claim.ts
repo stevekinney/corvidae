@@ -30,8 +30,8 @@ import { KEYS } from '../../../storage/interface.ts';
 import { encode } from '../../codec.ts';
 import { buildTimerBatchOperations, parseDuration } from '../../scheduler.ts';
 import {
-  commitFencedEngineWrite,
   commitFencedEngineWriteAllowingPreconditionFailure,
+  commitFencedEngineWriteWithoutPreconditions,
 } from '../fenced-write.ts';
 import type { EngineInternals } from '../internals.ts';
 import { createTeardownTimerId, type TeardownClaim } from '../state-utilities.ts';
@@ -242,12 +242,11 @@ async function writeTeardownTimer(
   firedAt: number,
 ): Promise<void> {
   try {
-    await commitFencedEngineWrite(
+    await commitFencedEngineWriteWithoutPreconditions(
       internals,
       null,
       teardownTimerOperations(token, workflowId, desiredFireAt, firedAt),
-      [],
-      () => new Error('teardown timer re-arm lost the lease fence'),
+      'Teardown timer re-arm',
     );
   } catch {
     // Deposed or lost-race: the current owner re-drives via its own timer.

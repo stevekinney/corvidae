@@ -22,7 +22,7 @@ export {
 
 export {
   WorkflowTailSource,
-  type WorkflowEventTailOpener,
+  type WorkflowTailConnection,
   type WorkflowTailSourceOptions,
 } from './workflow-tail-source.svelte.ts';
 

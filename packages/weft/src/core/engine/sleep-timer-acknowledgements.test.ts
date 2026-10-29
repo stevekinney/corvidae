@@ -176,6 +176,24 @@ describe('sleep timer durable acknowledgements', () => {
     expect(internals.sleepResolvers.get('workflow:workflow:0')?.resolve).toBe(successor);
   });
 
+  it('resolves the sleep of a worker-mode workflow at once, with no acknowledgement to wait for', async () => {
+    const internals = createInternals();
+    internals.workflowClaimRegistry = null;
+    internals.inlineStrategy = null;
+    internals.sleepResolversByWorkflow = new Map();
+    const resolver = mock(() => {});
+    internals.sleepResolvers.set('workflow:workflow:0', { resolve: resolver, fireAt: 1_000 });
+
+    await handleSleepTimerWithAcknowledgement(
+      internals,
+      { id: 'sleep:workflow:0', workflowId: 'workflow', fireAt: 1_000, kind: 'sleep' },
+      async () => createWorkflowState('workflow', 'running'),
+    );
+
+    expect(resolver).toHaveBeenCalledTimes(1);
+    expect(internals.sleepTimerAcknowledgementWaiters.size).toBe(0);
+  });
+
   it('cancels acknowledgement when an earlier timer cannot resolve the live sleep', async () => {
     const internals = createInternals();
     internals.workflowClaimRegistry = null;

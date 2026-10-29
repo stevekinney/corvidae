@@ -136,6 +136,7 @@ import {
   type Message,
   type MessageInput,
   resolveToolResult,
+  getOwn,
 } from 'conversationalist';
 
 import { shutdownThenRethrow } from './composition-failure';
@@ -548,6 +549,7 @@ import { createSchedules } from './schedules/create-schedules';
 import { createWebhookNotifier, type WebhookNotifier } from './webhook-notifier';
 import { scheduleInputPreview } from './schedule-input-preview';
 import { streamEventToFrame } from './websocket-frames';
+import { ownEntry } from './own-entry';
 
 const BUREAU_AGENT_NAME = 'bureau';
 
@@ -586,7 +588,7 @@ export function hasRecoverableTransportAuthority(metadata: Record<string, JSONVa
   if (typeof lastRunId !== 'string' || !lastRunId) return false;
   const authorities = metadata['lastRequestAuthorities'];
   if (authorities && typeof authorities === 'object' && !Array.isArray(authorities)) {
-    const activeAuthority = (authorities as Record<string, JSONValue>)[lastRunId];
+    const activeAuthority = ownEntry(authorities as Record<string, JSONValue>, lastRunId);
     if (!activeAuthority || typeof activeAuthority !== 'object' || Array.isArray(activeAuthority)) {
       return false;
     }
@@ -1311,7 +1313,7 @@ function taskRequestFieldsOf(
     if (!isConversationHistory(history)) {
       return toBadRequest('"input.conversation" must be a valid ConversationHistory');
     }
-    return { appendMessages: history.ids.map((id) => history.messages[id]!) };
+    return { appendMessages: history.ids.map((id) => getOwn(history.messages, id)!) };
   }
   if ('continue' in input) return {};
   return toBadRequest('"input" must be a string, a list of parts, or a task input object');
@@ -5689,7 +5691,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
             !Array.isArray(currentDecisionsRaw)
               ? (currentDecisionsRaw as Record<string, JSONValue>)
               : {};
-          const priorRaw = currentDecisions[reviewId];
+          const priorRaw = ownEntry(currentDecisions, reviewId);
           const prior =
             typeof priorRaw === 'object' && priorRaw !== null && !Array.isArray(priorRaw)
               ? (priorRaw as Record<string, JSONValue>)
@@ -6267,10 +6269,10 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   ): Promise<Extract<PendingReview, { kind: 'tool-approval' }> | undefined> {
     const session = await runtime.sessionStore?.load(sessionId);
     const persisted = session?.metadata['pendingApprovalOverrides'];
-    const approval = isJsonObject(persisted) ? persisted[reviewId] : undefined;
+    const approval = isJsonObject(persisted) ? ownEntry(persisted, reviewId) : undefined;
     if (session === undefined || !isJsonObject(approval)) return undefined;
     const rounds = session.metadata['pendingApprovalRounds'];
-    const round = isJsonObject(rounds) ? rounds[reviewId] : undefined;
+    const round = isJsonObject(rounds) ? ownEntry(rounds, reviewId) : undefined;
     return {
       kind: 'tool-approval',
       id: reviewId,
@@ -6299,10 +6301,10 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     | { approval: Extract<PendingReview, { kind: 'tool-approval' }>['approval']; round: number }
     | undefined {
     const persisted = metadata?.['pendingApprovalOverrides'];
-    const approval = isJsonObject(persisted) ? persisted[reviewId] : undefined;
+    const approval = isJsonObject(persisted) ? ownEntry(persisted, reviewId) : undefined;
     if (!isJsonObject(approval)) return undefined;
     const rounds = metadata?.['pendingApprovalRounds'];
-    const round = isJsonObject(rounds) ? rounds[reviewId] : undefined;
+    const round = isJsonObject(rounds) ? ownEntry(rounds, reviewId) : undefined;
     return {
       approval: approval as unknown as Extract<
         PendingReview,
@@ -6713,7 +6715,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         );
         const round =
           typeof rounds === 'object' && rounds !== null && !Array.isArray(rounds)
-            ? (rounds as Record<string, unknown>)[reviewId]
+            ? ownEntry(rounds as Record<string, unknown>, reviewId)
             : undefined;
         if (typeof round === 'number' && Number.isInteger(round) && round > 0) {
           pendingApprovalRounds.set(reviewId, round);
@@ -10641,7 +10643,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     if (!session || session.incarnation !== incarnation) return undefined;
     const owners = session.metadata['lastRunOwningPrincipals'];
     if (owners !== undefined && !isPlainAuthorityRecord(owners)) return undefined;
-    if (owners?.[runId] !== undefined) return undefined;
+    if (owners !== undefined && ownEntry(owners, runId) !== undefined) return undefined;
     return {
       ...session,
       metadata: {
@@ -14297,7 +14299,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     // does not.)
     if (
       steeringTarget === 'agent-identity' &&
-      agentsSnapshot[request.requestedValue.override] === undefined
+      !Object.hasOwn(agentsSnapshot, request.requestedValue.override)
     ) {
       return refuseSteering({
         outcome: 'rejected',
@@ -14363,7 +14365,11 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       // covers every coordinate this can hold.
       let override: string | undefined = configurationRequest.override;
       if (configurationRequest.policyRef !== undefined) {
-        const profile = modelPolicyOf(currentSettings())?.users?.[configurationRequest.policyRef];
+        const users = modelPolicyOf(currentSettings())?.users;
+        const profile =
+          users !== undefined && Object.hasOwn(users, configurationRequest.policyRef)
+            ? users[configurationRequest.policyRef]
+            : undefined;
         if (profile === undefined) {
           // Unknown policy name. Distinct from the case below, and the
           // caller is entitled to tell them apart: one is a typo or a
@@ -15468,7 +15474,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
             if (session === undefined) return undefined;
             const history = session.conversationHistory;
             const holdsRow = history.ids.some(
-              (id) => history.messages[id]?.toolResult?.callId === callId,
+              (id) => getOwn(history.messages, id)?.toolResult?.callId === callId,
             );
             if (!holdsRow) {
               missing = true;
@@ -15696,7 +15702,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   ): Promise<ResolveReviewResult> {
     const session = await runtime.sessionStore?.load(review.sessionId);
     const decisions = session?.metadata['resolvedReviewDecisions'];
-    if (!isJsonObject(decisions) || decisions[review.id] === undefined) {
+    if (!isJsonObject(decisions) || ownEntry(decisions, review.id) === undefined) {
       throw new BureauError(`Review with id "${review.id}" is already being resolved`, 'CONFLICT');
     }
     await persistReviewResolutionWithRetry(
@@ -15955,7 +15961,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         !Array.isArray(existingDecisionsRaw)
           ? (existingDecisionsRaw as Record<string, JSONValue>)
           : {};
-      const priorRaw = existingDecisions[review.id];
+      const priorRaw = ownEntry(existingDecisions, review.id);
       const prior =
         typeof priorRaw === 'object' && priorRaw !== null && !Array.isArray(priorRaw)
           ? (priorRaw as Record<string, JSONValue>)

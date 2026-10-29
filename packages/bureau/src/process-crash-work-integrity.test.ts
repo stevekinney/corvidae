@@ -124,7 +124,7 @@ async function spawnChild(
   name: string,
   variant?: string,
 ): Promise<{
-  readonly signalCode: string | null;
+  readonly signalCode: string | number | null;
   readonly exitCode: number | null;
   stderr: string;
 }> {

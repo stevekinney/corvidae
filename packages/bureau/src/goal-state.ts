@@ -1089,7 +1089,9 @@ function isTransitionEntryGenuine(record: PlainRecord, entry: GoalAuditEntry): b
   const isLatest = entry.seq === record['transitionSeq'];
   let previousRank = -1;
   for (const event of entry.events) {
-    const rank = TRANSITION_EVENT_RANK[event.kind];
+    const rank = Object.hasOwn(TRANSITION_EVENT_RANK, event.kind)
+      ? TRANSITION_EVENT_RANK[event.kind]
+      : undefined;
     if (rank === undefined || rank <= previousRank) return false;
     previousRank = rank;
     if (event.dedupeKey !== `${goalRunId}:${entry.seq}`) return false;

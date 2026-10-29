@@ -1,3 +1,4 @@
+import { ownEntry } from '../../_internal/own-entry.ts';
 import { TokenValidationError, type ResolverDocument, type ResolverReference } from './types.ts';
 import { resolutionOrderTarget } from './validate-resolver.ts';
 
@@ -308,7 +309,7 @@ export function sourcesForEntry(
   modifierValues: Record<string, string>,
 ): ResolverReference[] {
   if (entry.kind === 'sets') return expandSetSources(resolver, entry.name);
-  return expandContextSources(resolver, entry.name, modifierValues[entry.name]!);
+  return expandContextSources(resolver, entry.name, ownEntry(modifierValues, entry.name)!);
 }
 
 /** Every combination of one context value per modifier, cartesian product across all modifiers. */

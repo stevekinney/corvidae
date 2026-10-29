@@ -168,7 +168,8 @@ export function matchesArgumentConstraints(
   const record: Record<string, unknown> = isRecord(params) ? params : {};
   return Object.entries(constraints).every(
     ([key, expected]) =>
-      stableStringifyJson(normalizeJsonValue(record[key])) ===
-      stableStringifyJson(normalizeJsonValue(expected)),
+      stableStringifyJson(
+        normalizeJsonValue(Object.hasOwn(record, key) ? record[key] : undefined),
+      ) === stableStringifyJson(normalizeJsonValue(expected)),
   );
 }

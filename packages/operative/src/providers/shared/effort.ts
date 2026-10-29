@@ -55,7 +55,9 @@ export function resolveAnthropicEffort(
   requested: Effort,
   resolvedModel: string,
 ): Effort | undefined {
-  const supported = ANTHROPIC_EFFORT_SUPPORT[resolvedModel] ?? [];
+  const supported = Object.hasOwn(ANTHROPIC_EFFORT_SUPPORT, resolvedModel)
+    ? (ANTHROPIC_EFFORT_SUPPORT[resolvedModel] ?? [])
+    : [];
   if (supported.length === 0) return undefined;
   if (supported.includes(requested)) return requested;
 

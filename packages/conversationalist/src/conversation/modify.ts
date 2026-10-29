@@ -2,6 +2,7 @@ import { type ConversationEnvironment, resolveConversationEnvironment } from '..
 import { createInvalidInputError } from '../errors';
 import type { ConversationHistory as Conversation, Message, ToolResult } from '../types';
 import { hasOwnProperty, repositionMessage, toReadonly } from '../utilities';
+import { getOwn, setOwn } from '../utilities/type-helpers';
 import {
   createUpdatedMessage,
   type InternalMessageUpdate,
@@ -60,8 +61,8 @@ export function removeMessage(
   delete messages[messageId];
 
   for (const [position, id] of ids.entries()) {
-    const message = messages[id];
-    if (message) messages[id] = repositionMessage(message, position);
+    const message = getOwn(messages, id);
+    if (message) setOwn(messages, id, repositionMessage(message, position));
   }
 
   const next: Conversation = {
@@ -100,7 +101,7 @@ export function replaceToolResult(
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
   const message = conversation.ids
-    .map((id) => conversation.messages[id])
+    .map((id) => getOwn(conversation.messages, id))
     .find(
       (candidate): candidate is Message & { toolResult: ToolResult } =>
         candidate?.role === 'tool-result' && candidate.toolResult?.callId === toolCallId,

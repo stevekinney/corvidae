@@ -363,7 +363,9 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     revision: number | undefined,
   ): AnyRunnableAgent {
     const tools: Record<string, Tool> = {};
-    for (const name of definition.tools) tools[name] = options.tools[name] as Tool;
+    for (const name of definition.tools) {
+      tools[name] = (Object.hasOwn(options.tools, name) ? options.tools[name] : undefined) as Tool;
+    }
     const instructions = definition.instructions.trim();
     const agent = createAgent({
       // The Bureau's own services: an agent rebuilt on every rescan must share its clock, not

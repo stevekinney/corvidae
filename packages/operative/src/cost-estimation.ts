@@ -231,7 +231,11 @@ export function getModelPricing(
   model: string,
   options?: CostEstimationOptions,
 ): ModelPricing | undefined {
-  return options?.customPricing?.[model] ?? defaultPricingTable[model];
+  const custom = options?.customPricing;
+  if (custom !== undefined && Object.hasOwn(custom, model) && custom[model] !== undefined) {
+    return custom[model];
+  }
+  return Object.hasOwn(defaultPricingTable, model) ? defaultPricingTable[model] : undefined;
 }
 
 /**

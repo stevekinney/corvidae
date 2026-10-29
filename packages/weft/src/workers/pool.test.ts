@@ -285,6 +285,59 @@ describe('WorkerPool', () => {
     });
   });
 
+  describe('dispose edge cases', () => {
+    it('rejects queued generic waiters when the pool is disposed', async () => {
+      pool = new WorkerPool({ concurrency: 1, workerUrl });
+
+      await pool.acquire();
+      const waiter = pool.acquire();
+      expect(pool.pendingCount).toBe(1);
+
+      pool[Symbol.dispose]();
+
+      expect(await throwingRejectionOf(waiter)).toThrow('WorkerPool has been disposed');
+      expect(pool.pendingCount).toBe(0);
+    });
+
+    it('rejects acquireSpecificWorker after dispose', async () => {
+      pool = new WorkerPool({ concurrency: 1, workerUrl });
+      const worker = await pool.acquire();
+      pool[Symbol.dispose]();
+
+      expect(await throwingRejectionOf(pool.acquireSpecificWorker(worker))).toThrow(
+        'WorkerPool has been disposed',
+      );
+    });
+
+    it('ignores a release after the pool was disposed', async () => {
+      pool = new WorkerPool({ concurrency: 1, workerUrl });
+      const worker = await pool.acquire();
+      pool[Symbol.dispose]();
+
+      pool.release(worker);
+
+      expect(pool.availableCount).toBe(0);
+    });
+
+    it('treats a second graceful dispose as a no-op', async () => {
+      pool = new WorkerPool({ concurrency: 1, workerUrl });
+      await pool[Symbol.asyncDispose]();
+
+      await pool[Symbol.asyncDispose]();
+
+      expect(pool.totalCount).toBe(0);
+    });
+
+    it('treats a second synchronous dispose as a no-op', () => {
+      pool = new WorkerPool({ concurrency: 1, workerUrl });
+      pool[Symbol.dispose]();
+
+      pool[Symbol.dispose]();
+
+      expect(pool.totalCount).toBe(0);
+    });
+  });
+
   // ---------------------------------------------------------------------------
   // acquireSpecificWorker
   // ---------------------------------------------------------------------------
@@ -410,6 +463,50 @@ describe('WorkerPool', () => {
         'Worker was discarded from this WorkerPool',
       );
       expect(pool.pendingCount).toBe(0);
+    });
+
+    it('ignores a worker that does not belong to the pool', async () => {
+      pool = new WorkerPool({ concurrency: 1, workerUrl });
+      const foreign = new Worker(workerUrl);
+
+      try {
+        pool.discard(foreign);
+
+        expect(pool.totalCount).toBe(0);
+      } finally {
+        foreign.terminate();
+      }
+    });
+
+    it('serves as many queued generic waiters as the freed slot allows and keeps the rest queued', async () => {
+      pool = new WorkerPool({ concurrency: 1, workerUrl });
+
+      const worker = await pool.acquire();
+      const firstWaiter = pool.acquire();
+      const secondWaiter = pool.acquire();
+      expect(pool.pendingCount).toBe(2);
+
+      pool.discard(worker);
+
+      const replacement = await firstWaiter;
+      expect(replacement).not.toBe(worker);
+      expect(pool.pendingCount).toBe(1);
+
+      pool.release(replacement);
+      expect(await secondWaiter).toBe(replacement);
+      pool.release(replacement);
+    });
+
+    it('settles a graceful dispose when the last in-flight worker is discarded', async () => {
+      pool = new WorkerPool({ concurrency: 1, workerUrl });
+
+      const worker = await pool.acquire();
+      const disposal = pool[Symbol.asyncDispose]();
+
+      pool.discard(worker);
+
+      await disposal;
+      expect(pool.totalCount).toBe(0);
     });
 
     it('creates a replacement for generic waiters after discarding an in-use worker', async () => {

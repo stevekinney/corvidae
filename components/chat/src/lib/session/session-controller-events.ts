@@ -7,6 +7,7 @@ import {
 import type { ChatPushHandlers } from '../components/chat/adapter/chat-adapter.ts';
 import { appendToolCall, appendToolResult } from '../components/chat/builders.ts';
 import type { ConversationHistory, ToolResult } from '../components/chat/conversation-model.ts';
+import { getOwn } from '../utilities/get-own.ts';
 import { remapMessageId } from './session-controller-rows.ts';
 import type { TurnState } from './session-controller-run.ts';
 import {
@@ -320,7 +321,7 @@ function recordProvisionalRow(
   matches: (message: ConversationHistory['messages'][string]) => boolean,
 ): void {
   const row = history.ids.findLast((id) => {
-    const message = history.messages[id];
+    const message = getOwn(history.messages, id);
     return message !== undefined && matches(message);
   });
   if (row !== undefined) state.provisionalIds.add(row);

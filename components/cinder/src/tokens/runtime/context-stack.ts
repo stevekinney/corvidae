@@ -5,6 +5,7 @@
  * both walk exactly the same layers.
  */
 
+import { ownEntry } from '../../_internal/own-entry.ts';
 import type { ProvenanceLayerInput } from './authoring-provenance.ts';
 import { authoringContextId, type AuthoringContext } from './authoring-types.ts';
 import { requireDocument } from './context-order.ts';
@@ -45,7 +46,7 @@ export function authoringLayerStack(
       layer:
         entry.kind === 'sets'
           ? `sets.${entry.name}`
-          : `${entry.name}.${modifierValues[entry.name]}`,
+          : `${entry.name}.${ownEntry(modifierValues, entry.name)}`,
       content: requireDocument(documentsByPath, reference.$ref),
     })),
   );

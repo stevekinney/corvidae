@@ -35,7 +35,7 @@ import {
   type CleanupAcknowledgementReason,
   isFailureFinishReason,
 } from '@lostgradient/operative';
-import { messageText } from 'conversationalist';
+import { messageText, getOwn } from 'conversationalist';
 import {
   type ConditionalTextValueStore,
   encodeStorageKeyComponent,
@@ -647,7 +647,7 @@ export function originatingMessageText(input: AgentInput): string | undefined {
   }
   const { conversation } = input as Exclude<AgentInput, string | readonly unknown[]>;
   for (const id of [...conversation.ids].toReversed()) {
-    const message = conversation.messages[id];
+    const message = getOwn(conversation.messages, id);
     if (message?.role === 'user' && !message.hidden) return messageText(message);
   }
   return undefined;

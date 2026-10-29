@@ -73,6 +73,28 @@ describe('resolveStorage', () => {
     expect(storage.constructor.name).toBe('HTTPStorage');
   });
 
+  it('sends the configured headers with every HTTP storage request', async () => {
+    const originalFetch = globalThis.fetch;
+    const seenAuthorizations: Array<string | null> = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seenAuthorizations.push(new Headers(init?.headers).get('authorization'));
+      return new Response(null, { status: 404 });
+    }) as typeof fetch;
+    try {
+      const storage = await resolveStorage({
+        type: 'http',
+        baseUrl: 'https://example.test',
+        headers: { authorization: 'Bearer token' },
+      });
+
+      expect(await storage.get('missing')).toBeNull();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(seenAuthorizations).toEqual(['Bearer token']);
+  });
+
   it('resolves SQLite storage under Bun', async () => {
     const storage = await resolveStorage({ type: 'sqlite', path: ':memory:' });
     expect(storage.constructor.name).toBe('BunSQLiteStorage');
@@ -142,6 +164,25 @@ describe('resolveStorage', () => {
     storage[Symbol.dispose]();
   });
 
+  it.each([
+    ['with an auth token', { authToken: 'secret-token' }],
+    ['without an auth token', {}],
+  ])('resolves Turso storage %s', async (_label, extra) => {
+    const storage = await resolveStorage({ type: 'turso', url: 'file::memory:', ...extra });
+    expect(storage.constructor.name).toBe('TursoStorage');
+    await storage.put('turso', new Uint8Array([7]));
+    expect(await storage.get('turso')).toEqual(new Uint8Array([7]));
+    storage[Symbol.dispose]();
+  });
+
+  it('rejects a Turso auth token that is not a string', async () => {
+    expect(
+      await throwingRejectionOf(
+        resolveStorage({ type: 'turso', url: 'file::memory:', authToken: 42 } as never),
+      ),
+    ).toThrow('Turso storage configuration field "authToken" must be a string.');
+  });
+
   it('rejects unknown storage configuration variants', async () => {
     expect(await throwingRejectionOf(resolveStorage({ type: 'nope' } as never))).toThrow(
       'Unsupported storage configuration type: nope',
@@ -183,6 +224,13 @@ describe('resolveStorage', () => {
         } as never),
       ),
     ).toThrow('HTTP storage configuration field "headers" must be a string record.');
+    for (const headers of ['authorization', ['authorization'], null]) {
+      expect(
+        await throwingRejectionOf(
+          resolveStorage({ type: 'http', baseUrl: 'https://example.test', headers } as never),
+        ),
+      ).toThrow('HTTP storage configuration field "headers" must be a string record.');
+    }
   });
 });
 

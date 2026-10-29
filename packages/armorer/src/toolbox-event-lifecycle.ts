@@ -98,7 +98,9 @@ export function createToolboxEventEmitter(
   function emit<K extends ToolboxEventType>(type: K, detail: ToolboxEvents[K]): boolean;
   function emit(type: string, detail: unknown): boolean;
   function emit(type: string, detail: unknown): boolean {
-    const eventConstructor = toolboxEventClassMap[type];
+    const eventConstructor = Object.hasOwn(toolboxEventClassMap, type)
+      ? toolboxEventClassMap[type]
+      : undefined;
     if (eventConstructor) return emitter.dispatchEvent(new eventConstructor(detail));
     const event = new Event(type);
     if (detail && typeof detail === 'object') Object.assign(event, detail);

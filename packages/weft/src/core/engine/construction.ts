@@ -103,10 +103,10 @@ export function readEnvironmentVariableFromSources(
   },
 ): string | undefined {
   if (sources.bunEnv !== undefined) {
-    return sources.bunEnv[name];
+    return Object.hasOwn(sources.bunEnv, name) ? sources.bunEnv[name] : undefined;
   }
   if (sources.processEnv !== undefined) {
-    return sources.processEnv[name];
+    return Object.hasOwn(sources.processEnv, name) ? sources.processEnv[name] : undefined;
   }
   return undefined;
 }

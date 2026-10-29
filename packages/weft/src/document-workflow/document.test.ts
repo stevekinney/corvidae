@@ -132,10 +132,29 @@ describe('validateWorkflowDocument()', () => {
       'steps[0].input',
     ],
     ['a trigger without a kind', { trigger: { cron: '* * * * *' } }, 'trigger.kind'],
+    [
+      'a trigger holding a non-JSON value',
+      { trigger: { kind: 'manual', hook: () => 1 } },
+      'trigger',
+    ],
     ['a non-object document', undefined, ''],
   ])('rejects %s', (_label, overrides, path) => {
     const input = overrides === undefined ? 'nope' : document(overrides);
     expect(issuesOf(input).map((issue) => issue.path)).toContain(path);
+  });
+});
+
+describe('workflowDocumentSchema trigger JSON values', () => {
+  it('names the non-JSON trigger value in the issue message', () => {
+    const result = workflowDocumentSchema.safeParse(
+      document({ trigger: { kind: 'manual', at: new Date(0) } }),
+    );
+
+    expect(result.success).toBe(false);
+    if (result.success) throw new Error('expected rejection');
+    expect(result.error.issues.map((issue) => issue.message)).toContain(
+      'must contain only JSON values',
+    );
   });
 });
 

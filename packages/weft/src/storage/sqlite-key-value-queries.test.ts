@@ -2,18 +2,18 @@ import { describe, expect, it } from 'bun:test';
 
 import { normalizeDeleteRangeOptions } from './delete-range.ts';
 import {
-  SQLITE_COUNT_KEYS_BY_PREFIX,
   SQLITE_CREATE_KEY_VALUE_TABLE,
-  SQLITE_DELETE_KEYS_BY_PREFIX,
   SQLITE_DELETE_VALUE_BY_KEY,
   SQLITE_SELECT_KEY_PRESENCE,
   SQLITE_SELECT_VALUE_BY_KEY,
   SQLITE_UPSERT_VALUE_BY_KEY,
+  buildSqliteCountKeysByPrefix,
+  buildSqliteDeleteKeysByPrefix,
   buildSqliteKeyRangeDelete,
   buildSqliteKeyRangeQuery,
   buildSqliteKeyRangeSelect,
   buildSqliteKeyValueRangeSelect,
-  buildSqlitePrefixRangeParameters,
+  buildSqlitePrefixRange,
 } from './sqlite-key-value-queries.ts';
 
 describe('SQLite key-value query helpers', () => {
@@ -28,10 +28,14 @@ describe('SQLite key-value query helpers', () => {
     );
     expect(SQLITE_DELETE_VALUE_BY_KEY).toBe('DELETE FROM kv WHERE key = ?');
     expect(SQLITE_SELECT_KEY_PRESENCE).toBe('SELECT 1 AS present FROM kv WHERE key = ? LIMIT 1');
-    expect(SQLITE_COUNT_KEYS_BY_PREFIX).toBe(
-      'SELECT COUNT(*) AS count FROM kv WHERE key >= ? AND key < ?',
-    );
-    expect(SQLITE_DELETE_KEYS_BY_PREFIX).toBe('DELETE FROM kv WHERE key >= ? AND key < ?');
+    expect(buildSqliteCountKeysByPrefix('wf:')).toEqual({
+      parameters: ['wf:', 'wf;'],
+      sql: 'SELECT COUNT(*) AS count FROM kv WHERE key >= ? AND key < ?',
+    });
+    expect(buildSqliteDeleteKeysByPrefix('wf:')).toEqual({
+      parameters: ['wf:', 'wf;'],
+      sql: 'DELETE FROM kv WHERE key >= ? AND key < ?',
+    });
   });
 
   it('builds a stable range query suffix and parameter list for every scan option', () => {
@@ -51,11 +55,19 @@ describe('SQLite key-value query helpers', () => {
     });
   });
 
-  it('uses the full keyspace upper bound for empty-prefix range queries', () => {
-    expect(buildSqlitePrefixRangeParameters('')).toEqual(['', '\xff']);
+  it('leaves the upper bound off for empty-prefix queries, so no key is excluded by a sentinel', () => {
+    expect(buildSqlitePrefixRange('')).toEqual({ condition: 'key >= ?', parameters: [''] });
     expect(buildSqliteKeyRangeQuery('')).toEqual({
-      parameters: ['', '\xff'],
-      sqlSuffix: 'WHERE key >= ? AND key < ? ORDER BY key ASC',
+      parameters: [''],
+      sqlSuffix: 'WHERE key >= ? ORDER BY key ASC',
+    });
+    expect(buildSqliteCountKeysByPrefix('', 'custom_kv')).toEqual({
+      parameters: [''],
+      sql: 'SELECT COUNT(*) AS count FROM custom_kv WHERE key >= ?',
+    });
+    expect(buildSqliteDeleteKeysByPrefix('')).toEqual({
+      parameters: [''],
+      sql: 'DELETE FROM kv WHERE key >= ?',
     });
   });
 

@@ -19,10 +19,9 @@ export function snapshotProfile(profile: ProcessProfile): ProcessProfile {
       ? [...profile.argumentList]
       : profile.argumentList,
     workingDirectory: profile.workingDirectory,
-    environment:
-      typeof profile.environment === 'object' && profile.environment !== null
-        ? { ...profile.environment }
-        : profile.environment,
+    environment: isEnvironmentObject(profile.environment)
+      ? { ...profile.environment }
+      : profile.environment,
   };
 }
 
@@ -38,6 +37,11 @@ const NUL = '\u0000';
 function assertText(label: string, value: unknown): asserts value is string {
   if (typeof value !== 'string') throw new TypeError(`${label} must be a string`);
   if (value.includes(NUL)) throw new TypeError(`${label} must not contain a NUL character`);
+}
+
+/** Whether `value` can be an environment: a plain object of names and values, never null or an array. */
+function isEnvironmentObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -56,6 +60,9 @@ export function validateProcessProfile(profile: ProcessProfile): void {
   assertText('workingDirectory', profile.workingDirectory);
   if (!profile.workingDirectory.startsWith('/')) {
     throw new TypeError('workingDirectory must be an absolute path');
+  }
+  if (!isEnvironmentObject(profile.environment)) {
+    throw new TypeError('environment must be an object of names and values');
   }
   for (const [name, value] of Object.entries(profile.environment)) {
     assertText(`environment name ${JSON.stringify(name)}`, name);

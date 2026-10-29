@@ -62,7 +62,7 @@ Inspect each owning repository: instructions, working-tree state, worktree owner
 
 ## Sizing and splitting
 
-Estimate each issue's size before dispatch: call sites per removed or renamed member, and test files touched. Over about 60 call sites or about 40 test files, split it at dispatch into a core and design stage and a mechanical stage (the codemod and per-call-site sweep), each with a handoff file from the start so the second worker begins from the first's decisions rather than rediscovering them. A one-way door defaults to Opus for the core and design, Sonnet for codemods and per-call-site sweeps, and Opus review. Other sessions keep landing code against the old surface while a large rename runs, so the mechanical stage passes the removed names to `deliver.ts --removed-names` (see [review and deliver](review-and-deliver.md)).
+Estimate each issue's size before dispatch: call sites per removed or renamed member, and test files touched. Over about 60 call sites or about 40 test files, split it at dispatch into a core and design stage and a mechanical stage (the codemod and per-call-site sweep), each with a handoff file from the start so the second worker begins from the first's decisions rather than rediscovering them. A one-way door defaults to Opus for the core and design, Sonnet for codemods and per-call-site sweeps, and Opus review. Other sessions keep landing code against the old surface while a large rename runs; delivery no longer fast-checks for that (the `--removed-names` check is dropped). The mechanical-stage worker covers defect class 11 itself by grepping the removed names across the repository, fixtures included, and merges `main` in on a real conflict, and the batch `validate` on `main` is the backstop.
 
 ## Batching
 

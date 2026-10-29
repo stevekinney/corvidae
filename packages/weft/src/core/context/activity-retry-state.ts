@@ -52,6 +52,11 @@ function retryStateSlotKey(key: ActivityRetryStateKey): string {
   return key;
 }
 
+/** A slot's value, read only when the slot is an own entry, so a key like `constructor` finds nothing. */
+function readSlot(slots: Record<string, number> | undefined, slotKey: string): number | undefined {
+  return slots !== undefined && Object.hasOwn(slots, slotKey) ? slots[slotKey] : undefined;
+}
+
 function retryStateKeyLabel(key: ActivityRetryStateKey): string {
   return typeof key === 'number' ? `step ${String(key)}` : `key ${key}`;
 }
@@ -71,7 +76,7 @@ export function readActivityRetryAttempt(
   const state = internals.checkpointLocals[ACTIVITY_RETRY_STATE_LOCAL_KEY];
   if (!isActivityRetryState(state)) return undefined;
 
-  const attempt = state.attempts[retryStateSlotKey(key)];
+  const attempt = readSlot(state.attempts, retryStateSlotKey(key));
   if (attempt === undefined) return undefined;
   assertValidRetryAttempt(attempt, key);
   return attempt;
@@ -84,7 +89,7 @@ export function readCompletedRetrySleepCount(
   const state = internals.checkpointLocals[ACTIVITY_RETRY_STATE_LOCAL_KEY];
   if (!isActivityRetryState(state)) return 0;
 
-  const count = state.completedRetrySleeps?.[retryStateSlotKey(key)];
+  const count = readSlot(state.completedRetrySleeps, retryStateSlotKey(key));
   if (count === undefined) return 0;
   if (!Number.isInteger(count) || count < 0 || count > MAX_CHECKPOINTED_RETRY_ATTEMPT) {
     throw new Error(
@@ -197,7 +202,7 @@ export function readOrInitActivityDispatchedAt(
 ): number {
   const current = currentRetryState(internals);
   const slotKey = retryStateSlotKey(key);
-  const existing = current?.dispatchedAt?.[slotKey];
+  const existing = readSlot(current?.dispatchedAt, slotKey);
   // Honor any finite anchor, including 0: a test clock can legitimately report 0,
   // and an `existing > 0` guard would treat that as "unset" and re-anchor on every
   // replay, resetting the wall-clock budget.

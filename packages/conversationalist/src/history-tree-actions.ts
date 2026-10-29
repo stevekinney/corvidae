@@ -3,6 +3,7 @@ import type { ConversationActionType, ConversationEventDetail } from './events';
 import type { ConversationChangeContext } from './history-events';
 import type { HistoryNode } from './history-tree';
 import type { ConversationHistory, Message } from './types';
+import { getOwn, setOwn } from './utilities/type-helpers';
 
 type TreeHooks<T> = {
   readonly current: () => ConversationHistory;
@@ -59,8 +60,8 @@ export function createTreeActions<T>(hooks: TreeHooks<T>): TreeActions<T> {
       const ids = cloned.ids.slice(0, messageIndex + 1);
       const messages: Record<string, Message> = {};
       for (const id of ids) {
-        const message = cloned.messages[id];
-        if (message) messages[id] = message;
+        const message = getOwn(cloned.messages, id);
+        if (message) setOwn(messages, id, message);
       }
       forkedHistory = {
         ...cloned,

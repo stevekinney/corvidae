@@ -1,0 +1,17 @@
+{
+  "description": "Dynamic reads allowed to use a key the code does not control, checked by scripts/check-inherited-key-reads.ts. Each entry names the file, the expression as written, how many such sites the file holds, and why no inherited key such as constructor can reach them. The list can only shrink: --shrink drops stale entries and lowers counts.",
+  "entries": [
+    {
+      "file": "src/lib/editor/clipboard.ts",
+      "expression": "schema.nodes[type]",
+      "count": 1,
+      "reason": "getNodeFromSchema is called only with the literal `code_block`"
+    },
+    {
+      "file": "src/lib/session/persistence.ts",
+      "expression": "data[key]",
+      "count": 1,
+      "reason": "the keys come from the requiredStrings array literal declared in the same function"
+    }
+  ]
+}

@@ -94,14 +94,13 @@ async function runWithAnonymousSignalSequenceLock(
   const current = new Promise<void>((resolve) => {
     releaseCurrentLock = resolve;
   });
-  const lockChain = previous.then(
-    () => current,
-    () => current,
-  );
+  // Nothing in the chain can reject: `current` settles only by being released, so `previous`, which
+  // is that same chain's earlier link or an already-resolved promise, never rejects either.
+  const lockChain = previous.then(() => current);
   storageLocks.set(workflowId, lockChain);
 
   try {
-    await previous.catch(() => {});
+    await previous;
     await operation();
   } finally {
     releaseCurrentLock();

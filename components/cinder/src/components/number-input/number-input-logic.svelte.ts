@@ -1,3 +1,4 @@
+import { ownEntry } from '../../_internal/own-entry.ts';
 import { parseLocaleNumber } from '../../utilities/parse-locale-number.ts';
 
 export type CommitSource = 'typed' | 'delta' | 'reset';
@@ -223,7 +224,7 @@ export function createStepController(options: StepControllerOptions) {
       PageUp: () => stepBy('increment', 10),
       PageDown: () => stepBy('decrement', 10),
     };
-    const action = actions[event.key];
+    const action = ownEntry(actions, event.key);
     if (action) {
       event.preventDefault();
       action();

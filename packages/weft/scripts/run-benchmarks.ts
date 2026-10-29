@@ -29,7 +29,8 @@ export function listBenchmarkFiles(directory: string = BENCHMARKS_DIRECTORY): st
 /** Spawns the `bun` child that runs the benchmark files, and resolves to its exit code. */
 export type SpawnBenchmarkRun = (command: string[]) => Promise<number>;
 
-const spawnBunTest: SpawnBenchmarkRun = async (command) => {
+/** The default {@link SpawnBenchmarkRun}: run `command` in the Weft root and return its exit code. */
+export const spawnBunTest: SpawnBenchmarkRun = async (command) => {
   const child = Bun.spawn(command, {
     cwd: WEFT_ROOT,
     stdout: 'inherit',

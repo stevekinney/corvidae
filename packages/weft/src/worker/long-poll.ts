@@ -402,7 +402,9 @@ export class LongPollWorker implements Disposable {
 
   async #executeKnownTask(task: PolledTask, taskAbortController: AbortController): Promise<void> {
     const delivery = this.#requireDelivery();
-    const activityFunction = this.#activities[task.activityName];
+    const activityFunction = Object.hasOwn(this.#activities, task.activityName)
+      ? this.#activities[task.activityName]
+      : undefined;
     if (activityFunction === undefined) {
       await delivery.deliver({
         operationId: task.operationId,
@@ -448,9 +450,12 @@ export class LongPollWorker implements Disposable {
     });
   }
 
+  /**
+   * The result delivery, which registration creates before the first task is polled and nothing
+   * clears afterwards. Built from the session's result URL when it is somehow missing, which
+   * throws the not-registered error when there is no session either.
+   */
   #requireDelivery(): LongPollResultDelivery {
-    if (this.#delivery === null)
-      throw new Error('LongPollWorker result delivery is not registered.');
-    return this.#delivery;
+    return this.#delivery ?? this.#configureDelivery(this.#buildResultUrl());
   }
 }

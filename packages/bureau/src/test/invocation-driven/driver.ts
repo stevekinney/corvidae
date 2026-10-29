@@ -36,7 +36,7 @@ export interface InvocationEvent {
 export interface InvocationOutcome {
   readonly label: string;
   readonly exitCode: number | null;
-  readonly signalCode: string | null;
+  readonly signalCode: string | number | null;
   readonly stderr: string;
   readonly events: readonly InvocationEvent[];
   /** `true` when the driver killed the process for outliving its leak deadline. */

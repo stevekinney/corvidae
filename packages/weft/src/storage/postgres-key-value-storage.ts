@@ -18,7 +18,6 @@ import {
 import {
   buildPostgresCreateSchema,
   buildPostgresKeyValueQueries,
-  buildPostgresPrefixRangeParameters,
   PG_BEGIN_READ_COMMITTED,
   PG_BEGIN_READ_ONLY,
   PG_BEGIN_SERIALIZABLE,
@@ -303,8 +302,8 @@ export class PostgresKeyValueStorage implements Storage {
 
   async deletePrefix(prefix: string): Promise<number> {
     await this.#ensureTable();
-    const [rangeStart, rangeEnd] = buildPostgresPrefixRangeParameters(prefix);
-    const result = await this.#pool.query(this.#queries.deleteKeysByPrefix, [rangeStart, rangeEnd]);
+    const { parameters, sql } = this.#queries.deleteKeysByPrefix(prefix);
+    const result = await this.#pool.query(sql, parameters);
     return affectedRowCount(result);
   }
 
@@ -336,8 +335,8 @@ export class PostgresKeyValueStorage implements Storage {
 
   async count(prefix: string): Promise<number> {
     await this.#ensureTable();
-    const [rangeStart, rangeEnd] = buildPostgresPrefixRangeParameters(prefix);
-    const result = await this.#pool.query(this.#queries.countKeysByPrefix, [rangeStart, rangeEnd]);
+    const { parameters, sql } = this.#queries.countKeysByPrefix(prefix);
+    const result = await this.#pool.query(sql, parameters);
     return Number(result.rows[0]?.['count'] ?? 0);
   }
 

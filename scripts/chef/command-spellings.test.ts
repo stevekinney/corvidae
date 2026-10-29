@@ -18,11 +18,15 @@ import { parseCommandLine } from './worktree-scope.ts';
 const repositoryRoot = join(import.meta.dir, '../..');
 const skillFiles = [
   '.agents/skills/chef/references/execution-record.md',
+  '.agents/skills/chef/references/planning-and-routing.md',
+  '.agents/skills/chef/references/review-and-deliver.md',
   '.agents/skills/chef/SKILL.md',
 ];
 
 const minimumInvocations: Record<string, number> = {
   '.agents/skills/chef/references/execution-record.md': 8,
+  '.agents/skills/chef/references/planning-and-routing.md': 1,
+  '.agents/skills/chef/references/review-and-deliver.md': 8,
   '.agents/skills/chef/SKILL.md': 4,
 };
 
@@ -149,7 +153,7 @@ describe('chef command spellings', () => {
     const named = new Set(
       charterRules.flatMap((rule) => invocationsIn(rule).map((invocation) => invocation.script)),
     );
-    for (const script of ['gate-run', 'merge-gate', 'review-threads', 'leftovers'])
+    for (const script of ['merge-gate', 'review-threads', 'leftovers'])
       expect(named.has(script), script).toBe(true);
   });
 

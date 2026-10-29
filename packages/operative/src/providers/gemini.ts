@@ -4,7 +4,7 @@ import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { GeminiPart } from 'armorer';
 import { parseGeminiToolCalls } from 'armorer';
 import type { ContentPartLineage, ConversationHistory, JSONValue } from 'conversationalist';
-import { toGeminiMessages } from 'conversationalist';
+import { getOwn, toGeminiMessages } from 'conversationalist';
 
 import { concatenateTextParts } from '../response-parts.ts';
 import { withBackendDescriptors } from './backend-descriptor-attachment.ts';
@@ -340,14 +340,14 @@ function splitAtCacheBoundary(
 ): { prefix: ConversationHistory; tail: ConversationHistory } | undefined {
   let boundaryIndex = -1;
   history.ids.forEach((id, index) => {
-    if (history.messages[id]?.cacheBoundary) boundaryIndex = index;
+    if (getOwn(history.messages, id)?.cacheBoundary) boundaryIndex = index;
   });
   if (boundaryIndex === -1) return undefined;
 
   const sliceHistory = (ids: ReadonlyArray<string>): ConversationHistory => {
     const messages: Record<string, (typeof history.messages)[string]> = {};
     for (const id of ids) {
-      const message = history.messages[id];
+      const message = getOwn(history.messages, id);
       if (message) messages[id] = message;
     }
     return { ...history, ids, messages };

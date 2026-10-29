@@ -9,7 +9,7 @@ import {
   type FleetEventFeed,
 } from '../fleet-event-feed.ts';
 import { handleRequest, type HandlerOptions } from '../handler.ts';
-import { createOperationRegistry } from '../operation-catalog.ts';
+import { createOperationRegistry, executeStream } from '../operation-catalog.ts';
 import { principalFromApiKey } from '../principal.ts';
 import { createReplayLiveFeed, type ReplayLiveSubscribeOptions } from '../workflow-event-feed.ts';
 import { fleetEventsSseOperation, fleetEventsSseRestBinding } from './fleet-events-sse.ts';
@@ -151,6 +151,31 @@ describe('weft.events.sse', () => {
     expect(feed.replayLimitFaultMessage).toBe(
       'Fleet event replay window is 1001 matching events; maximum is 1000. Supply a more recent fromCursor.',
     );
+  });
+
+  it('delivers every event whose kind appears in a kind-list filter', async () => {
+    const feed = new RecordingFleetEventFeed([
+      envelope(0, { kind: 'workflow:started' }),
+      envelope(1, { kind: 'workflow:failed' }),
+      envelope(2, { kind: 'workflow:completed' }),
+    ]);
+
+    const result = await executeStream(
+      'weft.events.sse',
+      { kind: ['workflow:started', 'workflow:completed'] },
+      {
+        registry,
+        host: { fleetEventFeed: feed },
+        transport: 'http-rest',
+        principal: principalFromApiKey({ subject: 'tester', scopes: ['events:read'] }),
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const delivered: number[] = [];
+    for await (const item of result.value) delivered.push((item as FleetEventEnvelope).sequence);
+    expect(delivered).toEqual([0, 2]);
   });
 
   it('delivers catalog and workflow-source events, then replays them after reconnecting from a cursor', async () => {

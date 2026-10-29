@@ -141,6 +141,7 @@ import {
   createConversationHistory,
   getFirstSystemMessage,
   messageText,
+  getOwn,
 } from 'conversationalist';
 
 import type { FileAgentBinding } from './agent-file-catalog';
@@ -181,6 +182,7 @@ import type {
   SkillRuntimeConfiguration,
   RoutingConfiguration,
 } from './types';
+import { ownEntry } from './own-entry';
 
 export type BureauToolbox = AnyToolbox;
 
@@ -388,7 +390,7 @@ export function wireDurableOptInTools(
  */
 function recoveredOwnerOf(session: AgentSession, runId: string): string | undefined {
   const owners = session.metadata['lastRunOwningPrincipals'];
-  const runOwner = isPlainAuthorityRecord(owners) ? owners[runId] : undefined;
+  const runOwner = isPlainAuthorityRecord(owners) ? ownEntry(owners, runId) : undefined;
   if (typeof runOwner === 'string') return runOwner;
   const sessionOwner = session.metadata[SESSION_OWNER_METADATA_KEY];
   return typeof sessionOwner === 'string' ? sessionOwner : undefined;
@@ -478,7 +480,7 @@ export function recoveredRequestContext(
   const authorities = metadata[requestAuthoritiesMetadataKey];
   if (isJsonRecord(authorities)) {
     return requestContextFromAuthorityValue(
-      runId === undefined ? undefined : authorities[runId],
+      runId === undefined ? undefined : ownEntry(authorities, runId),
       runId,
       sessionId,
       agentName,
@@ -1187,7 +1189,7 @@ function recoveredMarkerSessionId(marker: RecoveredScheduleMarker | undefined): 
 
 function lastScheduledFirePromptIndex(history: ConversationHistory, runId: string): number {
   for (let index = history.ids.length - 1; index >= 0; index -= 1) {
-    const message = history.messages[history.ids[index]!];
+    const message = getOwn(history.messages, history.ids[index]!);
     if (message?.role === 'user' && message.metadata['scheduledFireRunId'] === runId) {
       return index;
     }
@@ -1203,7 +1205,7 @@ function removeConversationIndexRange(
   const ids = history.ids.filter((_, index) => index < startIndex || index > endIndex);
   const messages: Record<string, ConversationHistory['messages'][string]> = {};
   for (const [position, id] of ids.entries()) {
-    const message = history.messages[id];
+    const message = getOwn(history.messages, id);
     if (message) messages[id] = { ...message, position };
   }
   return { ...history, ids, messages };
@@ -1217,7 +1219,7 @@ export function removeLastScheduledFireTranscript(
   if (promptIndex === -1) return history;
   const nextUserIndex = history.ids.findIndex((id, index) => {
     if (index <= promptIndex) return false;
-    return history.messages[id]?.role === 'user';
+    return getOwn(history.messages, id)?.role === 'user';
   });
   const endIndex = nextUserIndex === -1 ? history.ids.length - 1 : nextUserIndex - 1;
   return removeConversationIndexRange(history, promptIndex, endIndex);
@@ -1254,11 +1256,11 @@ function appendMemoryEvidence(
 function staleEvidencePositions(conversation: Conversation, policyRevision: string): number[] {
   const { ids, messages } = conversation.current;
   return ids.flatMap((id, position) => {
-    const entry = messages[id]?.metadata?.[MEMORY_EVIDENCE_METADATA_KEY];
+    const entry = getOwn(messages, id)?.metadata?.[MEMORY_EVIDENCE_METADATA_KEY];
     if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return [];
     const recalledUnder = (entry as Record<string, unknown>)['policyRevision'];
     if (typeof recalledUnder !== 'string' || recalledUnder === policyRevision) return [];
-    return messages[id]?.content === WITHDRAWN_MEMORY_EVIDENCE ? [] : [position];
+    return getOwn(messages, id)?.content === WITHDRAWN_MEMORY_EVIDENCE ? [] : [position];
   });
 }
 
@@ -1813,18 +1815,20 @@ function appendConversationMessages(
   const messages: Record<string, ConversationHistory['messages'][string]> = {};
 
   for (const id of ids) {
-    const candidateMessage = candidate.messages[id];
-    const baseMessage = base.messages[id];
+    const candidateMessage = getOwn(candidate.messages, id);
+    const baseMessage = getOwn(base.messages, id);
     const message =
       candidateMessage &&
-      (!baseMessage || !messagesAreEqual(candidateMessage, baseMessage) || !current.messages[id])
+      (!baseMessage ||
+        !messagesAreEqual(candidateMessage, baseMessage) ||
+        !getOwn(current.messages, id))
         ? candidateMessage
-        : (current.messages[id] ?? candidateMessage);
+        : (getOwn(current.messages, id) ?? candidateMessage);
     if (message) messages[id] = message;
   }
 
   for (const [position, id] of ids.entries()) {
-    const message = messages[id];
+    const message = getOwn(messages, id);
     if (message) messages[id] = { ...message, position };
   }
 
@@ -2587,7 +2591,7 @@ export function isScheduledFireAuthority(
 ): boolean {
   const authorities = metadata['lastRequestAuthorities'];
   if (!isPlainAuthorityRecord(authorities)) return false;
-  const authority = authorities[runId];
+  const authority = ownEntry(authorities, runId);
   return isPlainAuthorityRecord(authority) && authority[SCHEDULED_FIRE_AUTHORITY_MARKER] === true;
 }
 
@@ -2657,7 +2661,7 @@ export function scheduledFireApprovalMetadata(
     pendingApprovalOverrides: overrides,
     pendingApprovalRounds: {
       ...without(rounds),
-      ...Object.fromEntries(approvals.map(([id]) => [id, rounds[id] ?? 0])),
+      ...Object.fromEntries(approvals.map(([id]) => [id, ownEntry(rounds, id) ?? 0])),
     },
     lastRequestAuthorities: holdsApproval
       ? { ...authorities, [runId]: authority }
