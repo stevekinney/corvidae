@@ -182,6 +182,23 @@ describe('applyFleetEventFrame', () => {
     }
   });
 
+  test.each(['workflow:completed', 'workflow:failed', 'workflow:cancelled', 'workflow:timed-out'])(
+    '%s invalidates the reviews list, because ending a run removes its open reviews without a review frame',
+    (kind) => {
+      const queryClient = new QueryClient();
+      queryClient.setQueryData(REVIEWS_LIST_KEY_PREFIX, () => []);
+      applyFleetEventFrame(queryClient, fleetFrame({ kind, workflowId: 'wf_1' }));
+      expect(queryClient.getQueryState(REVIEWS_LIST_KEY_PREFIX)?.isInvalidated).toBe(true);
+    },
+  );
+
+  test('a run that has not ended leaves the reviews list alone', () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(REVIEWS_LIST_KEY_PREFIX, () => []);
+    applyFleetEventFrame(queryClient, fleetFrame({ kind: 'workflow:started', workflowId: 'wf_1' }));
+    expect(queryClient.getQueryState(REVIEWS_LIST_KEY_PREFIX)?.isInvalidated).toBeFalsy();
+  });
+
   test.each(['update:received', 'update:completed'])(
     '%s invalidates that run’s update history, and no other run’s',
     (kind) => {

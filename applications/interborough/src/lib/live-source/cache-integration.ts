@@ -242,6 +242,11 @@ export function applyFleetEventFrame(queryClient: QueryClient, frame: FleetEvent
     // specific `workflow:teardown` frame (the durable field is
     // authoritative either way; this is just "refresh sooner").
     void queryClient.invalidateQueries({ queryKey: workflowFinalizerKey(frame.workflowId) });
+    // A run that ends takes its open reviews with it without a `human-review:completed`, so the
+    // list that held them is asked again.
+    if (WORKFLOW_SETTLED_KINDS.has(frame.kind)) {
+      void queryClient.invalidateQueries({ queryKey: REVIEWS_LIST_KEY_PREFIX });
+    }
     if (WORKFLOW_UPDATE_KINDS.has(frame.kind)) {
       void queryClient.invalidateQueries({ queryKey: workflowUpdatesKey(frame.workflowId) });
     }
