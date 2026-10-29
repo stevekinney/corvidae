@@ -14,11 +14,12 @@ describe('package root platform boundaries', () => {
 
   it('exposes source storage and workflow APIs through the root', async () => {
     const api = await import('../src/index.ts');
-    for (const name of ['Engine', 'BunSQLiteStorage', 'HttpClient']) {
+    for (const name of ['Engine', 'HttpClient']) {
       expect(Reflect.get(api, name), name).toBeFunction();
     }
     // Callers construct their storage adapter; there is no configuration resolver (COR-1767).
-    for (const name of ['resolveStorage', 'resolveDefaultStorage']) {
+    // The Bun SQLite adapter is its own package, `@lostgradient/storage-bun-sqlite` (COR-1771).
+    for (const name of ['resolveStorage', 'resolveDefaultStorage', 'BunSQLiteStorage']) {
       expect(Reflect.has(api, name), name).toBe(false);
     }
   });

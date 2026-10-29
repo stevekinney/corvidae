@@ -34,7 +34,7 @@ import { announce, fail, parseHostArguments, writeMarker } from './host-support'
 import { handleShutdownSignals } from './shutdown-handler';
 import type { AgentDefinitions } from '../../agent-catalog';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
-import { BunSQLiteStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 /** Matches `process-crash-child.ts`, so a dead holder's claim lapses quickly. */
 const CLAIM_TTL_MS = 200;

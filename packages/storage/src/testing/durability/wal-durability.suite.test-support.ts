@@ -17,7 +17,7 @@
  *      multiple sessions.
  *
  * To break this test manually (negative-control documentation): edit
- * `src/storage/bun-sql.ts` and replace `PRAGMA journal_mode = WAL` with
+ * `packages/storage-bun-sqlite/src/bun-sql.ts` and replace `PRAGMA journal_mode = WAL` with
  * `PRAGMA journal_mode = OFF`, then rerun. Revert before committing.
  */
 

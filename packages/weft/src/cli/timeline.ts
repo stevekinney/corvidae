@@ -54,7 +54,7 @@ export async function executeTimeline(options: {
     };
   }
 
-  const { BunSQLiteStorage } = await import('../index.ts');
+  const { BunSQLiteStorage } = await import('@lostgradient/storage-bun-sqlite');
   const storage = new BunSQLiteStorage(options.database);
   const { Engine } = await import('../index.ts');
   const engine = new Engine({ storage });

@@ -19,7 +19,7 @@ import {
 const repositoryRoot = new URL('../..', import.meta.url);
 const indexModuleUrl = new URL('src/index.ts', repositoryRoot).href;
 const serverModuleUrl = new URL('src/server/index.ts', repositoryRoot).href;
-const sqliteModuleUrl = new URL('src/storage/bun-sql.ts', repositoryRoot).href;
+const sqliteModuleUrl = import.meta.resolve('@lostgradient/storage-bun-sqlite');
 
 const createdFixtures: string[] = [];
 let handles: SubprocessServerHandle[] = [];

@@ -522,6 +522,8 @@ const scenario5 = await outcomeOf(async () => {
   const workspaceNodeModules = realpathSync(join(REPOSITORY_ROOT, 'node_modules'));
   expect(Object.keys(dependencies)).toContain('@electric-sql/pglite');
   expect(Object.keys(dependencies)).toContain('@lostgradient/storage');
+  // The CLI constructs the Bun SQLite adapter, so it ships with Weft (COR-1771).
+  expect(Object.keys(dependencies)).toContain('@lostgradient/storage-bun-sqlite');
   const fixtureRoot = dirname(consumerDirectory);
   for (const name of Object.keys(dependencies)) {
     const linked = realpathSync(join(consumerDirectory, 'node_modules', name));

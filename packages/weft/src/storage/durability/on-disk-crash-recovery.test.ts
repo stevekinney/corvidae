@@ -35,10 +35,10 @@ import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { Engine } from '../../core/engine.ts';
 import type { WorkflowContext } from '../../core/types.ts';
 import { settleInlineLaunches } from '../../testing/inline-launch-settle.test-support.ts';
-import { BunSQLiteStorage } from '../bun-sql.ts';
 import { KEYS as STORAGE_KEYS } from '../keys.ts';
 
 import { FixtureScope } from '@lostgradient/storage/testing';

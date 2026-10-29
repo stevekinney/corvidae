@@ -593,7 +593,7 @@ function scheduleDefinitionFromInternals(
  * @example With a SQLite backend
  * ```ts
  * import { Engine } from '@lostgradient/weft';
- * import { BunSQLiteStorage } from '@lostgradient/weft';
+ * import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
  * await using storage = new BunSQLiteStorage('./weft.db');
  * await using engine = new Engine({ storage });
  * await engine.recoverAll();

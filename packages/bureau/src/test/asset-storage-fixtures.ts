@@ -14,7 +14,7 @@
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { createTemporaryPath, removeTemporaryPath } from './temporary-path';
-import { BunSQLiteStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 import { createDurableAssetStorage, createMemoryAssetStorage } from '../assets/storage';
 import type { AssetStorage } from '../assets/storage';

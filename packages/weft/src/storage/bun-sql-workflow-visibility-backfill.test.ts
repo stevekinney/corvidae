@@ -18,7 +18,7 @@ import type { WorkflowState } from '../core/types.ts';
 import { collectKeys } from '../testing/storage-backends.test-support.ts';
 import { KEYS } from './keys.ts';
 
-import { BunSQLiteStorage } from './bun-sql.ts';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 let currentStorage: BunSQLiteStorage | undefined;
 let currentFixture: DiskBackedTestFixture | undefined;

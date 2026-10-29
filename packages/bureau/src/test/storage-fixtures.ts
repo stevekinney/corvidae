@@ -27,7 +27,8 @@
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { type Storage, MemoryStorage } from '@lostgradient/storage';
-import { BunSQLiteStorage, LMDBStorage } from '@lostgradient/weft';
+import { LMDBStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { createTemporaryPath, removeTemporaryPath } from './temporary-path';
 
 /** The backend a {@link BureauStorageFixture} opens. */

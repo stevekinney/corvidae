@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 import type { Storage } from '@lostgradient/storage';
-import { BunSQLiteStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';

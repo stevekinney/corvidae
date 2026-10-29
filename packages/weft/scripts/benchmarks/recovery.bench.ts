@@ -1,10 +1,10 @@
 import { waitForRealTimersForTesting } from '@lostgradient/testing/fake-timers';
 import { describe, expect, it } from 'bun:test';
 
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { Engine } from '../../src/core/engine.ts';
 import type { WorkflowContext } from '../../src/core/types.ts';
 import { workflow } from '../../src/core/types.ts';
-import { BunSQLiteStorage } from '../../src/storage/bun-sql.ts';
 import { resolveBenchmarkEnvironment } from './environment-configuration.ts';
 
 /**

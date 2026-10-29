@@ -177,7 +177,6 @@ export type {
   SequencedEventEnvelope,
 } from './server/workflow-event-feed.ts';
 export * from './service-worker/index.ts';
-export { BunSQLiteStorage } from './storage/bun-sql.ts';
 export * from './storage/cloudflare.ts';
 export { CompressedStorage } from './storage/compressed-storage.ts';
 export * from './storage/http.ts';

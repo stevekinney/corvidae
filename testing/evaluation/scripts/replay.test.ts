@@ -7,7 +7,7 @@ import { join } from 'node:path';
 
 import type { GenerateFunction } from '@lostgradient/operative';
 import { textValueStore } from '@lostgradient/storage';
-import { BunSQLiteStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 import type { GateDecisionRecord } from '../src/gate';
 import { createEvaluationHistory, type HistoricalRecord } from '../src/history';

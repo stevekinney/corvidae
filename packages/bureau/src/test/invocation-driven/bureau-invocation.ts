@@ -35,7 +35,7 @@ import { createBureau } from '../../create-bureau';
 import type { BureauDiagnostic, BureauShutdownReport } from '../../types';
 import { emit, parseInvocationArguments, pollUntil, readClock, WAKEUP_MS } from './protocol';
 import type { AgentDefinitions } from '../../agent-catalog';
-import { BunSQLiteStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 const { directory, command, label } = parseInvocationArguments('bureau-invocation');
 const now = readClock(directory);

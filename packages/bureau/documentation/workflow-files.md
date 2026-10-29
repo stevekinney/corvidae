@@ -66,7 +66,7 @@ A file that cannot be used is listed by `bureau.workflows.list()` with `state: '
 import { createBureau } from '@lostgradient/bureau';
 import { agentFileDirectory, workflowFileDirectory } from '@lostgradient/bureau/sources';
 import type { BackendDescriptor, GenerateFunction, StandaloneAgent } from '@lostgradient/operative';
-import { BunSQLiteStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 declare const writer: StandaloneAgent;
 declare function generateFor(descriptor: BackendDescriptor): GenerateFunction;

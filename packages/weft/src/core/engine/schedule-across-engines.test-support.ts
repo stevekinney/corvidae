@@ -4,7 +4,7 @@
  * ticks the tests make around them.
  */
 import type { BatchOperation, Storage } from '@lostgradient/storage';
-import { BunSQLiteStorage } from '../../storage/bun-sql.ts';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { KEYS } from '../../storage/keys.ts';
 import type { Engine } from '../engine.ts';
 import type { ScheduleState } from '../types.ts';

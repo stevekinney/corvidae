@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import {
   createDiskBackedTestFixture,
   sqliteDatabaseSidecarSuffixes,
 } from '@lostgradient/storage/testing';
 import { storageBackends } from '../testing/storage-backends.test-support.ts';
-import { BunSQLiteStorage } from './bun-sql.ts';
 import { describeConditionalBatch } from './conditional-batch.test-support.ts';
 
 describe('storage persistence capabilities', () => {

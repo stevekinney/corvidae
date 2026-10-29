@@ -36,7 +36,8 @@ import {
   withBackendDescriptors,
 } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
-import { BunSQLiteStorage, Outbox } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
+import { Outbox } from '@lostgradient/weft';
 import {
   createEgressPolicy,
   createHttpDeliveryAdapter,

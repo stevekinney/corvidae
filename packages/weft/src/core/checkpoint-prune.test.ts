@@ -7,8 +7,8 @@ import {
   MAX_BATCH_OPERATIONS,
   MemoryStorage,
 } from '@lostgradient/storage';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { BunSQLiteStorage } from '../storage/bun-sql.ts';
 import { KEYS } from '../storage/keys.ts';
 import { serializeCheckpoint } from './checkpoint.ts';
 import { Engine } from './engine.ts';

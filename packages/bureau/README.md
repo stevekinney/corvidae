@@ -105,7 +105,7 @@ Give `agents` a catalog entry built with `createAgent`, then start a task of it 
 ```typescript
 import { createBureau } from '@lostgradient/bureau';
 import { createAgent, type GenerateFunction } from '@lostgradient/operative';
-import { BunSQLiteStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 declare const generate: GenerateFunction;
 
@@ -810,7 +810,7 @@ A pass that actually prunes at least one record writes exactly one `audit.pruned
 
 ```typescript
 import { createBureau } from '@lostgradient/bureau';
-import { BunSQLiteStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 const bureau = await createBureau({
   agents: {},
@@ -923,7 +923,8 @@ import {
   waitForCondition,
   type GenerateFunction,
 } from '@lostgradient/operative';
-import { BunSQLiteStorage, principalFromApiKey } from '@lostgradient/weft';
+import { principalFromApiKey } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 const storage = new BunSQLiteStorage('./bureau.sqlite');
 
@@ -1400,7 +1401,7 @@ A grant's summary carries `grantId`, `policyVersion`, `depth`, `expiresAt`, and 
 ```typescript
 import { createBureau, type Bureau } from '@lostgradient/bureau';
 import type { StandaloneAgent } from '@lostgradient/operative';
-import { BunSQLiteStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 declare const planner: StandaloneAgent;
 declare const delegationSecret: string;
@@ -1482,7 +1483,7 @@ Not supported: observing a child's signal `events` (Bureau only sends signals; a
 ```ts
 import { createBureau } from '@lostgradient/bureau';
 import type { StandaloneAgent, Validator } from '@lostgradient/operative';
-import { BunSQLiteStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 declare const worker: StandaloneAgent;
 declare const testsPass: Validator;

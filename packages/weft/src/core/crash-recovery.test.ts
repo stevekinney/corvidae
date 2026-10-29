@@ -1381,7 +1381,7 @@ describe('crash recovery', () => {
   });
 
   it('resume uses BunSQLiteStorage as backend', async () => {
-    const { BunSQLiteStorage } = await import('../storage/bun-sql.ts');
+    const { BunSQLiteStorage } = await import('@lostgradient/storage-bun-sqlite');
 
     using storage = new BunSQLiteStorage(':memory:');
 
@@ -1418,7 +1418,7 @@ describe('crash recovery', () => {
   });
 
   it('Engine.create recovers by default against durable storage and resumes a parked workflow', async () => {
-    const { BunSQLiteStorage } = await import('../storage/bun-sql.ts');
+    const { BunSQLiteStorage } = await import('@lostgradient/storage-bun-sqlite');
 
     using storage = new BunSQLiteStorage(':memory:');
 
@@ -1465,7 +1465,7 @@ describe('crash recovery', () => {
   });
 
   it('Engine.create({ recover: false }) leaves a parked workflow dormant without executing its next step', async () => {
-    const { BunSQLiteStorage } = await import('../storage/bun-sql.ts');
+    const { BunSQLiteStorage } = await import('@lostgradient/storage-bun-sqlite');
 
     using storage = new BunSQLiteStorage(':memory:');
 

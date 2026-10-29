@@ -26,7 +26,7 @@ import { dirname, join } from 'node:path';
 import { parseArgs } from 'node:util';
 
 import { type ConditionalTextValueStore, textValueStore } from '@lostgradient/storage';
-import { BunSQLiteStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 import { describeThresholdBound } from '../src/gate';
 import { createEvaluationHistory } from '../src/history';

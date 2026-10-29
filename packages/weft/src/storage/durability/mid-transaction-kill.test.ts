@@ -5,7 +5,7 @@
 import { runMidTransactionKillSuite } from '@lostgradient/storage/testing';
 import {
   availableAdapterSpecs,
-  availableBunNodeAdapterSpecs,
+  availableRawHandleAdapterSpecs,
 } from './sqlite-adapter-specs.test-support.ts';
 
-await runMidTransactionKillSuite(availableAdapterSpecs(), availableBunNodeAdapterSpecs());
+await runMidTransactionKillSuite(availableAdapterSpecs(), availableRawHandleAdapterSpecs());

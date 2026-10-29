@@ -251,6 +251,37 @@
     "@lostgradient/storage#test:gate": {
       "dependsOn": ["transit", "test:coverage"]
     },
+    "@lostgradient/storage-bun-sqlite#test": {
+      "outputs": ["test-output/junit/**"],
+      "dependsOn": ["transit"],
+      "env": ["CODEX_CI", "NODE_ENV", "WEFT_KEEP_DURABILITY_FIXTURES", "CORVIDAE_TEST_SELECTION"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/bun-test-junit.ts",
+        "$TURBO_ROOT$/scripts/check-test-durations.ts",
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
+        "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/worker-crash-report.ts",
+        "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts",
+        "$TURBO_ROOT$/scripts/workspace-directories.ts"
+      ]
+    },
+    "@lostgradient/storage-bun-sqlite#test:coverage": {
+      "dependsOn": ["transit"],
+      "outputs": ["coverage/**"],
+      "env": ["CODEX_CI", "NODE_ENV", "WEFT_KEEP_DURABILITY_FIXTURES"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/bun-test.ts",
+        "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
+        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+      ]
+    },
+    "@lostgradient/storage-bun-sqlite#test:gate": {
+      "dependsOn": ["transit", "test:coverage"]
+    },
     "@lostgradient/evaluation#test:coverage": {
       "dependsOn": ["transit"],
       "outputs": ["coverage/**"],

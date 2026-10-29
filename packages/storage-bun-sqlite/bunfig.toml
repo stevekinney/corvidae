@@ -1,0 +1,15 @@
+[loader]
+".md" = "text"
+
+[run]
+bun = true
+
+[test]
+# Every test file runs with the shared guard that fails a test which leaves a real timer behind.
+preload = ["@lostgradient/testing/real-timer-leak-guard"]
+# `bun run test:coverage` fails below these. They are no lower than the line and function coverage
+# the same files had under Weft's coverage run before they moved here (COR-1771).
+coverageThreshold = { lines = 1.0, functions = 1.0 }
+# Other workspaces are consumed as source, so their modules load into this suite too; they are
+# measured by their own packages.
+coveragePathIgnorePatterns = ["../**"]

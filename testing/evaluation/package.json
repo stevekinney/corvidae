@@ -25,6 +25,7 @@
     "@lostgradient/memory": "workspace:*",
     "@lostgradient/operative": "workspace:*",
     "@lostgradient/storage": "workspace:*",
+    "@lostgradient/storage-bun-sqlite": "workspace:*",
     "@lostgradient/weft": "workspace:*",
     "armorer": "workspace:*",
     "conversationalist": "workspace:*",

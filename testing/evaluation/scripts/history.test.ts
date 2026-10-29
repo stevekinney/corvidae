@@ -6,8 +6,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { textValueStore } from '@lostgradient/storage';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { throwingRejectionOf } from '@lostgradient/testing';
-import { BunSQLiteStorage } from '@lostgradient/weft';
 
 import type { EvaluationRunRecord } from '../src/evaluation-run';
 import baselineFixture from '../src/fixtures/history/baseline-run.json';

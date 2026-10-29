@@ -27,7 +27,7 @@
 import { exit } from 'node:process';
 import { parseArgs } from 'node:util';
 
-import { BunSQLiteStorage } from '../src/storage/bun-sql.ts';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 import {
   WorkflowVisibilityBackfillInProgressError,

@@ -6,7 +6,7 @@ import { basename, dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
 import { copyTextKeyValueRowsToStorage, type TextKeyValueRow } from '@lostgradient/storage';
-import { BunSQLiteStorage } from '../src/storage/bun-sql.ts';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { WEFT_RESERVED_KEY_PREFIXES } from '../src/storage/keys.ts';
 
 type CliArgs = {

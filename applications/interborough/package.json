@@ -26,6 +26,7 @@
     "@lostgradient/memory": "workspace:*",
     "@lostgradient/operative": "workspace:*",
     "@lostgradient/storage": "workspace:*",
+    "@lostgradient/storage-bun-sqlite": "workspace:*",
     "@lostgradient/testing": "workspace:*",
     "@lostgradient/weft": "workspace:*",
     "@lucide/svelte": "catalog:",

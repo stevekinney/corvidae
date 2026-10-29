@@ -89,7 +89,7 @@ import {
   type InteractiveSurfaceActionReceipt,
 } from '@lostgradient/bureau';
 import { createAgent, type GenerateFunction } from '@lostgradient/operative';
-import { BunSQLiteStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 declare const generate: GenerateFunction;
 declare const taskId: string;

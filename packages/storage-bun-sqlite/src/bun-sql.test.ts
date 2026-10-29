@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { SQLITE_BUSY_TIMEOUT_MS } from '@lostgradient/storage/sql';
 import {
   collect,
+  decodeText,
   describeSqliteContentionViolations,
   bytes as encode,
   parseSqliteContentionReport,
@@ -203,6 +204,120 @@ describe('BunSQLiteStorage', () => {
     );
 
     storage[Symbol.dispose]();
+  });
+});
+
+// The adapter's own fast paths for the optional `Storage` methods. The shared contract above runs
+// them through the generic fallbacks, so these assert what the SQL statements themselves return.
+describe('BunSQLiteStorage optional operations', () => {
+  async function seeded(): Promise<BunSQLiteStorage> {
+    const storage = new BunSQLiteStorage(':memory:');
+    for (const key of ['a:1', 'a:2', 'a:3', 'b:1', 'b:2']) {
+      await storage.put(key, encode(key));
+    }
+    return storage;
+  }
+
+  it('has reports whether a key is present', async () => {
+    const storage = await seeded();
+
+    expect(await storage.has('a:1')).toBe(true);
+    expect(await storage.has('a:9')).toBe(false);
+
+    storage[Symbol.dispose]();
+  });
+
+  it('deletePrefix removes only the prefixed keys and reports how many', async () => {
+    const storage = await seeded();
+
+    expect(await storage.deletePrefix('a:')).toBe(3);
+    expect(await storage.deletePrefix('a:')).toBe(0);
+    expect(await collect(storage.keys(''))).toEqual(['b:1', 'b:2']);
+
+    storage[Symbol.dispose]();
+  });
+
+  it('deleteRange removes the keys inside the bounds, up to the limit, and reports how many', async () => {
+    const storage = await seeded();
+
+    expect(await storage.deleteRange('a:', { gt: 'a:1', limit: 1 })).toBe(1);
+    expect(await collect(storage.keys('a:'))).toEqual(['a:1', 'a:3']);
+    expect(await storage.deleteRange('a:', { gte: 'a:1', lte: 'a:3' })).toBe(2);
+    expect(await collect(storage.keys(''))).toEqual(['b:1', 'b:2']);
+
+    storage[Symbol.dispose]();
+  });
+
+  it('keys lists the prefixed keys in order, reversed, or limited', async () => {
+    const storage = await seeded();
+
+    expect(await collect(storage.keys('a:'))).toEqual(['a:1', 'a:2', 'a:3']);
+    expect(await collect(storage.keys('a:', { reverse: true }))).toEqual(['a:3', 'a:2', 'a:1']);
+    expect(await collect(storage.keys('a:', { gt: 'a:1', limit: 1 }))).toEqual(['a:2']);
+    expect(await collect(storage.keys('a:'))).toEqual(['a:1', 'a:2', 'a:3']);
+
+    storage[Symbol.dispose]();
+  });
+
+  it('count totals the prefixed keys', async () => {
+    const storage = await seeded();
+
+    expect(await storage.count('a:')).toBe(3);
+    expect(await storage.count('c:')).toBe(0);
+
+    storage[Symbol.dispose]();
+  });
+
+  it('scoped gives a view that reads and writes under its own prefix', async () => {
+    const storage = await seeded();
+    const view = storage.scoped('c:');
+
+    await view.put('x', encode('scoped'));
+
+    expect(decodeText((await storage.get('c:x')) ?? new Uint8Array())).toBe('scoped');
+    const entries = await collect(view.scan(''));
+    expect(entries.map(([key]) => key)).toEqual(['x']);
+
+    storage[Symbol.dispose]();
+  });
+
+  it('conditionalBatch applies puts and deletes when every condition holds, and nothing otherwise', async () => {
+    const storage = await seeded();
+
+    expect(
+      await storage.conditionalBatch(
+        [{ key: 'a:1', expectedValue: encode('a:1') }],
+        [
+          { type: 'delete', key: 'a:1' },
+          { type: 'put', key: 'a:4', value: encode('a:4') },
+        ],
+      ),
+    ).toBe(true);
+    expect(await storage.has('a:1')).toBe(false);
+    expect(await storage.has('a:4')).toBe(true);
+
+    expect(
+      await storage.conditionalBatch(
+        [{ key: 'a:1', expectedValue: encode('a:1') }],
+        [{ type: 'delete', key: 'a:4' }],
+      ),
+    ).toBe(false);
+    expect(await storage.has('a:4')).toBe(true);
+
+    storage[Symbol.dispose]();
+  });
+
+  it('disposes after every cached statement kind has been used', async () => {
+    const storage = await seeded();
+    await storage.deletePrefix('b:');
+    await storage.deleteRange('a:', { gt: 'a:2' });
+    await collect(storage.keys('a:'));
+    await collect(storage.scan('a:'));
+    await storage.count('a:');
+
+    storage[Symbol.dispose]();
+
+    expect(() => storage.get('a:1')).toThrow();
   });
 });
 

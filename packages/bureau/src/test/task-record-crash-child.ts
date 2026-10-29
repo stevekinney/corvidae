@@ -19,7 +19,7 @@
 import { writeFileSync } from 'node:fs';
 
 import { stopWhen, createAgent } from '@lostgradient/operative';
-import { BunSQLiteStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { type Storage } from '@lostgradient/storage';
 import { createToolbox } from 'armorer';
 

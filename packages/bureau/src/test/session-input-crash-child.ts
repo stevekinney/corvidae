@@ -22,7 +22,8 @@ import { writeFileSync } from 'node:fs';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { stopWhen, createAgent } from '@lostgradient/operative';
-import { BunSQLiteStorage, LMDBStorage } from '@lostgradient/weft';
+import { LMDBStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 

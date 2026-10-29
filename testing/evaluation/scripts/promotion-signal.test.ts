@@ -6,8 +6,8 @@ import { tmpdir, userInfo } from 'node:os';
 import { join, resolve } from 'node:path';
 
 import { textValueStore } from '@lostgradient/storage';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { throwingRejectionOf } from '@lostgradient/testing';
-import { BunSQLiteStorage } from '@lostgradient/weft';
 
 import { fixtureConfiguration } from '../src/fixtures/release-gate/fixture-regression';
 import type { GateDecisionRecord } from '../src/gate';

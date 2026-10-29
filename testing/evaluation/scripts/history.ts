@@ -23,7 +23,7 @@ import {
   MemoryStorage,
   textValueStore,
 } from '@lostgradient/storage';
-import { BunSQLiteStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 import type { EvaluationRunRecord } from '../src/evaluation-run';
 import {

@@ -30,7 +30,7 @@ import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { BunSQLiteStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 import { CorruptHistoricalRecordError, createEvaluationHistory } from '../src/history';
 import {

@@ -229,7 +229,7 @@ describe('checkpoint compare-and-swap loss under ownership none', () => {
   });
 
   it('settles the loser with a typed error and writes nothing (BunSQLiteStorage)', async () => {
-    const { BunSQLiteStorage } = await import('../../storage/bun-sql.ts');
+    const { BunSQLiteStorage } = await import('@lostgradient/storage-bun-sqlite');
     using storage = new BunSQLiteStorage(':memory:');
     await runRace(storage);
   });

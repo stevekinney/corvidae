@@ -1,3 +1,4 @@
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { Engine, ENGINE_PARKED_WORKFLOW_COUNT_FOR_TESTING } from '../../src/core/engine.ts';
 import {
   registerOnRuntimeEngine,
@@ -5,7 +6,6 @@ import {
   type RuntimeWorkflowEngine,
 } from '../../src/core/runtime-workflow-engine.ts';
 import { workflow, type WorkflowContext } from '../../src/core/types.ts';
-import { BunSQLiteStorage } from '../../src/storage/bun-sql.ts';
 import { isConstrainedCodexRunner } from './benchmark-environment.ts';
 
 const WORKFLOW_ID_PREFIX = 'memory-benchmark-';

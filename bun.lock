@@ -46,6 +46,7 @@
         "@lostgradient/memory": "workspace:*",
         "@lostgradient/operative": "workspace:*",
         "@lostgradient/storage": "workspace:*",
+        "@lostgradient/storage-bun-sqlite": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/weft": "workspace:*",
         "@lucide/svelte": "catalog:",
@@ -322,6 +323,7 @@
       },
       "devDependencies": {
         "@ag-ui/client": "catalog:",
+        "@lostgradient/storage-bun-sqlite": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@modelcontextprotocol/client": "catalog:",
@@ -445,6 +447,7 @@
         "zod": "catalog:",
       },
       "devDependencies": {
+        "@lostgradient/storage-bun-sqlite": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@tanstack/ai": "catalog:",
@@ -477,6 +480,19 @@
         "typescript": "catalog:",
       },
     },
+    "packages/storage-bun-sqlite": {
+      "name": "@lostgradient/storage-bun-sqlite",
+      "dependencies": {
+        "@lostgradient/storage": "workspace:*",
+      },
+      "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/ventriloquist": {
       "name": "@lostgradient/ventriloquist",
       "devDependencies": {
@@ -500,6 +516,7 @@
         "@libsql/client": "catalog:",
         "@lostgradient/environmentalist": "catalog:",
         "@lostgradient/storage": "workspace:*",
+        "@lostgradient/storage-bun-sqlite": "workspace:*",
         "@modelcontextprotocol/server": "catalog:",
         "@msgpack/msgpack": "catalog:",
         "@neondatabase/serverless": "catalog:",
@@ -552,6 +569,7 @@
         "@lostgradient/memory": "workspace:*",
         "@lostgradient/operative": "workspace:*",
         "@lostgradient/storage": "workspace:*",
+        "@lostgradient/storage-bun-sqlite": "workspace:*",
         "@lostgradient/weft": "workspace:*",
         "armorer": "workspace:*",
         "conversationalist": "workspace:*",
@@ -874,6 +892,8 @@
     "@lostgradient/playground": ["@lostgradient/playground@workspace:applications/playground"],
 
     "@lostgradient/storage": ["@lostgradient/storage@workspace:packages/storage"],
+
+    "@lostgradient/storage-bun-sqlite": ["@lostgradient/storage-bun-sqlite@workspace:packages/storage-bun-sqlite"],
 
     "@lostgradient/terminal": ["@lostgradient/terminal@workspace:components/terminal"],
 

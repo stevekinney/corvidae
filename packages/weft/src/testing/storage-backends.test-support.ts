@@ -6,11 +6,11 @@ import {
   storageKeys,
   type Storage,
 } from '@lostgradient/storage';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { sleepForTesting, yieldToEventLoop } from '@lostgradient/testing/fake-timers';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import type { Engine } from '../core/engine.ts';
 import type { WorkflowStatus } from '../core/types.ts';
-import { BunSQLiteStorage } from '../storage/bun-sql.ts';
 import { IndexedDBStorage } from '../storage/indexeddb.ts';
 
 /**
