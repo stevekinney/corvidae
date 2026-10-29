@@ -3,7 +3,7 @@ import { createDefaultRuntimeServices, TypedEventTarget } from '@lostgradient/li
 import type { ConditionalTextValueStore } from '@lostgradient/weft';
 import type { JSONValue } from 'armorer/protocol';
 import type { ConversationHistory, Message } from 'conversationalist';
-import { messageText } from 'conversationalist';
+import { getOwn, messageText } from 'conversationalist';
 
 import type { AgentSession } from '../agent-session';
 import type { OperativeEventMap } from '../events';
@@ -190,7 +190,7 @@ function mergeConversationHistory(
   if (candidateIsFresh) {
     const messages = { ...candidate.messages };
     for (const [position, id] of candidate.ids.entries()) {
-      const message = messages[id];
+      const message = getOwn(messages, id);
       if (message) messages[id] = { ...message, position };
     }
     return {
@@ -204,7 +204,7 @@ function mergeConversationHistory(
   const ids = [...current.ids, ...candidateOnlyIds];
   const messages = candidateOnlyIds.reduce<Record<string, ConversationHistory['messages'][string]>>(
     (accumulator, id) => {
-      const message = candidate.messages[id];
+      const message = getOwn(candidate.messages, id);
       if (message) accumulator[id] = message;
       return accumulator;
     },
@@ -212,7 +212,7 @@ function mergeConversationHistory(
   );
 
   for (const [position, id] of ids.entries()) {
-    const message = messages[id];
+    const message = getOwn(messages, id);
     if (message) messages[id] = { ...message, position };
   }
 
@@ -300,7 +300,7 @@ function describeConversation(history: ConversationHistory): {
   const messages = history.messages ?? {};
   let title: string | null = null;
   for (const id of ids) {
-    const text = visibleText(messages[id], ['user']);
+    const text = visibleText(getOwn(messages, id), ['user']);
     if (text !== undefined) {
       title = clipText(text, TITLE_LIMIT);
       break;
@@ -308,7 +308,7 @@ function describeConversation(history: ConversationHistory): {
   }
   let lastMessagePreview: string | null = null;
   for (let index = ids.length - 1; index >= 0; index -= 1) {
-    const text = visibleText(messages[ids[index]!], ['user', 'assistant']);
+    const text = visibleText(getOwn(messages, ids[index]), ['user', 'assistant']);
     if (text !== undefined) {
       lastMessagePreview = clipText(text, PREVIEW_LIMIT);
       break;

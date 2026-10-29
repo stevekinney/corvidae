@@ -16,7 +16,7 @@ function cellFor(host: string, name: string, passed = true): EvidenceCell {
     id: `${host}:behavior:direct:pipe:${name}`,
     passed,
     observations: [passed ? 'pass: held' : 'FAIL: held'],
-    versions: { bun: '1.4.2', platform: host.replace('-', '/') },
+    versions: { bun: '1.4.4', platform: host.replace('-', '/') },
     metrics: { checksEvaluated: { value: 1, unit: 'checks' } },
   };
 }
@@ -97,7 +97,7 @@ describe('the required host cells', () => {
 
   test('reject a cell whose recorded platform is not its host', () => {
     const cells = REQUIRED_CELL_NAMES.map((name) => cellFor('linux-arm64', name));
-    cells[1] = { ...cells[1]!, versions: { bun: '1.4.2', platform: 'darwin/arm64' } };
+    cells[1] = { ...cells[1]!, versions: { bun: '1.4.4', platform: 'darwin/arm64' } };
     const output = text([both[0]!, entry('linux-arm64', reportOf(cells))]);
     expect(output).toContain('ran on darwin/arm64, not linux/arm64');
   });

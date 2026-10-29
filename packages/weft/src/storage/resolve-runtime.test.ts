@@ -79,6 +79,16 @@ describe('resolveSQLiteStorage', () => {
     storage[Symbol.dispose]();
   });
 
+  it('opens the Node SQLite adapter on Node, which Bun refuses with the driver error', async () => {
+    // The `better-sqlite3` addon runs only under Node, so the adapter's construction under Bun
+    // names it instead of returning a storage. Reaching that refusal shows the Node branch ran.
+    expect(
+      await throwingRejectionOf(
+        resolveSQLiteStorage(':memory:', { ...neitherBunNorNode, node: true }),
+      ),
+    ).toThrow('better-sqlite3');
+  });
+
   it('refuses a host that is neither Bun nor Node', async () => {
     expect(await throwingRejectionOf(resolveSQLiteStorage(undefined, neitherBunNorNode))).toThrow(
       'SQLite storage is only available in Bun or Node runtimes.',

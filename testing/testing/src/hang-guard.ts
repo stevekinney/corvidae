@@ -235,7 +235,7 @@ export function spawnWithHangGuard<
 /** What `runWithHangGuard` resolves to: the fields of Bun's `SyncSubprocess` that tests read. */
 export interface CompletedProcess {
   exitCode: number | null;
-  signalCode: NodeJS.Signals | null;
+  signalCode: NodeJS.Signals | number | null;
   success: boolean;
   stdout: Buffer;
   stderr: Buffer;

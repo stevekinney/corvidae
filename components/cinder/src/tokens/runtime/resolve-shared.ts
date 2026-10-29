@@ -1,3 +1,4 @@
+import { ownEntry } from '../../_internal/own-entry.ts';
 import type { DesignToken, TokenGroup } from './types.ts';
 import { TokenValidationError } from './types.ts';
 
@@ -52,7 +53,8 @@ export function copyExtensionOrigins(
   if (!isObject(value) || !isObject(copy)) return;
   const origin = origins.get(value);
   if (origin) origins.set(copy, origin);
-  for (const [key, child] of Object.entries(value)) copyExtensionOrigins(child, copy[key], origins);
+  for (const [key, child] of Object.entries(value))
+    copyExtensionOrigins(child, ownEntry(copy, key), origins);
 }
 
 export function normalizeObjectPrototypes(value: unknown): void {
@@ -109,7 +111,7 @@ export function getByPath(value: unknown, segments: string[]): unknown {
       const index = Number(segment);
       if (!Number.isInteger(index)) return undefined;
       current = current[index];
-    } else if (isObject(current)) current = current[segment];
+    } else if (isObject(current)) current = ownEntry(current, segment);
     else return undefined;
   }
   return current;

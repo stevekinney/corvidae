@@ -189,7 +189,9 @@ type ShikiModuleLoader = () => Promise<ShikiModule>;
  * so callers don't need to track what has already been loaded.
  */
 async function ensureLanguageLoaded(shiki: ShikiModule, lang: string): Promise<void> {
-  const load = shiki.bundledLanguages[lang];
+  const load = Object.hasOwn(shiki.bundledLanguages, lang)
+    ? shiki.bundledLanguages[lang]
+    : undefined;
   if (!load) throw new Error(`Language "${lang}" is not bundled with Shiki.`);
   await shiki.highlighter.loadLanguage(load);
 }
@@ -201,7 +203,7 @@ async function ensureThemesLoaded(
 ): Promise<void> {
   const names = typeof theme === 'string' ? [theme] : [theme.light, theme.dark];
   for (const name of names) {
-    const load = shiki.bundledThemes[name];
+    const load = Object.hasOwn(shiki.bundledThemes, name) ? shiki.bundledThemes[name] : undefined;
     if (!load) throw new Error(`Theme "${name}" is not bundled with Shiki.`);
     await shiki.highlighter.loadTheme(load);
   }

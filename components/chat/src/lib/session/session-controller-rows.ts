@@ -1,5 +1,6 @@
 import { isFollowUpMessage } from '../components/chat/builders.ts';
 import type { ConversationHistory } from '../components/chat/conversation-model.ts';
+import { getOwn } from '../utilities/get-own.ts';
 
 /**
  * Renames one row in place, keeping its position.
@@ -21,8 +22,9 @@ export function remapMessageId(
   from: string,
   to: string,
 ): ConversationHistory {
-  const original = history.messages[from];
-  if (from === to || original === undefined || history.messages[to] !== undefined) return history;
+  const original = getOwn(history.messages, from);
+  if (from === to || original === undefined || getOwn(history.messages, to) !== undefined)
+    return history;
   const messages = { ...history.messages, [to]: { ...original, id: to } };
   delete messages[from];
   return { ...history, ids: history.ids.map((id) => (id === from ? to : id)), messages };
@@ -66,7 +68,9 @@ export function mergeRunHistory(
   // object, not the server's: a prior turn may carry local decoration — a
   // delivery-failure marker, an unsaved-turn annotation — that the server has
   // no idea about and would silently strip if its copy won.
-  const retained = new Set([...runStartIds].filter((id) => terminal.messages[id] !== undefined));
+  const retained = new Set(
+    [...runStartIds].filter((id) => getOwn(terminal.messages, id) !== undefined),
+  );
   // A follow-up the user sent mid-run, which the terminal names under its own
   // identifier, is the one exception to "rows the run did not append stay where
   // they are": it moves to the position the terminal gives it, so the transcript
@@ -75,8 +79,8 @@ export function mergeRunHistory(
   const clientFollowUps = new Set(
     current.ids.filter(
       (id) =>
-        isFollowUpMessage(current.messages[id]) &&
-        terminal.messages[id] !== undefined &&
+        isFollowUpMessage(getOwn(current.messages, id)) &&
+        getOwn(terminal.messages, id) !== undefined &&
         // Only a follow-up added after this run started: an earlier run's
         // follow-ups were already on screen, so they stay where they are.
         !runStartIds.has(id),
@@ -97,7 +101,9 @@ export function mergeRunHistory(
   }
   const canonicalIds = terminal.ids.filter((id) => !retained.has(id));
   for (const id of canonicalIds) {
-    const message = clientFollowUps.has(id) ? current.messages[id] : terminal.messages[id];
+    const message = clientFollowUps.has(id)
+      ? getOwn(current.messages, id)
+      : getOwn(terminal.messages, id);
     if (message !== undefined) messages[id] = message;
   }
   ids.splice(
@@ -123,12 +129,14 @@ export function restoreFollowUps(
   current: ConversationHistory,
 ): ConversationHistory {
   const missing = current.ids.filter(
-    (id) => isFollowUpMessage(current.messages[id]) && rolledBack.messages[id] === undefined,
+    (id) =>
+      isFollowUpMessage(getOwn(current.messages, id)) &&
+      getOwn(rolledBack.messages, id) === undefined,
   );
   if (missing.length === 0) return rolledBack;
   const messages = { ...rolledBack.messages };
   for (const id of missing) {
-    const message = current.messages[id];
+    const message = getOwn(current.messages, id);
     if (message !== undefined) messages[id] = message;
   }
   return { ...rolledBack, ids: [...rolledBack.ids, ...missing], messages };

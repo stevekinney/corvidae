@@ -117,7 +117,7 @@ export function getRequiredRouteParameter(
   name: string,
   routeDescription: string,
 ): string {
-  const value = params[name];
+  const value = Object.hasOwn(params, name) ? params[name] : undefined;
   if (value === undefined) {
     throw new Error(`Missing route parameter "${name}" for ${routeDescription}`);
   }

@@ -14,6 +14,7 @@
  * written into a stylesheet.
  */
 
+import { ownEntry } from '../../_internal/own-entry.ts';
 import { renderStylesheetSkeleton } from './stylesheet-skeleton.ts';
 
 export type StylesheetContext =
@@ -59,8 +60,8 @@ function declaration(name: string, value: string): string {
 function lines(names: Iterable<string>, values: Readonly<Record<string, string>>): string {
   return [...names]
     .sort()
-    .filter((name) => values[name] !== undefined)
-    .map((name) => declaration(name, values[name] ?? ''))
+    .filter((name) => ownEntry(values, name) !== undefined)
+    .map((name) => declaration(name, ownEntry(values, name) ?? ''))
     .join('\n');
 }
 
@@ -69,7 +70,7 @@ function differing(
   right: Readonly<Record<string, string>>,
 ): Set<string> {
   const names = new Set([...Object.keys(left), ...Object.keys(right)]);
-  return new Set([...names].filter((name) => left[name] !== right[name]));
+  return new Set([...names].filter((name) => ownEntry(left, name) !== ownEntry(right, name)));
 }
 
 const REFERENCE = /var\(\s*(--[\w-]+)/g;

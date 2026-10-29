@@ -1,6 +1,7 @@
 import { type JSONValue, sessionOwnerOf } from '@lostgradient/operative';
 
 import { ownerOrLocal } from './owner-of-record';
+import { ownEntry } from './own-entry';
 
 /** Whether `value` is a plain object, the shape every persisted authority and owner map decodes as. */
 export function isPlainAuthorityRecord(
@@ -113,7 +114,7 @@ export function resolvePersistedRunOwningPrincipal(
 ): string | undefined {
   const owners = metadata['lastRunOwningPrincipals'];
   if (!isPlainAuthorityRecord(owners)) return undefined;
-  const principal = owners[runId];
+  const principal = ownEntry(owners, runId);
   return typeof principal === 'string' ? principal : undefined;
 }
 

@@ -8,6 +8,7 @@ import type {
   ToolResult,
 } from '../components/chat/conversation-model.ts';
 import type { ChatAttachment } from '../components/chat/input/chat-attachment.ts';
+import { getOwn } from '../utilities/get-own.ts';
 import {
   decodeChatStreamEvents,
   guardChatStreamEvents,
@@ -270,13 +271,13 @@ export function cleanIncompleteToolRows(
   const calls = new Set<string>();
   const results = new Set<string>();
   for (const id of suffix) {
-    const message = history.messages[id];
+    const message = getOwn(history.messages, id);
     if (message?.role === 'tool-call' && message.toolCall) calls.add(message.toolCall.id);
     if (message?.role === 'tool-result' && message.toolResult)
       results.add(message.toolResult.callId);
   }
   const incomplete = suffix.filter((id) => {
-    const message = history.messages[id];
+    const message = getOwn(history.messages, id);
     return (
       (message?.role === 'tool-call' && message.toolCall && !results.has(message.toolCall.id)) ||
       (message?.role === 'tool-result' &&
@@ -296,7 +297,7 @@ export function pruneMessageAttachments(
   const callOwners = new Map<string, string>();
   let latestUserMessageId: string | undefined;
   for (const id of history.ids) {
-    const message = history.messages[id];
+    const message = getOwn(history.messages, id);
     latestUserMessageId = recordAttachmentOwnership(
       id,
       message,

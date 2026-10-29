@@ -9,6 +9,7 @@
  * compose sources through this one function.
  */
 
+import { ownEntry } from '../../_internal/own-entry.ts';
 import { AUTHORING_CATALOGUE } from './authoring-catalogue.generated.ts';
 import { authoringLayerStack } from './context-stack.ts';
 import type { ThemeSources } from './evaluate.ts';
@@ -54,7 +55,7 @@ export function buildThemeSources(envelope: ThemeSourceEnvelope, revision: numbe
   // The sources are validated by the caller before they are evaluated; this only appends refs.
   // eslint-disable-next-line no-unsafe-type-assertion
   const resolver = structuredClone(envelope.base.resolver) as ResolverShape;
-  append(resolver.sets[firstSetName(resolver) ?? '']?.sources, OVERRIDE_DOCUMENTS.shared);
+  append(ownEntry(resolver.sets, firstSetName(resolver) ?? '')?.sources, OVERRIDE_DOCUMENTS.shared);
   const theme = resolver.modifiers['theme']?.contexts;
   append(theme?.['light'], OVERRIDE_DOCUMENTS.light);
   append(theme?.['dark'], OVERRIDE_DOCUMENTS.dark);
@@ -92,7 +93,7 @@ export function applyCssOnlyOverrides(
 ): Record<string, string> {
   const merged: Record<string, string> = { ...properties };
   for (const [path, byContext] of Object.entries(cssOverrides)) {
-    const value = byContext[context];
+    const value = ownEntry(byContext, context);
     const property = cssPropertyByPath.get(path);
     if (value !== undefined && property !== undefined && accept(value)) merged[property] = value;
   }

@@ -415,6 +415,24 @@ describe('#456 ctx.race / ctx.all with wait-signal branches', () => {
     ).toThrow('signal scan failed');
   });
 
+  it('settles with the first branch result as it is when no winner wrapper is given', async () => {
+    const internals = createSignalInternals(createSequencedStorage('unused', []));
+    const operations = [
+      { type: 'sleep', operationId: 'first', duration: 10, scheduledFireAt: 0 },
+      { type: 'sleep', operationId: 'second', duration: 20, scheduledFireAt: 0 },
+    ] as const;
+
+    const winner = await executeRaceSubOperations(
+      internals,
+      'unwrapped-race',
+      operations,
+      (operation) =>
+        operation.operationId === 'first' ? Promise.resolve('first') : new Promise(() => {}),
+    );
+
+    expect(winner).toBe('first');
+  });
+
   it('race([waitForSignal, sleep]) — signal wins and the workflow sees its payload', async () => {
     await using engine = new Engine();
     engine.register(

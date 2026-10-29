@@ -166,6 +166,9 @@ class MemoDurableActivityScope implements DurableActivityScope {
     ordinal: number,
   ): Promise<TResult> {
     const activityStateKey = this.#activityStateKey(ordinal);
+    // The retry driver yields the activity request for each attempt and, between attempts, the
+    // sleep `#retrySleepOperation` builds. The driver's declared type is every operation a
+    // workflow can yield, which narrows to these two.
     const generator = runActivityWithRetryAtStep<TResult>(
       this.#context,
       invocation.activity,
@@ -178,7 +181,7 @@ class MemoDurableActivityScope implements DurableActivityScope {
         retrySleep: (duration, nextAttempt) =>
           this.#retrySleepOperation(duration, ordinal, nextAttempt),
       },
-    );
+    ) as Generator<ActivityOperationRequest | SleepOperation, TResult, unknown>;
 
     let next = generator.next();
     while (!next.done) {
@@ -199,7 +202,7 @@ class MemoDurableActivityScope implements DurableActivityScope {
   }
 
   async #executeYieldedOperation(
-    operation: ContextOperationRequest,
+    operation: ActivityOperationRequest | SleepOperation,
     invocation: DurableActivityInvocation,
     ordinal: number,
   ): Promise<unknown> {
@@ -207,14 +210,9 @@ class MemoDurableActivityScope implements DurableActivityScope {
     if (operation.type === 'activity') {
       return this.#executeActivityOperation(operation, invocation.callerStack, ordinal);
     }
-    if (operation.type === 'sleep') {
-      await this.#raceWithScopeAbort(this.#executeDurableRetrySleepOperation(operation));
-      this.#throwIfClosed();
-      return undefined;
-    }
-    throw new DurableActivityScopeError(
-      `durableActivity() retry driver yielded unsupported operation "${operation.type}".`,
-    );
+    await this.#raceWithScopeAbort(this.#executeDurableRetrySleepOperation(operation));
+    this.#throwIfClosed();
+    return undefined;
   }
 
   #executeActivityOperation(
@@ -352,16 +350,11 @@ class MemoDurableActivityScope implements DurableActivityScope {
       // and this registration, so the signal cannot have aborted yet.
       signal.addEventListener('abort', onAbort, { once: true });
 
+      // A scope that closed while the operation ran has already settled this race: every write the
+      // operation made non-cancellable ended before it resolved, and the last one to end aborts a
+      // closed scope's signal, which `onAbort` answers.
       void operation
-        .then((value) =>
-          settle(() => {
-            if (this.#closed || signal.aborted) {
-              reject(this.#abortError());
-              return;
-            }
-            resolve(value);
-          }),
-        )
+        .then((value) => settle(() => resolve(value)))
         .catch((error: unknown) => {
           settle(() => reject(error));
         });

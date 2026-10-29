@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { executeCodegen } from './codegen.ts';
 
 const FIXTURE_DIR = resolve(import.meta.dir, '__fixtures__/codegen');
@@ -149,6 +150,30 @@ describe('executeCodegen HTTP fetch path', () => {
       const result = await executeCodegen({ out, timeoutMs: HANG_GUARD_MILLISECONDS });
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('codegen: Failed to read connection configuration');
+      expect(existsSync(out)).toBe(false);
+    } finally {
+      if (priorHome === undefined) delete Bun.env['WEFT_HOME'];
+      else Bun.env['WEFT_HOME'] = priorHome;
+      if (priorAddress === undefined) delete Bun.env['WEFT_ADDR'];
+      else Bun.env['WEFT_ADDR'] = priorAddress;
+    }
+  });
+
+  it('lets an unreadable run lockfile surface as the error it is, not as a configuration diagnostic', async () => {
+    // The lockfile path is a directory, so reading it fails with `EISDIR`, which is not a
+    // `ConnectionConfigurationError` and is therefore not reported as a codegen diagnostic.
+    const home = makeTempDir();
+    mkdirSync(join(home, 'run'));
+    const out = join(home, 'weft.d.ts');
+    const priorHome = Bun.env['WEFT_HOME'];
+    const priorAddress = Bun.env['WEFT_ADDR'];
+    Bun.env['WEFT_HOME'] = home;
+    delete Bun.env['WEFT_ADDR'];
+
+    try {
+      expect(
+        await throwingRejectionOf(executeCodegen({ out, timeoutMs: HANG_GUARD_MILLISECONDS })),
+      ).toThrow(/EISDIR/);
       expect(existsSync(out)).toBe(false);
     } finally {
       if (priorHome === undefined) delete Bun.env['WEFT_HOME'];

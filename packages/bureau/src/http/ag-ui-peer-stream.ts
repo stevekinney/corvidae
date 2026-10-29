@@ -57,6 +57,7 @@ import {
 } from './ag-ui-projection.ts';
 import { readSessionOwnedBy } from './ag-ui-session-owner.ts';
 import { type AgUiErrorCode, type EventStamp, stamp } from './ag-ui-vocabulary.ts';
+import { ownEntry } from '../own-entry';
 
 /**
  * How long a peer's stream waits, once it knows the run's outcome, for the session to record the
@@ -227,7 +228,7 @@ export function sessionApprovalsOf(
     if (typeof expiresAt === 'number' && expiresAt <= now) continue;
     const round =
       typeof rounds === 'object' && rounds !== null && !Array.isArray(rounds)
-        ? (rounds as Record<string, unknown>)[id]
+        ? ownEntry(rounds as Record<string, unknown>, id)
         : undefined;
     reviews.push({
       kind: 'tool-approval',

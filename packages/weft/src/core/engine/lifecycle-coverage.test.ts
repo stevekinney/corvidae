@@ -1080,6 +1080,7 @@ describe('engine lifecycle coverage helpers', () => {
     const state = createWorkflowState('workflow-worker-launch', {
       executionDeadline: 9_000,
       type: 'worker-launch',
+      workflowExecutionToken: 'worker-launch-generation',
     });
     const handle = { id: 'workflow-worker-launch' };
 
@@ -1111,6 +1112,7 @@ describe('engine lifecycle coverage helpers', () => {
         executionStateOwnerId: state.id,
         headers: [['x-test', '1']],
         input: state.input,
+        workflowExecutionToken: 'worker-launch-generation',
         workflowId: state.id,
         workflowType: 'worker-launch',
       }),

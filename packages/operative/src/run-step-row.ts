@@ -1,4 +1,9 @@
-import { type Conversation, type MultiModalContent, withMessageId } from 'conversationalist';
+import {
+  type Conversation,
+  getOwn,
+  type MultiModalContent,
+  withMessageId,
+} from 'conversationalist';
 
 import { assistantRowIdentifierForAttempt } from './message-identifiers';
 
@@ -45,7 +50,7 @@ export function commitAssistantRow(input: {
   const streamedIsTail =
     streamedRowId !== undefined && conversation.current.ids.at(-1) === streamedRowId;
   if (streamedRowId !== undefined && streamedIsTail) {
-    const streamed = conversation.current.messages[streamedRowId];
+    const streamed = getOwn(conversation.current.messages, streamedRowId);
     if (streamed !== undefined) {
       if (content !== undefined && JSON.stringify(streamed.content) === JSON.stringify(content)) {
         return { messageId: streamedRowId };

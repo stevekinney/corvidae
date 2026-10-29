@@ -13,7 +13,10 @@ function selectedEnvironment(mapping: Readonly<Record<string, string>>): Record<
   const raw = rawRuntimeEnvironment();
   return Object.fromEntries(
     Object.entries(mapping)
-      .map(([canonical, variable]) => [canonical, raw[variable]])
+      .map(([canonical, variable]) => [
+        canonical,
+        Object.hasOwn(raw, variable) ? raw[variable] : undefined,
+      ])
       .filter((entry): entry is [string, string] => entry[1] !== undefined),
   );
 }
@@ -136,7 +139,8 @@ export function readEnvironmentVariable(name: string): string | undefined {
   // One reader serves both entry points, so the asynchronous `load` cannot drift from the
   // synchronous `loadSync` that `environmentalist.sync` actually calls.
   const readExactVariable = () => {
-    const value = rawRuntimeEnvironment()[name];
+    const environment = rawRuntimeEnvironment();
+    const value = Object.hasOwn(environment, name) ? environment[name] : undefined;
     return value === undefined
       ? undefined
       : { values: { value }, location: `runtime environment:${name}` };

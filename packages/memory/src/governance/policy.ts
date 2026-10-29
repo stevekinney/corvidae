@@ -248,7 +248,7 @@ export function resolveTenantPolicy(
   policy: MemoryGovernancePolicy,
   tenantId: string,
 ): ResolvedTenantPolicy {
-  const override = policy.tenants[tenantId];
+  const override = Object.hasOwn(policy.tenants, tenantId) ? policy.tenants[tenantId] : undefined;
   return {
     deletionBoundMilliseconds:
       override?.deletionBoundMilliseconds ?? policy.deletionBoundMilliseconds,

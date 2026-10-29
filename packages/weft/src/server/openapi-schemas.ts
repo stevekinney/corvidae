@@ -85,7 +85,7 @@ export function extractComponentsSchemas(registry: OperationRegistry): OpenApiSc
   for (const candidate of hoistCandidates) {
     let componentName = candidate.baseName;
     let suffix = 2;
-    while (componentName in components) {
+    while (Object.hasOwn(components, componentName)) {
       componentName = `${candidate.baseName}_${suffix}`;
       suffix += 1;
     }

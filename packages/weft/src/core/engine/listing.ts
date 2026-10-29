@@ -380,7 +380,7 @@ export async function setAttributes(
     if (registration?.searchAttributes) {
       const schema = registration.searchAttributes;
       for (const [key, value] of Object.entries(attributes)) {
-        if (!(key in schema)) {
+        if (!Object.hasOwn(schema, key)) {
           throw new Error(
             `Unknown search attribute "${key}". Registered attributes: ${Object.keys(schema).join(', ')}`,
           );

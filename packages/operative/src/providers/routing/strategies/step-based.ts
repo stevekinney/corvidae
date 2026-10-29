@@ -1,3 +1,4 @@
+import { getOwn } from 'conversationalist';
 import type { GenerateContext } from '../../types.ts';
 import type { ModelRoute, RoutingDecision, RoutingStrategy } from '../types.ts';
 
@@ -28,7 +29,7 @@ function hasToolCallsPending(context: GenerateContext): boolean {
   // Walk backwards from the end
   for (let i = ids.length - 1; i >= 0; i--) {
     const id = ids[i]!;
-    const message = messages[id];
+    const message = getOwn(messages, id);
     if (!message) break;
 
     if (message.role === 'tool-call' || message.role === 'tool-result') {

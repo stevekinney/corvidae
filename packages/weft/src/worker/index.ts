@@ -694,7 +694,9 @@ export class RemoteWorker implements Disposable {
     }
 
     // Echo the per-dispatch attempt token back to the server so it can reject a
-    const activityFunction = this.#activityTable[task.activityName];
+    const activityFunction = Object.hasOwn(this.#activityTable, task.activityName)
+      ? this.#activityTable[task.activityName]
+      : undefined;
     if (activityFunction === undefined) {
       this.#sendTaskResult({
         type: 'taskResult',

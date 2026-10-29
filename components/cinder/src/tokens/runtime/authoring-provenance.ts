@@ -12,6 +12,7 @@
  * so resetting an override is just tracing the stack without that edit.
  */
 
+import { ownEntry } from '../../_internal/own-entry.ts';
 import {
   UNKNOWN,
   type AuthoringLayer,
@@ -69,7 +70,7 @@ function locate(root: TokenDocument, path: string): Located {
   let prefix = '';
   for (const segment of path === '' ? [] : path.split('.')) {
     if (!isNode(current)) return { token: undefined, groups };
-    current = current[segment];
+    current = ownEntry(current, segment);
     prefix = prefix ? `${prefix}.${segment}` : segment;
     if (isNode(current) && !isTokenNode(current))
       groups.push({ path: prefix, group: asGroup(current) });
@@ -248,7 +249,13 @@ export function traceProvenance(
       for (const match of recipe.matchAll(/var\(\s*(--[A-Za-z0-9_-]+)/g)) {
         const cssProperty = match[1]!;
         if (recipes.some((r) => r.cssProperty === cssProperty)) continue;
-        recipes.push({ cssProperty, path: options.cssPropertyToPath?.[cssProperty] ?? UNKNOWN });
+        recipes.push({
+          cssProperty,
+          path:
+            (options.cssPropertyToPath === undefined
+              ? undefined
+              : ownEntry(options.cssPropertyToPath, cssProperty)) ?? UNKNOWN,
+        });
       }
     }
     return {

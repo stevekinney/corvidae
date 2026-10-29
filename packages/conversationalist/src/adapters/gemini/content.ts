@@ -1,6 +1,7 @@
 import { isMediaContent, type MediaContent, type MultiModalContent } from '../../multi-modal';
 import { isStreamingMessage } from '../../streaming';
 import type { Message, ToolCall, ToolResult } from '../../types';
+import { getOwn } from '../../utilities/type-helpers';
 import {
   createMediaExportContext,
   effectiveSource,
@@ -35,7 +36,7 @@ function inferMimeType(url: string): string | undefined {
     return undefined;
   }
   const extension = trimmed.slice(dotIndex + 1).toLowerCase();
-  return MIME_TYPE_BY_EXTENSION[extension];
+  return getOwn(MIME_TYPE_BY_EXTENSION, extension);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -32,8 +32,8 @@ function extractField(input: unknown, fieldName: string): unknown {
     return '';
   }
 
-  const value = (input as Record<string, unknown>)[fieldName];
-  return value ?? '';
+  const record = input as Record<string, unknown>;
+  return (Object.hasOwn(record, fieldName) ? record[fieldName] : undefined) ?? '';
 }
 
 /**

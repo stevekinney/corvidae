@@ -1,3 +1,4 @@
+import { ownEntry } from '../../_internal/own-entry.ts';
 import { resolveExtends } from './resolve-extends.ts';
 import { resolveToken, resolveValue } from './resolve-references.ts';
 import {
@@ -147,7 +148,7 @@ function mergeGroup(
   extensionOrigins?: ExtensionOrigins,
 ): void {
   for (const [key, value] of Object.entries(source)) {
-    const existing = target[key];
+    const existing = ownEntry(target, key);
     if (isTokenGroup(existing) && isTokenGroup(value))
       mergeGroup(existing, value, extensionOrigins);
     else if (isToken(existing) && isToken(value)) target[key] = mergeToken(existing, value);

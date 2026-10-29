@@ -100,8 +100,8 @@ describe('repository pins', () => {
   });
 
   it('reads an exact Bun pin and rejects a range or a missing field', () => {
-    expect(readPinnedBunVersion('{"packageManager":"bun@1.4.2"}')).toBe('1.4.2');
-    expect(() => readPinnedBunVersion('{"packageManager":"bun@^1.4.2"}')).toThrow(/exact/);
+    expect(readPinnedBunVersion('{"packageManager":"bun@1.4.4"}')).toBe('1.4.4');
+    expect(() => readPinnedBunVersion('{"packageManager":"bun@^1.4.4"}')).toThrow(/exact/);
     expect(() => readPinnedBunVersion('{}')).toThrow(/exact/);
   });
 

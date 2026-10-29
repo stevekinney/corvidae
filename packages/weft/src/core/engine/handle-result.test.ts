@@ -1,6 +1,6 @@
 import { describe, expect, it, spyOn } from 'bun:test';
 
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import {
@@ -18,6 +18,7 @@ import {
   createWorkflowResultWaiter,
   getWorkflowResultPromise,
   pollPendingCrossEngineResultWaiters,
+  workflowNotFoundInStorageError,
 } from './handle-result.ts';
 import { getInternals } from './internals.ts';
 import { encodeEpoch, encodeWorkflowClaimHolder } from './workflow-claim-codec.ts';
@@ -448,6 +449,35 @@ describe('pollPendingCrossEngineResultWaiters (backgroundTasks: "manual" drain)'
     // One unreadable workflow must not stop the pass; both entries are visited
     // and the call resolves rather than rejecting.
     expect(await pollPendingCrossEngineResultWaiters(internals)).toBeUndefined();
+  });
+});
+
+describe('pollPendingCrossEngineResultWaiters when settling a waiter throws', () => {
+  it('keeps draining the remaining waiters', async () => {
+    using storage = new MemoryStorage();
+    await using engine = await Engine.create({
+      storage,
+      workflows: {},
+      ownership: 'workflow-lease',
+      backgroundTasks: 'manual',
+      workflowClaimTtl: 200,
+      workflowClaimRenewInterval: 20,
+      recover: false,
+    });
+    const internals = getInternals(engine);
+
+    // Neither workflow has a record, so each waiter is rejected as not found. The first waiter's
+    // rejection throws, as a settlement callback of a caller's own could.
+    const poisonedWaiter = createWorkflowResultWaiter(internals, 'drain-poisoned-1');
+    poisonedWaiter.reject = () => {
+      throw new Error('settlement failed');
+    };
+    const healthyWaiter = createWorkflowResultWaiter(internals, 'drain-healthy-2');
+
+    expect(await pollPendingCrossEngineResultWaiters(internals)).toBeUndefined();
+    expect(await rejectionOf(healthyWaiter.promise)).toEqual(
+      workflowNotFoundInStorageError('drain-healthy-2'),
+    );
   });
 });
 

@@ -267,6 +267,16 @@ describe('the in-memory replay-live backend', () => {
     feed.dispose();
   });
 
+  it('encodes only the sequences a cursor can name', () => {
+    const backend = createInMemoryReplayLiveBackend<ProbeEnvelope>();
+
+    expect(backend.encodeCursor?.(-1)).toEndWith(':-1');
+    expect(backend.encodeCursor?.(7)).toEndWith(':7');
+    for (const sequence of [-2, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(() => backend.encodeCursor?.(sequence)).toThrow('Invalid sequence');
+    }
+  });
+
   it('releases subscribers on dispose', () => {
     const backend = createInMemoryReplayLiveBackend<ProbeEnvelope>();
     const delivered: number[] = [];

@@ -14,7 +14,7 @@ import type {
   ConversationSnapshotV1,
   Message,
 } from '../types';
-import { deepFreeze } from '../utilities/type-helpers';
+import { deepFreeze, getOwn, setOwn } from '../utilities/type-helpers';
 import { deserializeConversationHistory } from './serialization';
 import {
   asRecord,
@@ -80,12 +80,15 @@ function shareUnchangedMessages(
 ): ConversationHistory {
   const messages: Record<string, Message> = {};
   for (const id of conversation.ids) {
-    const message = conversation.messages[id]!;
-    const parentMessage = parent?.messages[id];
-    messages[id] =
+    const message = getOwn(conversation.messages, id)!;
+    const parentMessage = parent === null ? undefined : getOwn(parent.messages, id);
+    setOwn(
+      messages,
+      id,
       parentMessage !== undefined && stableStringify(parentMessage) === stableStringify(message)
         ? parentMessage
-        : message;
+        : message,
+    );
   }
   return deepFreeze({ ...conversation, messages });
 }

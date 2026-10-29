@@ -234,7 +234,11 @@ function resolveConnectionContext(options: ConnectionOptions): ConnectionContext
   const configuration = readWeftConfiguration();
   const profileName =
     options.profile ?? resolveCliEnvironment().weftProfile ?? configuration.defaultProfile;
-  const profile = profileName === undefined ? undefined : configuration.profiles?.[profileName];
+  const profiles = configuration.profiles;
+  const profile =
+    profileName === undefined || profiles === undefined || !Object.hasOwn(profiles, profileName)
+      ? undefined
+      : profiles[profileName];
   const runLockfile = options.includeRunLockfile === false ? undefined : readRunLockfile();
   return {
     options,

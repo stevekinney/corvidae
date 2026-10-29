@@ -1,3 +1,4 @@
+import { ownEntry } from '../../_internal/own-entry.ts';
 import { isPlainObject } from './corpus.ts';
 import type { ValueResolver } from './resolve.ts';
 import type { TokenType } from './types.ts';
@@ -113,11 +114,16 @@ const DTCG_NAMED_FONT_WEIGHTS: Readonly<Record<string, number>> = {
 };
 
 function isFontWeightValue(value: unknown): value is number | string {
-  return isNumberValue(value) || (typeof value === 'string' && value in DTCG_NAMED_FONT_WEIGHTS);
+  return (
+    isNumberValue(value) ||
+    (typeof value === 'string' && Object.hasOwn(DTCG_NAMED_FONT_WEIGHTS, value))
+  );
 }
 
 function formatFontWeight(value: number | string): string {
-  return formatNumber(typeof value === 'number' ? value : DTCG_NAMED_FONT_WEIGHTS[value]!);
+  return formatNumber(
+    typeof value === 'number' ? value : ownEntry(DTCG_NAMED_FONT_WEIGHTS, value)!,
+  );
 }
 
 /** Precision-safe number-to-string: plain `String()` round-trips every literal in this corpus (verified), EXCEPT results of real arithmetic (the oklch lightness-to-percentage conversion), which route through {@link roundForDisplay} first. */

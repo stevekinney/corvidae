@@ -635,7 +635,7 @@ import {
 } from 'conversationalist';
 ```
 
-**Key exports:** `normalizeContent`, `toMultiModalArray`, `pairToolCallsWithResults`, `stripTransientMetadata`, `isTransientKey`, `stripTransientFromRecord`, `hasOwnProperty`, `toReadonly`. Also re-exports materializer helpers and `MaterializeToolCallOptions` type.
+**Key exports:** `normalizeContent`, `toMultiModalArray`, `pairToolCallsWithResults`, `stripTransientMetadata`, `isTransientKey`, `stripTransientFromRecord`, `hasOwnProperty`, `getOwn`, `toReadonly`. Also re-exports materializer helpers and `MaterializeToolCallOptions` type.
 
 ### Markdown serialization
 

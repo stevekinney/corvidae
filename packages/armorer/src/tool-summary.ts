@@ -19,7 +19,8 @@ function lookup(value: unknown, path: string): unknown {
     if (typeof current !== 'object' || current === null || Array.isArray(current)) {
       return undefined;
     }
-    current = (current as Record<string, unknown>)[key];
+    const record = current as Record<string, unknown>;
+    current = Object.hasOwn(record, key) ? record[key] : undefined;
   }
   return current;
 }
@@ -45,8 +46,9 @@ export function renderToolSummary(
   const text = template.replace(PLACEHOLDER, (_match, path: string, format?: string) => {
     const value = lookup(parameters, path);
     let written: string | undefined;
-    if (format !== undefined) written = FORMATTERS[format]?.(value);
-    else if (typeof value === 'string') written = value;
+    if (format !== undefined) {
+      written = Object.hasOwn(FORMATTERS, format) ? FORMATTERS[format]?.(value) : undefined;
+    } else if (typeof value === 'string') written = value;
     else if (typeof value === 'number' || typeof value === 'boolean') written = String(value);
     if (written === undefined) complete = false;
     return written ?? '';

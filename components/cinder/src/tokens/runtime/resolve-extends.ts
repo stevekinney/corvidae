@@ -16,7 +16,7 @@ export function inheritMissingGroupMembers(
   extensionOrigins?: ExtensionOrigins,
 ): void {
   for (const [name, value] of Object.entries(source)) {
-    const existing = target[name];
+    const existing = Object.hasOwn(target, name) ? target[name] : undefined;
     if (isTokenGroup(existing) && isTokenGroup(value))
       inheritMissingGroupMembers(existing, value, extensionOrigins);
     else if (!Object.hasOwn(target, name)) {
@@ -183,7 +183,7 @@ export function resolveExtends(
       group.$deprecated = effectiveExtendedDeprecated;
     for (const [name, value] of Object.entries(extended))
       if (!name.startsWith('$') || name === '$root') {
-        const existing = group[name];
+        const existing = Object.hasOwn(group, name) ? group[name] : undefined;
         if (isTokenGroup(existing) && isTokenGroup(value))
           inheritMissingGroupMembers(existing, value, extensionOrigins);
         else if (!Object.hasOwn(group, name))

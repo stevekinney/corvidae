@@ -19,6 +19,7 @@ import type {
   ToolResult,
 } from '../components/chat/conversation-model.ts';
 import type { ChatAttachment } from '../components/chat/input/chat-attachment.ts';
+import { getOwn } from '../utilities/get-own.ts';
 import {
   latestResolvedApprovalOwner,
   rebuildApprovalState,
@@ -54,7 +55,7 @@ function currentApprovalFingerprint(
   toolCallId: string,
 ): string | undefined {
   for (let index = history.ids.length - 1; index >= 0; index -= 1) {
-    const result = history.messages[history.ids[index]!]?.toolResult;
+    const result = getOwn(history.messages, history.ids[index]!)?.toolResult;
     if (result?.callId === toolCallId && result.outcome === 'action_required') {
       return fingerprintApprovalAction(result.action);
     }
@@ -301,7 +302,7 @@ export function createChatSessionController(
     await followUps.send(conversationId, message, attachments);
   };
   const retryFollowUp = async (messageId: string): Promise<void> => {
-    const row = options.getConversation().messages[messageId];
+    const row = getOwn(options.getConversation().messages, messageId);
     // Pending or already admitted: nothing to retry, and nothing may be
     // forgotten on the way to saying so.
     if (row?.metadata['_deliveryStatus'] !== 'failed')
@@ -324,14 +325,14 @@ export function createChatSessionController(
       : {}),
     retryMessage: async (messageId) => {
       assertNotDisposed();
-      if (isFollowUpMessage(options.getConversation().messages[messageId])) {
+      if (isFollowUpMessage(getOwn(options.getConversation().messages, messageId))) {
         await retryFollowUp(messageId);
         return;
       }
       assertActive();
       startSubmission(lifecycle);
       const history = options.getConversation();
-      const message = history.messages[messageId];
+      const message = getOwn(history.messages, messageId);
       const position = history.ids.indexOf(messageId);
       if (
         !message ||
@@ -342,7 +343,8 @@ export function createChatSessionController(
           .slice(position + 1)
           .some(
             (id) =>
-              history.messages[id]?.role === 'user' && !isFollowUpMessage(history.messages[id]),
+              getOwn(history.messages, id)?.role === 'user' &&
+              !isFollowUpMessage(getOwn(history.messages, id)),
           )
       )
         throw new Error('Only the latest failed owning user turn can be retried');
@@ -357,7 +359,7 @@ export function createChatSessionController(
     editMessage: async ({ messageId, content }) => {
       assertActive();
       startSubmission(lifecycle);
-      const message = options.getConversation().messages[messageId];
+      const message = getOwn(options.getConversation().messages, messageId);
       if (!message || message.role !== 'user')
         throw new Error('Only a current user message can be edited');
       const attachments = messageAttachments.get(messageId) ?? [];

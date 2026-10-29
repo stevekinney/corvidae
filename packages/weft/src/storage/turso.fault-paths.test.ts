@@ -56,6 +56,29 @@ describe('TursoStorage on a runtime without node:module', () => {
   });
 });
 
+describe('TursoStorage with a driver that does not export createClient', () => {
+  it('refuses to build a client from it', async () => {
+    const realGetBuiltinModule = process.getBuiltinModule.bind(process);
+    const builtinSpy = spyOn(process, 'getBuiltinModule').mockImplementation((id: string) =>
+      id === 'node:module'
+        ? ({ createRequire: () => () => ({}) } as unknown as NonNullable<
+            ReturnType<typeof process.getBuiltinModule<'node:module'>>
+          >)
+        : realGetBuiltinModule(id),
+    );
+    const storage = new TursoStorage({ url: 'file::memory:' });
+
+    try {
+      expect(await throwingRejectionOf(storage.get('a'))).toThrow(
+        'The libSQL dependency must export createClient.',
+      );
+    } finally {
+      builtinSpy.mockRestore();
+      storage[Symbol.dispose]();
+    }
+  });
+});
+
 describe('TursoStorage write contention', () => {
   it('retries a locked write batch and then surfaces the contention error', async () => {
     const fixture = createDiskBackedTestFixture({

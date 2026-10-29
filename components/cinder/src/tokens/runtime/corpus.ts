@@ -1,3 +1,4 @@
+import { ownEntry } from '../../_internal/own-entry.ts';
 import type { DesignToken, TokenGroup, TokenType } from './types.ts';
 
 // Collects every `$value`-bearing node in a merged
@@ -73,7 +74,7 @@ function extensionString(
   extensions: Record<string, unknown> | undefined,
   name: string,
 ): string | undefined {
-  const value = extensions?.[name];
+  const value = extensions === undefined ? undefined : ownEntry(extensions, name);
   return typeof value === 'string' ? value : undefined;
 }
 
@@ -81,7 +82,7 @@ function extensionBoolean(
   extensions: Record<string, unknown> | undefined,
   name: string,
 ): boolean | undefined {
-  const value = extensions?.[name];
+  const value = extensions === undefined ? undefined : ownEntry(extensions, name);
   return typeof value === 'boolean' ? value : undefined;
 }
 

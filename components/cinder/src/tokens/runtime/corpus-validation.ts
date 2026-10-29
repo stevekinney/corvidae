@@ -1,3 +1,4 @@
+import { ownEntry } from '../../_internal/own-entry.ts';
 import { mergeAndExpandExtends, resolveDocuments } from './resolve.ts';
 import {
   expandContextSources,
@@ -41,7 +42,7 @@ export function validateModifierSetExpansionOrder(
   const issues = [];
   for (const [position, entry] of order.entries()) {
     if (entry.kind !== 'modifiers') continue;
-    const modifier = resolver.modifiers[entry.name];
+    const modifier = ownEntry(resolver.modifiers, entry.name);
     if (!modifier) continue;
     for (const [contextName, sources] of Object.entries(modifier.contexts)) {
       const internallyReferencedSetNames = new Set(
@@ -103,7 +104,7 @@ export function validateModifierSetExpansionOrder(
         const interveningModifier = order.slice(basePosition + 1, position).find((candidate) => {
           if (candidate.kind !== 'modifiers') return false;
           if (!documentsByPath) return true;
-          const candidateModifier = resolver.modifiers[candidate.name];
+          const candidateModifier = ownEntry(resolver.modifiers, candidate.name);
           if (!candidateModifier) return false;
           return Object.keys(candidateModifier.contexts).some((candidateContext) => {
             const affectedPaths = new Set<string>();
@@ -132,7 +133,7 @@ export function validateModifierSetExpansionOrder(
             >(
               (selections, modifierName) =>
                 selections.flatMap((selection) =>
-                  Object.keys(resolver.modifiers[modifierName]!.contexts).map(
+                  Object.keys(ownEntry(resolver.modifiers, modifierName)!.contexts).map(
                     (precedingContextName) => {
                       const next = new Map(selection);
                       next.set(modifierName, precedingContextName);
@@ -160,8 +161,8 @@ export function validateModifierSetExpansionOrder(
               return [...affectedPaths].some(
                 (path) =>
                   setTokenPaths.has(path) &&
-                  JSON.stringify(canonicalizeJson(before[path])) !==
-                    JSON.stringify(canonicalizeJson(after[path])),
+                  JSON.stringify(canonicalizeJson(ownEntry(before, path))) !==
+                    JSON.stringify(canonicalizeJson(ownEntry(after, path))),
               );
             });
           });
@@ -230,7 +231,7 @@ export function mergeMetadataValue(base: unknown, override: unknown): unknown {
   if (!isRecord(base) || !isRecord(override)) return override;
   const merged = { ...base };
   for (const [key, value] of Object.entries(override)) {
-    merged[key] = mergeMetadataValue(base[key], value);
+    merged[key] = mergeMetadataValue(ownEntry(base, key), value);
   }
   return merged;
 }
@@ -310,7 +311,7 @@ export function validateModifierTokenPaths(
               .filter(([, metadataValue]) => metadataValue !== undefined)
               .map(([metadataName, metadataValue]) => [
                 metadataName,
-                mergeMetadataValue(baseEffective[metadataName], metadataValue),
+                mergeMetadataValue(ownEntry(baseEffective, metadataName), metadataValue),
               ]),
           ),
         };

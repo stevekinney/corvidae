@@ -137,7 +137,7 @@ function resolveAgentPreferences<D extends AgentDefinitions>(
   agentName: string,
   agents: D,
 ): AgentPreferences | undefined {
-  const agent = agents[agentName];
+  const agent = Object.hasOwn(agents, agentName) ? agents[agentName] : undefined;
   if (agent === undefined) return undefined;
   // `readGenerationProfile` only reads `agent.generationProfile`, whose
   // presence and shape don't depend on `RunnableAgent`'s `O`/`H` type
@@ -175,7 +175,7 @@ function resolveAgentCatalog<D extends AgentDefinitions>(
   agents: D,
   catalog: ModelCatalog,
 ): ModelCatalog {
-  const agent = agents[agentName];
+  const agent = Object.hasOwn(agents, agentName) ? agents[agentName] : undefined;
   if (agent === undefined) return catalog;
   // See `resolveAgentPreferences`'s identical cast comment.
   const profile = readGenerationProfile(agent as RunnableAgent);
@@ -208,7 +208,8 @@ function resolveUserConfiguration(
   modelPolicy: BureauModelPolicyOptions | undefined,
 ): UserModelConfiguration | undefined {
   if (principal === undefined) return undefined;
-  return modelPolicy?.users?.[principal];
+  const users = modelPolicy?.users;
+  return users !== undefined && Object.hasOwn(users, principal) ? users[principal] : undefined;
 }
 
 function buildSelectionRequest(

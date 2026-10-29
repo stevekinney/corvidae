@@ -161,7 +161,7 @@ function metadataString(
   metadata: Record<string, unknown> | undefined,
   key: string,
 ): string | undefined {
-  const value = metadata?.[key];
+  const value = metadata !== undefined && Object.hasOwn(metadata, key) ? metadata[key] : undefined;
   return typeof value === 'string' ? value : undefined;
 }
 

@@ -1,3 +1,4 @@
+import { getOwn } from '../utilities/type-helpers';
 import {
   createInstructionComposer,
   type InstructionComposer,
@@ -143,13 +144,13 @@ export function whenStep(predicate: (step: number) => boolean) {
 export function whenMetadata(key: string, value: unknown) {
   return (context: InstructionContext): boolean => {
     if (!context.metadata) return false;
-    return context.metadata[key] === value;
+    return getOwn(context.metadata, key) === value;
   };
 }
 
 export function whenMetadataPresent(key: string) {
   return (context: InstructionContext): boolean => {
     if (!context.metadata) return false;
-    return key in context.metadata;
+    return Object.hasOwn(context.metadata, key);
   };
 }

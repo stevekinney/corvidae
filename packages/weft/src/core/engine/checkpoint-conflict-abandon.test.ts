@@ -46,6 +46,7 @@ import {
   releaseSuspendedCheckpoint,
 } from './checkpoint-commit-snapshots.ts';
 import {
+  abandonedGenerationRejection,
   abandonWorkflowAfterCheckpointConflict,
   emitCheckpointConflictWarning,
   persistCheckpointAbandoningOnConflict,
@@ -337,6 +338,24 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
     await engine[Symbol.asyncDispose]();
     expect(abandonedExecutionAttemptCount(internals)).toBe(0);
     expect(currentExecutionAttempt(internals, 'relaunched')).toBeUndefined();
+  });
+
+  it('reports a generation abandoned without an error as a checkpoint conflict', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    adoptLaunchCheckpoint(internals, 'silent-loss', {
+      workflowExecutionToken: 'generation-1',
+    } as Checkpoint);
+
+    expect(abandonedGenerationRejection(internals, 'silent-loss')).toBeUndefined();
+    expect(abandonExecutionAttempt(internals, 'silent-loss', 'generation-1')).toBe(true);
+
+    const rejection = abandonedGenerationRejection(internals, 'silent-loss');
+    expect(rejection).toBeInstanceOf(WorkflowCheckpointConflictError);
+    expect(rejection).toMatchObject({
+      workflowId: 'silent-loss',
+      workflowExecutionToken: 'generation-1',
+    });
   });
 
   it('retires and rejects a pre-token generation and abandons it under the token-less identity', async () => {

@@ -33,7 +33,7 @@ import type {
   MessagePlugin,
   MessagePluginIdentity,
 } from './types';
-import { cloneSharingFrozen } from './utilities/type-helpers';
+import { cloneSharingFrozen, getOwn } from './utilities/type-helpers';
 
 export type {
   ConversationActionType,
@@ -168,7 +168,7 @@ export class Conversation {
   }
 
   private emitConversationEvent(type: string, detail: ConversationEventDetail): void {
-    const EventConstructor = conversationEventConstructors[type];
+    const EventConstructor = getOwn(conversationEventConstructors, type);
     this.emitter.dispatchEvent(
       EventConstructor ? new EventConstructor(detail) : new ConversationEvent(type, detail),
     );

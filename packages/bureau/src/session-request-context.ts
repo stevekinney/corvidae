@@ -2,6 +2,7 @@ import type { JSONValue } from '@lostgradient/operative';
 import type { ToolRequestContext } from 'armorer';
 
 import { isPlainAuthorityRecord } from './session-authority';
+import { ownEntry } from './own-entry';
 
 export function normalizeRunRequestContext(
   requestContext: ToolRequestContext | undefined,
@@ -40,7 +41,7 @@ export function normalizeRunRequestContext(
 function readRunAuthorityCandidate(metadata: Record<string, JSONValue>, runId: string) {
   const authorities = metadata['lastRequestAuthorities'];
   return isPlainAuthorityRecord(authorities)
-    ? authorities[runId]
+    ? ownEntry(authorities, runId)
     : metadata['lastRequestAuthority'];
 }
 

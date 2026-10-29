@@ -596,7 +596,10 @@ async function acquire(
       return context.child(
         'provider-transfer',
         async (child) => {
-          const transport = ports.providers?.[source.provider];
+          const transport =
+            ports.providers !== undefined && Object.hasOwn(ports.providers, source.provider)
+              ? ports.providers[source.provider]
+              : undefined;
           if (!transport)
             throw new AssetAdmissionError('unsupported-source', 'The provider is not configured.');
           const downloaded = await child.track(
@@ -628,7 +631,10 @@ async function acquire(
       return context.child(
         'transform',
         async (child) => {
-          const transformer = ports.transformers?.[source.transform];
+          const transformer =
+            ports.transformers !== undefined && Object.hasOwn(ports.transformers, source.transform)
+              ? ports.transformers[source.transform]
+              : undefined;
           if (!transformer)
             throw new AssetAdmissionError('unsupported-source', 'The transform is not configured.');
           const original = await readSourceAsset(internals, child, source.sourceAssetId);

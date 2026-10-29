@@ -52,6 +52,12 @@ const MODALITY_MEDIA_TYPES: Readonly<Record<string, readonly string[]>> = {
   file: ['application/octet-stream'],
 };
 
+function ownMediaTypes(modality: string): readonly string[] {
+  return Object.hasOwn(MODALITY_MEDIA_TYPES, modality)
+    ? (MODALITY_MEDIA_TYPES[modality] ?? [])
+    : [];
+}
+
 /**
  * The media types an agent answers with: the text mode every agent has, then each modality some
  * backend descriptor behind its `generate` puts out (`BackendDescriptor.modalities`). An agent
@@ -67,7 +73,7 @@ export function mediaOutputModesOf(
   for (const descriptor of descriptors) {
     for (const [modality, support] of Object.entries(descriptor.modalities)) {
       if (!support.output) continue;
-      for (const type of MODALITY_MEDIA_TYPES[modality] ?? []) output.add(type);
+      for (const type of ownMediaTypes(modality)) output.add(type);
       if (modality === 'document' || modality === 'file') output.add('application/json');
     }
   }
@@ -93,7 +99,7 @@ export function mediaInputModesOf(
   for (const descriptor of descriptors) {
     for (const [modality, support] of Object.entries(descriptor.modalities)) {
       if (!support.input) continue;
-      for (const type of MODALITY_MEDIA_TYPES[modality] ?? []) {
+      for (const type of ownMediaTypes(modality)) {
         if (allowedMediaTypes === undefined) {
           input.add(type);
           continue;

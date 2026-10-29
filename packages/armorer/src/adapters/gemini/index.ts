@@ -267,7 +267,11 @@ function resolveGeminiToolName(
     return mapping(result.callId) ?? options.defaultToolName ?? 'unknown';
   }
   if (mapping && typeof mapping === 'object') {
-    return mapping[result.callId] ?? options.defaultToolName ?? 'unknown';
+    return (
+      (Object.hasOwn(mapping, result.callId) ? mapping[result.callId] : undefined) ??
+      options.defaultToolName ??
+      'unknown'
+    );
   }
   return options.defaultToolName ?? 'unknown';
 }
