@@ -14,8 +14,6 @@ import {
   runFrameSchema,
   type RunOptions,
   stopWhen,
-  StreamCustomEvent,
-  type StreamEventMap,
 } from '@lostgradient/operative';
 import { createTestToolbox, createTool, createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
@@ -360,44 +358,6 @@ describe('createRunFrameForwarder', () => {
       expect(notification.code).toBe('elicitation.requested');
       expect(notification.message).toBe('Do you want to proceed?');
     }
-  });
-
-  it('forwards stream:text-delta events from an optional streamEventTarget into assistant-chunk frames', () => {
-    const { activeRun } = createEventDrivenActiveRun();
-    const streamEventTarget = new TypedEventTarget<StreamEventMap>();
-    const frames: RunFrame[] = [];
-    const dispose = createRunFrameForwarder(
-      'run-stream-chunk',
-      activeRun,
-      (frame) => frames.push(frame),
-      { streamEventTarget },
-    );
-
-    streamEventTarget.dispatchEvent(
-      new StreamCustomEvent('stream:text-delta', {
-        type: 'stream:text-delta',
-        content: 'Hel',
-        accumulated: 'Hel',
-      }),
-    );
-
-    const chunk = frames.find((frame) => frame.type === 'assistant-chunk');
-    expect(chunk?.type).toBe('assistant-chunk');
-    if (chunk?.type === 'assistant-chunk') {
-      expect(chunk.delta).toBe('Hel');
-      expect(chunk.accumulated).toBe('Hel');
-    }
-
-    // Disposing removes the streamEventTarget listener too — no more chunks after.
-    dispose();
-    streamEventTarget.dispatchEvent(
-      new StreamCustomEvent('stream:text-delta', {
-        type: 'stream:text-delta',
-        content: 'lo',
-        accumulated: 'Hello',
-      }),
-    );
-    expect(frames.filter((frame) => frame.type === 'assistant-chunk')).toHaveLength(1);
   });
 });
 

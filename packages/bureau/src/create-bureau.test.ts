@@ -7,7 +7,6 @@ import {
   createDefaultRuntimeServices,
   createManualRuntimeServices,
   type RuntimeTimeoutHandle,
-  TypedEventTarget,
 } from '@lostgradient/lifecycle';
 import {
   createGovernedMemory,
@@ -56,7 +55,6 @@ import {
   type StepResult,
   type SteeringRequestedValue,
   stopWhen,
-  type StreamEventMap,
   type Toolbox,
 } from '@lostgradient/operative';
 import { discoverSkills, type SkillCatalogRevision } from './skills';
@@ -111,7 +109,6 @@ import {
   omitKeysWithPrefix,
   resolveCancelDurableRun,
   ScheduleLocatorUnavailableError,
-  wireStreamEventTargetFrames,
 } from './create-bureau';
 import { createAgentSkills } from './agent-skills';
 import { scheduledFireReviewStateOf } from './scheduled-fire-review-state';
@@ -423,97 +420,6 @@ describe('create-bureau helper coverage', () => {
         runId,
       ),
     ).toBeUndefined();
-  });
-
-  it('wires stream events to live frames and removes every listener on dispose', () => {
-    const streamEventTarget = new TypedEventTarget<StreamEventMap>();
-    const frames: ServerFrame[] = [];
-    let sequence = 0;
-    const dispose = wireStreamEventTargetFrames(
-      streamEventTarget,
-      'run-stream',
-      (frame) => frames.push(frame),
-      () => ++sequence,
-    );
-
-    streamEventTarget.dispatchEvent(
-      new CustomEvent('stream:text-delta', {
-        detail: {
-          type: 'stream:text-delta',
-          content: 'Hel',
-          accumulated: 'Hel',
-        },
-      }),
-    );
-    streamEventTarget.dispatchEvent(
-      new CustomEvent('stream:tool-call-start', {
-        detail: {
-          type: 'stream:tool-call-start',
-          toolName: 'lookup',
-          blockId: 'block-1',
-        },
-      }),
-    );
-    streamEventTarget.dispatchEvent(
-      new CustomEvent('stream:tool-call-delta', {
-        detail: {
-          type: 'stream:tool-call-delta',
-          toolName: 'lookup',
-          blockId: 'block-1',
-          partialArguments: '{"id"',
-        },
-      }),
-    );
-    streamEventTarget.dispatchEvent(
-      new CustomEvent('stream:tool-call-complete', {
-        detail: {
-          type: 'stream:tool-call-complete',
-          toolName: 'lookup',
-          blockId: 'block-1',
-          arguments: { id: '123' },
-        },
-      }),
-    );
-    streamEventTarget.dispatchEvent(
-      new CustomEvent('stream:complete', {
-        detail: {
-          type: 'stream:complete',
-          state: 'done',
-        },
-      }),
-    );
-    streamEventTarget.dispatchEvent(
-      new CustomEvent('stream:error', {
-        detail: {
-          type: 'stream:error',
-          error: new Error('stream failed'),
-        },
-      }),
-    );
-
-    expect(frames.map((frame) => frame.type)).toEqual([
-      'stream:text-delta',
-      'stream:tool-call-start',
-      'stream:tool-call-delta',
-      'stream:tool-call-complete',
-      'stream:complete',
-      'stream:error',
-    ]);
-    expect(frames.map((frame) => ('runSeq' in frame ? frame.runSeq : undefined))).toEqual([
-      1, 2, 3, 4, 5, 6,
-    ]);
-
-    dispose();
-    streamEventTarget.dispatchEvent(
-      new CustomEvent('stream:complete', {
-        detail: {
-          type: 'stream:complete',
-          state: 'done',
-        },
-      }),
-    );
-
-    expect(frames).toHaveLength(6);
   });
 
   it('binds the human wait context to the durable services reference once available', () => {

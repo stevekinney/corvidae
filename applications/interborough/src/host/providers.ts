@@ -8,8 +8,8 @@
  * { "providers": { "anthropic": {}, "openai": { "models": ["gpt-4.1"] } } }
  * ```
  *
- * A provider key is exactly one of Bureau's {@link GenerateProviderName}, `anthropic`, `openai`,
- * or `gemini`. A provider's `models` is an optional allowlist, matched on a row's `model` or one
+ * A provider key is exactly one of the {@link InterboroughProviderName}s the host registers in
+ * {@link PROVIDER_DEFINITIONS}: `anthropic`, `openai`, or `gemini`. A provider's `models` is an optional allowlist, matched on a row's `model` or one
  * of its aliases. A provider whose secret is missing is left out with a warning; an environment
  * variable is never read. The rows are Operative's `createModelCatalog().descriptors`, so the
  * catalog never holds a model the provider code cannot call.
@@ -17,22 +17,31 @@
  * @module providers
  */
 
-import type { GenerateProviderName, resolveProviderGenerate } from '@lostgradient/bureau';
+import type { resolveProviderGenerate } from '@lostgradient/bureau';
 import {
+  anthropicProvider,
   createModelCatalog,
+  geminiProvider,
+  openaiProvider,
   type BackendDescriptor,
   type GenerateFunction,
 } from '@lostgradient/operative';
+
+/** The provider definitions the host registers with Bureau's `resolveProviderGenerate`. */
+export const PROVIDER_DEFINITIONS = [anthropicProvider, openaiProvider, geminiProvider] as const;
+
+/** The name of a provider the host registers. Adding a definition above makes a missing secret key a type error. */
+export type InterboroughProviderName = (typeof PROVIDER_DEFINITIONS)[number]['name'];
 
 /** The providers a configuration may name, in the order their rows are installed. */
 export const PROVIDER_NAMES = [
   'anthropic',
   'openai',
   'gemini',
-] as const satisfies readonly GenerateProviderName[];
+] as const satisfies readonly InterboroughProviderName[];
 
 /** The Bungalow secret that holds each provider's API key. */
-export const PROVIDER_SECRET_KEYS: Readonly<Record<GenerateProviderName, string>> = {
+export const PROVIDER_SECRET_KEYS: Readonly<Record<InterboroughProviderName, string>> = {
   anthropic: 'anthropic-api-key',
   openai: 'openai-api-key',
   gemini: 'gemini-api-key',
@@ -55,7 +64,7 @@ export type ProviderEntry = {
 
 /** The shape of the provider configuration file: an entry per provider the host may call. */
 export type ProviderConfigurationFile = {
-  readonly providers: Readonly<Partial<Record<GenerateProviderName, ProviderEntry>>>;
+  readonly providers: Readonly<Partial<Record<InterboroughProviderName, ProviderEntry>>>;
 };
 
 /** A configuration that cannot be used. The message names the file and the field, never a value. */
@@ -75,7 +84,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function isProviderName(value: string): value is GenerateProviderName {
+function isProviderName(value: string): value is InterboroughProviderName {
   return (PROVIDER_NAMES as readonly string[]).includes(value);
 }
 
@@ -123,7 +132,7 @@ export function parseProviderConfiguration(text: string, path: string): Provider
   if (!isPlainObject(declared)) {
     throw new ProviderConfigurationError(path, 'providers', 'expected an object.');
   }
-  const providers: Partial<Record<GenerateProviderName, ProviderEntry>> = {};
+  const providers: Partial<Record<InterboroughProviderName, ProviderEntry>> = {};
   for (const [name, entry] of Object.entries(declared)) {
     const field = `providers.${name}`;
     if (!isProviderName(name)) {
@@ -181,7 +190,7 @@ function matchesEntry(row: BackendDescriptor, entry: string): boolean {
 export function selectCatalogRows(input: {
   readonly configuration: ProviderConfigurationFile;
   readonly path: string;
-  readonly available: ReadonlySet<GenerateProviderName>;
+  readonly available: ReadonlySet<InterboroughProviderName>;
   readonly descriptors?: readonly BackendDescriptor[];
 }): BackendDescriptor[] {
   const descriptors = input.descriptors ?? createModelCatalog().descriptors;
@@ -215,7 +224,7 @@ export function selectCatalogRows(input: {
 /** What the host offers: the rows to install and the key each offered provider is called with. */
 export type LoadedProviders = {
   readonly rows: readonly BackendDescriptor[];
-  readonly apiKeys: ReadonlyMap<GenerateProviderName, string>;
+  readonly apiKeys: ReadonlyMap<InterboroughProviderName, string>;
 };
 
 /**
@@ -236,8 +245,8 @@ export async function loadProviders(input: {
     location: input.configurationLocation,
     read: input.readConfiguration,
   });
-  const apiKeys = new Map<GenerateProviderName, string>();
-  const missing: GenerateProviderName[] = [];
+  const apiKeys = new Map<InterboroughProviderName, string>();
+  const missing: InterboroughProviderName[] = [];
   for (const provider of PROVIDER_NAMES) {
     if (configuration.providers[provider] === undefined) continue;
     const key = input.readSecret(PROVIDER_SECRET_KEYS[provider])?.trim();
@@ -260,7 +269,7 @@ export async function loadProviders(input: {
 
 /** A catalog model, named by its provider and either its model or an alias. */
 export type ModelSelection = {
-  readonly provider: GenerateProviderName;
+  readonly provider: InterboroughProviderName;
   readonly model: string;
 };
 
@@ -273,7 +282,7 @@ export function createCatalogGenerate(
   selection: ModelSelection,
   dependencies: {
     readonly rows: readonly BackendDescriptor[];
-    readonly apiKeys: ReadonlyMap<GenerateProviderName, string>;
+    readonly apiKeys: ReadonlyMap<InterboroughProviderName, string>;
     readonly resolveProviderGenerate: typeof resolveProviderGenerate;
   },
 ): GenerateFunction {
@@ -288,6 +297,7 @@ export function createCatalogGenerate(
     );
   }
   return dependencies.resolveProviderGenerate(
+    PROVIDER_DEFINITIONS,
     { provider: selection.provider, model: row.model, apiKey },
     undefined,
     undefined,

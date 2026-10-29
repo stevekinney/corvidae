@@ -25,6 +25,7 @@ import type {
   HumanInputSchema,
   LivenessSnapshot,
   PeerCallJournal,
+  ProviderConfigurationBase,
   RunEvent,
   RunFrame,
   RunResult,
@@ -101,51 +102,13 @@ import type { WebhookNotifier, WebhookNotifierOptions } from './webhook-notifier
 // ── Provider Configuration ───────────────────────────────────────────
 
 /**
- * The subset of operative's `ProviderName` union that `createRuntimeComposition`
- * can resolve to a generative (text/tool-call) backend. `voyage` and `ollama`
- * exist in `ProviderName` but are embedding-only — no generate factory exists for
- * them, so accepting them here would produce a runtime "Unknown provider" error
- * that TypeScript could have caught.
+ * The configuration a host selects a model provider with: the provider's name, a model, and the
+ * optional sampling and key fields every provider shares.
+ *
+ * A provider package's own configuration may add fields (an injected client, say). Bureau never
+ * names them: it hands the whole object to the registered definition whose `name` equals `provider`.
  */
-export type GenerateProviderName = 'anthropic' | 'openai' | 'gemini';
-
-export interface ProviderConfiguration {
-  provider: GenerateProviderName;
-  model: string;
-  maximumTokens?: number;
-  temperature?: number;
-  apiKey?: string;
-}
-
-export interface ProviderRouteConfiguration {
-  name: string;
-  provider: ProviderConfiguration;
-  budgetRatio?: number;
-}
-
-export type RoutingConfiguration =
-  | {
-      type: 'step-based';
-      first: string;
-      middle: string;
-      last?: string;
-      middleAfterStep?: number;
-    }
-  | {
-      type: 'complexity';
-      simple: string;
-      complex: string;
-      frontier?: string;
-      simpleMaxTools?: number;
-      simpleMaxLength?: number;
-    }
-  | {
-      type: 'cost-aware';
-      cheap: string;
-      expensive: string;
-      budget: number;
-      thresholdRatio?: number;
-    };
+export type ProviderConfiguration = ProviderConfigurationBase;
 
 export interface IdentityConfiguration {
   resolve: () => Promise<string>;
@@ -210,9 +173,8 @@ export interface CacheConfiguration extends Omit<CacheOptions, 'store'> {
   store?: TextValueStore;
 }
 
-export interface StreamingConfiguration extends Pick<EnhancedStreamingOptions, 'onTextDelta'> {
-  enabled?: boolean;
-}
+/** What `resolveProviderGenerate` takes beside a stream event target: the callback each text delta reaches. */
+export interface StreamingConfiguration extends Pick<EnhancedStreamingOptions, 'onTextDelta'> {}
 
 // ── Diagnostics ──────────────────────────────────────────────────────
 
@@ -2756,12 +2718,12 @@ export interface LocateRunCreationReceiptRequest {
 // ── WebSocket Frame Types ───────────────────────────────────────────
 
 /**
- * Live stream frame shapes as produced by {@link streamEventToFrame}, before
- * the per-run sequence stamp is applied. Kept separate from {@link ServerFrame}
- * so the frame-construction layer (`streamEventToFrame`) never has to know
- * about sequencing — the bureau frame layer (`create-bureau.ts`) stamps
- * `runSeq` once, at the single point where frames are handed to
- * `emitLiveFrame`. See {@link ServerFrame} for the wire-level (stamped) shape.
+ * Live stream frame shapes, before the per-run sequence stamp is applied. Kept separate from
+ * {@link ServerFrame} so a producer never has to know about sequencing — the bureau frame layer
+ * (`create-bureau.ts`) stamps `runSeq` once, at the single point where frames are handed to
+ * `emitLiveFrame`. See {@link ServerFrame} for the wire-level (stamped) shape. No Bureau code
+ * produces one today; the type stays because the wire protocol does and `components/chat`
+ * still decodes it.
  */
 export type StreamFrame =
   | { type: 'stream:text-delta'; runId: string; content: string; accumulated: string }

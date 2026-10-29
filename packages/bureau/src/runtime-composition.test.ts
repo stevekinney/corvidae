@@ -22,6 +22,7 @@ import {
   type GenerateFunction,
   GuardrailTripwireError,
   type OperativeHookMap,
+  type ProviderDefinition,
   type RunOptions,
   ScheduleCompletedEvent,
   ScheduleFailedEvent,
@@ -61,7 +62,6 @@ import {
   applyCache,
   CATALOG_RUN_RECOVERY_KEY_PREFIX,
   createMemoryPersistHook,
-  createRoutingStrategy,
   createRunMemoryAuthority,
   createRuntimeComposition,
   createSchedulerServiceRequestContext,
@@ -74,7 +74,7 @@ import {
   resolveProviderGenerate,
 } from './runtime-composition';
 
-import type { GenerateProviderName, ProviderConfiguration } from './types';
+import type { ProviderConfiguration } from './types';
 import { storageOverTextStore } from './testing/text-store-storage.test-support';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitUntil } from '@lostgradient/testing/wait-until';
@@ -160,22 +160,6 @@ async function createMockSkillCatalog(
   return discoverSkills({
     sources: [{ id: 'user', kind: 'user', location: root, precedence: 20 }],
   });
-}
-
-function createGenerateForProvider(provider: ProviderConfiguration): GenerateFunction {
-  return async () => {
-    const total = provider.model === 'expensive-model' ? 60 : 10;
-
-    return {
-      content: provider.model,
-      toolCalls: [],
-      usage: {
-        prompt: 0,
-        completion: total,
-        total,
-      },
-    };
-  };
 }
 
 async function pollUntil(check: () => boolean | Promise<boolean>): Promise<true> {
@@ -616,21 +600,6 @@ describe('createRuntimeComposition', () => {
     );
   });
 
-  it('does not create a stream event target for custom generate functions', async () => {
-    const runtime = await createRuntimeComposition({
-      generate: async () => ({ content: 'custom', toolCalls: [] }),
-      toolbox: createToolbox([], { context: {} }),
-    });
-
-    const runRuntime = await runtime.createRunRuntime({
-      agentName: 'bureau',
-      message: 'Hello',
-      sessionId: 'session-custom',
-    });
-
-    expect(runRuntime.streamEventTarget).toBeUndefined();
-  });
-
   it('wires identity resolution into prepare-step hooks when configured', async () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'ok', toolCalls: [] }),
@@ -663,331 +632,6 @@ describe('createRuntimeComposition', () => {
     ).toBe(true);
   });
 
-  it('reuses cost-aware routing budget across separate run runtimes', async () => {
-    const runtime = await createRuntimeComposition(
-      {
-        providers: [
-          {
-            name: 'cheap',
-            provider: { provider: 'openai', model: 'cheap-model' },
-          },
-          {
-            name: 'expensive',
-            provider: { provider: 'openai', model: 'expensive-model' },
-          },
-        ],
-        routing: {
-          type: 'cost-aware',
-          cheap: 'cheap',
-          expensive: 'expensive',
-          budget: 100,
-          thresholdRatio: 0.5,
-        },
-        toolbox: createToolbox([], { context: {} }),
-      },
-      {
-        resolveProviderGenerate(provider) {
-          return createGenerateForProvider(provider);
-        },
-      },
-    );
-
-    const firstRunRuntime = await runtime.createRunRuntime({
-      agentName: 'bureau',
-      message: 'Hello',
-      sessionId: 'session-1',
-    });
-    const firstConversation = new Conversation();
-    firstConversation.appendUserMessage('Hello');
-
-    const firstResult = await firstRunRuntime.generate({
-      conversation: firstConversation,
-      step: 0,
-      toolbox: firstRunRuntime.toolbox,
-    });
-
-    const secondRunRuntime = await runtime.createRunRuntime({
-      agentName: 'bureau',
-      message: 'Hello again',
-      sessionId: 'session-2',
-    });
-    const secondConversation = new Conversation();
-    secondConversation.appendUserMessage('Hello again');
-
-    const secondResult = await secondRunRuntime.generate({
-      conversation: secondConversation,
-      step: 0,
-      toolbox: secondRunRuntime.toolbox,
-    });
-
-    expect(firstResult.content).toBe('expensive-model');
-    expect(secondResult.content).toBe('cheap-model');
-  });
-
-  it('reuses non-streaming provider pipelines across separate run runtimes', async () => {
-    let resolveProviderGenerateCalls = 0;
-
-    const runtime = await createRuntimeComposition(
-      {
-        providers: [
-          {
-            name: 'primary',
-            provider: { provider: 'openai', model: 'cheap-model' },
-          },
-          {
-            name: 'secondary',
-            provider: { provider: 'anthropic', model: 'expensive-model' },
-          },
-        ],
-        streaming: { enabled: false },
-        toolbox: createToolbox([], { context: {} }),
-      },
-      {
-        resolveProviderGenerate(provider) {
-          resolveProviderGenerateCalls += 1;
-          return createGenerateForProvider(provider);
-        },
-      },
-    );
-
-    const firstRunRuntime = await runtime.createRunRuntime({
-      agentName: 'bureau',
-      message: 'Hello',
-      sessionId: 'session-1',
-    });
-    const secondRunRuntime = await runtime.createRunRuntime({
-      agentName: 'bureau',
-      message: 'Hello again',
-      sessionId: 'session-2',
-    });
-
-    expect(firstRunRuntime.generate).toBe(secondRunRuntime.generate);
-    expect(resolveProviderGenerateCalls).toBe(2);
-  });
-
-  // Regression: PRRT_kwDORvupsc6MXEmi — ProviderConfiguration.provider must be
-  // narrowed to GenerateProviderName ('anthropic' | 'openai' | 'gemini') only.
-  // Before the fix, ProviderName included 'voyage' and 'ollama' (embedding-only
-  // backends with no generate factory), so a config that type-checked would throw
-  // "Unknown provider" at runtime inside createRuntimeComposition.
-  it('rejects an embedding-only provider at runtime via the resolveProviderGenerate hook', async () => {
-    // The type system now prevents 'voyage' / 'ollama' from appearing in
-    // ProviderConfiguration.provider — this cast simulates the pre-fix state where
-    // the broader ProviderName union allowed embedding-only strings through.
-    const embeddingOnlyProvider = {
-      provider: 'voyage',
-      model: 'voyage-3',
-    } as unknown as ProviderConfiguration;
-
-    let caughtError: unknown;
-    try {
-      await createRuntimeComposition({
-        provider: embeddingOnlyProvider,
-        toolbox: createToolbox([], { context: {} }),
-      });
-    } catch (error) {
-      caughtError = error;
-    }
-
-    expect(caughtError).toBeInstanceOf(Error);
-    expect((caughtError as Error).message).toContain('Unknown provider');
-  });
-
-  it('GenerateProviderName only includes generate-capable backends', () => {
-    // Exhaustiveness check: the three values that must be in GenerateProviderName.
-    // If a new generate backend is added to operative without updating this type,
-    // this test will fail because the GenerateProviderName will no longer match.
-    const validProviders: GenerateProviderName[] = ['anthropic', 'openai', 'gemini'];
-    expect(validProviders).toHaveLength(3);
-
-    // Ensure 'voyage' and 'ollama' are NOT assignable to GenerateProviderName.
-    // TypeScript enforces this at compile time; the runtime assertion below
-    // documents the intent and catches accidental widenings.
-    const embeddingOnlyNames: string[] = ['voyage', 'ollama'];
-    for (const name of embeddingOnlyNames) {
-      expect(validProviders.includes(name as GenerateProviderName)).toBe(false);
-    }
-  });
-
-  it('composes the default streaming provider factories for every generate-capable backend', async () => {
-    const runtime = await createRuntimeComposition({
-      providers: [
-        {
-          name: 'anthropic',
-          provider: { provider: 'anthropic', model: 'claude-test', apiKey: 'test' },
-        },
-        { name: 'openai', provider: { provider: 'openai', model: 'gpt-test', apiKey: 'test' } },
-        { name: 'gemini', provider: { provider: 'gemini', model: 'gemini-test', apiKey: 'test' } },
-      ],
-      toolbox: createToolbox([], { context: {} }),
-      guardrails: { mode: 'tripwire', output: { validators: [] } },
-    });
-
-    const runRuntime = await runtime.createRunRuntime({
-      agentName: 'bureau',
-      message: 'Hello',
-      sessionId: 'default-streaming-providers',
-    });
-
-    expect(runRuntime.streamEventTarget).toBeDefined();
-  });
-
-  it('falls through streaming provider resolution before rejecting an unknown provider', async () => {
-    const error = await createRuntimeComposition({
-      provider: { provider: 'voyage', model: 'voyage-test' } as unknown as ProviderConfiguration,
-      toolbox: createToolbox([], { context: {} }),
-      guardrails: { mode: 'tripwire', output: { validators: [] } },
-    }).then(
-      async (runtime) =>
-        runtime.createRunRuntime({
-          agentName: 'bureau',
-          message: 'Hello',
-          sessionId: 'streaming-unknown-provider',
-        }),
-      (rejection: unknown) => rejection,
-    );
-
-    expect(error).toBeInstanceOf(Error);
-    expect((error as Error).message).toContain('Unknown provider');
-  });
-
-  it('composes the default non-streaming Gemini provider factory', async () => {
-    const runtime = await createRuntimeComposition({
-      provider: { provider: 'gemini', model: 'gemini-test', apiKey: 'test' },
-      streaming: { enabled: false },
-      toolbox: createToolbox([], { context: {} }),
-      guardrails: false,
-    });
-
-    const runRuntime = await runtime.createRunRuntime({
-      agentName: 'bureau',
-      message: 'Hello',
-      sessionId: 'default-gemini-provider',
-    });
-
-    expect(runRuntime.streamEventTarget).toBeUndefined();
-  });
-
-  it('keeps cost-aware routing budget unchanged when a provider omits usage', async () => {
-    const runtime = await createRuntimeComposition(
-      {
-        providers: [
-          { name: 'cheap', provider: { provider: 'openai', model: 'cheap-model' } },
-          { name: 'expensive', provider: { provider: 'openai', model: 'expensive-model' } },
-        ],
-        routing: {
-          type: 'cost-aware',
-          cheap: 'cheap',
-          expensive: 'expensive',
-          budget: 100,
-          thresholdRatio: 0.5,
-        },
-        toolbox: createToolbox([], { context: {} }),
-      },
-      {
-        resolveProviderGenerate(provider) {
-          return async () => ({ content: provider.model, toolCalls: [] });
-        },
-      },
-    );
-
-    const firstRunRuntime = await runtime.createRunRuntime({
-      agentName: 'bureau',
-      message: 'Hello',
-      sessionId: 'cost-aware-no-usage-1',
-    });
-    const secondRunRuntime = await runtime.createRunRuntime({
-      agentName: 'bureau',
-      message: 'Hello again',
-      sessionId: 'cost-aware-no-usage-2',
-    });
-    const conversation = new Conversation();
-    conversation.appendUserMessage('Hello');
-
-    const firstResult = await firstRunRuntime.generate({
-      conversation,
-      step: 0,
-      toolbox: firstRunRuntime.toolbox,
-    });
-    const secondResult = await secondRunRuntime.generate({
-      conversation,
-      step: 0,
-      toolbox: secondRunRuntime.toolbox,
-    });
-
-    expect(firstResult.content).toBe('expensive-model');
-    expect(secondResult.content).toBe('expensive-model');
-  });
-
-  it('covers direct routing strategy branches for simple, frontier, and zero-budget cost decisions', () => {
-    const conversation = new Conversation();
-    conversation.appendUserMessage('short');
-    const context = {
-      conversation,
-      step: 0,
-      toolbox: createToolbox([], { context: {} }),
-    };
-
-    const simpleStrategy = createRoutingStrategy({
-      type: 'complexity',
-      simple: 'simple',
-      complex: 'complex',
-      frontier: 'frontier',
-      simpleMaxLength: 10,
-    });
-    if (simpleStrategy.kind !== 'direct') throw new Error('expected direct strategy');
-    expect(simpleStrategy.strategy(context, [])).toMatchObject({ route: 'simple' });
-
-    const frontierConversation = new Conversation();
-    for (let index = 0; index < 11; index += 1) {
-      frontierConversation.appendUserMessage(
-        `this prompt is deliberately longer than ten characters ${index}`,
-      );
-      frontierConversation.appendAssistantMessage(`response ${index}`);
-    }
-    expect(
-      simpleStrategy.strategy({ ...context, conversation: frontierConversation, step: 21 }, []),
-    ).toMatchObject({
-      route: 'frontier',
-    });
-
-    const costAwareStrategy = createRoutingStrategy({
-      type: 'cost-aware',
-      cheap: 'cheap',
-      expensive: 'expensive',
-      budget: 0,
-    });
-    if (costAwareStrategy.kind !== 'cost-aware') throw new Error('expected cost-aware strategy');
-    expect(costAwareStrategy.strategy(context, [])).toMatchObject({ route: 'cheap' });
-    costAwareStrategy.onUsage(undefined);
-    costAwareStrategy.onUsage({ total: 0 });
-  });
-
-  it('treats an empty frontier route as unconfigured for deep conversations', () => {
-    const strategy = createRoutingStrategy({
-      type: 'complexity',
-      simple: 'simple',
-      complex: 'complex',
-      frontier: '',
-      simpleMaxLength: 10,
-    });
-    if (strategy.kind !== 'direct') throw new Error('expected direct strategy');
-
-    const deepConversation = new Conversation();
-    for (let index = 0; index < 11; index += 1) {
-      deepConversation.appendUserMessage(
-        `this prompt is deliberately longer than ten characters ${index}`,
-      );
-      deepConversation.appendAssistantMessage(`response ${index}`);
-    }
-    const decision = strategy.strategy(
-      { conversation: deepConversation, step: 21, toolbox: createToolbox([], { context: {} }) },
-      [],
-    );
-
-    expect(decision).toMatchObject({ route: 'complex' });
-  });
-
   it('applies cache only when configuration and a store are available', () => {
     const generate: GenerateFunction = async () => ({ content: 'fresh', toolCalls: [] });
     const kv = textValueStore(new MemoryStorage());
@@ -996,18 +640,6 @@ describe('createRuntimeComposition', () => {
     expect(applyCache(generate, { enabled: false }, kv)).toBe(generate);
     expect(applyCache(generate, { enabled: true }, undefined)).toBe(generate);
     expect(applyCache(generate, { enabled: true, store: kv }, undefined)).not.toBe(generate);
-  });
-
-  it('falls through streaming resolution before rejecting an unknown provider directly', () => {
-    const streamEventTarget = new TypedEventTarget<StreamEventMap>();
-
-    expect(() =>
-      resolveProviderGenerate(
-        { provider: 'voyage', model: 'voyage-test' } as unknown as ProviderConfiguration,
-        streamEventTarget,
-        {},
-      ),
-    ).toThrow('Unknown provider');
   });
 });
 
@@ -2622,26 +2254,23 @@ describe('createRuntimeComposition durable execution', () => {
       ]),
     });
 
-    const runRuntime = await runtime.createRunRuntime(
-      {
-        agentName: 'bureau',
-        message: 'capture context',
-        sessionId: 'caller-chosen-scheduler-task-live',
-        requestContext: {
-          authority: {
-            principalId: 'system:scheduler',
-            tenantId: 'bureau',
-            ownerId: 'bureau',
-            capabilities: ['tools:execute'],
-            authorizationRevision: 'bureau:scheduler:1',
-          },
-          audience: 'operator',
-          agentId: 'bureau',
-          runId: 'scheduler-task-live',
+    const runRuntime = await runtime.createRunRuntime({
+      agentName: 'bureau',
+      message: 'capture context',
+      sessionId: 'caller-chosen-scheduler-task-live',
+      requestContext: {
+        authority: {
+          principalId: 'system:scheduler',
+          tenantId: 'bureau',
+          ownerId: 'bureau',
+          capabilities: ['tools:execute'],
+          authorizationRevision: 'bureau:scheduler:1',
         },
+        audience: 'operator',
+        agentId: 'bureau',
+        runId: 'scheduler-task-live',
       },
-      { liveStreaming: false },
-    );
+    });
 
     const result = await runRuntime.toolbox.execute({
       name: 'capture_scheduler_task_context',
@@ -2663,10 +2292,11 @@ describe('createRuntimeComposition durable execution', () => {
       },
     });
 
-    const spoofedRuntime = await runtime.createRunRuntime(
-      { agentName: 'bureau', message: 'do not infer context', sessionId: 'scheduler-task-spoofed' },
-      { liveStreaming: false },
-    );
+    const spoofedRuntime = await runtime.createRunRuntime({
+      agentName: 'bureau',
+      message: 'do not infer context',
+      sessionId: 'scheduler-task-spoofed',
+    });
     const spoofedResult = await spoofedRuntime.toolbox.execute({
       name: 'capture_scheduler_task_context',
       arguments: {},
@@ -2725,9 +2355,8 @@ describe('createRuntimeComposition durable execution', () => {
   it('diagnoses scheduled proof inspection failures and then falls back to interactive guards', async () => {
     const diagnostics: string[] = [];
     // AB-260: a broken `SessionStore` is supplied through
-    // `RuntimeCompositionDependencies.createSessionStore` — the same
-    // non-test-gated dependency-injection parameter `resolveProviderGenerate`
-    // already establishes — rather than the retired `setSessionStore`
+    // `RuntimeCompositionDependencies.createSessionStore` — a non-test-gated
+    // dependency-injection parameter — rather than the retired `setSessionStore`
     // mutation seam.
     const runtime = await createRuntimeComposition(
       {
@@ -2740,7 +2369,6 @@ describe('createRuntimeComposition durable execution', () => {
         },
       },
       {
-        resolveProviderGenerate,
         createSessionStore: () =>
           ({
             async list() {
@@ -2804,7 +2432,6 @@ describe('createRuntimeComposition durable execution', () => {
         durable: true,
       },
       {
-        resolveProviderGenerate,
         createSessionStore: () =>
           ({
             async load() {
@@ -2868,7 +2495,6 @@ describe('createRuntimeComposition durable execution', () => {
         },
       },
       {
-        resolveProviderGenerate,
         createSessionStore: () =>
           ({
             async load() {
@@ -6497,7 +6123,6 @@ describe('active skills survive durable recovery (PRRT_kwDORvupsc6MZ1Md)', () =>
     const after = await runtime.createRunRuntime(
       { agentName: 'bureau', message: 'Hello', sessionId },
       {
-        liveStreaming: false,
         initialActiveSkillRecords: stored as unknown as Parameters<
           typeof runtime.createRunRuntime
         >[1] extends { initialActiveSkillRecords?: infer R }
@@ -6553,7 +6178,6 @@ describe('active skills survive durable recovery (PRRT_kwDORvupsc6MZ1Md)', () =>
     const after = await runtime.createRunRuntime(
       { agentName: 'bureau', message: 'Hello', sessionId },
       {
-        liveStreaming: false,
         initialActiveSkillRecords: tampered as never,
       },
     );
@@ -6704,101 +6328,6 @@ describe('AB-40: default guardrails preset', () => {
     for (const { handler: hook } of runRuntime.hooks.getHandlers('prepareStep')) {
       await hook({ step: 0, conversation });
     }
-  });
-
-  it('forces buffered (non-streaming) generation when the default guardrails preset is active, so the output tripwire sees the full response before anything reaches a client', async () => {
-    // Regression guard (P1 review finding, PRRT_kwDORvupsc6PxCXX): the default
-    // output PII validator runs in `validateResponse`, which only fires AFTER
-    // `withEnhancedStreaming` has already forwarded `stream:text-delta` events
-    // during generation. Streaming a response the default tripwire is meant to
-    // gate would leak the flagged content before the guardrail ever ran. No
-    // `generate` and no `streaming: { enabled: false }` — provider streaming
-    // would normally be wired here — and no `guardrails` option, so the
-    // default preset must be the thing suppressing it.
-    let resolveProviderGenerateCalls = 0;
-    const runtime = await createRuntimeComposition(
-      {
-        providers: [{ name: 'primary', provider: { provider: 'openai', model: 'cheap-model' } }],
-        toolbox: createToolbox([], { context: {} }),
-      },
-      {
-        resolveProviderGenerate(provider) {
-          resolveProviderGenerateCalls += 1;
-          return createGenerateForProvider(provider);
-        },
-      },
-    );
-
-    const runRuntime = await runtime.createRunRuntime({
-      agentName: 'bureau',
-      message: 'Hello',
-      sessionId: 'default-guardrails-streaming-suppressed',
-    });
-
-    expect(runRuntime.streamEventTarget).toBeUndefined();
-    // resolveProviderGenerate is only called for the buffered (non-streaming)
-    // pipeline in this test's stub — proves the streaming branch was never taken.
-    expect(resolveProviderGenerateCalls).toBe(1);
-  });
-
-  it('keeps streaming enabled when the caller explicitly supplies a guardrails config, even one with an output tripwire', async () => {
-    // A caller who explicitly configures guardrails (replacing the default
-    // preset) has opted into managing the streaming/guardrail tradeoff
-    // themselves — the forced-buffering only applies to the auto-wired
-    // default preset.
-    const runtime = await createRuntimeComposition(
-      {
-        providers: [{ name: 'primary', provider: { provider: 'openai', model: 'cheap-model' } }],
-        toolbox: createToolbox([], { context: {} }),
-        guardrails: { mode: 'tripwire', output: { validators: [] } },
-      },
-      {
-        resolveProviderGenerate(provider) {
-          return createGenerateForProvider(provider);
-        },
-      },
-    );
-
-    const runRuntime = await runtime.createRunRuntime({
-      agentName: 'bureau',
-      message: 'Hello',
-      sessionId: 'explicit-guardrails-streaming-kept',
-    });
-
-    expect(runRuntime.streamEventTarget).toBeDefined();
-  });
-
-  it('executes the streaming provider pipeline and complexity routing branches', async () => {
-    const runtime = await createRuntimeComposition(
-      {
-        providers: [
-          { name: 'simple', provider: { provider: 'openai', model: 'cheap-model' } },
-          { name: 'complex', provider: { provider: 'anthropic', model: 'expensive-model' } },
-          { name: 'frontier', provider: { provider: 'gemini', model: 'frontier-model' } },
-        ],
-        routing: { type: 'complexity', simple: 'simple', complex: 'complex', frontier: 'frontier' },
-        guardrails: { mode: 'tripwire', output: { validators: [] } },
-        toolbox: createToolbox([], { context: {} }),
-      },
-      {
-        resolveProviderGenerate(provider) {
-          return createGenerateForProvider(provider);
-        },
-      },
-    );
-    const runRuntime = await runtime.createRunRuntime({
-      agentName: 'bureau',
-      message: 'Write a short summary',
-      sessionId: 'complexity-routing',
-    });
-    const conversation = new Conversation();
-    conversation.appendUserMessage('Write a short summary');
-    const result = await runRuntime.generate({
-      conversation,
-      step: 0,
-      toolbox: runRuntime.toolbox,
-    });
-    expect(result.content).toBe('cheap-model');
   });
 
   it('a caller-supplied guardrails config replaces the default preset entirely', async () => {
@@ -7076,5 +6605,110 @@ describe('content source resolver on a scheduled fire and a recovered run (COR-7
     } finally {
       runtime.durable?.engine[Symbol.dispose]?.();
     }
+  });
+});
+
+describe('resolveProviderGenerate', () => {
+  type Received = { method: 'generate' | 'stream'; configuration: ProviderConfiguration };
+
+  function fakeDefinition(name: string, received: Received[]): ProviderDefinition {
+    const generated: GenerateFunction = async () => ({
+      content: `generated by ${name}`,
+      toolCalls: [],
+    });
+    return {
+      name,
+      generate(configuration) {
+        received.push({ method: 'generate', configuration });
+        return generated;
+      },
+      stream(configuration) {
+        received.push({ method: 'stream', configuration });
+        return async ({ streaming }) => {
+          streaming.update('streamed');
+          return { content: `streamed by ${name}`, toolCalls: [] };
+        };
+      },
+    };
+  }
+
+  function generateContext() {
+    const conversation = new Conversation();
+    conversation.appendUserMessage('Hello');
+    return { conversation, step: 0, toolbox: createToolbox([], { context: {} }) };
+  }
+
+  const configuration: ProviderConfiguration = { provider: 'second', model: 'model-a' };
+
+  it('uses the matching definition generate method when there is no stream event target', async () => {
+    const received: Received[] = [];
+    const definitions = [fakeDefinition('first', received), fakeDefinition('second', received)];
+
+    const generate = resolveProviderGenerate(definitions, configuration, undefined, undefined);
+
+    expect(received).toEqual([{ method: 'generate', configuration }]);
+    expect(received[0]?.configuration).toBe(configuration);
+    const response = await generate(generateContext());
+    expect(response.content).toBe('generated by second');
+  });
+
+  it('wraps the matching definition stream method when a stream event target is given', async () => {
+    const received: Received[] = [];
+    const definitions = [fakeDefinition('first', received), fakeDefinition('second', received)];
+    const streamEventTarget = new TypedEventTarget<StreamEventMap>();
+    const deltas: string[] = [];
+    const events: string[] = [];
+    streamEventTarget.addEventListener('stream:text-delta', (event) => {
+      events.push(event.type);
+    });
+
+    const generate = resolveProviderGenerate(definitions, configuration, streamEventTarget, {
+      onTextDelta: (delta) => deltas.push(delta),
+    });
+
+    expect(received.map((entry) => entry.method)).toEqual(['stream']);
+    const response = await generate(generateContext());
+    expect(response.content).toBe('streamed by second');
+    expect(deltas).toEqual(['streamed']);
+    expect(events).toEqual(['stream:text-delta']);
+  });
+
+  it('hands the configuration to the definition whole, fields the base type does not name included', () => {
+    const received: Received[] = [];
+    const client = { sentinel: true };
+    const extended = { ...configuration, apiKey: 'key', client };
+
+    resolveProviderGenerate([fakeDefinition('second', received)], extended, undefined, undefined);
+
+    expect(received[0]?.configuration).toBe(extended);
+    expect(received[0]?.configuration).toMatchObject({ apiKey: 'key', client });
+  });
+
+  it('throws an error naming the missing provider and the registered names', () => {
+    const definitions = [fakeDefinition('first', []), fakeDefinition('third', [])];
+
+    expect(() => resolveProviderGenerate(definitions, configuration, undefined, undefined)).toThrow(
+      'Unknown provider "second". Registered providers: first, third.',
+    );
+    expect(() => resolveProviderGenerate([], configuration, undefined, undefined)).toThrow(
+      'Unknown provider "second". Registered providers: none.',
+    );
+  });
+
+  it.each([
+    ['the matched name', 'second'],
+    ['a name the configuration does not select', 'first'],
+  ])('throws at the call when two definitions share %s', (_label, duplicated) => {
+    const received: Received[] = [];
+    const definitions = [
+      fakeDefinition('first', received),
+      fakeDefinition('second', received),
+      fakeDefinition(duplicated, received),
+    ];
+
+    expect(() => resolveProviderGenerate(definitions, configuration, undefined, undefined)).toThrow(
+      `Duplicate provider definition "${duplicated}".`,
+    );
+    expect(received).toEqual([]);
   });
 });

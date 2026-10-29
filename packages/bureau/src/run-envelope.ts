@@ -1,11 +1,9 @@
-import type { TypedEventTarget } from '@lostgradient/lifecycle';
 import {
   type ActiveRun,
   buildRunReport,
   type BuildRunReportInput,
   type CombinedOperativeEventMap,
   type CombinedOperativeEventType,
-  createAssistantChunkFrame,
   createAssistantFinalFrame,
   createNotificationFrame,
   createStepFrame,
@@ -16,7 +14,6 @@ import {
   type RunFrame,
   type RunReport,
   type RunState,
-  type StreamEventMap,
   type SummarizeOptions,
   type ToolFrameStatus,
 } from '@lostgradient/operative';
@@ -26,16 +23,13 @@ import { serializeUnknownError } from './serialization';
 
 /**
  * AB-96 — bureau-side wiring of operative's versioned run envelope
- * (`@lostgradient/operative`). Extends `websocket-frames.ts`'s
- * `streamEventToFrame` concept with the fuller, documented lifecycle frame
- * set (run-started, step, assistant-chunk/final, tool-pre/post,
- * notification, run-finished), and builds the terminal `RunReport` for every
- * exit path — normal completion, error, abort, and abrupt process shutdown.
+ * (`@lostgradient/operative`): the documented lifecycle frame set
+ * (run-started, step, assistant-chunk/final, tool-pre/post, notification,
+ * run-finished), and the terminal `RunReport` for every exit path — normal
+ * completion, error, abort, and abrupt process shutdown.
  */
 
 export interface RunFrameForwarderOptions {
-  /** Enhanced-streaming event target, when the runtime has streaming enabled. */
-  streamEventTarget?: TypedEventTarget<StreamEventMap> | undefined;
   /** Redaction/truncation limits applied to tool-pre/tool-post summaries. */
   summarizeOptions?: SummarizeOptions;
   /** Injectable clock for deterministic frame timestamps in tests. */
@@ -43,11 +37,8 @@ export interface RunFrameForwarderOptions {
 }
 
 /**
- * Wires an `ActiveRun` (and, when present, its enhanced-streaming event
- * target) into the versioned `RunFrame` stream. Returns a disposer that
- * removes every listener it registered — call it once the run settles (the
- * same pattern `disposeRegisteredStreamListeners` already uses for the
- * legacy WebSocket frame listeners).
+ * Wires an `ActiveRun` into the versioned `RunFrame` stream. Returns a disposer that
+ * removes every listener it registered — call it once the run settles.
  *
  * A run settles on `run.completed` or `run.aborted`. `run.error` does not
  * settle it: Operative dispatches `run.completed` after it, and the
@@ -60,7 +51,7 @@ export function createRunFrameForwarder(
   emit: (frame: RunFrame) => void,
   options: RunFrameForwarderOptions = {},
 ): () => void {
-  const { streamEventTarget, summarizeOptions, clock } = options;
+  const { summarizeOptions, clock } = options;
   const disposers: Array<() => void> = [];
   let currentStep = 0;
   // Whether a step event has set `currentStep`. A forwarder attached to a run that is replayed
@@ -274,24 +265,6 @@ export function createRunFrameForwarder(
   // run's per-run emitter doesn't exist yet when the check runs), never
   // through `activeRun`'s event stream. An embedder that wants it as a
   // notification wires that callback directly.
-
-  if (streamEventTarget) {
-    const listener = (event: StreamEventMap['stream:text-delta']) => {
-      emit(
-        createAssistantChunkFrame(
-          {
-            runId,
-            step: currentStep,
-            delta: event.detail.content,
-            accumulated: event.detail.accumulated,
-          },
-          clock,
-        ),
-      );
-    };
-    streamEventTarget.addEventListener('stream:text-delta', listener);
-    disposers.push(() => streamEventTarget.removeEventListener('stream:text-delta', listener));
-  }
 
   return () => {
     while (disposers.length > 0) {

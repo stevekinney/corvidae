@@ -8,6 +8,7 @@ import {
   createCatalogGenerate,
   loadProviders,
   parseProviderConfiguration,
+  PROVIDER_DEFINITIONS,
   PROVIDER_SECRET_KEYS,
   ProviderConfigurationError,
   readProviderConfiguration,
@@ -462,19 +463,22 @@ describe('a model’s generate', () => {
 
   test('is resolved through the provider path with the model and the key', () => {
     const seen: unknown[] = [];
+    const seenDefinitions: unknown[] = [];
     const generate = async () => ({ content: 'ok', toolCalls: [] });
     const resolved = createCatalogGenerate(
       { provider: 'anthropic', model: 'sonnet' },
       {
         rows,
         apiKeys,
-        resolveProviderGenerate: (provider) => {
+        resolveProviderGenerate: (definitions, provider) => {
+          seenDefinitions.push(definitions);
           seen.push(provider);
           return generate;
         },
       },
     );
     expect(resolved).toBe(generate);
+    expect(seenDefinitions).toEqual([PROVIDER_DEFINITIONS]);
     expect(seen).toEqual([
       { provider: 'anthropic', model: 'claude-sonnet-5', apiKey: 'fixture-key' },
     ]);

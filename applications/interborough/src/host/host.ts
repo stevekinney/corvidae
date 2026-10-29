@@ -201,8 +201,8 @@ export type HostOptions = {
   /** Whether to create the seeded schedule and goal. Agents are always defined. Defaults to `true`. */
   readonly seed?: boolean;
   /**
-   * Replaces Bureau's provider resolver, which {@link Host.generateFor} calls with the provider,
-   * model, and API key from Bungalow's secret. For tests that stand a fake client in for the SDK.
+   * Replaces Bureau's provider resolver, which {@link Host.generateFor} calls with the host's provider
+   * definitions and the provider, model, and API key from Bungalow's secret. For tests that stand a fake client in for the SDK.
    */
   readonly resolveProviderGenerate?: typeof resolveProviderGenerate;
   /** Receives the host's startup warnings. Defaults to `console.warn`. */

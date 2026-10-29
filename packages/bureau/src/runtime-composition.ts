@@ -28,6 +28,7 @@ import type {
   OnStepHook,
   OperativeHookMap,
   PrepareStepHook,
+  ProviderDefinition,
   RegistryAgnosticEngine,
   RequestHumanInputContext,
   RequestHumanInputInput,
@@ -47,33 +48,21 @@ import {
   appendAgentInput,
   MEMORY_EVIDENCE_METADATA_KEY,
   createAgentSession,
-  createAnthropicProvider,
-  createAnthropicProviderStream,
   createCheckpointStore,
-  createComplexityStrategy,
-  createCostAwareStrategy,
   createDefaultGuardrailsPreset,
-  createFalloverGenerate,
-  createGeminiProvider,
-  createGeminiProviderStream,
   createGuardrails,
   createIdentityHook,
-  createOpenAIProvider,
-  createOpenAIProviderStream,
   createRequestHumanInputTool,
-  createRoutingGenerate,
   createRunEngine,
   createRunWorkflow,
   createScheduleWakeupTool,
   createSessionStore,
-  createStepBasedStrategy,
   DEFAULT_MAXIMUM_STEPS,
   isAgentRunWorkflowInput,
   isFailureFinishReason,
   isScheduledAgentRunInput,
   isSessionInputPayload,
   payloadText,
-  readBackendDescriptors,
   reservedIdentifierReason,
   ScheduleAttemptedEvent,
   ScheduleCompletedEvent,
@@ -82,7 +71,6 @@ import {
   SCHEDULER_RUN_ID_PREFIX,
   ScheduleSkippedEvent,
   withActiveSkillToolPolicy,
-  withBackendDescriptors,
   withCache,
   withEnhancedStreaming,
   WorkflowVersionMismatchEvent,
@@ -178,10 +166,8 @@ import type {
   CacheConfiguration,
   CreateRunRequest,
   ProviderConfiguration,
-  ProviderRouteConfiguration,
   StreamingConfiguration,
   SkillRuntimeConfiguration,
-  RoutingConfiguration,
 } from './types';
 import { ownEntry } from './own-entry';
 
@@ -1406,124 +1392,40 @@ export function createMemoryPersistHook(
   };
 }
 
+/**
+ * Builds the generate function for a configured provider from the definitions a host registered.
+ *
+ * The definition whose `name` equals `configuration.provider` serves it: its `stream` method,
+ * wrapped in enhanced streaming over `streamEventTarget`, when one is given, and its `generate`
+ * method otherwise. The configuration reaches the definition whole, so a field the shared
+ * configuration type does not name (an injected `client`, say) arrives unchanged.
+ *
+ * @throws {Error} When two definitions carry one name, whether or not the configuration selects
+ * it, or when no definition carries `configuration.provider`.
+ */
 export function resolveProviderGenerate(
-  provider: ProviderConfiguration,
+  definitions: readonly ProviderDefinition[],
+  configuration: ProviderConfiguration,
   streamEventTarget: TypedEventTarget<StreamEventMap> | undefined,
   streamingConfiguration: StreamingConfiguration | undefined,
 ): GenerateFunction {
-  if (streamEventTarget) {
-    switch (provider.provider) {
-      case 'anthropic':
-        return withEnhancedStreaming(createAnthropicProviderStream(provider), {
-          eventTarget: streamEventTarget,
-          onTextDelta: streamingConfiguration?.onTextDelta,
-        });
-      case 'openai':
-        return withEnhancedStreaming(createOpenAIProviderStream(provider), {
-          eventTarget: streamEventTarget,
-          onTextDelta: streamingConfiguration?.onTextDelta,
-        });
-      case 'gemini':
-        return withEnhancedStreaming(createGeminiProviderStream(provider), {
-          eventTarget: streamEventTarget,
-          onTextDelta: streamingConfiguration?.onTextDelta,
-        });
-      default:
-        break;
-    }
+  const seen = new Set<string>();
+  for (const { name } of definitions) {
+    if (seen.has(name)) throw new Error(`Duplicate provider definition "${name}".`);
+    seen.add(name);
   }
-
-  switch (provider.provider) {
-    case 'anthropic':
-      return createAnthropicProvider(provider);
-    case 'openai':
-      return createOpenAIProvider(provider);
-    case 'gemini':
-      return createGeminiProvider(provider);
-    default:
-      throw new Error(`Unknown provider: ${String(provider.provider)}`);
+  const definition = definitions.find(({ name }) => name === configuration.provider);
+  if (definition === undefined) {
+    const registered = definitions.map(({ name }) => name).join(', ');
+    throw new Error(
+      `Unknown provider "${configuration.provider}". Registered providers: ${registered === '' ? 'none' : registered}.`,
+    );
   }
-}
-
-type RoutingResult =
-  | { kind: 'direct'; strategy: ReturnType<typeof createStepBasedStrategy> }
-  | {
-      kind: 'cost-aware';
-      strategy: ReturnType<typeof createCostAwareStrategy>;
-      onUsage: (usage: { total: number } | undefined) => void;
-    };
-
-function createCostAwareRoutingStrategy(
-  configuration: Extract<RoutingConfiguration, { type: 'cost-aware' }>,
-): RoutingResult {
-  let spent = 0;
-  return {
-    kind: 'cost-aware',
-    strategy: createCostAwareStrategy({
-      cheap: configuration.cheap,
-      expensive: configuration.expensive,
-      thresholdRatio: configuration.thresholdRatio ?? 0.8,
-      getBudgetState: () => ({ spent, budget: configuration.budget }),
-    }),
-    onUsage(usage: { total: number } | undefined) {
-      spent += usage?.total ?? 0;
-    },
-  };
-}
-
-export function createRoutingStrategy(configuration: RoutingConfiguration): RoutingResult {
-  switch (configuration.type) {
-    case 'step-based':
-      return {
-        kind: 'direct',
-        strategy: createStepBasedStrategy({
-          first: configuration.first,
-          middle: configuration.middle,
-          last: configuration.last,
-          middleAfterStep: configuration.middleAfterStep,
-        }),
-      };
-    case 'complexity':
-      return {
-        kind: 'direct',
-        strategy: createComplexityStrategy({
-          simple: configuration.simple,
-          complex: configuration.complex,
-          frontier: configuration.frontier,
-          scorer(signals) {
-            const useSimple =
-              signals.toolCount <= (configuration.simpleMaxTools ?? 2) &&
-              signals.lastMessageLength <= (configuration.simpleMaxLength ?? 500);
-            if (useSimple) return 'simple';
-
-            const useFrontier =
-              configuration.frontier !== undefined &&
-              configuration.frontier !== '' &&
-              signals.conversationDepth > 20;
-            return useFrontier ? 'frontier' : 'complex';
-          },
-        }),
-      };
-    case 'cost-aware':
-      return createCostAwareRoutingStrategy(configuration);
-  }
-}
-
-/**
- * Reports each response's usage to `onUsage`. The wrapper carries the inner
- * function's backend descriptors (COR-716): media admission costs parts against
- * them, and a wrapper that dropped them would refuse every part as `no-estimator`.
- */
-export function withUsageTracking(
-  generate: GenerateFunction,
-  onUsage: (usage: { total: number } | undefined) => void,
-): GenerateFunction {
-  const tracked: GenerateFunction = async (context) => {
-    const response = await generate(context);
-    onUsage(response.usage);
-    return response;
-  };
-  return withBackendDescriptors(tracked, readBackendDescriptors(generate));
+  if (streamEventTarget === undefined) return definition.generate(configuration);
+  return withEnhancedStreaming(definition.stream(configuration), {
+    eventTarget: streamEventTarget,
+    onTextDelta: streamingConfiguration?.onTextDelta,
+  });
 }
 
 export function applyCache(
@@ -1553,15 +1455,13 @@ export function applyCache(
 export type MediaRowHolder = 'session' | 'run';
 
 export type RuntimeCompositionDependencies = {
-  resolveProviderGenerate: typeof resolveProviderGenerate;
   /**
    * Builds the session store this composition uses over its resolved KV
    * view. Defaults to operative's own `createSessionStore` — the real
    * production wiring. A caller (test or platform package) that supplies a
-   * different `SessionStore` implementation here does so through the SAME
-   * non-test-gated dependency-injection parameter `resolveProviderGenerate`
-   * already establishes, not a retired test-only seam: this package's own
-   * test suite uses it to exercise `resolveRunServices`' failure-handling
+   * different `SessionStore` implementation here does so through this
+   * non-test-gated dependency-injection parameter, not a retired test-only
+   * seam: this package's own test suite uses it to exercise `resolveRunServices`' failure-handling
    * branches (a store whose `load`/`updateMetadata` fails) without a
    * private mutation backdoor.
    */
@@ -1730,7 +1630,6 @@ export type ScheduledSessionNotice = {
 };
 
 const defaultRuntimeCompositionDependencies: RuntimeCompositionDependencies = {
-  resolveProviderGenerate,
   createSessionStore,
 };
 
@@ -2294,7 +2193,6 @@ export interface RuntimeComposition {
   createRunRuntime(
     request: RunRuntimeRequest,
     options?: {
-      liveStreaming?: boolean;
       /**
        * The pre-crash active set, as provenance-carrying activation records.
        *
@@ -2333,7 +2231,6 @@ export interface RuntimeComposition {
      * production run instead of a capability nothing reaches.
      */
     hooks: HookRegistry<OperativeHookMap>;
-    streamEventTarget: TypedEventTarget<StreamEventMap> | undefined;
     getActiveSkillRecords: () => readonly SkillActivationRecord[];
     /**
      * Settles once the active skills the run was given have been re-validated against the live
@@ -2657,9 +2554,6 @@ export function scheduledFireApprovalMetadata(
  */
 export interface CompositionRunOptions {
   generate?: GenerateFunction;
-  provider?: ProviderConfiguration;
-  providers?: ProviderRouteConfiguration[];
-  routing?: RoutingConfiguration;
   toolbox?: AnyToolbox;
   guardrails?: GuardrailsOptions | false;
   skills?: SkillRuntimeConfiguration;
@@ -2668,8 +2562,6 @@ export interface CompositionRunOptions {
   systemPrompt?: string;
   /** Response caching over the composition's own `generate`; a Bureau composes none. */
   cache?: CacheConfiguration;
-  /** Enhanced streaming over the composition's own provider `generate`; a Bureau composes none. */
-  streaming?: StreamingConfiguration;
 }
 
 export type RuntimeCompositionOptions = Omit<BureauOptions, 'agents'> & CompositionRunOptions;
@@ -3105,75 +2997,8 @@ async function buildRuntimeComposition(
   const fallbackToolbox: BureauToolbox =
     options.toolbox !== undefined || hasSkillTools ? baseToolbox : createUnavailableToolbox();
 
-  const baseProviders =
-    options.providers ??
-    (options.provider
-      ? [
-          {
-            name: 'default',
-            provider: options.provider,
-          },
-        ]
-      : []);
-  const routingStrategy =
-    options.routing && baseProviders.length > 1
-      ? createRoutingStrategy(options.routing)
-      : undefined;
-
-  function composeConfiguredGenerate(
-    streamEventTarget: TypedEventTarget<StreamEventMap> | undefined,
-  ): GenerateFunction | undefined {
-    let generate: GenerateFunction | undefined = options.generate;
-
-    if (!generate) {
-      if (baseProviders.length === 0) {
-        return undefined;
-      }
-
-      if (routingStrategy && baseProviders.length > 1) {
-        const routes = baseProviders.map((route) => ({
-          name: route.name,
-          generate: dependencies.resolveProviderGenerate(
-            route.provider,
-            streamEventTarget,
-            options.streaming,
-          ),
-        }));
-
-        const routingGenerate = createRoutingGenerate({
-          routes,
-          fallback: routes[0]!.name,
-          strategy: routingStrategy.strategy,
-        });
-
-        generate =
-          routingStrategy.kind === 'cost-aware'
-            ? withUsageTracking(routingGenerate, routingStrategy.onUsage)
-            : routingGenerate;
-      } else if (baseProviders.length > 1) {
-        generate = createFalloverGenerate({
-          providers: baseProviders.map((route) => ({
-            name: route.name,
-            generate: dependencies.resolveProviderGenerate(
-              route.provider,
-              streamEventTarget,
-              options.streaming,
-            ),
-          })),
-        });
-      } else {
-        generate = dependencies.resolveProviderGenerate(
-          baseProviders[0]!.provider,
-          streamEventTarget,
-          options.streaming,
-        );
-      }
-    }
-
-    return applyCache(generate, options.cache, kv);
-  }
-
-  const nonStreamingGenerate = composeConfiguredGenerate(undefined);
+  const configuredGenerate: GenerateFunction | undefined =
+    options.generate === undefined ? undefined : applyCache(options.generate, options.cache, kv);
 
   /**
    * The guardrail configuration in force for this composition, with `false`
@@ -3269,7 +3094,6 @@ async function buildRuntimeComposition(
   function createRunRuntime(
     request: RunRuntimeRequest,
     runtimeOptions?: {
-      liveStreaming?: boolean;
       /**
        * Active-skill entries to seed the run's {@link SkillSession} with on
        * construction. Used by the durable recovery path: when
@@ -3305,39 +3129,10 @@ async function buildRuntimeComposition(
       skillPolicyUnverifiable?: boolean | undefined;
     },
   ) {
-    const liveStreaming = runtimeOptions?.liveStreaming ?? true;
     const sessionAgent = runtimeOptions?.sessionAgent;
     const requestContext = request.requestContext;
-    // AB-40 — the auto-wired default guardrail preset (`options.guardrails ===
-    // undefined`) runs its output PII validator in `mode: 'tripwire'` against
-    // the FULL response content in `validateResponse`, which only runs after
-    // `runStep`'s generate call returns. `withEnhancedStreaming` forwards
-    // `stream:text-delta` events (and finalizes the streaming message) as the
-    // provider streams, which happens entirely INSIDE that generate call —
-    // before `validateResponse` ever sees the content. A streamed response
-    // would therefore leak PII to clients before the default tripwire could
-    // fire, defeating the preset's purpose. Force buffered (non-streaming)
-    // generation whenever the default preset is in effect so the output
-    // guardrail actually gates what reaches the client. A caller who
-    // explicitly supplies `guardrails` (including re-supplying this same
-    // preset) has opted into managing that tradeoff themselves and keeps
-    // streaming.
-    const usingDefaultGuardrailsPreset = options.guardrails === undefined;
-    const streamEventTarget =
-      !liveStreaming ||
-      // A named agent's own `generate` is not wrapped for live token streaming.
-      sessionAgent !== undefined ||
-      options.generate !== undefined ||
-      options.streaming?.enabled === false ||
-      usingDefaultGuardrailsPreset
-        ? undefined
-        : new TypedEventTarget<StreamEventMap>();
     const generate =
-      sessionAgent !== undefined
-        ? sessionAgent.options.generate
-        : streamEventTarget === undefined
-          ? nonStreamingGenerate
-          : composeConfiguredGenerate(streamEventTarget);
+      sessionAgent !== undefined ? sessionAgent.options.generate : configuredGenerate;
 
     if (!generate) {
       throw new Error('No generate function configured');
@@ -3674,7 +3469,6 @@ async function buildRuntimeComposition(
       generate,
       toolbox: runToolbox,
       hooks,
-      streamEventTarget,
       getActiveSkillRecords,
       // Records the run was given but no skill client is configured to enforce: all are refused.
       skillPolicyUnverified: () => skillPolicyUnverified,
@@ -3834,7 +3628,6 @@ async function buildRuntimeComposition(
         ...(requestContext ? { requestContext } : {}),
       },
       {
-        liveStreaming: false,
         initialActiveSkillRecords,
         skillPolicyUnverifiable: skillSnapshot.status === 'unverifiable',
         sessionAgent,
@@ -4951,7 +4744,6 @@ async function buildRuntimeComposition(
     const runRuntime = await createRunRuntime(
       { message: payloadText(scheduledInput.input), sessionId, runId, agentName, requestContext },
       {
-        liveStreaming: false,
         initialActiveSkillRecords,
         skillPolicyUnverifiable: skillSnapshot.status === 'unverifiable',
         memoryOwner: owner,
@@ -5370,10 +5162,7 @@ async function buildRuntimeComposition(
     classifyCatalogRecoveredRun,
     clearCatalogRunRecoveryCache,
     mediaOptionsFor,
-    ready:
-      options.generate !== undefined ||
-      options.provider !== undefined ||
-      (options.providers?.length ?? 0) > 0,
+    ready: options.generate !== undefined,
     maximumSteps,
     systemPrompt,
     createRunRuntime,

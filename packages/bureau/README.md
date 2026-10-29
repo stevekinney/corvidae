@@ -27,7 +27,7 @@ Declare `"@lostgradient/bureau": "workspace:*"` in the consuming workspace's dep
   - [Schedules (`bureau.schedules`)](#schedules-bureauschedules)
   - [Decisions (`bureau.decisions`)](#decisions-bureaudecisions)
   - [Settings (`bureau.settings`)](#settings-bureausettings)
-  - [`streamEventToFrame`](#streameventtoframe)
+  - [`resolveProviderGenerate`](#resolveprovidergenerate)
   - [The Audit Trail](#the-audit-trail)
   - [`AuditRecord` schema versioning](#auditrecord-schema-versioning)
   - [Audit trail retention](#audit-trail-retention)
@@ -74,7 +74,7 @@ When something outside the process needs to reach a Bureau, `createBureauHandler
 - Starts tasks (`bureau.tasks.start`), tracks them, cancels them, and lists them by status.
 - Persists contexts through a `SessionStore` and, after a process restart, recovers in-flight durable runs by reattaching the ones this Bureau owns and monitoring native scheduled fires.
 - Admits input and steering for a live context (`bureau.contexts.input`, `bureau.contexts.steer`), delivers signals to a parked run (`bureau.contexts.signal`), and keeps durable recurring schedules (`bureau.schedules`). Each of these needs a durable engine and answers `unsupported-capability` when the backing engine or mailbox is absent.
-- Emits a typed event surface (`BureauEventMap`) and live WebSocket-ready and SSE-ready frames (`ServerFrame`) through `frames` and `streamEventToFrame`.
+- Emits a typed event surface (`BureauEventMap`) and live WebSocket-ready and SSE-ready frames (`ServerFrame`) through `frames`.
 - Records a durable, append-only audit trail of tool, run, and step lifecycle events when persistence is configured.
 - Gives the runs it composes governed memory: recall through mandatory recall admission and persistence through write admission, both under an authority derived from the run's persisted request. See [Governed memory](#governed-memory-cor-41).
 - Exposes a typed `AgentDefinitions` catalog (`bureau.agents`) and answers typed questions with `bureau.decisions.decide`.
@@ -719,16 +719,30 @@ A task's tools are read from `tools.humanInput`, `tools.wakeup`, and `tools.deci
 
 The control-plane operations are `bureau.settings.get`, `bureau.settings.schema`, `bureau.settings.update` (scope `bureau.settings:write`), and `bureau.settings.events`, a subscription over WebSocket and Server-Sent Events (scope `bureau.settings:read`, like `get` and `schema`) whose events carry the revision as their cursor, so `Last-Event-ID` or `fromCursor` resumes with one event for the current revision. Every applied change records a `settings.changed` audit entry naming the keys and the new revision, never the values. The reserved tools `settings-get` and `settings-update` are in the tool catalog whenever the Bureau exists, and an agent file that lists them has them; they act as the task's principal. Because `settings-update` and the `bureau.settings:write` scope change deployment-wide behavior, grant them as you would any other operator authority.
 
-### `streamEventToFrame`
+### `resolveProviderGenerate`
 
 ```typescript
-import { streamEventToFrame, type StreamFrame } from '@lostgradient/bureau';
-import type { StreamEvent } from '@lostgradient/operative';
+import { resolveProviderGenerate, type ProviderConfiguration } from '@lostgradient/bureau';
+import type { ProviderDefinition, StreamEventMap } from '@lostgradient/operative';
+import type { TypedEventTarget } from '@lostgradient/lifecycle';
 
-const toFrame: (runId: string, event: StreamEvent) => StreamFrame | undefined = streamEventToFrame;
+declare const definitions: readonly ProviderDefinition[];
+declare const streamEventTarget: TypedEventTarget<StreamEventMap>;
+
+const configuration: ProviderConfiguration = { provider: 'anthropic', model: 'sonnet' };
+
+// Each response returned whole.
+const generate = resolveProviderGenerate(definitions, configuration, undefined, undefined);
+
+// Enhanced streaming: `stream:*` events on `streamEventTarget`, and `onTextDelta` per text delta.
+const streaming = resolveProviderGenerate(definitions, configuration, streamEventTarget, {
+  onTextDelta: (delta, accumulated) => console.log(delta, accumulated),
+});
 ```
 
-Converts an `operative` `StreamEvent` (`stream:text-delta`, `stream:tool-call-start`, `stream:tool-call-delta`, `stream:tool-call-complete`, `stream:complete`, `stream:error`) into the matching typed `StreamFrame` (the stream members of `ServerFrame`, before Bureau stamps `runSeq`), stamped with the owning `runId`. Returns `undefined` for event types with no frame equivalent. Bureau uses this internally to translate a run's `streaming` output into the frames delivered by `frames`; an application-owned WebSocket or server-sent events transport can use it the same way.
+`resolveProviderGenerate(definitions, configuration, streamEventTarget, streamingConfiguration)` builds the `GenerateFunction` for one configured provider from the `ProviderDefinition`s a host registers. Bureau ships no provider and depends on no provider package: the host passes the definitions it wants, and the one whose `name` equals `configuration.provider` serves the configuration. With a `streamEventTarget` it calls that definition's `stream` and wraps the result in enhanced streaming (`streamingConfiguration.onTextDelta` receives each text delta); without one it calls the definition's `generate`.
+
+The configuration reaches the definition whole, so a field `ProviderConfiguration` (`provider`, `model`, `maximumTokens`, `temperature`, `apiKey`) does not name, such as an injected `client`, arrives unchanged. A `provider` no definition carries throws an `Error` naming the missing provider and the registered names. Two definitions with one name throw at the call, whether or not the configuration selects that name.
 
 ### The Audit Trail
 

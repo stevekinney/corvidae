@@ -8,12 +8,12 @@
  * @module host-diagnostics
  */
 
-import type { BureauDiagnostics, GenerateProviderName } from '@lostgradient/bureau';
+import type { BureauDiagnostics } from '@lostgradient/bureau';
 import type { RegistryAgnosticEngine, WeftServer } from '@lostgradient/weft';
 import { statSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { LoadedProviders } from './providers.ts';
+import type { InterboroughProviderName, LoadedProviders } from './providers.ts';
 
 /** The build the host serves, as {@link HostDiagnostics.build} reports it when `index.html` exists. */
 export type HostBuildDiagnostics = {
@@ -26,7 +26,7 @@ export type HostBuildDiagnostics = {
 /** One model provider the host offers, as {@link HostDiagnostics.providers} reports it. */
 export type HostProviderDiagnostics = {
   /** The provider's name: `anthropic`, `openai`, or `gemini`. */
-  readonly name: GenerateProviderName;
+  readonly name: InterboroughProviderName;
   /** The identifiers of the models the host's catalog offers from this provider. */
   readonly models: readonly string[];
 };
