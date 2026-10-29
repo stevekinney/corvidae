@@ -10,6 +10,7 @@ import {
 import { homedir, tmpdir } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
 
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { afterAll, describe, expect, test } from 'bun:test';
 
 import {
@@ -83,7 +84,7 @@ describe('openBungalow layout', () => {
   });
 
   test('rejects an invalid name', async () => {
-    await expect(openBungalow({ name: '../x', environment: {} })).rejects.toThrow(
+    expect(await throwingRejectionOf(openBungalow({ name: '../x', environment: {} }))).toThrow(
       BungalowInputError,
     );
   });
@@ -140,7 +141,7 @@ describe('deploymentId', () => {
     const root = temporaryDirectory();
     await openAndClose(root);
     writeFileSync(join(root, 'deployment-id'), 'not-a-ulid\n');
-    await expect(openIn(root)).rejects.toThrow(BungalowStateError);
+    expect(await throwingRejectionOf(openIn(root))).toThrow(BungalowStateError);
     // The failed open released its lock, so a repaired file opens.
     writeFileSync(join(root, 'deployment-id'), '01ARYZ6S41TSV4RRFFQ69G5FAV\n');
     using handle = await openIn(root);
@@ -203,14 +204,14 @@ describe('close', () => {
   test('is idempotent and releases the lock', async () => {
     const root = temporaryDirectory();
     const handle = await openIn(root);
-    await expect(openIn(root)).rejects.toThrow(BungalowLockedError);
+    expect(await throwingRejectionOf(openIn(root))).toThrow(BungalowLockedError);
     handle.close();
     expect(() => handle.close()).not.toThrow();
 
     // A later handle holds the lock now; the first handle's repeated close must not release it.
     using second = await openIn(root);
     handle.close();
-    await expect(openIn(root)).rejects.toThrow(BungalowLockedError);
+    expect(await throwingRejectionOf(openIn(root))).toThrow(BungalowLockedError);
     expect(second.configurationLocation).toBe(join(root, 'configuration.json'));
   });
 
@@ -219,7 +220,7 @@ describe('close', () => {
     handle.close();
     expect(() => handle.content('agents')).toThrow(BungalowStateError);
     expect(() => handle.secretLocation('token')).toThrow(BungalowStateError);
-    await expect(handle.readConfiguration()).rejects.toThrow(BungalowStateError);
+    expect(await throwingRejectionOf(handle.readConfiguration())).toThrow(BungalowStateError);
     expect(() => handle.writeSecret('token', 'value')).toThrow(BungalowStateError);
     expect(() => handle.readSecret('token')).toThrow(BungalowStateError);
   });
@@ -275,9 +276,11 @@ describe('NODE_ENV=test guard', () => {
       { NODE_ENV: 'test' },
       { NODE_ENV: 'test', [TEST_HOME_VARIABLE]: '' },
     ]) {
-      await expect(
-        openBungalow({ name: TEST_NAME, environment, homeDirectory: home }),
-      ).rejects.toThrow(BungalowInputError);
+      expect(
+        await throwingRejectionOf(
+          openBungalow({ name: TEST_NAME, environment, homeDirectory: home }),
+        ),
+      ).toThrow(BungalowInputError);
     }
     expect(readdirSync(home)).toEqual([]);
   });
@@ -285,17 +288,21 @@ describe('NODE_ENV=test guard', () => {
   test('applies to the process environment by default, where bun test sets NODE_ENV to test', async () => {
     expect(processEnvironment()['NODE_ENV']).toBe('test');
     expect(processEnvironment()[TEST_HOME_VARIABLE]).toBeUndefined();
-    await expect(openBungalow({ name: TEST_NAME })).rejects.toThrow(BungalowInputError);
+    expect(await throwingRejectionOf(openBungalow({ name: TEST_NAME }))).toThrow(
+      BungalowInputError,
+    );
   });
 
   test('cannot be bypassed by passing an environment that says nothing about NODE_ENV', async () => {
     const home = temporaryDirectory();
-    await expect(openBungalow({ name: TEST_NAME, environment: {} })).rejects.toThrow(
+    expect(await throwingRejectionOf(openBungalow({ name: TEST_NAME, environment: {} }))).toThrow(
       BungalowInputError,
     );
-    await expect(
-      openBungalow({ name: TEST_NAME, environment: {}, homeDirectory: home }),
-    ).rejects.toThrow(BungalowInputError);
+    expect(
+      await throwingRejectionOf(
+        openBungalow({ name: TEST_NAME, environment: {}, homeDirectory: home }),
+      ),
+    ).toThrow(BungalowInputError);
     expect(readdirSync(home)).toEqual([]);
   });
 
@@ -418,6 +425,8 @@ describe('openTemporaryBungalow', () => {
   });
 
   test('rejects an invalid name', async () => {
-    await expect(openTemporaryBungalow({ name: '../x' })).rejects.toThrow(BungalowInputError);
+    expect(await throwingRejectionOf(openTemporaryBungalow({ name: '../x' }))).toThrow(
+      BungalowInputError,
+    );
   });
 });
