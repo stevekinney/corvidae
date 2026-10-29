@@ -32,6 +32,7 @@ import {
 } from './testing/model-override.test-support';
 import type { Bureau, BureauContexts } from './types';
 import { startTaskFrom } from './test/task-start-request.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -406,7 +407,7 @@ describe('a routed or opaque agent lists no models', () => {
   async function open(agent: ReturnType<typeof createAgent>, name: string, withPolicy = false) {
     const bureau = await createBureau<AgentDefinitions>({
       agents: { [name]: agent },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       ...(withPolicy
         ? {
             modelPolicy: {

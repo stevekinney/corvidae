@@ -16,6 +16,7 @@ import { createBureau, resolveWaitForDurableRun } from './create-bureau';
 import { waitForCondition } from './test';
 import type { Bureau } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const bureaus: Bureau[] = [];
 const directories: string[] = [];
@@ -41,7 +42,7 @@ async function durableBureau(
     },
     storage:
       options.storagePath === undefined
-        ? { type: 'memory' }
+        ? new MemoryStorage()
         : { type: 'sqlite', path: options.storagePath },
     durable: true,
     ...(options.storagePath === undefined
@@ -183,7 +184,7 @@ describe('Bureau.waitForDurableRun', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       maintenance: 'manual',
     });

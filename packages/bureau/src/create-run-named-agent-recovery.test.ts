@@ -16,6 +16,7 @@ import { createBureau } from './create-bureau';
 import { waitForTaskState } from './test';
 import type { Bureau } from './types';
 import { waitUntil } from '@lostgradient/testing/wait-until';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const databasePaths: string[] = [];
 const bureaus: Bureau<AgentDefinitions>[] = [];
@@ -195,7 +196,7 @@ describe('requestHumanInput on a named session run', () => {
           stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     bureaus.push(bureau);

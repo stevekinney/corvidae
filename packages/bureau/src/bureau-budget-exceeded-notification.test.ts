@@ -30,6 +30,7 @@ import { waitForCondition, waitForTaskState } from './test';
 import { holdFirstTerminalRunCommit } from './test/held-terminal-commit';
 import type { BureauOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const ORIGIN = '2026-10-03T00:00:00.000Z';
 
@@ -57,7 +58,7 @@ const drivers: Array<{
   options: Pick<BureauOptions, 'storage' | 'durable'>;
 }> = [
   { name: 'in-memory driver', options: {} },
-  { name: 'durable driver', options: { storage: { type: 'memory' }, durable: true } },
+  { name: 'durable driver', options: { storage: new MemoryStorage(), durable: true } },
 ];
 
 async function collectRunFrames(

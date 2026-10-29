@@ -18,6 +18,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, base64Of, pngBytes } from './testing/asset-fixtures.test-support';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -65,7 +66,7 @@ async function openBureau() {
   cleanups.push(() => fixture.dispose());
   const bureau = await createBureau({
     agents: { painter },
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: false,
     runtime,
     assets: {

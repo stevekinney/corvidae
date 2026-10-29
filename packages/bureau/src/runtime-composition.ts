@@ -113,8 +113,6 @@ import {
   encode,
   KEYS,
   type RecoverAllOptions,
-  resolveStorage,
-  type StorageConfiguration,
   WorkflowCancelledEvent,
   WorkflowTimedOutEvent,
   WorkflowCompletedEvent,
@@ -657,17 +655,6 @@ export function grantedTools(
     wakeup: grant.wakeup,
     decide: grant.decide,
   };
-}
-
-/**
- * Discriminate a `StorageConfiguration` object from a raw Weft `Storage`.
- * `StorageConfiguration` always carries a `type` string discriminant.
- */
-export function isStorageConfiguration(
-  value: StorageConfiguration | Storage,
-): value is StorageConfiguration {
-  const candidate = value as unknown as Record<string, unknown>;
-  return typeof candidate['type'] === 'string';
 }
 
 /** COR-41 — what Bureau delegates to a run when the deployment configures nothing else. */
@@ -1567,13 +1554,6 @@ export type MediaRowHolder = 'session' | 'run';
 export type RuntimeCompositionDependencies = {
   resolveProviderGenerate: typeof resolveProviderGenerate;
   /**
-   * COR-1710 — whether this composition disposes a raw `Storage` passed as `options.storage`.
-   * `createBureau` resolves a storage configuration itself, to read the settings record before
-   * the engine exists, and hands the resulting storage over with this set, so it is still
-   * disposed with the composition. A storage configuration is always disposed.
-   */
-  ownsStorage?: boolean;
-  /**
    * Builds the session store this composition uses over its resolved KV
    * view. Defaults to operative's own `createSessionStore` — the real
    * production wiring. A caller (test or platform package) that supplies a
@@ -2153,29 +2133,18 @@ export interface RuntimeComposition {
    */
   workflowVersionMismatches: Map<string, { storedVersion: string; registeredVersion: string }>;
   /**
-   * Disposes the raw `Storage` backend this composition resolved from
-   * `options.storage`, if any. The KV/checkpoint views are created with
-   * `disposeUnderlyingStorage: false` (they share one backend), and Weft's
-   * `engine[Symbol.dispose]()` does NOT close the storage either — so the owner
-   * (the bureau) must call this on teardown to release the SQLite/LMDB handle.
-   * `undefined` when no `storage` was configured, or the caller supplied a raw
-   * `Storage` adapter (we did not resolve a backend and do not own its lifecycle).
-   */
-  disposeStorage: (() => void) | undefined;
-  /**
    * The resolved durable `Storage` backend itself, when one exists.
    *
    * Distinct from `kv`, which is a `ConditionalTextValueStore` *view* over
    * this same backend: a `Mailbox` needs the raw `Storage` because it
    * commits its own state transitions through `conditionalBatch`, which
-   * the text-value view does not expose. Distinct from `disposeStorage`,
-   * which closes the handle without lending it out.
+   * the text-value view does not expose.
    *
    * `undefined` when no persistent backend resolved — the caller is then
    * genuinely non-durable and must not pretend otherwise.
    *
-   * Lifecycle stays with this composition: a borrower uses the handle and
-   * never disposes it, because `disposeStorage` above is what owns that.
+   * Lifecycle stays with whoever constructed the adapter and passed it as
+   * `options.storage`: neither this composition nor a borrower disposes it.
    */
   durableStorage: Storage | undefined;
   memory: GovernedMemory | undefined;
@@ -2852,24 +2821,15 @@ async function buildRuntimeComposition(
   const scheduleFireEvents = new TypedEventTarget<ScheduleFireEventMap>();
   const skillEvents = new TypedEventTarget<SkillEventMap>();
 
-  // Resolve `storage` into a raw `Storage` backend. A caller may inject a raw adapter (notably
-  // Cloudflare Durable Object SQLite) because it cannot be represented by Weft's built-in
-  // StorageConfiguration union.
+  // The caller's storage adapter. Bureau never disposes it: the caller constructed it and closes
+  // it after the Bureau has shut down.
   const effectiveStorage = options.storage;
 
   let kv: ConditionalTextValueStore | undefined;
   // Keep the raw Storage so the durable engine can share the exact backend with
   // the text-value KV view (Weft requires one engine per durable store).
-  let durableStorage: Storage | undefined;
-  let ownsDurableStorage = false;
-  if (effectiveStorage) {
-    if (isStorageConfiguration(effectiveStorage)) {
-      durableStorage = await resolveStorage(effectiveStorage);
-      ownsDurableStorage = true;
-    } else {
-      durableStorage = effectiveStorage;
-      ownsDurableStorage = dependencies.ownsStorage === true;
-    }
+  const durableStorage: Storage | undefined = effectiveStorage;
+  if (durableStorage) {
     kv = textValueStore(durableStorage, { disposeUnderlyingStorage: false });
   }
 
@@ -2883,12 +2843,8 @@ async function buildRuntimeComposition(
   // flag overrides the default either way.
   let effectiveStorageIsPersistent = false;
   if (effectiveStorage) {
-    if (isStorageConfiguration(effectiveStorage)) {
-      effectiveStorageIsPersistent = effectiveStorage.type !== 'memory';
-    } else {
-      const persistence = effectiveStorage.capabilities().persistence;
-      effectiveStorageIsPersistent = persistence === 'local' || persistence === 'remote';
-    }
+    const persistence = effectiveStorage.capabilities().persistence;
+    effectiveStorageIsPersistent = persistence === 'local' || persistence === 'remote';
   }
   const wantsDurable = options.durable ?? effectiveStorageIsPersistent;
 
@@ -5372,8 +5328,6 @@ async function buildRuntimeComposition(
     workflowVersionMismatches,
     scheduleFireEvents,
     skillEvents,
-    disposeStorage:
-      durableStorage && ownsDurableStorage ? () => durableStorage[Symbol.dispose]() : undefined,
     durableStorage,
     memory,
     sessionStore,

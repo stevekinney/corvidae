@@ -15,6 +15,7 @@ import { waitForCondition } from './test';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { AgentDefinitions } from './agent-catalog';
 import { startTaskFrom } from './test/task-start-request.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 
@@ -23,7 +24,7 @@ async function openBureau() {
     agents: {
       default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
     },
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
   });
 }
 
@@ -210,7 +211,7 @@ describe('the owner of a catalog run (COR-718)', () => {
     for (const durable of [false, true]) {
       const bureau = await createBureau({
         agents: { worker },
-        ...(durable ? { storage: { type: 'memory' as const }, durable: true } : {}),
+        ...(durable ? { storage: new MemoryStorage(), durable: true } : {}),
       });
       try {
         const owned = await bureau.tasks.start('worker', 'work', { principal: 'api-key:alice' });

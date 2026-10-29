@@ -17,6 +17,7 @@ import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { createRuntimeComposition } from './runtime-composition';
 import type { Bureau } from './types';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const databasePaths: string[] = [];
@@ -169,7 +170,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
     const probe = await createRuntimeComposition({
       generate: async () => ({ content: 'probe', toolCalls: [] }),
       toolbox: createToolbox([]),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
@@ -199,7 +200,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       runtime,
     });
@@ -284,7 +285,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
@@ -333,7 +334,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
           stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     bureaus.push(bureau);
@@ -380,7 +381,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     bureaus.push(bureau);
@@ -404,7 +405,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
     const probe = await createRuntimeComposition({
       generate: async () => ({ content: 'probe', toolCalls: [] }),
       toolbox: createToolbox([]),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
@@ -425,7 +426,7 @@ describe('COR-1716 shutdown readiness baseline', () => {
       agents: {
         default: createAgent({ generate: async () => ({ content: 'done', toolCalls: [] }) }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       runtime,
     });

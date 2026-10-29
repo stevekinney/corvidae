@@ -16,7 +16,7 @@ import {
   createAgent,
 } from '@lostgradient/operative';
 import { resolveStorage } from '@lostgradient/weft';
-import { type Storage } from '@lostgradient/storage';
+import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
@@ -348,7 +348,7 @@ describe('bounded duplicate park events (COR-121)', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     try {

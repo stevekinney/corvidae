@@ -67,8 +67,8 @@ async function runToLimit(bureau: Bureau) {
 
 /** The in-process loop and the durable workflow both end a run at its step limit. */
 const EXECUTIONS: readonly (readonly [string, Partial<BureauOptions>])[] = [
-  ['in process', { storage: { type: 'memory' }, durable: false }],
-  ['durably', { storage: { type: 'memory' }, durable: true }],
+  ['in process', { storage: new MemoryStorage(), durable: false }],
+  ['durably', { storage: new MemoryStorage(), durable: true }],
 ];
 
 describe.each(EXECUTIONS)('a run that stops at its step limit, %s (COR-1627)', (_name, options) => {

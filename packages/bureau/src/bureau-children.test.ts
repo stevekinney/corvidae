@@ -403,7 +403,7 @@ describe('bureau.children over an ephemeral bureau', () => {
   it('diagnoses an unreadable child record instead of trusting it', async () => {
     const bureau = await createBureau({
       agents: {},
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       onDiagnostic,
     });
 
@@ -561,7 +561,7 @@ describe('bureau.children over a durable bureau', () => {
   it('applies the parent-cancellation policy when a bureau.run parent is aborted through its own handle', async () => {
     const bureau = await createBureau({
       agents: hangingAgents(),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       onDiagnostic,
     });
@@ -664,7 +664,7 @@ describe('bureau.children over a durable bureau', () => {
       );
     const bureau = await createBureau({
       agents: { planner: lazyHanging('planner'), worker: lazyHanging('worker') },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       onDiagnostic,
     });
@@ -723,7 +723,7 @@ describe('bureau.children over a durable bureau', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       onDiagnostic,
     });

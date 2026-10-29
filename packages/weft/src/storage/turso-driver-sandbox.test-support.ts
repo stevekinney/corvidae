@@ -10,7 +10,7 @@
  * outside the sandbox changes. An earlier version renamed the drivers out of the shared
  * `node_modules` instead, and a typecheck running beside the test then failed to find them.
  *
- * @module storage/block-optional-storage-drivers.test-support
+ * @module storage/turso-driver-sandbox.test-support
  */
 import { cp, mkdir, mkdtemp, readdir, realpath, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

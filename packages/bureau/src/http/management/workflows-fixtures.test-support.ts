@@ -28,6 +28,7 @@ import {
 import { authentication, type Handler, type RpcBody } from './management-fixtures.test-support.ts';
 import { createMemoryAssetStorage } from '../../assets/storage';
 import { workflowFileDirectory } from '../../sources/workflow-file-directory';
+import { MemoryStorage } from '@lostgradient/storage';
 
 export interface Served {
   readonly bureau: Bureau;
@@ -63,7 +64,7 @@ export async function serveWorkflows(
       ...(options.agents ?? agents),
     },
     workflowSource: workflowFileDirectory(directory),
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
   });

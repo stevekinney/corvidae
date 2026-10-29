@@ -13,7 +13,7 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import type { DurableEventEnvelope } from '@lostgradient/operative';
 import { resolveStorage } from '@lostgradient/weft';
-import { type Storage } from '@lostgradient/storage';
+import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import { createDurableEventHistory } from '../durable-event-history';
@@ -132,7 +132,7 @@ describe('createDurableEventHistoryFixture', () => {
 describe('seedSchemaVersionMismatchRecord', () => {
   it('round-trips a current-schema-version record and rejects a deliberately mismatched one (event-schema compatibility fixture)', async () => {
     const runtime = createManualRuntimeServices();
-    const storage = await resolveStorage({ type: 'memory' });
+    const storage = new MemoryStorage();
     const owner = { kind: 'run' as const, id: 'compat-run-1' };
     const history = createDurableEventHistory(storage, runtime);
 
@@ -175,7 +175,7 @@ describe('seedSchemaVersionMismatchRecord', () => {
 
   it('throws UnsupportedDurableEventSchemaVersionError when a single mismatched envelope is decoded directly', async () => {
     const runtime = createManualRuntimeServices();
-    const storage = await resolveStorage({ type: 'memory' });
+    const storage = new MemoryStorage();
     const owner = { kind: 'session' as const, id: 'compat-session-1' };
 
     await seedSchemaVersionMismatchRecord(storage, owner, 'session.created', 999, {

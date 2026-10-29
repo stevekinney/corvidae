@@ -1194,7 +1194,7 @@ describe('Bureau hook tier composition (COR-1265)', () => {
       generate: async () => ({ content: 'ok', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
       identity: { resolve: async () => 'researcher' },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -1232,7 +1232,7 @@ describe('Bureau hook tier composition (COR-1265)', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'ok', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -1273,7 +1273,7 @@ describe('Bureau hook tier composition (COR-1265)', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'ok', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -1328,7 +1328,7 @@ describe('Bureau hook tier composition (COR-1265)', () => {
         // Deliberately no bureau-level generate/toolbox — proves nothing here
         // reaches `buildRunDepsFromSession`.
         identity: { resolve: async () => 'the house agent' },
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       });
       runtime.setCatalogAgentRunOptionsResolver(async () => ({
@@ -1632,7 +1632,7 @@ describe('effectful hook idempotency under crash replay (COR-1267)', () => {
       generate: async () => ({ content: 'ok', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
       skills: { catalog },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: false,
     });
     await runtime.sessionStore!.save(
@@ -1703,7 +1703,7 @@ describe('effectful hook idempotency under crash replay (COR-1267)', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'ok', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -1757,7 +1757,7 @@ describe('effectful hook idempotency under crash replay (COR-1267)', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'ok', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -1943,7 +1943,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
     });
     // Off by default: no durable flag → no engine.
     expect(runtime.durable).toBeUndefined();
@@ -1965,7 +1965,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       observability: true,
     });
@@ -1983,7 +1983,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     try {
@@ -2001,7 +2001,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       durableGuardrails: {
         history: { maxEvents: 10_000 },
@@ -2029,7 +2029,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       durableOwnership: {
         ownership: 'workflow-lease',
@@ -2122,7 +2122,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -2170,7 +2170,7 @@ describe('createRuntimeComposition durable execution', () => {
       const runtime = await createRuntimeComposition({
         generate: async () => ({ content: 'x', toolCalls: [] }),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       });
       return runtime;
@@ -2263,13 +2263,13 @@ describe('createRuntimeComposition durable execution', () => {
     const compositionA = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       runtime: runtimeA,
     });
     const compositionB = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       runtime: runtimeB,
     });
 
@@ -2316,7 +2316,7 @@ describe('createRuntimeComposition durable execution', () => {
           },
         }),
       ]),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -2374,7 +2374,7 @@ describe('createRuntimeComposition durable execution', () => {
     it('dispatches ScheduleCompletedEvent when a correlated fire finishes with a non-failure finishReason', async () => {
       const runtime = await createRuntimeComposition({
         generate: async () => ({ content: 'ok', toolCalls: [] }),
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       });
 
@@ -2432,7 +2432,7 @@ describe('createRuntimeComposition durable execution', () => {
       async (finishReason) => {
         const runtime = await createRuntimeComposition({
           generate: async () => ({ content: 'ok', toolCalls: [] }),
-          storage: { type: 'memory' },
+          storage: new MemoryStorage(),
           durable: true,
         });
 
@@ -2481,7 +2481,7 @@ describe('createRuntimeComposition durable execution', () => {
     it('dispatches ScheduleFailedEvent when a correlated fire terminates with an unhandled workflow error', async () => {
       const runtime = await createRuntimeComposition({
         generate: async () => ({ content: 'ok', toolCalls: [] }),
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       });
 
@@ -2521,7 +2521,7 @@ describe('createRuntimeComposition durable execution', () => {
     it('ignores a terminal event for a workflow with no correlated scheduleId (an ordinary, non-scheduled run)', async () => {
       const runtime = await createRuntimeComposition({
         generate: async () => ({ content: 'ok', toolCalls: [] }),
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       });
 
@@ -2552,7 +2552,7 @@ describe('createRuntimeComposition durable execution', () => {
     it('drops the scheduleId correlation entry when the fire is cancelled, without dispatching a schedule event', async () => {
       const runtime = await createRuntimeComposition({
         generate: async () => ({ content: 'ok', toolCalls: [] }),
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       });
 
@@ -2673,7 +2673,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -2727,7 +2727,7 @@ describe('createRuntimeComposition durable execution', () => {
       {
         generate: async () => ({ content: 'x', toolCalls: [] }),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
         onDiagnostic(event) {
           diagnostics.push(event.message);
@@ -2769,7 +2769,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -2794,7 +2794,7 @@ describe('createRuntimeComposition durable execution', () => {
       {
         generate: async () => ({ content: 'x', toolCalls: [] }),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       },
       {
@@ -2855,7 +2855,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition(
       {
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
         onDiagnostic(event) {
           diagnostics.push(event.message);
@@ -2905,7 +2905,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -2956,7 +2956,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -3008,7 +3008,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       requestAuthorityValidator(context) {
         validatedContexts.push(context);
@@ -3069,7 +3069,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       requestAuthorityValidator() {
         validatorCalls += 1;
@@ -3105,7 +3105,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       onLog(record) {
         logs.push(record.message);
@@ -3152,7 +3152,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     const runId = 'scheduled-run-with-accumulated-results';
@@ -3243,7 +3243,7 @@ describe('createRuntimeComposition durable execution', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'composed', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -5106,7 +5106,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
       // Deliberately no bureau-level `generate`/`toolbox` — proves the
       // catalog branch never touches `buildRunDepsFromSession`/the default
       // runtime composition (which would 404 with nothing configured here).
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -5160,7 +5160,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
     'registers Bureau guardrails on a recovered catalog run only when the agent does not resolve its own (agentResolvesGuardrails: %p)',
     async (agentResolvesGuardrails, expected) => {
       const runtime = await createRuntimeComposition({
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       });
 
@@ -5203,7 +5203,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
   describe('classifyCatalogRecoveredRun (AB-241 review finding)', () => {
     it('consumes the cache resolveRunServices already populated, without a second storage read', async () => {
       const runtime = await createRuntimeComposition({
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       });
 
@@ -5271,7 +5271,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
 
     it('falls back to a fresh storage read when called without a cache entry (no principal recorded)', async () => {
       const runtime = await createRuntimeComposition({
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       });
 
@@ -5299,7 +5299,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
 
     it('classifies a genuinely unrecognized run id as not-catalog, with no attribution', async () => {
       const runtime = await createRuntimeComposition({
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       });
 
@@ -5314,7 +5314,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
 
   it('round-trips a conversation-shaped (not plain-string) AgentInput through the recovery record', async () => {
     const runtime = await createRuntimeComposition({
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -5354,7 +5354,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
 
   it('reports a missing catalog agent through the existing unavailable+reason path, never a bare unavailable (AB-29 precedent)', async () => {
     const runtime = await createRuntimeComposition({
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -5386,7 +5386,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
 
   it('reports a catalog resolver failure with the underlying error surfaced in the reason', async () => {
     const runtime = await createRuntimeComposition({
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -5423,7 +5423,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
   it('reattaches with a pin-and-warn diagnostic when the catalog agent definition revision drifted since checkpoint (AB-10 precedent)', async () => {
     const diagnostics: string[] = [];
     const runtime = await createRuntimeComposition({
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       onDiagnostic(event) {
         diagnostics.push(event.message);
@@ -5465,7 +5465,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
 
   it('reports "no catalog agent recovery resolver configured" when a record exists but nothing ever registered a resolver', async () => {
     const runtime = await createRuntimeComposition({
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -5497,7 +5497,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
 
   it('treats an unreadable catalog recovery record (a genuine decode failure, not merely absent) as unavailable', async () => {
     const runtime = await createRuntimeComposition({
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -5551,7 +5551,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
     ['an infinity', Number.POSITIVE_INFINITY],
   ])('reads a goal attempt marker with %s as its index as corrupt', async (_name, attemptIndex) => {
     const runtime = await createRuntimeComposition({
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -5578,7 +5578,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
 
   it('reads a decodable record of the wrong shape as corrupt for ownership, and as missing for every other consumer', async () => {
     const runtime = await createRuntimeComposition({
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -5606,7 +5606,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
 
   it('reports a distinct reason (never "no longer in the catalog") when the catalog agent exists but no longer supports durable definition resolution', async () => {
     const runtime = await createRuntimeComposition({
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -5642,7 +5642,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -5667,7 +5667,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
 
   it('claimCatalogRunRecoveryRecord writes a record only where none exists (COR-772)', async () => {
     const runtime = await createRuntimeComposition({
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -5726,7 +5726,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
     } as const;
 
     async function compose() {
-      return createRuntimeComposition({ storage: { type: 'memory' }, durable: true });
+      return createRuntimeComposition({ storage: new MemoryStorage(), durable: true });
     }
 
     it('tombstones the goal’s own claim in place, keeping everything else it recorded', async () => {
@@ -5929,7 +5929,7 @@ describe('createRuntimeComposition storage and durable engine options', () => {
   it('builds a durable engine over a memory storage configuration when durable is on', async () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       // Memory storage defaults durable to OFF (checkpoints are lost with the
       // process), so explicitly enable.
       durable: true,
@@ -5944,7 +5944,7 @@ describe('createRuntimeComposition storage and durable engine options', () => {
   it('threads durableGuardrails.history into the durable engine', async () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durableGuardrails: { history: { maxEvents: 10_000 } },
       durable: true,
     });
@@ -5958,7 +5958,7 @@ describe('createRuntimeComposition storage and durable engine options', () => {
   it('threads observability into the durable engine', async () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       observability: true,
       durable: true,
     });
@@ -5976,7 +5976,7 @@ describe('createRuntimeComposition storage and durable engine options', () => {
     const logRecords: unknown[] = [];
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       onLog: (record) => logRecords.push(record),
       durable: true,
     });
@@ -5993,7 +5993,7 @@ describe('createRuntimeComposition storage and durable engine options', () => {
     // A conditional text-store KV layer is built over the raw Storage, enabling session persistence.
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     try {
@@ -6979,7 +6979,7 @@ describe('content source resolver on a scheduled fire and a recovered run (COR-7
       {
         generate: async () => ({ content: 'ok', toolCalls: [] }),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       },
       { contentSourceResolverFor },
@@ -7023,7 +7023,7 @@ describe('content source resolver on a scheduled fire and a recovered run (COR-7
       {
         generate: async () => ({ content: 'ok', toolCalls: [] }),
         toolbox: createToolbox([], { context: {} }),
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       },
       { contentSourceResolverFor },
@@ -7057,7 +7057,7 @@ describe('content source resolver on a scheduled fire and a recovered run (COR-7
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'ok', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     try {
@@ -7072,7 +7072,7 @@ describe('content source resolver on a scheduled fire and a recovered run (COR-7
       generate: async () => ({ content: 'ok', toolCalls: [] }),
       toolbox: createToolbox([], { context: {} }),
       guardrails: { input: { detectors: [], assetSafety: { unknown: 'block' } } },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     try {

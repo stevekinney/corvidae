@@ -10,7 +10,6 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import type { DurableEventEnvelope } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { resolveStorage } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createDurableEventHistory } from './durable-event-history';
@@ -43,7 +42,7 @@ const SECRET_CAUSE = 'CAUSE-the-secret-internals';
 const VALIDATOR = { name: 'tests', version: '1' } as const;
 
 async function setup(options: { failRecording?: boolean } = {}) {
-  const storage = await resolveStorage({ type: 'memory' });
+  const storage = new MemoryStorage();
   const runtime = createManualRuntimeServices();
   const history = createDurableEventHistory(storage, runtime);
   const diagnostics: BureauDiagnostic[] = [];
@@ -382,7 +381,7 @@ describe('the goal event projection', () => {
   it('stores a goal history under a workflow id that is not its controller workflow', async () => {
     // Weft deletes every fleet event carrying a workflow's id when it purges that
     // workflow, so `goal:<id>` (the controller's id) would lose the history on a restart.
-    const storage = await resolveStorage({ type: 'memory' });
+    const storage = new MemoryStorage();
     const history = createDurableEventHistory(storage, createManualRuntimeServices());
 
     await history.record({ kind: 'goal', id: GOAL }, 'goal.started', {});
@@ -473,7 +472,7 @@ describe('the goal event projection', () => {
 
     it('repairs a failed projection of an earlier transition after later transitions commit', async () => {
       // The first transitions' audit writes fail; every later one succeeds.
-      const storage = await resolveStorage({ type: 'memory' });
+      const storage = new MemoryStorage();
       const history = createDurableEventHistory(storage, createManualRuntimeServices());
       let failing = true;
       const diagnostics: BureauDiagnostic[] = [];
@@ -631,7 +630,7 @@ describe('the goal event projection', () => {
 
 describe('live goal events (COR-1721)', () => {
   async function liveSetup() {
-    const storage = await resolveStorage({ type: 'memory' });
+    const storage = new MemoryStorage();
     const history = createDurableEventHistory(storage, createManualRuntimeServices());
     const dispatched: GoalLifecycleEvent[] = [];
     const diagnose = () => undefined;
@@ -707,7 +706,7 @@ describe('live goal events (COR-1721)', () => {
     const live = dispatched.length;
     // A history that missed every write, as after a crash: the boot pass has work to do.
     const repaired = createDurableEventHistory(
-      await resolveStorage({ type: 'memory' }),
+      new MemoryStorage(),
       createManualRuntimeServices(),
     );
     const repair = createGoalEventRecorder(repaired, () => undefined);

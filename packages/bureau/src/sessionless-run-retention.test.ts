@@ -35,6 +35,7 @@ import {
   pngBytes,
 } from './testing/asset-fixtures.test-support';
 import type { Bureau } from './types';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -211,7 +212,7 @@ function runRowPrefix(runId: string): string {
 }
 
 describe('a task with a supplied image, on a durable engine', () => {
-  const extra = { storage: { type: 'memory' as const }, durable: true };
+  const extra = { storage: new MemoryStorage(), durable: true };
 
   it('keeps the input asset resolvable while the task is parked past the retention floor, held by its context', async () => {
     const environment = createEnvironment();
@@ -275,7 +276,7 @@ describe('a task with a supplied image, on no durable engine (the in-process pat
 });
 
 describe.each([
-  ['a durable engine', { storage: { type: 'memory' as const }, durable: true }],
+  ['a durable engine', { storage: new MemoryStorage(), durable: true }],
   ['no durable engine (the in-process path)', {}],
 ] as const)('an image no run referenced, on %s', (_name, extra) => {
   it('is expired by the floor when no run referenced it', async () => {

@@ -4,8 +4,8 @@ import {
   createSessionStore,
   type SessionInputPayload,
 } from '@lostgradient/operative';
-import { type ApplicationCommandClaim, resolveStorage } from '@lostgradient/weft';
-import { textValueStore } from '@lostgradient/storage';
+import { type ApplicationCommandClaim } from '@lostgradient/weft';
+import { textValueStore, MemoryStorage } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 import { CURRENT_SCHEMA_VERSION, createConversationHistory } from 'conversationalist';
 
@@ -249,7 +249,7 @@ describe('decodeSessionInputCommand (COR-1476)', () => {
 });
 
 async function createFixture() {
-  const storage = await resolveStorage({ type: 'memory' });
+  const storage = new MemoryStorage();
   const sessionStore = createSessionStore(textValueStore(storage));
   const deliveryStore = createSessionInputDeliveryStore(textValueStore(storage), {
     retentionMs: SESSION_INPUT_DELIVERY_RETENTION_MS,

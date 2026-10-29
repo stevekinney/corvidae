@@ -282,7 +282,7 @@ describe('missed schedule fires on the bureau emitter', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       maintenance: 'manual',
     });

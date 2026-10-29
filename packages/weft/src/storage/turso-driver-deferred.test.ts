@@ -8,7 +8,7 @@ import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   OPTIONAL_STORAGE_DRIVER_ENTRIES,
   withOptionalStorageDriversAbsent,
-} from './block-optional-storage-drivers.test-support.ts';
+} from './turso-driver-sandbox.test-support.ts';
 
 import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 
@@ -28,39 +28,24 @@ async function runFixture(relativePath: string): Promise<{ exitCode: number; std
   });
 }
 
-// These gates run fixtures in fresh Bun processes in a sandbox without the optional storage drivers, which
-// takes seconds on a loaded host. The scenarios below run at module scope, off Bun's five-second
-// per-test clock; each test rethrows its scenario's outcome.
+// This gate runs a fixture in a fresh Bun process in a sandbox without the optional storage drivers,
+// which takes seconds on a loaded host. The scenario below runs at module scope, off Bun's
+// per-test clock; its test rethrows the scenario's outcome.
 
 /**
- * Regression coverage for COR-1230: the mirror's consumer smoke test failed
- * importing `@lostgradient/weft`'s `.` and `./storage/resolve` entry points
- * with "Cannot find module '@libsql/client/web'" — a package declared only
- * as an optional peer dependency. The cause was `storage/turso.ts` importing
- * `@libsql/client/web` at module top level, so anything that merely
- * *imported* `resolve.ts` (or `index.ts`, which re-exports every backend)
- * pulled in Turso's driver whether or not Turso was ever selected.
+ * Regression coverage for COR-1230: the mirror's consumer smoke test failed importing
+ * `@lostgradient/weft` with "Cannot find module '@libsql/client/web'", a package declared only as
+ * an optional peer dependency. The cause was `storage/turso.ts` importing `@libsql/client/web` at
+ * module top level, so anything that merely imported it (or `index.ts`, which re-exports every
+ * backend) pulled in Turso's driver whether or not Turso was ever used.
  *
- * Each gate spawns a fresh Bun process with every optional storage-driver
- * peer dependency (`@libsql/client`, `@neondatabase/serverless`,
- * `better-sqlite3`, `lmdb`, `pg`) actually renamed out of `node_modules` for
- * the duration of the run, so it fails the exact same way a real consumer
- * without those peers installed would — the same shape of failure the
- * mirror's smoke test hit.
+ * The gate spawns a fresh Bun process in a sandbox whose `node_modules` lacks every optional
+ * storage-driver peer dependency (`@libsql/client`, `@neondatabase/serverless`, `better-sqlite3`,
+ * `lmdb`, `pg`), so it fails the exact same way a real consumer without those peers installed
+ * would. Constructing `TursoStorage` must succeed there; only its first operation may need the
+ * driver.
  */
-const scenario1 = await outcomeOf(async () => {
-  const { exitCode, stderr } = await runFixture(
-    'src/storage/resolve-without-optional-drivers-fixture.ts',
-  );
-  if (exitCode !== 0) {
-    throw new Error(
-      `resolve-without-optional-drivers fixture failed (exit ${exitCode}).\nstderr:\n${stderr}`,
-    );
-  }
-  expect(exitCode).toBe(0);
-});
-
-const scenario2 = await outcomeOf(async () => {
+const tursoDriverDeferred = await outcomeOf(async () => {
   const { exitCode, stderr } = await runFixture('src/storage/turso-driver-deferred-fixture.ts');
   if (exitCode !== 0) {
     throw new Error(`turso-driver-deferred fixture failed (exit ${exitCode}).\nstderr:\n${stderr}`);
@@ -68,12 +53,9 @@ const scenario2 = await outcomeOf(async () => {
   expect(exitCode).toBe(0);
 });
 
-describe('storage/resolve (optional-driver subprocess gates)', () => {
-  it('resolves the memory backend when no optional storage driver is installed', () =>
-    rethrow(scenario1));
-
+describe('storage/turso (optional-driver subprocess gate)', () => {
   it("defers Turso's driver import to first use rather than construction", () =>
-    rethrow(scenario2));
+    rethrow(tursoDriverDeferred));
 
   it('links every dependency but the optional drivers into a sandbox it removes afterwards', async () => {
     const seen = await withOptionalStorageDriversAbsent(weftRoot, async (sandboxRoot) => ({
@@ -82,7 +64,7 @@ describe('storage/resolve (optional-driver subprocess gates)', () => {
         existsSync(join(sandboxRoot, 'node_modules', entry)),
       ),
       zod: existsSync(join(sandboxRoot, 'node_modules', 'zod', 'package.json')),
-      source: existsSync(join(sandboxRoot, 'src', 'storage', 'resolve.ts')),
+      source: existsSync(join(sandboxRoot, 'src', 'storage', 'turso.ts')),
     }));
     expect(seen.drivers).toEqual([]);
     expect(seen.zod).toBe(true);

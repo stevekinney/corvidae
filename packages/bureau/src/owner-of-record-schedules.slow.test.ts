@@ -17,6 +17,7 @@ import { describe, expect, it } from 'bun:test';
 import { createBureau } from './create-bureau';
 import type { AgentDefinitions } from './agent-catalog';
 import { waitUntil } from '@lostgradient/testing/wait-until';
+import { MemoryStorage } from '@lostgradient/storage';
 
 // A schedule fire is driven by Weft's poller on real elapsed time, which is why
 // this file is a slow lane: nothing here can run faster than the schedule's
@@ -38,7 +39,7 @@ async function openBureau() {
         stopWhen: stopWhen.noToolCalls(),
       }),
     },
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
   });
 }
@@ -231,7 +232,7 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     try {

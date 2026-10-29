@@ -326,24 +326,6 @@ const COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer('COVERAGE_ALLOWANCE_OVE
     },
   ],
   [
-    'src/storage/auto.ts',
-    {
-      reason:
-        'Driver and runtime-specific behavior cannot be attributed in the default Bun LCOV process; fresh coverage confirms only these residual misses. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption): upstream’s coordinates no longer matched corvidae’s file.',
-      lines: new Set([109]),
-      requireUncoveredLines: true,
-    },
-  ],
-  [
-    'src/storage/resolve.ts',
-    {
-      reason:
-        'Driver and runtime-specific behavior cannot be attributed in the default Bun LCOV process; fresh coverage confirms only these residual misses. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption), superseding the prior WFT-138 re-derivation: upstream’s coordinates no longer matched corvidae’s file.',
-      lines: new Set([93, 101]),
-      requireUncoveredLines: true,
-    },
-  ],
-  [
     'src/storage/web-extension.ts',
     {
       reason:

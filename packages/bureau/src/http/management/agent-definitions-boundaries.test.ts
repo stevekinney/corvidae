@@ -27,6 +27,7 @@ import {
 import { rpc } from './management-fixtures.test-support.ts';
 import { readFile } from 'node:fs/promises';
 import { createMemoryAssetStorage } from '../../assets/storage';
+import { MemoryStorage } from '@lostgradient/storage';
 
 afterEach(disposeServed);
 
@@ -124,7 +125,7 @@ describe('a code-defined key', () => {
           generate: async () => ({ content: 'a', toolCalls: [] }),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
     });
     try {
       const handler = createBureauHandler(bureau, { unauthenticatedAccess: 'allow' });

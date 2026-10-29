@@ -10,6 +10,7 @@ import { type AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { OPUS_5, OPUS_5_5 } from './testing/model-override.test-support';
 import type { Bureau } from './types';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const bureaus: Bureau[] = [];
 
@@ -27,7 +28,7 @@ async function open(): Promise<Bureau> {
       }),
       opaque: createAgent({ generate: createMockGenerate([]), name: 'opaque' }),
     },
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
   });
   bureaus.push(bureau);
   return bureau;

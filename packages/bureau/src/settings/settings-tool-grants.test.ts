@@ -11,7 +11,7 @@ import {
   stopWhen,
 } from '@lostgradient/operative';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
-import { encodeStorageKeyComponent } from '@lostgradient/storage';
+import { encodeStorageKeyComponent, MemoryStorage } from '@lostgradient/storage';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
@@ -77,7 +77,7 @@ describe('tool grants', () => {
     const offered: Offered = new Map();
     const bureau = await createBureau<AgentDefinitions>({
       agents: agentsFor(offered),
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     try {

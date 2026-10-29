@@ -8,6 +8,7 @@ import type { Bureau } from './types';
 import { createAgent } from '@lostgradient/operative';
 import type { AgentDefinitions } from './agent-catalog';
 import { waitUntil } from '@lostgradient/testing/wait-until';
+import { MemoryStorage } from '@lostgradient/storage';
 
 /**
  * COR-435 — mailbox-backed `submitSessionInput` admission, persistence, and
@@ -70,7 +71,7 @@ async function createDurableBureauWithRunningSession(
     agents: {
       default: createAgent({ generate: createHungGenerate(), toolbox: createEmptyToolbox() }),
     },
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
     ...overrides,
   });
@@ -247,7 +248,7 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
       agents: {
         default: createAgent({ generate: createHungGenerate(), toolbox: createEmptyToolbox() }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     try {
@@ -287,7 +288,7 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
       agents: {
         default: createAgent({ generate: createHungGenerate(), toolbox: createEmptyToolbox() }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     try {

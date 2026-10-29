@@ -1,7 +1,7 @@
 /**
  * Tests for `createDurableEventHistory` (AB-91's `ab91-01` slice, AB-310).
  *
- * Uses `resolveStorage({ type: 'memory' })` directly for the ordering/gap/
+ * Uses `new MemoryStorage()` directly for the ordering/gap/
  * validation tests — `MemoryStorage` implements the same `Storage` contract
  * `FleetEventFeed` requires (`conditionalBatch`), so no real backend is
  * needed to prove owner-filtering, cursor, and retention-floor logic. The
@@ -34,7 +34,7 @@ import {
   KEYS,
   resolveStorage,
 } from '@lostgradient/weft';
-import { type Storage } from '@lostgradient/storage';
+import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import {
@@ -64,7 +64,7 @@ import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-
 import type { Bureau, BureauDiagnostic } from './types';
 
 async function createMemoryStorage(): Promise<Storage> {
-  return resolveStorage({ type: 'memory' });
+  return new MemoryStorage();
 }
 
 /**

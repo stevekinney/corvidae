@@ -23,6 +23,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
 import { createBureau, createBureauHandler, createMemoryAssetStorage } from './index';
 import type { AgentDefinitions } from './agent-catalog';
+import { MemoryStorage } from '@lostgradient/storage';
 
 let databasePath = '';
 
@@ -250,7 +251,7 @@ async function servedBureau(generate: GenerateFunction, durable = false) {
       writer: createAgent({ name: 'writer', generate }),
       default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
     },
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     ...(durable ? { durable: true } : {}),
     assets: { storage: createMemoryAssetStorage() },
   });

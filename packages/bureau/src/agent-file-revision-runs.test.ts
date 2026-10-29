@@ -12,7 +12,7 @@ import {
   removeTemporaryPath,
 } from '@lostgradient/testing/temporary-path';
 import { resolveStorage } from '@lostgradient/weft';
-import { type Storage } from '@lostgradient/storage';
+import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { SESSION_AGENT_REVISION_METADATA_KEY } from './runtime-composition';
@@ -74,7 +74,7 @@ async function openDurable(
 
 describe('a run of a file agent', () => {
   it('records the revision it started with on its context, run after run', async () => {
-    const storage = await resolveStorage({ type: 'memory' });
+    const storage = new MemoryStorage();
     const harness = await openDurable(storage);
     await edit(harness, 'One.\n');
     await edit(harness, 'Two.\n');
@@ -106,7 +106,7 @@ describe('a run of a file agent', () => {
 
 describe('a run of a code-defined agent', () => {
   it('records the revision the agent was created with, and the catalog lists it', async () => {
-    const storage = await resolveStorage({ type: 'memory' });
+    const storage = new MemoryStorage();
     const harness = await openDurable(storage, {
       agents: {
         alpha: createAgent({

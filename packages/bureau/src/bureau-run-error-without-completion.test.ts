@@ -18,6 +18,7 @@ import { describe, expect, it, spyOn } from 'bun:test';
 
 import { createBureau } from './create-bureau';
 import type { AgentDefinitions } from './agent-catalog';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const ORIGIN = '2026-10-04T00:00:00.000Z';
 
@@ -106,7 +107,7 @@ describe('a durable run that fails and then loses its checkpoint compare-and-swa
       generateRejected = true;
       throw new Error('provider unavailable');
     };
-    const base = await resolveStorage({ type: 'memory' });
+    const base = new MemoryStorage();
     const race = loseFirstCheckpointCommitAfter(base, () => generateRejected);
     const bureau = await createBureau<AgentDefinitions>({
       agents: {

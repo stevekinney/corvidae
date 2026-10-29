@@ -31,6 +31,7 @@ import {
 } from './testing/goal-fixtures.test-support';
 import { bootOver } from './testing/goal-recovery-fixtures.test-support';
 import type { Bureau } from './types';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 let database: TestDatabase = createUnsetTestDatabase();
@@ -42,7 +43,7 @@ afterEach(async () => {
 
 async function boot(options: Parameters<typeof createBureau>[0]) {
   const bureau = await createBureau({
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
     onDiagnostic: createDiagnostics().onDiagnostic,
     ...options,

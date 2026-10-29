@@ -14,6 +14,7 @@ import {
   workerAgent,
 } from './testing/goal-fixtures.test-support';
 import type { Bureau } from './types';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const open: Bureau[] = [];
 
@@ -25,7 +26,7 @@ async function boot(): Promise<Bureau> {
   const bureau = await createBureau({
     agents: { worker: workerAgent(hangUntilAborted) },
     validators: [createCheckValidator()],
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
     onDiagnostic: createDiagnostics().onDiagnostic,
   });

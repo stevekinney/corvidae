@@ -11,7 +11,7 @@ import {
 import { createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
-import { encodeStorageKeyComponent, type Storage } from '@lostgradient/storage';
+import { encodeStorageKeyComponent, type Storage, MemoryStorage } from '@lostgradient/storage';
 import { resolveStorage } from '@lostgradient/weft';
 
 import { createBureau } from './create-bureau';
@@ -34,7 +34,7 @@ describe('a task’s own message history', () => {
         worker,
         default: createAgent({ generate: finishes, toolbox, stopWhen: stopWhen.noToolCalls() }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     try {
@@ -113,7 +113,7 @@ describe('a task’s own message history', () => {
       agents: {
         default: createAgent({ generate: finishes, toolbox, stopWhen: stopWhen.noToolCalls() }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       runtime,
       ...SHORT_TASK_RETENTION,
@@ -141,7 +141,7 @@ describe('a task’s own message history', () => {
       agents: {
         default: createAgent({ generate: finishes, toolbox, stopWhen: stopWhen.noToolCalls() }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       runtime,
       ...SHORT_TASK_RETENTION,

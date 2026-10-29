@@ -20,6 +20,7 @@ import { waitForCondition } from '../test';
 import { BUREAU_SCOPES } from './bureau-scopes.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
 import type { AgentDefinitions } from '../agent-catalog';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 const API_KEY = 'handler-test-key';
@@ -55,7 +56,7 @@ async function buildBureau(
     ...(options.id === undefined ? {} : { id: options.id }),
     agents: { ...agents, default: createAgent({ generate }) },
     ...(options.persist === true || options.durable === true
-      ? { storage: { type: 'memory' as const } }
+      ? { storage: new MemoryStorage() }
       : {}),
     ...(options.durable === true ? { durable: true } : {}),
     // The handler serves the asset operations, so it needs the service behind them.

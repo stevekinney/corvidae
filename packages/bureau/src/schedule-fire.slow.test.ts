@@ -36,6 +36,7 @@ import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/
 import { createBureau } from './create-bureau';
 import type { AgentDefinitions } from './agent-catalog';
 import { waitUntil } from '@lostgradient/testing/wait-until';
+import { MemoryStorage } from '@lostgradient/storage';
 
 /** Real-wall-clock poll — `engine.schedule` ticks fire on actual elapsed time. */
 async function waitForReal(condition: () => boolean | Promise<boolean>): Promise<true> {
@@ -89,7 +90,7 @@ describe('D6 scheduled-fire path (#109)', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -135,7 +136,7 @@ describe('D6 scheduled-fire path (#109)', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -330,7 +331,7 @@ describe('D6 scheduled-fire path (#109)', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -375,7 +376,7 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -418,7 +419,7 @@ describe('AB-223: schedule definition and fire-terminal lifecycle events', () =>
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 

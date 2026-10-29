@@ -21,7 +21,7 @@ import {
 } from '@lostgradient/operative';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createConversationHistory } from 'conversationalist';
-import { encodeStorageKeyComponent } from '@lostgradient/storage';
+import { encodeStorageKeyComponent, MemoryStorage } from '@lostgradient/storage';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it, spyOn } from 'bun:test';
 
@@ -65,7 +65,7 @@ async function durableEnginePrototype() {
   const probe = await createRuntimeComposition({
     generate: () => new Promise<never>(() => {}),
     toolbox: createToolbox([]),
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
   });
   const prototype = Object.getPrototypeOf(probe.durable!.engine) as {

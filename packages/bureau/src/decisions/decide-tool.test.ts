@@ -18,6 +18,7 @@ import { runTask } from '../test/index.ts';
 import type { Bureau, BureauOptions } from '../types.ts';
 import { createDecideToolbox, type DecideToolResult } from './decide-tool.ts';
 import type { DecisionSource } from './types.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 afterEach(async () => {
@@ -72,7 +73,7 @@ async function open(
 ): Promise<Bureau<AgentDefinitions>> {
   const bureau = await createBureau<AgentDefinitions>({
     agents,
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
     ...options,
   });

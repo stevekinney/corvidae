@@ -114,7 +114,7 @@ async function open(options: { memory?: GovernedMemory | null } = {}) {
     agents: {
       assistant: createAgent({ generate: recording() }),
     },
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: false,
     // The handler serves the asset operations too, so it needs an asset service.
     assets: { storage: createMemoryAssetStorage() },
@@ -352,7 +352,7 @@ describe('the scopes bureau.memory:read and bureau.memory:write', () => {
       agents: {
         assistant: createAgent({ generate: recording() }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: false,
       assets: { storage: createMemoryAssetStorage() },
       memory,

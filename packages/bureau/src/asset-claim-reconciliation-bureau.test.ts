@@ -36,6 +36,7 @@ import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, aliceAdministrator, pngBytes } from './testing/asset-fixtures.test-support';
 import type { Bureau } from './types';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -213,7 +214,7 @@ describe('a session deleted while its claims are being taken', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: false,
       runtime,
       assets: { storage: fixture.storage, policy: { defaultRetentionMilliseconds: 1_000 } },

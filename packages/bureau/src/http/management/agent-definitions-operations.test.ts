@@ -37,6 +37,7 @@ import {
 import { rpc } from './management-fixtures.test-support.ts';
 import { createMemoryAssetStorage } from '../../assets/storage';
 import { runTask } from '../../test';
+import { MemoryStorage } from '@lostgradient/storage';
 
 afterEach(disposeServed);
 
@@ -723,7 +724,7 @@ describe('faults', () => {
       assets: { storage: createMemoryAssetStorage() },
       id: 'no-directory',
       agents: {},
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
     });
     try {
       const handler = createBureauHandler(bureau, { unauthenticatedAccess: 'allow' });

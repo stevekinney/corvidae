@@ -21,6 +21,7 @@ import { principalFromApiKey } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau, createBureauHandler, createMemoryAssetStorage } from './index';
+import { MemoryStorage } from '@lostgradient/storage';
 
 /** What the example's `console` records, in order. */
 type Recorder = { log(...values: unknown[]): void };
@@ -46,7 +47,7 @@ async function example(console: Recorder): Promise<void> {
       watcher: createAgent({ name: 'watcher', description: 'Watches a feed.', generate: watch }),
       private: createAgent({ name: 'private', generate: summarize }),
     },
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true, // A2A needs a durable engine: every send creates its task through it
     assets: { storage: createMemoryAssetStorage() },
   });

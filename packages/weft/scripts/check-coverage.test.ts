@@ -1166,8 +1166,6 @@ describe('requireUncoveredLines on corvidae-authored allowances', () => {
     'src/server/json-rpc-websocket.ts',
     'src/server/operation-catalog/workflow-adapter.ts',
     'src/server/runtime/websocket-worker.ts',
-    'src/storage/auto.ts',
-    'src/storage/resolve.ts',
     'src/storage/turso.ts',
     'src/testing/worker-fault-injection.test-support.ts',
     // `src/server/operations/get-task-detail.ts` and

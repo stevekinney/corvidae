@@ -60,6 +60,7 @@ import {
 } from './testing/goal-fixtures.test-support';
 import { inspect } from './testing/goal-recovery-fixtures.test-support';
 import type { Bureau, BureauDiagnostic } from './types';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -205,7 +206,7 @@ async function releasedHolders(bureau: Bureau, assetId: string, runId: string): 
   }, `run "${runId}" never released its claim on asset "${assetId}"`);
 }
 
-const durableEngine = { storage: { type: 'memory' as const }, durable: true };
+const durableEngine = { storage: new MemoryStorage(), durable: true };
 
 async function storageDirectory(): Promise<{
   readonly storage: { type: 'sqlite'; path: string };
@@ -357,7 +358,7 @@ describe.each([
     const options: Parameters<typeof createBureau>[0] = {
       agents: { worker },
       validators: [validator],
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       assets: { storage: fixture.storage, policy: { defaultRetentionMilliseconds: 0 } },
       onDiagnostic: () => undefined,
@@ -461,7 +462,7 @@ describe('a goal whose session is deleted before the hand-over claims for it', (
     const bureau = await createBureau<AgentDefinitions>({
       agents: { worker },
       validators: [validator],
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       assets: { storage: fixture.storage, policy: { defaultRetentionMilliseconds: 0 } },
       onDiagnostic: () => undefined,

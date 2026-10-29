@@ -57,7 +57,7 @@ async function openBureau(generate: GenerateFunction): Promise<Bureau> {
         stopWhen: stopWhen.noToolCalls(),
       }),
     },
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
   });
 }

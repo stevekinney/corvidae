@@ -25,7 +25,7 @@ import {
   type AuthorizationScope,
   resolveStorage,
 } from '@lostgradient/weft';
-import { type Storage } from '@lostgradient/storage';
+import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { createToolbox, type Toolbox } from 'armorer';
 import type { RunAgentInput } from '@ag-ui/core';
 
@@ -205,7 +205,7 @@ async function build(
           options.stopWhen ?? stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
       }),
     },
-    storage: seam?.storage ?? fixture?.configuration ?? { type: 'memory' },
+    storage: seam?.storage ?? fixture?.configuration ?? new MemoryStorage(),
     durable: true,
     // The handler serves the asset operations and the content route, so it needs the service.
     assets: { storage: createMemoryAssetStorage() },

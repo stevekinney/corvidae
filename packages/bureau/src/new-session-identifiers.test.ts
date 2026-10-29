@@ -44,7 +44,7 @@ async function boot() {
       }),
     },
     validators: [createCheckValidator()],
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
     onDiagnostic: createDiagnostics().onDiagnostic,
   });

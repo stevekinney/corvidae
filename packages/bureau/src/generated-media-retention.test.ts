@@ -27,6 +27,7 @@ import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, base64Of, pngBytes } from './testing/asset-fixtures.test-support';
 import { startTaskFrom } from './test/task-start-request.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -70,7 +71,7 @@ async function openBureau() {
   cleanups.push(() => fixture.dispose());
   const bureau = await createBureau({
     agents: { painter },
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: false,
     runtime,
     assets: { storage: fixture.storage, policy: { defaultRetentionMilliseconds: 1_000 } },

@@ -23,6 +23,7 @@ import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { humanWaitDeliveryId } from './run-human-waits';
 import type { Bureau, BureauOptions, PendingReview } from './types';
 import { waitUntil } from '@lostgradient/testing/wait-until';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const databasePaths: string[] = [];
@@ -89,7 +90,7 @@ async function start(
 ): Promise<Bureau<AgentDefinitions>> {
   const bureau = await createBureau<AgentDefinitions>({
     agents: { ...agents },
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
     ...options,
   });

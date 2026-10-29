@@ -6,6 +6,7 @@ import type { AgUiOptions } from './ag-ui-mount.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
 import { createMemoryAssetStorage } from '../assets/storage';
 import type { AgentDefinitions } from '../agent-catalog';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const AGENT_NAME = 'assistant';
 const THREAD_ID = 'thread-named-option';
@@ -21,7 +22,7 @@ async function buildBureau(options: { durable: boolean }) {
       [AGENT_NAME]: createAgent({ generate, name: AGENT_NAME }),
       default: createAgent({ generate }),
     },
-    ...(options.durable ? { storage: { type: 'memory' as const }, durable: true } : {}),
+    ...(options.durable ? { storage: new MemoryStorage(), durable: true } : {}),
   });
 }
 
@@ -88,7 +89,7 @@ describe('the agUi option on createBureauHandler', () => {
           },
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     try {

@@ -6,6 +6,7 @@ import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { deferred } from './test/session-input-fixtures';
 import { startTaskFrom } from './test/task-start-request.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 
 /**
  * COR-1661 — an input names the incarnation of the session it was checked against. A context
@@ -50,7 +51,7 @@ async function open(generate: () => Promise<{ content: string; toolCalls: never[
         stopWhen: stopWhen.noToolCalls(),
       }),
     },
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
   });
 }

@@ -17,6 +17,7 @@ import { runTask, waitForTaskState } from './test';
 import { withResolvedOptions } from './testing/named-agent.test-support';
 import type { Bureau } from './types';
 import { waitUntil } from '@lostgradient/testing/wait-until';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const databasePaths: string[] = [];
@@ -71,7 +72,7 @@ describe('a named agent’s structured output on a session run', () => {
         viaRun: structuredAgent(malformedThenValid(viaRun)),
         viaSession: structuredAgent(sessionGenerate),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: false,
     });
     bureaus.push(bureau);

@@ -49,6 +49,7 @@ import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import type { AgentDefinitions } from './agent-catalog';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const runtime = createDefaultRuntimeServices();
 
@@ -104,7 +105,7 @@ describe('requestHumanInput park is observable on a fresh dispatch (AB-336)', ()
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       // Deliberately NOT `stopWhen.toolCalled('requestHumanInput')` — every
       // pre-existing test in create-bureau.test.ts uses that condition,
@@ -189,7 +190,7 @@ describe('requestHumanInput park is observable on a fresh dispatch (AB-336)', ()
           stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       // `toolCalled` stops the FIRST step right on the park request (so the
       // post-loop park check sees `pendingHumanWait`); `noToolCalls` stops
@@ -995,7 +996,7 @@ describe("combineToolboxes forwards the base toolbox's approval gating to a huma
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -1051,7 +1052,7 @@ describe("combineToolboxes forwards the base toolbox's approval gating to a huma
           stopWhen: stopWhen.toolOutcome('action_required'),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -1147,7 +1148,7 @@ describe('the first park request in a step is honored and the rest are refused (
           ),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       maintenance: 'manual',
     });

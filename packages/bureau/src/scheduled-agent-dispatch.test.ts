@@ -5,7 +5,7 @@
  */
 import { createAgent, createAgentSession, type GenerateFunction } from '@lostgradient/operative';
 import { decode, encode } from '@lostgradient/weft';
-import { encodeStorageKeyComponent } from '@lostgradient/storage';
+import { encodeStorageKeyComponent, MemoryStorage } from '@lostgradient/storage';
 import { Database } from 'bun:sqlite';
 import { createConversationHistory } from 'conversationalist';
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -257,7 +257,7 @@ describe('a session or recovered run stored under the implicit "bureau" agent', 
     const worker = answering('never');
     const bureau = await createBureau<AgentDefinitions>({
       agents: { worker: createAgent({ generate: worker.generate }) },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
     });
     bureaus.push(bureau);
     await bureau.internals.sessionStore!.save(
@@ -280,7 +280,7 @@ describe('a session or recovered run stored under the implicit "bureau" agent', 
   it('fails cleanly on recovery: the run is unavailable and its session is reconciled to error', async () => {
     const diagnostics: string[] = [];
     const runtime = await createRuntimeComposition({
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       onDiagnostic: (event) => diagnostics.push(event.message),
     });

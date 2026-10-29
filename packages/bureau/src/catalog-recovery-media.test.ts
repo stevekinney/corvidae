@@ -4,6 +4,7 @@ import { describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
 
 import { createRuntimeComposition } from './runtime-composition';
+import { MemoryStorage } from '@lostgradient/storage';
 
 describe('a recovered catalog run with part input (COR-716)', () => {
   it('is recoverable, and is given the resolver and unverified-asset policy of its recorded principal', async () => {
@@ -11,7 +12,7 @@ describe('a recovered catalog run with part input (COR-716)', () => {
     const resolver = async () => ({ outcome: 'unavailable' as const, reason: 'probe' });
     const runtime = await createRuntimeComposition(
       {
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
         guardrails: { input: { detectors: [], assetSafety: { unknown: 'block' } } },
       },

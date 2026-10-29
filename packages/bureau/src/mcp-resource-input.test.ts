@@ -16,6 +16,7 @@ import type { AgentDefinitions } from './agent-catalog';
 import { BureauError, createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice } from './testing/asset-fixtures.test-support';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -52,7 +53,7 @@ async function open() {
       reads.push(`${resource.serverId} ${resource.uri}`);
       return { data: 'x', encoding: 'utf8' };
     },
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
   });
   cleanups.push(async () => {

@@ -23,6 +23,7 @@ import { z } from 'zod';
 import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, base64Of, bob, pngBytes } from './testing/asset-fixtures.test-support';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -79,7 +80,7 @@ describe.each([false, true])('a tool-returned image through Bureau (durable: %p)
     const bureau = await createBureau({
       agents: { photographer: photographer(seen) },
       assets: { storage: fixture.storage },
-      ...(durable ? { storage: { type: 'memory' as const }, durable: true } : {}),
+      ...(durable ? { storage: new MemoryStorage(), durable: true } : {}),
     });
     cleanups.push(async () => {
       await bureau.dispose();
@@ -164,7 +165,7 @@ describe('a tool-returned image through an approved review', () => {
         }),
       },
       assets: { storage: fixture.storage },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: false,
     });
     cleanups.push(async () => {

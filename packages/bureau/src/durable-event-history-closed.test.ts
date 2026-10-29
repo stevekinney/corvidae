@@ -4,15 +4,11 @@
  * and never for the subscriber's own `unsubscribe()` or an abort of its signal.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import {
-  createFleetEventFeed,
-  KEYS,
-  resolveStorage,
-  yieldToPortableEventLoop,
-} from '@lostgradient/weft';
+import { createFleetEventFeed, KEYS, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it, jest } from 'bun:test';
 
 import { createDurableEventHistory, type DurableEventHistory } from './durable-event-history';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -24,7 +20,7 @@ const owner = { kind: 'run', id: 'run-1' } as const;
 
 async function openHistory() {
   jest.useFakeTimers();
-  const storage = await resolveStorage({ type: 'memory' });
+  const storage = new MemoryStorage();
   const diagnostics: string[] = [];
   const history: DurableEventHistory = createDurableEventHistory(
     storage,

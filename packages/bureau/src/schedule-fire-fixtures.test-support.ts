@@ -6,7 +6,7 @@
 
 import { type GenerateContext, type GenerateFunction, type Toolbox } from '@lostgradient/operative';
 import { resolveStorage, yieldToPortableEventLoop } from '@lostgradient/weft';
-import { type Storage } from '@lostgradient/storage';
+import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
@@ -73,7 +73,7 @@ export function createScheduleFireHarness() {
     async open(options: Partial<BureauOptions> & DefaultAgentFields = {}): Promise<Bureau> {
       const bureau = await createBureau<AgentDefinitions>({
         id: 'schedule-fire-reviews-bureau',
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
         maintenance: 'manual',
         durableOwnership: { ownership: 'none' },

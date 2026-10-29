@@ -26,6 +26,7 @@ import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-s
 import { startFileBureau } from './testing/agent-file-bureau.test-support';
 import type { Bureau, BureauContexts } from './types';
 import { startTaskFrom } from './test/task-start-request.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -392,7 +393,7 @@ describe('a message that is not a branch point', () => {
           stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     cleanups.push(() => bureau.dispose());
@@ -667,7 +668,7 @@ describe('a parent whose model a policy profile chose', () => {
           },
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       modelPolicy: POLICY,
       ...(durable ? { durable: true } : {}),
     });
@@ -746,7 +747,7 @@ describe('a parent whose model a policy profile chose', () => {
           allowedCandidates: [OPUS_5_5, OPUS_5],
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       modelPolicy: POLICY,
     });
     cleanups.push(() => bureau.dispose());

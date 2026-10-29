@@ -25,6 +25,7 @@ import { createAssetGeneratedMediaAdmitter } from './assets/generated-media-admi
 import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, base64Of, bob, pngBytes } from './testing/asset-fixtures.test-support';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -83,7 +84,7 @@ async function openBureau(
       ...(options.policy === undefined ? {} : { policy: options.policy }),
       ...(options.ports === undefined ? {} : { ports: options.ports }),
     },
-    ...(options.durable ? { storage: { type: 'memory' as const }, durable: true } : {}),
+    ...(options.durable ? { storage: new MemoryStorage(), durable: true } : {}),
   });
   cleanups.push(async () => {
     await bureau.dispose();

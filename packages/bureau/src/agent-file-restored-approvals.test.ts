@@ -12,8 +12,7 @@ import {
   createModelCatalog,
   createSessionStore,
 } from '@lostgradient/operative';
-import { resolveStorage } from '@lostgradient/weft';
-import { textValueStore } from '@lostgradient/storage';
+import { textValueStore, MemoryStorage } from '@lostgradient/storage';
 import { createConversationHistory } from 'conversationalist';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -43,7 +42,7 @@ describe('a pending approval restored after a restart', () => {
         agentFileText({ model: KNOWN_MODEL }, 'Now.\n'),
       );
     }
-    const storage = await resolveStorage({ type: 'memory' });
+    const storage = new MemoryStorage();
     const kv = textValueStore(storage);
     const snapshots = createAgentSnapshotStore({
       store: kv,

@@ -190,7 +190,7 @@ describe('bureau.run takes its input as it was when called (COR-716)', () => {
       const seen: GenerateContext[] = [];
       const bureau = await createBureau({
         agents: { echo: createAgent({ generate: recordingGenerate(seen) }) },
-        ...(durable ? { storage: { type: 'memory' as const }, durable: true } : {}),
+        ...(durable ? { storage: new MemoryStorage(), durable: true } : {}),
       });
       cleanups.push(async () => {
         await bureau.dispose();
@@ -231,7 +231,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       assets: { storage: fixture.storage },
     });
@@ -300,7 +300,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
           guardrails: { input: { detectors: [], assetSafety: { unknown: 'allow' } } },
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       assets: { storage: fixture.storage },
     });
@@ -358,7 +358,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     cleanups.push(async () => {
@@ -398,7 +398,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
       agents: {
         default: createAgent({ generate: recordingGenerate(seen, hold.promise) }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     cleanups.push(async () => {

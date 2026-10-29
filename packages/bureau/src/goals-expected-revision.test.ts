@@ -29,7 +29,7 @@ async function boot(
   },
 ) {
   const bureau = await createBureau({
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
     ...options,
   });

@@ -11,7 +11,7 @@ import {
   principalFromApiKey,
   type StorageConfiguration,
 } from '@lostgradient/weft';
-import { type Storage } from '@lostgradient/storage';
+import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { HANG_GUARD_MILLISECONDS, afterAwakeTime } from '@lostgradient/testing/hang-guard';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { z } from 'zod';
@@ -292,7 +292,7 @@ export async function openBureau(
               : stopWhen.noToolCalls(),
       }),
     },
-    storage: options.storage ?? fixture?.configuration ?? { type: 'memory' },
+    storage: options.storage ?? fixture?.configuration ?? new MemoryStorage(),
     durable: true,
     assets: {
       storage: options.assetStorage ?? createMemoryAssetStorage(),

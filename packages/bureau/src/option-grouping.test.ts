@@ -70,7 +70,7 @@ describe('memory over storage needs an explicit id', () => {
 
   it('refuses memory over in-memory storage without an id, as the handler does for any storage', async () => {
     const failure = await rejectionOf(
-      createBureau({ storage: { type: 'memory' }, memory: governedMemory() }),
+      createBureau({ storage: new MemoryStorage(), memory: governedMemory() }),
     );
     expect((failure as BureauError).code).toBe('BAD_REQUEST');
   });

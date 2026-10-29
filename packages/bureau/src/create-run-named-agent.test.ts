@@ -82,7 +82,7 @@ async function start(
   options: Partial<BureauOptions<AgentDefinitions>> & { agents: AgentDefinitions },
 ): Promise<Bureau<AgentDefinitions>> {
   const bureau = await createBureau<AgentDefinitions>({
-    ...(options.storage === undefined ? { storage: { type: 'memory' }, durable: false } : {}),
+    ...(options.storage === undefined ? { storage: new MemoryStorage(), durable: false } : {}),
     ...options,
   });
   bureaus.push(bureau);
@@ -168,7 +168,7 @@ describe('tasks.start with a named agent', () => {
           toolbox: createToolbox([namedTool('bureau-tool')]),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
 
@@ -188,7 +188,7 @@ describe('tasks.start with a named agent', () => {
         alpha: createAgent({ generate: scripted('ok', optedOut) }),
         default: createAgent({ generate: scripted('wide'), toolbox: createToolbox([]) }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
       humanInput: false,
     });
@@ -405,7 +405,7 @@ describe('an agent named bureau', () => {
           stopWhen: stopWhen.noToolCalls(),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: false,
     });
 

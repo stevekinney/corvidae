@@ -22,6 +22,7 @@ import { createSqliteStorageFixture } from './test/storage-fixtures';
 import type { Bureau } from './types';
 import type { AgentDefinitions } from './agent-catalog';
 import { startTaskFrom } from './test/task-start-request.ts';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const ORIGIN = '2026-10-13T00:00:00.000Z';
 
@@ -58,7 +59,7 @@ describe('tasks.start appendMessages', () => {
           instructions: 'You are helpful.',
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: false,
     });
     try {
@@ -86,7 +87,7 @@ describe('tasks.start appendMessages', () => {
       agents: {
         default: createAgent({ generate: async () => ({ content: 'Done.', toolCalls: [] }) }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: false,
     });
     try {
@@ -132,7 +133,7 @@ describe('tasks.start appendMessages', () => {
       agents: {
         default: createAgent({ generate: async () => ({ content: 'Done.', toolCalls: [] }) }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: false,
     });
     try {

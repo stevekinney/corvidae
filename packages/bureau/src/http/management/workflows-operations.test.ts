@@ -17,6 +17,7 @@ import { rpc, type RpcBody } from './management-fixtures.test-support.ts';
 import { ownerRpc, type Served, serveWorkflows } from './workflows-fixtures.test-support.ts';
 import { bureauWorkflowsOperations } from './workflows-operations.ts';
 import { createMemoryAssetStorage } from '../../assets/storage';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -635,7 +636,7 @@ describe('faults', () => {
       assets: { storage: createMemoryAssetStorage() },
       id: 'no-workflows',
       agents: {},
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       durable: true,
     });
     cleanups.push(() => bureau.dispose());

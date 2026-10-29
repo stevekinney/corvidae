@@ -42,7 +42,7 @@ async function boot(): Promise<Bureau> {
       }),
     },
     validators: [createCheckValidator()],
-    storage: { type: 'memory' },
+    storage: new MemoryStorage(),
     durable: true,
     onDiagnostic: createDiagnostics().onDiagnostic,
   });

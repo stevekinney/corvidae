@@ -177,7 +177,6 @@ export type {
   SequencedEventEnvelope,
 } from './server/workflow-event-feed.ts';
 export * from './service-worker/index.ts';
-export * from './storage/auto.ts';
 export { BunSQLiteStorage } from './storage/bun-sql.ts';
 export * from './storage/cloudflare.ts';
 export { CompressedStorage } from './storage/compressed-storage.ts';
@@ -188,7 +187,6 @@ export * from './storage/lmdb.ts';
 export * from './storage/neon.ts';
 export { NodeSQLiteStorage } from './storage/node-sqlite.ts';
 export * from './storage/postgres.ts';
-export * from './storage/resolve.ts';
 export * from './storage/turso.ts';
 export { jsonCodec, msgpackCodec, withCodec } from './storage/typed-storage.ts';
 export type {

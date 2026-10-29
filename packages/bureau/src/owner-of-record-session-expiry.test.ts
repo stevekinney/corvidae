@@ -21,6 +21,7 @@ import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { AgentDefinitions } from './agent-catalog';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 const ALICE = 'api-key:alice';
@@ -334,7 +335,7 @@ describe('a run whose session expired and was recreated while it ran (COR-718)',
         agents: {
           default: createAgent({ generate, stopWhen: stopWhen.noToolCalls() }),
         },
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: false,
       }),
     );

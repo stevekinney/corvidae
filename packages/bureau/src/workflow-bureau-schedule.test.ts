@@ -17,6 +17,7 @@ import {
   type WorkflowBureauHarness,
 } from './testing/workflow-bureau.test-support';
 import { createAgent } from '@lostgradient/operative';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -202,7 +203,7 @@ describe('the engine’s scheduler', () => {
     try {
       const bureau = await createBureau({
         agents: {},
-        storage: { type: 'memory' },
+        storage: new MemoryStorage(),
         durable: true,
       });
       cleanups.push(() => bureau.dispose());

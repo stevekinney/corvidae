@@ -21,6 +21,7 @@ import { fireOnce, pollUntil, reviewOf } from './schedule-fire-fixtures.test-sup
 import { scheduledFireHoldings, scheduledFireReviewStateOf } from './scheduled-fire-review-state';
 import type { Bureau } from './types';
 import type { AgentDefinitions } from './agent-catalog';
+import { MemoryStorage } from '@lostgradient/storage';
 
 const bureaus: Bureau[] = [];
 const paths: string[] = [];
@@ -171,7 +172,7 @@ describe('expired review state of a Bureau with no maintenance timer of its own'
           stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       runtime,
     });
     bureaus.push(bureau);
@@ -212,7 +213,7 @@ describe('expired review state of a Bureau with no maintenance timer of its own'
           stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       runtime,
     });
     bureaus.push(bureau);
@@ -270,7 +271,7 @@ describe('expired review state of a Bureau with no maintenance timer of its own'
           stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
         }),
       },
-      storage: { type: 'memory' },
+      storage: new MemoryStorage(),
       runtime,
     });
     bureaus.push(bureau);
