@@ -542,6 +542,20 @@
         "typescript": "catalog:",
       },
     },
+    "packages/storage-turso": {
+      "name": "@lostgradient/storage-turso",
+      "dependencies": {
+        "@libsql/client": "catalog:",
+        "@lostgradient/storage": "workspace:*",
+      },
+      "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/ventriloquist": {
       "name": "@lostgradient/ventriloquist",
       "devDependencies": {
@@ -561,7 +575,6 @@
         "weft-mcp": "src/cli-mcp.ts",
       },
       "dependencies": {
-        "@libsql/client": "catalog:",
         "@lostgradient/environmentalist": "catalog:",
         "@lostgradient/storage": "workspace:*",
         "@lostgradient/storage-bun-sqlite": "workspace:*",
@@ -944,6 +957,8 @@
     "@lostgradient/storage-neon": ["@lostgradient/storage-neon@workspace:packages/storage-neon"],
 
     "@lostgradient/storage-postgres": ["@lostgradient/storage-postgres@workspace:packages/storage-postgres"],
+
+    "@lostgradient/storage-turso": ["@lostgradient/storage-turso@workspace:packages/storage-turso"],
 
     "@lostgradient/terminal": ["@lostgradient/terminal@workspace:components/terminal"],
 

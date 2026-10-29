@@ -39,12 +39,6 @@
           "types": "./dist/storage/node-sqlite.d.ts",
           "node": "./dist/storage/node-sqlite.js"
         },
-        "./storage/turso": {
-          "types": "./dist/storage/turso.d.ts",
-          "bun": "./dist/storage/turso.js",
-          "import": "./dist/storage/turso.js",
-          "default": "./dist/storage/turso.js"
-        },
         "./storage/cloudflare": {
           "types": "./dist/storage/cloudflare.d.ts",
           "import": "./dist/storage/cloudflare.js",

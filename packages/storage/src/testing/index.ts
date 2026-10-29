@@ -4,6 +4,7 @@
  *
  * @module storage/testing
  */
+export * from './conditional-batch.test-support.ts';
 export * from './disk-backed-fixture.test-support.ts';
 export * from './durability/adapter-spec.test-support.ts';
 export * from './durability/batch-atomicity.suite.test-support.ts';

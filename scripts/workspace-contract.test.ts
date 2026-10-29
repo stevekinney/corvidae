@@ -68,6 +68,7 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/storage-lmdb',
   '@lostgradient/storage-neon',
   '@lostgradient/storage-postgres',
+  '@lostgradient/storage-turso',
   '@lostgradient/testing',
   '@lostgradient/typescript',
   '@lostgradient/interborough',

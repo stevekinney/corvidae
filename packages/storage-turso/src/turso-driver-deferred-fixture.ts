@@ -9,7 +9,7 @@
  * from "the import was removed" — a `TursoStorage` that never threw at all
  * here would just mean nobody proved it still calls the driver.
  *
- * @module storage/turso-driver-deferred-fixture
+ * @module storage-turso/turso-driver-deferred-fixture
  */
 import { TursoStorage } from './turso.ts';
 

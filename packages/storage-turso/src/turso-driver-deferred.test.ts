@@ -12,10 +12,10 @@ import {
 
 import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 
-const weftRoot = import.meta.dir + '/../..';
+const tursoPackageRoot = import.meta.dir + '/..';
 
 async function runFixture(relativePath: string): Promise<{ exitCode: number; stderr: string }> {
-  return withOptionalStorageDriversAbsent(weftRoot, async (sandboxRoot) => {
+  return withOptionalStorageDriversAbsent(tursoPackageRoot, async (sandboxRoot) => {
     const proc = spawnWithHangGuard(['bun', relativePath], {
       cwd: sandboxRoot,
       stdout: 'pipe',
@@ -35,7 +35,7 @@ async function runFixture(relativePath: string): Promise<{ exitCode: number; std
 /**
  * Regression coverage for COR-1230: the mirror's consumer smoke test failed importing
  * `@lostgradient/weft` with "Cannot find module '@libsql/client/web'", a package declared only as
- * an optional peer dependency. The cause was `storage/turso.ts` importing `@libsql/client/web` at
+ * an optional peer dependency. The cause was `storage/turso.ts` (now `src/turso.ts` in this package) importing `@libsql/client/web` at
  * module top level, so anything that merely imported it (or `index.ts`, which re-exports every
  * backend) pulled in Turso's driver whether or not Turso was ever used.
  *
@@ -46,33 +46,33 @@ async function runFixture(relativePath: string): Promise<{ exitCode: number; std
  * driver.
  */
 const tursoDriverDeferred = await outcomeOf(async () => {
-  const { exitCode, stderr } = await runFixture('src/storage/turso-driver-deferred-fixture.ts');
+  const { exitCode, stderr } = await runFixture('src/turso-driver-deferred-fixture.ts');
   if (exitCode !== 0) {
     throw new Error(`turso-driver-deferred fixture failed (exit ${exitCode}).\nstderr:\n${stderr}`);
   }
   expect(exitCode).toBe(0);
 });
 
-describe('storage/turso (optional-driver subprocess gate)', () => {
+describe('storage-turso (optional-driver subprocess gate)', () => {
   it("defers Turso's driver import to first use rather than construction", () =>
     rethrow(tursoDriverDeferred));
 
   it('links every dependency but the optional drivers into a sandbox it removes afterwards', async () => {
     const installedDrivers = (): string[] =>
       OPTIONAL_STORAGE_DRIVER_ENTRIES.filter((entry) =>
-        existsSync(join(weftRoot, 'node_modules', entry)),
+        existsSync(join(tursoPackageRoot, 'node_modules', entry)),
       );
     const driversBefore = installedDrivers();
-    const seen = await withOptionalStorageDriversAbsent(weftRoot, async (sandboxRoot) => ({
+    const seen = await withOptionalStorageDriversAbsent(tursoPackageRoot, async (sandboxRoot) => ({
       sandboxRoot,
       drivers: OPTIONAL_STORAGE_DRIVER_ENTRIES.filter((entry) =>
         existsSync(join(sandboxRoot, 'node_modules', entry)),
       ),
-      zod: existsSync(join(sandboxRoot, 'node_modules', 'zod', 'package.json')),
-      source: existsSync(join(sandboxRoot, 'src', 'storage', 'turso.ts')),
+      storage: existsSync(join(sandboxRoot, 'node_modules', '@lostgradient', 'storage')),
+      source: existsSync(join(sandboxRoot, 'src', 'turso.ts')),
     }));
     expect(seen.drivers).toEqual([]);
-    expect(seen.zod).toBe(true);
+    expect(seen.storage).toBe(true);
     expect(seen.source).toBe(true);
     expect(existsSync(seen.sandboxRoot)).toBe(false);
     // The shared install the rest of the suite and a concurrent typecheck read is untouched.

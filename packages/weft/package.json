@@ -35,7 +35,6 @@
     "typecheck:fixtures": "tsc --noEmit -p src/cli/__fixtures__/codegen/typecheck/tsconfig.json"
   },
   "dependencies": {
-    "@libsql/client": "catalog:",
     "@msgpack/msgpack": "catalog:",
     "@noble/hashes": "catalog:",
     "@valibot/to-json-schema": "catalog:",
