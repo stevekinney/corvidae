@@ -11,7 +11,11 @@ import {
   sweepRetention,
 } from './governed-administration';
 import { deleteLocated, forget } from './governed-forgetting';
-import type { CreateGovernedMemoryOptions, GovernedMemory } from './governed-memory-types';
+import type {
+  CreateGovernedMemoryOptions,
+  GovernedMemory,
+  MemoryGovernanceNotification,
+} from './governed-memory-types';
 import { exportRecords, getRecord, listRecords, searchRecords } from './governed-reads';
 import { recallForModel } from './governed-recall';
 import {
@@ -24,6 +28,31 @@ import {
 import { admitWrite } from './governed-writes';
 
 /**
+ * Hands `notification` to each listener registered when delivery starts, in order. A listener that
+ * throws, or returns a promise that rejects, is reported and skipped over: the governed call that
+ * raised the notification has already committed, and a later listener still hears it.
+ */
+function notifyListeners(
+  listeners: ReadonlySet<(notification: MemoryGovernanceNotification) => unknown>,
+  notification: MemoryGovernanceNotification,
+): void {
+  for (const listener of Array.from(listeners)) {
+    // One removed by an earlier listener in this very delivery is not called.
+    if (!listeners.has(listener)) continue;
+    try {
+      const outcome = listener(notification);
+      if (outcome instanceof Promise) outcome.catch(reportListenerFailure);
+    } catch (error) {
+      reportListenerFailure(error);
+    }
+  }
+}
+
+function reportListenerFailure(error: unknown): void {
+  console.error('[memory] A governance listener threw:', error);
+}
+
+/**
  * Creates principal-aware, governed memory: the one surface Bureau, Agent,
  * child, tool, A2A, MCP, audit, and administrative projections use. Every
  * operation takes a {@link MemoryAuthority}, is decided by the shared resource
@@ -33,6 +62,7 @@ import { admitWrite } from './governed-writes';
  */
 export function createGovernedMemory(options: CreateGovernedMemoryOptions): GovernedMemory {
   const runtime = options.runtime ?? createDefaultRuntimeServices();
+  const listeners = new Set<(notification: MemoryGovernanceNotification) => unknown>();
   const policies = createPolicyHistory(() => context, options.policy);
   const context = createGovernanceContext({
     storage: options.storage,
@@ -42,7 +72,14 @@ export function createGovernedMemory(options: CreateGovernedMemoryOptions): Gove
     runtime,
     propagation: options.propagation ?? {},
     policy: () => policies.current(),
-    onEvent: options.onEvent,
+    onEvent: async (notification) => {
+      try {
+        await options.onEvent?.(notification);
+      } finally {
+        // The event is in the ledger whether or not `onEvent` took it, so subscribers hear it.
+        notifyListeners(listeners, notification);
+      }
+    },
   });
   const governance = context;
   const deletion = createDeletionEngine(governance);
@@ -50,6 +87,18 @@ export function createGovernedMemory(options: CreateGovernedMemoryOptions): Gove
   return {
     get policyRevision() {
       return policies.current().revision;
+    },
+    subscribe(listener) {
+      if (typeof listener !== 'function') {
+        throw new TypeError('GovernedMemory.subscribe requires a listener function.');
+      }
+      // A function registered twice is two registrations, each with its own unsubscribe.
+      const registration = (notification: MemoryGovernanceNotification): unknown =>
+        listener(notification);
+      listeners.add(registration);
+      return () => {
+        listeners.delete(registration);
+      };
     },
     async init() {
       await options.storage.init();
