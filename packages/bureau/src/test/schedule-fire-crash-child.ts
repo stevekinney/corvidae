@@ -24,7 +24,7 @@ import { createToolbox } from 'armorer';
 import { createBureau } from '../create-bureau';
 import { createAgent } from '@lostgradient/operative';
 import type { AgentDefinitions } from '../agent-catalog';
-import { LMDBStorage } from '@lostgradient/weft';
+import { LMDBStorage } from '@lostgradient/storage-lmdb';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 
 const [backend, storagePath, markerPath] = process.argv.slice(2);

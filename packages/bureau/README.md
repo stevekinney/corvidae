@@ -136,7 +136,7 @@ console.log(detail?.finishReason); // "stop-condition" | "maximum-steps" | …
 await bureau.dispose();
 ```
 
-Without `storage`, runs are ephemeral: nothing is persisted, and a crash loses in-flight work. Pass a persistent `Storage` you construct, such as `new BunSQLiteStorage(path)` or `new LMDBStorage(path)` from `@lostgradient/weft`, to get session persistence and, by default, durable crash-and-resume execution. Bureau never closes a storage it was given: close it after the Bureau shuts down.
+Without `storage`, runs are ephemeral: nothing is persisted, and a crash loses in-flight work. Pass a persistent `Storage` you construct, such as `new BunSQLiteStorage(path)` or `new LMDBStorage(path)` from `@lostgradient/storage-lmdb`, to get session persistence and, by default, durable crash-and-resume execution. Bureau never closes a storage it was given: close it after the Bureau shuts down.
 
 From here, [Tasks](#tasks-bureautasks) covers what a started task offers, [Contexts](#contexts-bureaucontexts) the conversations tasks run in, and [`BureauOptions`](#bureauoptions) everything `createBureau` accepts.
 

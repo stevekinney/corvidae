@@ -42,7 +42,6 @@
     "@noble/hashes": "catalog:",
     "@valibot/to-json-schema": "catalog:",
     "better-sqlite3": "catalog:",
-    "lmdb": "catalog:",
     "pg": "catalog:",
     "valibot": "catalog:",
     "zod": "catalog:",

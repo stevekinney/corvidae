@@ -187,7 +187,7 @@ API keys and `jwt` together share the single `bearer` scheme. `securityRequireme
 ```ts
 import type { AgentCard } from '@a2a-js/sdk';
 import { DefaultRequestHandler, type AgentExecutor } from '@a2a-js/sdk/server';
-import { LMDBStorage } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import {
   createA2AHandler,
   createWeftA2ATaskStore,
@@ -199,7 +199,7 @@ declare const agentCard: AgentCard;
 declare const executor: AgentExecutor;
 declare const pushNotificationSender: ConstructorParameters<typeof DefaultRequestHandler>[5];
 
-const storage = new LMDBStorage('./data/agents');
+const storage = new BunSQLiteStorage('./data/agents.sqlite');
 const taskStore = createWeftA2ATaskStore({ storage, namespace: 'support-agent' });
 const pushNotificationStore = createWeftPushNotificationStore({
   storage,
@@ -285,7 +285,8 @@ Push notifications go through a Weft `Outbox`, so a notification survives a rest
 ```ts
 import type { AgentCard } from '@a2a-js/sdk';
 import { DefaultRequestHandler, type AgentExecutor } from '@a2a-js/sdk/server';
-import { LMDBStorage, Outbox } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
+import { Outbox } from '@lostgradient/weft';
 import {
   createA2AHandler,
   createEgressPolicy,
@@ -301,7 +302,7 @@ import {
 declare const agentCard: AgentCard;
 declare const executor: AgentExecutor;
 
-const storage = new LMDBStorage('./data/agents');
+const storage = new BunSQLiteStorage('./data/agents.sqlite');
 const taskStore = createWeftA2ATaskStore({ storage, namespace: 'support-agent' });
 const pushStore = createWeftPushNotificationStore({ storage, namespace: 'support-agent' });
 
@@ -403,7 +404,8 @@ The deliveries are found by scanning every record the outbox retains, terminal o
 `createWorkflowAgentExecutor(options)` serves one registered Weft workflow as an A2A agent. Each A2A task is one workflow run, and its task identifier is the workflow identifier. It returns `{ agentCard, requestHandler, taskStore, idle, [Symbol.dispose] }`: pass the card and the request handler to `createA2AHandler`, call `taskStore.prune()` on a schedule, and dispose the agent when you stop serving it.
 
 ```ts
-import { Engine, LMDBStorage, Outbox, workflow, type WorkflowContext } from '@lostgradient/weft';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
+import { Engine, Outbox, workflow, type WorkflowContext } from '@lostgradient/weft';
 import {
   createA2AHandler,
   createEgressPolicy,
@@ -416,7 +418,7 @@ import {
   withRedactedPushConfigurations,
 } from '@lostgradient/weft/a2a';
 
-const storage = new LMDBStorage('./data/agents');
+const storage = new BunSQLiteStorage('./data/agents.sqlite');
 const engine = new Engine({ storage });
 engine.register(
   workflow({
