@@ -263,10 +263,25 @@ export {
   RUN_DURABLE_EVENT_TYPES,
   UnsupportedDurableEventSchemaVersionError,
 } from './durable-event-history';
-export type { BureauEventMap, RecoveredRunVerdict, RecoveryRejectionReason } from './events';
+export type {
+  BureauAssetEventKind,
+  BureauEventMap,
+  DefinitionSourceKind,
+  GoalEventKind,
+  RecoveredRunVerdict,
+  RecoveryRejectionReason,
+} from './events';
 export {
   ActionEvent,
+  AssetLifecycleEvent,
+  BUREAU_ASSET_EVENT_KINDS,
   BureauDisposedEvent,
+  DefinitionsChangedEvent,
+  DiagnosticEvent,
+  GOAL_EVENT_KINDS,
+  GoalLifecycleEvent,
+  ScheduleMissedEvent,
+  TaskCleanupAcknowledgedEvent,
   RecoveryAttemptedEvent,
   RecoveryLeaseReleasedEvent,
   RecoveryRejectedEvent,

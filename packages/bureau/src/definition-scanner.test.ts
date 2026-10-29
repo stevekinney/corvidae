@@ -30,6 +30,7 @@ function scannerOver(
     tooLarge: (id, _size, revision) => ({ id, hash: undefined, revision, text: '' }),
     unreadable: (id, _error, revision) => ({ id, hash: undefined, revision, text: '' }),
     sameSignature: (before, after) => before.hash === after.hash,
+    isRejected: (entry) => entry.text.startsWith('invalid'),
   });
   return { scanner, diagnostics, runtime };
 }
@@ -94,6 +95,36 @@ describe('reload', () => {
     memory.set('one', 'first');
     await scanner.reload();
     expect([...scanner.entries().keys()]).toEqual(['one']);
+    await scanner.close();
+  });
+});
+
+describe('a change report', () => {
+  it('names the added and changed identifiers whose definition is rejected now (COR-1721)', async () => {
+    const memory = createMemoryDefinitionSource('workflow');
+    memory.set('kept', 'valid');
+    memory.set('broken-later', 'valid');
+    memory.set('gone', 'valid');
+    const { scanner } = scannerOver(memory.source);
+    const changes: unknown[] = [];
+    scanner.onChange((change) => changes.push(change));
+    await scanner.refresh();
+
+    memory.set('broken-later', 'invalid now');
+    memory.set('fresh-invalid', 'invalid from the start');
+    memory.set('fresh-valid', 'valid');
+    memory.remove('gone');
+    await scanner.refresh();
+
+    expect(changes).toEqual([
+      { added: ['kept', 'broken-later', 'gone'], changed: [], removed: [], rejected: [] },
+      {
+        added: ['fresh-invalid', 'fresh-valid'],
+        changed: ['broken-later'],
+        removed: ['gone'],
+        rejected: ['fresh-invalid', 'broken-later'],
+      },
+    ]);
     await scanner.close();
   });
 });

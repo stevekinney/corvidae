@@ -13,6 +13,7 @@ import { MemoryStorage, resolveStorage, textValueStore } from '@lostgradient/wef
 import { describe, expect, it } from 'bun:test';
 
 import { createDurableEventHistory } from './durable-event-history';
+import type { GoalLifecycleEvent } from './events';
 import {
   createGoalEventRecorder,
   type GoalObservation,
@@ -624,5 +625,123 @@ describe('the goal event projection', () => {
         ['goal.failed', `${GOAL}:1`],
       ]);
     });
+  });
+});
+
+describe('live goal events (COR-1721)', () => {
+  async function liveSetup() {
+    const storage = await resolveStorage({ type: 'memory' });
+    const history = createDurableEventHistory(storage, createManualRuntimeServices());
+    const dispatched: GoalLifecycleEvent[] = [];
+    const diagnose = () => undefined;
+    // As `composeBureauGoals` builds them: the store's observer dispatches, the boot pass does not.
+    const observe = createGoalEventRecorder(history, diagnose, (event) => dispatched.push(event));
+    const boot = createGoalEventRecorder(history, diagnose);
+    const store = createGoalStore(textValueStore(new MemoryStorage()), { observe });
+    return { store, history, dispatched, boot };
+  }
+
+  it('dispatches each recorded event as it commits, with the recorded fields', async () => {
+    const { store, dispatched } = await liveSetup();
+    await store.create(newGoal());
+    await toEvaluating(store);
+    await store.applyTransition(
+      transition(3, 'failed', {
+        terminalReason: 'validator-infrastructure-error',
+        attempt: attempt(0, {
+          status: 'failed',
+          validation: validation({
+            kind: 'error',
+            error: {
+              kind: 'execute',
+              code: 'VALIDATOR_THREW',
+              message: 'MESSAGE-the-validator-threw',
+              cause: { secret: SECRET_CAUSE },
+            },
+          }),
+        }),
+        active: null,
+      }),
+    );
+
+    expect(dispatched.map((event) => [event.type, event.payload])).toEqual([
+      ['goal.started', { goalRunId: GOAL, goalIdentity: { name: 'ship-feature', version: '1' } }],
+      [
+        'goal.attempt.started',
+        {
+          goalRunId: GOAL,
+          attemptId: goalAttemptId(GOAL, 0),
+          attemptIndex: 0,
+          runId: goalAttemptRunId(GOAL, 0),
+        },
+      ],
+      [
+        'goal.attempt.validated',
+        {
+          goalRunId: GOAL,
+          attemptId: goalAttemptId(GOAL, 0),
+          validatorIdentity: VALIDATOR,
+          outcomeKind: 'error',
+        },
+      ],
+      [
+        'goal.failed',
+        {
+          goalRunId: GOAL,
+          terminalReason: 'validator-infrastructure-error',
+          validatorError: { kind: 'execute', code: 'VALIDATOR_THREW' },
+        },
+      ],
+    ]);
+    expect(dispatched.every((event) => event.goalRunId === GOAL)).toBe(true);
+    expect(JSON.stringify(dispatched.map((event) => event.payload))).not.toContain('MESSAGE-');
+  });
+
+  it('dispatches nothing for the created and replayed observations the boot pass makes', async () => {
+    const { store, dispatched, boot, history } = await liveSetup();
+    await store.create(newGoal());
+    await store.applyTransition(
+      transition(1, 'failed', { terminalReason: 'unsupported-validation' }),
+    );
+    const live = dispatched.length;
+    // A history that missed every write, as after a crash: the boot pass has work to do.
+    const repaired = createDurableEventHistory(
+      await resolveStorage({ type: 'memory' }),
+      createManualRuntimeServices(),
+    );
+    const repair = createGoalEventRecorder(repaired, () => undefined);
+
+    await projectGoalHistory(await store.list(), boot);
+    await projectGoalHistory(await store.list(), repair);
+
+    expect(live).toBe(2);
+    expect(dispatched).toHaveLength(live);
+    const page = await repaired.page({ kind: 'goal', id: GOAL });
+    if ('outcome' in page) throw new Error('unexpected gap');
+    expect(page.events.map((event) => event.kind)).toEqual(['goal.started', 'goal.failed']);
+    const original = await history.page({ kind: 'goal', id: GOAL });
+    if ('outcome' in original) throw new Error('unexpected gap');
+    expect(original.events).toHaveLength(2);
+  });
+
+  it('dispatches even when the history write fails, and needs no history at all', async () => {
+    const dispatched: string[] = [];
+    const diagnostics: BureauDiagnostic[] = [];
+    const failing = createGoalEventRecorder(
+      { record: () => Promise.reject(new Error('the history is unavailable')) },
+      (diagnostic) => diagnostics.push(diagnostic),
+      (event) => dispatched.push(event.type),
+    );
+    const historyless = createGoalEventRecorder(
+      undefined,
+      () => undefined,
+      (event) => dispatched.push(`historyless:${event.type}`),
+    );
+
+    await failing({ kind: 'created', record: newGoal() });
+    await historyless({ kind: 'created', record: newGoal() });
+
+    expect(dispatched).toEqual(['goal.started', 'historyless:goal.started']);
+    expect(diagnostics).toHaveLength(1);
   });
 });

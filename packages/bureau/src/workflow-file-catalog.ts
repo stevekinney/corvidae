@@ -195,6 +195,7 @@ export function createWorkflowFileCatalog(
     }),
     sameSignature: (before, after) =>
       before.hash === after.hash && before.problem?.code === after.problem?.code,
+    isRejected: (entry) => entry.problem !== undefined,
   });
 
   let tail: Promise<unknown> = Promise.resolve();

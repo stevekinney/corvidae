@@ -21,6 +21,8 @@ export interface DefinitionChange {
   readonly added: readonly string[];
   readonly changed: readonly string[];
   readonly removed: readonly string[];
+  /** Of `added` and `changed`, the identifiers whose definition is invalid now and cannot run. */
+  readonly rejected: readonly string[];
 }
 
 /** What every entry a catalog holds carries, so a rescan can tell whether a definition changed. */
@@ -69,6 +71,8 @@ export interface DefinitionScannerOptions<TEntry extends ScannedEntry> {
   readonly afterScan?: (() => void) | undefined;
   /** Whether a rescan found `after` to be a different definition state than `before`. */
   readonly sameSignature: (before: TEntry, after: TEntry) => boolean;
+  /** Whether an entry is a definition that cannot run; a change reports these as `rejected`. */
+  readonly isRejected: (entry: TEntry) => boolean;
 }
 
 export interface DefinitionScanner<TEntry extends ScannedEntry> {
@@ -138,11 +142,15 @@ export function createDefinitionScanner<TEntry extends ScannedEntry>(
       else if (!options.sameSignature(before, entry)) changed.push(id);
     }
     for (const id of entries.keys()) if (!next.has(id)) removed.push(id);
+    const rejected = [...added, ...changed].filter((id) => {
+      const entry = next.get(id);
+      return entry !== undefined && options.isRejected(entry);
+    });
     entries = new Map(next);
     if (added.length + changed.length + removed.length > 0) {
       for (const listener of listeners) {
         try {
-          listener({ added, changed, removed });
+          listener({ added, changed, removed, rejected });
         } catch (error) {
           options.diagnose(`A ${options.label} change listener threw.`, error);
         }

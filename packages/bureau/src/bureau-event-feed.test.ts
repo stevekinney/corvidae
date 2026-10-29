@@ -24,7 +24,13 @@ import {
 } from './bureau-event-feed.ts';
 import {
   ActionEvent,
+  AssetLifecycleEvent,
   BureauDisposedEvent,
+  DefinitionsChangedEvent,
+  DiagnosticEvent,
+  GoalLifecycleEvent,
+  ScheduleMissedEvent,
+  TaskCleanupAcknowledgedEvent,
   RunAbortSettledEvent,
   RecoveryRejectedEvent,
   ReviewApprovedEvent,
@@ -288,5 +294,163 @@ describe('bureau feed disposal', () => {
 
     expect(ended).toBe(true);
     expect(bureauFeed.signal.aborted).toBe(true);
+  });
+});
+
+describe('the COR-1721 event families on the feed', () => {
+  const payloadOf = (event: Event) => projectBureauEvent(event)?.payload;
+
+  it('projects every goal kind with the fields it records', () => {
+    expect(
+      payloadOf(
+        new GoalLifecycleEvent('goal.started', {
+          goalRunId: 'goal-1',
+          goalIdentity: { name: 'ship', version: '1' },
+        }),
+      ),
+    ).toEqual({ goalRunId: 'goal-1', goalIdentity: { name: 'ship', version: '1' } });
+    expect(
+      payloadOf(
+        new GoalLifecycleEvent('goal.attempt.started', {
+          goalRunId: 'goal-1',
+          attemptId: 'attempt-0',
+          attemptIndex: 0,
+          runId: 'run-0',
+        }),
+      ),
+    ).toEqual({ goalRunId: 'goal-1', attemptId: 'attempt-0', attemptIndex: 0, runId: 'run-0' });
+    expect(
+      payloadOf(
+        new GoalLifecycleEvent('goal.attempt.validated', {
+          goalRunId: 'goal-1',
+          attemptId: 'attempt-0',
+          validatorIdentity: { name: 'check', version: '1' },
+          outcomeKind: 'fail',
+          feedbackDigest: 'abc',
+        }),
+      ),
+    ).toEqual({
+      goalRunId: 'goal-1',
+      attemptId: 'attempt-0',
+      validatorIdentity: { name: 'check', version: '1' },
+      outcomeKind: 'fail',
+      feedbackDigest: 'abc',
+    });
+    for (const kind of ['goal.succeeded', 'goal.exhausted', 'goal.canceled'] as const) {
+      expect(
+        projectBureauEvent(
+          new GoalLifecycleEvent(kind, { goalRunId: 'goal-1', terminalReason: 'reason' }),
+        ),
+      ).toEqual({ kind, payload: { goalRunId: 'goal-1', terminalReason: 'reason' } });
+    }
+    expect(
+      payloadOf(
+        new GoalLifecycleEvent('goal.recovered', {
+          goalRunId: 'goal-1',
+          controllerRestarts: 2,
+          status: 'running',
+          transitionSeq: 4,
+        }),
+      ),
+    ).toEqual({ goalRunId: 'goal-1', controllerRestarts: 2, status: 'running', transitionSeq: 4 });
+  });
+
+  it('keeps a failed goal’s validator error kind and code and never its message', () => {
+    const event = new GoalLifecycleEvent('goal.failed', {
+      goalRunId: 'goal-1',
+      terminalReason: 'validator-infrastructure-error',
+      validatorError: { kind: 'execute', code: 'VALIDATOR_THREW', message: CANARY },
+      unexpected: CANARY,
+    });
+
+    expect(projectBureauEvent(event)).toEqual({
+      kind: 'goal.failed',
+      payload: {
+        goalRunId: 'goal-1',
+        terminalReason: 'validator-infrastructure-error',
+        validatorError: { kind: 'execute', code: 'VALIDATOR_THREW' },
+      },
+    });
+    expect(JSON.stringify(event.payload)).not.toContain(CANARY);
+  });
+
+  it('projects the forwarded asset kinds with the fields the asset event set', () => {
+    expect(
+      projectBureauEvent(
+        new AssetLifecycleEvent('asset.upload.started', {
+          sequence: 1,
+          at: '2026-10-28T00:00:00.000Z',
+          uploadId: 'upload-1',
+          principal: 'alice',
+        }),
+      ),
+    ).toEqual({
+      kind: 'asset.upload.started',
+      payload: {
+        sequence: 1,
+        at: '2026-10-28T00:00:00.000Z',
+        uploadId: 'upload-1',
+        principal: 'alice',
+      },
+    });
+    expect(
+      payloadOf(
+        new AssetLifecycleEvent('asset.blob.purged', { sequence: 2, at: 'a', digest: 'd' }),
+      ),
+    ).toEqual({ sequence: 2, at: 'a', digest: 'd' });
+    expect(
+      payloadOf(
+        new AssetLifecycleEvent('asset.upload.purged', { sequence: 3, at: 'a', uploadId: 'u' }),
+      ),
+    ).toEqual({ sequence: 3, at: 'a', uploadId: 'u' });
+    expect(
+      payloadOf(
+        new AssetLifecycleEvent('asset.expired', {
+          sequence: 4,
+          at: 'a',
+          assetId: 'asset-1',
+          revision: 2,
+          state: 'expired',
+          principal: 'alice',
+        }),
+      ),
+    ).toEqual({
+      sequence: 4,
+      at: 'a',
+      assetId: 'asset-1',
+      revision: 2,
+      state: 'expired',
+      principal: 'alice',
+    });
+  });
+
+  it('projects definitions, missed fires, cleanup acknowledgements, and diagnostics', () => {
+    expect(
+      projectBureauEvent(
+        new DefinitionsChangedEvent('agents', {
+          added: ['a'],
+          changed: ['b'],
+          removed: ['c'],
+          rejected: ['b'],
+        }),
+      ),
+    ).toEqual({
+      kind: 'definitions.changed',
+      payload: { source: 'agents', added: ['a'], changed: ['b'], removed: ['c'], rejected: ['b'] },
+    });
+    expect(projectBureauEvent(new ScheduleMissedEvent('schedule-1', 3, 100, 400))).toEqual({
+      kind: 'schedule.missed',
+      payload: { scheduleId: 'schedule-1', missedCount: 3, windowStart: 100, windowEnd: 400 },
+    });
+    expect(projectBureauEvent(new TaskCleanupAcknowledgedEvent('run-1', 'cleanup-failed'))).toEqual(
+      {
+        kind: 'task.cleanup-acknowledged',
+        payload: { taskId: 'run-1', cleanup: 'cleanup-failed' },
+      },
+    );
+    expect(projectBureauEvent(new DiagnosticEvent('error', 'event-feed'))).toEqual({
+      kind: 'diagnostic',
+      payload: { level: 'error', scope: 'event-feed' },
+    });
   });
 });

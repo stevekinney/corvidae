@@ -369,11 +369,20 @@ The Bureau also has four operations of its own, described under [The Bureau's ow
 | Member | Purpose |
 | --- | --- |
 | `recovery()`, `maintain(now?)`, `ownerOf(resource)`, `frames(listener)` | Wait for boot recovery, run a maintenance pass, look up an owner of record, and subscribe to live frames. |
-| `addEventListener`, `on`, `once`, `subscribe`, `toObservable`, `events` | The typed `BureauEventMap` surface for actions, run registration, committed settlement, and deletion, disposal, schedule lifecycle, recovery decisions, and non-pending review transitions. |
+| `addEventListener`, `on`, `once`, `subscribe`, `toObservable`, `events` | The typed `BureauEventMap` surface for actions, run registration, committed settlement, and deletion, disposal, schedule lifecycle and missed occurrences, recovery decisions, non-pending review transitions, goal transitions, upload and purge asset events, agent and workflow file changes, task cleanup acknowledgements, and diagnostics. |
 | `shutdown(options?)`, `dispose()` | The awaited drain, and its `Promise<void>` wrapper. |
 | `internals` | The seam `createBureauHandler` and the test harness read. Not part of the surface an application builds on. |
 
 `BureauEventMap` events for schedules carry the fired `runId`, recovery events carry the classification verdict or rejection reason, and review events carry identifiers and status metadata but never approval arguments, signal payloads, or decision reasons.
+
+COR-1721 adds six families, each published on `bureau.events` with identifier-only payloads:
+
+- `goal.started`, `goal.attempt.started`, `goal.attempt.validated`, `goal.succeeded`, `goal.exhausted`, `goal.canceled`, `goal.failed`, and `goal.recovered` (`GoalLifecycleEvent`) carry the fields the goal's durable history records for each, dispatched as the goal store commits. `goal.failed` keeps the validator error's `kind` and `code` and never its message. The boot pass that re-projects every goal into the history dispatches nothing, and a duplicate delivery of a committed transition is dispatched again, so a listener treats goal events as at-least-once.
+- `asset.upload.started`, `asset.upload.purged`, `asset.blob.purged`, and `asset.expired` (`AssetLifecycleEvent`) carry the fields of the same event on `bureau.assets.subscribe`, its `sequence` and `at` included.
+- `definitions.changed` (`DefinitionsChangedEvent`) reports a rescan of the agent or workflow files (`source: 'agents' | 'workflows'`) by identifier: `added`, `changed`, `removed`, and `rejected`, the identifiers of `added` and `changed` whose file is invalid now. The first scan at construction is not reported.
+- `schedule.missed` (`ScheduleMissedEvent`) copies `scheduleId`, `missedCount`, `windowStart`, and `windowEnd` from Weft's `ScheduleMissedFireEvent`, dispatched once `bureau.schedules.get(scheduleId)` returns the schedule, including a miss the first poll finds while the Bureau is still being built.
+- `task.cleanup-acknowledged` (`TaskCleanupAcknowledgedEvent`) carries `taskId` and the `cleanup` state `bureau.tasks.get(taskId)` reads once the run's cleanup acknowledgement is written, for a canceled task or one that ended on its own.
+- `diagnostic` (`DiagnosticEvent`) carries the `level` and `scope` of each diagnostic `onDiagnostic` (or the console) receives, never its message or cause. A diagnostic raised before the emitter exists, by the event feed's own recorder, or while a `diagnostic` event is being dispatched reaches the sink only.
 
 `shutdown(options?)` is the awaited drain. `{ policy: 'abort' }` (the default) aborts every active run immediately, then awaits every Bureau-owned subsystem's teardown (online evaluations, the webhook notifier, the audit trail, the durable engine). `{ policy: 'drain' }` lets every task reach its own terminal result while Bureau-owned background work stops as it does under `'abort'`. `timeoutMilliseconds` bounds the wait only: on elapse, `shutdown()` resolves (it never rejects) and reports every still-outstanding owner as `'unresolved'`, and the underlying drain carries on. `dispose()` is a thin wrapper over `shutdown({ policy: 'abort' })` that keeps its `Promise<void>` shape. Both are safe to call more than once: the second call returns the same, already-settled promise rather than re-running teardown.
 

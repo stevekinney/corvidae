@@ -25,6 +25,7 @@ import type { CatalogRunAssetReleaser } from './catalog-run-asset-release';
 import type { DurableEventHistory } from './durable-event-history';
 import { createGoalAttemptFence, type GoalAttemptFenceHost } from './goal-attempt-fence';
 import { createGoalConversations } from './goal-conversation';
+import type { GoalLifecycleEvent } from './events';
 import { createGoalEventRecorder, projectGoalHistory } from './goal-event-projection';
 import { createAttemptForwarder } from './goal-forwarder';
 import {
@@ -95,6 +96,8 @@ export interface GoalsCompositionDependencies {
   readonly diagnose: DiagnosticSink;
   /** Where a goal's audit events are recorded; absent when the bureau has no persistent history. */
   readonly eventHistory?: Pick<DurableEventHistory, 'record'> | undefined;
+  /** COR-1721 — dispatches a live goal event on the bureau emitter; boot replay never calls it. */
+  readonly dispatchGoalEvent?: ((event: GoalLifecycleEvent) => void) | undefined;
 }
 
 export interface GoalsComposition {
@@ -135,12 +138,22 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
       },
       runtimeServices.clock.nowISO(),
     );
+  // The boot pass's recorder writes history only; the store's observer also dispatches each event
+  // live (COR-1721), so a goal re-projected at boot is never announced again.
   const recordEvents =
     dependencies.eventHistory === undefined
       ? undefined
       : createGoalEventRecorder(dependencies.eventHistory, diagnose);
+  const observeEvents =
+    dependencies.eventHistory === undefined && dependencies.dispatchGoalEvent === undefined
+      ? undefined
+      : createGoalEventRecorder(
+          dependencies.eventHistory,
+          diagnose,
+          dependencies.dispatchGoalEvent,
+        );
   const store = createGoalStore(dependencies.kv ?? textValueStore(new MemoryStorage()), {
-    ...(recordEvents === undefined ? {} : { observe: recordEvents }),
+    ...(observeEvents === undefined ? {} : { observe: observeEvents }),
     onObserverError: (error) =>
       diagnose({
         level: 'error',
