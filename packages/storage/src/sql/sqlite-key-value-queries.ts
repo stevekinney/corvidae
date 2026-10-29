@@ -15,22 +15,29 @@ import { resolvePrefixRangeEnd, type ScanOptions } from '../interface.ts';
  */
 export const SQLITE_BUSY_TIMEOUT_MS = 5000;
 
+/** Creates the `kv` table every SQLite adapter stores keys and values in. */
 export const SQLITE_CREATE_KEY_VALUE_TABLE = `CREATE TABLE IF NOT EXISTS kv (
   key TEXT PRIMARY KEY,
   value BLOB NOT NULL
 ) WITHOUT ROWID`;
 
+/** Reads one value by key. */
 export const SQLITE_SELECT_VALUE_BY_KEY = 'SELECT value FROM kv WHERE key = ?';
 
+/** Writes one value, replacing any value already stored at the key. */
 export const SQLITE_UPSERT_VALUE_BY_KEY =
   'INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value';
 
+/** Deletes one key. */
 export const SQLITE_DELETE_VALUE_BY_KEY = 'DELETE FROM kv WHERE key = ?';
 
+/** Reads whether a key is present, without reading its value. */
 export const SQLITE_SELECT_KEY_PRESENCE = 'SELECT 1 AS present FROM kv WHERE key = ? LIMIT 1';
 
+/** A value bound into a SQLite key-range statement: a key bound or a row limit. */
 export type SqliteKeyRangeQueryParameter = string | number;
 
+/** The `WHERE … ORDER BY … LIMIT` suffix of a key-range statement, with its bound parameters. */
 export type SqliteKeyRangeQuery = {
   parameters: SqliteKeyRangeQueryParameter[];
   sqlSuffix: string;
@@ -120,6 +127,7 @@ function buildSqliteKeyRangeConditions(
   return { conditions, parameters };
 }
 
+/** Build the range suffix that selects the keys under `prefix` that `options` admits, in scan order. */
 export function buildSqliteKeyRangeQuery(
   prefix: string,
   options: ScanOptions = {},
@@ -184,6 +192,7 @@ export function buildSqliteKeyRangeDelete(
   };
 }
 
+/** Build the `SELECT key, value` that a scan of `prefix` runs. */
 export function buildSqliteKeyValueRangeSelect(
   prefix: string,
   options: ScanOptions = {},
@@ -195,6 +204,7 @@ export function buildSqliteKeyValueRangeSelect(
   };
 }
 
+/** Build the `SELECT key` that a key listing of `prefix` runs. */
 export function buildSqliteKeyRangeSelect(
   prefix: string,
   options: ScanOptions = {},

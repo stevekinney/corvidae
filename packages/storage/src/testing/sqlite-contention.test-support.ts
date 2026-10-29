@@ -25,6 +25,7 @@ export const SQLITE_CONTENTION_COUNTER_KEY = 'contention:counter';
 /** The prefix every key the `batch` race writes starts with. */
 export const SQLITE_CONTENTION_BATCH_PREFIX = 'contention:batch:';
 
+/** Which operation the two racing processes contend with. */
 export type SqliteContentionMode = 'conditionalBatch' | 'batch';
 
 /**

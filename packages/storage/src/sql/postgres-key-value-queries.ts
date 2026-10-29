@@ -68,6 +68,7 @@ export function resolvePostgresTableReference(options: {
   return `"${schema}"."${tableName}"`;
 }
 
+/** A value bound into a Postgres key-range statement: a key bound or a row limit. */
 export type PostgresKeyRangeQueryParameter = string | number;
 
 /** A fully-built SQL statement and its bound parameters (SELECT or DELETE). */

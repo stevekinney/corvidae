@@ -30,6 +30,29 @@ const TYPECHECK_GENERATED_DTS = join(FIXTURE_DIR, 'typecheck', 'weft.generated.d
 const PACKED_FIXTURE_VERSION = '0.0.0-packed-fixture';
 
 /**
+ * The `@lostgradient/*` workspace packages Weft lists under `dependencies`, each with the directory
+ * its fixture copy takes in the packed workspace. `bun pm pack` resolves a `workspace:` edge only to
+ * a workspace the fixture carries, so each is copied beside Weft, and the packed consumer links it to
+ * that copy rather than to an installed package.
+ */
+const WEFT_WORKSPACE_DEPENDENCIES: ReadonlyMap<string, string> = new Map(
+  Object.entries(manifest.dependencies)
+    .filter(([, specifier]) => specifier.startsWith('workspace:'))
+    .map(([name]) => [name, join('packages', name.slice('@lostgradient/'.length))]),
+);
+
+/** Drop a manifest's `workspace:` development edges, which the packed consumer never installs. */
+function withoutWorkspaceDevelopmentEdges(
+  devDependencies: Record<string, unknown>,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(devDependencies).filter(
+      ([, specifier]) => typeof specifier !== 'string' || !specifier.startsWith('workspace:'),
+    ),
+  );
+}
+
+/**
  * How the packed consumer gets its dependencies: from this workspace's own install, never from a
  * registry.
  *
@@ -45,9 +68,14 @@ function installPackedConsumerOffline(
   consumerDirectory: string,
   packageDirectory: string,
   dependencyNames: readonly string[],
+  fixtureRoot: string,
 ): void {
   for (const name of dependencyNames) {
-    const installed = join(PACKAGE_ROOT, 'node_modules', name);
+    const workspaceDirectory = WEFT_WORKSPACE_DEPENDENCIES.get(name);
+    const installed =
+      workspaceDirectory === undefined
+        ? join(PACKAGE_ROOT, 'node_modules', name)
+        : join(fixtureRoot, workspaceDirectory);
     if (!existsSync(installed)) {
       throw new Error(
         `${name} is a dependency of @lostgradient/weft but is not installed in ${PACKAGE_ROOT}; run bun install --frozen-lockfile`,
@@ -183,7 +211,11 @@ function preparePackedWorkspace(root: string): string {
 
   const rootPackageJsonPath = join(root, 'package.json');
   const rootPackageJson = readJsonFile(join(REPOSITORY_ROOT, 'package.json'));
-  rootPackageJson['workspaces'] = ['packages/weft', 'internal/typescript'];
+  rootPackageJson['workspaces'] = [
+    'packages/weft',
+    ...WEFT_WORKSPACE_DEPENDENCIES.values(),
+    'internal/typescript',
+  ];
   writeJsonFile(rootPackageJsonPath, rootPackageJson);
   cpSync(join(REPOSITORY_ROOT, 'bun.lock'), join(root, 'bun.lock'));
 
@@ -198,18 +230,27 @@ function preparePackedWorkspace(root: string): string {
   ) {
     throw new Error('expected @lostgradient/weft package.json devDependencies to be an object');
   }
-  // The UI's development edges to Cinder and Markdown (COR-1455) name workspaces this
-  // two-workspace fixture does not carry, so `bun pm pack` could not resolve them. The packed
-  // consumer never installs a devDependency, so they are dropped rather than given a version.
-  packageJson['devDependencies'] = Object.fromEntries(
-    Object.entries({
-      ...devDependencies,
-      '@lostgradient/typescript': PACKED_FIXTURE_VERSION,
-    }).filter(
-      ([, specifier]) => typeof specifier !== 'string' || !specifier.startsWith('workspace:'),
-    ),
-  );
+  // The UI's development edges to Cinder and Markdown (COR-1455) name workspaces this fixture
+  // does not carry, so `bun pm pack` could not resolve them. The packed consumer never installs a
+  // devDependency, so they are dropped rather than given a version.
+  packageJson['devDependencies'] = withoutWorkspaceDevelopmentEdges({
+    ...devDependencies,
+    '@lostgradient/typescript': PACKED_FIXTURE_VERSION,
+  });
   writeJsonFile(packageJsonPath, packageJson);
+
+  // Each workspace package Weft depends on is carried beside it, with its own development edges
+  // dropped the same way, so `bun pm pack` resolves Weft's `workspace:` dependency to its version.
+  for (const workspaceDirectory of WEFT_WORKSPACE_DEPENDENCIES.values()) {
+    copyDirectory(join(REPOSITORY_ROOT, workspaceDirectory), join(root, workspaceDirectory));
+    const dependencyPackageJsonPath = join(root, workspaceDirectory, 'package.json');
+    const dependencyPackageJson = readJsonFile(dependencyPackageJsonPath);
+    dependencyPackageJson['version'] = PACKED_FIXTURE_VERSION;
+    dependencyPackageJson['devDependencies'] = withoutWorkspaceDevelopmentEdges(
+      (dependencyPackageJson['devDependencies'] ?? {}) as Record<string, unknown>,
+    );
+    writeJsonFile(dependencyPackageJsonPath, dependencyPackageJson);
+  }
 
   const typescriptPackageJsonPath = join(typescriptDirectory, 'package.json');
   const typescriptPackageJson = readJsonFile(typescriptPackageJsonPath);
@@ -362,6 +403,7 @@ async function createPackedConsumerFixture(): Promise<PackedConsumerFixture> {
     consumerDirectory,
     packageDirectory,
     Object.keys(packedDependencies),
+    root,
   );
 
   const codegen = await runProcess(
@@ -479,8 +521,17 @@ const scenario5 = await outcomeOf(async () => {
   const dependencies = packedManifest['dependencies'] as Record<string, unknown>;
   const workspaceNodeModules = realpathSync(join(REPOSITORY_ROOT, 'node_modules'));
   expect(Object.keys(dependencies)).toContain('@electric-sql/pglite');
+  expect(Object.keys(dependencies)).toContain('@lostgradient/storage');
+  const fixtureRoot = dirname(consumerDirectory);
   for (const name of Object.keys(dependencies)) {
     const linked = realpathSync(join(consumerDirectory, 'node_modules', name));
+    const workspaceDirectory = WEFT_WORKSPACE_DEPENDENCIES.get(name);
+    if (workspaceDirectory !== undefined) {
+      // A workspace dependency resolves to its fixture copy, packed at the fixture's version.
+      expect(dependencies[name], name).toBe(PACKED_FIXTURE_VERSION);
+      expect(linked, name).toBe(realpathSync(join(fixtureRoot, workspaceDirectory)));
+      continue;
+    }
     expect(linked, name).toBe(realpathSync(join(PACKAGE_ROOT, 'node_modules', name)));
     expect(linked.startsWith(workspaceNodeModules), name).toBe(true);
   }

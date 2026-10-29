@@ -3,6 +3,7 @@
  */
 const BYTE_STRING_CHUNK_SIZE = 512;
 
+/** Encode bytes as standard base64, in chunks so a large value never overflows the argument limit. */
 export function encodeBytesToBase64(value: Uint8Array): string {
   const chunks: string[] = [];
   for (let offset = 0; offset < value.length; offset += BYTE_STRING_CHUNK_SIZE) {
@@ -23,6 +24,7 @@ export function decodeBase64ToBytes(value: string): Uint8Array {
   return bytes;
 }
 
+/** Whether `value` is a non-null object that can be read as a record of unknown values. */
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

@@ -311,13 +311,15 @@ describe('PostgresKeyValueStorage key collation check', () => {
 describe('pgliteAsPostgresPool', () => {
   it('answers through a released client and leaves the database open on end()', async () => {
     const direct = pgliteAsPostgresPool(activeDatabase());
-    expect((await direct.query('SELECT 3 AS three')).rows).toEqual([{ three: 3 }]);
+    const directResult = await direct.query('SELECT 3 AS three');
+    expect(directResult.rows).toEqual([{ three: 3 }]);
     const client = await pool.connect();
     const result = await client.query('SELECT 1 AS one');
     client.release();
     await pool.end();
 
     expect(result.rows).toEqual([{ one: 1 }]);
-    expect((await pool.query('SELECT 2 AS two')).rows).toEqual([{ two: 2 }]);
+    const afterEnd = await pool.query('SELECT 2 AS two');
+    expect(afterEnd.rows).toEqual([{ two: 2 }]);
   });
 });

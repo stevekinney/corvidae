@@ -215,6 +215,10 @@ function resolveUpperBound(
   return bound;
 }
 
+/**
+ * Resolve `prefix` and normalized bounds into the effective lower and upper bound, or `null` when
+ * the range is empty. See the tie rules above.
+ */
 export function resolveDeleteRangeBounds(
   prefix: string,
   options: NormalizedDeleteRangeOptions,
