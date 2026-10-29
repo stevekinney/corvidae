@@ -33,11 +33,11 @@
 import { describe, expect, it } from 'bun:test';
 
 import { ProviderError } from '../src/providers/errors.ts';
-import { createGeminiTokenCounter } from '../src/providers/gemini.ts';
 import type {
   GeminiCountTokensRequest,
   GeminiTokenCountingClient,
-} from '../src/providers/types.ts';
+} from '../src/providers/gemini-types.ts';
+import { createGeminiTokenCounter } from '../src/providers/gemini.ts';
 
 /** The SDK-shaped response `GeminiTokenCountingClient.models.countTokens` returns. */
 interface GeminiCountTokensResponse {

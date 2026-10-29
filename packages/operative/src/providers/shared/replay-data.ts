@@ -1,4 +1,3 @@
-import type { JSONValue } from '../../types';
 import type { ProviderName } from '../types.ts';
 
 /** The `GenerateResponse.metadata` key that names provider-private replay data the adapter could not keep. */
@@ -15,20 +14,6 @@ export interface DroppedReplayData {
   /** The position in the candidate's parts array. */
   readonly providerPartIndex: number;
   readonly field: 'thoughtSignature' | 'thought';
-}
-
-/** Builds the metadata entry for a list of dropped replay data; `undefined` when there is none. */
-export function droppedReplayDataMetadata(
-  dropped: readonly DroppedReplayData[],
-): Record<string, JSONValue> | undefined {
-  if (dropped.length === 0) return undefined;
-  return {
-    [REPLAY_DATA_DROPPED_METADATA_KEY]: dropped.map((entry) => ({
-      provider: entry.provider,
-      providerPartIndex: entry.providerPartIndex,
-      field: entry.field,
-    })),
-  };
 }
 
 /** Reads and validates the dropped-replay-data entries from a response's metadata. */

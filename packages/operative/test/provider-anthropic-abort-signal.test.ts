@@ -14,6 +14,12 @@ import { createAgentRun } from '../src/agent-run';
 import { noToolCalls } from '../src/conditions/predicates';
 import { createActiveRun } from '../src/create-run';
 import { AbortAgentRunError } from '../src/errors';
+import type {
+  AnthropicMessageCreateRequest,
+  AnthropicRequestOptions,
+  AnthropicStreamEvent,
+  AnthropicStreamingClient,
+} from '../src/providers/anthropic-types.ts';
 import {
   createAnthropicProvider,
   createAnthropicProviderStream,
@@ -21,17 +27,11 @@ import {
 import {
   anthropicStreamTextEvents,
   anthropicTextResponse,
-} from '../src/providers/test/fixtures.ts';
+} from '../src/providers/test/anthropic-fixtures.ts';
 import {
   createMockAnthropicClient,
   createMockAnthropicStreamingClient,
-} from '../src/providers/test/mock-clients.ts';
-import type {
-  AnthropicMessageCreateRequest,
-  AnthropicRequestOptions,
-  AnthropicStreamEvent,
-  AnthropicStreamingClient,
-} from '../src/providers/types.ts';
+} from '../src/providers/test/anthropic-mock-clients.ts';
 import { waitForCondition } from '../src/test/index';
 import type { GenerateContext, StreamingHandle } from '../src/types.ts';
 

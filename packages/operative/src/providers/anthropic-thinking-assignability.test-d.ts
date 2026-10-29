@@ -30,7 +30,7 @@
  */
 import type { Anthropic } from '@anthropic-ai/sdk';
 
-import type { AnthropicThinkingConfig } from './types.ts';
+import type { AnthropicThinkingConfig } from './anthropic-types.ts';
 
 /** Fails to compile unless `T` resolves to exactly `true`. */
 type Assert<T extends true> = T;

@@ -2,7 +2,7 @@ import type {
   AnthropicClient,
   AnthropicStreamingClient,
   AnthropicTokenCountingClient,
-} from './types.ts';
+} from './anthropic-types.ts';
 
 interface AnthropicConstructor {
   new (options?: Record<string, unknown>): unknown;

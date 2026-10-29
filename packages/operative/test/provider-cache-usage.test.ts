@@ -21,9 +21,11 @@ import { createOpenAIProvider, createOpenAIProviderStream } from '../src/provide
 import {
   createMockAnthropicClient,
   createMockAnthropicStreamingClient,
+} from '../src/providers/test/anthropic-mock-clients.ts';
+import {
   createMockOpenAIClient,
   createMockOpenAIStreamingClient,
-} from '../src/providers/test/mock-clients.ts';
+} from '../src/providers/test/openai-mock-clients.ts';
 import type { GenerateContext, StreamingHandle } from '../src/types.ts';
 
 function makeContext(): GenerateContext {

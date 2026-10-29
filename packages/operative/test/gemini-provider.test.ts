@@ -23,11 +23,14 @@ import { Conversation } from 'conversationalist';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { ProviderError } from '../src/providers/errors.ts';
 import { createGeminiProvider, createGeminiProviderStream } from '../src/providers/gemini.ts';
-import { geminiStreamTextChunks, geminiTextResponse } from '../src/providers/test/fixtures.ts';
+import {
+  geminiStreamTextChunks,
+  geminiTextResponse,
+} from '../src/providers/test/gemini-fixtures.ts';
 import {
   createMockGeminiModel,
   createMockGeminiStreamingModel,
-} from '../src/providers/test/mock-clients.ts';
+} from '../src/providers/test/gemini-mock-clients.ts';
 
 function makeContext() {
   return {

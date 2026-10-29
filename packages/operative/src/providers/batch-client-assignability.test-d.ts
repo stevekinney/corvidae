@@ -28,7 +28,9 @@ import type { Anthropic } from '@anthropic-ai/sdk';
 import type { GoogleGenAI } from '@google/genai';
 import type { OpenAI } from 'openai';
 
-import type { AnthropicBatchClient, GeminiBatchClient, OpenAIBatchClient } from './types.ts';
+import type { AnthropicBatchClient } from './anthropic-types.ts';
+import type { GeminiBatchClient } from './gemini-types.ts';
+import type { OpenAIBatchClient } from './openai-types.ts';
 
 /** Fails to compile unless `T` resolves to exactly `true`. */
 type Assert<T extends true> = T;

@@ -17,12 +17,12 @@ import {
   planSessionInputPromotion,
 } from './durable/session-input-delivery-store';
 import { valueAtFieldPath } from './fresh-attempt/field-path';
+import { anthropicDisabledThinkingRule } from './providers/anthropic-thinking';
 import { requireLimits } from './providers/model-catalog-data';
 import { mergeAssembledField } from './providers/openai-parts';
 import { resolveAnthropicEffort } from './providers/shared/effort';
 import { resolveAnthropicModel } from './providers/shared/model-registry';
 import { anthropicSamplingSupport } from './providers/shared/sampling';
-import { anthropicDisabledThinkingRule } from './providers/shared/thinking';
 
 describe('a model named after a name every object inherits', () => {
   test('has no pricing, effort support, alias, or sampling rule', () => {

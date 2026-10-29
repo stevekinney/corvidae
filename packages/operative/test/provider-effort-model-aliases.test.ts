@@ -28,16 +28,12 @@ import {
   resolveGeminiModel,
   resolveOpenAIModel,
 } from '../src/providers/shared/model-registry.ts';
-import {
-  anthropicTextResponse,
-  geminiTextResponse,
-  openAITextResponse,
-} from '../src/providers/test/fixtures.ts';
-import {
-  createMockAnthropicClient,
-  createMockGeminiModel,
-  createMockOpenAIClient,
-} from '../src/providers/test/mock-clients.ts';
+import { anthropicTextResponse } from '../src/providers/test/anthropic-fixtures.ts';
+import { createMockAnthropicClient } from '../src/providers/test/anthropic-mock-clients.ts';
+import { geminiTextResponse } from '../src/providers/test/gemini-fixtures.ts';
+import { createMockGeminiModel } from '../src/providers/test/gemini-mock-clients.ts';
+import { openAITextResponse } from '../src/providers/test/openai-fixtures.ts';
+import { createMockOpenAIClient } from '../src/providers/test/openai-mock-clients.ts';
 
 function makeContext() {
   return {

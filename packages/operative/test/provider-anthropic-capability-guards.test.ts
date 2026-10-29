@@ -1,6 +1,6 @@
 /**
  * Manual extended thinking and forced tool choice are refused before any request on the models
- * Anthropic documents as returning a 400 for them (`shared/thinking.ts`, `shared/tool-choice.ts`).
+ * Anthropic documents as returning a 400 for them (`anthropic-thinking.ts`, `anthropic-tool-choice.ts`).
  */
 import { describe, expect, it } from 'bun:test';
 
@@ -9,11 +9,11 @@ import {
   createAnthropicProviderStream,
 } from '../src/providers/anthropic.ts';
 import { ProviderError } from '../src/providers/errors.ts';
-import { anthropicTextResponse } from '../src/providers/test/fixtures.ts';
+import { anthropicTextResponse } from '../src/providers/test/anthropic-fixtures.ts';
 import {
   createMockAnthropicClient,
   createMockAnthropicStreamingClient,
-} from '../src/providers/test/mock-clients.ts';
+} from '../src/providers/test/anthropic-mock-clients.ts';
 import type { ToolChoice } from '../src/structured-output/types.ts';
 
 const manual = { type: 'enabled', budget_tokens: 2048 } as const;

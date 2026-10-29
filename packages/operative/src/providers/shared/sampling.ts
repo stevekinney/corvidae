@@ -43,12 +43,9 @@
  *   not guard it — the request is sent and a 400 is classified after the fact
  *   (COR-989).
  *
- * `toolChoice` is decided separately, in `shared/tool-choice.ts`.
+ * `toolChoice` is decided separately, in `anthropic-tool-choice.ts`.
  */
 export type SamplingSupport = 'accepted' | 'defaults-only' | 'unsettled';
-
-/** The only values a `defaults-only` model accepts, and only one of the two per request. */
-export const DEFAULT_ONLY_SAMPLING_VALUES = Object.freeze({ temperature: 1, topP: 0.99 });
 
 export const ANTHROPIC_SAMPLING_SUPPORT: Readonly<Record<string, 'accepted' | 'defaults-only'>> =
   Object.freeze({
@@ -72,6 +69,12 @@ export const ANTHROPIC_SAMPLING_SUPPORT: Readonly<Record<string, 'accepted' | 'd
     'claude-3-5-sonnet-20241022': 'accepted',
   });
 
+/**
+ * Reports whether Anthropic accepts `temperature` and `top_p` for a resolved model ID.
+ *
+ * @param resolvedModel - The provider-native model ID, after alias resolution.
+ * @returns `'accepted'`, `'defaults-only'`, or `'unsettled'` for an ID the table does not list.
+ */
 export function anthropicSamplingSupport(resolvedModel: string): SamplingSupport {
   return (
     (Object.hasOwn(ANTHROPIC_SAMPLING_SUPPORT, resolvedModel)

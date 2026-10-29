@@ -16,6 +16,11 @@ import {
   buildAnthropicMessageRequest,
   buildAnthropicUsage,
 } from './anthropic-shared.ts';
+import type {
+  AnthropicClient,
+  AnthropicMessageResponse,
+  AnthropicProviderOptions,
+} from './anthropic-types.ts';
 import { withBackendDescriptors } from './backend-descriptor-attachment.ts';
 import { isProviderContractError, ProviderError } from './errors.ts';
 import {
@@ -28,14 +33,7 @@ import { resolveAnthropicEffort } from './shared/effort.ts';
 import { withInputLineage } from './shared/input-lineage.ts';
 import { resolveAnthropicModel } from './shared/model-registry.ts';
 import { resolveCommonParameters } from './shared/resolve-common-parameters.ts';
-import type {
-  AnthropicClient,
-  AnthropicMessageResponse,
-  AnthropicProviderOptions,
-  GenerateContext,
-  GenerateFunction,
-  GenerateResponse,
-} from './types.ts';
+import type { GenerateContext, GenerateFunction, GenerateResponse } from './types.ts';
 
 export {
   createAnthropicTokenCounter,

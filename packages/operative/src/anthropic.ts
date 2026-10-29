@@ -9,7 +9,6 @@
  * seam type naming the operation, not an SDK provider object. The "Provider"
  * suffix names the role (a provider of generation), not the Vercel AI SDK concept.
  */
-export { createAnthropicProvider, createAnthropicProviderStream } from './providers/anthropic.ts';
 export type {
   AnthropicClient,
   AnthropicMessageCreateRequest,
@@ -18,4 +17,5 @@ export type {
   AnthropicStreamEvent,
   AnthropicStreamingClient,
   AnthropicThinkingConfig,
-} from './providers/types.ts';
+} from './providers/anthropic-types.ts';
+export { createAnthropicProvider, createAnthropicProviderStream } from './providers/anthropic.ts';

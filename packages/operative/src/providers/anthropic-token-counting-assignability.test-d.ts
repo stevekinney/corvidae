@@ -28,7 +28,7 @@
  */
 import type { Anthropic } from '@anthropic-ai/sdk';
 
-import type { AnthropicTokenCountingClient } from './types.ts';
+import type { AnthropicTokenCountingClient } from './anthropic-types.ts';
 
 /** Fails to compile unless `T` resolves to exactly `true`. */
 type Assert<T extends true> = T;

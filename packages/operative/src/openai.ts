@@ -10,7 +10,6 @@
  * seam type naming the operation, not an SDK provider object. The "Provider"
  * suffix names the role (a provider of generation), not the Vercel AI SDK concept.
  */
-export { createOpenAIProvider, createOpenAIProviderStream } from './providers/openai.ts';
 export type {
   OpenAIChatCompletion,
   OpenAIChatCompletionChunk,
@@ -18,4 +17,5 @@ export type {
   OpenAIClient,
   OpenAIProviderOptions,
   OpenAIStreamingClient,
-} from './providers/types.ts';
+} from './providers/openai-types.ts';
+export { createOpenAIProvider, createOpenAIProviderStream } from './providers/openai.ts';

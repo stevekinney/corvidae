@@ -2,8 +2,8 @@ import { createStreamingAccumulator, finalizeBlockState, type JSONValue } from '
 
 import type { PartDelta, StreamBlock, StreamEvent, StreamState } from '../../streaming/types';
 import { anthropicOpeningState } from '../anthropic-blocks';
+import type { AnthropicStreamEvent } from '../anthropic-types';
 import { ProviderContractError } from '../errors';
-import type { AnthropicStreamEvent } from '../types';
 import type { NormalizerState } from './stream-helpers';
 import { buildState, findBlock } from './stream-helpers';
 

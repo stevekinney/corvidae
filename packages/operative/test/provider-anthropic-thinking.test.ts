@@ -40,11 +40,11 @@ import { ProviderError } from '../src/providers/errors.ts';
 import {
   anthropicStreamTextEvents,
   anthropicTextResponse,
-} from '../src/providers/test/fixtures.ts';
+} from '../src/providers/test/anthropic-fixtures.ts';
 import {
   createMockAnthropicClient,
   createMockAnthropicStreamingClient,
-} from '../src/providers/test/mock-clients.ts';
+} from '../src/providers/test/anthropic-mock-clients.ts';
 import type { GenerateContext, StreamingHandle } from '../src/types.ts';
 
 function makeContext(): GenerateContext {

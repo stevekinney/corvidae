@@ -4,6 +4,12 @@ import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { toAnthropicToolChoice } from '../src/providers/anthropic-tool-choice.ts';
+import type {
+  AnthropicMessageCreateRequest,
+  AnthropicStreamEvent,
+  AnthropicStreamingClient,
+} from '../src/providers/anthropic-types.ts';
 import {
   createAnthropicProvider,
   createAnthropicProviderStream,
@@ -14,18 +20,18 @@ import {
   shouldRetryProviderError,
   ToolCallParseError,
 } from '../src/providers/errors.ts';
+import { toGeminiResponseFormat } from '../src/providers/gemini-response-format.ts';
+import { toGeminiToolChoice } from '../src/providers/gemini-tool-choice.ts';
+import type { GeminiGenerateContentRequest } from '../src/providers/gemini-types.ts';
 import { createGeminiProvider, createGeminiProviderStream } from '../src/providers/gemini.ts';
+import { toOpenAIResponseFormat } from '../src/providers/openai-response-format.ts';
+import { toOpenAIToolChoice } from '../src/providers/openai-tool-choice.ts';
+import type {
+  OpenAIChatCompletionCreateRequest,
+  OpenAIStreamingClient,
+} from '../src/providers/openai-types.ts';
 import { createOpenAIProvider, createOpenAIProviderStream } from '../src/providers/openai.ts';
 import { resolveCommonParameters } from '../src/providers/shared/resolve-common-parameters.ts';
-import {
-  toGeminiResponseFormat,
-  toOpenAIResponseFormat,
-} from '../src/providers/structured-output/response-format-adapters.ts';
-import {
-  toAnthropicToolChoice,
-  toGeminiToolChoice,
-  toOpenAIToolChoice,
-} from '../src/providers/structured-output/tool-choice-adapters.ts';
 import {
   anthropicMixedResponse,
   anthropicNoUsageResponse,
@@ -36,6 +42,12 @@ import {
   anthropicStreamToolUseEvents,
   anthropicTextResponse,
   anthropicToolUseResponse,
+} from '../src/providers/test/anthropic-fixtures.ts';
+import {
+  createMockAnthropicClient,
+  createMockAnthropicStreamingClient,
+} from '../src/providers/test/anthropic-mock-clients.ts';
+import {
   geminiFunctionCallResponse,
   geminiMixedResponse,
   geminiNoUsageResponse,
@@ -45,6 +57,12 @@ import {
   geminiStreamMultiFunctionCallChunks,
   geminiStreamTextChunks,
   geminiTextResponse,
+} from '../src/providers/test/gemini-fixtures.ts';
+import {
+  createMockGeminiModel,
+  createMockGeminiStreamingModel,
+} from '../src/providers/test/gemini-mock-clients.ts';
+import {
   openAIMixedResponse,
   openAINoUsageResponse,
   openAIStreamEmptyChunks,
@@ -54,23 +72,11 @@ import {
   openAIStreamToolCallChunks,
   openAITextResponse,
   openAIToolCallResponse,
-} from '../src/providers/test/fixtures.ts';
+} from '../src/providers/test/openai-fixtures.ts';
 import {
-  createMockAnthropicClient,
-  createMockAnthropicStreamingClient,
-  createMockGeminiModel,
-  createMockGeminiStreamingModel,
   createMockOpenAIClient,
   createMockOpenAIStreamingClient,
-} from '../src/providers/test/mock-clients.ts';
-import type {
-  AnthropicMessageCreateRequest,
-  AnthropicStreamEvent,
-  AnthropicStreamingClient,
-  GeminiGenerateContentRequest,
-  OpenAIChatCompletionCreateRequest,
-  OpenAIStreamingClient,
-} from '../src/providers/types.ts';
+} from '../src/providers/test/openai-mock-clients.ts';
 import type { GenerateContext, StreamingHandle } from '../src/types.ts';
 
 const weatherTool = createTool({

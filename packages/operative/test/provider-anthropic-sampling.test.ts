@@ -38,11 +38,11 @@ import {
 } from '../src/providers/anthropic.ts';
 import { ProviderError } from '../src/providers/errors.ts';
 import { classifyProviderError } from '../src/providers/fallover/classify-error.ts';
-import { anthropicTextResponse } from '../src/providers/test/fixtures.ts';
+import { anthropicTextResponse } from '../src/providers/test/anthropic-fixtures.ts';
 import {
   createMockAnthropicClient,
   createMockAnthropicStreamingClient,
-} from '../src/providers/test/mock-clients.ts';
+} from '../src/providers/test/anthropic-mock-clients.ts';
 import type { GenerateContext } from '../src/types.ts';
 
 // Verbatim, request #1 (and #4, #5).

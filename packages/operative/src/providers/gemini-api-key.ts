@@ -1,5 +1,5 @@
-import { readEnvironmentConfiguration } from '../../environment-configuration.ts';
-import { ProviderError } from '../errors.ts';
+import { readEnvironmentConfiguration } from '../environment-configuration.ts';
+import { ProviderError } from './errors.ts';
 
 /**
  * Resolves the Gemini API key from the explicit option or the `GOOGLE_API_KEY`

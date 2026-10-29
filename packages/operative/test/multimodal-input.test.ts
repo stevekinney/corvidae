@@ -47,16 +47,18 @@ import { createOpenAIProvider } from '../src/providers/openai.ts';
 import {
   anthropicTextResponse,
   anthropicToolUseResponse,
+} from '../src/providers/test/anthropic-fixtures.ts';
+import { createMockAnthropicClient } from '../src/providers/test/anthropic-mock-clients.ts';
+import {
   geminiFunctionCallResponse,
   geminiTextResponse,
+} from '../src/providers/test/gemini-fixtures.ts';
+import { createMockGeminiModel } from '../src/providers/test/gemini-mock-clients.ts';
+import {
   openAITextResponse,
   openAIToolCallResponse,
-} from '../src/providers/test/fixtures.ts';
-import {
-  createMockAnthropicClient,
-  createMockGeminiModel,
-  createMockOpenAIClient,
-} from '../src/providers/test/mock-clients.ts';
+} from '../src/providers/test/openai-fixtures.ts';
+import { createMockOpenAIClient } from '../src/providers/test/openai-mock-clients.ts';
 import { createSelectionGate } from '../src/selection-gate';
 import { createSessionStore } from '../src/session/create-session-store';
 import { createSessionHandle } from '../src/session/session-handle';

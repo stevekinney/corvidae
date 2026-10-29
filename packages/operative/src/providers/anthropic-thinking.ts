@@ -1,4 +1,4 @@
-import type { Effort } from '../types.ts';
+import type { Effort } from './types.ts';
 
 /**
  * Whether Anthropic accepts `thinking: { type: 'disabled' }` by resolved model
@@ -21,7 +21,7 @@ import type { Effort } from '../types.ts';
  * 400 surfaces from the API. Not settled by these pages: the dated Claude 4 and
  * 3.5 snapshots and any ID newer than this table. The table's `enabled` and
  * `between_tools` columns are outside this guard, and `between_tools` is not a
- * member of {@link import('../types.ts').AnthropicThinkingConfig}.
+ * member of {@link import('./anthropic-types.ts').AnthropicThinkingConfig}.
  */
 export type DisabledThinkingRule = 'never' | 'high-or-below' | 'always';
 

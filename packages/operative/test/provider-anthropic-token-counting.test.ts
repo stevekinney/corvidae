@@ -40,12 +40,12 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { createAnthropicTokenCounter } from '../src/providers/anthropic.ts';
-import { ProviderError } from '../src/providers/errors.ts';
 import type {
   AnthropicCountTokensRequest,
   AnthropicTokenCountingClient,
-} from '../src/providers/types.ts';
+} from '../src/providers/anthropic-types.ts';
+import { createAnthropicTokenCounter } from '../src/providers/anthropic.ts';
+import { ProviderError } from '../src/providers/errors.ts';
 
 /** The SDK-shaped response `AnthropicTokenCountingClient.messages.countTokens` returns. */
 interface AnthropicCountTokensResponse {

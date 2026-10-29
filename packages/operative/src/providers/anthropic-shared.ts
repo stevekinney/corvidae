@@ -1,21 +1,26 @@
 import type { ToolChoice } from '../structured-output/types.ts';
-import { ProviderError } from './errors.ts';
-import { createModelCatalog } from './model-catalog.ts';
-import type { ResolvedCommonParameters } from './shared/resolve-common-parameters.ts';
-import { anthropicSamplingSupport, DEFAULT_ONLY_SAMPLING_VALUES } from './shared/sampling.ts';
 import {
   anthropicDisabledThinkingRule,
   anthropicRejectsManualThinking,
   EFFORTS_THAT_FORBID_DISABLED_THINKING,
-} from './shared/thinking.ts';
-import { ANTHROPIC_FORCED_TOOL_CHOICE_REJECTED } from './shared/tool-choice.ts';
-import { toAnthropicToolChoice } from './structured-output/tool-choice-adapters.ts';
+} from './anthropic-thinking.ts';
+import {
+  ANTHROPIC_FORCED_TOOL_CHOICE_REJECTED,
+  toAnthropicToolChoice,
+} from './anthropic-tool-choice.ts';
 import type {
   AnthropicMessageCreateRequest,
   AnthropicMessageResponse,
   AnthropicThinkingConfig,
-  GenerateResponse,
-} from './types.ts';
+} from './anthropic-types.ts';
+import { ProviderError } from './errors.ts';
+import { createModelCatalog } from './model-catalog.ts';
+import type { ResolvedCommonParameters } from './shared/resolve-common-parameters.ts';
+import { anthropicSamplingSupport } from './shared/sampling.ts';
+import type { GenerateResponse } from './types.ts';
+
+/** The only values a `defaults-only` model accepts, and only one of the two per request. */
+const DEFAULT_ONLY_SAMPLING_VALUES = Object.freeze({ temperature: 1, topP: 0.99 });
 
 /**
  * Anthropic's floor for an enabled thinking budget, quoted from
@@ -131,7 +136,7 @@ function describeForcedToolChoice(choice: ToolChoice | undefined): string | unde
 /**
  * Rejects manual extended thinking (`thinking.type 'enabled'`) before any
  * request on a model whose documentation says Anthropic returns a 400 for it
- * (`ANTHROPIC_MANUAL_THINKING` in `shared/thinking.ts`). Models the table does
+ * (`ANTHROPIC_MANUAL_THINKING` in `anthropic-thinking.ts`). Models the table does
  * not list are left to the API.
  */
 export function assertManualThinkingSupported(
@@ -151,7 +156,7 @@ export function assertManualThinkingSupported(
 
 /**
  * Rejects forced tool choice (`'required'` or a named tool) before any request
- * on the models that return a 400 for it (`shared/tool-choice.ts`). `'auto'`,
+ * on the models that return a 400 for it (`anthropic-tool-choice.ts`). `'auto'`,
  * `'none'` and an unset choice always pass.
  */
 export function assertToolChoiceSupported(
@@ -172,7 +177,7 @@ export function assertToolChoiceSupported(
 
 /**
  * Rejects `thinking: { type: 'disabled' }` before any request on a model whose
- * documentation says Anthropic returns a 400 for it (`shared/thinking.ts`): at
+ * documentation says Anthropic returns a 400 for it (`anthropic-thinking.ts`): at
  * every effort on `never` models, and at `xhigh`/`max` effort on
  * `high-or-below` models. `effort` is the value actually sent after
  * per-model degradation, since that is what the API sees. A model the table

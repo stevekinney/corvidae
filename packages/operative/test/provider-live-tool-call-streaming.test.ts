@@ -24,16 +24,18 @@ import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 
-import { createAnthropicProviderStream } from '../src/providers/anthropic.ts';
-import { createOpenAIProviderStream } from '../src/providers/openai.ts';
-import { anthropicStreamMultiToolEvents } from '../src/providers/test/fixtures.ts';
-import { createMockAnthropicStreamingClient } from '../src/providers/test/mock-clients.ts';
 import type {
   AnthropicStreamEvent,
   AnthropicStreamingClient,
+} from '../src/providers/anthropic-types.ts';
+import { createAnthropicProviderStream } from '../src/providers/anthropic.ts';
+import type {
   OpenAIChatCompletionChunk,
   OpenAIStreamingClient,
-} from '../src/providers/types.ts';
+} from '../src/providers/openai-types.ts';
+import { createOpenAIProviderStream } from '../src/providers/openai.ts';
+import { anthropicStreamMultiToolEvents } from '../src/providers/test/anthropic-fixtures.ts';
+import { createMockAnthropicStreamingClient } from '../src/providers/test/anthropic-mock-clients.ts';
 import { withEnhancedStreaming } from '../src/streaming/index.ts';
 import type { StreamEventMap } from '../src/streaming/types.ts';
 import type { GenerateContext } from '../src/types.ts';

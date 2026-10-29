@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'bun:test';
 import { readEnvironmentConfiguration } from './environment-configuration.ts';
-import { resolveGeminiApiKey } from './providers/shared/gemini-api-key.ts';
+import { resolveGeminiApiKey } from './providers/gemini-api-key.ts';
 
 const originalGoogleKey = process.env['GOOGLE_API_KEY'];
 const originalBaseUrl = process.env['OPENAI_BASE_URL'];

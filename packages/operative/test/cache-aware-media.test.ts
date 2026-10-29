@@ -8,7 +8,7 @@ import { createTokenBudget } from '../src/context/token-budget.ts';
 import { createActiveRun } from '../src/create-run';
 import { MediaAdmissionError } from '../src/errors';
 import { createAnthropicProvider } from '../src/providers/anthropic.ts';
-import { createMockAnthropicClient } from '../src/providers/test/mock-clients.ts';
+import { createMockAnthropicClient } from '../src/providers/test/anthropic-mock-clients.ts';
 import type { GenerateContext } from '../src/types.ts';
 
 const BYTES = 'QUJDREVGRw==';

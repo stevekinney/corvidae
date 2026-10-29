@@ -1,7 +1,8 @@
 import type { BlockAccumulatorState, JSONValue, MultiModalContent } from 'conversationalist';
 
+import type { AnthropicMessageResponse } from './anthropic-types.ts';
 import { ProviderContractError } from './errors.ts';
-import type { AnthropicMessageResponse, GenerateResponse } from './types.ts';
+import type { GenerateResponse } from './types.ts';
 
 type AnthropicBlock = AnthropicMessageResponse['content'][number];
 
@@ -106,7 +107,7 @@ export function anthropicPartsFromBlocks(
 
 /** The accumulator state a block opens with, or `undefined` for a block that is not a content part. */
 export function anthropicOpeningState(
-  block: NonNullable<import('./types.ts').AnthropicStreamEvent['content_block']>,
+  block: NonNullable<import('./anthropic-types.ts').AnthropicStreamEvent['content_block']>,
 ): BlockAccumulatorState | undefined {
   switch (block.type) {
     case 'text':

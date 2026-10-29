@@ -1,7 +1,6 @@
 export type { ResponseFormat, ToolChoice } from '../../structured-output/types.ts';
-export { toGeminiResponseFormat, toOpenAIResponseFormat } from './response-format-adapters.ts';
-export {
-  toAnthropicToolChoice,
-  toGeminiToolChoice,
-  toOpenAIToolChoice,
-} from './tool-choice-adapters.ts';
+export { toAnthropicToolChoice } from '../anthropic-tool-choice.ts';
+export { toGeminiResponseFormat } from '../gemini-response-format.ts';
+export { toGeminiToolChoice } from '../gemini-tool-choice.ts';
+export { toOpenAIResponseFormat } from '../openai-response-format.ts';
+export { toOpenAIToolChoice } from '../openai-tool-choice.ts';

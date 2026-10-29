@@ -1,3 +1,24 @@
+import type { ToolChoice } from '../structured-output/types.ts';
+
+/**
+ * Anthropic tool_choice parameter shape.
+ */
+type AnthropicToolChoice =
+  { type: 'auto' } | { type: 'any' } | { type: 'tool'; name: string } | undefined;
+
+/**
+ * Converts a ToolChoice to the Anthropic API's tool_choice format.
+ *
+ * When `'none'` is passed, returns `undefined` — the caller should omit
+ * the tools array entirely from the Anthropic request.
+ */
+export function toAnthropicToolChoice(choice: ToolChoice): AnthropicToolChoice {
+  if (choice === 'auto') return { type: 'auto' };
+  if (choice === 'required') return { type: 'any' };
+  if (choice === 'none') return undefined;
+  return { type: 'tool', name: choice.tool };
+}
+
 /**
  * Models that reject forced tool choice (`tool_choice` `{"type": "any"}` or
  * `{"type": "tool", "name": ...}`, this package's `'required'` and `{ tool }`)

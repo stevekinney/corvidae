@@ -2,9 +2,13 @@ import type { StreamBlock, StreamState } from '../../streaming/types';
 
 /** Tracks usage and block state for stream normalizers. */
 export type NormalizerState = {
+  /** The blocks seen so far, in arrival order. */
   blocks: StreamBlock[];
+  /** Whether the provider has reported token usage yet. */
   hasUsageData: boolean;
+  /** The prompt tokens the provider reported, or `undefined` before it reports any. */
   promptTokens: number | undefined;
+  /** The completion tokens the provider reported, or `undefined` before it reports any. */
   completionTokens: number | undefined;
 };
 

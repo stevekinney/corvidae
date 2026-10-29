@@ -1,5 +1,5 @@
-import { isStrictCompatible } from '../../structured-output/response-schema.ts';
-import type { ResponseFormat } from '../../structured-output/types.ts';
+import { isStrictCompatible } from '../structured-output/response-schema.ts';
+import type { ResponseFormat } from '../structured-output/types.ts';
 
 /**
  * OpenAI response_format parameter shape.
@@ -10,13 +10,6 @@ type OpenAIResponseFormat =
       type: 'json_schema';
       json_schema: { name: string; schema: Record<string, unknown>; strict: boolean };
     }
-  | undefined;
-
-/**
- * Gemini `GenerateContentConfig` fields for response format (camelCase per @google/genai).
- */
-type GeminiResponseFormat =
-  | { responseMimeType: 'application/json'; responseSchema?: Record<string, unknown> | undefined }
   | undefined;
 
 /**
@@ -40,19 +33,5 @@ export function toOpenAIResponseFormat(format: ResponseFormat): OpenAIResponseFo
       schema: format.schema,
       strict: isStrictCompatible(format.schema),
     },
-  };
-}
-
-/**
- * Converts a ResponseFormat to the Gemini API's generation config fields.
- *
- * Returns `undefined` for text format since Gemini defaults to text.
- */
-export function toGeminiResponseFormat(format: ResponseFormat): GeminiResponseFormat {
-  if (format.type === 'text') return undefined;
-  if (format.type === 'json') return { responseMimeType: 'application/json' };
-  return {
-    responseMimeType: 'application/json',
-    responseSchema: format.schema,
   };
 }
