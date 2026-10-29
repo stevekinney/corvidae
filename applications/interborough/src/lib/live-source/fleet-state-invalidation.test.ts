@@ -53,12 +53,28 @@ function invalidated(queryClient: QueryClient): EntryName[] {
 }
 
 const sourceEntries: EntryName[] = ['sources', 'diagnostics'];
-const workerEntries: EntryName[] = ['workers', 'manifests', 'registry', 'registrySnapshot'];
+const workerEntries: EntryName[] = [
+  'workers',
+  'manifests',
+  'registry',
+  'registrySnapshot',
+  'deployments',
+];
 
 const TABLE: ReadonlyArray<readonly [string, readonly EntryName[]]> = [
   ['worker:connected', workerEntries],
   ['worker:disconnected', workerEntries],
   ['worker:registration-rejected', ['rejections']],
+  // The work a build is bound to: a run starting or ending, a task queued or reaching a result.
+  ['workflow:started', ['deployments']],
+  ['workflow:completed', ['deployments']],
+  ['workflow:failed', ['deployments']],
+  ['workflow:cancelled', ['deployments']],
+  ['workflow:timed-out', ['deployments']],
+  ['activity:remote-queued', ['deployments']],
+  ['activity:completed', ['deployments']],
+  ['activity:failed', ['deployments']],
+  ['task:dead-lettered', ['deployments']],
   ['worker:deployment-changed', ['deployments', 'workers']],
   ['workflow:definition-registered', ['registry', 'registrySnapshot']],
   ['realm:state-changed', ['realms']],

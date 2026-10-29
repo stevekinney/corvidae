@@ -15,6 +15,12 @@ export type StreamChunksClient = {
   readonly operations: Pick<HttpClient['operations'], typeof STREAM_CHUNKS_OPERATION>;
 };
 
+/**
+ * The key of a run's token stream. The fleet feed announces every stored chunk except those of this
+ * key (`stream:chunk`), so a view of it has no event to follow.
+ */
+export const TOKENS_STREAM_KEY = 'tokens';
+
 /** How often a live run's stream is asked for new chunks. */
 export const STREAM_POLL_INTERVAL_MS = 2_000;
 

@@ -44,14 +44,14 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-function open(status: WorkflowStatus = 'running') {
+function open(status: WorkflowStatus = 'running', streamKey = 'progress') {
   feeds = createLiveFeeds();
   return render(StreamChunksViewHarness, {
     props: {
       fleetEvents: feeds.fleetEvents,
       client,
       workflowId: 'wf-1',
-      streamKey: 'progress',
+      streamKey,
       status,
       onClose: () => {},
     },
@@ -136,6 +136,19 @@ describe('a stream’s chunks', () => {
 
     await until(() => expect(shown(container)).toEqual([0, 1, 2]));
     expect(requests.length).toBeLessThanOrEqual(before + 2);
+  });
+
+  test('of the tokens key are asked for on the timer even while the feed is live, which never announces them', async () => {
+    const { container } = open('running', 'tokens');
+    await until(() => expect(requests).toHaveLength(1));
+    await feeds?.fleetGoesLive();
+    const before = requests.length;
+    stored = [...stored, { sequence: 1, value: 'second' }];
+
+    await feeds?.passPolls(2, STREAM_POLL_INTERVAL_MS);
+
+    expect(requests.length).toBeGreaterThan(before);
+    expect(shown(container)).toEqual([0, 1]);
   });
 
   test('go back to the timer when the feed is lost', async () => {

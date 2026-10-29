@@ -32,6 +32,7 @@
     displayStreamKey,
     readStreamChunks,
     STREAM_POLL_INTERVAL_MS,
+    TOKENS_STREAM_KEY,
     streamChunksAreSwept,
     type StreamChunk,
     type StreamChunksClient,
@@ -134,7 +135,8 @@
   // scheduled before the feed came back (or the run ended) never fires, and the one that is
   // in flight reschedules nothing.
   $effect(() => {
-    if (terminal || fleetLive()) return;
+    // The `tokens` key is never announced by the feed (`TOKENS_STREAM_KEY`), so its timer never rests.
+    if (terminal || (streamKey !== TOKENS_STREAM_KEY && fleetLive())) return;
     let current = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     function schedule(): void {

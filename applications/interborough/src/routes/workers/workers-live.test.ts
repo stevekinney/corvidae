@@ -111,7 +111,20 @@ describeLiveSite('the Workers route', workersRoute());
 describeLiveSite('the deployments panel', {
   intervalMilliseconds: THIRTY_SECONDS,
   watched: [queryKeys.workers.deployments()],
-  events: [{ kind: 'worker:deployment-changed', rereads: [queryKeys.workers.deployments()] }],
+  // A change an operator made, a build a worker registered, and the work a build is bound to.
+  events: [
+    'worker:deployment-changed',
+    'worker:connected',
+    'workflow:started',
+    'workflow:completed',
+    'workflow:failed',
+    'workflow:cancelled',
+    'workflow:timed-out',
+    'activity:remote-queued',
+    'activity:completed',
+    'activity:failed',
+    'task:dead-lettered',
+  ].map((kind) => ({ kind, rereads: [queryKeys.workers.deployments()] })),
   mount() {
     scripted = new ScriptedFetch();
     scripted.routeJsonRpcMethod('weft.worker.deployments.diagnostics', {

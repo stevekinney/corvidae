@@ -131,6 +131,26 @@ const WORKER_FLEET_KEYS: readonly QueryKey[] = [
   WORKERS_MANIFESTS_KEY_PREFIX,
   // Contract verification compares the manifests with the registry snapshot, so the two are read together (COR-162).
   REGISTRY_KEY_PREFIX,
+  // A worker registering records its build, which the deployments list offers for promotion.
+  WORKERS_DEPLOYMENTS_KEY,
+];
+
+/**
+ * The kinds that change the durable work a deployment build is bound to: each build reports the
+ * number of runs that are not terminal and of task-ledger entries that are not terminal that name
+ * it (`executionReferences`), which decides whether a draining build can be removed. A run
+ * starting or ending, and a task being queued or reaching a result, move that count.
+ */
+const DEPLOYMENT_REFERENCE_KINDS: readonly string[] = [
+  'workflow:started',
+  'workflow:completed',
+  'workflow:failed',
+  'workflow:cancelled',
+  'workflow:timed-out',
+  'activity:remote-queued',
+  'activity:completed',
+  'activity:failed',
+  'task:dead-lettered',
 ];
 
 const CATALOG_SOURCE_FLEET_KEYS: readonly QueryKey[] = [
@@ -144,11 +164,18 @@ const CATALOG_SOURCE_FLEET_KEYS: readonly QueryKey[] = [
  * `isReviewFleetEventKind`'s). A worker that reconnects keeps its id, so the manifests are read by
  * prefix: the key built from the ids would not change. Extend as new views follow the feed.
  */
-const FLEET_KIND_INVALIDATION: ReadonlyMap<string, readonly QueryKey[]> = new Map([
+const FLEET_KIND_INVALIDATION: ReadonlyMap<string, readonly QueryKey[]> = new Map<
+  string,
+  readonly QueryKey[]
+>([
   ['worker:connected', WORKER_FLEET_KEYS],
   ['worker:disconnected', WORKER_FLEET_KEYS],
   ['worker:registration-rejected', [WORKERS_REJECTIONS_KEY]],
   ['worker:deployment-changed', [WORKERS_DEPLOYMENTS_KEY, WORKERS_LIST_KEY]],
+  ...DEPLOYMENT_REFERENCE_KINDS.map((kind): [string, readonly QueryKey[]] => [
+    kind,
+    [WORKERS_DEPLOYMENTS_KEY],
+  ]),
   ['workflow:definition-registered', [REGISTRY_KEY_PREFIX]],
   ['realm:state-changed', [REALMS_KEY]],
   ['lease:health-changed', [SYSTEM_LEASE_KEY]],
