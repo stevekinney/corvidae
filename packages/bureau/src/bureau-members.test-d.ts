@@ -129,7 +129,8 @@ export type InternalsMembers = AssertNever<
     | 'auditTrail'
     | 'abortingTasks'
     | 'whenTaskRecorded'
-    | 'taskRegistry',
+    | 'taskRegistry'
+    | 'diagnostics',
     keyof BureauInternals
   >
 >;

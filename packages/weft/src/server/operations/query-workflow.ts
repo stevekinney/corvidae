@@ -12,9 +12,9 @@ import {
 } from './operation-helpers.ts';
 
 const queryWorkflowInput = z.object({
-  workflowId: z.string().min(1),
-  queryName: z.string().min(1),
-  input: z.unknown().optional(),
+  workflowId: z.string().min(1).describe('Id of the workflow to query.'),
+  queryName: z.string().min(1).describe('Name of the query handler to run.'),
+  input: z.unknown().optional().describe('Input passed to the query handler.'),
 });
 const queryWorkflowOutput = z.unknown();
 

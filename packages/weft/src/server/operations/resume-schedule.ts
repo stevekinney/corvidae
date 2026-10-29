@@ -6,7 +6,7 @@ import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { mapScheduleErrorToFault } from './schedule-faults.ts';
 
 const resumeScheduleInput = z.object({
-  scheduleId: z.string().min(1),
+  scheduleId: z.string().min(1).describe('Id of the paused schedule to resume.'),
 });
 const resumeScheduleOutput = z.undefined();
 

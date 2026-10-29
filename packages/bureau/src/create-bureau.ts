@@ -173,6 +173,7 @@ import {
   validateSessionInputBacklogLimit,
 } from './option-validators.ts';
 import type { AssetService } from './assets/types';
+import type { DefinitionScannerHealth } from './definition-scanner';
 import { createAssetClaimReconciler } from './asset-claim-reconciliation';
 import {
   AUDIT_AGENT_OWNER_PREFIX,
@@ -507,6 +508,7 @@ import type {
   BureauShutdownOptions,
   BureauShutdownOwnerReport,
   BureauShutdownReport,
+  BureauWatcherHealth,
   CancelDurableRunOutcome,
   CleanupAcknowledgement,
   ContextDeletionReport,
@@ -1995,6 +1997,15 @@ function needsAutomaticMaintenance(composed: {
     composed.memory ||
     (composed.keyValueStore && composed.activeAuditRetention)
   );
+}
+
+/** COR-1731: one definition source's recorded scan health, as `internals.diagnostics()` reports it. */
+function watcherHealthOf(
+  source: 'agents' | 'workflows',
+  watched: { readonly health: () => DefinitionScannerHealth },
+): BureauWatcherHealth {
+  const { lastScanAt, lastScanError } = watched.health();
+  return { source, lastScanAt: lastScanAt ?? null, lastScanError: lastScanError ?? null };
 }
 
 export async function createBureau<const D extends AgentDefinitions = Record<never, never>>(
@@ -4231,6 +4242,14 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     skippedRuns: [],
   });
   let resolveDurableRecoveryBarrier: ((report: BureauRecoveryReport) => void) | undefined;
+  // COR-1731: the report the barrier resolved with, kept so `internals.diagnostics()` can answer
+  // synchronously. `undefined` while a deferred recovery has not finished. A Bureau with no
+  // recovery to run starts as clean, like the barrier's own initial value.
+  let settledRecoveryReport: BureauRecoveryReport | undefined = {
+    outcome: 'clean',
+    perRunFailures: [],
+    skippedRuns: [],
+  };
   // Boot-single-shot collector (see `recoverDurableRuns`'s own doc comment):
   // `dispatchRecoveryClassification` pushes every 'cancel' verdict's
   // {runId, reason} here so `recoverDurableRuns` can aggregate them into its
@@ -4252,6 +4271,9 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   // Read back by the pass's own return and by both boot call sites' `.catch()`, like the others.
   let currentRecoverySkippedRuns: Array<{ runId: string; type: string }> | undefined;
   const liveFrameListeners = new Set<(frame: ServerFrame) => void>();
+  // COR-1731: subscribers, counted from `frames()` to their unsubscribe. Not the size of
+  // `liveFrameListeners`, which a listener joins only once its boot-frame replay has drained.
+  let liveFrameSubscriberCount = 0;
   // COR-1421 — `engine.recoverAll()` resumes recovered workflows without
   // awaiting them, so recovered runs emit live frames while the rest of boot
   // still awaits, before `createBureau()` returns and a caller can subscribe.
@@ -18934,6 +18956,26 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       abortingTasks: listAbortingRuns,
       whenTaskRecorded: whenRunRecorded,
       taskRegistry: tasks,
+      diagnostics: () => ({
+        recovery:
+          settledRecoveryReport === undefined
+            ? { status: 'pending', failedRunCount: 0 }
+            : {
+                status: settledRecoveryReport.outcome,
+                failedRunCount: settledRecoveryReport.perRunFailures.length,
+              },
+        lifecycle: bureau.lifecycle,
+        liveFrameSubscriberCount,
+        eventFeedSubscriberCount: eventFeed.subscriberCount(),
+        watchers: [
+          ...(fileAgents === undefined ? [] : [watcherHealthOf('agents', fileAgents.files)]),
+          ...(workflowRuntime === undefined ? [] : [watcherHealthOf('workflows', workflowRuntime)]),
+        ],
+        modelCatalogRevision: models.catalog().revision,
+        runningRunCount: activeRuns.size + catalogRuns.size,
+        abortingRunCount: abortingRunIds.size,
+        pendingReviewCount: reviews.list().length,
+      }),
     },
     runtimeServices,
     memory: runtime.memory,
@@ -18997,7 +19039,13 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
             skippedRuns,
           } satisfies BureauRecoveryReport;
         });
-        void recovery.then((report) => resolveDurableRecoveryBarrier?.(report));
+        void recovery.then((report) => {
+          // Before the barrier resolves, so a reading taken once `recovery()` has answered
+          // never sees the pass still pending.
+          settledRecoveryReport = report;
+          resolveDurableRecoveryBarrier?.(report);
+          return report;
+        });
         void recovery.then(() => trackCatalogAssetRelease(reconcileAssetClaims()));
       }
     },
@@ -19006,7 +19054,10 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     },
     frames(listener) {
       let active = true;
+      liveFrameSubscriberCount += 1;
       const unsubscribe = () => {
+        // Counted once however many times it is called.
+        if (active) liveFrameSubscriberCount -= 1;
         active = false;
         liveFrameListeners.delete(listener);
       };
@@ -19501,6 +19552,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   }
   if (hasDeferredGatewayAuthority) {
     durableRecoveryDeferred = true;
+    settledRecoveryReport = undefined;
     durableRecoveryBarrier = new Promise<BureauRecoveryReport>((resolve) => {
       resolveDurableRecoveryBarrier = resolve;
     });
@@ -19530,7 +19582,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         skippedRuns,
       } satisfies BureauRecoveryReport;
     });
-    await durableRecoveryBarrier;
+    settledRecoveryReport = await durableRecoveryBarrier;
     // COR-1664 — after recovery, so the runs it resumed are in flight and keep their claims. Not
     // awaited: recovery's resumed steps race the caller's first subscription, and every extra turn
     // before this function returns costs a recovered run's first events. Shutdown waits for it.

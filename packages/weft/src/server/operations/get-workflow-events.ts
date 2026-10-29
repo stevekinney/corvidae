@@ -7,7 +7,7 @@ import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 
 const getWorkflowEventsInput = z.object({
-  workflowId: z.string().min(1),
+  workflowId: z.string().min(1).describe('Id of the workflow whose recorded events are listed.'),
 });
 const getWorkflowEventsOutput = z.unknown();
 
@@ -18,6 +18,10 @@ export const getWorkflowEventsOperation = defineOperation({
   name: 'weft.workflows.events.list',
   mcpExposable: false,
   summary: 'Get workflow events by id',
+  description:
+    'Read the events recorded for a workflow, as one list. Read-only. Faults with ' +
+    'NotFound when the workflow is not visible. Use `weft.workflows.events.sse` or ' +
+    'the subscription to follow events live.',
   destructive: false,
   tags: ['Events'],
   inputSchema: getWorkflowEventsInput,

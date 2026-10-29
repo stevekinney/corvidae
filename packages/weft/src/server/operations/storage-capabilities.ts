@@ -23,6 +23,11 @@ export const storageCapabilitiesOperation = defineOperation({
   name: 'weft.storage.capabilities',
   mcpExposable: false,
   summary: "Report the connected storage backend's capability profile",
+  description:
+    'Report what the connected storage backend guarantees: persistence level, read- ' +
+    'after-write and scan consistency, and whether it supports atomic batches, ' +
+    'conditional batches, and bounded range deletes. Read-only; available to callers ' +
+    'holding storage:read or storage:admin.',
   destructive: false,
   tags: ['Storage'],
   inputSchema: storageCapabilitiesInput,

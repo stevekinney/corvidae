@@ -127,7 +127,8 @@ function describeOperation(name: string, json: boolean): CommandOutput {
   };
 }
 
-function formatOperationDescription(operation: CatalogOperationSnapshot): string {
+/** Render the `--describe` view of one catalog operation, echoing the summary when it has no description. */
+export function formatOperationDescription(operation: CatalogOperationSnapshot): string {
   return [
     `Name: ${operation.name}`,
     `Summary: ${operation.summary}`,

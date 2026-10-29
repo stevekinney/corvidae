@@ -24,6 +24,11 @@ export const purgeWorkflowsOperation = defineOperation({
   name: 'weft.workflows.purge',
   mcpExposable: false,
   summary: 'Purge terminal workflows',
+  description:
+    'Permanently delete terminal workflows (completed, failed, cancelled, or timed ' +
+    'out) that match the filter, removing every record they own, and report how many ' +
+    'were removed. Irreversible; with no filter it matches every terminal workflow. ' +
+    'Requires workflows:admin.',
   destructive: true,
   tags: ['Workflows'],
   inputSchema: bulkListFilterInputSchema,

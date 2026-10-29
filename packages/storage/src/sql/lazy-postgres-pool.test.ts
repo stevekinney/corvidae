@@ -125,6 +125,26 @@ describe('createLazyPostgresPool', () => {
     expect(record.queries).toEqual(['SELECT 2']);
   });
 
+  it.each([
+    ["Cannot find package 'pg' imported from /app/node_modules/@lostgradient/storage-postgres"],
+    ["Cannot find module 'pg' from '/app/src/postgres.ts'"],
+  ])(
+    'rewraps the resolver message %p from a dynamic import as the install hint',
+    async (message) => {
+      const pool = createLazyPostgresPool('postgresql://u:p@h/db', {
+        driverName: 'pg',
+        storageName: 'PostgresStorage',
+        loadPool: async () => {
+          throw new Error(message);
+        },
+      });
+
+      expect(await throwingRejectionOf(pool.query('SELECT 1'))).toThrow(
+        /requires the optional peer dependency "pg".*bun add pg/s,
+      );
+    },
+  );
+
   it('passes a non-module load error through unchanged', async () => {
     const boom = new Error('connection refused');
     const pool = createLazyPostgresPool('postgresql://u:p@h/db', {

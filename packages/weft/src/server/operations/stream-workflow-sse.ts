@@ -19,8 +19,13 @@ const TOKENS_STREAM_KEY = 'tokens';
 // string; invoke parses it AFTER the 404 workflow-existence check, so
 // workflow-not-found takes precedence over a bad cursor.
 const streamWorkflowSseInput = z.object({
-  workflowId: z.string().min(1),
-  after: z.unknown().optional(),
+  workflowId: z.string().min(1).describe('Id of the workflow whose stream is followed.'),
+  after: z
+    .unknown()
+    .optional()
+    .describe(
+      'Resume cursor: the sequence number of the last chunk already received (-1 or greater). Replay starts after it.',
+    ),
 });
 
 export type StreamWorkflowSseInput = z.infer<typeof streamWorkflowSseInput>;
@@ -31,6 +36,10 @@ export const streamWorkflowSseOperation = defineOperation({
   mcpExposable: false,
   kind: 'stream',
   summary: 'Stream workflow tokens as Server-Sent Events',
+  description:
+    "Stream a workflow's stored token chunks as Server-Sent Events, resuming after " +
+    'the Last-Event-ID sequence number when one is given. REST only; the request must ' +
+    'accept text/event-stream. Faults with NotFound when the workflow is not visible.',
   destructive: false,
   tags: ['Streams'],
   inputSchema: streamWorkflowSseInput,

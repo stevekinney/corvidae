@@ -8,8 +8,12 @@ import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 
 const getCheckpointAtInput = z.object({
-  workflowId: z.string().min(1),
-  step: z.number().int().nonnegative(),
+  workflowId: z.string().min(1).describe('Id of the workflow whose checkpoint is read.'),
+  step: z
+    .number()
+    .int()
+    .nonnegative()
+    .describe('Step number of the checkpoint to read; zero or greater.'),
 });
 const getCheckpointAtOutput = z.unknown();
 
@@ -20,6 +24,9 @@ export const getCheckpointAtOperation = defineOperation({
   name: 'weft.workflows.checkpoints.get',
   mcpExposable: false,
   summary: 'Get a specific checkpoint by step number',
+  description:
+    'Read one persisted checkpoint of a workflow by step number. Read-only. Faults ' +
+    'with NotFound when the workflow or that step has no visible checkpoint.',
   destructive: false,
   tags: ['Checkpoints'],
   inputSchema: getCheckpointAtInput,

@@ -37,23 +37,74 @@ import {
 // giving one cross-transport contract (mirrors weft.workflows.start).
 const startOrSignalWorkflowInput = z.object({
   type: z.unknown().describe('Workflow type name. Runtime validation requires a non-empty string.'),
-  input: z.unknown().optional(),
+  input: z
+    .unknown()
+    .optional()
+    .describe(
+      'Input payload handed to the workflow body. Omit it for a workflow that takes no input.',
+    ),
   signalName: z.string().min(1).describe('Signal name. Must be a non-empty string.'),
-  signalPayload: z.unknown().optional(),
+  signalPayload: z.unknown().optional().describe('Payload delivered with the signal.'),
   signalId: z
     .string()
     .min(1)
     .refine(isSignalIdWithinByteLimit, 'signalId must be at most 128 bytes')
-    .optional(),
-  id: z.unknown().optional(),
-  executionTimeout: z.unknown().optional(),
-  startAt: z.unknown().optional(),
-  startAfter: z.unknown().optional(),
-  tags: z.unknown().optional(),
-  idempotencyKey: z.unknown().optional(),
-  searchAttributes: z.unknown().optional(),
-  onTerminalConflict: z.unknown().optional(),
-  workerStartOverridePreview: z.unknown().optional(),
+    .optional()
+    .describe(
+      'Id of the signal to deliver. Provide exactly one of signalId or idempotencyKey. Concurrent callers converge on one run and one signal only when they share both id and signalId; a bare signalId, without id, starts a fresh run per caller. Required for onTerminalConflict "start-new". At most 128 bytes.',
+    ),
+  id: z
+    .unknown()
+    .optional()
+    .describe(
+      'Client-chosen id of the target workflow. Omit it to have one generated. An absent id is created and signalled (outcome "started"); a non-terminal run with this id is signalled (outcome "signalled"); a finished run with this id faults with Conflict unless onTerminalConflict is "start-new".',
+    ),
+  executionTimeout: z
+    .unknown()
+    .optional()
+    .describe(
+      'Total time the run may take before it times out: milliseconds, or a duration string such as "30s".',
+    ),
+  startAt: z
+    .unknown()
+    .optional()
+    .describe(
+      'Absolute start time as a non-negative integer millisecond timestamp. Mutually exclusive with startAfter.',
+    ),
+  startAfter: z
+    .unknown()
+    .optional()
+    .describe(
+      'Delay before the run starts: milliseconds, or a duration string such as "5m". Mutually exclusive with startAt.',
+    ),
+  tags: z
+    .unknown()
+    .optional()
+    .describe('Tags to attach to the run, as an array of non-empty strings.'),
+  idempotencyKey: z
+    .unknown()
+    .optional()
+    .describe(
+      'Alternative to signalId; provide exactly one. Callers sharing a key converge on one run and one delivered signal (the signal id derives from the key), and a repeated key signals the run it first started instead of starting another. A key whose run was purged by retention faults with Conflict. Cannot be combined with signalId or with onTerminalConflict "start-new".',
+    ),
+  searchAttributes: z
+    .unknown()
+    .optional()
+    .describe(
+      "Search attributes to index the run under, keyed by attribute name. Validated against the workflow type's declared schema; date-time values are ISO 8601 strings.",
+    ),
+  onTerminalConflict: z
+    .unknown()
+    .optional()
+    .describe(
+      'What to do when the supplied id belongs to a finished run: "error" (default) faults, "start-new" replaces it with a fresh run. "start-new" requires id and signalId and excludes idempotencyKey.',
+    ),
+  workerStartOverridePreview: z
+    .unknown()
+    .optional()
+    .describe(
+      'Signed preview that authorises starting on a worker deployment other than the routed one. Supply the object an override preview returned.',
+    ),
 });
 
 const startOrSignalWorkflowOutput = z.object({

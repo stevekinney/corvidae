@@ -9,8 +9,6 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
-import { NodeSQLiteStorage } from '@lostgradient/storage-node-sqlite';
 import { type Storage } from '@lostgradient/storage';
 
 export interface HostArguments {
@@ -43,11 +41,17 @@ export function writeMarker(directory: string, name: string, value: unknown): vo
 /**
  * The file-backed store: `NodeSQLiteStorage` (better-sqlite3) under native
  * Node, and `BunSQLiteStorage` (bun:sqlite) under Bun, which cannot load
- * better-sqlite3's native binding.
+ * better-sqlite3's native binding. Each adapter serves one runtime, and
+ * `BunSQLiteStorage` imports `bun:sqlite` statically, so the host imports only
+ * the adapter for the runtime it is running under.
  */
 export async function openFileStorage(directory: string): Promise<Storage> {
   const path = join(directory, 'store.sqlite');
-  if (process.versions.bun === undefined) return new NodeSQLiteStorage(path);
+  if (process.versions.bun === undefined) {
+    const { NodeSQLiteStorage } = await import('@lostgradient/storage-node-sqlite');
+    return new NodeSQLiteStorage(path);
+  }
+  const { BunSQLiteStorage } = await import('@lostgradient/storage-bun-sqlite');
   return new BunSQLiteStorage(path);
 }
 

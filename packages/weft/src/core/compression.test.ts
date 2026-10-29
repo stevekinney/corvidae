@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import * as zlib from 'node:zlib';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { setPortableRuntimeTestOverridesForTesting } from '../runtime/portable.ts';
@@ -85,6 +86,35 @@ describe('gzip round-trip', () => {
     const compressed = await compressPayload(original, compressor, 4096);
     const decompressed = await decompressPayload(compressed);
     expect(decompressed).toEqual(original);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Persisted format: gzip written and read by the previous implementation
+// ---------------------------------------------------------------------------
+
+describe('gzip persisted format', () => {
+  // Payloads written before gzip moved to CompressionStream came from `Bun.gzipSync` (under Bun) or
+  // `node:zlib` (elsewhere). Both stay readable, and what is written now stays readable by them.
+  const original = new TextEncoder().encode('workflow state '.repeat(600));
+
+  it('reads a payload gzipped by Bun.gzipSync', async () => {
+    const stored = new Uint8Array([0xc1, 0x01, ...Bun.gzipSync(original)]);
+    expect(await decompressPayload(stored)).toEqual(original);
+  });
+
+  it('reads a payload gzipped by node:zlib', async () => {
+    const stored = new Uint8Array([0xc1, 0x01, ...zlib.gzipSync(original)]);
+    expect(await decompressPayload(stored)).toEqual(original);
+  });
+
+  it('writes a payload that Bun.gunzipSync and node:zlib both read', async () => {
+    const stored = await compressPayload(original, createBunCompressor('gzip'), 0);
+    expect(stored[0]).toBe(0xc1);
+    expect(stored[1]).toBe(0x01);
+    const body = stored.slice(2);
+    expect(new Uint8Array(Bun.gunzipSync(body))).toEqual(original);
+    expect(new Uint8Array(zlib.gunzipSync(body))).toEqual(original);
   });
 });
 

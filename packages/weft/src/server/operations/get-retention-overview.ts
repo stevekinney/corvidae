@@ -15,6 +15,10 @@ export const getRetentionOverviewOperation = defineOperation({
   name: 'weft.retention.get',
   mcpExposable: false,
   summary: 'Get retention policy overview',
+  description:
+    "Report the engine's retention configuration: the default retention policy, per- " +
+    'workflow-type policies, the sweep interval and batch size, and when the next ' +
+    'sweep is due. Read-only.',
   destructive: false,
   tags: ['System'],
   inputSchema: getRetentionOverviewInput,

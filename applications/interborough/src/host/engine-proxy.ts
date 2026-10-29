@@ -178,6 +178,8 @@ type RelayedMessage = string | ArrayBuffer | Blob;
 
 /** What the host keeps for each WebSocket it relays. */
 export type WebSocketRelayData = {
+  /** Which plane owns the socket; the host's one WebSocket handler dispatches on it (`host-websocket.ts`). */
+  readonly plane: 'engine';
   readonly upstream: string;
   readonly headers: Headers;
   pending: RelayedMessage[];
@@ -196,6 +198,7 @@ export function webSocketRelayData(
   const target = new URL(`${url.pathname}${url.search}`, upstream);
   target.protocol = target.protocol === 'https:' ? 'wss:' : 'ws:';
   return {
+    plane: 'engine',
     upstream: target.toString(),
     headers: upstreamHeaders(request, key),
     pending: [],

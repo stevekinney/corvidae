@@ -32,15 +32,58 @@ import {
 // All field validation lives in `invoke()` to keep one cross-transport contract.
 const startWorkflowInput = z.object({
   type: z.unknown().describe('Workflow type name. Runtime validation requires a non-empty string.'),
-  input: z.unknown().optional(),
-  id: z.unknown().optional(),
-  executionTimeout: z.unknown().optional(),
-  startAt: z.unknown().optional(),
-  startAfter: z.unknown().optional(),
-  tags: z.unknown().optional(),
-  idempotencyKey: z.unknown().optional(),
-  searchAttributes: z.unknown().optional(),
-  workerStartOverridePreview: z.unknown().optional(),
+  input: z
+    .unknown()
+    .optional()
+    .describe(
+      'Input payload handed to the workflow body. Omit it for a workflow that takes no input.',
+    ),
+  id: z
+    .unknown()
+    .optional()
+    .describe(
+      'Client-chosen workflow id. Omit it to have one generated; a start with an id that already exists faults with Conflict.',
+    ),
+  executionTimeout: z
+    .unknown()
+    .optional()
+    .describe(
+      'Total time the run may take before it times out: milliseconds, or a duration string such as "30s".',
+    ),
+  startAt: z
+    .unknown()
+    .optional()
+    .describe(
+      'Absolute start time as a non-negative integer millisecond timestamp. Mutually exclusive with startAfter.',
+    ),
+  startAfter: z
+    .unknown()
+    .optional()
+    .describe(
+      'Delay before the run starts: milliseconds, or a duration string such as "5m". Mutually exclusive with startAt.',
+    ),
+  tags: z
+    .unknown()
+    .optional()
+    .describe('Tags to attach to the run, as an array of non-empty strings.'),
+  idempotencyKey: z
+    .unknown()
+    .optional()
+    .describe(
+      'At-most-once key: a repeated key returns the existing run instead of starting another.',
+    ),
+  searchAttributes: z
+    .unknown()
+    .optional()
+    .describe(
+      "Search attributes to index the run under, keyed by attribute name. Validated against the workflow type's declared schema; date-time values are ISO 8601 strings.",
+    ),
+  workerStartOverridePreview: z
+    .unknown()
+    .optional()
+    .describe(
+      'Signed preview that authorises starting on a worker deployment other than the routed one. Supply the object an override preview returned.',
+    ),
 });
 
 const startWorkflowOutput = z.object({

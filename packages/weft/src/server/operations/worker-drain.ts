@@ -23,28 +23,40 @@ import { readRestTextBody } from '../rest-body.ts';
 import { invalidParamsFault, isOperationFault } from './operation-helpers.ts';
 import { announceWorkerDeploymentChanged } from './worker-deployment-events.ts';
 
-const drainReasonSchema = z.string().min(1).max(256).optional();
+const drainReasonSchema = z
+  .string()
+  .min(1)
+  .max(256)
+  .optional()
+  .describe('Operator-facing reason for the drain, recorded with it; at most 256 characters.');
 
 const workerDrainInput = z.object({
-  workerId: z.string().min(1),
+  workerId: z.string().min(1).describe('Id of the connected worker to drain.'),
   reason: drainReasonSchema,
 });
 
 const workerDrainClearInput = z.object({
-  workerId: z.string().min(1),
+  workerId: z.string().min(1).describe('Id of the drained worker to return to routing.'),
 });
 
 // Omitted means the whole deployment; present narrows to that build.
-const buildIdSchema = z.string().min(1).optional();
+const buildIdSchema = z
+  .string()
+  .min(1)
+  .optional()
+  .describe('Narrow to this build of the deployment. Omit it to cover the whole deployment.');
 
 const deploymentDrainInput = z.object({
-  deploymentName: z.string().min(1),
+  deploymentName: z.string().min(1).describe('Name of the worker deployment to drain.'),
   buildId: buildIdSchema,
   reason: drainReasonSchema,
 });
 
 const deploymentDrainClearInput = z.object({
-  deploymentName: z.string().min(1),
+  deploymentName: z
+    .string()
+    .min(1)
+    .describe('Name of the drained worker deployment to return to routing.'),
   buildId: buildIdSchema,
 });
 
@@ -129,6 +141,10 @@ export function createClearWorkerDrainOperation(options?: WorkerDrainOperationOp
     name: 'weft.workers.resume',
     mcpExposable: false,
     summary: 'Clear a connected worker drain marker',
+    description:
+      'Clear the drain marker on a connected worker so it is routed new tasks again. ' +
+      "Returns the worker's resulting health and in-flight count. Faults with NotFound " +
+      'when no worker with that id is connected.',
     destructive: false,
     tags: ['System'],
     inputSchema: workerDrainClearInput,

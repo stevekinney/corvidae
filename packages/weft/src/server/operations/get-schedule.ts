@@ -15,7 +15,7 @@ import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 
 const getScheduleInput = z.object({
-  scheduleId: z.string().min(1),
+  scheduleId: z.string().min(1).describe('Id of the schedule to read.'),
 });
 
 const getScheduleOutput = z.unknown();

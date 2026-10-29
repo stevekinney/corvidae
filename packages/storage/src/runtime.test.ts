@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import * as nodeFileSystem from 'node:fs';
+import * as nodeModule from 'node:module';
 
 import {
   getProcess,
@@ -17,20 +17,20 @@ describe('storage runtime loader', () => {
   });
 
   it('loads a built-in through process.getBuiltinModule', () => {
-    expect(tryLoadNodeBuiltin('node:fs')?.existsSync).toBe(nodeFileSystem.existsSync);
+    expect(tryLoadNodeBuiltin('node:module')?.createRequire).toBe(nodeModule.createRequire);
   });
 
   it('returns the overriding process, even an undefined one', () => {
     setStorageRuntimeTestOverridesForTesting({ process: undefined });
     expect(getProcess()).toBeUndefined();
-    expect(tryLoadNodeBuiltin('node:fs')).toBeUndefined();
+    expect(tryLoadNodeBuiltin('node:module')).toBeUndefined();
   });
 
   it('returns undefined from the built-in loader when process.getBuiltinModule is missing', () => {
     const processStub = { versions: { node: '22.5.0' } } as typeof globalThis.process;
     setStorageRuntimeTestOverridesForTesting({ process: processStub });
     expect(getProcess()).toBe(processStub);
-    expect(tryLoadNodeBuiltin('node:zlib')).toBeUndefined();
+    expect(tryLoadNodeBuiltin('node:module')).toBeUndefined();
   });
 
   it('loads through the overriding process when it provides getBuiltinModule', () => {

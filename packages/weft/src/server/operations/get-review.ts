@@ -7,8 +7,8 @@ import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 
 const getReviewInput = z.object({
-  workflowId: z.string().min(1),
-  reviewId: z.string().min(1),
+  workflowId: z.string().min(1).describe('Id of the workflow the review belongs to.'),
+  reviewId: z.string().min(1).describe('Id of the review request to read.'),
 });
 const getReviewOutput = z.unknown();
 

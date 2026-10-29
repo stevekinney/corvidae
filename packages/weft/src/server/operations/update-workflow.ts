@@ -24,11 +24,19 @@ const DEFAULT_UPDATE_TIMEOUT_MS = 30_000;
 // "ignore-and-default" semantic. The same typeof checks live in `invoke()` so
 // REST and JSON-RPC callers share one contract.
 const updateWorkflowInput = z.object({
-  workflowId: z.string().min(1),
-  updateName: z.string().min(1),
-  payload: z.unknown().optional(),
-  timeout: z.unknown().optional(),
-  idempotencyKey: z.unknown().optional(),
+  workflowId: z.string().min(1).describe('Id of the workflow to send the update to.'),
+  updateName: z.string().min(1).describe('Name of the update handler to invoke.'),
+  payload: z.unknown().optional().describe('Payload passed to the update handler.'),
+  timeout: z
+    .unknown()
+    .optional()
+    .describe('Milliseconds to wait for the update to be answered; defaults to 30000.'),
+  idempotencyKey: z
+    .unknown()
+    .optional()
+    .describe(
+      "At-most-once key: a repeated key returns the first update's outcome instead of applying the update again.",
+    ),
 });
 
 const updateWorkflowOutput = z.object({

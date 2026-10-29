@@ -45,6 +45,12 @@ export const aggregateWorkflowsOperation = defineOperation({
   name: 'weft.workflows.aggregate',
   mcpExposable: false,
   summary: 'Aggregate workflows by a single dimension',
+  description:
+    'Count workflows by one dimension (status, type, failure category, or a search ' +
+    'attribute), optionally restricted by the same filters as `weft.workflows.list`. ' +
+    'Returns the total, the groups with their counts, and whether the group list was ' +
+    'truncated. Read-only. Faults with Unprocessable for an invalid filter or when ' +
+    'the grouping would exceed the distinct-key cap.',
   destructive: false,
   tags: ['Workflows'],
   inputSchema: aggregateWorkflowsInput,

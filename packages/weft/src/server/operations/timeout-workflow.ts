@@ -7,7 +7,7 @@ import {
 } from './single-workflow-control-operation.ts';
 
 const timeoutWorkflowInput = z.object({
-  workflowId: z.string().min(1),
+  workflowId: z.string().min(1).describe('Id of the workflow to force into the timed-out state.'),
 });
 
 export type TimeoutWorkflowInput = z.infer<typeof timeoutWorkflowInput>;

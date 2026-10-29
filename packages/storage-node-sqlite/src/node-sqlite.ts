@@ -8,6 +8,8 @@
  * @module storage/node-sqlite
  */
 
+import BetterSqlite3 from 'better-sqlite3';
+
 import {
   assertStorageBatchOperationCount,
   type BatchOperation,
@@ -28,7 +30,6 @@ import {
 import {
   createMissingBetterSqlite3Error,
   isBetterSqlite3LoadFailure,
-  loadBetterSqlite3,
   type BetterSqliteConstructor,
   type BetterSqliteDatabase,
   type BetterSqliteStatement,
@@ -42,8 +43,9 @@ type NodeSQLiteStoragePersistence = NonNullable<StorageCapabilities['persistence
  * environments.
  *
  * Implements the same WAL-mode schema as `BunSQLiteStorage` but resolves the
- * `better-sqlite3` dependency lazily at construction time, so the module
- * compiles and imports without the native binding.
+ * `better-sqlite3` native binding when the first database opens, so the
+ * module imports under any runtime and a refused or never-compiled binding surfaces from the
+ * constructor as an actionable error.
  *
  * Unlike `BunSQLiteStorage`, this adapter currently implements only the required
  * Storage methods (`get`, `put`, `delete`, `scan`, `batch`, and
@@ -96,14 +98,13 @@ export class NodeSQLiteStorage implements Storage {
     };
   }
 
-  constructor(path: string = ':memory:', databaseConstructor?: BetterSqliteConstructor) {
+  constructor(path: string = ':memory:', Database: BetterSqliteConstructor = BetterSqlite3) {
     this.#persistence = path === ':memory:' ? 'ephemeral' : 'local';
-    const Database = databaseConstructor ?? loadBetterSqlite3();
 
     try {
       this.#database = new Database(path);
     } catch (error) {
-      if (databaseConstructor === undefined && isBetterSqlite3LoadFailure(error)) {
+      if (isBetterSqlite3LoadFailure(error)) {
         throw createMissingBetterSqlite3Error(error);
       }
 

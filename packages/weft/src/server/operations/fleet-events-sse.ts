@@ -44,11 +44,28 @@ const cursorSchema = z.string().refine((cursor) => decodeCursor(cursor) !== null
 const fleetEventKindSchema = z.enum(EVENTS_READ_EVENT_TYPES);
 
 const fleetEventsSseInputSchema = z.object({
-  workflowId: z.string().min(1).optional(),
+  workflowId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('Return only events of the workflow with this id. Omit it for every workflow.'),
   /* One kind, or several. See `fleet-events-subscription.ts` for the rationale. */
-  kind: z.union([fleetEventKindSchema, z.array(fleetEventKindSchema).min(1)]).optional(),
-  fromCursor: cursorSchema.optional(),
-  lastEventId: cursorSchema.optional(),
+  kind: z
+    .union([fleetEventKindSchema, z.array(fleetEventKindSchema).min(1)])
+    .optional()
+    .describe(
+      'Return only events of this kind, or of any of these kinds. Omit it for every readable kind.',
+    ),
+  fromCursor: cursorSchema
+    .optional()
+    .describe(
+      'Resume after this cursor, as returned with an earlier event. Omit it to start from the beginning.',
+    ),
+  lastEventId: cursorSchema
+    .optional()
+    .describe(
+      'Cursor of the last event the client received, as sent in the Last-Event-ID header on an SSE reconnect. It takes precedence over fromCursor when both are given.',
+    ),
 });
 
 type FleetEventsSseInput = z.infer<typeof fleetEventsSseInputSchema>;

@@ -11,14 +11,17 @@ import {
 } from './single-workflow-control-operation.ts';
 
 const signalWorkflowInput = z.object({
-  workflowId: z.string().min(1),
-  signalName: z.string().min(1),
-  payload: z.unknown().optional(),
+  workflowId: z.string().min(1).describe('Id of the workflow to signal.'),
+  signalName: z.string().min(1).describe('Name of the signal to deliver.'),
+  payload: z.unknown().optional().describe('Payload delivered with the signal.'),
   signalId: z
     .string()
     .min(1)
     .refine(isSignalIdWithinByteLimit, 'signalId must be at most 128 bytes')
-    .optional(),
+    .optional()
+    .describe(
+      'Id that makes delivery idempotent: sending the same id again delivers the signal once. At most 128 bytes.',
+    ),
 });
 const signalWorkflowOutput = z.object({
   ok: z.literal(true),
