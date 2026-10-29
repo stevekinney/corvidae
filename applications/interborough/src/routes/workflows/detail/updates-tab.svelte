@@ -14,6 +14,8 @@
    * A submission that times out is not a fault: the update stays queued. The wait ending is a notice,
    * the update stays listed (as awaiting its result), and the history is asked again every two
    * seconds while the run is live and any update is unanswered, so its result appears when it lands.
+   * That poll runs only while the fleet feed is not live: `update:received` and `update:completed`
+   * frames invalidate the history (`applyFleetEventFrame`), which asks again when one arrives.
    *
    * Without `updates:write` the send form is not drawn.
    */
@@ -23,6 +25,7 @@
   import { onDestroy } from 'svelte';
 
   import { RUN_DETAIL_COPY } from '../../../app/copy.ts';
+  import { useFleetEventsLive } from '../../../app/live-polling.svelte.ts';
   import { classifyFault, faultTreatment, type FaultTreatment } from '../../../lib/faults.ts';
   import RunFaultBanner from './run-fault-banner.svelte';
   import { TickingClock } from './ticking-clock.svelte.ts';
@@ -59,15 +62,22 @@
   // page is refreshed with the rest.
   let pageCount = $state(1);
 
-  const historyQuery = createQuery(() => ({
-    queryKey: [...updateHistoryQueryKey(workflow.id), pageCount],
-    queryFn: () => readUpdateHistoryPages(client, workflow.id, pageCount),
-    placeholderData: keepPreviousData,
-    refetchInterval: (query) =>
-      !runIsTerminal && query.state.data?.items.some((item) => item.outcome === 'pending')
-        ? UPDATE_HISTORY_POLL_INTERVAL_MS
-        : false,
-  }));
+  const fleetLive = useFleetEventsLive();
+  const historyQuery = createQuery(() => {
+    // Read here, not in the interval below, which TanStack calls on its own and so is not tracked.
+    const polling = !fleetLive();
+    return {
+      queryKey: [...updateHistoryQueryKey(workflow.id), pageCount],
+      queryFn: () => readUpdateHistoryPages(client, workflow.id, pageCount),
+      placeholderData: keepPreviousData,
+      refetchInterval: (query) =>
+        polling &&
+        !runIsTerminal &&
+        query.state.data?.items.some((item) => item.outcome === 'pending')
+          ? UPDATE_HISTORY_POLL_INTERVAL_MS
+          : false,
+    };
+  });
 
   const entries = $derived(historyQuery.data?.items ?? []);
   const nextCursor = $derived(historyQuery.data?.nextCursor);

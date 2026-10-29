@@ -62,6 +62,7 @@
   } from '../../routes/reviews/reviews-data.ts';
   import type { LiveSourceStatus } from '../../lib/live-source/index.ts';
   import { NAVIGATION_COPY, VIEW_COPY } from '../copy.ts';
+  import { useFleetEventsLive } from '../live-polling.svelte.ts';
   import type { ViewName } from '../views.ts';
 
   interface SidebarNavProps {
@@ -99,8 +100,15 @@
   // read them. They are the entries `/reviews` reads, so the count and the list change together.
   const principalStore = getPrincipalStore();
   const bureauReviews = bureauReviewsQuery();
+  const fleetLive = useFleetEventsLive();
   const engineReviews = createQuery(
-    () => weftReviewsQueryOptions(client, 'pending', principalStore.hasScope('reviews:read')),
+    () =>
+      weftReviewsQueryOptions(
+        client,
+        'pending',
+        principalStore.hasScope('reviews:read'),
+        fleetLive(),
+      ),
     undefined,
   );
 

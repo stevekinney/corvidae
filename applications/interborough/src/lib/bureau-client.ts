@@ -109,6 +109,16 @@ export async function callBureau(
   return body['result'];
 }
 
+const deploymentIdSchema = z.object({ id: z.string().min(1) });
+
+/**
+ * The Bureau's own identifier (`bureau.deployment.get`), which `bureau.events` names as its
+ * `bureauId`. The feed is addressed by it and answers `NotFound` for any other.
+ */
+export async function getBureauId(options?: { readonly signal?: AbortSignal }): Promise<string> {
+  return deploymentIdSchema.parse(await callBureau('bureau.deployment.get', {}, options)).id;
+}
+
 /** One session, with its agent, title and model. A session the caller cannot see is a not-found fault. */
 export async function getContext(
   contextId: string,

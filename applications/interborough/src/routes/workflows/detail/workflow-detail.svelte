@@ -2,9 +2,9 @@
   /**
    * Workflow detail entry (plan T2.4–T2.7, Phase 2 gate). Owns the
    * `client.get(id)` query, the header's cancel/suspend/resume/force-timeout
-   * mutations, the "Run query" callback, URL-synced tab workflow, and the fleet
-   * feed subscription that gives the header/Overview live status updates
-   * (`applyFleetEventFrame` invalidates `queryKeys.workflows.detail(id)` on
+   * mutations, the "Run query" callback, URL-synced tab workflow, and the live
+   * status the header/Overview show (the shell's fleet subscription,
+   * `applyFleetEventFrame`, invalidates `queryKeys.workflows.detail(id)` on
    * any fleet event naming this workflow — the "signal → advance → watch it
    * resume live" path from the Phase 2 gate, without needing the
    * per-workflow tail the dev harness can't serve yet — see `events-tab.svelte`).
@@ -60,7 +60,6 @@
   import { onDestroy, untrack } from 'svelte';
 
   import { getClient } from '../../../lib/client.ts';
-  import { applyFleetEventFrame } from '../../../lib/live-source/cache-integration.ts';
   import { faultTreatment } from '../../../lib/faults.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';
@@ -171,21 +170,9 @@
     activeRevisionQuery.isError ? undefined : activeRevisionQuery.data,
   );
 
-  // Fleet liveness: any event naming this workflow invalidates the detail
-  // query, giving header/Overview a fresh status without the per-workflow
-  // tail (see module doc). Subscribed once for the component's lifetime —
-  // `id` is read as a plain value here deliberately, not reactively: the
-  // route outlet's `{#key router.pathname}` guarantees a fresh mount (and
-  // therefore a fresh subscription) on every workflow id change, so `id`
-  // cannot change under a live subscription. `untrack()` makes that
-  // one-time read explicit to Svelte (mirrors `shell.svelte`'s identical
-  // `untrack()` convention for its own once-at-init props) instead of
-  // triggering the `state_referenced_locally` compiler warning.
-  const unsubscribeFleet = getFleetEventSource().subscribe(
-    (frame) => applyFleetEventFrame(queryClient, frame),
-    { workflowId: untrack(() => id) },
-  );
-  onDestroy(unsubscribeFleet);
+  // Fleet liveness: any event naming this workflow invalidates the detail query (header/Overview
+  // status without the per-workflow tail, see module doc). The shell applies every fleet frame
+  // (`connectFleetInvalidation`), so this page subscribes to none of its own for that.
 
   // See the module doc above: started here (not lazily inside the Timeline
   // tab panel) to maximize the odds of catching the fleet feed's one-time

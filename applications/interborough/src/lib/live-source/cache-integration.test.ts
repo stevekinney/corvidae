@@ -7,6 +7,7 @@ import {
 import { QueryClient } from '@tanstack/svelte-query';
 import { describe, expect, test } from 'bun:test';
 
+import { updateHistoryQueryKey } from '../../routes/workflows/detail/updates/updates-data.ts';
 import {
   applyFleetEventFrame,
   applyScheduleFleetFrame,
@@ -15,13 +16,13 @@ import {
   SCHEDULES_DETAIL_KEY_PREFIX,
   SCHEDULES_LIST_KEY_PREFIX,
   SCHEDULES_RUN_HISTORY_KEY_PREFIX,
-  subscribeScheduleInvalidation,
   WORKERS_LIST_KEY,
   workflowDetailKey,
   workflowEventsKey,
   workflowFinalizerKey,
   WORKFLOWS_AGGREGATE_KEY_PREFIX,
   WORKFLOWS_LIST_KEY_PREFIX,
+  workflowUpdatesKey,
 } from './cache-integration.ts';
 import type { FleetEventFrame } from './fleet-event-source.svelte.ts';
 
@@ -114,7 +115,7 @@ function fleetFrame(
 }
 
 describe('applyFleetEventFrame', () => {
-  test('a workflow-scoped frame invalidates workflows list/aggregate/detail — never the events append cache', async () => {
+  test('a workflow-scoped frame invalidates the workflow detail — never the events append cache, or the list and aggregate a person reads at their own pace', async () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(WORKFLOWS_LIST_KEY_PREFIX, () => []);
     queryClient.setQueryData(WORKFLOWS_AGGREGATE_KEY_PREFIX, () => []);
@@ -126,8 +127,10 @@ describe('applyFleetEventFrame', () => {
       fleetFrame({ kind: 'workflow:completed', workflowId: 'wf_1' }),
     );
 
-    expect(queryClient.getQueryState(WORKFLOWS_LIST_KEY_PREFIX)?.isInvalidated).toBe(true);
-    expect(queryClient.getQueryState(WORKFLOWS_AGGREGATE_KEY_PREFIX)?.isInvalidated).toBe(true);
+    // The shell applies every frame; the list's Live toggle (`workflow-list-live.svelte.ts`) is what
+    // refreshes the list, so a frame must not reflow it under a person.
+    expect(queryClient.getQueryState(WORKFLOWS_LIST_KEY_PREFIX)?.isInvalidated).toBeFalsy();
+    expect(queryClient.getQueryState(WORKFLOWS_AGGREGATE_KEY_PREFIX)?.isInvalidated).toBeFalsy();
     expect(queryClient.getQueryState(workflowDetailKey('wf_1'))?.isInvalidated).toBe(true);
     // Fleet frames never append into the live-tail events cache (module doc).
     expect(queryClient.getQueryState(workflowEventsKey('wf_1'))?.isInvalidated).toBeFalsy();
@@ -162,6 +165,58 @@ describe('applyFleetEventFrame', () => {
     queryClient.setQueryData(REVIEWS_LIST_KEY_PREFIX, () => []);
     applyFleetEventFrame(queryClient, fleetFrame({ kind: 'human-review:requested' }));
     expect(queryClient.getQueryState(REVIEWS_LIST_KEY_PREFIX)?.isInvalidated).toBe(true);
+  });
+
+  test('a review frame invalidates the reviews list whether or not it names a workflow', () => {
+    for (const workflowId of [undefined, 'wf_1']) {
+      const queryClient = new QueryClient();
+      queryClient.setQueryData(REVIEWS_LIST_KEY_PREFIX, () => []);
+      applyFleetEventFrame(
+        queryClient,
+        fleetFrame({
+          kind: 'human-review:completed',
+          ...(workflowId === undefined ? {} : { workflowId }),
+        }),
+      );
+      expect(queryClient.getQueryState(REVIEWS_LIST_KEY_PREFIX)?.isInvalidated).toBe(true);
+    }
+  });
+
+  test.each(['update:received', 'update:completed'])(
+    '%s invalidates that run’s update history, and no other run’s',
+    (kind) => {
+      const queryClient = new QueryClient();
+      queryClient.setQueryData([...workflowUpdatesKey('wf_1'), 2], () => ({ items: [] }));
+      queryClient.setQueryData(workflowUpdatesKey('wf_2'), () => ({ items: [] }));
+      applyFleetEventFrame(queryClient, fleetFrame({ kind, workflowId: 'wf_1' }));
+      expect(queryClient.getQueryState([...workflowUpdatesKey('wf_1'), 2])?.isInvalidated).toBe(
+        true,
+      );
+      expect(queryClient.getQueryState(workflowUpdatesKey('wf_2'))?.isInvalidated).toBeFalsy();
+    },
+  );
+
+  test('workflowUpdatesKey is the key the updates tab reads', () => {
+    expect(workflowUpdatesKey('wf_1')).toEqual([...updateHistoryQueryKey('wf_1')]);
+  });
+
+  test('a fleet gap asks again for everything the feed drives, but not the workflow list', () => {
+    const queryClient = new QueryClient();
+    const keys = [
+      REVIEWS_LIST_KEY_PREFIX,
+      WORKERS_LIST_KEY,
+      SCHEDULES_LIST_KEY_PREFIX,
+      workflowDetailKey('wf_1'),
+      workflowFinalizerKey('wf_1'),
+      workflowUpdatesKey('wf_1'),
+    ];
+    for (const key of keys) queryClient.setQueryData(key, () => []);
+    queryClient.setQueryData(WORKFLOWS_LIST_KEY_PREFIX, () => []);
+
+    applyFleetEventFrame(queryClient, fleetFrame({ kind: 'fleet:gap' }));
+
+    for (const key of keys) expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(WORKFLOWS_LIST_KEY_PREFIX)?.isInvalidated).toBeFalsy();
   });
 
   test('worker:connected invalidates the workers list', () => {
@@ -251,27 +306,5 @@ describe('a schedule’s derived queries', () => {
     );
     expect(stale(queryClient, HISTORY_KEY)).toBe(false);
     expect(stale(queryClient, OTHER_HISTORY_KEY)).toBe(false);
-  });
-
-  test('subscribeScheduleInvalidation applies every frame its source delivers, until it is unsubscribed', () => {
-    const queryClient = seeded();
-    let listener: ((frame: FleetEventFrame) => void) | undefined;
-    let unsubscribed = false;
-    const unsubscribe = subscribeScheduleInvalidation(
-      {
-        subscribe(next) {
-          listener = next;
-          return () => {
-            unsubscribed = true;
-          };
-        },
-      },
-      queryClient,
-    );
-
-    listener?.(fleetFrame({ kind: 'schedule:fired' }));
-    expect(stale(queryClient, HISTORY_KEY)).toBe(true);
-    unsubscribe();
-    expect(unsubscribed).toBe(true);
   });
 });

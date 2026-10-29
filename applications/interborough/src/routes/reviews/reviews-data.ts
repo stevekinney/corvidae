@@ -23,6 +23,7 @@ import {
   type CreateQueryResult,
 } from '@tanstack/svelte-query';
 
+import { useBureauEventsLive, useFleetEventsLive } from '../../app/live-polling.svelte.ts';
 import {
   isApprovalOutcomeNotWritten,
   listBureauReviews,
@@ -35,21 +36,28 @@ import { respondToTask, type TaskRespondAnswer } from '../../lib/bureau-tasks.ts
 import { queryKeys } from '../../lib/query.ts';
 import { invalidateReviewQueries } from '../../lib/review-queries.ts';
 
-/** How often the list and the count ask what is waiting. */
+/** How often the list and the count ask what is waiting, while the feed that carries it is not live. */
 export const REVIEW_POLL_MILLISECONDS = 5_000;
 
 /**
  * The options of the engine's `reviews.list({status})` query. Only the pending list is polled: a
- * decided review does not change. `enabled` keeps it from asking at all, such as for a principal
- * without `reviews:read`. A component that holds its client as a prop calls this inside the option
- * getter, so the client is read where it can change.
+ * decided review does not change. It is polled only while the fleet feed is not live
+ * (`fleetLive`, from `useFleetEventsLive`), because a `human-review:*` frame asks it again
+ * otherwise. `enabled` keeps it from asking at all, such as for a principal without `reviews:read`.
+ * A component that holds its client as a prop calls this inside the option getter, so the client is
+ * read where it can change.
  */
-export function weftReviewsQueryOptions(client: HttpClient, status: ReviewStatus, enabled = true) {
+export function weftReviewsQueryOptions(
+  client: HttpClient,
+  status: ReviewStatus,
+  enabled = true,
+  fleetLive = false,
+) {
   return {
     queryKey: queryKeys.reviews.list({ status }),
     queryFn: () => client.listReviews({ status }),
     enabled,
-    ...(status === 'pending' ? { refetchInterval: REVIEW_POLL_MILLISECONDS } : {}),
+    ...(status === 'pending' && !fleetLive ? { refetchInterval: REVIEW_POLL_MILLISECONDS } : {}),
   };
 }
 
@@ -63,16 +71,23 @@ export function reviewListQuery(
   status: () => ReviewStatus,
   options: { readonly enabled?: () => boolean } = {},
 ): CreateQueryResult<ReviewListEntry[]> {
-  return createQuery(() => weftReviewsQueryOptions(client, status(), options.enabled?.() ?? true));
+  const fleetLive = useFleetEventsLive();
+  return createQuery(() =>
+    weftReviewsQueryOptions(client, status(), options.enabled?.() ?? true, fleetLive()),
+  );
 }
 
-/** The Bureau's pending reviews, asked again every {@link REVIEW_POLL_MILLISECONDS}. */
+/**
+ * The Bureau's pending reviews, asked again when `bureau.events` reports a review, and every
+ * {@link REVIEW_POLL_MILLISECONDS} while that feed is not live. Call it while a component initializes.
+ */
 export function bureauReviewsQuery(): CreateQueryResult<readonly BureauReview[]> {
+  const bureauLive = useBureauEventsLive();
   return createQuery(() => ({
     queryKey: queryKeys.bureauReviews.list(),
     queryFn: ({ signal }) => listBureauReviews({ signal }),
-    refetchInterval: REVIEW_POLL_MILLISECONDS,
-    // The poll asks again, so a failure is not retried between polls.
+    refetchInterval: bureauLive() ? false : REVIEW_POLL_MILLISECONDS,
+    // The poll (or the next event) asks again, so a failure is not retried in between.
     retry: false,
   }));
 }
