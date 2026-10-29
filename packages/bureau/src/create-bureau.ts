@@ -189,6 +189,7 @@ import {
   createDiagnosticDispatcher,
   forwardAssetEvents,
   forwardDefinitionChanges,
+  forwardMemoryGovernance,
   forwardMissedFires,
   subscribeEventFeed,
 } from './bureau-event-forwarders.ts';
@@ -2458,6 +2459,13 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         ),
       );
     });
+    // COR-1723 — the supplied governed memory's notifications, so its writes, forgets, and
+    // corrections reach the emitter whoever constructed it.
+    if (runtime.memory !== undefined) {
+      stopForwarding.push(
+        forwardMemoryGovernance(runtime.memory, (event) => emitter.dispatch(event), diagnose),
+      );
+    }
     if (runtime.durable !== undefined) {
       stopForwarding.push(
         forwardMissedFires(

@@ -457,6 +457,20 @@ export interface MemoryLegalHoldResult extends MemoryOperationResult {
 export interface GovernedMemory {
   /** The governance policy revision currently in force. */
   readonly policyRevision: string;
+  /**
+   * Registers `listener` to receive every {@link MemoryGovernanceNotification} that
+   * {@link CreateGovernedMemoryOptions.onEvent} receives for a call made after this
+   * one, each delivered after `onEvent` has run (and even when it threw) and in the
+   * order listeners were added. A notification is delivered once its event is in the
+   * ledger, inside the governed call that produced it. A listener removed while a
+   * notification is being delivered does not receive it.
+   *
+   * Each listener runs in its own `try`/`catch`: a throw (or, when the listener returns
+   * a promise, a rejection) is reported with `console.error` and never rejects the
+   * governed call or skips a later listener. Returns a function that removes the
+   * listener; calling it again does nothing.
+   */
+  subscribe(listener: (notification: MemoryGovernanceNotification) => void): () => void;
   init(): Promise<void>;
   close(): Promise<void>;
   write(

@@ -9,6 +9,8 @@
 
 import { ScheduleMissedFireEvent } from '@lostgradient/weft';
 
+import type { GovernedMemory } from '@lostgradient/memory';
+
 import type { AssetEvent } from './assets/types';
 import {
   AssetLifecycleEvent,
@@ -17,6 +19,7 @@ import {
   DefinitionsChangedEvent,
   type DefinitionSourceKind,
   DiagnosticEvent,
+  MemoryGovernanceEvent,
   ScheduleMissedEvent,
 } from './events';
 import type { DiagnosticSink } from './types';
@@ -221,4 +224,29 @@ export function forwardMissedFires(
     stopped = true;
     engine.removeEventListener(ScheduleMissedFireEvent.type, listener);
   };
+}
+
+/**
+ * Forwards each notification `memory` hands its subscribers as a `memory.governance` event, in the
+ * order memory delivers them, and returns the unsubscribe. Memory reports a listener that throws
+ * with `console.error` and moves on; a dispatch that throws here is diagnosed instead, so the host's
+ * own sink hears it.
+ */
+export function forwardMemoryGovernance(
+  memory: Pick<GovernedMemory, 'subscribe'>,
+  dispatch: (event: MemoryGovernanceEvent) => void,
+  diagnose: DiagnosticSink,
+): () => void {
+  return memory.subscribe((notification) => {
+    try {
+      dispatch(new MemoryGovernanceEvent(notification));
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'events',
+        message: `[bureau] Dispatching "memory.governance" for "${notification.type}" threw:`,
+        cause: error,
+      });
+    }
+  });
 }
