@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createRebuildScheduler } from './rebuild-scheduler.ts';
 import {
   createSourceWatcher,
@@ -223,15 +223,16 @@ describe('createSourceWatcher', () => {
     watcher.close();
   });
 
-  it('schedules exactly one rebuild when a file in a recorded directory changes', async () => {
+  it('schedules a rebuild when a file in a recorded directory changes', async () => {
     const workspace = mkdtempSync(join(scratch, 'workspace-'));
     const source = join(workspace, 'src');
     mkdirSync(source);
     const changed = join(source, 'component.ts');
-    writeFileSync(changed, 'export const value = 1;\n');
+    writeFileSync(changed, 'export const value = 0;\n');
     const inputsFile = join(workspace, 'inputs.json');
     writeFileSync(inputsFile, JSON.stringify([changed]));
 
+    let changes = 0;
     let builds = 0;
     const scheduler = createRebuildScheduler({
       delayMilliseconds: 50,
@@ -242,17 +243,29 @@ describe('createSourceWatcher', () => {
     const watcher = createSourceWatcher({
       inputsFile,
       fallbackDirectory: join(workspace, 'elsewhere'),
-      onChange: () => scheduler.schedule(),
+      onChange: () => {
+        changes += 1;
+        scheduler.schedule();
+      },
       log: () => {},
     });
     await watcher.refresh();
     expect(watcher.directories()).toEqual([source]);
 
-    writeFileSync(changed, 'export const value = 2;\n');
-    await waitUntil(() => builds === 1);
-    // One save is one build: the debounce folds the file system's repeated events together.
-    await quietFor(250);
-    expect(builds).toBe(1);
+    // A recursive watch has no ready signal, and a save made before the operating system's stream
+    // is live is never reported, which a loaded host makes likely. Save again until one is seen.
+    // How many builds the saves fold into is the debounce's business (`rebuild-scheduler.test.ts`).
+    let revision = 0;
+    await waitUntil(
+      () => {
+        if (changes > 0) return true;
+        revision += 1;
+        writeFileSync(changed, `export const value = ${revision};\n`);
+        return false;
+      },
+      { message: 'the watch to report a save' },
+    );
+    await waitUntil(() => builds > 0, { message: 'the scheduled rebuild' });
 
     watcher.close();
     scheduler.close();
