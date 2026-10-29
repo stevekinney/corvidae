@@ -405,7 +405,9 @@ export const reviewsGetOperation = defineOperation<
     'Returns a review of one of the caller’s own runs, pending or resolved where the Bureau persists resolutions; a caller holding `bureau.reviews:read` reads any owner’s. Another owner’s review answers as a missing id does.',
   destructive: false,
   tags: ['Reviews'],
-  inputSchema: z.object({ id: z.string().min(1) }),
+  inputSchema: z.object({
+    id: z.string().min(1).describe('The identifier of the review to read.'),
+  }),
   outputSchema: bureauReviewSchema,
   producibleFaults: ['InvalidParams', 'NotFound'],
   access: { kind: 'authenticated' },
@@ -426,17 +428,19 @@ export const reviewsGetOperation = defineOperation<
 
 const reviewsResolveInput = z
   .object({
-    id: z.string().min(1),
-    decision: z.enum(['approve', 'deny', 'reject']),
-    /** Required, and non-blank, for `reject`. */
-    reason: z.string().optional(),
-    /**
-     * The `round` of the review the caller read. A re-gated tool approval keeps its id and
-     * advances its round; when this is given and the review is no longer at it, nothing is decided
-     * and the answer is a `Conflict`. A human wait is always at round 0. Omitted, the call is not
-     * fenced.
-     */
-    round: z.number().int().min(0).optional(),
+    id: z.string().min(1).describe('The identifier of the review to resolve.'),
+    decision: z
+      .enum(['approve', 'deny', 'reject'])
+      .describe('Whether to `approve` the review, `deny` it, or `reject` it with a `reason`.'),
+    reason: z.string().optional().describe('Required, and non-blank, for `reject`.'),
+    round: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe(
+        'The `round` of the review the caller read. A re-gated tool approval keeps its id and advances its round; when this is given and the review is no longer at it, nothing is decided and the answer is a `Conflict`. A human wait is always at round 0. Omitted, the call is not fenced.',
+      ),
   })
   .refine((input) => input.decision !== 'reject' || (input.reason ?? '').trim() !== '', {
     message: 'reject requires a reason',

@@ -53,11 +53,20 @@ export type BureauContextsForkOperationHost = BureauOwnershipHost & {
 };
 
 const contextsForkInput = z.object({
-  contextId: z.string().min(1),
-  /** The caller's own identifier for the command; an exact retry of it returns the original answer. */
-  commandId: z.string().min(1).max(256),
-  /** The final assistant message of a completed run in the context, which the branch ends at. */
-  throughMessageId: z.string().min(1),
+  contextId: z.string().min(1).describe('The identifier of the context to branch.'),
+  commandId: z
+    .string()
+    .min(1)
+    .max(256)
+    .describe(
+      'The caller’s own identifier for the command; an exact retry of it returns the original answer.',
+    ),
+  throughMessageId: z
+    .string()
+    .min(1)
+    .describe(
+      'The final assistant message of a completed run in the context, which the branch ends at.',
+    ),
 });
 
 const contextsForkOutput = z.object({

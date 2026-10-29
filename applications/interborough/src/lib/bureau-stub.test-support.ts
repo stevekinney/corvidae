@@ -57,9 +57,38 @@ export const STUB_PROVIDERS: { name: string; secretFile: string }[] = [
   { name: 'gemini', secretFile: `${STUB_SECRETS_DIRECTORY}/gemini-api-key` },
 ];
 
-/** The body `/host/paths` answers with, for the two directories a test chooses. */
-export function stubHostPaths(agentDirectory: string, workflowDirectory: string) {
+/** The bucket folder a remote host reports for agent objects. */
+export const STUB_REMOTE_AGENT_DIRECTORY = 's3://interborough-state/prod/agents/';
+/** The bucket folder a remote host reports for workflow objects. */
+export const STUB_REMOTE_WORKFLOW_DIRECTORY = 's3://interborough-state/prod/workflows/';
+/** The configuration object a remote host reports. */
+export const STUB_REMOTE_CONFIGURATION_FILE = 's3://interborough-state/prod/configuration.json';
+/** The providers a remote host reports, each with the variable that holds its API key. */
+export const STUB_REMOTE_PROVIDERS: { name: string; secretFile: string }[] = [
+  { name: 'anthropic', secretFile: 'INTERBOROUGH_SECRET_ANTHROPIC_API_KEY' },
+  { name: 'openai', secretFile: 'INTERBOROUGH_SECRET_OPENAI_API_KEY' },
+  { name: 'gemini', secretFile: 'INTERBOROUGH_SECRET_GEMINI_API_KEY' },
+];
+
+/** The body `/host/paths` answers with for a host that keeps its state in Postgres and a bucket. */
+export function stubRemoteHostPaths() {
   return {
+    mode: 'remote' as const,
+    agentDirectory: STUB_REMOTE_AGENT_DIRECTORY,
+    workflowDirectory: STUB_REMOTE_WORKFLOW_DIRECTORY,
+    configurationFile: STUB_REMOTE_CONFIGURATION_FILE,
+    providers: STUB_REMOTE_PROVIDERS,
+  };
+}
+
+/** The body `/host/paths` answers with, for the two directories a test chooses. */
+export function stubHostPaths(
+  agentDirectory: string,
+  workflowDirectory: string,
+  mode: 'local' | 'remote' = 'local',
+) {
+  return {
+    mode,
     agentDirectory,
     workflowDirectory,
     configurationFile: STUB_CONFIGURATION_FILE,
@@ -96,6 +125,8 @@ export function installBureauStub(
   handlers: Record<string, BureauHandler>,
   options: {
     readonly hostPaths?: string | null;
+    /** `remote` makes `/host/paths` answer as a host that keeps its state in Postgres and a bucket. */
+    readonly hostMode?: 'local' | 'remote';
     readonly passThrough?: boolean;
     /** Answers the subscriptions it names, by operation name; any other one is `Not found`. */
     readonly subscriptions?: Readonly<Record<string, StubSubscriptionHandler>>;
@@ -115,9 +146,12 @@ export function installBureauStub(
     }
     if (url.pathname === '/host/paths') {
       const directory = options.hostPaths === undefined ? STUB_AGENT_DIRECTORY : options.hostPaths;
-      return directory === null
-        ? new Response('Not found', { status: 404 })
-        : Response.json(stubHostPaths(directory, STUB_WORKFLOW_DIRECTORY));
+      if (directory === null) return new Response('Not found', { status: 404 });
+      return Response.json(
+        options.hostMode === 'remote'
+          ? stubRemoteHostPaths()
+          : stubHostPaths(directory, STUB_WORKFLOW_DIRECTORY),
+      );
     }
     const subscription = url.pathname.startsWith(SUBSCRIPTION_PREFIX)
       ? options.subscriptions?.[url.pathname.slice(SUBSCRIPTION_PREFIX.length)]

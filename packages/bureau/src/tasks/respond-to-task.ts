@@ -59,23 +59,29 @@ export const TASKS_RESPOND_LEDGER_KEY_PREFIX = 'command-ledger:tasks-respond:v1'
 /** The command's input, without the principal: also how an A2A continuation's answer is validated. */
 export const tasksRespondInput = z
   .object({
-    taskId: z.string().min(1),
-    /** The caller's idempotency key for this command. */
-    messageId: z.string().min(1).max(200),
-    /** Answer text; a list of parts is joined with a newline. */
-    answer: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]).optional(),
-    /**
-     * The answer of a human wait that carries an input schema: one JSON object, validated against
-     * that schema before it is delivered as the signal's payload.
-     */
-    data: z.record(z.string(), z.unknown()).optional(),
-    decision: z.enum(['approve', 'deny', 'reject']).optional(),
-    /** Required, and non-blank, for `reject`. */
-    reason: z.string().optional(),
-    /** Addresses the human wait with this signal. */
-    signalName: z.string().min(1).optional(),
-    /** Addresses the tool approval for this call. */
-    callId: z.string().min(1).optional(),
+    taskId: z.string().min(1).describe('The identifier of the task whose wait is answered.'),
+    messageId: z
+      .string()
+      .min(1)
+      .max(200)
+      .describe('The caller’s idempotency key for this command.'),
+    answer: z
+      .union([z.string().min(1), z.array(z.string().min(1)).min(1)])
+      .optional()
+      .describe('Answer text; a list of parts is joined with a newline.'),
+    data: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe(
+        'The answer of a human wait that carries an input schema: one JSON object, validated against that schema before it is delivered as the signal’s payload.',
+      ),
+    decision: z
+      .enum(['approve', 'deny', 'reject'])
+      .optional()
+      .describe('Decides an approval or a human wait. `reject` requires a `reason`.'),
+    reason: z.string().optional().describe('Required, and non-blank, for `reject`.'),
+    signalName: z.string().min(1).optional().describe('Addresses the human wait with this signal.'),
+    callId: z.string().min(1).optional().describe('Addresses the tool approval for this call.'),
   })
   .refine(
     (input) =>

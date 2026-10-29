@@ -12,11 +12,21 @@ import type { Fetcher } from './bureau-client.ts';
 export const HOST_PATHS_ROUTE = '/host/paths';
 
 const hostPathsSchema = z.object({
+  /**
+   * Whether the host keeps its state on this machine (`local`) or in a Postgres database and an S3
+   * bucket (`remote`). The words that name a place to look change with it.
+   */
+  mode: z.enum(['local', 'remote']),
+  /** The agent files: a directory's path, or `s3://<bucket>/<prefix>` in remote mode. */
   agentDirectory: z.string(),
+  /** The workflow files: a directory's path, or `s3://<bucket>/<prefix>` in remote mode. */
   workflowDirectory: z.string(),
-  /** `configuration.json` in the state directory, where the model providers are named. */
+  /** `configuration.json` in the state directory (an `s3://` location in remote mode), where the model providers are named. */
   configurationFile: z.string(),
-  /** The provider names the configuration accepts, each with the file that holds its API key. */
+  /**
+   * The provider names the configuration accepts, each with where its API key lives: a file's path,
+   * or in remote mode the environment variable's name. Never the key itself.
+   */
   providers: z.array(z.object({ name: z.string().min(1), secretFile: z.string().min(1) })),
 });
 

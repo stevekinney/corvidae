@@ -41,7 +41,9 @@ const modelChoiceSchema = z.object({
   displayName: z.string(),
 });
 
-const agentsModelsInput = z.object({ agentName: z.string().min(1) });
+const agentsModelsInput = z.object({
+  agentName: z.string().min(1).describe('The name of the agent whose allowed models to list.'),
+});
 
 const agentsModelsOutput = z.object({
   /** Whether a session of the agent can be switched between models. */

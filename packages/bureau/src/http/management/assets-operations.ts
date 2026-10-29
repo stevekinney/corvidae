@@ -198,8 +198,21 @@ function assetView(descriptor: AssetDescriptor): z.infer<typeof assetViewSchema>
 }
 
 const createInput = z.object({
-  declaredByteLength: z.number().int().positive(),
-  declaredMediaType: z.string().min(1).max(255).optional(),
+  declaredByteLength: z
+    .number()
+    .int()
+    .positive()
+    .describe(
+      'The number of bytes the upload will carry. A length above the policy’s ceiling is refused.',
+    ),
+  declaredMediaType: z
+    .string()
+    .min(1)
+    .max(255)
+    .optional()
+    .describe(
+      'The media type the caller expects. The content is inspected and the detected type wins; a declared type that disagrees with it is refused when the upload completes.',
+    ),
 });
 
 export const assetsUploadsCreateOperation = defineOperation<
@@ -236,8 +249,12 @@ export const assetsUploadsCreateOperation = defineOperation<
 });
 
 const appendInput = z.object({
-  uploadId: z.string().min(1),
-  chunk: z.string().min(1).regex(BASE64, 'chunk must be base64'),
+  uploadId: z.string().min(1).describe('The identifier of the open upload to append to.'),
+  chunk: z
+    .string()
+    .min(1)
+    .regex(BASE64, 'chunk must be base64')
+    .describe('The next chunk of the upload’s bytes, base64-encoded.'),
 });
 
 export const assetsUploadsAppendOperation = defineOperation<
@@ -276,7 +293,9 @@ export const assetsUploadsAppendOperation = defineOperation<
   },
 });
 
-const completeInput = z.object({ uploadId: z.string().min(1) });
+const completeInput = z.object({
+  uploadId: z.string().min(1).describe('The identifier of the upload to complete.'),
+});
 
 export const assetsUploadsCompleteOperation = defineOperation<
   typeof completeInput,
@@ -366,7 +385,9 @@ async function answerFor(
   } satisfies OperationFault;
 }
 
-const getInput = z.object({ assetId: z.string().min(1) });
+const getInput = z.object({
+  assetId: z.string().min(1).describe('The identifier of the asset to read.'),
+});
 
 export const assetsGetOperation = defineOperation<
   typeof getInput,

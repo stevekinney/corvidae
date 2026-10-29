@@ -79,8 +79,19 @@ export const taskViewSchema = z.object({
 
 /** The paging fields the list operations share. */
 export const pageFields = {
-  limit: z.number().int().min(1).max(100).optional(),
-  offset: z.number().int().min(0).optional(),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .optional()
+    .describe('The most entries to return in one page, from 1 to 100. Defaults to 50.'),
+  offset: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe('How many entries to skip before the page starts. Defaults to 0.'),
 };
 
 export const DEFAULT_PAGE_LIMIT = 50;
@@ -88,7 +99,15 @@ export const DEFAULT_PAGE_LIMIT = 50;
 /** The longest a cancel or delete may wait for a cleanup acknowledgement. */
 export const MAX_WAIT_MILLISECONDS = 60_000;
 
-export const waitMillisecondsField = z.number().int().min(0).max(MAX_WAIT_MILLISECONDS).optional();
+export const waitMillisecondsField = z
+  .number()
+  .int()
+  .min(0)
+  .max(MAX_WAIT_MILLISECONDS)
+  .optional()
+  .describe(
+    'How long, in milliseconds, to wait for cleanup acknowledgements before answering, from 0 to 60000. Defaults to 0, which does not wait.',
+  );
 
 /** The fault a missing resource, and a resource the caller may not see, both answer with. */
 export function resourceNotFound(

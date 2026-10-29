@@ -76,6 +76,13 @@
     }),
     undefined,
   );
+
+  /** The words that name where the host keeps its state: a host that keeps it in a bucket says so. */
+  const words = $derived(
+    hostPaths.data?.mode === 'remote'
+      ? { ...SETTINGS_COPY.hostPaths, ...SETTINGS_COPY.remote.hostPaths }
+      : SETTINGS_COPY.hostPaths,
+  );
 </script>
 
 <section class="weft-settings" aria-labelledby="weft-settings-title" data-page="settings">
@@ -119,18 +126,18 @@
 
   <section class="weft-settings__paths" aria-labelledby="weft-settings-paths-title">
     <h2 id="weft-settings-paths-title" class="weft-settings__paths-title">
-      {SETTINGS_COPY.hostPaths.title}
+      {words.title}
     </h2>
     <p class="weft-settings__muted">{SETTINGS_COPY.hostPaths.description}</p>
     {#if hostPaths.data !== undefined}
       <dl class="weft-settings__path-list">
-        <dt>{SETTINGS_COPY.hostPaths.agents}</dt>
+        <dt>{words.agents}</dt>
         <dd><code>{hostPaths.data.agentDirectory}</code></dd>
-        <dt>{SETTINGS_COPY.hostPaths.workflows}</dt>
+        <dt>{words.workflows}</dt>
         <dd><code>{hostPaths.data.workflowDirectory}</code></dd>
-        <dt>{SETTINGS_COPY.hostPaths.configuration}</dt>
+        <dt>{words.configuration}</dt>
         <dd><code>{hostPaths.data.configurationFile}</code></dd>
-        <dt>{SETTINGS_COPY.hostPaths.providers}</dt>
+        <dt>{words.providers}</dt>
         <dd>
           <ul class="weft-settings__path-providers">
             {#each hostPaths.data.providers as provider (provider.name)}

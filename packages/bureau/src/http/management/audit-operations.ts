@@ -47,16 +47,33 @@ const recordSchema = z.object({
 });
 
 const queryInput = z.object({
-  /** Only records about this resource: a run id, or `schedule:<id>`, `session:<id>`, and so on. */
-  runId: z.string().min(1).max(512).optional(),
-  type: z.string().min(1).max(128).optional(),
-  /** Only records at or after this time, in epoch milliseconds. */
-  since: z.number().int().min(0).optional(),
+  runId: z
+    .string()
+    .min(1)
+    .max(512)
+    .optional()
+    .describe(
+      'Only records about this resource: a run id, or `schedule:<id>`, `session:<id>`, and so on.',
+    ),
+  type: z.string().min(1).max(128).optional().describe('Only records of this type.'),
+  since: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe('Only records at or after this time, in epoch milliseconds.'),
   cursor: z
     .string()
     .refine((cursor) => decodeAuditCursor(cursor) !== undefined, { message: 'Invalid cursor' })
-    .optional(),
-  limit: z.number().int().min(1).max(100).optional(),
+    .optional()
+    .describe('The `nextCursor` of the previous page, to continue after it.'),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .optional()
+    .describe('The most records to return in one page, from 1 to 100. Defaults to 50.'),
 });
 
 const queryOutput = z.object({

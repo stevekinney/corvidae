@@ -18,6 +18,9 @@ import {
   STUB_AGENT_DIRECTORY,
   STUB_CONFIGURATION_FILE,
   STUB_PROVIDERS,
+  STUB_REMOTE_AGENT_DIRECTORY,
+  STUB_REMOTE_CONFIGURATION_FILE,
+  STUB_REMOTE_PROVIDERS,
   StubFault,
   type BureauStub,
 } from '../../lib/bureau-stub.test-support.ts';
@@ -44,6 +47,7 @@ function bureau(
     /** The catalog, or a function that answers with the catalog as it is at each read. */
     readonly catalog?: AgentCatalog | (() => AgentCatalog);
     readonly hostPaths?: string | null;
+    readonly hostMode?: 'local' | 'remote';
   } = {},
 ): BureauStub {
   const agent = options.agent ?? readyAgent();
@@ -64,7 +68,10 @@ function bureau(
       'bureau.agents.definitions.withdraw': () => ({ id: agent.id, hash: 'hash-withdrawn' }),
       'bureau.agents.definitions.delete': () => ({ id: agent.id, hash: 'deleted' }),
     },
-    options.hostPaths === undefined ? {} : { hostPaths: options.hostPaths },
+    {
+      ...(options.hostPaths === undefined ? {} : { hostPaths: options.hostPaths }),
+      ...(options.hostMode === undefined ? {} : { hostMode: options.hostMode }),
+    },
   );
   return stub;
 }
@@ -705,5 +712,62 @@ describe('a Bureau that does not answer', () => {
     calls.on('bureau.agents.catalog', () => catalogFixture());
     await fireEvent.click(getByRole('button', { name: 'Try again' }));
     expect(await findByText(AGENT_EDITOR_COPY.saveAction)).not.toBeNull();
+  });
+});
+
+/**
+ * COR-1764: a host that keeps its state in Postgres and a bucket says `mode: 'remote'` in
+ * `/host/paths`, and the words that name a place to look change with it. Everything else does not.
+ */
+describe.each(['local', 'remote'] as const)('the agent editor on a %s host', (mode) => {
+  const other = mode === 'local' ? 'remote' : 'local';
+  const words = {
+    local: {
+      label: AGENT_EDITOR_COPY.fileLabel,
+      configurationStep: AGENT_EDITOR_COPY.noProvider.configurationStep,
+      secretStep: AGENT_EDITOR_COPY.noProvider.secretStep,
+    },
+    remote: {
+      label: AGENT_EDITOR_COPY.remote.fileLabel,
+      configurationStep: AGENT_EDITOR_COPY.remote.noProvider.configurationStep,
+      secretStep: AGENT_EDITOR_COPY.remote.noProvider.secretStep,
+    },
+  } as const;
+
+  test('labels an agent’s location with the words of its mode, and shows the host’s location verbatim', async () => {
+    bureau({ hostMode: mode });
+    const { findByTestId, container } = mountEditor('researcher');
+    const path = await findByTestId('agent-file-path');
+
+    const label = container.querySelector('.weft-agent-editor__path span')?.textContent;
+    expect(label).toBe(words[mode].label);
+    expect(label).not.toBe(words[other].label);
+    expect(path.textContent).toBe(
+      mode === 'remote'
+        ? `${STUB_REMOTE_AGENT_DIRECTORY}researcher.md`
+        : `${STUB_AGENT_DIRECTORY}/researcher.md`,
+    );
+  });
+
+  test('says where to configure a provider, and where its key goes, in the words of its mode', async () => {
+    bureau({ catalog: catalogFixture({ models: [] }), hostMode: mode });
+    const { findByRole, getByTestId, container } = mountEditor();
+    await findByRole('heading', { level: 2, name: AGENT_EDITOR_COPY.noProvider.title });
+
+    const text = container.textContent ?? '';
+    expect(text).toContain(words[mode].configurationStep);
+    expect(text).toContain(words[mode].secretStep);
+    expect(text).not.toContain(words[other].configurationStep);
+    expect(text).not.toContain(words[other].secretStep);
+    // The chmod sentence is the local secret step's; it never appears in remote mode.
+    expect(text.includes('chmod 600')).toBe(mode === 'local');
+    expect(getByTestId('provider-configuration-file').textContent).toBe(
+      mode === 'remote' ? STUB_REMOTE_CONFIGURATION_FILE : STUB_CONFIGURATION_FILE,
+    );
+    for (const provider of mode === 'remote' ? STUB_REMOTE_PROVIDERS : STUB_PROVIDERS) {
+      expect(container.querySelector(`[data-provider="${provider.name}"]`)?.textContent).toContain(
+        provider.secretFile,
+      );
+    }
   });
 });

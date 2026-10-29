@@ -15,6 +15,7 @@ import {
   STUB_WORKFLOW_DIRECTORY,
   StubFault,
   stubHostPaths,
+  stubRemoteHostPaths,
   urlOf,
 } from './bureau-stub.test-support.ts';
 import { installFetchImplementation } from './live-source/fetch.test-support.ts';
@@ -271,6 +272,8 @@ export type World = {
   signalAnswer: { started: string[]; delivered: string[] };
   /** The directory `/host/paths` reports, or `null` for a host that does not say. */
   workflowDirectory: string | null;
+  /** `remote` makes `/host/paths` answer as a host that keeps its state in Postgres and a bucket. */
+  hostMode: 'local' | 'remote';
   /** Makes the engine's schedule list answer with a refusal, as a server that cannot read them would. */
   failSchedules: boolean;
   /** The agent each Bureau schedule runs, by schedule id. A schedule that is not here is not a Bureau agent schedule. */
@@ -295,6 +298,7 @@ export function emptyWorld(overrides: Partial<World> = {}): World {
     installedRevisions: {},
     signalAnswer: { started: [], delivered: [] },
     workflowDirectory: STUB_WORKFLOW_DIRECTORY,
+    hostMode: 'local',
     failSchedules: false,
     scheduleAgents: {},
     scheduleInputs: {},
@@ -685,9 +689,12 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
   const restoreFetch = installFetchImplementation(async (input, init) => {
     const url = new URL(urlOf(input), 'http://localhost');
     if (url.pathname === '/host/paths') {
-      return world.workflowDirectory === null
-        ? new Response('Not found', { status: 404 })
-        : Response.json(stubHostPaths(STUB_AGENT_DIRECTORY, world.workflowDirectory));
+      if (world.workflowDirectory === null) return new Response('Not found', { status: 404 });
+      return Response.json(
+        world.hostMode === 'remote'
+          ? stubRemoteHostPaths()
+          : stubHostPaths(STUB_AGENT_DIRECTORY, world.workflowDirectory),
+      );
     }
     const scheduleRoute = url.pathname.endsWith('/jsonrpc')
       ? null

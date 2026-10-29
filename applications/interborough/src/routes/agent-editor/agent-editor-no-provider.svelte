@@ -22,7 +22,12 @@
 
   let { paths, onReload, reloading }: Props = $props();
 
-  const copy = AGENT_EDITOR_COPY.noProvider;
+  /** The steps name where each thing lives, so a host that keeps its state in a bucket says so. */
+  const copy = $derived(
+    paths?.mode === 'remote'
+      ? { ...AGENT_EDITOR_COPY.noProvider, ...AGENT_EDITOR_COPY.remote.noProvider }
+      : AGENT_EDITOR_COPY.noProvider,
+  );
 
   /** The first provider the host accepts, as the example the snippet configures. */
   const snippet = $derived.by(() => {

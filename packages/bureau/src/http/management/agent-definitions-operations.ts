@@ -92,8 +92,17 @@ export type BureauAgentDefinitionsOperationHost = BureauOwnershipHost & {
 };
 
 /** The same cap the file format has, so no identifier a request can name is one no file can have. */
-const agentIdentifier = z.string().min(1).max(AGENT_IDENTIFIER_MAX_LENGTH);
-const hash = z.string().min(1);
+const agentIdentifier = z
+  .string()
+  .min(1)
+  .max(AGENT_IDENTIFIER_MAX_LENGTH)
+  .describe('The identifier of the agent.');
+const hash = z
+  .string()
+  .min(1)
+  .describe(
+    'The `hash` of the agent file the caller read; a file that has changed since is a `StaleRevision` fault and nothing is written.',
+  );
 
 const problemSchema = z.object({
   code: z.string(),
@@ -153,7 +162,10 @@ const definitionInputSchema = z
     skills: z.array(agentSkillDescriptorSchema).optional(),
     instructions: z.string(),
   })
-  .superRefine((definition, context) => checkModelsList(definition, context));
+  .superRefine((definition, context) => checkModelsList(definition, context))
+  .describe(
+    'The agent’s definition: `name`, `description`, `model`, `models` (the models a session may be switched to), `tools`, `skills` and `instructions`. Whether the agent is published is not part of it.',
+  );
 
 /**
  * The definition to write, from what the caller sent. Zod types an optional key as possibly
