@@ -76,6 +76,7 @@ import {
 
 import type { GenerateProviderName, ProviderConfiguration } from './types';
 import { storageOverTextStore } from './testing/text-store-storage.test-support';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 
@@ -2096,7 +2097,7 @@ describe('createRuntimeComposition durable execution', () => {
       // synchronous throw.
       const refused = engineStorage?.put('probe', new Uint8Array([6]));
       expect(refused).toBeInstanceOf(Promise);
-      await expect(refused).rejects.toThrow(/stopped writing to its storage/);
+      expect(await throwingRejectionOf(refused)).toThrow(/stopped writing to its storage/);
       expect(await engineStorage?.get('probe')).toEqual(new Uint8Array([5]));
       await storage.put('probe', new Uint8Array([7]));
       expect(await storage.get('probe')).toEqual(new Uint8Array([7]));
