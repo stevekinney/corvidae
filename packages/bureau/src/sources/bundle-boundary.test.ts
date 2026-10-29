@@ -1,8 +1,9 @@
 /**
- * COR-1702 — the Node-only definition sources stay out of Bureau's main entry. The import closure
- * of `src/index.ts`, followed through every relative import, export, and dynamic import (types
- * included), holds the contract types and `SourceConflictError`, and none of the directory
- * constructors or the file-system code behind them. Modeled on Cinder's
+ * COR-1702, COR-1762 — the subpath-only definition sources (the Node directory sources and the Bun
+ * S3 object sources) stay out of Bureau's main entry. The import closure of `src/index.ts`,
+ * followed through every relative import, export, and dynamic import (types included), holds the
+ * contract types and `SourceConflictError`, and none of the directory or object constructors or
+ * the file-system and object-store code behind them. Modeled on Cinder's
  * `json-editor.bundle-boundary.test.ts`.
  */
 import { dirname, extname, resolve as resolvePath } from 'node:path';
@@ -61,29 +62,35 @@ async function importClosure(entry: string): Promise<Set<string>> {
   return files;
 }
 
-const FILE_SYSTEM_SOURCES = [
+const BROWSER_EXCLUDED_SOURCES = [
   'watched-directory.ts',
   'agent-file-operations.ts',
   'atomic-file-writer.ts',
   'directory-source.ts',
   'agent-file-directory.ts',
   'workflow-file-directory.ts',
+  'safe-identifier.ts',
+  'object-operations.ts',
+  'polled-objects.ts',
+  'object-source.ts',
+  'agent-object-source.ts',
+  'workflow-object-source.ts',
   'index.ts',
 ] as const;
 
 describe('Bureau main entry — sources bundle boundary', () => {
-  test('reaches the contract types and SourceConflictError, and no directory source', async () => {
+  test('reaches the contract types and SourceConflictError, and no directory or object source', async () => {
     const closure = await importClosure(ENTRY);
     expect(closure).toContain(ENTRY);
     expect(closure).toContain(resolvePath(SOURCES_DIRECTORY, 'definition-source.ts'));
-    for (const name of FILE_SYSTEM_SOURCES) {
+    for (const name of BROWSER_EXCLUDED_SOURCES) {
       expect(closure.has(resolvePath(SOURCES_DIRECTORY, name)), name).toBe(false);
     }
   });
 
-  test('the sources subpath reaches the directory constructors', async () => {
+  test('the sources subpath reaches the directory and object constructors', async () => {
     const closure = await importClosure(resolvePath(SOURCES_DIRECTORY, 'index.ts'));
-    for (const name of FILE_SYSTEM_SOURCES) {
+    for (const name of BROWSER_EXCLUDED_SOURCES) {
       expect(closure.has(resolvePath(SOURCES_DIRECTORY, name)), name).toBe(true);
     }
   });
