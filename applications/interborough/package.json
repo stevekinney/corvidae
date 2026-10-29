@@ -26,6 +26,7 @@
     "@lostgradient/memory": "workspace:*",
     "@lostgradient/operative": "workspace:*",
     "@lostgradient/operative-anthropic": "workspace:*",
+    "@lostgradient/operative-openai": "workspace:*",
     "@lostgradient/storage": "workspace:*",
     "@lostgradient/storage-bun-sqlite": "workspace:*",
     "@lostgradient/storage-indexeddb": "workspace:*",

@@ -63,7 +63,6 @@ const entryPoints = { root, providerKit, providerTesting };
 const BARRELS = [
   'src/providers/index.ts',
   'src/providers/batches/index.ts',
-  'src/providers/streaming/index.ts',
   'src/providers/structured-output/index.ts',
   'src/providers/test/index.ts',
 ] as const;

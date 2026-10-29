@@ -6,19 +6,13 @@
  */
 
 export { readBackendDescriptors, withBackendDescriptors } from './backend-descriptor-attachment.ts';
-export { createGeminiBatchClient, createOpenAIBatchClient } from './batches/index.ts';
-export type {
-  GeminiBatchClientOptions,
-  GeminiBatchOperations,
-  OpenAIBatchClientOptions,
-  OpenAIBatchOperations,
-} from './batches/index.ts';
+export { createGeminiBatchClient } from './batches/index.ts';
+export type { GeminiBatchClientOptions, GeminiBatchOperations } from './batches/index.ts';
 export { getProviderCapabilities } from './capabilities.ts';
 export type { ProviderCapabilities } from './capabilities.ts';
 export {
   createGeminiEmbedder,
   createOllamaEmbedder,
-  createOpenAIEmbedder,
   createVoyageEmbedder,
 } from './embeddings/index.ts';
 export type {
@@ -26,8 +20,6 @@ export type {
   GeminiEmbeddingClient,
   GeminiEmbeddingModel,
   OllamaEmbedderOptions,
-  OpenAIEmbedderOptions,
-  OpenAIEmbeddingClient,
   VoyageEmbedderOptions,
 } from './embeddings/index.ts';
 export {
@@ -95,23 +87,6 @@ export type {
   ModelAlias,
   ModelCatalog,
 } from './model-catalog.ts';
-export { openaiProvider } from './openai-definition.ts';
-export type { OpenAIProviderConfiguration } from './openai-definition.ts';
-export type {
-  OpenAIBatch,
-  OpenAIBatchClient,
-  OpenAIBatchCreateRequest,
-  OpenAIBatchListQuery,
-  OpenAIBatchRequestCounts,
-  OpenAIChatCompletion,
-  OpenAIChatCompletionChunk,
-  OpenAIChatCompletionCreateRequest,
-  OpenAIClient,
-  OpenAIProviderOptions,
-  OpenAIRequestOptions,
-  OpenAIStreamingClient,
-} from './openai-types.ts';
-export { createOpenAIProvider, createOpenAIProviderStream } from './openai.ts';
 export { composePolicy } from './policy.ts';
 export type {
   BureauInvariants,
@@ -182,13 +157,7 @@ export {
 } from './shared/model-registry.ts';
 export { REPLAY_DATA_DROPPED_METADATA_KEY, readDroppedReplayData } from './shared/replay-data.ts';
 export type { DroppedReplayData } from './shared/replay-data.ts';
-export { normalizeOpenAIStream } from './streaming/index.ts';
-export {
-  toGeminiResponseFormat,
-  toGeminiToolChoice,
-  toOpenAIResponseFormat,
-  toOpenAIToolChoice,
-} from './structured-output/index.ts';
+export { toGeminiResponseFormat, toGeminiToolChoice } from './structured-output/index.ts';
 export type { ResponseFormat, ToolChoice } from './structured-output/index.ts';
 export type {
   BaseProviderOptions,

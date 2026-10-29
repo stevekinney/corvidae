@@ -16,5 +16,3 @@
  */
 export { createGeminiBatchClient } from './gemini.ts';
 export type { GeminiBatchClientOptions, GeminiBatchOperations } from './gemini.ts';
-export { createOpenAIBatchClient } from './openai.ts';
-export type { OpenAIBatchClientOptions, OpenAIBatchOperations } from './openai.ts';
