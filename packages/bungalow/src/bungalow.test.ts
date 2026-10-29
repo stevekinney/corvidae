@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { isAbsolute, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 
 import { afterAll, describe, expect, test } from 'bun:test';
 
@@ -50,161 +50,176 @@ function openIn(root: string) {
   return openBungalow({ name: TEST_NAME, environment: homeEnvironment(root) });
 }
 
+/** Open the root and release it again, so the next open starts from a cleanly closed root. */
+async function openAndClose(root: string): Promise<void> {
+  const handle = await openIn(root);
+  handle.close();
+}
+
 describe('openBungalow layout', () => {
-  test('creates the root 0700 with secrets (0700) and logs, and no database or configuration', () => {
+  test('creates the root 0700 with secrets (0700) and logs, and no database or configuration', async () => {
     const root = join(temporaryDirectory(), 'home');
-    using handle = openIn(root);
-    expect(handle.root).toBe(root);
+    using handle = await openIn(root);
+    expect(handle.mode).toBe('local');
     expect(modeOf(root)).toBe(0o700);
-    expect(modeOf(handle.secrets)).toBe(0o700);
+    expect(modeOf(join(root, 'secrets'))).toBe(0o700);
     expect(statSync(handle.logs).isDirectory()).toBe(true);
-    expect(handle.secrets).toBe(join(root, 'secrets'));
     expect(handle.logs).toBe(join(root, 'logs'));
-    expect(handle.database).toBe(join(root, 'database.sqlite'));
-    expect(handle.configuration).toBe(join(root, 'configuration.json'));
-    expect(existsSync(handle.database)).toBe(false);
-    expect(existsSync(handle.configuration)).toBe(false);
+    expect(handle.database).toEqual({ kind: 'sqlite', path: join(root, 'database.sqlite') });
+    expect(handle.configurationLocation).toBe(join(root, 'configuration.json'));
+    expect(handle.secretLocation('api-key')).toBe(join(root, 'secrets', 'api-key'));
+    expect(existsSync(join(root, 'database.sqlite'))).toBe(false);
+    expect(existsSync(handle.configurationLocation)).toBe(false);
+    expect(await handle.readConfiguration()).toBeUndefined();
     expect(readdirSync(root).toSorted()).toEqual(['deployment-id', 'lock', 'logs', 'secrets']);
   });
 
-  test('reopens an existing root without altering what is in it', () => {
+  test('reopens an existing root without altering what is in it', async () => {
     const root = temporaryDirectory();
-    openIn(root).close();
+    await openAndClose(root);
     writeFileSync(join(root, 'configuration.json'), '{}');
-    using handle = openIn(root);
-    expect(readFileSync(handle.configuration, 'utf8')).toBe('{}');
+    using handle = await openIn(root);
+    expect(await handle.readConfiguration()).toBe('{}');
   });
 
-  test('rejects an invalid name', () => {
-    expect(() => openBungalow({ name: '../x', environment: {} })).toThrow(BungalowInputError);
+  test('rejects an invalid name', async () => {
+    await expect(openBungalow({ name: '../x', environment: {} })).rejects.toThrow(
+      BungalowInputError,
+    );
   });
 });
 
-describe('directory', () => {
-  test('creates <root>/<name> with mode 0700 and returns its absolute path', () => {
+describe('content', () => {
+  test('creates <root>/<name> with mode 0700 and returns its absolute path', async () => {
     const root = temporaryDirectory();
-    using handle = openIn(root);
-    const agents = handle.directory('agents');
-    expect(agents).toBe(join(root, 'agents'));
-    expect(modeOf(agents)).toBe(0o700);
+    using handle = await openIn(root);
+    const agents = handle.content('agents');
+    expect(agents).toEqual({ kind: 'directory', path: join(root, 'agents') });
+    expect(modeOf(join(root, 'agents'))).toBe(0o700);
   });
 
-  test('returns an existing directory without touching its contents', () => {
-    using handle = openIn(temporaryDirectory());
-    const workflows = handle.directory('workflows');
-    writeFileSync(join(workflows, 'one.md'), 'one');
-    expect(handle.directory('workflows')).toBe(workflows);
-    expect(readFileSync(join(workflows, 'one.md'), 'utf8')).toBe('one');
+  test('returns an existing directory without touching its contents', async () => {
+    using handle = await openIn(temporaryDirectory());
+    const workflows = handle.content('workflows');
+    if (workflows.kind !== 'directory') throw new Error('Expected a directory.');
+    writeFileSync(join(workflows.path, 'one.md'), 'one');
+    expect(handle.content('workflows')).toEqual(workflows);
+    expect(readFileSync(join(workflows.path, 'one.md'), 'utf8')).toBe('one');
   });
 
   test.each(['../x', 'Agents', '', 'a/b', 'secrets', 'logs', 'lock', 'deployment-id'])(
     'rejects %p with BungalowInputError',
-    (name) => {
-      using handle = openIn(temporaryDirectory());
-      expect(() => handle.directory(name)).toThrow(BungalowInputError);
+    async (name) => {
+      using handle = await openIn(temporaryDirectory());
+      expect(() => handle.content(name)).toThrow(BungalowInputError);
     },
   );
 });
 
 describe('deploymentId', () => {
-  test('is a ULID, persisted at deployment-id, and identical on reopen', () => {
+  test('is a ULID, persisted at deployment-id, and identical on reopen', async () => {
     const root = temporaryDirectory();
-    const first = openIn(root);
+    const first = await openIn(root);
     const identifier = first.deploymentId;
     first.close();
     expect(identifier).toMatch(/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/);
     expect(readFileSync(join(root, 'deployment-id'), 'utf8').trim()).toBe(identifier);
     expect(modeOf(join(root, 'deployment-id'))).toBe(0o600);
 
-    using second = openIn(root);
+    using second = await openIn(root);
     expect(second.deploymentId).toBe(identifier);
   });
 
-  test('differs between roots', () => {
-    using first = openIn(temporaryDirectory());
-    using second = openIn(temporaryDirectory());
+  test('differs between roots', async () => {
+    using first = await openIn(temporaryDirectory());
+    using second = await openIn(temporaryDirectory());
     expect(first.deploymentId).not.toBe(second.deploymentId);
   });
 
-  test('refuses a corrupt identifier instead of silently replacing the deployment identity', () => {
+  test('refuses a corrupt identifier instead of silently replacing the deployment identity', async () => {
     const root = temporaryDirectory();
-    openIn(root).close();
+    await openAndClose(root);
     writeFileSync(join(root, 'deployment-id'), 'not-a-ulid\n');
-    expect(() => openIn(root)).toThrow(BungalowStateError);
+    await expect(openIn(root)).rejects.toThrow(BungalowStateError);
     // The failed open released its lock, so a repaired file opens.
     writeFileSync(join(root, 'deployment-id'), '01ARYZ6S41TSV4RRFFQ69G5FAV\n');
-    using handle = openIn(root);
+    using handle = await openIn(root);
     expect(handle.deploymentId).toBe('01ARYZ6S41TSV4RRFFQ69G5FAV');
   });
 });
 
 describe('secrets', () => {
-  test('stores each secret in its own 0600 file and reads it back verbatim', () => {
-    using handle = openIn(temporaryDirectory());
+  test('stores each secret in its own 0600 file and reads it back verbatim', async () => {
+    const root = temporaryDirectory();
+    using handle = await openIn(root);
+    const secrets = join(root, 'secrets');
     handle.writeSecret('api-key', 'line one\nline two ');
     handle.writeSecret('token', 'second');
     expect(handle.readSecret('api-key')).toBe('line one\nline two ');
     expect(handle.readSecret('token')).toBe('second');
-    expect(modeOf(join(handle.secrets, 'api-key'))).toBe(0o600);
-    expect(modeOf(join(handle.secrets, 'token'))).toBe(0o600);
-    expect(readdirSync(handle.secrets).toSorted()).toEqual(['api-key', 'token']);
+    expect(modeOf(handle.secretLocation('api-key'))).toBe(0o600);
+    expect(modeOf(handle.secretLocation('token'))).toBe(0o600);
+    expect(readdirSync(secrets).toSorted()).toEqual(['api-key', 'token']);
   });
 
-  test('returns undefined for a missing key', () => {
-    using handle = openIn(temporaryDirectory());
+  test('returns undefined for a missing key', async () => {
+    using handle = await openIn(temporaryDirectory());
     expect(handle.readSecret('missing')).toBeUndefined();
   });
 
-  test('replaces an earlier value, leaving no temporary file behind', () => {
-    using handle = openIn(temporaryDirectory());
+  test('replaces an earlier value, leaving no temporary file behind', async () => {
+    using handle = await openIn(temporaryDirectory());
     handle.writeSecret('token', 'first');
     handle.writeSecret('token', 'second');
     expect(handle.readSecret('token')).toBe('second');
-    expect(readdirSync(handle.secrets)).toEqual(['token']);
-    expect(modeOf(join(handle.secrets, 'token'))).toBe(0o600);
+    expect(readdirSync(dirname(handle.secretLocation('token')))).toEqual(['token']);
+    expect(modeOf(handle.secretLocation('token'))).toBe(0o600);
   });
 
-  test('stores an empty value distinctly from a missing key', () => {
-    using handle = openIn(temporaryDirectory());
+  test('stores an empty value distinctly from a missing key', async () => {
+    using handle = await openIn(temporaryDirectory());
     handle.writeSecret('blank', '');
     expect(handle.readSecret('blank')).toBe('');
   });
 
-  test('persists across reopen', () => {
+  test('persists across reopen', async () => {
     const root = temporaryDirectory();
-    const first = openIn(root);
+    const first = await openIn(root);
     first.writeSecret('token', 'kept');
     first.close();
-    using second = openIn(root);
+    using second = await openIn(root);
     expect(second.readSecret('token')).toBe('kept');
   });
 
-  test.each(['../x', 'Key', '', 'a.b', '-a'])('rejects the key %p', (key) => {
-    using handle = openIn(temporaryDirectory());
+  test.each(['../x', 'Key', '', 'a.b', '-a'])('rejects the key %p', async (key) => {
+    using handle = await openIn(temporaryDirectory());
     expect(() => handle.writeSecret(key, 'value')).toThrow(BungalowInputError);
     expect(() => handle.readSecret(key)).toThrow(BungalowInputError);
+    expect(() => handle.secretLocation(key)).toThrow(BungalowInputError);
   });
 });
 
 describe('close', () => {
-  test('is idempotent and releases the lock', () => {
+  test('is idempotent and releases the lock', async () => {
     const root = temporaryDirectory();
-    const handle = openIn(root);
-    expect(() => openIn(root)).toThrow(BungalowLockedError);
+    const handle = await openIn(root);
+    await expect(openIn(root)).rejects.toThrow(BungalowLockedError);
     handle.close();
     expect(() => handle.close()).not.toThrow();
 
     // A later handle holds the lock now; the first handle's repeated close must not release it.
-    using second = openIn(root);
+    using second = await openIn(root);
     handle.close();
-    expect(() => openIn(root)).toThrow(BungalowLockedError);
-    expect(second.root).toBe(root);
+    await expect(openIn(root)).rejects.toThrow(BungalowLockedError);
+    expect(second.configurationLocation).toBe(join(root, 'configuration.json'));
   });
 
-  test('makes every later use throw BungalowStateError', () => {
-    const handle = openIn(temporaryDirectory());
+  test('makes every later use throw BungalowStateError', async () => {
+    const handle = await openIn(temporaryDirectory());
     handle.close();
-    expect(() => handle.directory('agents')).toThrow(BungalowStateError);
+    expect(() => handle.content('agents')).toThrow(BungalowStateError);
+    expect(() => handle.secretLocation('token')).toThrow(BungalowStateError);
+    await expect(handle.readConfiguration()).rejects.toThrow(BungalowStateError);
     expect(() => handle.writeSecret('token', 'value')).toThrow(BungalowStateError);
     expect(() => handle.readSecret('token')).toThrow(BungalowStateError);
   });
@@ -254,41 +269,43 @@ describe('close', () => {
 });
 
 describe('NODE_ENV=test guard', () => {
-  test('refuses to open the real home directory when <NAME>_HOME is unset or empty', () => {
+  test('refuses to open the real home directory when <NAME>_HOME is unset or empty', async () => {
     const home = temporaryDirectory();
     for (const environment of [
       { NODE_ENV: 'test' },
       { NODE_ENV: 'test', [TEST_HOME_VARIABLE]: '' },
     ]) {
-      expect(() => openBungalow({ name: TEST_NAME, environment, homeDirectory: home })).toThrow(
-        BungalowInputError,
-      );
+      await expect(
+        openBungalow({ name: TEST_NAME, environment, homeDirectory: home }),
+      ).rejects.toThrow(BungalowInputError);
     }
     expect(readdirSync(home)).toEqual([]);
   });
 
-  test('applies to the process environment by default, where bun test sets NODE_ENV to test', () => {
+  test('applies to the process environment by default, where bun test sets NODE_ENV to test', async () => {
     expect(processEnvironment()['NODE_ENV']).toBe('test');
     expect(processEnvironment()[TEST_HOME_VARIABLE]).toBeUndefined();
-    expect(() => openBungalow({ name: TEST_NAME })).toThrow(BungalowInputError);
+    await expect(openBungalow({ name: TEST_NAME })).rejects.toThrow(BungalowInputError);
   });
 
-  test('cannot be bypassed by passing an environment that says nothing about NODE_ENV', () => {
+  test('cannot be bypassed by passing an environment that says nothing about NODE_ENV', async () => {
     const home = temporaryDirectory();
-    expect(() => openBungalow({ name: TEST_NAME, environment: {} })).toThrow(BungalowInputError);
-    expect(() => openBungalow({ name: TEST_NAME, environment: {}, homeDirectory: home })).toThrow(
+    await expect(openBungalow({ name: TEST_NAME, environment: {} })).rejects.toThrow(
       BungalowInputError,
     );
+    await expect(
+      openBungalow({ name: TEST_NAME, environment: {}, homeDirectory: home }),
+    ).rejects.toThrow(BungalowInputError);
     expect(readdirSync(home)).toEqual([]);
   });
 
-  test('allows an explicit <NAME>_HOME under test', () => {
+  test('allows an explicit <NAME>_HOME under test', async () => {
     const root = temporaryDirectory();
-    using handle = openBungalow({
+    using handle = await openBungalow({
       name: TEST_NAME,
       environment: { NODE_ENV: 'test', ...homeEnvironment(root) },
     });
-    expect(handle.root).toBe(root);
+    expect(handle.configurationLocation).toBe(join(root, 'configuration.json'));
   });
 });
 
@@ -314,38 +331,40 @@ describe('resolveOpenRoot', () => {
 });
 
 describe('a root that already exists', () => {
-  test('is tightened to 0700, along with its secrets directory', () => {
+  test('is tightened to 0700, along with its secrets directory', async () => {
     const root = temporaryDirectory();
     mkdirSync(join(root, 'secrets'), { mode: 0o755 });
     chmodSync(root, 0o755);
     chmodSync(join(root, 'secrets'), 0o755);
-    using handle = openIn(root);
+    using handle = await openIn(root);
+    expect(handle.configurationLocation).toBe(join(root, 'configuration.json'));
     expect(modeOf(root)).toBe(0o700);
-    expect(modeOf(handle.secrets)).toBe(0o700);
+    expect(modeOf(join(root, 'secrets'))).toBe(0o700);
   });
 
-  test('has a secret that group or others can read tightened to 0600 before it is read', () => {
+  test('has a secret that group or others can read tightened to 0600 before it is read', async () => {
     const root = temporaryDirectory();
-    openIn(root).close();
+    await openAndClose(root);
     const path = join(root, 'secrets', 'token');
     writeFileSync(path, 'loose');
     chmodSync(path, 0o644);
-    using handle = openIn(root);
+    using handle = await openIn(root);
     expect(handle.readSecret('token')).toBe('loose');
     expect(modeOf(path)).toBe(0o600);
   });
 
-  test('refuses a stored secret that is not a regular file, without changing its mode', () => {
-    using handle = openIn(temporaryDirectory());
-    const path = join(handle.secrets, 'blocked');
+  test('refuses a stored secret that is not a regular file, without changing its mode', async () => {
+    const root = temporaryDirectory();
+    using handle = await openIn(root);
+    const path = join(root, 'secrets', 'blocked');
     mkdirSync(path, { mode: 0o755 });
     expect(() => handle.readSecret('blocked')).toThrow(BungalowStateError);
     expect(modeOf(path)).toBe(0o755);
   });
 
-  test('has the temporary files a crash left behind removed, and only those Bungalow names', () => {
+  test('has the temporary files a crash left behind removed, and only those Bungalow names', async () => {
     const root = temporaryDirectory();
-    openIn(root).close();
+    await openAndClose(root);
     const uuid = '123e4567-e89b-12d3-a456-426614174000';
     const leftovers = [
       join(root, `deployment-id.4242-${uuid}.tmp`),
@@ -360,17 +379,17 @@ describe('a root that already exists', () => {
       join(root, 'secrets', `.hidden.4242-${uuid}.tmp`),
     ];
     for (const path of [...leftovers, ...kept]) writeFileSync(path, 'x');
-    using handle = openIn(root);
-    expect(handle.root).toBe(root);
+    using handle = await openIn(root);
+    expect(handle.configurationLocation).toBe(join(root, 'configuration.json'));
     for (const path of leftovers) expect(existsSync(path), path).toBe(false);
     for (const path of kept) expect(existsSync(path), path).toBe(true);
   });
 });
 
 describe('openTemporaryBungalow', () => {
-  test('creates an isolated root under the temporary directory and removes it on close', () => {
-    const handle = openTemporaryBungalow({ name: TEST_NAME });
-    const root = handle.root;
+  test('creates an isolated root under the temporary directory and removes it on close', async () => {
+    const handle = await openTemporaryBungalow({ name: TEST_NAME });
+    const root = dirname(handle.configurationLocation);
     try {
       expect(root.startsWith(tmpdir())).toBe(true);
       expect(modeOf(root)).toBe(0o700);
@@ -384,21 +403,21 @@ describe('openTemporaryBungalow', () => {
     expect(() => handle.close()).not.toThrow();
   });
 
-  test('always has an absolute root, since TMPDIR may be relative', () => {
-    using handle = openTemporaryBungalow({ name: TEST_NAME });
-    expect(isAbsolute(handle.root)).toBe(true);
+  test('always has an absolute root, since TMPDIR may be relative', async () => {
+    using handle = await openTemporaryBungalow({ name: TEST_NAME });
+    expect(isAbsolute(handle.configurationLocation)).toBe(true);
     expect(isAbsolute(absoluteTemporaryDirectory('relative/tmp'))).toBe(true);
     expect(absoluteTemporaryDirectory('/var/tmp/')).toBe('/var/tmp');
   });
 
-  test('gives each call its own root', () => {
-    using first = openTemporaryBungalow({ name: TEST_NAME });
-    using second = openTemporaryBungalow({ name: TEST_NAME });
-    expect(first.root).not.toBe(second.root);
+  test('gives each call its own root', async () => {
+    using first = await openTemporaryBungalow({ name: TEST_NAME });
+    using second = await openTemporaryBungalow({ name: TEST_NAME });
+    expect(first.configurationLocation).not.toBe(second.configurationLocation);
     expect(first.deploymentId).not.toBe(second.deploymentId);
   });
 
-  test('rejects an invalid name', () => {
-    expect(() => openTemporaryBungalow({ name: '../x' })).toThrow(BungalowInputError);
+  test('rejects an invalid name', async () => {
+    await expect(openTemporaryBungalow({ name: '../x' })).rejects.toThrow(BungalowInputError);
   });
 });

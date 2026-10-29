@@ -33,6 +33,29 @@ async function scratch(): Promise<string> {
   return directory;
 }
 
+/**
+ * What Bungalow's `readConfiguration()` supplies for a local file: its text, or `undefined` when it
+ * is absent. Anything else (a directory, a permission error) rejects.
+ */
+function fileReader(path: string): {
+  readonly location: string;
+  readonly configurationLocation: string;
+  readonly read: () => Promise<string | undefined>;
+  readonly readConfiguration: () => Promise<string | undefined>;
+} {
+  const read = async (): Promise<string | undefined> => {
+    try {
+      return await Bun.file(path).text();
+    } catch (error) {
+      if (typeof error === 'object' && error !== null && Reflect.get(error, 'code') === 'ENOENT') {
+        return undefined;
+      }
+      throw error;
+    }
+  };
+  return { location: path, configurationLocation: path, read, readConfiguration: read };
+}
+
 function failureOf(run: () => unknown): ProviderConfigurationError {
   try {
     run();
@@ -132,7 +155,9 @@ describe('the configuration shape', () => {
 
   test('a missing file means no providers, not an error', async () => {
     const directory = await scratch();
-    const configuration = await readProviderConfiguration(join(directory, 'configuration.json'));
+    const configuration = await readProviderConfiguration(
+      fileReader(join(directory, 'configuration.json')),
+    );
     expect(configuration).toEqual({ providers: {} });
   });
 
@@ -140,10 +165,12 @@ describe('the configuration shape', () => {
     const directory = await scratch();
     const path = join(directory, 'configuration.json');
     await writeFile(path, '{"providers":{"gemini":{}}}');
-    expect(await readProviderConfiguration(path)).toEqual({ providers: { gemini: {} } });
+    expect(await readProviderConfiguration(fileReader(path))).toEqual({
+      providers: { gemini: {} },
+    });
 
     await writeFile(path, '{"providers":{"nope":{}}}');
-    const failure = await readProviderConfiguration(path).then(
+    const failure = await readProviderConfiguration(fileReader(path)).then(
       () => undefined,
       (error: unknown) => error,
     );
@@ -153,7 +180,7 @@ describe('the configuration shape', () => {
 
   test('a configuration path that is a directory is refused, naming the path', async () => {
     const directory = await scratch();
-    const failure = await readProviderConfiguration(directory).then(
+    const failure = await readProviderConfiguration(fileReader(directory)).then(
       () => undefined,
       (error: unknown) => error,
     );
@@ -305,7 +332,7 @@ describe('loading the providers', () => {
     const path = await configurationAt({ providers: { anthropic: { models: ['sonnet'] } } });
     const warnings: string[] = [];
     const loaded = await loadProviders({
-      configurationPath: path,
+      ...fileReader(path),
       readSecret: (key) => (key === 'anthropic-api-key' ? FIXTURE_VALUE : undefined),
       warn: (message) => warnings.push(message),
     });
@@ -318,7 +345,7 @@ describe('loading the providers', () => {
     const path = await configurationAt({ providers: { anthropic: {}, openai: {} } });
     const warnings: string[] = [];
     const loaded = await loadProviders({
-      configurationPath: path,
+      ...fileReader(path),
       readSecret: (key) => (key === 'anthropic-api-key' ? FIXTURE_VALUE : undefined),
       warn: (message) => warnings.push(message),
     });
@@ -334,7 +361,7 @@ describe('loading the providers', () => {
     const path = await configurationAt({ providers: { gemini: {} } });
     const warnings: string[] = [];
     const loaded = await loadProviders({
-      configurationPath: path,
+      ...fileReader(path),
       readSecret: () => '  \n',
       warn: (message) => warnings.push(message),
     });
@@ -346,7 +373,7 @@ describe('loading the providers', () => {
     const pasted = 'fixture-pasted-secret-0000';
     const path = await configurationAt({ providers: { anthropic: { models: [pasted] } } });
     const stale = await loadProviders({
-      configurationPath: path,
+      ...fileReader(path),
       readSecret: () => undefined,
       warn: () => undefined,
     }).then(
@@ -361,7 +388,7 @@ describe('loading the providers', () => {
     const directory = await scratch();
     const broken = join(directory, 'configuration.json');
     await writeFile(broken, `{"providers":{"anthropic":{"models":["${pasted}"`);
-    const malformed = await readProviderConfiguration(broken).then(
+    const malformed = await readProviderConfiguration(fileReader(broken)).then(
       () => undefined,
       (error: unknown) => error,
     );
@@ -386,7 +413,7 @@ describe('loading the providers', () => {
     });
     const warnings: string[] = [];
     const failure = await loadProviders({
-      configurationPath: path,
+      ...fileReader(path),
       readSecret: () => undefined,
       warn: (message) => warnings.push(message),
     }).then(
@@ -400,7 +427,7 @@ describe('loading the providers', () => {
   test('trims whitespace around a secret before it is kept', async () => {
     const path = await configurationAt({ providers: { anthropic: {} } });
     const loaded = await loadProviders({
-      configurationPath: path,
+      ...fileReader(path),
       readSecret: () => `  \n${FIXTURE_VALUE}\n`,
       warn: () => undefined,
     });
@@ -412,7 +439,7 @@ describe('loading the providers', () => {
     const read: string[] = [];
     const warnings: string[] = [];
     const loaded = await loadProviders({
-      configurationPath: join(directory, 'configuration.json'),
+      ...fileReader(join(directory, 'configuration.json')),
       readSecret: (key) => {
         read.push(key);
         return undefined;
