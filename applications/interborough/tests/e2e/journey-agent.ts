@@ -79,8 +79,8 @@ function authorResponse(context: GenerateContext): GenerateResponse {
  * every other run to `fallback`.
  */
 export function createJourneyProviderResolver(fallback: ProviderResolver): ProviderResolver {
-  return (provider, streamEventTarget, streaming) => {
-    const stub = fallback(provider, streamEventTarget, streaming);
+  return (definitions, provider, streamEventTarget, streaming) => {
+    const stub = fallback(definitions, provider, streamEventTarget, streaming);
     const generate: GenerateFunction = async (context) => {
       const opener = openerOf(context);
       if (opener === undefined || !opener.includes(JOURNEY_MARKER)) return stub(context);

@@ -4,7 +4,6 @@ import {
   mergeHookRegistries,
   type RuntimeServices,
   type RuntimeTimeoutHandle,
-  type TypedEventTarget,
 } from '@lostgradient/lifecycle';
 import {
   AbortAgentRunError,
@@ -87,7 +86,6 @@ import {
   type PeerCallJournal,
   type Store,
   StoreActionEvent,
-  type StreamEventMap,
   type Subscription,
   SESSION_OWNER_METADATA_KEY,
   createSessionHandle,
@@ -553,7 +551,6 @@ import { createReviews } from './reviews/create-reviews';
 import { createSchedules } from './schedules/create-schedules';
 import { createWebhookNotifier, type WebhookNotifier } from './webhook-notifier';
 import { scheduleInputPreview } from './schedule-input-preview';
-import { streamEventToFrame } from './websocket-frames';
 import { ownEntry } from './own-entry';
 
 const BUREAU_AGENT_NAME = 'bureau';
@@ -1671,42 +1668,6 @@ export async function loadExistingScheduledSessionId(
       session.id.endsWith(`-${runId}`) &&
       session.metadata['lastScheduledFireRunId'] === runId,
   )?.id;
-}
-
-export function wireStreamEventTargetFrames(
-  streamEventTarget: TypedEventTarget<StreamEventMap>,
-  runId: string,
-  emitLiveFrame: (frame: ServerFrame) => void,
-  nextRunSeq: (runId: string) => number,
-): () => void {
-  const streamEventTypes = [
-    'stream:text-delta',
-    'stream:tool-call-start',
-    'stream:tool-call-delta',
-    'stream:tool-call-complete',
-    'stream:complete',
-    'stream:error',
-  ] as const;
-  const disposers: Array<() => void> = [];
-
-  for (const eventType of streamEventTypes) {
-    const listener = (event: Event) => {
-      const detail = (event as Event & { detail: Parameters<typeof streamEventToFrame>[1] }).detail;
-      const frame = streamEventToFrame(runId, detail);
-      if (frame) {
-        emitLiveFrame({ ...frame, runSeq: nextRunSeq(runId) });
-      }
-    };
-
-    streamEventTarget.addEventListener(eventType, listener);
-    disposers.push(() => streamEventTarget.removeEventListener(eventType, listener));
-  }
-
-  return () => {
-    for (const dispose of disposers.splice(0)) {
-      dispose();
-    }
-  };
 }
 
 /**
@@ -4347,8 +4308,8 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
   const abortingRunIds = new Map<string, number>();
   // AB-15: per-run monotonic sequence counter for run-scoped live frames
   // (`event` and `stream:*`). Stamped once here — the single point where
-  // frames reach `emitLiveFrame` — so `streamEventToFrame` and the store
-  // action listener never have to coordinate on sequencing themselves.
+  // frames reach `emitLiveFrame` — so the store action listener never has to
+  // coordinate on sequencing itself.
   // Cleared on `run.removed` (see the store subscription below) so the map
   // does not grow unbounded across a long-lived bureau.
   const runSequenceCounters = new Map<string, number>();
@@ -6932,7 +6893,6 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         requestContext: runRequestContexts.get(review.runId),
       },
       {
-        liveStreaming: false,
         sessionAgent: policyAgent,
         initialActiveSkillRecords: records,
         memoryOwner: resolveRunMemoryOwner(session?.metadata ?? {}, review.runId),
@@ -7079,7 +7039,6 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         requestContext,
       },
       {
-        liveStreaming: false,
         sessionAgent: recoveredSessionAgent,
         initialActiveSkillRecords,
         memoryOwner: resolveRunMemoryOwner(session.metadata, runId),
@@ -7517,12 +7476,6 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
       runRequestContexts.set(runId, requestContext);
 
       const disposeStreamListeners: Array<() => void> = [];
-      const streamEventTarget = runRuntime.streamEventTarget;
-      if (streamEventTarget) {
-        disposeStreamListeners.push(
-          wireStreamEventTargetFrames(streamEventTarget, runId, emitLiveFrame, nextRunSeq),
-        );
-      }
 
       // COR-1524 — a file agent's definition is stored, and this run tied to it, before the
       // session names the run, so recovery always finds the snapshot the session's hash points at.
@@ -7941,7 +7894,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
         // AB-260: the bureau's single composed RuntimeServices clock, so
         // every run-lifecycle frame this forwarder emits is origin-derived
         // for a manually-clocked bureau rather than reading the real clock.
-        { streamEventTarget, clock: runtimeServices.clock.now },
+        { clock: runtimeServices.clock.now },
       );
       disposeStreamListeners.push(disposeRunFrameForwarder);
       // Registered here, for the same reason the frame forwarder is: before
@@ -8611,10 +8564,7 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
     // recovery hook, before resumed user code advances, and `recoveredRun`'s
     // `addEventListener` is bound to that identical emitter — so subscribing
     // here surfaces every `step`/`tool-pre`/`tool-post`/notification frame a
-    // resumed run produces, not just its terminal `run-finished`. No
-    // `streamEventTarget` is threaded through recovery (enhanced streaming is a
-    // fresh-run-only concern), so `assistant-chunk` frames are the one frame
-    // type a resumed run never emits.
+    // resumed run produces, not just its terminal `run-finished`.
     const disposeRecoveredRunFrameForwarder = createRunFrameForwarder(
       runId,
       recoveredRun,
@@ -9869,7 +9819,6 @@ export async function createBureau<const D extends AgentDefinitions = Record<nev
                     requestContext,
                   },
                   {
-                    liveStreaming: false,
                     sessionAgent: reattachedSessionAgent,
                     memoryOwner: resolveRunMemoryOwner(fullSession.metadata, handle.id),
                   },

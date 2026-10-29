@@ -181,7 +181,6 @@ describe('a run whose recorded skills cannot be verified (COR-1628)', () => {
     const runRuntime = await runtime.createRunRuntime(
       { agentName: 'default', message: 'Hello', sessionId: 'unverifiable-skill-session' },
       {
-        liveStreaming: false,
         initialActiveSkillRecords: [
           { name: 'lock' } as unknown as NonNullable<
             Parameters<typeof runtime.createRunRuntime>[1]
@@ -227,7 +226,7 @@ describe('a run whose stored skill fails recovery (COR-1628)', () => {
     });
     const runRuntime = await runtime.createRunRuntime(
       { agentName: 'default', message: 'Hello', sessionId: 'tampered-skill-session' },
-      { liveStreaming: false, initialActiveSkillRecords: tampered },
+      { initialActiveSkillRecords: tampered },
     );
     // Recovery runs in the first step's `prepareStep`, which every step awaits.
     const conversation = new Conversation();
@@ -544,7 +543,7 @@ describe('a run whose stored skill fails recovery refuses the lifecycle tools (C
     });
     const runRuntime = await runtime.createRunRuntime(
       { agentName: 'default', message: 'Hello', sessionId: 'tampered-lifecycle-session' },
-      { liveStreaming: false, initialActiveSkillRecords: tampered },
+      { initialActiveSkillRecords: tampered },
     );
     const conversation = new Conversation();
     for (const { handler } of runRuntime.hooks.getHandlers('prepareStep')) {

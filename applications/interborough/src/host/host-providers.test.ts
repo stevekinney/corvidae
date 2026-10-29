@@ -205,10 +205,10 @@ describe('an agent assigned a catalog model', () => {
       {
         // Bureau’s own resolver builds the real provider function; the fake client stands in for
         // the SDK so no request leaves the process.
-        resolveProviderGenerate: (provider, streamEventTarget, streaming) => {
+        resolveProviderGenerate: (definitions, provider, streamEventTarget, streaming) => {
           handed.push(provider);
           const withClient: ProviderConfiguration = Object.assign({}, provider, { client });
-          return resolveProviderGenerate(withClient, streamEventTarget, streaming);
+          return resolveProviderGenerate(definitions, withClient, streamEventTarget, streaming);
         },
       },
     );
@@ -304,9 +304,9 @@ describe('an agent assigned a catalog model', () => {
         secrets: { 'anthropic-api-key': `\n  ${FIXTURE_KEY}  \n` },
       },
       {
-        resolveProviderGenerate: (provider, streamEventTarget, streaming) => {
+        resolveProviderGenerate: (definitions, provider, streamEventTarget, streaming) => {
           handed.push(provider);
-          return resolveProviderGenerate(provider, streamEventTarget, streaming);
+          return resolveProviderGenerate(definitions, provider, streamEventTarget, streaming);
         },
       },
     );

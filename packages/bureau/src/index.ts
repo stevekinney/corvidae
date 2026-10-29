@@ -529,7 +529,6 @@ export type {
   EventHistoryNotFoundOutcome,
   EventHistoryUnsupportedOutcome,
   FlowControlPolicy,
-  GenerateProviderName,
   IdentityConfiguration,
   LoadedSkill,
   LocateRunCreationReceiptRequest,
@@ -538,11 +537,9 @@ export type {
   PendingReview,
   PendingToolApprovalReview,
   ProviderConfiguration,
-  ProviderRouteConfiguration,
   ResolveReviewInput,
   ResolveReviewResult,
   RetentionWindowOption,
-  RoutingConfiguration,
   RunDetail,
   RunEventRecord,
   RunStepDetail,
@@ -569,7 +566,6 @@ export type {
   WebhookTriggerType,
 } from './webhook-notifier';
 export { createWebhookNotifier } from './webhook-notifier';
-export { streamEventToFrame } from './websocket-frames';
 /*
  * A bureau's lifecycle events, projected onto Weft's replay-plus-live feed
  * and exposed as `bureau.events` in the same catalog that carries Weft's own

@@ -34,7 +34,7 @@ const STUB_REPLY = { content: 'the stub', toolCalls: [] };
 function fallbackResolver() {
   const resolved: unknown[] = [];
   const stub: GenerateFunction = async () => STUB_REPLY;
-  const resolver = ((provider: unknown) => {
+  const resolver = ((_definitions: unknown, provider: unknown) => {
     resolved.push(provider);
     return stub;
   }) as never;
@@ -44,6 +44,7 @@ function fallbackResolver() {
 async function generateWith(...rows: Row[]) {
   const { resolver } = fallbackResolver();
   const generate = createJourneyProviderResolver(resolver)(
+    [],
     { provider: 'anthropic', model: 'sonnet', apiKey: 'fixture' },
     undefined,
     undefined,
@@ -89,7 +90,7 @@ describe('the journey provider resolver', () => {
     const { resolved, resolver } = fallbackResolver();
     const provider = { provider: 'anthropic', model: 'sonnet', apiKey: 'fixture' } as const;
 
-    createJourneyProviderResolver(resolver)(provider, undefined, undefined);
+    createJourneyProviderResolver(resolver)([], provider, undefined, undefined);
 
     expect(resolved).toEqual([provider]);
   });
