@@ -31,9 +31,13 @@ import { validatedListFilterFromBulkInput } from './bulk-operation-helpers.ts';
 
 const bulkMutateWorkflowTagsInput = z
   .object({
-    filter: bulkListFilterInputSchema.optional(),
-    tags: z.array(z.string()),
-    operation: z.enum(['add', 'remove']),
+    filter: bulkListFilterInputSchema
+      .optional()
+      .describe('Select the workflows to change; omit it to select every workflow.'),
+    tags: z.array(z.string()).describe('Tags to add or remove.'),
+    operation: z
+      .enum(['add', 'remove'])
+      .describe('Whether to "add" the tags to, or "remove" them from, each matched workflow.'),
   })
   .merge(bulkOperationControlInputSchema);
 
@@ -44,6 +48,11 @@ export const bulkMutateWorkflowTagsOperation = defineOperation({
   name: 'weft.workflows.bulk.tags',
   mcpExposable: false,
   summary: 'Add or remove workflow tags in bulk',
+  description:
+    'Add or remove `tags` on every workflow that matches `filter` (every workflow ' +
+    'when omitted). Run it first with `dryRun: true` to preview the matches and ' +
+    'receive a `confirmationToken`, then repeat the same request with that token to ' +
+    'commit. Requires workflows:admin.',
   destructive: true,
   tags: ['Workflows'],
   inputSchema: bulkMutateWorkflowTagsInput,

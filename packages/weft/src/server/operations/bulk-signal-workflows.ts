@@ -24,8 +24,8 @@ import { validatedListFilterFromBulkInput } from './bulk-operation-helpers.ts';
 
 const bulkSignalWorkflowsInput = bulkListFilterInputSchema
   .extend({
-    name: z.string().min(1),
-    payload: z.unknown().optional(),
+    name: z.string().min(1).describe('Name of the signal to deliver.'),
+    payload: z.unknown().optional().describe('Payload delivered with the signal.'),
   })
   .merge(bulkOperationControlInputSchema);
 
@@ -36,6 +36,11 @@ export const bulkSignalWorkflowsOperation = defineOperation({
   name: 'weft.workflows.bulk.signal',
   mcpExposable: false,
   summary: 'Signal workflows in bulk',
+  description:
+    'Deliver the signal `name` with an optional `payload` to every workflow that ' +
+    'matches the filter. Run it first with `dryRun: true` to preview the matches and ' +
+    'receive a `confirmationToken`, then repeat the same request with that token to ' +
+    'commit. Requires workflows:admin.',
   destructive: true,
   tags: ['Workflows'],
   inputSchema: bulkSignalWorkflowsInput,

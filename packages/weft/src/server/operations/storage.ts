@@ -136,6 +136,10 @@ export const storageGetOperation = defineOperation({
   name: 'weft.storage.get',
   mcpExposable: false,
   summary: 'Get a raw storage value',
+  description:
+    'Read one raw value from the storage backend by key and return its bytes, or null ' +
+    'when the key is absent. Bypasses all workflow-level validation. Requires ' +
+    'storage:admin and is served over REST only.',
   destructive: false,
   tags: ['Storage'],
   inputSchema: storageGetInput,
@@ -156,6 +160,9 @@ export const storagePutOperation = defineOperation({
   name: 'weft.storage.put',
   mcpExposable: false,
   summary: 'Put a raw storage value',
+  description:
+    'Write raw bytes under a key in the storage backend, replacing any existing ' +
+    'value. Bypasses all workflow-level validation and can corrupt engine state. Requires storage:admin and is served over REST only.',
   destructive: true,
   tags: ['Storage'],
   inputSchema: storagePutInput,
@@ -177,6 +184,8 @@ export const storageDeleteOperation = defineOperation({
   name: 'weft.storage.delete',
   mcpExposable: false,
   summary: 'Delete a raw storage value',
+  description:
+    'Delete one raw key from the storage backend. Bypasses all workflow-level validation and can corrupt engine state. Requires storage:admin and is served over REST only.',
   destructive: true,
   tags: ['Storage'],
   inputSchema: storageDeleteInput,
@@ -198,6 +207,11 @@ export const storageScanOperation = defineOperation({
   name: 'weft.storage.scan',
   mcpExposable: false,
   summary: 'Scan raw storage values',
+  description:
+    'Stream raw entries whose key starts with `prefix`, optionally bounded by ' +
+    '`gt`/`gte`/`lt`/`lte`, reversed, or capped by `limit`. Each entry carries the ' +
+    'key and its base64-encoded value. Read-only. Requires storage:admin and is ' +
+    'served over REST only.',
   destructive: false,
   tags: ['Storage'],
   inputSchema: storageScanInput,
@@ -218,6 +232,11 @@ export const storageBatchOperation = defineOperation({
   name: 'weft.storage.batch',
   mcpExposable: false,
   summary: 'Apply a raw storage batch',
+  description:
+    'Apply a list of raw puts and deletes to the storage backend as one atomic batch, ' +
+    'with values base64-encoded. Bypasses all workflow-level validation. Faults with ' +
+    'InvalidParams when a value is not base64 or the batch exceeds the operation ' +
+    'limit. Requires storage:admin and is served over REST only.',
   destructive: true,
   tags: ['Storage'],
   inputSchema: storageBatchInput,
@@ -241,6 +260,12 @@ export const storageConditionalBatchOperation = defineOperation({
   name: 'weft.storage.conditionalbatch',
   mcpExposable: false,
   summary: 'Apply a raw storage conditional batch',
+  description:
+    'Apply a raw batch only if every listed key currently holds its expected value ' +
+    '(or is absent when the expected value is null), and report whether it was ' +
+    'applied. Values are base64-encoded. Faults with NotImplemented when the backend ' +
+    'does not support conditional batches. Requires storage:admin and is served over ' +
+    'REST only.',
   destructive: true,
   tags: ['Storage'],
   inputSchema: storageConditionalBatchInput,

@@ -8,7 +8,7 @@ import {
 } from './single-workflow-control-operation.ts';
 
 const suspendWorkflowInput = z.object({
-  workflowId: z.string().min(1),
+  workflowId: z.string().min(1).describe('Id of the workflow to suspend.'),
 });
 const suspendWorkflowOutput = z.undefined();
 

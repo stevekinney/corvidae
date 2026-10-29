@@ -31,6 +31,10 @@ export const bulkCancelWorkflowsOperation = defineOperation({
   name: 'weft.workflows.bulk.cancel',
   mcpExposable: false,
   summary: 'Cancel workflows in bulk',
+  description:
+    'Cancel every workflow that matches the filter. Run it first with `dryRun: true` ' +
+    'to preview the matches and receive a `confirmationToken`, then repeat the same ' +
+    'filter with that token to commit. Requires workflows:admin.',
   destructive: true,
   tags: ['Workflows'],
   inputSchema: bulkCancelWorkflowsInput,

@@ -17,18 +17,22 @@ import { assertOperationEngineMethods } from './operation-helpers.ts';
  * answer), and the outcome and failure message here outlive that.
  */
 const listWorkflowUpdatesInput = z.object({
-  workflowId: z.string().min(1),
+  workflowId: z.string().min(1).describe('Id of the workflow whose update history is listed.'),
   limit: z
     .number()
     .int()
     .min(1)
     .max(MAX_UPDATE_HISTORY_LIMIT)
-    .default(DEFAULT_UPDATE_HISTORY_LIMIT),
+    .default(DEFAULT_UPDATE_HISTORY_LIMIT)
+    .describe('Maximum number of updates to return per page, 1 to 200; defaults to 50.'),
   cursor: z
     .string()
     .max(160)
     .refine(isUpdateHistoryCursor, { message: 'Invalid cursor' })
-    .optional(),
+    .optional()
+    .describe(
+      'The nextCursor of the previous page, to read the next page; omit it for the first page.',
+    ),
 });
 
 const updateHistoryEntrySchema = z

@@ -99,7 +99,7 @@ const workerDiagnosticsEntrySchema = z
   .strict();
 
 const getWorkerDiagnosticsInput = z.object({
-  workerId: z.string().min(1),
+  workerId: z.string().min(1).describe('Id of the connected worker to inspect.'),
 });
 
 const getWorkerDiagnosticsOutput = z.object({

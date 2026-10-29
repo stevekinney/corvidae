@@ -178,18 +178,18 @@ describe('operation catalog description — MCP discovery linkage', () => {
 });
 
 describe('operation catalog description — snapshot', () => {
-  it('includes description for the interactive subset and omits it elsewhere', () => {
+  it('includes the description of a described operation and omits it for one without', () => {
     const snapshot = createCatalogSnapshot();
     const byName = new Map(snapshot.operations.map((operation) => [operation.name, operation]));
 
     const cancel = byName.get('weft.workflows.cancel');
     expect(typeof cancel?.description).toBe('string');
 
-    // weft.storage.get is not in the interactive subset and declares no
-    // description, so the snapshot must omit the key rather than default it.
-    const storageGet = byName.get('weft.storage.get');
-    expect(storageGet).toBeDefined();
-    expect(storageGet?.description).toBeUndefined();
+    // An operation that declares no description is reported without the key
+    // rather than with a default. Every live operation is described, so this
+    // uses a summary-only operation.
+    const summaryOnly = createCatalogSnapshot([summaryOnlyOperation()]).operations[0];
+    expect(summaryOnly?.description).toBeUndefined();
   });
 
   it('pins raw storage batch operation-count limits in the catalog schemas', () => {

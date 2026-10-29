@@ -54,10 +54,23 @@ const cursorSchema = z.string().refine((cursor) => decodeCursor(cursor) !== null
 });
 
 const workflowEventsSseInputSchema = z.object({
-  workflowId: z.string().min(1),
-  selector: z.enum(['events', 'tokens']).default('events'),
-  fromCursor: cursorSchema.optional(),
-  lastEventId: cursorSchema.optional(),
+  workflowId: z.string().min(1).describe('Id of the workflow whose events are streamed.'),
+  selector: z
+    .enum(['events', 'tokens'])
+    .default('events')
+    .describe(
+      'What to stream: "events" for workflow events (default) or "tokens" for the workflow\'s token stream.',
+    ),
+  fromCursor: cursorSchema
+    .optional()
+    .describe(
+      'Resume after this cursor, as returned with an earlier event. Omit it to start from the beginning.',
+    ),
+  lastEventId: cursorSchema
+    .optional()
+    .describe(
+      'Cursor of the last event the client received, as sent in the Last-Event-ID header on an SSE reconnect. It takes precedence over fromCursor when both are given.',
+    ),
 });
 
 type WorkflowEventsSseInput = z.infer<typeof workflowEventsSseInputSchema>;

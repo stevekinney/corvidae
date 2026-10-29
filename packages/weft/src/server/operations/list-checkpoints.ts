@@ -7,7 +7,7 @@ import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 
 const listCheckpointsInput = z.object({
-  workflowId: z.string().min(1),
+  workflowId: z.string().min(1).describe('Id of the workflow whose checkpoints are listed.'),
 });
 const listCheckpointsOutput = z.unknown();
 
@@ -18,6 +18,8 @@ export const listCheckpointsOperation = defineOperation({
   name: 'weft.workflows.checkpoints.list',
   mcpExposable: false,
   summary: 'List checkpoint history for a workflow',
+  description:
+    'List the persisted checkpoints of a workflow, as its checkpoint history. Read-only.',
   destructive: false,
   tags: ['Checkpoints'],
   inputSchema: listCheckpointsInput,

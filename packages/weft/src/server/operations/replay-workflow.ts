@@ -22,8 +22,10 @@ import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { assertOperationEngineMethods, invalidParamsFault } from './operation-helpers.ts';
 
 const replayWorkflowInput = z.object({
-  workflowId: z.string().min(1),
-  step: z.union([z.string(), z.number()]),
+  workflowId: z.string().min(1).describe('Id of the workflow to replay.'),
+  step: z
+    .union([z.string(), z.number()])
+    .describe('Checkpoint step to reconstruct state at, as a step number or step name.'),
 });
 
 const replayWorkflowOutput = z.unknown();

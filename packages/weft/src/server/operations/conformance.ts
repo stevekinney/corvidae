@@ -70,7 +70,12 @@ const listConformanceTargetsOutput = z.object({
 });
 
 const runConformanceReportInput = z.object({
-  target: z.string().min(1),
+  target: z
+    .string()
+    .min(1)
+    .describe(
+      'Name of the operator-registered conformance target to run, as listed by weft.conformance.targets.',
+    ),
 });
 
 export type ListConformanceTargetsOutput = z.infer<typeof listConformanceTargetsOutput>;

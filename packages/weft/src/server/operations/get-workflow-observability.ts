@@ -6,7 +6,7 @@ import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { assertOperationEngineMethods } from './operation-helpers.ts';
 
 const workflowObservabilityInput = z.object({
-  workflowId: z.string().min(1),
+  workflowId: z.string().min(1).describe('Id of the workflow to inspect.'),
 });
 
 const scheduleProvenanceOutput = z

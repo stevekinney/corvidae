@@ -11,6 +11,10 @@ export type AddWorkflowTagsOutput = SingleWorkflowTagMutationOutput;
 export const addWorkflowTagsOperation = createSingleWorkflowTagMutationOperation({
   name: 'weft.workflows.tags.add',
   summary: 'Add workflow tags',
+  description:
+    'Attach tags to a workflow by `workflowId`. Tags already on the workflow are kept, so the ' +
+    'call is safe to repeat. Faults with NotFound when the workflow is not visible and ' +
+    'Unprocessable when `tags` is not an array of non-empty strings or exceeds the tag limit.',
   destructive: false,
   scope: 'tags:write',
   requiredEngineMethods: ['addTags'],

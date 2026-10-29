@@ -33,6 +33,10 @@ export const bulkRetryFailedWorkflowsOperation = defineOperation({
   name: 'weft.workflows.bulk.retryfailed',
   mcpExposable: false,
   summary: 'Retry failed workflows in bulk',
+  description:
+    'Retry every failed workflow that matches the filter. Run it first with `dryRun: ' +
+    'true` to preview the matches and receive a `confirmationToken`, then repeat the ' +
+    'same filter with that token to commit. Requires workflows:admin.',
   destructive: true,
   tags: ['Workflows'],
   inputSchema: bulkRetryFailedWorkflowsInput,

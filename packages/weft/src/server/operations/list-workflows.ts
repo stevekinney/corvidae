@@ -2,7 +2,11 @@ import { z } from 'zod';
 
 import { WorkflowListScanCapExceededError } from '../../core/engine/workflow-indexes.ts';
 import { ListFilterValidationError } from '../../core/list-filter-validation-error.ts';
-import { listFilterObjectSchema, normalizeListFilter } from '../../core/list-filter-validation.ts';
+import {
+  listFilterDescriptions,
+  listFilterObjectSchema,
+  normalizeListFilter,
+} from '../../core/list-filter-validation.ts';
 import { coerceStartWorkflowTags } from '../../core/start-workflow-validation.ts';
 import type { ListFilter, PaginatedResult, WorkflowSummary } from '../../core/types.ts';
 import type { OperationFault } from '../operation-fault.ts';
@@ -26,17 +30,36 @@ const listWorkflowsInput = z
     ...listFilterObjectSchema.shape,
     // Transport parsing stays permissive; invoke owns canonical validation and
     // preserves the existing field-specific fault envelope.
-    status: z.union([z.string(), z.array(z.string())]).optional(),
-    type: z.string().optional(),
-    idPrefix: z.string().optional(),
-    createdAt: z.object(listFilterObjectSchema.shape.createdAt.unwrap().shape).strict().optional(),
-    updatedAt: z.object(listFilterObjectSchema.shape.updatedAt.unwrap().shape).strict().optional(),
+    status: z
+      .union([z.string(), z.array(z.string())])
+      .optional()
+      .describe(listFilterDescriptions.status),
+    type: z.string().optional().describe(listFilterDescriptions.type),
+    idPrefix: z.string().optional().describe(listFilterDescriptions.idPrefix),
+    createdAt: z
+      .object(listFilterObjectSchema.shape.createdAt.unwrap().shape)
+      .strict()
+      .optional()
+      .describe(listFilterDescriptions.createdAt),
+    updatedAt: z
+      .object(listFilterObjectSchema.shape.updatedAt.unwrap().shape)
+      .strict()
+      .optional()
+      .describe(listFilterDescriptions.updatedAt),
     executionDeadline: z
       .object(listFilterObjectSchema.shape.executionDeadline.unwrap().shape)
       .strict()
-      .optional(),
-    failureCategory: z.union([z.string(), z.array(z.string())]).optional(),
-    include: listIncludeSchema.optional(),
+      .optional()
+      .describe(listFilterDescriptions.executionDeadline),
+    failureCategory: z
+      .union([z.string(), z.array(z.string())])
+      .optional()
+      .describe(listFilterDescriptions.failureCategory),
+    include: listIncludeSchema
+      .optional()
+      .describe(
+        'Extra data to attach to each summary. Only "failureCategory" is supported, as one value or an array.',
+      ),
   })
   .strict();
 const listWorkflowsOutput = z.unknown();

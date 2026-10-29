@@ -42,6 +42,10 @@ export function createGetSystemMetricsOperation(options?: {
     name: 'weft.system.metrics',
     mcpExposable: false,
     summary: 'Get JSON-shaped system metrics',
+    description:
+      "Return a snapshot of the server's metrics as a JSON object, the structured " +
+      'counterpart of the Prometheus text at GET /v1/metrics. Empty when the server has ' +
+      'no metrics collector. Read-only.',
     destructive: false,
     tags: ['Observability'],
     inputSchema: getSystemMetricsInput,

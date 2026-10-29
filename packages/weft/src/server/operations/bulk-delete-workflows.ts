@@ -35,6 +35,11 @@ export const bulkDeleteWorkflowsOperation = defineOperation({
   name: 'weft.workflows.bulk.delete',
   mcpExposable: false,
   summary: 'Delete terminal workflows in bulk',
+  description:
+    'Delete every terminal workflow that matches the filter. Irreversible. Run it ' +
+    'first with `dryRun: true` to preview the matches and receive a ' +
+    '`confirmationToken`, then repeat the same filter with that token to commit. ' +
+    'Requires workflows:admin.',
   destructive: true,
   tags: ['Workflows'],
   inputSchema: bulkDeleteWorkflowsInput,

@@ -39,7 +39,13 @@ const registrationRejectionEntrySchema = z
   .strict() satisfies z.ZodType<RegistrationRejectionEntry>;
 
 const listWorkerRegistrationRejectionsInput = z.object({
-  limit: z.number().int().min(1).max(MAX_LIMIT).default(DEFAULT_LIMIT),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_LIMIT)
+    .default(DEFAULT_LIMIT)
+    .describe('Maximum number of recent rejections to return, 1 to 100; defaults to 20.'),
 });
 
 const listWorkerRegistrationRejectionsOutput = z.object({

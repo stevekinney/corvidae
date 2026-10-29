@@ -24,6 +24,7 @@ describe('single-workflow tag mutation helper', () => {
     const operation = createSingleWorkflowTagMutationOperation({
       name: 'weft.workflows.tags.test',
       summary: 'Test workflow tag mutation',
+      description: 'Test workflow tag mutation, described.',
       destructive: false,
       scope: 'tags:write',
       requiredEngineMethods: [],
@@ -55,6 +56,7 @@ describe('single-workflow tag mutation helper', () => {
     const operation = createSingleWorkflowTagMutationOperation({
       name: 'weft.workflows.tags.test',
       summary: 'Test workflow tag mutation',
+      description: 'Test workflow tag mutation, described.',
       destructive: false,
       scope: 'tags:write',
       requiredEngineMethods: [],
@@ -83,6 +85,7 @@ describe('single-workflow tag mutation helper', () => {
     const operation = createSingleWorkflowTagMutationOperation({
       name: 'weft.workflows.tags.test',
       summary: 'Test workflow tag mutation',
+      description: 'Test workflow tag mutation, described.',
       destructive: false,
       scope: 'tags:write',
       requiredEngineMethods: [],
@@ -116,6 +119,7 @@ describe('single-workflow tag mutation helper', () => {
     const operation = createSingleWorkflowTagMutationOperation({
       name: 'weft.workflows.tags.test',
       summary: 'Test workflow tag mutation',
+      description: 'Test workflow tag mutation, described.',
       destructive: false,
       scope: 'tags:write',
       requiredEngineMethods: [],
@@ -146,6 +150,7 @@ describe('single-workflow tag mutation helper', () => {
     const operation = createSingleWorkflowTagMutationOperation({
       name: 'weft.workflows.tags.test',
       summary: 'Test workflow tag mutation',
+      description: 'Test workflow tag mutation, described.',
       destructive: false,
       scope: 'tags:write',
       requiredEngineMethods: [],

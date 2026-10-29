@@ -90,6 +90,10 @@ export function createListTaskQueuesOperation(options?: ListTaskQueuesOptions) {
     name: 'weft.task.queues.list',
     mcpExposable: false,
     summary: 'List task queues with backlog, waiting pollers, and per-queue saturation',
+    description:
+      'List every task queue that has pending tasks, waiting pollers, or connected ' +
+      'workers, with its backlog, oldest-queued age, waiting long-poll pollers, in- ' +
+      'flight task count, connected worker count, and scheduling policy. Read-only.',
     destructive: false,
     tags: ['System'],
     inputSchema: listTaskQueuesInput,

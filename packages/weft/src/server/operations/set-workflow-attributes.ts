@@ -15,8 +15,13 @@ import {
 import { normalizeDateTimeSearchAttributes } from './start-workflow-options.ts';
 
 const setWorkflowAttributesInput = z.object({
-  workflowId: z.string().min(1),
-  attributes: z.unknown().optional(),
+  workflowId: z.string().min(1).describe('Id of the workflow whose search attributes are written.'),
+  attributes: z
+    .unknown()
+    .optional()
+    .describe(
+      'Search attributes to set, keyed by attribute name; date-time values are ISO 8601 strings.',
+    ),
 });
 const setWorkflowAttributesOutput = z.object({
   ok: z.literal(true),
@@ -29,6 +34,11 @@ export const setWorkflowAttributesOperation = defineOperation({
   name: 'weft.workflows.attributes.set',
   mcpExposable: false,
   summary: 'Update search attributes for a workflow',
+  description:
+    'Write search attributes on a workflow so it can be found by attribute filters. ' +
+    "Values are validated against the workflow type's declared schema; date-time " +
+    'values are ISO 8601 strings. Faults with InvalidParams when a value fails ' +
+    'validation.',
   // Not destructive: search attributes are operational metadata, not execution
   // state, and an overwrite is trivially reversible by setting them again. It
   // does not advance or terminate the workflow. Consistent with tags.add/remove.
