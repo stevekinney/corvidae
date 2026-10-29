@@ -1,10 +1,14 @@
 /**
  * The System views follow the engine's fleet feed (COR-1725): each asks again when the feed reports
  * what it reads, and on its timer only while the feed is not live. The feed is the real source over
- * a stubbed stream (`../live-site.test-support.ts`).
+ * a stubbed stream (`../live-feeds/live-site.test-support.ts`).
  */
 import { queryKeys } from '../../lib/query.ts';
-import { describeLiveSite, mountLiveView, type LiveSite } from '../live-site.test-support.ts';
+import {
+  describeLiveSite,
+  mountLiveView,
+  type LiveSite,
+} from '../live-feeds/live-site.test-support.ts';
 import DynamicSourceList from './dynamic-source-list.svelte';
 import LeaseStatusPanel from './lease-status-panel.svelte';
 import RealmsTab from './realms-tab.svelte';

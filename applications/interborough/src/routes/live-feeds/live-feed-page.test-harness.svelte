@@ -9,16 +9,16 @@
   import { QueryClientProvider, type QueryClient } from '@tanstack/svelte-query';
   import { untrack, type Component } from 'svelte';
 
-  import { provideFleetEventSource } from '../app/engine-status.svelte.ts';
-  import { connectFleetInvalidation } from '../app/fleet-invalidation.svelte.ts';
-  import { subscribeTaskEvidenceInvalidation } from '../app/task-event-queries.ts';
-  import { provideClient } from '../lib/client.ts';
-  import type { FleetEventSource } from '../lib/live-source/fleet-event-source.svelte.ts';
+  import { provideFleetEventSource } from '../../app/engine-status.svelte.ts';
+  import { connectFleetInvalidation } from '../../app/fleet-invalidation.svelte.ts';
+  import { subscribeTaskEvidenceInvalidation } from '../../app/task-event-queries.ts';
+  import { provideClient } from '../../lib/client.ts';
+  import type { FleetEventSource } from '../../lib/live-source/fleet-event-source.svelte.ts';
   import {
     AUTHORIZATION_SCOPES,
     providePrincipalStore,
     type AuthorizationScope,
-  } from '../lib/scopes.svelte.ts';
+  } from '../../lib/scopes.svelte.ts';
 
   interface Props {
     client: HttpClient;

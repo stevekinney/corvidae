@@ -2,7 +2,7 @@
  * The Workers views follow the engine's fleet feed (COR-1725): each asks again when the feed reports
  * what it reads (a worker connecting, leaving or refused, a deployment changing, a task's attempt or
  * result), and on its timer only while the feed is not live. The feed is the real source over a
- * stubbed stream (`../live-site.test-support.ts`).
+ * stubbed stream (`../live-feeds/live-site.test-support.ts`).
  */
 import { afterEach, beforeEach, expect, jest, test } from 'bun:test';
 import { Window } from 'happy-dom';
@@ -10,7 +10,11 @@ import { Window } from 'happy-dom';
 import { until } from '../../lib/fake-timers.test-support.ts';
 import { queryKeys } from '../../lib/query.ts';
 import { router } from '../../lib/router.svelte.ts';
-import { describeLiveSite, mountLiveView, type LiveSite } from '../live-site.test-support.ts';
+import {
+  describeLiveSite,
+  mountLiveView,
+  type LiveSite,
+} from '../live-feeds/live-site.test-support.ts';
 import DeploymentsPanel from './deployments-panel.svelte';
 import { routeHappyPaths } from './index-actions.test-support.ts';
 import WorkersRoute from './index.svelte';

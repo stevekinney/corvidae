@@ -15,7 +15,6 @@
   import { Button, EmptyState, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { useFleetEventsLive } from '../../app/live-polling.svelte.ts';
   import { getClient } from '../../lib/client.ts';
   import { formatRelativeTime } from '../../lib/format/index.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -28,22 +27,13 @@
 
   const client = getClient();
 
-  const HEALTH_POLL_INTERVAL_MS = 30_000;
-
-  // A live fleet feed is the engine answering, which the shell's status pill already shows, so the
-  // probe asks on a timer only while the feed is not live: when it is lost, or was never available
-  // (a principal without `events:read`), the timer is what tells the page the engine is gone or back.
-  const fleetLive = useFleetEventsLive();
-  const healthQuery = createQuery(() => {
-    // Read here, not in the interval, which TanStack Query reads untracked.
-    const polling = !fleetLive();
-    return {
-      queryKey: ['dashboard', 'health'],
-      queryFn: () => probeHealth(client),
-      // poll-reason: fallback
-      refetchInterval: polling ? HEALTH_POLL_INTERVAL_MS : false,
-    };
-  });
+  // The probe runs once, when the page opens. It is not asked again on a timer: the shell's fleet
+  // feed reports whether the engine is answering, and the status pill beside it shows that, so a
+  // second clock here would only repeat it.
+  const healthQuery = createQuery(() => ({
+    queryKey: ['dashboard', 'health'],
+    queryFn: () => probeHealth(client),
+  }));
 
   const statusQuery = createQuery(() => ({
     queryKey: queryKeys.workflows.aggregate('status', {}),

@@ -1,15 +1,24 @@
 /**
- * The Engine view follows the engine's fleet feed (COR-1725): its health probe and its pending
- * reviews ask on a timer only while the feed is not live, and the reviews ask again for each review
- * event. The feed is the real source over a stubbed stream (`../live-site.test-support.ts`).
+ * The Engine view follows the engine's fleet feed (COR-1725): its health probe is made once and
+ * has no timer, and its pending reviews ask on a timer only while the feed is not live and ask
+ * again for each review event. The feed is the real source over a stubbed stream (`../live-feeds/live-site.test-support.ts`).
  */
+import { cleanup } from '@testing-library/svelte';
+import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
+
+import { until } from '../../lib/fake-timers.test-support.ts';
 import { queryKeys } from '../../lib/query.ts';
-import { describeLiveSite, mountLiveView } from '../live-site.test-support.ts';
+import {
+  describeLiveSite,
+  fetchCount,
+  mountLiveView,
+} from '../live-feeds/live-site.test-support.ts';
 import CriticalAlertsBand from './critical-alerts-band.svelte';
 import { ScriptedFetch } from './dashboard-test-support.test-support.ts';
 import DashboardIndex from './index.svelte';
 
 const THIRTY_SECONDS = 30_000;
+const HEALTH_KEY = ['dashboard', 'health'];
 
 let scripted: ScriptedFetch | undefined;
 
@@ -18,12 +27,18 @@ function restore(): void {
   scripted = undefined;
 }
 
-describeLiveSite('the Engine page’s health probe', {
-  intervalMilliseconds: THIRTY_SECONDS,
-  // A live feed is the engine answering, so nothing the feed carries asks the probe again.
-  watched: [['dashboard', 'health']],
-  events: [],
-  mount() {
+describe('the Engine page’s health probe', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    cleanup();
+    restore();
+    jest.useRealTimers();
+  });
+
+  test('is made once, when the page opens, and on no timer whether the feed is live or not', async () => {
     scripted = new ScriptedFetch();
     scripted.routeUrl('/v1/health', { status: 'ok' });
     scripted.routeJsonRpcMethod('weft.workflows.aggregate', {
@@ -31,9 +46,20 @@ describeLiveSite('the Engine page’s health probe', {
       groups: [],
       truncated: false,
     });
-    return mountLiveView({ component: DashboardIndex });
-  },
-  restore,
+    const { feeds, queryClient } = mountLiveView({ component: DashboardIndex });
+    try {
+      await until(() => expect(fetchCount(queryClient, HEALTH_KEY)).toBe(1));
+
+      await feeds.passPolls(4, THIRTY_SECONDS);
+      expect(fetchCount(queryClient, HEALTH_KEY)).toBe(1);
+
+      await feeds.fleetGoesLive();
+      await feeds.passPolls(4, THIRTY_SECONDS);
+      expect(fetchCount(queryClient, HEALTH_KEY)).toBe(1);
+    } finally {
+      feeds.close();
+    }
+  });
 });
 
 describeLiveSite('the critical alerts band’s pending reviews', {
