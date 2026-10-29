@@ -180,7 +180,6 @@ export * from './service-worker/index.ts';
 export * from './storage/cloudflare.ts';
 export { CompressedStorage } from './storage/compressed-storage.ts';
 export * from './storage/http.ts';
-export * from './storage/indexeddb.ts';
 export { DEFAULT_SCOPE, KEYS, WEFT_RESERVED_KEY_PREFIXES } from './storage/keys.ts';
 export { jsonCodec, msgpackCodec, withCodec } from './storage/typed-storage.ts';
 export type {

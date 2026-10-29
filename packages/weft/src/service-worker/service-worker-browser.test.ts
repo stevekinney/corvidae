@@ -30,7 +30,7 @@ const engineModulePath = fileURLToPath(new URL('src/core/engine.ts', repositoryR
 const typesModulePath = fileURLToPath(new URL('src/core/types.ts', repositoryRoot));
 const handlerModulePath = fileURLToPath(new URL('src/server/handler.ts', repositoryRoot));
 const indexedDatabaseStorageModulePath = fileURLToPath(
-  new URL('src/storage/indexeddb.ts', repositoryRoot),
+  import.meta.resolve('@lostgradient/storage-indexeddb'),
 );
 const serviceWorkerModulePath = fileURLToPath(
   new URL('src/service-worker/index.ts', repositoryRoot),
@@ -429,7 +429,7 @@ function createSmokeServer(serviceWorkerSource: string): { origin: string } {
 
 /**
  * One Chromium process for the whole file, matching the other browser smoke
- * suites (`indexeddb-browser`, `http-client-browser`), which launch in
+ * suites (`indexeddb-browser` in `@lostgradient/storage-indexeddb`, `http-client-browser`), which launch in
  * `beforeAll` and close in `afterAll`. Each test still gets its own context.
  *
  * The explicit `timeout` is deliberately below this file's 30 s per-test

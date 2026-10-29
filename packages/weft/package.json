@@ -28,7 +28,7 @@
     "test:benchmarks": "bun scripts/run-benchmarks.ts",
     "test:coverage": "bun scripts/check-coverage.ts",
     "test:a2a-tck": "bun scripts/run-a2a-tck.ts",
-    "test:browser": "WEFT_BROWSER_SMOKE=1 bun ../../scripts/bun-test.ts ./src/storage/indexeddb-browser.test.ts ./src/storage/web-extension-browser.test.ts ./src/service-worker/service-worker-browser.test.ts ./src/client/http-client-browser.test.ts",
+    "test:browser": "WEFT_BROWSER_SMOKE=1 bun ../../scripts/bun-test.ts ./src/storage/web-extension-browser.test.ts ./src/service-worker/service-worker-browser.test.ts ./src/client/http-client-browser.test.ts",
     "types": "tsc -b tsconfig.source.json",
     "typecheck": "tsc --noEmit && bun run typecheck:fixtures && bun ../../scripts/typecheck-contracts.ts && bun run typecheck:documentation",
     "typecheck:documentation": "bun ../../scripts/check-documentation-code-blocks.ts",
@@ -43,7 +43,8 @@
     "@lostgradient/environmentalist": "catalog:",
     "@modelcontextprotocol/server": "catalog:",
     "@lostgradient/storage": "workspace:*",
-    "@lostgradient/storage-bun-sqlite": "workspace:*"
+    "@lostgradient/storage-bun-sqlite": "workspace:*",
+    "@lostgradient/storage-indexeddb": "workspace:*"
   },
   "peerDependencies": {
     "@a2a-js/sdk": "1.3.0"

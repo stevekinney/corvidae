@@ -155,7 +155,6 @@
         "src/server/operations/bulk-filter-helpers.ts",
         "src/server/operations/storage.ts",
         "src/server/task-state.ts",
-        "src/storage/indexeddb.ts",
         "src/storage/web-extension.ts",
         "src/workers/workflow-runner.ts",
         "src/server/runtime/task-dispatch.ts",

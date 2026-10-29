@@ -1,8 +1,9 @@
 /**
  * The shared opt-in gate for every suite that drives a real Chromium process.
  *
- * Three suites — `storage/indexeddb-browser`, `storage/web-extension-browser`,
- * and `service-worker/service-worker-browser` — launch Playwright against a
+ * Four suites — `indexeddb-browser` (in `@lostgradient/storage-indexeddb`),
+ * `storage/web-extension-browser`, `service-worker/service-worker-browser`, and
+ * `client/http-client-browser` (in `@lostgradient/weft`) — launch Playwright against a
  * real browser. Their cost is not a constant: a Chromium launch, an unpacked
  * extension load, and a bundle build all compete for whatever CPU the machine
  * has left, so the same suite that finishes in well under a second on an idle
@@ -17,6 +18,7 @@
  *
  * ```sh
  * bun run --filter=@lostgradient/weft test:browser
+ * bun run --filter=@lostgradient/storage-indexeddb test:browser
  * ```
  *
  * Browser provisioning is `bunx playwright install chromium` (once).

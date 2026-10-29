@@ -490,7 +490,7 @@ A small `Storage` interface over string keys and `Uint8Array` values: five requi
 - **`LMDBStorage`** (package `@lostgradient/storage-lmdb`) for embedded high-throughput workloads; accepts a `durability: 'relaxed'` option that skips `fsync` on every commit, trading crash durability for write latency—use it for test fixtures, not production storage. `capabilities().persistence` reports `'ephemeral'` for a relaxed-durability instance (instead of `'local'`), so `assertDurableStorageForRecovery()` correctly rejects it
 - **`TursoStorage`** (package `@lostgradient/storage-turso`) for distributed libSQL deployments
 - **`NeonStorage`** (package `@lostgradient/storage-neon`) for durable remote Neon/Postgres deployments
-- **`IndexedDBStorage`** (subpath `@lostgradient/weft/storage/indexeddb`) for browser environments
+- **`IndexedDBStorage`** (package `@lostgradient/storage-indexeddb`) for browser environments
 - **`WebExtensionStorage`** (subpath `@lostgradient/weft/storage/web-extension`) for extension contexts using `browser.storage` or `chrome.storage`
 - **`HTTPStorage`** (subpath `@lostgradient/weft/storage/http`) for remote storage over Weft's HTTP storage routes
 - **`CompressedStorage`** wrapper for transparent `gzip` or `brotli` compression
@@ -822,11 +822,11 @@ The exported `WeftErrorCode` union lists every code that belongs to a public, ex
 bun add @lostgradient/weft
 ```
 
-Storage backends and adapters are exported under subpaths so they only load when imported (the Bun SQLite, Node SQLite, LMDB, Turso, and Neon adapters are their own packages, `@lostgradient/storage-bun-sqlite`, `@lostgradient/storage-node-sqlite`, `@lostgradient/storage-lmdb`, `@lostgradient/storage-turso`, and `@lostgradient/storage-neon`):
+Storage backends and adapters are exported under subpaths so they only load when imported (the Bun SQLite, Node SQLite, LMDB, Turso, Neon, and IndexedDB adapters are their own packages, `@lostgradient/storage-bun-sqlite`, `@lostgradient/storage-node-sqlite`, `@lostgradient/storage-lmdb`, `@lostgradient/storage-turso`, `@lostgradient/storage-neon`, and `@lostgradient/storage-indexeddb`):
 
 ```typescript
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
-import { IndexedDBStorage } from '@lostgradient/weft/storage/indexeddb';
+import { IndexedDBStorage } from '@lostgradient/storage-indexeddb';
 import { WebExtensionStorage } from '@lostgradient/weft/storage/web-extension';
 import { HTTPStorage } from '@lostgradient/weft/storage/http';
 ```

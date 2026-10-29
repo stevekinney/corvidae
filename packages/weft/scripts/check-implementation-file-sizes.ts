@@ -159,12 +159,6 @@ export const CLASSIFIED_OVERSIZED_IMPLEMENTATION_FILES = [
       'The server entrypoint owns the public serve surface and exported server types; further splitting would create shallow re-export files.',
   },
   {
-    path: 'src/storage/indexeddb.ts',
-    classification: 'justified-exception',
-    rationale:
-      'IndexedDB storage keeps browser schema setup, transactions, scans, batching, and capability reporting in one adapter boundary.',
-  },
-  {
     path: 'src/core/worker-protocol.ts',
     classification: 'justified-exception',
     rationale:

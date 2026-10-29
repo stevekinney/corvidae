@@ -480,14 +480,6 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       },
     ],
     [
-      'src/storage/indexeddb.ts',
-      {
-        reason:
-          'Browser and worker-runtime behavior is exercised outside the Bun LCOV process, which cannot attribute these remaining paths.',
-        functions: 1,
-      },
-    ],
-    [
       'src/testing/scheduler-contract.test-support.ts',
       {
         reason:

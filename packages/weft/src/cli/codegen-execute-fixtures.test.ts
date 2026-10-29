@@ -250,6 +250,20 @@ function preparePackedWorkspace(root: string): string {
       (dependencyPackageJson['devDependencies'] ?? {}) as Record<string, unknown>,
     );
     writeJsonFile(dependencyPackageJsonPath, dependencyPackageJson);
+    // The copy carries no `node_modules`, so a source module in it that imports another workspace
+    // package (an adapter importing `@lostgradient/storage`) resolves that package through a link
+    // to its fixture copy, the way the consumer resolves Weft's own `workspace:` dependencies.
+    const nestedDependencies = (dependencyPackageJson['dependencies'] ?? {}) as Record<
+      string,
+      string
+    >;
+    for (const nestedName of Object.keys(nestedDependencies)) {
+      const nestedDirectory = WEFT_WORKSPACE_DEPENDENCIES.get(nestedName);
+      if (nestedDirectory === undefined) continue;
+      const nestedLink = join(root, workspaceDirectory, 'node_modules', nestedName);
+      mkdirSync(dirname(nestedLink), { recursive: true });
+      symlinkSync(join(root, nestedDirectory), nestedLink, 'dir');
+    }
   }
 
   const typescriptPackageJsonPath = join(typescriptDirectory, 'package.json');
@@ -524,6 +538,8 @@ const scenario5 = await outcomeOf(async () => {
   expect(Object.keys(dependencies)).toContain('@lostgradient/storage');
   // The CLI constructs the Bun SQLite adapter, so it ships with Weft (COR-1771).
   expect(Object.keys(dependencies)).toContain('@lostgradient/storage-bun-sqlite');
+  // The service worker constructs the IndexedDB adapter, so it ships with Weft (COR-1777).
+  expect(Object.keys(dependencies)).toContain('@lostgradient/storage-indexeddb');
   const fixtureRoot = dirname(consumerDirectory);
   for (const name of Object.keys(dependencies)) {
     const linked = realpathSync(join(consumerDirectory, 'node_modules', name));

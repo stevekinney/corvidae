@@ -40,11 +40,6 @@
           "import": "./dist/storage/cloudflare.js",
           "default": "./dist/storage/cloudflare.js"
         },
-        "./storage/indexeddb": {
-          "types": "./dist/storage/indexeddb.d.ts",
-          "import": "./dist/storage/indexeddb.js",
-          "default": "./dist/storage/indexeddb.js"
-        },
         "./storage/web-extension": {
           "types": "./dist/storage/web-extension.d.ts",
           "import": "./dist/storage/web-extension.js",
