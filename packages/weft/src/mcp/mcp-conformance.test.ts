@@ -8,12 +8,12 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { Engine } from '../core/engine.ts';
 import type { WorkflowContext } from '../core/types.ts';
 import { workflow } from '../core/types/workflow-function.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { createMcpEndpoint, type McpEndpoint, type McpEndpointOptions } from './http.ts';
 import { connectInProcessClient, type NegotiationMode } from './mcp-client.test-support.ts';
 import { MCP_LEGACY_PROTOCOL_VERSION, MCP_PROTOCOL_VERSION } from './protocol.ts';

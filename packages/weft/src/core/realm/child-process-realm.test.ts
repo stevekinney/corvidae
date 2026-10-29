@@ -1,14 +1,14 @@
 import { afterAll, afterEach, describe, expect, it } from 'bun:test';
 import { fileURLToPath } from 'node:url';
 
-import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   advanceTimersByTime,
   restoreRealTimers,
   useFakeTimers,
 } from '@lostgradient/testing/fake-timers';
+import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { ChildProcessRealm } from './child-process-realm.ts';
 import type { RevisionRealmActivation } from './revision-realm.ts';
 

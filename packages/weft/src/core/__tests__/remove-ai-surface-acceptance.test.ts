@@ -12,8 +12,8 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { MemoryStorage } from '../../storage/memory.ts';
 import { waitForCondition } from '@lostgradient/testing/fake-timers';
+import { MemoryStorage } from '../../storage/memory.ts';
 import { TestEngine } from '../../testing/test-engine.ts';
 import { computeSemanticHash, EffectLog } from '../effect-log/index.ts';
 import { ReviewTimeoutError } from '../review/index.ts';

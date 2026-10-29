@@ -11,10 +11,10 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { createDeferred, waitForCondition } from '@lostgradient/testing/fake-timers';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS, type BatchOperation, type Storage } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { createDeferred, waitForCondition } from '@lostgradient/testing/fake-timers';
 import { decode } from '../codec/api.ts';
 import { Engine } from '../engine.ts';
 import { workflow, type WorkflowContext, type WorkflowState } from '../types.ts';

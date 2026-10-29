@@ -14,9 +14,9 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { Engine } from './index.ts';
 import { getInternals } from './internals.ts';
 import {

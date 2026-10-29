@@ -8,6 +8,7 @@
 
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   decodeRemoteTaskRecord,
@@ -20,7 +21,6 @@ import {
   type RemoteTaskTerminalResolved,
 } from '../../core/task-ledger/task-ledger.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { sha256Hex } from '../../worker/manifest/content-digest.ts';
 import { minimalServeOptions, minimalServerContext } from './server-context.test-support.ts';
 import { commitTaskLedgerCompletion } from './task-ledger-completion.ts';

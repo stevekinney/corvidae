@@ -17,9 +17,9 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { restoreRealTimers } from '@lostgradient/testing/fake-timers';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { flushPortableMicrotasks, yieldToPortableEventLoop } from '../testing/event-loop.ts';
-import { restoreRealTimers } from '@lostgradient/testing/fake-timers';
 import { TestEngine } from '../testing/test-engine.ts';
 import {
   DurableMutex,

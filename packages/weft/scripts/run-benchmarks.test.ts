@@ -3,8 +3,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import packageJson from '../package.json' with { type: 'json' };
 import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
+import packageJson from '../package.json' with { type: 'json' };
 import { listBenchmarkFiles, runBenchmarks, spawnBunTest } from './run-benchmarks.ts';
 
 // A real child is the behavior here, so it runs at module scope, off Bun's per-test clock.

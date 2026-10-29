@@ -1,8 +1,5 @@
+import { sleepForTesting, waitForRealTimersForTesting } from '@lostgradient/testing/fake-timers';
 import { describe, expect, it } from 'bun:test';
-import {
-  sleepForTesting,
-  waitForRealTimersForTesting,
-} from '@lostgradient/testing/fake-timers';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS, type BatchOperation, type ScanOptions, type Storage } from '../storage/interface.ts';

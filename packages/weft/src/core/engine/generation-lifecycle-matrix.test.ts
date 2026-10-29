@@ -24,14 +24,14 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { KEYS } from '../../storage/interface.ts';
-import { MemoryStorage } from '../../storage/memory.ts';
 import {
   createDeferred,
   drainMicrotasks,
   waitForCondition,
   yieldToEventLoop,
 } from '@lostgradient/testing/fake-timers';
+import { KEYS } from '../../storage/interface.ts';
+import { MemoryStorage } from '../../storage/memory.ts';
 import { decode } from '../codec/api.ts';
 import {
   activity,

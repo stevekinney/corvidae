@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 
 import { runWithHangGuard, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { resolveCliEnvironment } from '../runtime/environment-configuration.ts';
-import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import { loadBetterSqlite3ForTest } from './node-sqlite-loader.ts';
 import { NodeSQLiteStorage } from './node-sqlite.ts';
 import { SQLITE_BUSY_TIMEOUT_MS } from './sqlite-key-value-queries.ts';

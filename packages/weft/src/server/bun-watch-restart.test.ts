@@ -33,10 +33,10 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'bun:test';
 
-import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
-import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
+import { awakeTurns } from '@lostgradient/testing/wait-until';
 
 const REVISION_MODULE_NAME = 'revision.ts';
 

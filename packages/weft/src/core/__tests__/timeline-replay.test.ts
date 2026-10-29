@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { decode, encode } from '../codec.ts';
 import { Engine } from '../engine.ts';
 import { activity, workflow, type ActivityContext, type WorkflowContext } from '../types.ts';

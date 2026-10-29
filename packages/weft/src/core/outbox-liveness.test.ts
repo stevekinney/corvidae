@@ -7,12 +7,12 @@
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   advanceTimersByTime,
   restoreRealTimers,
   useFakeTimers,
 } from '@lostgradient/testing/fake-timers';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { WaitBudgetElapsedError } from './application-primitive-abort.ts';
 import { ApplicationDeliveryValidationError } from './outbox-guards.ts';
 import {

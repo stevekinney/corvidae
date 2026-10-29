@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, jest } from 'bun:test';
 
-import { throwingRejectionOf } from './helpers/promise-outcome.ts';
 import {
   advanceTimersByTime,
   createDeferred,
@@ -15,6 +14,7 @@ import {
   withTimeout,
   yieldToEventLoop,
 } from './fake-timers.ts';
+import { throwingRejectionOf } from './helpers/promise-outcome.ts';
 
 describe('fake timer testing helpers', () => {
   afterEach(() => {

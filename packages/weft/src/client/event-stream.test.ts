@@ -1,7 +1,7 @@
+import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { describe, expect, it } from 'bun:test';
 import type { WorkflowEvent } from '../core/types.ts';
-import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 import { defaultWebSocketFactory, workflowWatchWebSocketUrl } from './event-stream-transport.ts';
 import { FakeWebSocket, FakeWebSocketServer } from './event-stream.test-support.ts';
 import { WorkflowEventSubscription, type EventHistoryFetcher } from './event-stream.ts';

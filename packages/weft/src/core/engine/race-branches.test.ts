@@ -20,9 +20,9 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { encodeStorageKeyComponent } from '../../storage/interface.ts';
-import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { encode } from '../codec.ts';
 import type { WorkflowContext } from '../types.ts';
 import { activity, workflow } from '../types.ts';

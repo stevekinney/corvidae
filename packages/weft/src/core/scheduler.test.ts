@@ -1,10 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import {
   advanceTimersByTime,
   flushMicrotasks,
   restoreRealTimers,
   useFakeTimers,
 } from '@lostgradient/testing/fake-timers';
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import {
   createSchedulerContractContext,
   describeSchedulerContract,

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import {
   customerProfileWorkflow,
   loadCustomerProfileActivity,
 } from './customer-profile.test-support.ts';
 import { formatGreetingActivity, helloWorldWorkflow } from './hello-world.test-support.ts';
-import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 
 async function loadHelloWorldModule() {
   return import('./hello-world-example.test-support.ts');
