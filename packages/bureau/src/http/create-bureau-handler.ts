@@ -122,6 +122,10 @@ import {
   bureauAgentDefinitionsOperations,
 } from './management/agent-definitions-operations.ts';
 import {
+  type BureauDiagnosticsOperationHost,
+  diagnosticsGetOperation,
+} from './management/diagnostics-operations.ts';
+import {
   agentsListOperation,
   type BureauDeploymentOperationHost,
   deploymentGetOperation,
@@ -261,6 +265,7 @@ export type BureauHandlerSource = Pick<
     | 'hasDurableEngine'
     | 'auditTrail'
     | 'whenTaskRecorded'
+    | 'diagnostics'
   >;
 } & {
   readonly agents: {
@@ -290,6 +295,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauReviewsOperationHost &
   BureauOwnershipHost &
   BureauDeploymentOperationHost &
+  BureauDiagnosticsOperationHost &
   BureauTasksOperationHost &
   BureauTasksInspectOperationHost &
   BureauTaskEventsOperationHost &
@@ -653,6 +659,7 @@ function assertPersistence(bureau: BureauHandlerSource): void {
 export const BUREAU_HANDLER_OPERATIONS = [
   getPrincipalOperation,
   deploymentGetOperation,
+  diagnosticsGetOperation,
   agentsListOperation,
   agentsModelsOperation,
   tasksListOperation,
@@ -1068,6 +1075,7 @@ export function buildBureauHandlerHost(
     decisions: bureau.decisions,
     settings: bureau.settings,
     respond: (request) => bureau.tasks.respond(request),
+    diagnostics: { snapshot: () => bureau.internals.diagnostics() },
     deployment: {
       id: bureau.id,
       state: () => bureau.lifecycle,

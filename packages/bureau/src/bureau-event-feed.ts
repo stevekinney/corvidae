@@ -459,6 +459,11 @@ export type BureauEventFeed = {
    * whether the feed is still live.
    */
   readonly signal: AbortSignal;
+  /**
+   * How many live subscriptions `feed` holds right now (COR-1731): one per `feed.subscribe` that
+   * has not ended, however it ended. A replay-only read (`feed.replay`) holds none.
+   */
+  subscriberCount(): number;
   publish(event: unknown): BureauEventEnvelope | undefined;
   dispose(): void;
 };
@@ -500,6 +505,19 @@ export function createBureauEventFeed(options: BureauEventFeedOptions): BureauEv
         payload: { requestedCursor, firstRetainedSequence },
       }),
     });
+  // COR-1731: the backend is where a live subscription is registered and released, so counting
+  // there sees every subscriber and releases it however its stream ended.
+  const liveSubscribers = new Set<object>();
+  const subscribeLive = backend.subscribeLive.bind(backend);
+  backend.subscribeLive = (listener) => {
+    const release = subscribeLive(listener);
+    const token = {};
+    liveSubscribers.add(token);
+    return () => {
+      liveSubscribers.delete(token);
+      release();
+    };
+  };
   const lifetime = new AbortController();
   const feed = withFramesDroppedMarker(
     bindFeedLifetime(
@@ -527,6 +545,7 @@ export function createBureauEventFeed(options: BureauEventFeedOptions): BureauEv
   return {
     feed,
     signal: lifetime.signal,
+    subscriberCount: () => liveSubscribers.size,
     publish(event) {
       const projected = projectBureauEvent(event);
       if (projected === undefined) return undefined;
@@ -548,6 +567,8 @@ export function createBureauEventFeed(options: BureauEventFeedOptions): BureauEv
       lifetime.abort();
       feed.dispose();
       backend.dispose();
+      // The backend drops its listeners without calling their release, so none is held now.
+      liveSubscribers.clear();
     },
   };
 }

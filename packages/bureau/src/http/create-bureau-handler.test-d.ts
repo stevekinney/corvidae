@@ -75,5 +75,7 @@ export const decisionsScope: BureauScope = 'bureau.decisions:write';
 // COR-1710: the settings operations are gated by their own read and write scopes.
 export const settingsReadScope: BureauScope = 'bureau.settings:read';
 export const settingsWriteScope: BureauScope = 'bureau.settings:write';
+// COR-1731: the diagnostics snapshot is gated by its own read scope.
+export const diagnosticsReadScope: BureauScope = 'bureau.diagnostics:read';
 // @ts-expect-error -- the delivery scopes are not registered
 export const notAScope: BureauScope = 'bureau.deliveries:read';
