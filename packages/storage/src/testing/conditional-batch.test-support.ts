@@ -1,16 +1,24 @@
 import { describe, expect, it } from 'bun:test';
 
-import type { StorageBackendDescriptor } from '../testing/storage-backends.test-support.ts';
+import type { Storage } from '../interface.ts';
 
 function encode(value: string): Uint8Array {
   return new TextEncoder().encode(value);
 }
 
+/** A storage backend the conditional-batch tests run against: its name and a fresh-instance factory. */
+export type ConditionalBatchBackend = {
+  /** The name the registered tests carry. */
+  readonly name: string;
+  /** Build a fresh, isolated storage and the cleanup that releases it. */
+  readonly factory: () => { storage: Storage; cleanup: () => void | Promise<void> };
+};
+
 /**
  * Register the conditional-batch tests (commit on match, no writes on mismatch, `null` as
  * absence) for one storage backend.
  */
-export function describeConditionalBatch(backend: StorageBackendDescriptor): void {
+export function describeConditionalBatch(backend: ConditionalBatchBackend): void {
   describe(`${backend.name} conditional batch`, () => {
     it('commits a batch when every condition matches', async () => {
       const { storage, cleanup } = backend.factory();

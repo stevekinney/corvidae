@@ -1174,14 +1174,6 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
         requireUncoveredLines: true,
       },
     ],
-    [
-      'src/storage/turso.ts',
-      {
-        reason:
-          'Driver and runtime-specific behavior cannot be attributed in the default Bun LCOV process; fresh coverage confirms only these residual misses. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption): upstream’s coordinates no longer matched corvidae’s file. Lines 81-83 (`rollbackBestEffort`) left the allowance with COR-1472: a parked workflow now writes its `waitingForSignals` record, so the concurrent parks in search-attributes-integration.test.ts contend for the write transaction on every run (nine `SQLITE_BUSY` retries per run, measured five times) and reach the rollback path.',
-        functions: 1,
-      },
-    ],
   ],
 );
 

@@ -2,9 +2,9 @@ import { describe, expect, it } from 'bun:test';
 
 import {
   createDiskBackedTestFixture,
+  describeConditionalBatch,
   sqliteDatabaseSidecarSuffixes,
 } from '@lostgradient/storage/testing';
-import { describeConditionalBatch } from './conditional-batch.test-support.ts';
 import { TursoStorage } from './turso.ts';
 
 describe('TursoStorage persistence capabilities', () => {

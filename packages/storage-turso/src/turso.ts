@@ -1,7 +1,5 @@
 import type { Client, Config, InValue } from '@libsql/client';
 
-import { tryLoadNodeBuiltin } from '../runtime/portable.ts';
-
 import {
   assertStorageBatchOperationCount,
   normalizeDeleteRangeOptions,
@@ -14,6 +12,7 @@ import {
   type Storage,
   type StorageCapabilities,
 } from '@lostgradient/storage';
+import { tryLoadNodeBuiltin } from '@lostgradient/storage/runtime';
 import {
   assertReadOnlyQuery,
   buildSqliteCountKeysByPrefix,
@@ -44,10 +43,9 @@ function isLibsqlModule(value: unknown): value is typeof import('@libsql/client'
 /**
  * Load the libSQL driver and construct a client. Called at most once per
  * {@link TursoStorage}, lazily, from {@link TursoStorage.#resolveClient} —
- * never eagerly at module load, so importing this module (directly, via
- * `resolve.ts`, or via the package root re-export) never requires the
- * optional `@libsql/client` peer dependency. Only actually using a
- * `TursoStorage` does.
+ * never eagerly at module load, so importing this module (directly or through
+ * the package entry) never requires `@libsql/client` to resolve. Only actually
+ * using a `TursoStorage` does.
  */
 async function createClient(configuration: Config): Promise<Client> {
   const module = tryLoadNodeBuiltin('node:module');
@@ -166,7 +164,7 @@ function resolveTursoStoragePersistence(url: string): TursoStoragePersistence {
  *
  * @example
  * ```ts
- * import { TursoStorage, type TursoStorageOptions } from '@lostgradient/weft';
+ * import { TursoStorage, type TursoStorageOptions } from '@lostgradient/storage-turso';
  *
  * const options: TursoStorageOptions = {
  *   url: 'file:local.db',
@@ -191,14 +189,13 @@ export type TursoStorageOptions = {
  *
  * @example
  * ```ts
- * import { TursoStorage } from '@lostgradient/weft';
- * import { Engine } from '@lostgradient/weft';
+ * import { TursoStorage } from '@lostgradient/storage-turso';
  *
  * await using storage = new TursoStorage({
  *   url: 'libsql://my-db.turso.io',
  * ...(process.env['TURSO_AUTH_TOKEN'] ? { authToken: process.env['TURSO_AUTH_TOKEN'] } : {}),
  * });
- * await using engine = new Engine({ storage });
+ * await storage.put('greeting', new TextEncoder().encode('hello'));
  * ```
  */
 export class TursoStorage implements Storage {

@@ -10,7 +10,7 @@
  * outside the sandbox changes. An earlier version renamed the drivers out of the shared
  * `node_modules` instead, and a typecheck running beside the test then failed to find them.
  *
- * @module storage/turso-driver-sandbox.test-support
+ * @module storage-turso/turso-driver-sandbox.test-support
  */
 import { cp, mkdir, mkdtemp, readdir, realpath, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -55,7 +55,7 @@ export async function withOptionalStorageDriversAbsent<T>(
   packageRoot: string,
   body: (sandboxRoot: string) => Promise<T>,
 ): Promise<T> {
-  const sandboxRoot = await mkdtemp(join(tmpdir(), 'weft-without-optional-drivers-'));
+  const sandboxRoot = await mkdtemp(join(tmpdir(), 'storage-turso-without-optional-drivers-'));
   try {
     await cp(join(packageRoot, 'src'), join(sandboxRoot, 'src'), { recursive: true });
     for (const manifest of ['package.json', 'tsconfig.json']) {

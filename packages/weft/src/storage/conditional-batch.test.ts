@@ -3,10 +3,10 @@ import { describe, expect, it } from 'bun:test';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import {
   createDiskBackedTestFixture,
+  describeConditionalBatch,
   sqliteDatabaseSidecarSuffixes,
 } from '@lostgradient/storage/testing';
 import { storageBackends } from '../testing/storage-backends.test-support.ts';
-import { describeConditionalBatch } from './conditional-batch.test-support.ts';
 
 describe('storage persistence capabilities', () => {
   it('reports MemoryStorage as ephemeral', () => {
