@@ -13405,8 +13405,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
     const runtime = createManualRuntimeServices();
 
     // See the ordering test above for why the durable engine's shared
-    // prototype is spied on instead of `resolveStorage()`'s own internal
-    // `'memory'` instance.
+    // prototype is spied on.
     const probe = await createRuntimeComposition({
       generate: createMockGenerate(),
       toolbox: createEmptyToolbox(),

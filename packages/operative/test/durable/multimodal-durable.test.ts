@@ -1,6 +1,6 @@
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
-import { resolveStorage, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { BunSQLiteStorage, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTestToolbox, createTool } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation, type MultiModalContent } from 'conversationalist';
@@ -324,9 +324,10 @@ describe('a durable run restarted over SQLite keeps its parts (COR-713)', () => 
   ) {
     const directory = await mkdtemp(join(tmpdir(), 'corvidae-multimodal-durable-'));
     directories.push(directory);
-    const configuration = { type: 'sqlite', path: join(directory, 'weft.sqlite') } as const;
+    const path = join(directory, 'weft.sqlite');
 
-    const storageA = await resolveStorage(configuration);
+    // Closed explicitly before engine B opens the file; `using` covers a failure before that.
+    using storageA = new BunSQLiteStorage(path);
     const storeA = createCheckpointStore(
       textValueStore(storageA, { disposeUnderlyingStorage: false }),
     );
@@ -342,7 +343,7 @@ describe('a durable run restarted over SQLite keeps its parts (COR-713)', () => 
     engineA[Symbol.dispose]?.();
     storageA[Symbol.dispose]();
 
-    const storageB = await resolveStorage(configuration);
+    using storageB = new BunSQLiteStorage(path);
     const storeB = createCheckpointStore(
       textValueStore(storageB, { disposeUnderlyingStorage: false }),
     );
@@ -362,7 +363,6 @@ describe('a durable run restarted over SQLite keeps its parts (COR-713)', () => 
       return { live, recovered: reading.result };
     } finally {
       engineB[Symbol.dispose]?.();
-      storageB[Symbol.dispose]();
     }
   }
 
