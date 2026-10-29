@@ -2,7 +2,7 @@ import { describe, expect, it, mock } from 'bun:test';
 
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { serializeCheckpoint } from '../checkpoint/serialization.ts';
 import { decode, encode } from '../codec.ts';
 import { DevelopmentWarningEvent } from '../events.ts';

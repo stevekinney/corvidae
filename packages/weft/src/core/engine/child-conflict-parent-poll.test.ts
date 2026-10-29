@@ -18,7 +18,7 @@ import {
   expectPromisePending,
   waitForCondition,
   yieldToEventLoop,
-} from '../../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 import { decode } from '../codec/api.ts';
 import { workflow, type WorkflowContext, type WorkflowState } from '../types.ts';
 import { WorkflowCheckpointConflictError } from './checkpoint-conflict-error.ts';

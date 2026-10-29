@@ -1,5 +1,5 @@
 import { HANG_GUARD_MILLISECONDS, afterAwakeTime } from '@lostgradient/testing/hang-guard';
-import { waitForRealTimersForTesting } from '../../testing/fake-timers.test-support.ts';
+import { waitForRealTimersForTesting } from '@lostgradient/testing/fake-timers';
 
 /**
  * Poll `predicate` on real timers until it holds. The deadline is the awake-time hang guard, so a

@@ -14,7 +14,7 @@
  * pure internal refactor of `drainLive`.
  */
 
-import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
+import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 
 import { describe, expect, it } from 'bun:test';
 

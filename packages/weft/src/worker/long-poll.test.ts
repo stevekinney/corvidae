@@ -4,7 +4,7 @@ import {
   createDeferred,
   waitForCondition,
   withTimeout,
-} from '../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 import { LongPollWorker, type LongPollWorkerOptions } from './long-poll.ts';
 import type { RemoteWorkerActivityFunction } from './workflow-activity-binding.ts';
 

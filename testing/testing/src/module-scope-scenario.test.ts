@@ -1,6 +1,6 @@
 import { describe, expect, it, jest } from 'bun:test';
 
-import { outcomeOf, rethrow, ScenarioHangError } from './module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow, ScenarioHangError } from './module-scope-scenario.ts';
 
 describe('outcomeOf', () => {
   it('captures nothing when the scenario succeeds', async () => {

@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { decodeRemoteTaskRecord } from '../task-ledger/task-ledger.ts';
 import type { WorkflowContext } from '../types.ts';
 import { activity, workflow } from '../types.ts';

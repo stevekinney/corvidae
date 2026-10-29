@@ -779,7 +779,7 @@ describe('a single-turn yield used to let real work finish', () => {
 });
 
 describe('an exported one-turn yield helper, resolved through the file imports', () => {
-  const IMPORT_EVENT_LOOP = "import { yieldToEventLoop } from './fake-timers.test-support.ts';\n";
+  const IMPORT_EVENT_LOOP = "import { yieldToEventLoop } from '@lostgradient/testing/fake-timers';\n";
 
   test.each([
     [
@@ -796,11 +796,11 @@ describe('an exported one-turn yield helper, resolved through the file imports',
     ],
     [
       'a call under another local name',
-      "import { yieldToEventLoop as turn } from './fake-timers.test-support.ts';\ntest('a', async () => {\n  await turn();\n  expect(done()).toBe(true);\n});",
+      "import { yieldToEventLoop as turn } from '@lostgradient/testing/fake-timers';\ntest('a', async () => {\n  await turn();\n  expect(done()).toBe(true);\n});",
     ],
     [
       'a member of a namespace import',
-      "import * as loop from './fake-timers.test-support.ts';\ntest('a', async () => {\n  await loop.yieldToEventLoop();\n  expect(done()).toBe(true);\n});",
+      "import * as loop from '@lostgradient/testing/fake-timers';\ntest('a', async () => {\n  await loop.yieldToEventLoop();\n  expect(done()).toBe(true);\n});",
     ],
     [
       'a call in a before hook',

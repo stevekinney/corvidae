@@ -1,4 +1,4 @@
-import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
+import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 /**
  * Operation-catalog live verification — verifies that `serve()` wires the
  * live `OperationRegistry` + `REST_BINDINGS` into `handleRequest`, and that

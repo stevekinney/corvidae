@@ -10,7 +10,7 @@ import {
 } from '../core/events/catalog-events.ts';
 import { workflow } from '../core/types.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { waitForCondition } from '../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { WorkflowDocumentValidationError, type DocumentWorkflowHost } from './document.ts';
 import { registerWorkflowDocuments } from './register.ts';
 

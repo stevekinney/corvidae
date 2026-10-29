@@ -24,7 +24,7 @@ import {
   restoreRealTimers,
   useFakeTimers,
   waitForCondition,
-} from '../../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 import { manifestForActivities } from '../../worker/registry-fixtures.test-support.ts';
 import { minimalServeOptions, minimalServerContext } from './server-context.test-support.ts';
 import {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { join, resolve } from 'node:path';
 
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
-import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 
 // Isolated because it spawns a real `tsc --noEmit` subprocess: its wall-clock
 // cost is unbounded under CPU contention and cannot be made deterministic with

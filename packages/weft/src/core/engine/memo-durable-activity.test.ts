@@ -7,7 +7,7 @@ import {
   createDeferred,
   waitForCondition,
   waitForever,
-} from '../../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 import { decode } from '../codec.ts';
 import { durableActivity } from '../context/durable-activity.ts';
 import type { Context } from '../context/index.ts';

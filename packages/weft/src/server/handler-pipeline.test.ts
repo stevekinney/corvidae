@@ -1,4 +1,4 @@
-import { waitForCondition } from '../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 /**
  * Phase 15 — Integration tests for the `handleRequest` pipeline path.
  *

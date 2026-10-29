@@ -8,7 +8,7 @@ import { jest } from 'bun:test';
  * `bun test` process. Under Bun's fake timers, a real interval that fires at a
  * real event-loop turn is re-armed as a fake timer and inflates
  * `jest.getTimerCount()` (COR-1339), and any leaked timer keeps its closure,
- * often a whole engine, alive. `tests/test-preload.ts` installs one tracker on
+ * often a whole engine, alive. `real-timer-leak-guard.ts` installs one tracker on
  * `globalThis` and asserts in `afterAll`, which Bun runs once per process after
  * every file's own hooks.
  */
@@ -47,7 +47,7 @@ export type RealTimerTracker = {
   assertNoLeaks(exemptions?: readonly RealTimerExemption[]): Promise<void>;
 };
 
-const TRACKER_FRAME = 'real-timer-leak-guard.test-support.ts';
+const TRACKER_FRAME = 'real-timer-tracker.ts';
 const MAX_REPORTED_FRAMES = 8;
 
 /**

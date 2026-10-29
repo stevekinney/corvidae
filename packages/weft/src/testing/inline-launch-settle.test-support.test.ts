@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, jest } from 'bun:test';
 
-import { restoreRealTimers, useFakeTimers } from './fake-timers.test-support.ts';
+import { restoreRealTimers, useFakeTimers } from '@lostgradient/testing/fake-timers';
 import { settleInlineLaunches } from './inline-launch-settle.test-support.ts';
 
 describe('settleInlineLaunches', () => {

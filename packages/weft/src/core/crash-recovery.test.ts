@@ -1,4 +1,4 @@
-import { waitForCondition } from '../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
 /**
  * End-to-end crash recovery tests.

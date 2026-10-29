@@ -11,7 +11,7 @@
 import type { Engine } from '../core/engine.ts';
 
 import { awakeTurns } from '@lostgradient/testing/wait-until';
-import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
+import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 
 /** Terminal and intermediate workflow statuses the tests wait on. */
 export type WaitableWorkflowStatus =

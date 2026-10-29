@@ -29,7 +29,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import { Engine } from '../../src/core/engine.ts';
 import { MemoryStorage } from '../../src/storage/memory.ts';
-import { waitForCondition } from '../../src/testing/fake-timers.test-support.ts';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import {
   registerScenarioHandlers,
   scenarioNames,

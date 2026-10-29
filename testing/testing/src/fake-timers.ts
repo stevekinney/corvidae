@@ -1,6 +1,6 @@
 import { expect, jest } from 'bun:test';
 
-import { HANG_GUARD_MILLISECONDS, afterAwakeTime } from '@lostgradient/testing/hang-guard';
+import { HANG_GUARD_MILLISECONDS, afterAwakeTime } from './hang-guard.ts';
 
 type Deferred<T> = {
   promise: Promise<T>;

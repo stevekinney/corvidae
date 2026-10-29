@@ -10,7 +10,7 @@ import {
   type ConditionalBatchCondition,
 } from '../../../storage/interface.ts';
 import { MemoryStorage } from '../../../storage/memory.ts';
-import { createDeferred } from '../../../testing/fake-timers.test-support.ts';
+import { createDeferred } from '@lostgradient/testing/fake-timers';
 import type { Checkpoint } from '../../types.ts';
 import { parkedOnSignal } from '../checkpoint-conflict.test-support.ts';
 import { Engine } from '../index.ts';

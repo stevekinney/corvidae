@@ -5,7 +5,7 @@ import {
   advanceTimersByTime,
   restoreRealTimers,
   useFakeTimers,
-} from '../../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 import { WorkerRealm, type WorkerRealmActivation } from './worker-realm.ts';
 
 const workerUrl = new URL('./__fixtures__/revision-realm-worker-entry.ts', import.meta.url);

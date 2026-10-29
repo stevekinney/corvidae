@@ -44,7 +44,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import type { Browser, BrowserContext, Page } from 'playwright';
 import { chromium } from 'playwright';
 
-import { browserSmokeEnabled } from '../testing/browser-smoke-gate.test-support.ts';
+import { browserSmokeEnabled } from '@lostgradient/testing/browser-smoke-gate';
 
 import type { StorageCapabilities } from './capabilities.ts';
 import { SCAN_PAGE_SIZE } from './indexeddb-scan-page-size.ts';

@@ -22,7 +22,7 @@ import {
   flushMicrotasks,
   restoreRealTimers,
   useFakeTimers,
-} from '../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 import { computePayloadDigest } from './application-payload-digest.ts';
 import { WaitBudgetElapsedError } from './application-primitive-abort.ts';
 import {

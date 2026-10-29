@@ -18,7 +18,7 @@ import {
 } from '../../core/task-ledger/task-ledger.ts';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import {
   TEST_ACCEPTED_MANIFEST_DIGEST,
   testWorkerManifest,

@@ -10,7 +10,7 @@ import { describe, expect, it } from 'bun:test';
 import { quietFor } from '@lostgradient/testing/wait-until';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { decode } from '../codec.ts';
 import { workflow, type WorkflowContext } from '../types.ts';
 import { currentExecutionAttempt, type RunIdentity } from './execution-attempts.ts';

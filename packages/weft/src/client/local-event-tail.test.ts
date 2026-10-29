@@ -9,7 +9,7 @@ import {
 } from '../core/events.ts';
 import { WorkflowRevisionInstalledEvent } from '../core/events/catalog-events.ts';
 import type { WorkflowEvent, WorkflowState } from '../core/types.ts';
-import { sleepForTesting, withTimeout } from '../testing/fake-timers.test-support.ts';
+import { sleepForTesting, withTimeout } from '@lostgradient/testing/fake-timers';
 import { createLocalWorkflowEventTail } from './local-event-tail.ts';
 
 function event(type: string, data: Record<string, unknown> = {}): WorkflowEvent {

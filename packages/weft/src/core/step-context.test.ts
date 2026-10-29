@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
+import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';

@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from 'bun:test';
 import { makeActivity } from '../../testing/activity.test-support.ts';
-import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { settleInlineLaunches } from '../../testing/inline-launch-settle.test-support.ts';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';

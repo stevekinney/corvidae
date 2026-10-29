@@ -3,7 +3,7 @@ import {
   restoreRealTimers,
   sleepForTesting,
   useFakeTimers,
-} from '../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 
 import type { PendingTask, TaskResult } from './task-queue-types.ts';
 import { TaskQueue } from './task-queue.ts';

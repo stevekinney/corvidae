@@ -43,7 +43,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import type { BrowserContext } from 'playwright';
 import { chromium } from 'playwright';
 
-import { browserSmokeEnabled } from '../testing/browser-smoke-gate.test-support.ts';
+import { browserSmokeEnabled } from '@lostgradient/testing/browser-smoke-gate';
 
 /** Attribute on `<html>` the content script writes its JSON result into. */
 const RESULT_ATTRIBUTE = 'data-weft-smoke-result';

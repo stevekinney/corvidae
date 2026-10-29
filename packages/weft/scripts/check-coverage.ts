@@ -436,15 +436,6 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer(
       },
     ],
     [
-      'src/testing/fake-timers.test-support.ts',
-      {
-        reason:
-          'The remaining fake-timer line is the defensive error for a timer identifier not created by this test harness.',
-        lines: new Set([244]),
-        requireUncoveredLines: true,
-      },
-    ],
-    [
       'src/testing/storage-backends.test-support.ts',
       {
         reason:

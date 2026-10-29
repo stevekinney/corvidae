@@ -28,7 +28,7 @@ import {
   type ConditionalBatchCondition,
 } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { createDeferred, waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { createDeferred, waitForCondition } from '@lostgradient/testing/fake-timers';
 import { decode } from '../codec/api.ts';
 import {
   workflow,

@@ -11,7 +11,7 @@ import { Engine } from '../../core/engine/index.ts';
 import { workflow, type WorkflowState } from '../../core/types.ts';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { WorkerDeploymentCatalog } from '../../worker/deployment-routing.ts';
 import type { WorkerManifest } from '../../worker/manifest/types.ts';
 import { issueWorkflowWorkerStartOverridePreview } from '../../worker/start-override-preview.ts';

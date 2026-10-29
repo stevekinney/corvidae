@@ -12,7 +12,7 @@ import {
   type ConditionalBatchCondition,
 } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { drainMicrotasks } from '../../testing/fake-timers.test-support.ts';
+import { drainMicrotasks } from '@lostgradient/testing/fake-timers';
 import { createCheckpoint, serializeCheckpoint } from '../checkpoint.ts';
 import { decode } from '../codec/api.ts';
 import type { ContextOperationRequest } from '../context.ts';

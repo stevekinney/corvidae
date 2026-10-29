@@ -20,7 +20,7 @@ import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS, type BatchOperation } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { flushPortableMicrotasks } from '../../testing/event-loop.ts';
-import { drainMicrotasks } from '../../testing/fake-timers.test-support.ts';
+import { drainMicrotasks } from '@lostgradient/testing/fake-timers';
 import { deserializeCheckpoint, serializeCheckpoint } from '../checkpoint.ts';
 import { decode, encode } from '../codec/api.ts';
 import { Engine, ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING } from '../engine.ts';

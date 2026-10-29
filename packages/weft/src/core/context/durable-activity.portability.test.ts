@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { describe, it } from 'bun:test';
 
 import { runWithHangGuard } from '@lostgradient/testing/hang-guard';
-import { outcomeOf, rethrow } from '../../testing/module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 
 interface BunEntrypointResult {
   exitCode: number | null;

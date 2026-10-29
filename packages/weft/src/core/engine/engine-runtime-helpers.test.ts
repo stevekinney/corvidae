@@ -2,7 +2,7 @@ import { waitUntil } from '@lostgradient/testing/wait-until';
 import { describe, expect, it, mock } from 'bun:test';
 
 import { MemoryStorage } from '../../storage/memory.ts';
-import { sleepForTesting } from '../../testing/fake-timers.test-support.ts';
+import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 import { Engine } from '../engine.ts';
 import { CleanupWarningEvent, StorageSizeReportedEvent } from '../events.ts';
 import {

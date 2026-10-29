@@ -4,7 +4,7 @@ import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import type { ScanOptions } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
+import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 import { flush } from '../testing/storage-backends.test-support.ts';
 import { encode } from './codec.ts';
 import {

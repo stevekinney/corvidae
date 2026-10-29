@@ -13,7 +13,7 @@ import {
   createDeferred,
   drainMicrotasks,
   waitForCondition,
-} from '../../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 import { workflow, type Checkpoint, type WorkflowContext } from '../types.ts';
 import {
   adoptLaunchCheckpoint,

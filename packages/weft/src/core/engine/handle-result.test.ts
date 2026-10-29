@@ -7,7 +7,7 @@ import {
   createDeferred,
   flushMicrotasks,
   waitForCondition,
-} from '../../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 import { encode } from '../codec.ts';
 import { Engine } from '../engine.ts';
 import { workflow, type WorkflowContext, type WorkflowState } from '../types.ts';
