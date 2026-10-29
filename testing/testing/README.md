@@ -31,6 +31,27 @@ try {
 
 `@lostgradient/testing/postgres-server` gives a suite a real PostgreSQL. `postgresTestDatabase` resolves once at import: a `WEFT_TEST_POSTGRES_URL` wins, otherwise `initdb` and `pg_ctl` on `PATH` start a disposable cluster, otherwise it is `null` and the suite gates itself with `describe.skipIf(!postgresTestDatabase)`. A workspace whose Turborepo task is not given `WEFT_TEST_POSTGRES_URL` always uses the disposable cluster.
 
+## In-process S3
+
+`@lostgradient/testing/s3-server` starts a `Bun.serve` S3-compatible store on `127.0.0.1` and an ephemeral port, so a suite of S3 code needs no network, credentials, or container. It answers path-style `GET`, `HEAD`, `PUT`, and `DELETE` on objects and ListObjectsV2 (prefix, continuation tokens, pages of 1,000), returns quoted MD5 ETags, and gives conditional requests the statuses COR-1759 recorded from a real store: `412 PreconditionFailed` for a stale `If-Match` or an existing key under `If-None-Match`, `404 NoSuchKey` for `If-Match` on an absent key, and `204` for deleting an absent key. It accepts presigned and header-signed requests and checks neither signature, so it is a protocol double and never a security boundary.
+
+`Bun.S3Client.write` cannot send a condition, so a test of a conditional write signs with `client.presign(key, { method })` and sends the header with `fetch`. `objects()` is a snapshot of the bucket and `put(key, bytes)` edits it directly; the server stops on `Symbol.asyncDispose`.
+
+```typescript
+import { createS3TestServer } from '@lostgradient/testing/s3-server';
+
+await using server = createS3TestServer();
+const client = new Bun.S3Client(server.clientOptions());
+server.put('lock', 'owner-a');
+const url = client.presign('lock', { method: 'PUT', expiresIn: 300 });
+const response = await fetch(url, {
+  method: 'PUT',
+  headers: { 'If-None-Match': '*' },
+  body: 'owner-b',
+});
+console.log(response.status, server.objects().size);
+```
+
 ## Temporary paths
 
 Name a test's temporary files with `@lostgradient/testing/temporary-path`, never with `process.pid`. The operating system reuses process ids, so a later run builds the path an earlier run used, opens the database that run left behind, and inherits its rows. `createTemporaryPath(label, extension)` returns a path inside a fresh `mkdtemp` directory, so a SQLite file and its `-wal` and `-shm` files share one owner, and `removeTemporaryPath(path)` removes that directory in a `finally` or an `afterEach`. A file that has to stay next to the source it imports, such as a compiled server-render module, takes `uniqueFileName(label, extension)`, which appends a `crypto.randomUUID()`.
