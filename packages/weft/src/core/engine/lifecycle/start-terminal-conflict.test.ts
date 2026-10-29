@@ -9,7 +9,7 @@ import {
   storageKeys,
 } from '../../../storage/interface.ts';
 import { MemoryStorage } from '../../../storage/memory.ts';
-import { flushMicrotasks, waitForCondition } from '../../../testing/fake-timers.test-support.ts';
+import { flushMicrotasks, waitForCondition } from '@lostgradient/testing/fake-timers';
 import { TestEngine } from '../../../testing/test-engine.ts';
 import { ActivityRegistry } from '../../activity-registry.ts';
 import { Engine } from '../../engine.ts';

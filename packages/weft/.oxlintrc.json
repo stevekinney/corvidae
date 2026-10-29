@@ -241,7 +241,11 @@
         "import/no-unassigned-import": [
           "error",
           {
-            "allow": ["**/*.css", "fake-indexeddb/auto"]
+            "allow": [
+              "**/*.css",
+              "fake-indexeddb/auto",
+              "@lostgradient/testing/real-timer-leak-guard"
+            ]
           }
         ]
       }

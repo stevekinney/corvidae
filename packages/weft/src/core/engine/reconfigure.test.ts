@@ -1,7 +1,7 @@
 import { describe, expect, it, jest, spyOn } from 'bun:test';
 
 import { MemoryStorage } from '../../storage/memory.ts';
-import { advanceTimersByTime, useFakeTimers } from '../../testing/fake-timers.test-support.ts';
+import { advanceTimersByTime, useFakeTimers } from '@lostgradient/testing/fake-timers';
 import { Engine } from '../engine.ts';
 import { PayloadSizeExceededError } from '../payload-size.ts';
 import { workflow } from '../types.ts';

@@ -10,7 +10,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { createDeferred } from '../../testing/fake-timers.test-support.ts';
+import { createDeferred } from '@lostgradient/testing/fake-timers';
 import { TestEngine } from '../../testing/test-engine.ts';
 import { DevelopmentWarningEvent } from '../events.ts';
 import type { ActivityContext, WorkflowContext } from '../types.ts';

@@ -12,7 +12,7 @@ import {
   CONTRACT_PAYLOAD_CAP_BYTES,
   nextAsyncPendingToken,
 } from '../testing/async-activity.test-support.ts';
-import { sleepForTesting, withTimeout } from '../testing/fake-timers.test-support.ts';
+import { sleepForTesting, withTimeout } from '@lostgradient/testing/fake-timers';
 import {
   clientContractAsyncActivityWorkflow,
   clientContractEchoWorkflow,

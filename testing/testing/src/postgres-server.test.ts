@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
+import { throwingRejectionOf } from './helpers/promise-outcome.ts';
+import { outcomeOf, rethrow } from './module-scope-scenario.ts';
 import {
   createPostgresTestServer,
   openPostgresTestDatabase,
@@ -9,7 +9,7 @@ import {
   postgresCommandEnvironment,
   requireOpenedPostgresTestDatabase,
   selectPostgresTestDatabase,
-} from './postgres-server.test-support.ts';
+} from './postgres-server.ts';
 
 // This file's subject is the disposable cluster, so it asks whether one could be
 // spawned while ignoring any supplied URL: a developer with `WEFT_TEST_POSTGRES_URL`

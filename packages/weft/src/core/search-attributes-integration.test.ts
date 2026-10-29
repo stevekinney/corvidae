@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import { sleepForTesting, waitForCondition } from '../testing/fake-timers.test-support.ts';
+import { sleepForTesting, waitForCondition } from '@lostgradient/testing/fake-timers';
 
 import { KEYS } from '../storage/interface.ts';
 import {

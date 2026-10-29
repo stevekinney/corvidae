@@ -21,7 +21,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { CleanupWarningEvent } from '../events.ts';
 import { createLifecycleCallbacks } from './callback-creators.ts';
 import { currentExecutionAttempt } from './execution-attempts.ts';

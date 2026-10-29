@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
+import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 import type { ActivityExecutionRequest, ActivityExecutionResult } from './activity-runner.ts';
 import { executeActivity } from './activity-runner.ts';
 

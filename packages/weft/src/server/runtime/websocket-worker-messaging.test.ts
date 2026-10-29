@@ -1,7 +1,7 @@
 import type { ServerWebSocket } from 'bun';
 import { describe, expect, it } from 'bun:test';
 
-import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import type { WebSocketData } from '../json-rpc-websocket-runtime.ts';
 import { closeWorkerSocket } from './websocket-worker-messaging.ts';
 

@@ -314,7 +314,8 @@ test('explicit document-debug utilities can print while ordinary UI source canno
   rethrow(scenario12));
 
 const scenario13 = await outcomeOf(async () => {
-  const source = "import 'fake-indexeddb/auto';\n";
+  const source =
+    "import 'fake-indexeddb/auto';\nimport '@lostgradient/testing/real-timer-leak-guard';\n";
   const fixture = await lintImport(source, 'packages/weft/tests/test-preload.ts');
   expect(fixture.exitCode).toBe(0);
 

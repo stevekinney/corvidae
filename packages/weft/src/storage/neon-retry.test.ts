@@ -25,10 +25,22 @@ class FaultInjectingPool implements PostgresPool {
   beginCount = 0;
   /** Whether end() was called. */
   ended = false;
+  /** Failures and counters apply only once armed, after the adapter's setup transaction. */
+  #armed = false;
 
   constructor(commitFailures: number, failureCode = '40001') {
     this.#commitFailuresRemaining = commitFailures;
     this.#failureCode = failureCode;
+  }
+
+  /**
+   * Run the adapter's one-time setup transaction (schema/table creation takes its
+   * own BEGIN and COMMIT), then start counting and injecting failures.
+   */
+  async arm(storage: NeonStorage): Promise<void> {
+    await storage.has('__setup__');
+    this.beginCount = 0;
+    this.#armed = true;
   }
 
   async query(sql?: string): Promise<{ rows: Array<Record<string, unknown>> }> {
@@ -48,7 +60,7 @@ class FaultInjectingPool implements PostgresPool {
           return { rows: [] };
         }
         if (sql === 'COMMIT') {
-          if (this.#commitFailuresRemaining > 0) {
+          if (this.#armed && this.#commitFailuresRemaining > 0) {
             this.#commitFailuresRemaining -= 1;
             const error = Object.assign(new Error('transaction aborted, retry'), {
               code: this.#failureCode,
@@ -88,6 +100,7 @@ describe('NeonStorage conditionalBatch serialization retry', () => {
   it('retries the whole transaction on 40001 and succeeds, re-reading conditions each attempt', async () => {
     const pool = new FaultInjectingPool(2);
     await using storage = new NeonStorage({ url: 'stub://', pool });
+    await pool.arm(storage);
 
     const applied = await storage.conditionalBatch(
       [{ key: 'idem:k', expectedValue: null }],
@@ -109,6 +122,7 @@ describe('NeonStorage conditionalBatch serialization retry', () => {
     // mismatch and would corrupt compare-and-swap callers.
     const pool = new FaultInjectingPool(5);
     await using storage = new NeonStorage({ url: 'stub://', pool });
+    await pool.arm(storage);
 
     expect(
       await throwingRejectionOf(
@@ -128,6 +142,7 @@ describe('NeonStorage conditionalBatch serialization retry', () => {
     // cross-key contention (which the single-key live test cannot reproduce).
     const pool = new FaultInjectingPool(1, '40P01');
     await using storage = new NeonStorage({ url: 'stub://', pool });
+    await pool.arm(storage);
 
     const applied = await storage.conditionalBatch(
       [{ key: 'idem:k', expectedValue: null }],
@@ -143,6 +158,7 @@ describe('NeonStorage conditionalBatch serialization retry', () => {
     // mask a real failure and waste attempts.
     const pool = new FaultInjectingPool(1, '23502'); // not_null_violation
     await using storage = new NeonStorage({ url: 'stub://', pool });
+    await pool.arm(storage);
 
     expect(
       await throwingRejectionOf(
@@ -167,6 +183,7 @@ describe('NeonStorage conditionalBatch serialization retry', () => {
     let commitCount = 0;
     let rollbackCount = 0;
     let beginCount = 0;
+    let armed = false;
     const pool: PostgresPool = {
       query: async (sql?: string) =>
         sql?.includes('pg_collation') ? { rows: [{ collation: 'C' }] } : { rows: [] },
@@ -178,6 +195,7 @@ describe('NeonStorage conditionalBatch serialization retry', () => {
           }
           if (sql === 'COMMIT') {
             commitCount += 1;
+            if (!armed) return { rows: [] };
             // A COMMIT here would be the bug; make it abort with 40001 so a
             // pre-fix implementation throws after exhausting retries.
             throw Object.assign(new Error('could not serialize access'), { code: '40001' });
@@ -200,6 +218,10 @@ describe('NeonStorage conditionalBatch serialization retry', () => {
       end: async () => {},
     };
     await using storage = new NeonStorage({ url: 'stub://', pool });
+    await storage.has('__setup__');
+    beginCount = 0;
+    commitCount = 0;
+    armed = true;
 
     const applied = await storage.conditionalBatch(
       [{ key: 'idem:k', expectedValue: null }],

@@ -20,7 +20,7 @@ import type { RemoteTaskRecord } from '../core/task-ledger/task-ledger.ts';
 import { decodeRemoteTaskRecord } from '../core/task-ledger/task-ledger.ts';
 import type { WorkflowContext } from '../core/types.ts';
 import { activity, workflow } from '../core/types.ts';
-import { waitForCondition } from '../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { LongPollWorker } from '../worker/long-poll.ts';
 import { serve, type WeftServer } from './index.ts';
 

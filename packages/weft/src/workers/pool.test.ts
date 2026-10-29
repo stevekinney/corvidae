@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
+import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { WorkerPool } from './pool.ts';

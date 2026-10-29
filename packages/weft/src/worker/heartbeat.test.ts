@@ -3,7 +3,7 @@ import {
   restoreRealTimers,
   sleepForTesting,
   useFakeTimers,
-} from '../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 import { HeartbeatManager } from './heartbeat.ts';
 
 describe('HeartbeatManager', () => {

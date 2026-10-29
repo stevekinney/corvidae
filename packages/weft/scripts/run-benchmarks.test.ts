@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import packageJson from '../package.json' with { type: 'json' };
-import { outcomeOf, rethrow } from '../src/testing/module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import { listBenchmarkFiles, runBenchmarks, spawnBunTest } from './run-benchmarks.ts';
 
 // A real child is the behavior here, so it runs at module scope, off Bun's per-test clock.

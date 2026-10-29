@@ -23,7 +23,7 @@ import { afterAll, describe, expect, it } from 'bun:test';
 import {
   openPostgresTestDatabase,
   requireOpenedPostgresTestDatabase,
-} from '../../src/storage/postgres-server.test-support.ts';
+} from '@lostgradient/testing/postgres-server';
 import { PostgresStorage } from '../../src/storage/postgres.ts';
 import {
   bindingStampKey,

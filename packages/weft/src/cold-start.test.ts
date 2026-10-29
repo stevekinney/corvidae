@@ -3,7 +3,7 @@ import { expect, it } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { outcomeOf, rethrow } from './testing/module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 
 async function readHealthAddress(output: ReadableStream<Uint8Array>): Promise<string> {
   const reader = output.getReader();

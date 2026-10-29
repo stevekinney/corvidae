@@ -22,7 +22,7 @@ import {
   drainMicrotasks,
   expectPromisePending,
   waitForCondition,
-} from '../../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 import { decode, encode } from '../codec/api.ts';
 import { durableActivity, DurableActivityScopeError } from '../context/durable-activity.ts';
 import type { RemoteActivityBroker, RemoteActivityTaskRequest } from '../remote-activity-broker.ts';

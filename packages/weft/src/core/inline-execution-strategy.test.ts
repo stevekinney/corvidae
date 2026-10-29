@@ -1,8 +1,8 @@
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { sleepForTesting, waitForCondition } from '../testing/fake-timers.test-support.ts';
+import { sleepForTesting, waitForCondition } from '@lostgradient/testing/fake-timers';
 
-import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import { Context } from './context.ts';
 import { InlineExecutionStrategy } from './inline-execution-strategy.ts';
 import type { WorkerOutboundMessage, WorkflowFunction } from './types.ts';

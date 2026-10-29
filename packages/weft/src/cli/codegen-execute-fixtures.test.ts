@@ -18,7 +18,7 @@ import ts from 'typescript';
 import { HANG_GUARD_MILLISECONDS, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import manifest from '../../package.json';
 
-import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import { codegenPackageName, executeCodegen } from './codegen.ts';
 
 const FIXTURE_DIR = resolve(import.meta.dir, '__fixtures__/codegen');

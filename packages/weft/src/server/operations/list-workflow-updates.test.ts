@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { Engine } from '../../core/engine.ts';
 import { UpdateCoordinator } from '../../core/updates.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { sleepForTesting } from '../../testing/fake-timers.test-support.ts';
+import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 import { dispatchJsonRpc } from '../json-rpc-dispatch.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
 import { createOperationRegistry } from '../operation-catalog.ts';

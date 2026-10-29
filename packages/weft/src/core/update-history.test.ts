@@ -4,7 +4,7 @@ import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { BatchOperation, Storage } from '../storage/interface.ts';
 import { KEYS } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { sleepForTesting, waitForCondition } from '../testing/fake-timers.test-support.ts';
+import { sleepForTesting, waitForCondition } from '@lostgradient/testing/fake-timers';
 import {
   collectKeys,
   flush,

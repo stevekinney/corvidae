@@ -16,7 +16,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { flushMicrotasks, waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { flushMicrotasks, waitForCondition } from '@lostgradient/testing/fake-timers';
 import type { ActivityContext, WorkflowContext } from '../types.ts';
 import { activity, workflow } from '../types.ts';
 import { Engine } from './index.ts';

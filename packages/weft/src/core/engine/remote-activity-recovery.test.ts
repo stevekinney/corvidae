@@ -31,7 +31,7 @@ import {
   createDeferred,
   waitForCondition,
   waitForever,
-} from '../../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 import { RemoteWorker } from '../../worker/index.ts';
 import type { RemoteActivityBroker } from '../remote-activity-broker.ts';
 import { commitTaskLedgerTransition } from '../task-ledger/task-ledger-runtime.ts';

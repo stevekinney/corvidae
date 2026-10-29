@@ -9,7 +9,7 @@ import {
   restoreRealTimers,
   sleepForTesting,
   useFakeTimers,
-} from '../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 import {
   type MemorySample,
   MemoryProfiler,

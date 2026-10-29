@@ -22,7 +22,7 @@ import {
   drainMicrotasks,
   waitForCondition,
   waitForever,
-} from '../../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 import { decode, encode } from '../codec/api.ts';
 import { workflow, type Checkpoint } from '../types.ts';
 import { persistCheckpointForDataOperation } from './callback-checkpoint-persistence.ts';

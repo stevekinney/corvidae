@@ -2,7 +2,7 @@ import { describe, expect, it, mock } from 'bun:test';
 
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { sleepForTesting, waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { sleepForTesting, waitForCondition } from '@lostgradient/testing/fake-timers';
 import { encode } from '../codec.ts';
 import { CleanupWarningEvent } from '../events.ts';
 import type { WorkflowState } from '../types.ts';

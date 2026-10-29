@@ -34,7 +34,7 @@ import { join } from 'node:path';
 
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { afterAll, describe, expect, it } from 'bun:test';
-import { outcomeOf, rethrow } from '../../testing/module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import {

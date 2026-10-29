@@ -1,6 +1,6 @@
 import { describe, expect, it, spyOn } from 'bun:test';
 
-import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { manifestForActivities } from '../../worker/registry-fixtures.test-support.ts';
 import { createServerWebSocketHandlers } from './authentication-bridge.ts';
 import { minimalServeOptions, minimalServerContext } from './server-context.test-support.ts';

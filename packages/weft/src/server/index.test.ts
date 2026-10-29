@@ -1,7 +1,7 @@
 import { quietFor } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { waitForParityCondition as waitFor } from '../core/parity/real-timer-wait.test-support.ts';
-import { waitForRealTimersForTesting } from '../testing/fake-timers.test-support.ts';
+import { waitForRealTimersForTesting } from '@lostgradient/testing/fake-timers';
 
 import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';

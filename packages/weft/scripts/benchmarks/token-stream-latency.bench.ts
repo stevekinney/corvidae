@@ -7,7 +7,7 @@ import type { WeftServer } from '../../src/server/index.ts';
 import { serve } from '../../src/server/index.ts';
 import { NO_AUTHENTICATION_WARNING } from '../../src/server/serve-internals.ts';
 import { MemoryStorage } from '../../src/storage/memory.ts';
-import { waitForRealTimersForTesting } from '../../src/testing/fake-timers.test-support.ts';
+import { waitForRealTimersForTesting } from '@lostgradient/testing/fake-timers';
 import { isCoverageInstrumentationEnabled } from './coverage-mode.ts';
 
 class TokenEvent extends Event {

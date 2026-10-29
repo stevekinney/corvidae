@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
+import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 
 import { decode, encode } from '../core/codec.ts';
 import { Engine, ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING } from '../core/engine.ts';

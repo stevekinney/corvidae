@@ -7,7 +7,7 @@ import {
   sleepForTesting,
   useFakeTimers,
   withTimeout,
-} from '../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 import { settleInlineLaunches } from '../testing/inline-launch-settle.test-support.ts';
 
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
@@ -21,7 +21,7 @@ import type {
 } from '../storage/interface.ts';
 import { encodeStorageKeyComponent, KEYS } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import { ActivityRegistry } from './activity-registry.ts';
 import { AtomicStateConflictEvent } from './atomic-state.ts';
 import { deserializeCheckpoint } from './checkpoint.ts';

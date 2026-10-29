@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import { waitForever } from '../testing/fake-timers.test-support.ts';
+import { waitForever } from '@lostgradient/testing/fake-timers';
 
 import { flush, storageBackends, teardown } from '../testing/storage-backends.test-support.ts';
 import { Engine } from './engine.ts';

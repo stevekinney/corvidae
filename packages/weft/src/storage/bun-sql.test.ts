@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import { BunSQLiteStorage } from './bun-sql.ts';
 import {
   describeSqliteContentionViolations,

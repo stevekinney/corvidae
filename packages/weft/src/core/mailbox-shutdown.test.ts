@@ -17,7 +17,7 @@ import {
   flushMicrotasks,
   restoreRealTimers,
   useFakeTimers,
-} from '../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 import {
   admitOne,
   claimOne,

@@ -50,7 +50,7 @@ import {
   restoreRealTimers,
   useFakeTimers,
   waitForCondition,
-} from '../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 import { sha256HexSync } from '../worker/manifest/content-digest.ts';
 import { REMOTE_WORKER_PROTOCOL_VERSION } from '../worker/protocol.ts';
 import {

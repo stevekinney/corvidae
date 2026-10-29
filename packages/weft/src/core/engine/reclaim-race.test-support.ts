@@ -4,7 +4,7 @@
  * workflow, and an engine that takes the claim over with a services resolver a test can hold.
  */
 import type { Storage } from '../../storage/interface.ts';
-import { yieldToEventLoop } from '../../testing/fake-timers.test-support.ts';
+import { yieldToEventLoop } from '@lostgradient/testing/fake-timers';
 import { workflow, type WorkflowContext } from '../types.ts';
 import { Engine } from './index.ts';
 import { WORKFLOW_CLAIM_TAKEOVER_GRACE_MULTIPLIER } from './workflow-claim-transitions.ts';

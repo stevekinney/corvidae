@@ -23,7 +23,7 @@
 import { describe, expect, it, jest } from 'bun:test';
 
 import { MemoryStorage } from '../../storage/memory.ts';
-import { restoreRealTimers, useFakeTimers } from '../../testing/fake-timers.test-support.ts';
+import { restoreRealTimers, useFakeTimers } from '@lostgradient/testing/fake-timers';
 import { activity, workflow, type WorkflowContext } from '../types.ts';
 import { ensureWorkflowCatalogReady } from './catalog-readiness.ts';
 import { Engine } from './index.ts';

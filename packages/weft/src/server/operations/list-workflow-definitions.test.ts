@@ -9,7 +9,7 @@ import { buildRegistrySnapshot } from '../../core/registry-snapshot.ts';
 import { workflowSource } from '../../core/source/index.ts';
 import { query, signal, update, workflow, type WorkflowDefinition } from '../../core/types.ts';
 import { registerWorkflowDocuments } from '../../document-workflow/register.ts';
-import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { handleRequest } from '../handler.ts';
 import { generateOpenApiDocument } from '../openapi.ts';
 import { generateOpenRpcDocument } from '../openrpc.ts';

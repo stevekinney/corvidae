@@ -4,11 +4,11 @@ import {
   createRealTimerTracker,
   type RealTimerTracker,
   type TimerGlobals,
-} from './real-timer-leak-guard.test-support.ts';
+} from './real-timer-tracker.ts';
 
 /**
  * Each test drives its own tracker over its own target object, so it neither
- * depends on nor disturbs the process-wide tracker `tests/test-preload.ts`
+ * depends on nor disturbs the process-wide tracker `real-timer-leak-guard.ts`
  * installs on `globalThis`. Every timer a test arms is cleared before it ends.
  */
 function freshTarget(): TimerGlobals {
@@ -53,7 +53,7 @@ describe('createRealTimerTracker', () => {
     expect(leaked).toHaveLength(1);
     expect(leaked[0]?.kind).toBe('timeout');
     expect(leaked[0]?.delay).toBe(60_000);
-    expect(leaked[0]?.frames.join('\n')).toContain('real-timer-leak-guard.test-support.test.ts');
+    expect(leaked[0]?.frames.join('\n')).toContain('real-timer-tracker.test.ts');
   });
 
   it('reports an interval until it is cleared', async () => {
@@ -161,7 +161,7 @@ describe('createRealTimerTracker', () => {
     const message = (error as Error).message;
     expect(message).toContain('1 real timer(s) outlived the tests that armed them');
     expect(message).toContain('timeout(54321ms) created');
-    expect(message).toContain('real-timer-leak-guard.test-support.test.ts');
+    expect(message).toContain('real-timer-tracker.test.ts');
     expect(message).not.toContain('12345ms');
 
     target.clearTimeout(leakedHandle);

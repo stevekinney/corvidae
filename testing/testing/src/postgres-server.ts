@@ -3,8 +3,8 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
-import { readEnvironmentVariable } from '../runtime/environment-configuration.ts';
+import { environmentConfiguration } from './environment-configuration.ts';
+import { spawnWithHangGuard } from './hang-guard.ts';
 
 /** A live PostgreSQL the storage suites can talk to, however it was obtained. */
 export type PostgresTestDatabase = {
@@ -61,15 +61,14 @@ export function selectPostgresTestDatabase(
  * - A developer machine has the binaries and usually no URL, so it still spawns the
  *   disposable cluster below.
  *
- * Read through the registered runtime boundary rather than off `Bun.env`, the same way
- * `testing/browser-smoke-gate.test-support.ts` reads its own opt-in switch: a test-only
- * variable does not belong in a production configuration schema, and
- * `readEnvironmentVariable` is that boundary's sanctioned single-name read. The value is
+ * Read through this package's registered environment boundary rather than off `Bun.env`,
+ * the same way `@lostgradient/testing/browser-smoke-gate` reads its own opt-in switch: a
+ * test-only variable does not belong in a production configuration schema. The value is
  * resolved once at import, which is what `describe.skipIf` needs — a suite is skipped
  * when it is registered, and nothing inside `beforeAll` can skip it after the fact.
  */
 export const postgresTestDatabase: PostgresTestDatabaseSource | null = selectPostgresTestDatabase(
-  readEnvironmentVariable('WEFT_TEST_POSTGRES_URL'),
+  environmentConfiguration().weftTestPostgresUrl,
   postgresClientBinaries(),
 );
 

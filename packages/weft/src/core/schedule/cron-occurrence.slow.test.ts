@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { outcomeOf, rethrow } from '../../testing/module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import { getNextCronOccurrence } from './cron-occurrence.ts';
 
 // A day-of-month that never occurs in the month (31 April) parses, but nothing matches it, so the

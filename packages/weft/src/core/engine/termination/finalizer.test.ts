@@ -17,7 +17,7 @@ import {
   advanceTimersByTime,
   restoreRealTimers,
   useFakeTimers,
-} from '../../../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 import { ActivityRegistry } from '../../activity-registry.ts';
 import { decode, encode } from '../../codec.ts';
 import { Engine } from '../../engine.ts';

@@ -11,7 +11,7 @@ import { WORKFLOW_CATALOG_KEYS } from '../../storage/catalog-keys.ts';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { OWNERSHIP_CLAIM_KEYS } from '../../storage/ownership-keys.ts';
-import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 
 import { decode, encode } from '../codec.ts';
 import { activity, workflow, type WorkflowContext, type WorkflowState } from '../types.ts';

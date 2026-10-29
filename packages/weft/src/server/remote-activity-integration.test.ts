@@ -20,7 +20,7 @@ import { Engine } from '../core/engine.ts';
 import type { WorkflowInterceptor } from '../core/interceptor.ts';
 import type { WorkflowContext } from '../core/types.ts';
 import { activity, workflow } from '../core/types.ts';
-import { waitForCondition } from '../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { RemoteWorker } from '../worker/index.ts';
 import { serve, type WeftServer } from './index.ts';
 import { readOnlyTaskLedgerRecord } from './remote-activity-integration.test-support.ts';

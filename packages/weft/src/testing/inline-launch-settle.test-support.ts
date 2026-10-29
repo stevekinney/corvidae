@@ -4,7 +4,7 @@ import {
   advanceTimersByTime,
   flushMicrotasks,
   waitForCondition,
-} from './fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 
 /**
  * How many promise turns one pass drains after the scheduled launches have started. The turns

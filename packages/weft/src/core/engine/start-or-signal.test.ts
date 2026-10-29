@@ -9,7 +9,7 @@ import type {
 } from '../../storage/interface.ts';
 import { encodeStorageKeyComponent, KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { flushMicrotasks } from '../../testing/fake-timers.test-support.ts';
+import { flushMicrotasks } from '@lostgradient/testing/fake-timers';
 import { TestEngine } from '../../testing/test-engine.ts';
 import { ActivityRegistry } from '../activity-registry.ts';
 import { decode, encode } from '../codec.ts';

@@ -4,7 +4,7 @@
  */
 import type { BatchOperation, Storage } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { createDeferred, yieldToEventLoop } from '../../testing/fake-timers.test-support.ts';
+import { createDeferred, yieldToEventLoop } from '@lostgradient/testing/fake-timers';
 import type { ActivityContext, WorkflowContext } from '../types.ts';
 import { activity, workflow } from '../types.ts';
 import type { Engine } from './index.ts';

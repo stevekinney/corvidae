@@ -12,7 +12,7 @@ import {
   advanceTimersByTime,
   restoreRealTimers,
   useFakeTimers,
-} from '../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 import { WaitBudgetElapsedError } from './application-primitive-abort.ts';
 import { ApplicationDeliveryValidationError } from './outbox-guards.ts';
 import {

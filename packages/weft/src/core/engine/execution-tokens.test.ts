@@ -1,7 +1,7 @@
 import { describe, expect, it, mock } from 'bun:test';
 
 import { KEYS } from '../../storage/interface.ts';
-import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { encode } from '../codec.ts';
 import type { RemoteActivityBroker, RemoteActivityTaskRequest } from '../remote-activity-broker.ts';
 import type { ActivityContext, WorkflowContext } from '../types.ts';

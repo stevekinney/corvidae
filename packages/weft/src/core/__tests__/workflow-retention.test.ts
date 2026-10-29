@@ -3,7 +3,7 @@ import {
   sleepForTesting,
   waitForCondition,
   waitForRealTimersForTesting,
-} from '../../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
 
 import { quietFor } from '@lostgradient/testing/wait-until';
 import type {

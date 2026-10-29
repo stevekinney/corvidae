@@ -32,8 +32,8 @@ import {
   sleepForTesting,
   waitForCondition,
   waitForRealTimersForTesting,
-} from '../testing/fake-timers.test-support.ts';
-import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import {
   killAndReboot,
   spawnServerSubprocess,

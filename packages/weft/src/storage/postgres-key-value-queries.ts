@@ -282,6 +282,13 @@ export const PG_BEGIN_READ_COMMITTED = 'BEGIN ISOLATION LEVEL READ COMMITTED';
  */
 export const PG_BEGIN_READ_ONLY = 'BEGIN READ ONLY';
 
+/**
+ * Take the transaction-scoped advisory lock that serializes schema and table
+ * creation (`CREATE ... IF NOT EXISTS` races between connections). Released at
+ * COMMIT or ROLLBACK. The key is a fixed hash of a Weft-specific name.
+ */
+export const PG_ACQUIRE_SETUP_LOCK = "SELECT pg_advisory_xact_lock(hashtext('weft:storage-setup'))";
+
 /** Commit the current transaction. */
 export const PG_COMMIT = 'COMMIT';
 
