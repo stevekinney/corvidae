@@ -47,7 +47,7 @@ import {
 } from './process-crash-work-integrity-fixtures';
 import type { AgentDefinitions } from '../agent-catalog';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
-import { LMDBStorage } from '@lostgradient/weft';
+import { LMDBStorage } from '@lostgradient/storage-lmdb';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 /** Durable statuses a run never leaves. */
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set([

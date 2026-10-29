@@ -182,7 +182,6 @@ export { CompressedStorage } from './storage/compressed-storage.ts';
 export * from './storage/http.ts';
 export * from './storage/indexeddb.ts';
 export { DEFAULT_SCOPE, KEYS, WEFT_RESERVED_KEY_PREFIXES } from './storage/keys.ts';
-export * from './storage/lmdb.ts';
 export * from './storage/neon.ts';
 export { NodeSQLiteStorage } from './storage/node-sqlite.ts';
 export * from './storage/postgres.ts';
