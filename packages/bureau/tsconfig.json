@@ -35,6 +35,9 @@
     },
     {
       "path": "../storage-lmdb/tsconfig.source.json"
+    },
+    {
+      "path": "../storage-node-sqlite/tsconfig.source.json"
     }
   ]
 }

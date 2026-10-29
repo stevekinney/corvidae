@@ -9,7 +9,7 @@
  * @module storage/node-sqlite-loader
  */
 
-import { tryLoadNodeBuiltin } from '../runtime/portable.ts';
+import { tryLoadNodeBuiltin } from '@lostgradient/storage/runtime';
 
 /**
  * Minimal `better-sqlite3` `Database` surface this adapter uses. Defined here so

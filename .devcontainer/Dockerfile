@@ -1,7 +1,7 @@
 # The local development container described in AGENTS.md under "Dev Container".
 #
 # Node.js 24 is the active LTS line and the major the workspace's `@types/node` catalog
-# entry targets. Weft's native SQLite suite (`packages/weft/src/storage/node-sqlite.test.ts`)
+# entry targets. The Node SQLite adapter's native suite (`packages/storage-node-sqlite/src/node-sqlite.test.ts`)
 # runs its integration cases under a real Node, not Bun's `node` shim, and fails without one.
 # Node's bundled `npm` comes along with it.
 FROM node:24.21.0-trixie-slim AS node

@@ -326,6 +326,7 @@
         "@ag-ui/client": "catalog:",
         "@lostgradient/storage-bun-sqlite": "workspace:*",
         "@lostgradient/storage-lmdb": "workspace:*",
+        "@lostgradient/storage-node-sqlite": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@modelcontextprotocol/client": "catalog:",
@@ -555,6 +556,20 @@
         "typescript": "catalog:",
       },
     },
+    "packages/storage-node-sqlite": {
+      "name": "@lostgradient/storage-node-sqlite",
+      "dependencies": {
+        "@lostgradient/storage": "workspace:*",
+        "better-sqlite3": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/storage-postgres": {
       "name": "@lostgradient/storage-postgres",
       "dependencies": {
@@ -626,7 +641,6 @@
         "@msgpack/msgpack": "catalog:",
         "@noble/hashes": "catalog:",
         "@valibot/to-json-schema": "catalog:",
-        "better-sqlite3": "catalog:",
         "valibot": "catalog:",
         "zod": "catalog:",
       },
@@ -1003,6 +1017,8 @@
     "@lostgradient/storage-lmdb": ["@lostgradient/storage-lmdb@workspace:packages/storage-lmdb"],
 
     "@lostgradient/storage-neon": ["@lostgradient/storage-neon@workspace:packages/storage-neon"],
+
+    "@lostgradient/storage-node-sqlite": ["@lostgradient/storage-node-sqlite@workspace:packages/storage-node-sqlite"],
 
     "@lostgradient/storage-postgres": ["@lostgradient/storage-postgres@workspace:packages/storage-postgres"],
 

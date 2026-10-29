@@ -7,9 +7,9 @@ import { SQLITE_BUSY_TIMEOUT_MS } from '@lostgradient/storage/sql';
 import { runWithHangGuard, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { resolveCliEnvironment } from '../runtime/environment-configuration.ts';
 import { loadBetterSqlite3ForTest } from './node-sqlite-loader.ts';
 import { NodeSQLiteStorage } from './node-sqlite.ts';
+import { nativeNodeEnvironment } from './test/environment-configuration.ts';
 
 // The loader distinguishes the three ways a better-sqlite3 load can fail, because
 // their remedies differ and a single catch-all sentence hid an unbuilt binding
@@ -364,7 +364,7 @@ const scenario1 = await outcomeOf(async () => {
   try {
     symlinkSync(process.execPath, join(directory, 'node'));
     const runtime = await resolveNativeNode(
-      [directory, resolveCliEnvironment().path ?? ''].join(delimiter),
+      [directory, nativeNodeEnvironment().searchPath].join(delimiter),
     );
     const identity = await runWithHangGuard([runtime, '-p', 'typeof process.versions.bun']);
     expect(identity.exitCode).toBe(0);
@@ -419,11 +419,8 @@ function describeChildFailure(stdout: string, stderr: string): string {
 const scenario3 = await outcomeOf(async () => {
   // Bun's run.bun setting can inject both virtual and filesystem Node shims.
   // Verify runtime identity while preserving the inherited runtime managers.
-  const environment = {
-    ...process.env,
-    PATH: (resolveCliEnvironment().path ?? '').split(delimiter).filter(existsSync).join(delimiter),
-  };
-  const runtime = await resolveNativeNode(environment.PATH);
+  const environment = nativeNodeEnvironment().env;
+  const runtime = await resolveNativeNode(environment['PATH'] ?? '');
   const child = spawnWithHangGuard(
     [
       runtime,

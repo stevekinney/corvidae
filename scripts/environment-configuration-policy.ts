@@ -38,6 +38,7 @@ export const environmentBoundaries = [
       'scripts/browser-fixtures/environment-configuration.ts',
       'scripts/environment-configuration.ts',
       'packages/bureau/src/test/signal-shutdown/environment-configuration.ts',
+      'packages/storage-node-sqlite/src/test/environment-configuration.ts',
       'packages/operative/scripts/record-decision-fixtures.ts',
       'packages/weft/examples/environment-configuration.ts',
       'packages/weft/src/cli/__fixtures__/environment-configuration.ts',

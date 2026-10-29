@@ -1,9 +1,8 @@
 /**
- * The durability suites' specs for the disk-backed SQLite adapters Weft still holds: Node SQLite.
- * Bun SQLite's and Turso's specs live in `@lostgradient/storage-bun-sqlite` and
- * `@lostgradient/storage-turso`. The suites and their adapter-independent support live in
- * `@lostgradient/storage/testing`; each spec carries its adapter, the module its child entrypoints
- * import, and, for Node, the raw-handle hooks.
+ * The durability suites' spec for `NodeSQLiteStorage`: its adapter, the module its child entrypoints
+ * import, and the raw `better-sqlite3` handle the suites open beside it. The suites themselves live
+ * in `@lostgradient/storage/testing`. `better-sqlite3` loads only under Node, so the spec is offered
+ * only where the adapter opens (see {@link availableNodeSqliteSpecs}).
  */
 
 import { createRequire } from 'node:module';
@@ -12,14 +11,13 @@ import type { Storage } from '@lostgradient/storage';
 import {
   isFullyCheckpointed,
   makeNullValueFailingBatch,
-  type AdapterSpec,
   type CheckpointResult,
   type RawHandleAdapterSpec,
   type WalCheckpointRow,
 } from '@lostgradient/storage/testing';
 import { NodeSQLiteStorage } from '../node-sqlite.ts';
 
-/** Matches the surface of `BetterSqliteDatabase` in `src/storage/node-sqlite.ts`. */
+/** Matches the surface of `BetterSqliteDatabase` in `src/node-sqlite.ts`. */
 type BetterSqliteDatabase = {
   pragma(source: string): unknown;
   close(): void;
@@ -126,7 +124,7 @@ const nodeSqliteSpec = createNodeSqliteSpec({
  * Whether `better-sqlite3` is loadable in the current runtime. Bun cannot
  * load better-sqlite3's native bindings (oven-sh/bun#4290), so Node-SQLite
  * integration tests run only when the suite is invoked under Node. Mirrors
- * the gating pattern in `src/storage/node-sqlite.test.ts`.
+ * the gating pattern in `src/node-sqlite.test.ts`.
  */
 const IS_BUN = typeof globalThis.Bun !== 'undefined';
 
@@ -156,16 +154,10 @@ function canLoadNodeSqlite(): boolean {
   return nodeSqliteAvailable;
 }
 
-/** All adapter specs available in the current runtime. */
-export function availableAdapterSpecs(): readonly AdapterSpec[] {
-  const specs: AdapterSpec[] = [];
-  if (canLoadNodeSqlite()) specs.push(nodeSqliteSpec);
-  return specs;
-}
-
-/** The specs with a raw same-file handle, for tests that need a raw client path; Node SQLite only. */
-export function availableRawHandleAdapterSpecs(): readonly RawHandleAdapterSpec[] {
-  const specs: RawHandleAdapterSpec[] = [];
-  if (canLoadNodeSqlite()) specs.push(nodeSqliteSpec);
-  return specs;
+/**
+ * The Node SQLite spec when the adapter opens in this runtime, and none under Bun, where the
+ * native binding cannot load, so the suites register no cases there.
+ */
+export function availableNodeSqliteSpecs(): readonly RawHandleAdapterSpec[] {
+  return canLoadNodeSqlite() ? [nodeSqliteSpec] : [];
 }

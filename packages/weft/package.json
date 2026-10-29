@@ -38,7 +38,6 @@
     "@msgpack/msgpack": "catalog:",
     "@noble/hashes": "catalog:",
     "@valibot/to-json-schema": "catalog:",
-    "better-sqlite3": "catalog:",
     "valibot": "catalog:",
     "zod": "catalog:",
     "@lostgradient/environmentalist": "catalog:",

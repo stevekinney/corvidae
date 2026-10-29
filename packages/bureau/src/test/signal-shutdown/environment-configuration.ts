@@ -3,7 +3,7 @@
  * environment: the `PATH` native Node is located on and the hosts inherit.
  *
  * Bun's `run.bun` setting can prepend a virtual `node` shim directory that
- * does not exist on disk; it is dropped, as `node-sqlite.test.ts` drops it.
+ * does not exist on disk; it is dropped, as the Node SQLite adapter's `node-sqlite.test.ts` drops it.
  * The remaining shims are filesystem links to Bun, which
  * `resolveNativeNode` rejects by asking each candidate which runtime it is.
  */
