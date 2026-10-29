@@ -39,11 +39,6 @@
           "types": "./dist/storage/node-sqlite.d.ts",
           "node": "./dist/storage/node-sqlite.js"
         },
-        "./storage/web-extension": {
-          "types": "./dist/storage/web-extension.d.ts",
-          "import": "./dist/storage/web-extension.js",
-          "default": "./dist/storage/web-extension.js"
-        },
         "./storage/http": {
           "types": "./dist/storage/http.d.ts",
           "import": "./dist/storage/http.js",

@@ -39,7 +39,6 @@ The check also fails when a classified file drops to 500 lines or fewer, so a cl
 | `src/server/index.ts` | Justified exception | The server entrypoint owns the public serve surface and exported server types; further splitting would create shallow re-export files. |
 | `src/core/worker-protocol.ts` | Justified exception | Worker protocol types and validators stay together so wire messages, limits, and validation errors remain one auditable contract. |
 | `src/mcp/tools.ts` | Justified exception | MCP tool schemas and handlers are intentionally adjacent so tool metadata and operation dispatch cannot drift. |
-| `src/storage/web-extension.ts` | Justified exception | WebExtension storage keeps namespace detection, callback/promise bridging, quota handling, and scans in one adapter boundary. |
 | `src/core/engine/operations-coordination.ts` | Justified exception | Coordination operations keep race, all, nested signal, and branch-dispatch semantics together around one coordinator boundary. |
 | `src/core/engine/operations-activity.ts` | Justified exception | Activity operations coordinate interceptors, retries, reconciliation, async completion, verification, and result feeding together. |
 | `src/core/engine/signals.ts` | Justified exception | Signal buffering, waiter tracking, payload validation, and atomic consumption share one durable signal-delivery contract. |

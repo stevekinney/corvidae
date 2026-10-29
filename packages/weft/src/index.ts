@@ -191,7 +191,6 @@ export type {
   TypedConditionalBatchCondition,
   TypedStorage,
 } from './storage/typed-storage.ts';
-export * from './storage/web-extension.ts';
 export * from './worker/index.ts';
 // The portable testing primitives, named rather than `export *`: the testing barrel also exports
 // the subprocess engine (`spawnServerSubprocess`, `withSubprocessServer`, `killAndReboot`), which
