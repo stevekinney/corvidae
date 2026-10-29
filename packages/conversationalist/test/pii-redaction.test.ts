@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { createPIIRedactionPlugin } from '../src/index';
+import { createPIIRedaction, createPIIRedactionPlugin, DEFAULT_PII_RULES } from '../src/index';
 import type { MultiModalContent } from '../src/multi-modal';
 import type { JSONValue, MessageInput } from '../src/types';
 
@@ -317,5 +317,112 @@ describe('PII redaction in media parts', () => {
         }),
       ).toThrow(/UTF-8/);
     });
+  });
+});
+
+const LEGACY_PII_REGEXES = {
+  email: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
+  phone: /\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g,
+  apiKey:
+    /(?:[a-zA-Z0-9_-]*(?:api|key|secret|token|password|auth)[a-zA-Z0-9_-]*[:=]\s*["']?)([a-zA-Z0-9._-]{16,})(?:["']?)/gi,
+};
+
+const REDACTION_CORPUS = [
+  'Contact john.doe@example.com or call 555-123-4567.',
+  'a@b.co a.b+c%d@sub.example.org, x@y',
+  '@example.com user@ .@a.bc -@-.-ab',
+  'x@y.co_key@api1.co a@b.co.c@d.ef z@q.rs%t@u.vw a@b.co1@c.de',
+  'api_key=sk_live_abcdef1234567890 and token="abcdef1234567890ab" end',
+  'my-api-key: abcdefghijklmnop1 other=short password=abcdefghijklmnopqrst',
+  'xxapixx=abcdefghijklmnop_1 AUTH:abcdefghijklmnop.q SECRET = "abcdefghijklmnopqr"',
+  'key=key=abcdefghijklmnopqrst token:token:abcdefghijklmnop',
+  'apikey==abcdefghijklmnopqrst a=api=abcdefghijklmnopqrst',
+  'user@example.com@other.org mail:me@example.com;key=abcdefghijklmnopqr',
+  'no pii here, just words and numbers 12345',
+  '',
+];
+
+/** Deterministic pseudo-random strings over the characters the three rules are made of. */
+function seededStrings(count: number): string[] {
+  const alphabet = [
+    'a',
+    'x',
+    '1',
+    '.',
+    '-',
+    '_',
+    '@',
+    '=',
+    ':',
+    ' ',
+    '"',
+    "'",
+    'api',
+    'key',
+    '+',
+    'AUTH',
+    '.co',
+  ];
+  let state = 0x2f6e2b1;
+  const next = () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state;
+  };
+  return Array.from({ length: count }, () => {
+    let text = '';
+    for (let index = 0, length = next() % 40; index < length; index += 1) {
+      text += alphabet[next() % alphabet.length];
+    }
+    return text;
+  });
+}
+
+describe('PII redaction on long unbroken runs (COR-1753)', () => {
+  const redact = createPIIRedaction();
+
+  it('keeps the leading character class from starting a match inside a run', () => {
+    expect(DEFAULT_PII_RULES.email.regex.source.startsWith('(?:(?<![a-zA-Z0-9._%+-])|')).toBe(true);
+    expect(DEFAULT_PII_RULES.apiKey.regex.source.startsWith('(?<![a-zA-Z0-9_-])(?=')).toBe(true);
+  });
+
+  it('redacts exactly what the unanchored patterns redacted', () => {
+    for (const text of [...REDACTION_CORPUS, ...seededStrings(2000)]) {
+      let expected = text;
+      expected = expected.replace(LEGACY_PII_REGEXES.email, '[EMAIL_REDACTED]');
+      expected = expected.replace(LEGACY_PII_REGEXES.phone, '[PHONE_REDACTED]');
+      expected = expected.replace(LEGACY_PII_REGEXES.apiKey, (match, key: string) =>
+        match.replace(key, '[KEY_REDACTED]'),
+      );
+      expect(redact(text)).toBe(expected);
+    }
+  });
+
+  it('leaves a long unbroken run untouched', () => {
+    for (const run of [
+      'x'.repeat(69_000),
+      '1'.repeat(69_000),
+      '-'.repeat(69_000),
+      'a.'.repeat(30_000),
+    ]) {
+      expect(redact(run)).toBe(run);
+    }
+    const dense = 'api'.repeat(23_000);
+    expect(redact(dense)).toBe(dense);
+    expect(redact(`${dense}=`)).toBe(`${dense}=`);
+  });
+
+  it('redacts an email that starts where the previous email ended', () => {
+    expect(redact('a@b.co_c@d.ef')).toBe('[EMAIL_REDACTED][EMAIL_REDACTED]');
+    expect(redact('a@b.co.c@d.ef')).toBe('[EMAIL_REDACTED][EMAIL_REDACTED]');
+    expect(redact('a@b.co1@c.de')).toBe('[EMAIL_REDACTED][EMAIL_REDACTED]');
+  });
+
+  it('still redacts around a long unbroken run', () => {
+    const run = 'x'.repeat(69_000);
+    expect(redact(`${run} mail me@example.com ${run}`)).toBe(`${run} mail [EMAIL_REDACTED] ${run}`);
+    expect(redact(`${run}@example.com`)).toBe('[EMAIL_REDACTED]');
+    expect(redact(`${run}_api_key=abcdefghijklmnopqrstuvwxyz ${run}`)).toBe(
+      `${run}_api_key=[KEY_REDACTED] ${run}`,
+    );
   });
 });
