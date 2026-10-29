@@ -84,7 +84,7 @@ export interface BaseProviderOptions {
  * genuinely-absent case to `0` once, at the mapping boundary, is simpler than
  * pushing a `?? 0` onto every caller. Against the official SDK response type
  * `createAnthropicTokenCounter` never actually observes an absent count to
- * normalize—but {@link AnthropicTokenCountingClient} deliberately keeps
+ * normalize—but `AnthropicTokenCountingClient` deliberately keeps
  * `input_tokens` optional too, for a caller-supplied client or proxy `baseURL`
  * that omits it, and the `?? 0` fallback does cover that boundary. `cachedTokens` stays
  * optional and is never fabricated as `0`—Anthropic's `messages.countTokens`

@@ -5,7 +5,7 @@ import type { BaseProviderOptions } from './types.ts';
  * passes as `chat.completions.create`'s second argument.
  *
  * `signal` lives here and never in the body params: like the Anthropic SDK
- * (see {@link AnthropicRequestOptions}, AB-189), the OpenAI SDK only honors
+ * (see `AnthropicRequestOptions`, AB-189), the OpenAI SDK only honors
  * an abort signal handed to it as request options — a signal inside the
  * body is JSON-serialized away and ignored, so `run.abort()` used to leave
  * the upstream stream open until the model finished on its own (AB-238).

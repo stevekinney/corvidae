@@ -1376,16 +1376,29 @@ The `cacheBoundary` mark is the same conversation-level primitive `conversationa
 
 ### Provider definitions and `provider-kit`
 
-A host that picks a model provider by name holds a `ProviderDefinition`: a `name` and two methods, `generate(configuration)` and `stream(configuration)`. Operative ships `openaiProvider` and `geminiProvider`, and `@lostgradient/operative-anthropic` ships `anthropicProvider`. Each passes the configuration object, whole, to the matching factory (`createOpenAIProvider` and `createOpenAIProviderStream`, and so on), so a field the shared `ProviderConfigurationBase` does not name, such as an injected `client`, still reaches the factory:
+A host that picks a model provider by name holds a `ProviderDefinition`: a `name` and two methods, `generate(configuration)` and `stream(configuration)`. Each provider package ships its own definition (`@lostgradient/operative-anthropic` ships `anthropicProvider`, for example), and Operative itself ships `openaiProvider` and `geminiProvider`. A definition passes the configuration object, whole, to its factories, so a field the shared `ProviderConfigurationBase` does not name, such as an injected `client`, still reaches the factory. The provider package's README shows a real definition registered; this is the shape any of them has:
 
 ```typescript
-import { geminiProvider, openaiProvider, type ProviderDefinition } from '@lostgradient/operative';
+import type {
+  GenerateFunction,
+  ProviderDefinition,
+  StreamingGenerateFunction,
+} from '@lostgradient/operative';
 
-const definitions: ProviderDefinition[] = [openaiProvider, geminiProvider];
+declare const generate: GenerateFunction;
+declare const stream: StreamingGenerateFunction;
 
-const generate = definitions
-  .find((definition) => definition.name === 'openai')
-  ?.generate({ provider: 'openai', model: 'gpt-5' });
+const example: ProviderDefinition = {
+  name: 'example',
+  generate: () => generate,
+  stream: () => stream,
+};
+
+const definitions: ProviderDefinition[] = [example];
+
+const selected = definitions
+  .find((definition) => definition.name === 'example')
+  ?.generate({ provider: 'example', model: 'example-model' });
 ```
 
 `stream` returns a streaming generate function, which a host wraps with `withEnhancedStreaming` to get an ordinary one. An injected `client` has to serve both methods, because one configuration feeds both; to inject a client that serves only one, call the factory directly.
@@ -1396,17 +1409,9 @@ const generate = definitions
 
 ### Providers Behind a Proxy
 
-Every shipped provider (`createAnthropicProvider` from `@lostgradient/operative-anthropic`, `createOpenAIProvider`, `createGeminiProvider`, and their streaming counterparts) accepts a `baseURL` override and an arbitrary `apiKey` string with no shape validation—both pass straight to the underlying SDK client, so a credential-injecting proxy can sit in front of the real provider and swap in the real key server-side:
+Every shipped provider (`createAnthropicProvider` from `@lostgradient/operative-anthropic`, `createOpenAIProvider`, `createGeminiProvider`, and their streaming counterparts) accepts a `baseURL` override and an arbitrary `apiKey` string with no shape validation—both pass straight to the underlying SDK client, so a credential-injecting proxy can sit in front of the real provider and swap in the real key server-side.
 
-```typescript
-import { createOpenAIProvider } from '@lostgradient/operative';
-
-const generate = createOpenAIProvider({
-  model: 'gpt-5',
-  apiKey: 'placeholder-token', // never a real key—the proxy injects it
-  baseURL: 'https://llm-proxy.internal.example.com',
-});
-```
+Pass `apiKey` (a placeholder) and `baseURL` (the proxy's origin) to the provider's factory; the provider package's README has a worked example (see `@lostgradient/operative-anthropic`).
 
 **Per-provider endpoint allowlist.** Each provider issues requests to exactly one endpoint per generate call (a second, distinct endpoint for the streaming factories of OpenAI and Gemini)—the set below is pinned by each provider's `proxy-contract.test.ts` (Operative's `test/<provider>/` for OpenAI and Gemini, `@lostgradient/operative-anthropic`'s `test/` for Anthropic), which runs the provider (and its streaming counterpart) through a real SDK client against a local `Bun.serve` mock and asserts the exact `(method, path)` set observed over a multi-step run. Use it to build a proxy allowlist:
 
@@ -1419,16 +1424,9 @@ const generate = createOpenAIProvider({
 
 No provider issues a token-counting, models-list, or beta/experimental endpoint call as part of a normal generate step.
 
-**Per-run request metadata.** `requestMetadata` (a `Record<string, string>`) attaches to every generate request of a run:
+**Per-run request metadata.** `requestMetadata` (a `Record<string, string>`) attaches to every generate request of a run.
 
-```typescript
-import { createOpenAIProvider } from '@lostgradient/operative';
-
-const generate = createOpenAIProvider({
-  model: 'gpt-5',
-  requestMetadata: { requestId: 'run-42', tenant: 'acme' },
-});
-```
+Pass it as the `requestMetadata` option of the provider's factory; the provider package's README has a worked example (see `@lostgradient/operative-anthropic`).
 
 It's mapped to each provider's native field: Anthropic Messages `metadata`, OpenAI Chat Completions `metadata` (native string-keyed map, up to 16 keys). Gemini's `generateContent` API has no request-level metadata field, so `requestMetadata` is an explicit no-op for `createGeminiProvider` / `createGeminiProviderStream`.
 
@@ -2214,26 +2212,26 @@ import {
 } from '@lostgradient/operative';
 import {
   createModelCatalog,
-  createOpenAIProvider,
   readBackendDescriptors,
   withBackendDescriptors,
   type GenerateContext,
+  type GenerateFunction,
 } from '@lostgradient/operative';
 
-// createOpenAIProvider/createGeminiProvider (and the OpenAI streaming sibling,
-// like every provider package's factories) attach the single seed descriptor
-// matching their resolved model automatically—nothing to do here.
-// createGeminiProviderStream is the one exception: the seed catalog's Gemini
-// row describes `generateContent`, not the distinct `generateContentStream`
-// operation this factory calls, so it deliberately attaches nothing.
-const generate = createOpenAIProvider({ model: 'gpt-5', apiKey: '...' });
+// A provider factory attaches the single seed descriptor matching its resolved
+// model automatically—nothing to do here. `generate` stands for one, and an agent
+// built on it reads 'fixed'. (createGeminiProviderStream is the one exception:
+// the seed catalog's Gemini row describes `generateContent`, not the distinct
+// `generateContentStream` operation this factory calls, so it deliberately
+// attaches nothing.) A bare function with no descriptors reads 'opaque'.
+declare const generate: GenerateFunction;
 const agent = createAgent({ generate });
-agent.generationProfile.mode; // 'fixed'
+agent.generationProfile.mode;
 
 // A custom GenerateFunction can attach its own descriptor(s)—e.g. one
 // resolved from the seed catalog for a model this package doesn't wrap.
 const catalog = createModelCatalog();
-const customDescriptor = catalog.descriptors.find((d) => d.provider === 'openai');
+const customDescriptor = catalog.descriptors[0];
 const custom = withBackendDescriptors(
   async (context: GenerateContext) => {
     /* ... */
@@ -2244,16 +2242,12 @@ const custom = withBackendDescriptors(
 readBackendDescriptors(custom); // the array just attached, never inferred
 
 // A lazy generate function attaches descriptors at construction time—a
-// profile read never triggers the loader (here, the provider module itself).
-const lazyGenerate = createLazyGenerate(
-  () =>
-    import('@lostgradient/operative').then((m) =>
-      m.createOpenAIProvider({ model: 'gpt-5', apiKey: '...' }),
-    ),
-  {
-    descriptors: customDescriptor ? [customDescriptor] : [],
-  },
-);
+// profile read never triggers the loader (typically a dynamic import of the
+// provider package).
+declare const loadGenerate: () => Promise<GenerateFunction>;
+const lazyGenerate = createLazyGenerate(loadGenerate, {
+  descriptors: customDescriptor ? [customDescriptor] : [],
+});
 
 const readOnly: AgentGenerationProfile = readGenerationProfile(agent);
 ```
@@ -3024,12 +3018,12 @@ By default the tool-call events are reconstructed from the resolved `GenerateRes
 
 ```typescript
 import { TypedEventTarget } from '@lostgradient/lifecycle';
-import { createOpenAIProviderStream } from '@lostgradient/operative';
 import { withEnhancedStreaming } from '@lostgradient/operative';
-import type { StreamEventMap } from '@lostgradient/operative';
+import type { StreamEventMap, StreamingGenerateFunction } from '@lostgradient/operative';
+
+declare const provider: StreamingGenerateFunction; // a provider's streaming factory returns one
 
 const eventTarget = new TypedEventTarget<StreamEventMap>();
-const provider = createOpenAIProviderStream({ model: 'gpt-5', apiKey: '...' });
 
 const generate = withEnhancedStreaming(provider, {
   eventTarget,
@@ -3206,13 +3200,13 @@ Wraps a `GenerateFunction` with a single CLIENT span per call, following the OTe
 
 ```typescript
 import { instrumentGenerate } from '@lostgradient/operative';
-import { createOpenAIProvider } from '@lostgradient/operative';
+import type { GenerateFunction } from '@lostgradient/operative';
 import { trace } from '@opentelemetry/api';
 
-const rawGenerate = createOpenAIProvider({ model: 'gpt-5' });
+declare const rawGenerate: GenerateFunction; // a provider factory's result
 const generate = instrumentGenerate(rawGenerate, {
-  provider: 'openai',
-  model: 'gpt-5',
+  provider: 'ollama',
+  model: 'llama3.2',
   tracer: trace.getTracer('my-app', '1.0.0'),
 });
 ```

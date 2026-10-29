@@ -1,7 +1,8 @@
 /**
  * The Anthropic provider lives in `@lostgradient/operative-anthropic`. Operative's root, its
  * provider-authoring and provider-testing entry points, and the barrels under `src/providers/` name
- * none of what moved, so a host that wants Anthropic has to name the package.
+ * none of what moved, so a host that wants Anthropic has to name the package. The moved types are
+ * checked at compile time, in `anthropic-provider-moved.test-d.ts`.
  */
 import * as root from '@lostgradient/operative';
 import * as providerKit from '@lostgradient/operative/provider-kit';

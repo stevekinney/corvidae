@@ -24,10 +24,11 @@ Its source imports Operative only through `@lostgradient/operative/provider-kit`
 A host that picks a model provider by name holds a `ProviderDefinition`: a `name` and two methods, `generate(configuration)` and `stream(configuration)`. `anthropicProvider` passes the configuration object, whole, to `createAnthropicProvider` and `createAnthropicProviderStream`, so a field the shared `ProviderConfigurationBase` does not name, such as an injected `client`, still reaches the factory:
 
 ```typescript
-import { openaiProvider, type ProviderDefinition } from '@lostgradient/operative';
+import type { ProviderDefinition } from '@lostgradient/operative';
 import { anthropicProvider } from '@lostgradient/operative-anthropic';
 
-const definitions: ProviderDefinition[] = [anthropicProvider, openaiProvider];
+// A host registers one definition per provider package it uses.
+const definitions: ProviderDefinition[] = [anthropicProvider];
 
 const generate = definitions
   .find((definition) => definition.name === 'anthropic')
