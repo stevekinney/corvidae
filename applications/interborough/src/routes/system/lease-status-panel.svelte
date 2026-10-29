@@ -8,6 +8,7 @@
   import { Alert, Badge, DescriptionList, EmptyState, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
+  import { useFleetEventsLive } from '../../app/live-polling.svelte.ts';
   import { getClient } from '../../lib/client.ts';
   import { queryKeys } from '../../lib/query.ts';
   import {
@@ -19,11 +20,19 @@
 
   const client = getClient();
 
-  const leaseQuery = createQuery(() => ({
-    queryKey: queryKeys.systemLease(),
-    queryFn: () => loadSystemLease(client),
-    refetchInterval: 30_000,
-  }));
+  // `lease:health-changed` asks for the lease again; the timer runs only while the fleet feed is
+  // not live. The event carries the status alone, so the holder and the timestamps are read.
+  const fleetLive = useFleetEventsLive();
+  const leaseQuery = createQuery(() => {
+    // Read here, not in the interval, which TanStack Query reads untracked.
+    const polling = !fleetLive();
+    return {
+      queryKey: queryKeys.systemLease(),
+      queryFn: () => loadSystemLease(client),
+      // poll-reason: fallback
+      refetchInterval: polling ? 30_000 : false,
+    };
+  });
 
   // A failed background refetch keeps the cached lease beside the error; the
   // last reading is no longer current, so the badge and details are dropped

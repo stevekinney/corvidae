@@ -8,18 +8,19 @@
    *
    * ## Live connect/disconnect (plan §9.4 T5.1)
    *
-   * `EmptyState`+`Lock` gates the whole surface on `system:read`; an opt-in
+   * `EmptyState`+`Lock` gates the whole surface on `system:read`. The shell
+   * applies the shell's ONE shared `FleetEventSource`
+   * (`src/app/engine-status.svelte.ts`) to the cache for every page, so a
+   * worker connecting, leaving or being refused, a deployment changing, or a
+   * workflow definition registering asks the queries below again
+   * (`../../lib/live-source/cache-integration.ts`), and their 30s poll
+   * (`workers-data.ts`'s `REFETCH_INTERVAL_MS`) runs only while that feed is
+   * not live: it is the "polling fallback" half of the requirement. The opt-in
    * "Live" toggle (default OFF per plan §5 UI treatment) subscribes to the
-   * shell's ONE shared `FleetEventSource` (`getFleetEventSource()`,
-   * `src/app/engine-status.svelte.ts`), filtering client-side to
-   * `worker:connected`/`worker:disconnected` and invalidating the three
-   * queries on either. The toggle only gates this subscription — it never
-   * constructs or closes a connection of its own — mirroring
-   * `schedule-detail.svelte`'s and the Workflows list track's identical
-   * pattern (`workflow-list-live.svelte.ts`), per plan §5's "one fleet SSE
-   * … never per-row/per-surface connections" budget. The always-on 30s poll
-   * (`workers-data.ts`'s `REFETCH_INTERVAL_MS`) is the "polling fallback"
-   * half of the requirement and runs regardless of the Live toggle.
+   * same source for what the shell's mapping leaves out, invalidating the
+   * queues and the diagnostics too on `worker:connected`/`worker:disconnected`.
+   * Neither constructs or closes a connection of its own, per plan §5's "one
+   * fleet SSE … never per-row/per-surface connections" budget.
    *
    * ## Reconnect-grace-period nuance (plan §9.4)
    *
@@ -35,6 +36,7 @@
 
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
+  import { useFleetEventsLive } from '../../app/live-polling.svelte.ts';
   import { getClient } from '../../lib/client.ts';
   import { FAULT_TREATMENT_TITLE, faultTreatment } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -127,25 +129,40 @@
   const workerIds = $derived(
     (workersQuery.data?.items ?? []).map((worker) => worker.id).toSorted(),
   );
-  const manifestQuery = createQuery(() => ({
-    queryKey: queryKeys.workers.manifests(workerIds),
-    queryFn: () => loadFleetManifestDiagnostics(client, workerIds),
-    enabled: !locked && !workersQuery.isPending,
-    refetchInterval: 30_000,
-  }));
+  // These three ask again when the fleet feed reports a worker connecting, leaving or being
+  // refused, or a workflow definition being registered, and poll only while that feed is not live.
+  const fleetLive = useFleetEventsLive();
+  const manifestQuery = createQuery(() => {
+    const polling = !fleetLive();
+    return {
+      queryKey: queryKeys.workers.manifests(workerIds),
+      queryFn: () => loadFleetManifestDiagnostics(client, workerIds),
+      enabled: !locked && !workersQuery.isPending,
+      // poll-reason: fallback
+      refetchInterval: polling ? 30_000 : false,
+    };
+  });
   // Worker detail's contract verification (COR-162); shared with System → Registry.
-  const registryQuery = createQuery(() => ({
-    queryKey: queryKeys.registrySnapshot(),
-    queryFn: () => loadRegistrySnapshot(client),
-    enabled: !locked && router.search.get('worker') !== null,
-    refetchInterval: 30_000,
-  }));
-  const rejectionsQuery = createQuery(() => ({
-    queryKey: queryKeys.workers.rejections(),
-    queryFn: () => loadWorkerRegistrationRejections(client),
-    enabled: !locked,
-    refetchInterval: 30_000,
-  }));
+  const registryQuery = createQuery(() => {
+    const polling = !fleetLive();
+    return {
+      queryKey: queryKeys.registrySnapshot(),
+      queryFn: () => loadRegistrySnapshot(client),
+      enabled: !locked && router.search.get('worker') !== null,
+      // poll-reason: fallback
+      refetchInterval: polling ? 30_000 : false,
+    };
+  });
+  const rejectionsQuery = createQuery(() => {
+    const polling = !fleetLive();
+    return {
+      queryKey: queryKeys.workers.rejections(),
+      queryFn: () => loadWorkerRegistrationRejections(client),
+      enabled: !locked,
+      // poll-reason: fallback
+      refetchInterval: polling ? 30_000 : false,
+    };
+  });
 
   $effect(() => {
     if (

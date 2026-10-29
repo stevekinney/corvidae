@@ -57,6 +57,7 @@
   import { createQuery } from '@tanstack/svelte-query';
   import { DatabaseZap } from '@lucide/svelte';
 
+  import { useFleetEventsLive } from '../../app/live-polling.svelte.ts';
   import { getClient } from '../../lib/client.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { getPrincipalStore, isForbidden, isUnauthorized } from '../../lib/scopes.svelte.ts';
@@ -77,8 +78,14 @@
 
   const canRead = $derived(principal.hasScope('system:read'));
 
+  // `workflow-source:load-*` and `catalog:revision-*` ask for the list again; the timer below runs
+  // only while the fleet feed is not live.
+  const fleetLive = useFleetEventsLive();
+
   const sourcesQuery = createQuery(() => {
     const pagination = { limit: DYNAMIC_SOURCE_LIST_LIMIT, offset };
+    // Read here, not in the interval, which TanStack Query reads untracked.
+    const polling = !fleetLive();
     return {
       queryKey: queryKeys.catalog.sources(pagination),
       queryFn: async (): Promise<CatalogSourceListPage> => {
@@ -96,10 +103,11 @@
       },
       enabled: canRead,
       // Other operators and workflow starts can change source state without
-      // invalidating this console's cache, including after a load settles.
+      // invalidating this console's cache; the fleet feed reports it, so the timer is the fallback.
+      // poll-reason: fallback
       refetchInterval: (query: { state: { data: CatalogSourceListPage | undefined } }) => {
         const page = query.state.data;
-        if (page === undefined) return false;
+        if (!polling || page === undefined) return false;
         return page.sources.some((source) => source.state === 'loading')
           ? ACTIVE_SOURCE_POLL_MS
           : SETTLED_SOURCE_POLL_MS;

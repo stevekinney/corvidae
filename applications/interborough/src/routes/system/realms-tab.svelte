@@ -15,6 +15,7 @@
   import { createQuery } from '@tanstack/svelte-query';
   import { Layers } from '@lucide/svelte';
 
+  import { useFleetEventsLive } from '../../app/live-polling.svelte.ts';
   import { getClient } from '../../lib/client.ts';
   import { queryKeys } from '../../lib/query.ts';
   import QueryFaultBanner from './query-fault-banner.svelte';
@@ -27,12 +28,20 @@
 
   const client = getClient();
 
-  const query = createQuery(() => ({
-    queryKey: queryKeys.realms(),
-    queryFn: (): Promise<RealmDiagnosticsSource> =>
-      client.operations['weft.realms.diagnostics']({}) as Promise<RealmDiagnosticsSource>,
-    refetchInterval: 30_000,
-  }));
+  // A realm changing state (`realm:state-changed`) asks for the diagnostics again; the timer runs
+  // only while the fleet feed is not live.
+  const fleetLive = useFleetEventsLive();
+  const query = createQuery(() => {
+    // Read here, not in the interval, which TanStack Query reads untracked.
+    const polling = !fleetLive();
+    return {
+      queryKey: queryKeys.realms(),
+      queryFn: (): Promise<RealmDiagnosticsSource> =>
+        client.operations['weft.realms.diagnostics']({}) as Promise<RealmDiagnosticsSource>,
+      // poll-reason: fallback
+      refetchInterval: polling ? 30_000 : false,
+    };
+  });
 </script>
 
 <div class="weft-realms-tab">

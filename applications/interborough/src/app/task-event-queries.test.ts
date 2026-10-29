@@ -68,6 +68,26 @@ describe('task evidence invalidation', () => {
     ]);
   });
 
+  test('an attempt starting, failing, or being queued refreshes that task’s record and nothing else', () => {
+    for (const kind of [
+      'activity:started',
+      'activity:failed',
+      'activity:async-pending',
+      'activity:remote-queued',
+      'activity:remote-cancellation-requested',
+    ]) {
+      const { client, invalidated } = seededClient(KEYS);
+      expect(invalidateForTaskEvent(client, frame(kind, { operationId: OPERATION }))).toBe(true);
+      expect(invalidated()).toEqual([queryKeys.tasks.detail(OPERATION)]);
+    }
+  });
+
+  test('an attempt event with no readable operation id refreshes nothing', () => {
+    const { client, invalidated } = seededClient(KEYS);
+    invalidateForTaskEvent(client, frame('activity:started', null));
+    expect(invalidated()).toEqual([]);
+  });
+
   test('other event kinds are left alone', () => {
     const { client, invalidated } = seededClient(KEYS);
     expect(invalidateForTaskEvent(client, frame('worker:connected', { id: 'w' }))).toBe(false);

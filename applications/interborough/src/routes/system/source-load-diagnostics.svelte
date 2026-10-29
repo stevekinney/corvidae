@@ -27,6 +27,7 @@
   import { CircleCheck, CircleDashed, CircleX, Loader, TriangleAlert } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
+  import { useFleetEventsLive } from '../../app/live-polling.svelte.ts';
   import { getClient } from '../../lib/client.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { getPrincipalStore, isForbidden, isUnauthorized } from '../../lib/scopes.svelte.ts';
@@ -64,44 +65,53 @@
    * A row left unpolled would silently show `idle` for the rest of the session
    * while the engine went `loading` and back.
    */
-  const diagnosticsQuery = createQuery(() => ({
-    queryKey: queryKeys.catalog.diagnostics(workflowName, revision),
-    queryFn: async (): Promise<unknown> => {
-      try {
-        return await client.operations['weft.catalog.diagnostics']({
-          name: workflowName,
-          revision,
-        });
-      } catch (error) {
-        // The repository's runtime-degrade path (`scopes.svelte.ts`), which
-        // this query needs more than most: it polls. A scope revoked
-        // server-side mid-session would otherwise 403 forever on a 2s or 30s
-        // timer — TanStack Query keeps the last good data, so the data-driven
-        // interval stays armed — while showing a fault banner instead of the
-        // honest "requires system:read" state. Revoking locally flips
-        // `canRead`, which disables the query outright.
-        // 401 first: a credential that expired or was rotated mid-session is
-        // not a scope problem, and `denyScope` would mislabel it. Clearing
-        // the principal returns the shell to its authentication-required
-        // state instead of re-sending an invalid credential on the timer.
-        if (isUnauthorized(error)) principal.clear();
-        else if (isForbidden(error)) principal.denyScope('system:read');
-        throw error;
-      }
-    },
-    enabled: canRead,
-    refetchInterval: (query: { state: { data: unknown } }): SourceLoadPollInterval | false => {
-      const data = query.state.data;
-      // A malformed response is the one case worth stopping for: re-polling
-      // cannot reinterpret bytes this build already failed to recognize, and
-      // the rendered state says so explicitly. Every recognized state keeps
-      // polling — see `sourceLoadPollInterval`.
-      if (!isCatalogDiagnosticsLike(data)) return false;
-      return preloadPending
-        ? ACTIVE_SOURCE_POLL_MS
-        : sourceLoadPollInterval(summarizeSourceLoad(data));
-    },
-  }));
+  const fleetLive = useFleetEventsLive();
+  const diagnosticsQuery = createQuery(() => {
+    // Read here, not in the interval, which TanStack Query reads untracked.
+    const polling = !fleetLive();
+    return {
+      queryKey: queryKeys.catalog.diagnostics(workflowName, revision),
+      queryFn: async (): Promise<unknown> => {
+        try {
+          return await client.operations['weft.catalog.diagnostics']({
+            name: workflowName,
+            revision,
+          });
+        } catch (error) {
+          // The repository's runtime-degrade path (`scopes.svelte.ts`), which
+          // this query needs more than most: it polls. A scope revoked
+          // server-side mid-session would otherwise 403 forever on a 2s or 30s
+          // timer — TanStack Query keeps the last good data, so the data-driven
+          // interval stays armed — while showing a fault banner instead of the
+          // honest "requires system:read" state. Revoking locally flips
+          // `canRead`, which disables the query outright.
+          // 401 first: a credential that expired or was rotated mid-session is
+          // not a scope problem, and `denyScope` would mislabel it. Clearing
+          // the principal returns the shell to its authentication-required
+          // state instead of re-sending an invalid credential on the timer.
+          if (isUnauthorized(error)) principal.clear();
+          else if (isForbidden(error)) principal.denyScope('system:read');
+          throw error;
+        }
+      },
+      enabled: canRead,
+      // poll-reason: fallback
+      refetchInterval: (query: { state: { data: unknown } }): SourceLoadPollInterval | false => {
+        // The load-state events (`workflow-source:load-*`, `catalog:revision-*`) ask again while the
+        // fleet feed is live, so the timer is the fallback for when it is not.
+        if (!polling) return false;
+        const data = query.state.data;
+        // A malformed response is the one case worth stopping for: re-polling
+        // cannot reinterpret bytes this build already failed to recognize, and
+        // the rendered state says so explicitly. Every recognized state keeps
+        // polling — see `sourceLoadPollInterval`.
+        if (!isCatalogDiagnosticsLike(data)) return false;
+        return preloadPending
+          ? ACTIVE_SOURCE_POLL_MS
+          : sourceLoadPollInterval(summarizeSourceLoad(data));
+      },
+    };
+  });
 
   /** `undefined` for a successful-but-unrecognized response — an explicit malformed-response state, never rendered as a partial guess. */
   const summary = $derived.by((): SourceLoadSummary | undefined => {
