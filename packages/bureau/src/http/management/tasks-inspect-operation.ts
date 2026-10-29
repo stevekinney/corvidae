@@ -115,7 +115,9 @@ const livenessSchema = z.object({
   evidence: z.array(z.object({ source: z.string(), at: finite })),
 });
 
-const inspectInput = z.object({ taskId: z.string().min(1) });
+const inspectInput = z.object({
+  taskId: z.string().min(1).describe('The identifier of the task to inspect.'),
+});
 const inspectOutput = z.object({
   schemaVersion: z.literal(TASK_INSPECTION_SCHEMA_VERSION),
   taskId: z.string(),

@@ -41,13 +41,26 @@ export type BureauContextsSteerOperationHost = BureauOwnershipHost & {
 };
 
 const contextsSteerInput = z.object({
-  contextId: z.string().min(1),
-  /** The caller's own identifier for the command; an exact retry of it is a replay. */
-  commandId: z.string().min(1).max(256),
-  /** The catalog row to switch to: both coordinates, so a model name two providers serve is exact. */
-  override: z.object({ provider: z.string().min(1), model: z.string().min(1) }).strict(),
-  /** The context's `configVersion` (`bureau.contexts.get`) this command expects; a stale one is `stale-revision`. */
-  expectedRevision: z.number().int().min(0).optional(),
+  contextId: z.string().min(1).describe('The identifier of the context to switch.'),
+  commandId: z
+    .string()
+    .min(1)
+    .max(256)
+    .describe('The caller’s own identifier for the command; an exact retry of it is a replay.'),
+  override: z
+    .object({ provider: z.string().min(1), model: z.string().min(1) })
+    .strict()
+    .describe(
+      'The catalog row to switch to: both coordinates, so a model name two providers serve is exact.',
+    ),
+  expectedRevision: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe(
+      'The context’s `configVersion` (`bureau.contexts.get`) this command expects; a stale one is `stale-revision`.',
+    ),
 });
 
 const failureSchema = z.object({

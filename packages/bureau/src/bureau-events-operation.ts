@@ -30,12 +30,21 @@ const MAX_BUREAU_SUBSCRIPTION_REPLAY_EVENTS = 1_000;
 const bureauEventKindSchema = z.enum(PUBLISHED_BUREAU_EVENT_KINDS);
 
 const bureauEventsSubscriptionInput = z.object({
-  bureauId: z.string().min(1),
-  /** One kind, or several. Omitting it delivers every published kind. */
-  kinds: z.union([bureauEventKindSchema, z.array(bureauEventKindSchema).min(1)]).optional(),
+  bureauId: z.string().min(1).describe('The identifier of the Bureau whose events to follow.'),
+  kinds: z
+    .union([bureauEventKindSchema, z.array(bureauEventKindSchema).min(1)])
+    .optional()
+    .describe('One event kind, or several. Omitting it delivers every published kind.'),
   // Bound the input here; invoke checks its structure against the resolved
   // feed before opening a stream, so every transport returns `InvalidParams`.
-  fromCursor: z.string().min(1).max(512).optional(),
+  fromCursor: z
+    .string()
+    .min(1)
+    .max(512)
+    .optional()
+    .describe(
+      'The cursor of the last event already seen; the replay continues after it. Omitting it replays from the beginning of what the feed retains. An opaque value taken from an event or the subscription’s envelope.',
+    ),
 });
 
 const bureauEventsSubscriptionEnvelope = z.object({

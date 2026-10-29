@@ -64,8 +64,12 @@ export type BureauMemoryOperationHost = {
 /** The authorization revision a memory authority from this surface records on what it does. */
 const MEMORY_AUTHORIZATION_REVISION = 'bureau.memory:1';
 
-const agentIdentifier = z.string().min(1).max(256);
-const recordIdentifier = z.string().min(1).max(256);
+const agentIdentifier = z
+  .string()
+  .min(1)
+  .max(256)
+  .describe('The identifier of the agent whose memory this addresses.');
+const recordIdentifier = z.string().min(1).max(256).describe('The identifier of the memory.');
 /** A text that is not blank: governed memory refuses one, and the boundary says so first. */
 const nonBlankText = (maximum: number) =>
   z
@@ -321,8 +325,14 @@ export const memoryListOperation = defineOperation<
 
 const searchInput = z.object({
   agentId: agentIdentifier,
-  query: nonBlankText(1_000),
-  limit: z.number().int().min(1).max(100).optional(),
+  query: nonBlankText(1_000).describe('The text to rank the agent’s memories against.'),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .optional()
+    .describe('The most hits to return, from 1 to 100. Defaults to 10.'),
 });
 const searchOutput = z.object({
   hits: z.array(z.object({ memory: memoryViewSchema, score: z.number() })),
@@ -455,7 +465,9 @@ export const memoryForgetOperation = defineOperation<
 const correctInput = z.object({
   agentId: agentIdentifier,
   id: recordIdentifier,
-  content: nonBlankText(MAXIMUM_CONTENT_LENGTH),
+  content: nonBlankText(MAXIMUM_CONTENT_LENGTH).describe(
+    'The corrected text, which supersedes the memory’s content.',
+  ),
 });
 const correctOutput = z.object({
   /** The memory that was corrected, which is no longer listed. */

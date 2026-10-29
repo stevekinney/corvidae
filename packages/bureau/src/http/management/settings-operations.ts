@@ -115,10 +115,12 @@ export const settingsSchemaOperation = defineOperation<
 });
 
 const updateInput = z.object({
-  /** The keys to change, by dotted key. */
-  patch: z.record(z.string(), z.unknown()),
-  /** The revision the patch was written against. */
-  expectedRevision: z.number().int().nonnegative(),
+  patch: z.record(z.string(), z.unknown()).describe('The keys to change, by dotted key.'),
+  expectedRevision: z
+    .number()
+    .int()
+    .nonnegative()
+    .describe('The revision the patch was written against, from `bureau.settings.get`.'),
 });
 
 const updateOutput = z.object({
@@ -199,7 +201,10 @@ const eventsInput = z.object({
     .string()
     .min(1)
     .refine((cursor) => decodeCursor(cursor) !== null, { message: 'Invalid cursor' })
-    .optional(),
+    .optional()
+    .describe(
+      'The `cursor` (a settings revision) of the last event already seen. A resume delivers one event for the current revision, with no keys, when it is newer than the cursor, then live changes. Omitting it delivers live changes only.',
+    ),
 });
 
 const eventsEnvelope = z.object({ subscriptionId: z.string() });

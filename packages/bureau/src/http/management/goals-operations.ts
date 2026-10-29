@@ -182,7 +182,10 @@ async function goalFor(
   return goal;
 }
 
-const listInput = z.object({ status: goalStatus.optional(), ...pageFields });
+const listInput = z.object({
+  status: goalStatus.optional().describe('Only the goals in this status.'),
+  ...pageFields,
+});
 const listOutput = z.object({
   goals: z.array(goalViewSchema),
   nextOffset: z.number().int().nullable(),
@@ -224,7 +227,9 @@ export const goalsListOperation = defineOperation<
   },
 });
 
-const getInput = z.object({ goalRunId: goalIdentifier });
+const getInput = z.object({
+  goalRunId: goalIdentifier.describe('The identifier of the goal to read.'),
+});
 
 export const goalsGetOperation = defineOperation<
   typeof getInput,
@@ -262,29 +267,37 @@ function goalRunIdFor(owner: string, idempotencyKey: string): string {
 }
 
 const createInput = z.object({
-  /**
-   * Makes `create` idempotent for the caller: the same request under the same key is the same
-   * goal. The goal's id is derived from the key and the caller, so it is never another owner's.
-   * Omitted, the Bureau mints the id.
-   */
   idempotencyKey: z
     .string()
     .regex(/^[A-Za-z0-9._-]{1,64}$/)
-    .optional(),
-  /** The catalog agent that runs each attempt. */
-  agentName: z.string().min(1).max(256),
-  prompt: z.string().min(1).max(100_000),
-  instructions: z.string().max(100_000).optional(),
-  identity: z.strictObject({ name: z.string().min(1), version: z.string().min(1) }),
-  /** A validator this Bureau was configured with, by exact name and version. */
-  validator: z.strictObject({ name: z.string().min(1), version: z.string().min(1) }),
-  bounds: z.strictObject({
-    maximumAttempts: positiveInteger,
-    maximumTotalDurationMs: positiveInteger.optional(),
-    maximumTotalSteps: positiveInteger.optional(),
-    maximumTotalTokens: positiveInteger.optional(),
-    maximumTotalCostUsd: z.number().positive().optional(),
-  }),
+    .optional()
+    .describe(
+      'Makes `create` idempotent for the caller: the same request under the same key is the same goal. The goal’s id is derived from the key and the caller, so it is never another owner’s. Omitted, the Bureau mints the id.',
+    ),
+  agentName: z.string().min(1).max(256).describe('The catalog agent that runs each attempt.'),
+  prompt: z.string().min(1).max(100_000).describe('The goal the agent works toward.'),
+  instructions: z
+    .string()
+    .max(100_000)
+    .optional()
+    .describe('Instructions the agent follows in each attempt.'),
+  identity: z
+    .strictObject({ name: z.string().min(1), version: z.string().min(1) })
+    .describe('The name and version that identify this goal in its events.'),
+  validator: z
+    .strictObject({ name: z.string().min(1), version: z.string().min(1) })
+    .describe('A validator this Bureau was configured with, by exact name and version.'),
+  bounds: z
+    .strictObject({
+      maximumAttempts: positiveInteger,
+      maximumTotalDurationMs: positiveInteger.optional(),
+      maximumTotalSteps: positiveInteger.optional(),
+      maximumTotalTokens: positiveInteger.optional(),
+      maximumTotalCostUsd: z.number().positive().optional(),
+    })
+    .describe(
+      'The limits the goal runs within: `maximumAttempts`, and at least one of `maximumTotalDurationMs`, `maximumTotalSteps`, `maximumTotalTokens` and `maximumTotalCostUsd`.',
+    ),
   conversationPolicy: z
     .discriminatedUnion('kind', [
       z.strictObject({ kind: z.literal('continue') }),
@@ -293,16 +306,29 @@ const createInput = z.object({
         throughRun: z.number().int().min(0),
       }),
     ])
-    .optional(),
+    .optional()
+    .describe(
+      'How a later attempt obtains its conversation: `continue` appends to the goal’s session, and `fork-from-baseline` forks it at the history through run `throughRun`. Defaults to `continue`.',
+    ),
   retryPolicy: z
     .strictObject({
       retryOn: z.array(
         z.enum(['validator-fail-retryable', 'validator-unavailable', 'validator-canceled']),
       ),
     })
-    .optional(),
-  validatorTimeoutMs: positiveInteger.optional(),
-  requireDeterministicValidation: z.boolean().optional(),
+    .optional()
+    .describe(
+      'The validator outcomes that start another attempt. Omitted, the goal never retries.',
+    ),
+  validatorTimeoutMs: positiveInteger
+    .optional()
+    .describe('A validator running longer than this many milliseconds ends as a timeout error.'),
+  requireDeterministicValidation: z
+    .boolean()
+    .optional()
+    .describe(
+      'When `true`, a goal whose validator is stochastic ends as `failed` instead of accepting the judge. Defaults to `false`.',
+    ),
 });
 
 const createOutput = z.object({
@@ -461,9 +487,20 @@ export const goalsCreateOperation = defineOperation<
 });
 
 const cancelInput = z.object({
-  goalRunId: goalIdentifier,
-  reason: z.string().max(1_000).optional(),
-  expectedRevision: z.number().int().min(0).optional(),
+  goalRunId: goalIdentifier.describe('The identifier of the goal to cancel.'),
+  reason: z
+    .string()
+    .max(1_000)
+    .optional()
+    .describe('Why the goal is canceled, recorded with the cancellation.'),
+  expectedRevision: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe(
+      'The goal’s `revision` the caller read; when it has changed since, the call is a `StaleRevision` fault and nothing is written.',
+    ),
 });
 
 const cancelOutput = z.object({

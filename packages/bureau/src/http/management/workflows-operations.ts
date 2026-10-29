@@ -54,7 +54,13 @@ export type BureauWorkflowsOperationHost = BureauOwnershipHost & {
 };
 
 const workflowIdentifier = z.string().min(1).max(256);
-const hash = z.string().min(1);
+const workflowId = workflowIdentifier.describe('The identifier of the workflow.');
+const hash = z
+  .string()
+  .min(1)
+  .describe(
+    'The `hash` of the workflow file the caller read; a file that has changed since is a `StaleRevision` fault and nothing is written.',
+  );
 
 const problemSchema = z.object({
   code: z.string(),
@@ -100,13 +106,17 @@ const workflowDetailSchema = workflowListingSchema.extend({
  * still succeed (COR-1595). `trigger` stays loose, so the registered kind's own validator refuses
  * the keys that kind does not declare.
  */
-const definitionSchema = z.strictObject({
-  description: z.string().optional(),
-  agent: z.string().optional(),
-  paused: z.boolean().optional(),
-  trigger: z.looseObject({ kind: z.string() }),
-  steps: z.array(z.record(z.string(), z.unknown())),
-});
+const definitionSchema = z
+  .strictObject({
+    description: z.string().optional(),
+    agent: z.string().optional(),
+    paused: z.boolean().optional(),
+    trigger: z.looseObject({ kind: z.string() }),
+    steps: z.array(z.record(z.string(), z.unknown())),
+  })
+  .describe(
+    'The workflow file’s contents: an optional `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), and the `steps`.',
+  );
 
 const writeResultSchema = z.object({ id: z.string(), hash: z.string() });
 
@@ -255,7 +265,7 @@ function faultOf(error: unknown, id: string, expectedHash?: string): never {
   throw error;
 }
 
-const createInput = z.object({ id: workflowIdentifier, definition: definitionSchema });
+const createInput = z.object({ id: workflowId, definition: definitionSchema });
 
 export const workflowsCreateOperation = defineOperation<
   typeof createInput,
@@ -303,7 +313,7 @@ export const workflowsCreateOperation = defineOperation<
 });
 
 const updateInput = z.object({
-  id: workflowIdentifier,
+  id: workflowId,
   expectedHash: hash,
   definition: definitionSchema,
 });
@@ -347,7 +357,7 @@ export const workflowsUpdateOperation = defineOperation<
   },
 });
 
-const guardedInput = z.object({ id: workflowIdentifier, expectedHash: hash });
+const guardedInput = z.object({ id: workflowId, expectedHash: hash });
 
 function defineGuardedWrite(
   name: string,
@@ -425,7 +435,7 @@ export const workflowsDeleteOperation = defineGuardedWrite(
   (workflows, id, guard) => workflows.delete(id, guard),
 );
 
-const getInput = z.object({ id: workflowIdentifier });
+const getInput = z.object({ id: workflowId });
 
 export const workflowsGetOperation = defineOperation<
   typeof getInput,
@@ -456,8 +466,12 @@ export const workflowsGetOperation = defineOperation<
 
 const listInput = z.object({
   ...pageFields,
-  /** Counts each ready file's instances. Off unless asked, because each count reads the engine. */
-  includeRuns: z.boolean().optional(),
+  includeRuns: z
+    .boolean()
+    .optional()
+    .describe(
+      'Counts each ready file’s instances. Off unless asked, because each count reads the engine.',
+    ),
 });
 const listOutput = z.object({
   workflows: z.array(workflowListingSchema.extend({ runs: runCountsSchema.nullable() })),
@@ -558,8 +572,8 @@ export const workflowsRevisionsOperation = defineOperation<
 });
 
 const runsListInput = z.object({
-  workflow: workflowIdentifier.optional(),
-  status: runStatusSchema.optional(),
+  workflow: workflowIdentifier.optional().describe('Only the instances of this workflow.'),
+  status: runStatusSchema.optional().describe('Only the instances in this status.'),
   ...pageFields,
 });
 const runsListOutput = z.object({
@@ -601,7 +615,9 @@ export const workflowsRunsListOperation = defineOperation<
   },
 });
 
-const runsGetInput = z.object({ runId: z.string().min(1) });
+const runsGetInput = z.object({
+  runId: z.string().min(1).describe('The identifier of the workflow instance to read.'),
+});
 
 export const workflowsRunsGetOperation = defineOperation<
   typeof runsGetInput,
@@ -641,11 +657,12 @@ export const workflowsRunsGetOperation = defineOperation<
 });
 
 const signalInput = z.object({
-  /** The signal's name: the `name` of a signal trigger and of an `await-signal` step. */
-  name: z.string().min(1).max(SIGNAL_NAME_MAXIMUM_LENGTH),
-  /** What the signal carries; `null` when omitted. */
-  payload: z.json().optional(),
-  /** Makes a retried delivery apply once; starts are never deduplicated. */
+  name: z
+    .string()
+    .min(1)
+    .max(SIGNAL_NAME_MAXIMUM_LENGTH)
+    .describe('The signal’s name: the `name` of a signal trigger and of an `await-signal` step.'),
+  payload: z.json().optional().describe('What the signal carries; `null` when omitted.'),
   signalId: z
     .string()
     .min(1)
@@ -653,7 +670,8 @@ const signalInput = z.object({
       (signalId) => new TextEncoder().encode(signalId).byteLength <= SIGNAL_ID_MAXIMUM_BYTES,
       `signalId must be at most ${String(SIGNAL_ID_MAXIMUM_BYTES)} bytes`,
     )
-    .optional(),
+    .optional()
+    .describe('Makes a retried delivery apply once; starts are never deduplicated.'),
 });
 
 const signalOutput = z.object({
