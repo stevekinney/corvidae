@@ -13,6 +13,10 @@
 export type WorkerInheritanceSurface =
   'start' | 'schedule' | 'child' | 'fork' | 'restart' | 'activity';
 
+/**
+ * One statement of how a worker binding is inherited on a surface, with the Weft files that prove
+ * it.
+ */
 export interface WorkerInheritanceRule {
   readonly surface: WorkerInheritanceSurface;
   readonly heading: string;
@@ -21,6 +25,7 @@ export interface WorkerInheritanceRule {
   readonly sources: readonly string[];
 }
 
+/** The worker-binding inheritance rule of each surface that starts a workflow. */
 export const WORKER_INHERITANCE_RULES: Readonly<
   Record<WorkerInheritanceSurface, WorkerInheritanceRule>
 > = {

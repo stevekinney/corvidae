@@ -36,6 +36,7 @@ import {
 import { readServerSentEventStream, type ServerSentEventFrame } from './sse-reader.ts';
 import type { LiveSource, LiveSourceStatus } from './types.ts';
 
+/** Options for a Bureau event source. */
 export interface BureauEventSourceConfig {
   /** Overrides the reconnect backoff curve; tests inject a near-zero function. */
   readonly computeReconnectDelayMs?: (attempt: number) => number;
@@ -47,6 +48,11 @@ function isEventStreamResponse(response: Response): boolean {
   return contentType.split(';', 1)[0]?.trim().toLowerCase() === 'text/event-stream';
 }
 
+/**
+ * The shell's one connection to the Bureau's event feed: it reconnects with a backoff, resumes
+ * from the last event it saw, and tells subscribers to ask everything again when the feed cannot
+ * replay what they missed.
+ */
 export class BureauEventSource implements LiveSource<BureauEventFrame> {
   status: LiveSourceStatus = $state('closed');
 

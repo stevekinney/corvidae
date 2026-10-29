@@ -21,6 +21,9 @@ import { CHAT_COPY } from '../app/copy.ts';
 import { ASSET_FILE_PROVIDER, AttachmentUploadError, uploadAsset } from './bureau-assets.ts';
 import type { agentMediaSchema, Fetcher } from './bureau-client.ts';
 
+/**
+ * What an agent's model takes in the way of media: its modalities, MIME families, and size limits.
+ */
 export type AgentMedia = z.infer<typeof agentMediaSchema>;
 
 /**
@@ -55,6 +58,10 @@ function modalityOf(type: string): string | undefined {
   return undefined;
 }
 
+/**
+ * What the composer lets a person attach: the accepted types, the largest limit among them, and
+ * the limit for one file's own type.
+ */
 export type AttachmentSettings = {
   /** The types the composer's file picker and validation accept. */
   readonly acceptedTypes: string[];

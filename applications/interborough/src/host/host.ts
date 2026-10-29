@@ -149,6 +149,10 @@ export type ExtraAgents = {
   readonly published: readonly string[];
 };
 
+/**
+ * What `startHost` reads to start a host. Every field is optional and defaults to the environment
+ * and the checked-in build.
+ */
 export type HostOptions = {
   /** The environment to read `INTERBOROUGH_HOME` and `INTERBOROUGH_PORT` from. Defaults to the process's. */
   readonly environment?: BungalowEnvironment;
@@ -203,6 +207,10 @@ export type HostOptions = {
   readonly development?: boolean;
 };
 
+/**
+ * A running Interborough host: its origin, the Bureau and engine behind it, Weft's server, and the
+ * means to stop it.
+ */
 export type Host = {
   /** The origin the host listens on, `http://127.0.0.1:<port>/`. */
   readonly url: URL;

@@ -109,6 +109,11 @@ export async function fetchActiveWorkflowRevision(
  */
 export type RevisionActiveComparison = 'active' | 'stale' | 'unpinned' | 'unknown';
 
+/**
+ * Compares a run's persisted revision with its type's active pointer. A run with no revision is
+ * `unpinned`, an unresolved pointer is `unknown`, and otherwise the two are `active` when equal
+ * and `stale` when not.
+ */
 export function classifyRevisionAgainstActive(
   revision: string | undefined,
   active: WorkflowCatalogActivePointerLike | null | undefined,

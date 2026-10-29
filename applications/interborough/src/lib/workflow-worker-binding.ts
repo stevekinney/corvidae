@@ -25,14 +25,24 @@
  */
 import type { WorkflowState, WorkflowWorkerBinding } from '@lostgradient/weft';
 
+/** The worker versioning policy a workflow declares. */
 export type WorkerVersioningPolicy = NonNullable<WorkflowState['workerVersioningPolicy']>;
+/** A worker versioning policy in the `auto-upgrade` mode. */
 export type AutoUpgradePolicy = Extract<WorkerVersioningPolicy, { mode: 'auto-upgrade' }>;
 
+/**
+ * The part of a workflow's worker binding record the dashboard reads: the current binding and its
+ * history.
+ */
 export interface WorkerBindingRecordLike {
   readonly current: WorkflowWorkerBinding;
   readonly history: readonly WorkflowWorkerBinding[];
 }
 
+/**
+ * What a workflow's state says about its worker binding: none, a malformed record with the reason,
+ * or a policy with its record.
+ */
 export type WorkerBindingReading =
   | { readonly kind: 'absent' }
   | { readonly kind: 'malformed'; readonly reason: string }
@@ -185,6 +195,7 @@ export function explainWorkerBinding(reading: Extract<WorkerBindingReading, { ki
   );
 }
 
+/** Whether a workflow's worker binding can be overridden now, and the reason when it cannot. */
 export type OverrideEligibility =
   { readonly eligible: true } | { readonly eligible: false; readonly reason: string };
 

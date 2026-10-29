@@ -141,6 +141,10 @@ async function guardedWrite(
   return receiptSchema.parse(await callBureau(method, params, options));
 }
 
+/**
+ * Pauses a schedule so it stops firing (`bureau.schedules.pause`), guarded by the revision the
+ * caller read.
+ */
 export function pauseAgentSchedule(
   scheduleId: string,
   expectedRevision: number | undefined,
@@ -149,6 +153,9 @@ export function pauseAgentSchedule(
   return guardedWrite('bureau.schedules.pause', scheduleId, expectedRevision, options);
 }
 
+/**
+ * Resumes a paused schedule (`bureau.schedules.resume`), guarded by the revision the caller read.
+ */
 export function resumeAgentSchedule(
   scheduleId: string,
   expectedRevision: number | undefined,
@@ -157,6 +164,10 @@ export function resumeAgentSchedule(
   return guardedWrite('bureau.schedules.resume', scheduleId, expectedRevision, options);
 }
 
+/**
+ * Cancels a schedule for good (`bureau.schedules.cancel`), guarded by the revision the caller
+ * read.
+ */
 export function cancelAgentSchedule(
   scheduleId: string,
   expectedRevision: number | undefined,

@@ -22,6 +22,10 @@ import { listWorkflowFiles, type WorkflowFileListing } from './workflow-files.ts
 /** The built-in workflow type a Bureau schedule fires. */
 export const AGENT_RUN_TYPE = RUN_ENGINE_WORKFLOW_TYPE.agentRun;
 
+/**
+ * What a schedule starts each time it fires: an agent run, a workflow file, code registered in the
+ * host, or something the dashboard cannot name.
+ */
 export type ScheduleKind =
   | {
       readonly kind: 'agent-run';

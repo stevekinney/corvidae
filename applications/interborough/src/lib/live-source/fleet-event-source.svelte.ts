@@ -42,6 +42,10 @@ export interface FleetEventFilter {
   readonly workflowId?: string;
 }
 
+/**
+ * Options for a fleet event source: where to reach the server, the headers to send, and an
+ * optional server-side filter.
+ */
 export interface FleetEventSourceConfig {
   /** Same-origin-relative (`''`, `'/api'`) or absolute; never includes `/v1/events/sse` itself. */
   readonly baseUrl: string;
@@ -121,6 +125,10 @@ function parseFleetEventFrame(data: string): FleetEventFrame | null {
   };
 }
 
+/**
+ * The app-wide connection to the fleet event stream (`/v1/events/sse`). It reconnects with a
+ * backoff and reports its status for `ConnectionIndicator`.
+ */
 export class FleetEventSource implements LiveSource<FleetEventFrame> {
   status: LiveSourceStatus = $state('closed');
 

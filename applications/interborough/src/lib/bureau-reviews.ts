@@ -75,8 +75,11 @@ export const bureauReviewSchema = z.discriminatedUnion('kind', [
   }),
 ]);
 
+/** A review waiting on a person: either a tool approval or a human wait. */
 export type BureauReview = z.infer<typeof bureauReviewSchema>;
+/** A review that asks whether a gated tool call may run. */
 export type BureauToolApproval = Extract<BureauReview, { kind: 'tool-approval' }>;
+/** A review that asks a person for the input a run is parked on. */
 export type BureauHumanWait = Extract<BureauReview, { kind: 'human-wait' }>;
 
 type Options = { readonly signal?: AbortSignal };
@@ -94,8 +97,10 @@ export async function getBureauReview(id: string, options?: Options): Promise<Bu
   return bureauReviewSchema.parse(await callBureau('bureau.reviews.get', { id }, options));
 }
 
+/** The decisions a person can give a review: approve it, deny it, or reject it. */
 export const reviewDecisionSchema = z.enum(['approve', 'deny', 'reject']);
 
+/** One decision a person can give a review. */
 export type ReviewDecision = z.infer<typeof reviewDecisionSchema>;
 
 const resolveAnswerSchema = z.object({
@@ -107,6 +112,10 @@ const resolveAnswerSchema = z.object({
   feedback: z.string().optional(),
 });
 
+/**
+ * What the Bureau answers for a decision: the review's identifier and kind, the decision, and
+ * whether it was applied, rejected, or superseded.
+ */
 export type ReviewResolution = z.infer<typeof resolveAnswerSchema>;
 
 /**

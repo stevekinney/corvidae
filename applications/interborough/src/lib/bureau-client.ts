@@ -46,6 +46,10 @@ export const chatContextSchema = z.object({
   activity: z.enum(['running', 'awaiting-input', 'idle']),
 });
 
+/**
+ * One session as the session list shows it: its agent, title, preview, origin, activity, and
+ * counts and timestamps.
+ */
 export type ChatContext = z.infer<typeof chatContextSchema>;
 
 /**
@@ -59,6 +63,10 @@ export const contextDetailSchema = chatContextSchema.extend({
   configVersion: z.number().int().nonnegative(),
 });
 
+/**
+ * One session with its agent, title, and the model and configuration version its steering has
+ * settled on.
+ */
 export type ContextDetail = z.infer<typeof contextDetailSchema>;
 
 /** What `bureau.contexts.input` answers for an input it admitted. */
@@ -67,6 +75,10 @@ const contextInputReceiptSchema = z.object({
   receipt: z.object({ id: z.string(), state: z.string() }),
 });
 
+/**
+ * What the Bureau answers for an input it admitted: whether it was admitted or replayed, and the
+ * receipt's identifier and state.
+ */
 export type ContextInputReceipt = z.infer<typeof contextInputReceiptSchema>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -134,6 +146,10 @@ const agentModelChoiceSchema = z.object({
   displayName: z.string(),
 });
 
+/**
+ * One model an agent allows a session to be switched to: its provider, model name, and display
+ * name.
+ */
 export type AgentModelChoice = z.infer<typeof agentModelChoiceSchema>;
 
 const agentModelsSchema = z.object({
@@ -143,6 +159,10 @@ const agentModelsSchema = z.object({
   default: agentModelChoiceSchema.pick({ provider: true, model: true }).nullable(),
 });
 
+/**
+ * The models a session of an agent may be switched to, whether the agent allows a choice at all,
+ * and the model used with no override.
+ */
 export type AgentModels = z.infer<typeof agentModelsSchema>;
 
 /** The models a session of an agent may be switched to (`bureau.agents.models`). */
@@ -167,6 +187,10 @@ const steerOutcomeSchema = z.discriminatedUnion('outcome', [
   z.object({ outcome: z.literal('unsupported-capability'), reason: z.string() }),
 ]);
 
+/**
+ * How the Bureau answered a request to switch a session's model: accepted, replayed, conflicting,
+ * rejected with a reason, or refused because the session ended or cannot be steered.
+ */
 export type SteerOutcome = z.infer<typeof steerOutcomeSchema>;
 
 /**
@@ -227,6 +251,7 @@ const contextPageSchema = z.object({
   nextOffset: z.number().nullable(),
 });
 
+/** One page of sessions and the offset of the next page, or `null` on the last. */
 export type ContextPage = z.infer<typeof contextPageSchema>;
 
 /**
@@ -303,6 +328,10 @@ export const agentSummarySchema = z.object({
   examples: z.array(z.string()).optional(),
 });
 
+/**
+ * An agent as the agent list shows it: its name, description, kind, publish state, attachment
+ * support, tools, and example prompts.
+ */
 export type AgentSummary = z.infer<typeof agentSummarySchema>;
 
 /** The agents the caller may see, with whether each is published (`bureau.agents.list`). */
