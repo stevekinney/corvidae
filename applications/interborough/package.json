@@ -28,6 +28,7 @@
     "@lostgradient/operative-anthropic": "workspace:*",
     "@lostgradient/operative-gemini": "workspace:*",
     "@lostgradient/operative-openai": "workspace:*",
+    "@lostgradient/operative-typesafe": "workspace:*",
     "@lostgradient/storage": "workspace:*",
     "@lostgradient/storage-bun-sqlite": "workspace:*",
     "@lostgradient/storage-indexeddb": "workspace:*",

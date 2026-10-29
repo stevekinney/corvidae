@@ -1,14 +1,14 @@
+import {
+  assertValidDecisionRequest,
+  DecisionProviderUnavailableError,
+  DecisionSchemaError,
+  type DecideOptions,
+  type Decision,
+  type DecisionKind,
+  type DecisionModel,
+  type DecisionRequest,
+} from '@lostgradient/operative';
 import type { TokenUsage } from 'conversationalist';
-
-import { DecisionProviderUnavailableError, DecisionSchemaError } from './errors';
-import { assertValidDecisionRequest } from './request-validation';
-import type {
-  DecideOptions,
-  Decision,
-  DecisionKind,
-  DecisionModel,
-  DecisionRequest,
-} from './types';
 
 /** Options for {@link typesafeJev}. */
 export interface TypesafeJevOptions {
@@ -275,7 +275,7 @@ export function createTypesafeJev(
  * A {@link DecisionModel} backed by TypeSafe's Jev, serving `boolean`,
  * `choice` (Jev's criteria), and `scale` (Jev's levels) requests, and
  * reporting the probability Jev assigns to its answer. It does not serve
- * `structured`; route that to {@link llmDecisionModel}.
+ * `structured`; route that to Operative's `llmDecisionModel`.
  *
  * The peers `@tanstack/ai` and `@tanstack/ai-typesafe` are optional.
  * Construction looks both up without loading them and throws

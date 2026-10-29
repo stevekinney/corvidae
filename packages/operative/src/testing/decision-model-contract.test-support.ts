@@ -4,8 +4,11 @@ import type { DecisionModel, DecisionRequest } from '../decisions/types';
 
 /** One request a {@link DecisionModel} must answer, and the value it must answer with. */
 export interface DecisionContractCase {
+  /** The case's name, which becomes the title of its test. */
   readonly name: string;
+  /** The request the model is asked to answer. */
   readonly request: DecisionRequest;
+  /** The value the model's decision must carry. */
   readonly expected: unknown;
 }
 

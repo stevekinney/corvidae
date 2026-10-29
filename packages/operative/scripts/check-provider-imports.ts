@@ -261,6 +261,7 @@ function firstQualifier(name: ts.EntityName): string {
  */
 export const SELF_ENTRY_POINTS: Readonly<Record<string, string>> = {
   '@lostgradient/operative': 'src/index.ts',
+  '@lostgradient/operative/decision-testing': 'src/decision-testing.ts',
   '@lostgradient/operative/provider-kit': 'src/provider-kit.ts',
   '@lostgradient/operative/provider-testing': 'src/provider-testing.ts',
   '@lostgradient/operative/run-engine-workflow-types': 'src/durable/run-engine-workflow-types.ts',

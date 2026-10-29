@@ -51,7 +51,7 @@ export const PROVIDER_SECRET_KEYS: Readonly<Record<InterboroughProviderName, str
  * The Bungalow secret that holds the TypeSafe API key (the `TYPESAFE_API_KEY` of the project
  * document, spelled as Bungalow requires: its secret keys are lowercase and hyphenated, as
  * `anthropic-api-key` is). When it is set, Bureau's decisions are
- * answered by `typesafeJev` for the kinds it serves (`boolean`, `choice`, `scale`); every other
+ * answered by `typesafeJev` (from `@lostgradient/operative-typesafe`) for the kinds it serves (`boolean`, `choice`, `scale`); every other
  * kind, and every kind when it is not set, goes to the catalog's language-model fallback.
  */
 export const TYPESAFE_SECRET_KEY = 'typesafe-api-key';

@@ -1,4 +1,4 @@
-import type { DecisionRequest } from '../../../src/decisions/types';
+import type { DecisionRequest } from '../decisions/types';
 
 /**
  * One request the Jev contract suite replays, and the answer the recording
@@ -8,11 +8,16 @@ import type { DecisionRequest } from '../../../src/decisions/types';
 export interface DecisionScenario {
   /** The fixture's file name, without `.json`. */
   readonly name: string;
+  /** The request to replay: a boolean, choice, or scale question (Jev serves no structured kind). */
   readonly request: Exclude<DecisionRequest, { kind: 'structured' }>;
+  /** The value the recorded answer carries: a boolean, an option key, or a level index. */
   readonly expected: boolean | string | number;
 }
 
-/** The requests recorded against the live Jev API by `scripts/record-decision-fixtures.ts`. */
+/**
+ * The requests recorded against the live Jev API by `@lostgradient/operative-typesafe`'s
+ * `scripts/record-decision-fixtures.ts`.
+ */
 export const decisionScenarios: readonly DecisionScenario[] = [
   {
     name: 'boolean-true',

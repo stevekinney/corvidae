@@ -48,6 +48,7 @@
         "@lostgradient/operative-anthropic": "workspace:*",
         "@lostgradient/operative-gemini": "workspace:*",
         "@lostgradient/operative-openai": "workspace:*",
+        "@lostgradient/operative-typesafe": "workspace:*",
         "@lostgradient/storage": "workspace:*",
         "@lostgradient/storage-bun-sqlite": "workspace:*",
         "@lostgradient/storage-indexeddb": "workspace:*",
@@ -455,20 +456,10 @@
         "@lostgradient/storage-lmdb": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
-        "@tanstack/ai": "catalog:",
-        "@tanstack/ai-typesafe": "catalog:",
         "@types/bun": "catalog:",
         "oxlint": "catalog:",
         "typescript": "catalog:",
       },
-      "peerDependencies": {
-        "@tanstack/ai": "catalog:",
-        "@tanstack/ai-typesafe": "catalog:",
-      },
-      "optionalPeers": [
-        "@tanstack/ai",
-        "@tanstack/ai-typesafe",
-      ],
     },
     "packages/operative-anthropic": {
       "name": "@lostgradient/operative-anthropic",
@@ -525,6 +516,30 @@
         "typescript": "catalog:",
         "zod": "catalog:",
       },
+    },
+    "packages/operative-typesafe": {
+      "name": "@lostgradient/operative-typesafe",
+      "dependencies": {
+        "@lostgradient/operative": "workspace:*",
+        "conversationalist": "workspace:*",
+      },
+      "devDependencies": {
+        "@lostgradient/typescript": "workspace:*",
+        "@tanstack/ai": "catalog:",
+        "@tanstack/ai-typesafe": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+        "zod": "catalog:",
+      },
+      "peerDependencies": {
+        "@tanstack/ai": "catalog:",
+        "@tanstack/ai-typesafe": "catalog:",
+      },
+      "optionalPeers": [
+        "@tanstack/ai",
+        "@tanstack/ai-typesafe",
+      ],
     },
     "packages/storage": {
       "name": "@lostgradient/storage",
@@ -1066,6 +1081,8 @@
     "@lostgradient/operative-gemini": ["@lostgradient/operative-gemini@workspace:packages/operative-gemini"],
 
     "@lostgradient/operative-openai": ["@lostgradient/operative-openai@workspace:packages/operative-openai"],
+
+    "@lostgradient/operative-typesafe": ["@lostgradient/operative-typesafe@workspace:packages/operative-typesafe"],
 
     "@lostgradient/playground": ["@lostgradient/playground@workspace:applications/playground"],
 

@@ -1,6 +1,6 @@
 /**
  * COR-1709 — the host's decision model: with the `typesafe-api-key` secret in Bungalow's secrets, Bureau's
- * decisions are answered by `typesafeJev` for the kinds it serves, and without it the host starts
+ * decisions are answered by `typesafeJev` (from `@lostgradient/operative-typesafe`) for the kinds it serves, and without it the host starts
  * all the same and leaves every decision to the catalog's fallback. No test reaches the network:
  * `fetch` is replaced for the whole file, and the key is a fixture.
  */
