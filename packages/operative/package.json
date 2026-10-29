@@ -1,6 +1,6 @@
 {
   "name": "@lostgradient/operative",
-  "description": "A composable agent loop with lazy OpenAI and Gemini providers exposed through its source entry point (Anthropic lives in @lostgradient/operative-anthropic).",
+  "description": "A composable agent loop with a lazy Gemini provider exposed through its source entry point (Anthropic and OpenAI live in @lostgradient/operative-anthropic and @lostgradient/operative-openai).",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
@@ -27,7 +27,6 @@
     "zod": "catalog:",
     "@opentelemetry/api": "catalog:",
     "@google/genai": "catalog:",
-    "openai": "catalog:",
     "@lostgradient/environmentalist": "catalog:",
     "@lostgradient/storage": "workspace:*"
   },
