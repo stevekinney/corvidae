@@ -9,6 +9,7 @@
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test';
 
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { Engine } from '../core/engine.ts';
 import {
   decodeRemoteTaskRecord,
@@ -18,7 +19,6 @@ import {
 import type { WorkflowContext } from '../core/types.ts';
 import { activity, workflow } from '../core/types.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { RemoteWorker } from '../worker/index.ts';
 import { serve, type WeftServer } from './index.ts';
 import { readOnlyTaskLedgerRecord } from './remote-activity-integration.test-support.ts';

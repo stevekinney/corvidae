@@ -7,6 +7,7 @@
 
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { encode } from '../core/codec.ts';
 import type { Engine } from '../core/engine.ts';
 import { TaskResultDeliveryEvent } from '../core/events.ts';
@@ -18,7 +19,6 @@ import {
 } from '../core/task-ledger/task-ledger.ts';
 import { taskResultDeliveryKey } from '../core/task-ledger/task-result-delivery.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { waitForCondition } from '@lostgradient/testing/fake-timers';
 import { sha256HexSync } from '../worker/manifest/content-digest.ts';
 import { REMOTE_WORKER_PROTOCOL_VERSION } from '../worker/protocol.ts';
 import { manifestForActivities } from '../worker/registry-fixtures.test-support.ts';

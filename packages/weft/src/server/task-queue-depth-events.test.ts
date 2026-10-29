@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test';
 
-import { QueueDepthChangedEvent } from '../core/events/fleet-state-events.ts';
 import {
   advanceTimersByTime,
   restoreRealTimers,
   useFakeTimers,
-} from '../testing/fake-timers.test-support.ts';
+} from '@lostgradient/testing/fake-timers';
+import { QueueDepthChangedEvent } from '../core/events/fleet-state-events.ts';
 import {
   QUEUE_DEPTH_EVENT_INTERVAL_MILLISECONDS,
   TaskQueueDepthAnnouncer,

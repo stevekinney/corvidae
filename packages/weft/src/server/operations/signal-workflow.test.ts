@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'bun:test';
 import { sleepForTesting } from '@lostgradient/testing/fake-timers';
+import { describe, expect, it } from 'bun:test';
 
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { Engine } from '../../core/engine.ts';

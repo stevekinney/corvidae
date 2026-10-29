@@ -1,6 +1,6 @@
+import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
-import { sleepForTesting } from '@lostgradient/testing/fake-timers';
 
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { Engine } from '../core/engine.ts';
