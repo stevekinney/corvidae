@@ -173,9 +173,8 @@ export interface CacheConfiguration extends Omit<CacheOptions, 'store'> {
   store?: TextValueStore;
 }
 
-export interface StreamingConfiguration extends Pick<EnhancedStreamingOptions, 'onTextDelta'> {
-  enabled?: boolean;
-}
+/** What `resolveProviderGenerate` takes beside a stream event target: the callback each text delta reaches. */
+export interface StreamingConfiguration extends Pick<EnhancedStreamingOptions, 'onTextDelta'> {}
 
 // ── Diagnostics ──────────────────────────────────────────────────────
 

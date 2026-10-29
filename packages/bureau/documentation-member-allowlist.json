@@ -773,7 +773,6 @@
     ". SteeringCommandSnapshot.runId",
     ". SteeringCommandSnapshot.sessionId",
     ". SteeringCommandSnapshot.state",
-    ". StreamingConfiguration.enabled",
     ". Supervisor.addEventListener",
     ". Supervisor.delegate",
     ". Supervisor.delegateAll",

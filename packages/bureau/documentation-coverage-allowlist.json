@@ -92,7 +92,6 @@
     ". SkillCatalogEntry",
     ". SkillProvider",
     ". SkillRuntimeConfiguration",
-    ". StreamingConfiguration",
     ". Supervisor",
     ". SupervisorEventMap",
     ". SupervisorEventType",
