@@ -90,6 +90,7 @@ describe('goal events on the bureau emitter', () => {
     expect(live.map((event) => event.type)).toEqual([
       'goal.started',
       'goal.attempt.started',
+      'goal.attempt.evaluating',
       'goal.attempt.validated',
       'goal.succeeded',
     ]);

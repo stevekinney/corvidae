@@ -187,6 +187,7 @@ export const BUREAU_EVENT_CLASSIFICATION = {
   'steering.accepted': 'published',
   'goal.started': 'published',
   'goal.attempt.started': 'published',
+  'goal.attempt.evaluating': 'published',
   'goal.attempt.validated': 'published',
   'goal.succeeded': 'published',
   'goal.exhausted': 'published',

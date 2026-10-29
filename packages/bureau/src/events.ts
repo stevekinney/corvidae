@@ -392,10 +392,15 @@ export class ReviewSupersededEvent extends ReviewLifecycleEvent {
   }
 }
 
-/** The goal transitions the goal event projection records, each dispatched live as a {@link GoalLifecycleEvent}. */
+/**
+ * The goal transitions dispatched live as a {@link GoalLifecycleEvent}: each one the goal event
+ * projection records, and `goal.attempt.evaluating`, which is live only and never in a goal's
+ * durable history.
+ */
 export type GoalEventKind =
   | 'goal.started'
   | 'goal.attempt.started'
+  | 'goal.attempt.evaluating'
   | 'goal.attempt.validated'
   | 'goal.succeeded'
   | 'goal.exhausted'
@@ -410,6 +415,7 @@ export type GoalEventKind =
 const GOAL_EVENT_FIELDS: Readonly<Record<GoalEventKind, readonly string[]>> = {
   'goal.started': ['goalRunId', 'goalIdentity'],
   'goal.attempt.started': ['goalRunId', 'attemptId', 'attemptIndex', 'runId'],
+  'goal.attempt.evaluating': ['goalRunId', 'attemptId', 'attemptIndex', 'runId'],
   'goal.attempt.validated': [
     'goalRunId',
     'attemptId',
@@ -424,7 +430,7 @@ const GOAL_EVENT_FIELDS: Readonly<Record<GoalEventKind, readonly string[]>> = {
   'goal.recovered': ['goalRunId', 'controllerRestarts', 'status', 'transitionSeq'],
 };
 
-/** Every goal event kind, in the order a goal's history can hold them. */
+/** Every goal event kind, in the order a goal produces them. */
 export const GOAL_EVENT_KINDS = Object.keys(GOAL_EVENT_FIELDS) as readonly GoalEventKind[];
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
@@ -440,7 +446,9 @@ function validatorErrorFields(value: unknown): Readonly<Record<string, unknown>>
 /**
  * Fired on the bureau emitter when a goal write commits a transition the goal event projection
  * records (COR-1721): its creation, an attempt starting or being validated, a terminal decision, or
- * a counted controller restart. Live observations only: the boot pass that re-projects every goal
+ * a counted controller restart. Also fired, as `goal.attempt.evaluating`, when an attempt's run has
+ * finished and its validator starts (COR-1781); that one is live only, because the goal's record
+ * already says it is evaluating and its history records the verdict. Live observations only: the boot pass that re-projects every goal
  * into the durable history dispatches nothing, and a duplicate delivery of a transition the store
  * already holds is observed and dispatched again, so a listener treats these as at-least-once.
  *
@@ -730,6 +738,8 @@ export interface BureauEventMap extends EventMap {
   'steering.accepted': SteeringAcceptedEvent;
   'goal.started': GoalLifecycleEvent;
   'goal.attempt.started': GoalLifecycleEvent;
+  /** COR-1781 — an attempt's run finished and its validator started. Live only: never in the goal's history. */
+  'goal.attempt.evaluating': GoalLifecycleEvent;
   'goal.attempt.validated': GoalLifecycleEvent;
   'goal.succeeded': GoalLifecycleEvent;
   'goal.exhausted': GoalLifecycleEvent;
