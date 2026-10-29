@@ -8,6 +8,7 @@ import { createS3TestServer } from '@lostgradient/testing/s3-server';
 import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 
+import { processEnvironment } from './environment-configuration.ts';
 import { useS3Proxy, type ProxiedRequest } from './s3-proxy.test-support.ts';
 
 const AMBIENT_TOKEN = 'sentinel-ambient-session-token';
@@ -27,7 +28,7 @@ type Outcome =
 /** The process environment the child inherits, minus any session token of this process's own. */
 function cleanProcessEnvironment(): Record<string, string> {
   const inherited: Record<string, string> = {};
-  for (const [variable, value] of Object.entries(process.env)) {
+  for (const [variable, value] of Object.entries(processEnvironment())) {
     if (
       value !== undefined &&
       variable !== 'AWS_SESSION_TOKEN' &&
